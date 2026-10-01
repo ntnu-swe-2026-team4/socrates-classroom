@@ -1,16 +1,21 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, X } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, X } from "lucide-react";
 import { api } from "@/api";
 import { keys, useActivities, useClassroom, useClassroomMembers, useCreateActivity, useMe } from "@/api/queries";
-import type { Activity, AnswerMode, Stage } from "@/api";
+import type { Activity, AnswerMode, Classroom, Stage } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { ClassroomFormDialog } from "./ClassroomFormDialog";
+
+export const CLASSROOM_TABS = ["home", "members", "debate"] as const;
+export type ClassroomTab = (typeof CLASSROOM_TABS)[number];
+const TAB_NAME: Record<ClassroomTab, string> = { home: "首頁", members: "成員", debate: "辯論" };
 
 export const STAGE_NAME: Record<Stage, string> = { individual: "個人調查", team: "團隊提純", debate: "辯論比賽", done: "已結束" };
 const STAGE_TONE: Record<Stage, "bronze" | "olive" | "wine" | "neutral"> = { individual: "bronze", team: "olive", debate: "wine", done: "neutral" };
@@ -120,26 +125,62 @@ function MembersTab({ classroomId, teacher }: { classroomId: string; teacher: bo
   );
 }
 
+function HomeTab({ classroom, activities, teacher, onEdit, onSeeAll }: {
+  classroom: Classroom; activities: Activity[]; teacher: boolean; onEdit: () => void; onSeeAll: () => void;
+}) {
+  const recent = [...activities].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 2);
+  const live = activities.filter((a) => a.stage !== "done").length;
+  return (
+    <div className="space-y-6">
+      <Card>
+        <div className="mb-2 text-xs tracking-wider text-ink-faint">教室簡介</div>
+        {classroom.description
+          ? <p className="whitespace-pre-line text-[14px] leading-relaxed">{classroom.description}</p>
+          : <p className="text-sm text-ink-faint">{teacher ? <>還沒有簡介。<button type="button" onClick={onEdit} className="cursor-pointer text-bronze hover:underline">補上簡介</button>，讓學生知道這堂課要討論什麼。</> : "老師還沒有寫教室簡介。"}</p>}
+        <p className="mt-3 text-xs text-ink-faint">授課老師：{classroom.teacherName}</p>
+      </Card>
+      <div className="grid grid-cols-3 gap-3">
+        {([["學生", classroom.studentCount], ["辯論", activities.length], ["進行中", live]] as const).map(([n, v]) => (
+          <Card key={n} className="py-4 text-center"><b className="block font-serif text-2xl">{v}</b><span className="text-xs text-ink-faint">{n}</span></Card>
+        ))}
+      </div>
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs tracking-wider text-ink-faint">最近的辯論</span>
+          {activities.length > recent.length && <button type="button" onClick={onSeeAll} className="cursor-pointer text-xs text-bronze hover:underline">查看全部 →</button>}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">{recent.map((a) => <ActivityCard key={a.id} a={a} />)}</div>
+        {!recent.length && <p className="text-sm text-ink-faint">{teacher ? "還沒有辯論，到「辯論」分頁新增第一場。" : "老師還沒有開始任何辯論。"}</p>}
+      </div>
+    </div>
+  );
+}
+
 export function ClassroomPage() {
   const { classroomId } = useParams({ from: "/_app/classrooms/$classroomId" });
-  const { tab = "members" } = useSearch({ from: "/_app/classrooms/$classroomId" });
+  const { tab = "home" } = useSearch({ from: "/_app/classrooms/$classroomId" });
   const navigate = useNavigate();
   const { data: me } = useMe();
   const { data: classroom } = useClassroom(classroomId);
   const { data: activities = [] } = useActivities(classroomId);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const teacher = me?.role === "teacher";
-  const setTab = (t: "members" | "debate") => navigate({ to: "/classrooms/$classroomId", params: { classroomId }, search: { tab: t }, replace: true });
+  const setTab = (t: ClassroomTab) => navigate({ to: "/classrooms/$classroomId", params: { classroomId }, search: { tab: t }, replace: true });
   return (
     <div className="mx-auto max-w-4xl p-8">
       <Link to="/classrooms" className="inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-bg-2 px-3.5 py-1.5 text-[13px] text-ink-dim hover:text-ink"><ArrowLeft className="size-3.5" />回教室列表</Link>
-      <div className="mb-5 mt-4"><h2 className="font-serif text-2xl">{classroom?.name}</h2><p className="text-sm text-ink-faint">{classroom?.studentCount} 位學生</p></div>
+      <div className="mb-5 mt-4 flex items-start justify-between gap-4">
+        <div><h2 className="font-serif text-2xl">{classroom?.name}</h2><p className="text-sm text-ink-faint">{classroom?.studentCount} 位學生</p></div>
+        {teacher && classroom && <Button variant="outline" size="sm" onClick={() => setEditing(true)}><Pencil className="size-3.5" />編輯教室</Button>}
+      </div>
       <div className="mb-5 inline-flex gap-1 rounded-full border border-line bg-bg-1 p-1">
-        {([["members", "成員"], ["debate", "辯論"]] as const).map(([k, n]) => (
-          <button key={k} type="button" onClick={() => setTab(k)} className={cn("cursor-pointer rounded-full px-5 py-1.5 text-[13px]", tab === k ? "bg-bronze font-semibold text-[#221a0c]" : "text-ink-dim")}>{n}</button>
+        {CLASSROOM_TABS.map((k) => (
+          <button key={k} type="button" onClick={() => setTab(k)} className={cn("cursor-pointer rounded-full px-5 py-1.5 text-[13px]", tab === k ? "bg-bronze font-semibold text-[#221a0c]" : "text-ink-dim")}>{TAB_NAME[k]}</button>
         ))}
       </div>
-      {tab === "members" ? <MembersTab classroomId={classroomId} teacher={teacher} /> : (
+      {classroom && <ClassroomFormDialog classroom={classroom} open={editing} onOpenChange={setEditing} />}
+      {tab === "home" ? (classroom && <HomeTab classroom={classroom} activities={activities} teacher={teacher} onEdit={() => setEditing(true)} onSeeAll={() => setTab("debate")} />) : tab === "members" ? <MembersTab classroomId={classroomId} teacher={teacher} /> : (
         <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
             <p className="max-w-[56ch] text-[13px] leading-relaxed text-ink-dim">設定議題與價值軸，讓同學先各自跟 AI 對話，再依立場分組、辯論。</p>

@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { api } from "@/api";
 import { keys, useArchives, useClassrooms, useMe, useUpdateArchive } from "@/api/queries";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ClassroomFormDialog } from "./ClassroomFormDialog";
 
 export function SummaryPage() {
   const { data: archives = [] } = useArchives();
@@ -57,9 +56,7 @@ export function ClassroomsPage() {
   const list = teacher ? classrooms : classrooms.filter((c) => c.joined);
   const invites = teacher ? [] : classrooms.filter((c) => !c.joined);
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
   const refresh = () => qc.invalidateQueries({ queryKey: keys.classrooms });
-  const create = useMutation({ mutationFn: () => api.createClassroom({ name: name.trim(), description: "" }), onSuccess: () => { setOpen(false); setName(""); refresh(); } });
 
   return (
     <div className="mx-auto max-w-4xl p-8">
@@ -91,6 +88,7 @@ export function ClassroomsPage() {
           <Link key={c.id} to="/classrooms/$classroomId" params={{ classroomId: c.id }}>
             <Card className="h-full transition-colors hover:border-bronze-dim">
               <h3 className="font-serif text-lg">{c.name}</h3>
+              {c.description && <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-ink-dim">{c.description}</p>}
               <p className="mt-1 text-sm text-ink-faint">{c.studentCount} 位學生 · {c.debateCount} 場辯論</p>
               <Badge tone="bronze" className="mt-3">進入教室</Badge>
             </Card>
@@ -99,14 +97,7 @@ export function ClassroomsPage() {
       </div>
       {!list.length && <p className="text-sm text-ink-faint">{teacher ? "還沒有建立任何教室，按上面「新增教室」開始吧。" : "目前還沒有加入任何教室。"}</p>}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogTitle>新增教室</DialogTitle>
-          <DialogDescription>建立之後，可以在教室裡新增成員、發起辯論。</DialogDescription>
-          <Input placeholder="教室名稱，例如：高二哲學選修 C" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && create.mutate()} />
-          <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => setOpen(false)}>取消</Button><Button disabled={!name.trim() || create.isPending} onClick={() => create.mutate()}>建立</Button></div>
-        </DialogContent>
-      </Dialog>
+      <ClassroomFormDialog open={open} onOpenChange={setOpen} />
     </div>
   );
 }

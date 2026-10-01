@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { BankKind, CreateActivityInput, PositionDraft } from "./index";
+import type { BankKind, ClassroomInput, CreateActivityInput, PositionDraft } from "./index";
 
 /** 每個查詢的 key 集中在這裡，讓後端事件（SSE）進來時知道要讓哪些資料失效 */
 export const keys = {
@@ -41,6 +41,17 @@ export function useUpdateArchive() {
     mutationFn: (v: { id: string; bank?: BankKind | null; inSummary?: boolean }) =>
       api.updateArchive(v.id, { bank: v.bank, inSummary: v.inSummary }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.archives }),
+  });
+}
+
+export function useSaveClassroom(classroomId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ClassroomInput) => (classroomId ? api.updateClassroom(classroomId, input) : api.createClassroom(input)),
+    onSuccess: (c) => {
+      qc.setQueryData(keys.classroom(c.id), c);
+      qc.invalidateQueries({ queryKey: keys.classrooms });
+    },
   });
 }
 

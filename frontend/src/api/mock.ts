@@ -112,6 +112,16 @@ export const mockApi: Api = {
     classrooms.push(c);
     return pub(c);
   },
+  async updateClassroom(id, patch) {
+    await delay(); needTeacher();
+    const c = findClassroom(id);
+    if (patch.name !== undefined) {
+      if (!patch.name.trim()) throw new Error("教室名稱不能是空的");
+      c.name = patch.name.trim();
+    }
+    if (patch.description !== undefined) c.description = patch.description.trim();
+    return pub(c);
+  },
   async acceptInvite(id) { await delay(); const c = findClassroom(id); c.joined = true; if (!c.students.includes("你")) c.students.push("你"); return pub(c); },
   async declineInvite(id) { await delay(); const i = classrooms.findIndex((x) => x.id === id); if (i >= 0 && !classrooms[i].joined) classrooms.splice(i, 1); },
   async listClassroomMembers(id) { await delay(40); return memberRows(findClassroom(id)); },
@@ -201,7 +211,6 @@ export const mockApi: Api = {
   subscribe: (id, cb) => E.subscribe(id, cb),
 
   /* 以下為教室功能擴充（見 docs/api-contract.md），各階段實作時再換成真正的假資料 */
-  updateClassroom: notYet("P1"),
   importClassroomMembers: notYet("P3"),
   finishActivity: notYet("P8"),
   setStageDeadline: notYet("P8"),

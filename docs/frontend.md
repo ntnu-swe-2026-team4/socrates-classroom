@@ -27,7 +27,7 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `/summary` | 論點總結 | 選單「單人 → 論點總結」 |
 | `/bank/private`、`/bank/public` | 私人 / 公開題庫 | 選單「題庫」 |
 | `/classrooms` | 教室列表 | 選單「教室」 |
-| `/classrooms/:id` | 教室內的辯論列表（老師可新增） | 點進某個教室 |
+| `/classrooms/:id?tab=home\|members\|debate` | 教室：首頁（簡介、統計、最近的辯論）、成員、辯論列表（老師可新增） | 點進某個教室 |
 | `/classrooms/:id/activities/:id` | 辯論活動（四個階段 + 結果） | 點進某場辯論 |
 
 ### 專案根目錄
@@ -61,7 +61,8 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `pages/DialoguePage.tsx` | 3D 蘇格拉底 + 聊天面板 + 按住說話 | `/dialogue` |
 | `pages/TopicsPage.tsx` | 議題列表與詳情、私人 / 公開 / 論點總結 三個按鈕、繼續對話 | `/topics` |
 | `pages/ListPages.tsx` | 論點總結頁、題庫頁、教室列表頁（含新增教室、待處理邀請） | `/summary`、`/bank/*`、`/classrooms` |
-| `pages/ClassroomPage.tsx` | 教室內的「成員」與「辯論」兩個分頁：成員表、辯論卡片列表、老師的「新增辯論」視窗 | `/classrooms/:id` |
+| `pages/ClassroomPage.tsx` | 教室內的「首頁」「成員」「辯論」三個分頁：簡介與統計、成員表、辯論卡片列表、老師的「新增辯論」與「編輯教室」 | `/classrooms/:id` |
+| `pages/ClassroomFormDialog.tsx` | 新增 / 編輯教室共用的視窗（名稱、簡介） | 教室列表、教室頁 |
 | `pages/ActivityPage.tsx` | 辯論活動的外框：標題、橫向進度（設定→調查→提純→比賽→結束）、依階段切換內容 | `/classrooms/:id/activities/:id` |
 | `pages/stages/IndividualStage.tsx` | 階段 1：與蘇格拉底對話、調查進度、整理座標視窗；老師視角的成員進度表 | 辯論活動裡 |
 | `pages/stages/TeamStage.tsx` | 階段 2：分組、組內討論、AI 整理論點 / 丟反例、投票、分裂、重新分組 | 辯論活動裡 |
@@ -113,7 +114,8 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 對話頁：載入歷史 | `DialoguePage.tsx` → `api.listTopicDialogue` | `GET /api/archives/:id/dialogue` |
 | 對話頁：送出並串流回覆 | `DialoguePage.tsx` → `api.sendTopicDialogue` | `POST /api/archives/:id/dialogue`（**SSE**） |
 | 教室列表 / 教室資訊（含首頁的教室數） | `useClassrooms`、`useClassroom` | `GET /api/classrooms`、`GET /api/classrooms/:id` |
-| 老師新增教室 | `ListPages.tsx` 的 `ClassroomsPage` → `api.createClassroom` | `POST /api/classrooms` |
+| 老師新增教室 | `ClassroomFormDialog.tsx` → `useSaveClassroom` → `api.createClassroom` | `POST /api/classrooms` |
+| 老師編輯教室名稱、簡介 | `ClassroomPage.tsx` → `ClassroomFormDialog` → `api.updateClassroom` | `PATCH /api/classrooms/:id` |
 | 學生接受 / 拒絕邀請 | `ClassroomsPage` → `api.acceptInvite`、`api.declineInvite` | `POST /api/classrooms/:id/invite/accept`、`…/decline` |
 | 教室成員表（成員分頁） | `ClassroomPage.tsx` 的 `MembersTab` → `useClassroomMembers` | `GET /api/classrooms/:id/members` |
 | 老師新增 / 移除成員 | `MembersTab` → `api.addClassroomMember`、`api.removeClassroomMember` | `POST /api/classrooms/:id/members`、`DELETE …/members/:memberId` |
