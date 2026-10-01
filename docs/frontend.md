@@ -71,7 +71,7 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `pages/Announcements.tsx` | 公告分頁（老師新增、編輯、刪除、置頂、排程發布） | `/classrooms/:id` |
 | `pages/ClassroomFormDialog.tsx` | 新增 / 編輯教室共用的視窗（名稱、簡介） | 教室列表、教室頁 |
 | `pages/ClassroomTopicPage.tsx` | 議題詳情：左欄是說明與相關資料（同一格）、開始討論 / 辯論入口、結論報告；右欄是討論區；老師可編輯與刪除 | `/classrooms/:id/topics/:id` |
-| `pages/ReportsCard.tsx` | 結論報告：學生繳交 / 重新上傳 / 刪除；老師看全班繳交狀況（標示逾期） | 議題頁 |
+| `pages/TopicReports.tsx` | 結論報告：學生繳交 / 重新上傳 / 刪除；老師看全班繳交狀況（標示逾期） | 議題頁 |
 | `pages/TopicFormDialog.tsx` | 新增 / 編輯議題的視窗：類型、說明、截止時間、是否收報告；團體議題另有辯論設定（回答方式、價值軸、組別人數） | 教室頁、議題頁 |
 | `pages/ActivityPage.tsx` | 辯論活動的外框：標題列（右上角是目前階段與控制）、依階段切換的左右兩欄、最下方的進度色條 | `/classrooms/:id/activities/:id` |
 | `pages/StageControls.tsx` | 標題列右上角：目前階段、倒數、準備人數 / 「我準備好了」、推進；老師的「⋯」選單（限時、直接結束）；最下方的進度色條（點已過的段落可回顧） | 辯論活動裡 |
@@ -144,7 +144,7 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 教室議題列表 | `useTopics`（`ClassroomPage.tsx`） | `GET /api/classrooms/:id/topics` |
 | 討論區（教室 / 議題）發文、回覆、刪除 | `Discussion.tsx` → `usePosts`、`useCreatePost`、`useDeletePost` | `GET`、`POST /api/classrooms/:id/posts`、`DELETE /api/posts/:id` |
 | 教室行事曆 | `CalendarCard.tsx` → `useCalendar` | `GET /api/classrooms/:id/calendar?from=&to=` |
-| 結論報告 | `ReportsCard.tsx` → `useReports`、`useSubmitReport`、`useDeleteReport` | `GET`、`POST /api/topics/:id/reports`（multipart）、`DELETE /api/reports/:id` |
+| 結論報告 | `TopicReports.tsx` → `useReports`、`useSubmitReport`、`useDeleteReport` | `GET`、`POST /api/topics/:id/reports`（multipart）、`DELETE /api/reports/:id` |
 | 議題詳情 | `useTopic`（`ClassroomTopicPage.tsx`） | `GET /api/topics/:id` |
 | 老師新增 / 編輯議題（團體議題同時建立辯論活動） | `TopicFormDialog.tsx` → `useSaveTopic` | `POST /api/classrooms/:id/topics`、`PATCH /api/topics/:id` |
 | 老師刪除議題 | `ClassroomTopicPage.tsx` 的 `DeleteDialog` → `api.deleteTopic` | `DELETE /api/topics/:id` |

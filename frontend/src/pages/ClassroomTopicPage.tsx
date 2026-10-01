@@ -7,13 +7,12 @@ import { keys, useActivity, useArchives, useInvalidateTopic, useMe, useTopic } f
 import type { ClassroomTopic, TopicResource } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { formatBytes } from "@/lib/utils";
 import { DueLabel, STAGE_NAME, StageBar, TOPIC_TYPE } from "./ClassroomPage";
 import { DiscussionBoard } from "./Discussion";
-import { ReportsCard } from "./ReportsCard";
+import { TopicReports } from "./TopicReports";
 import { TopicFormDialog } from "./TopicFormDialog";
 
 function ResourceRow({ r, onDelete }: { r: TopicResource; onDelete?: () => void }) {
@@ -43,7 +42,7 @@ function TopicInfo({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean
   const error = addLink.error ?? upload.error ?? remove.error;
 
   return (
-    <Card>
+    <section className="border-b border-line py-5 first:pt-0 last:border-b-0">
       <div className="mb-2 text-xs tracking-wider text-ink-faint">議題說明</div>
       {topic.description ? <p className="whitespace-pre-line text-[14px] leading-relaxed">{topic.description}</p> : <p className="text-sm text-ink-faint">沒有額外說明。</p>}
       {(teacher || topic.resources.length > 0) && <div className="mb-2 mt-5 flex items-center justify-between gap-2 border-t border-line pt-4">
@@ -66,7 +65,7 @@ function TopicInfo({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean
       {topic.resources.map((r) => <ResourceRow key={r.id} r={r} onDelete={teacher ? () => remove.mutate(r.id) : undefined} />)}
       {teacher && !topic.resources.length && <p className="text-sm text-ink-faint">還沒有資料。可以加入閱讀材料的連結，或上傳講義、影片等檔案。</p>}
       {error && <p className="mt-2 text-[12.5px] text-wine">{error.message}</p>}
-    </Card>
+    </section>
   );
 }
 
@@ -88,7 +87,7 @@ function StartPanel({ topic, teacher }: { topic: ClassroomTopic; teacher: boolea
   if (topic.type === "group") {
     if (!activity) return null;
     return (
-      <Card>
+      <section className="border-b border-line py-5 first:pt-0 last:border-b-0">
         <div className="mb-3 flex items-center justify-between gap-3">
           <span className="text-xs tracking-wider text-ink-faint">辯論活動 · {STAGE_NAME[activity.stage]}</span>
           <span className="flex flex-wrap gap-1.5">{activity.axes.map((x) => <Badge key={x.key}>{x.left} ⟷ {x.right}</Badge>)}</span>
@@ -99,16 +98,16 @@ function StartPanel({ topic, teacher }: { topic: ClassroomTopic; teacher: boolea
             <MessageCircle className="size-4" />{teacher ? "管理辯論" : activity.stage === "done" ? "查看結果" : "進入辯論"}
           </Link>
         </Button>
-      </Card>
+      </section>
     );
   }
   if (teacher) return null;
   return (
-    <Card className="flex flex-wrap items-center justify-between gap-3">
+    <section className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-5 first:pt-0 last:border-b-0">
       <p className="text-sm text-ink-dim">{started ? "你已經開始討論這個議題，可以接著上次的對話。" : "讀完說明和資料後，和蘇格拉底聊聊你的想法。"}</p>
       <Button disabled={start.isPending} onClick={() => start.mutate()}><MessageCircle className="size-4" />{started ? "繼續討論" : "開始討論"}</Button>
       {start.error && <p className="w-full text-[12.5px] text-wine">{start.error.message}</p>}
-    </Card>
+    </section>
   );
 }
 
@@ -147,7 +146,7 @@ export function ClassroomTopicPage() {
   if (error) return <div className="mx-auto max-w-3xl p-8">{back}<p className="mt-6 text-sm text-ink-faint">{error.message}</p></div>;
   if (!topic) return null;
   return (
-    <div className="mx-auto max-w-6xl space-y-5 p-8">
+    <div className="mx-auto max-w-6xl space-y-6 p-8">
       {back}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
@@ -161,14 +160,14 @@ export function ClassroomTopicPage() {
           </span>
         )}
       </div>
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="space-y-5">
+      <div className="grid items-start border-t border-line pt-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="lg:pr-8">
           <TopicInfo topic={topic} teacher={teacher} />
           <StartPanel topic={topic} teacher={teacher} />
-          <ReportsCard topic={topic} teacher={teacher} />
+          <TopicReports topic={topic} teacher={teacher} />
         </div>
-        <section>
-          <h3 className="mb-2 font-serif text-lg max-lg:mt-3">討論{topic.postCount > 0 && <span className="ml-2 font-sans text-sm text-ink-faint">{topic.postCount}</span>}</h3>
+        <section className="max-lg:mt-2 max-lg:border-t max-lg:border-line max-lg:pt-6 lg:min-h-full lg:border-l lg:border-line lg:pl-8">
+          <h3 className="mb-3 font-serif text-lg">討論{topic.postCount > 0 && <span className="ml-2 font-sans text-sm text-ink-faint">{topic.postCount}</span>}</h3>
           <DiscussionBoard classroomId={classroomId} topicId={topic.id} />
         </section>
       </div>

@@ -4,7 +4,6 @@ import { useClassroom, useDeleteReport, useReports, useSubmitReport } from "@/ap
 import type { ClassroomTopic, TopicReport } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import { formatBytes, formatDateTime } from "@/lib/utils";
 
@@ -81,12 +80,12 @@ function AllReports({ topic }: { topic: ClassroomTopic }) {
   );
 }
 
-export function ReportsCard({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean }) {
+export function TopicReports({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean }) {
   if (!topic.acceptsReports) return null;
   return (
-    <Card>
+    <section className="border-b border-line py-5 first:pt-0 last:border-b-0">
       <div className="mb-2 text-xs tracking-wider text-ink-faint">結論報告</div>
       {teacher ? <AllReports topic={topic} /> : <MyReport topic={topic} />}
-    </Card>
+    </section>
   );
 }

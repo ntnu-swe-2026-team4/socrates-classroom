@@ -4,7 +4,6 @@ import { useCreatePost, useDeletePost, useMe, usePosts } from "@/api/queries";
 import type { DiscussionPost } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import { cn, formatDateTime } from "@/lib/utils";
 
@@ -62,10 +61,10 @@ export function DiscussionBoard({ classroomId, topicId }: { classroomId: string;
   const canDelete = (p: DiscussionPost) => p.isMine || teacher;
 
   return (
-    <div className="space-y-3">
-      <Card><Composer classroomId={classroomId} topicId={topicId} placeholder={topicId ? "對這個議題有什麼想法或疑問？" : "想問老師或同學什麼？"} /></Card>
+    <div>
+      <div className="border-b border-line pb-5"><Composer classroomId={classroomId} topicId={topicId} placeholder={topicId ? "對這個議題有什麼想法或疑問？" : "想問老師或同學什麼？"} /></div>
       {threads.map((t) => (
-        <Card key={t.id}>
+        <article key={t.id} className="border-b border-line py-4 last:border-b-0">
           <PostBody p={t} canDelete={canDelete(t)} onDelete={() => del.mutate(t.id)} />
           {repliesOf(t.id).length > 0 && (
             <div className="mt-3 space-y-3 border-l-2 border-line pl-4">
@@ -75,9 +74,9 @@ export function DiscussionBoard({ classroomId, topicId }: { classroomId: string;
           {!t.deleted && (replying === t.id
             ? <div className="mt-3 pl-4"><Composer autoFocus classroomId={classroomId} topicId={topicId} parentId={t.id} placeholder="回覆…" onDone={() => setReplying(null)} /></div>
             : <button type="button" onClick={() => setReplying(t.id)} className="mt-2.5 inline-flex cursor-pointer items-center gap-1 text-xs text-ink-faint hover:text-bronze"><MessageSquare className="size-3.5" />回覆</button>)}
-        </Card>
+        </article>
       ))}
-      {!threads.length && <p className="text-sm text-ink-faint">還沒有人發言。</p>}
+      {!threads.length && <p className="pt-4 text-sm text-ink-faint">還沒有人發言。</p>}
       {del.error && <p className="text-[12.5px] text-wine">{del.error.message}</p>}
     </div>
   );
