@@ -27,7 +27,7 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `/summary` | 論點總結 | 選單「單人 → 論點總結」 |
 | `/bank/private`、`/bank/public` | 私人 / 公開題庫 | 選單「題庫」 |
 | `/classrooms` | 教室列表 | 選單「教室」 |
-| `/classrooms/:id?tab=home\|topics\|members` | 教室：首頁（簡介、統計、最近的議題）、議題列表（老師可新增）、成員 | 點進某個教室 |
+| `/classrooms/:id?tab=home\|announcements\|topics\|members` | 教室：首頁（簡介、公告、統計、最近的議題）、公告、議題列表（老師可新增）、成員 | 點進某個教室 |
 | `/classrooms/:id/topics/:id` | 教室議題：說明、相關資料（連結 / 檔案）、開始討論或進入辯論 | 點進某個議題 |
 | `/classrooms/:id/activities/:id` | 辯論活動（四個階段 + 結果） | 點進某場辯論 |
 
@@ -62,7 +62,8 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `pages/DialoguePage.tsx` | 3D 蘇格拉底 + 聊天面板 + 按住說話 | `/dialogue` |
 | `pages/TopicsPage.tsx` | 議題列表與詳情、私人 / 公開 / 論點總結 三個按鈕、繼續對話 | `/topics` |
 | `pages/ListPages.tsx` | 論點總結頁、題庫頁、教室列表頁（含新增教室、待處理邀請） | `/summary`、`/bank/*`、`/classrooms` |
-| `pages/ClassroomPage.tsx` | 教室內的「首頁」「議題」「成員」三個分頁：簡介與統計、議題卡片（可依個人 / 團體篩選）、成員表、老師的「新增議題」與「編輯教室」 | `/classrooms/:id` |
+| `pages/ClassroomPage.tsx` | 教室內的「首頁」「公告」「議題」「成員」四個分頁：簡介與統計、議題卡片（可依個人 / 團體篩選）、成員表、老師的「新增議題」與「編輯教室」 | `/classrooms/:id` |
+| `pages/Announcements.tsx` | 公告分頁（老師新增、編輯、刪除、置頂、排程發布）與教室首頁的公告區 | `/classrooms/:id` |
 | `pages/ClassroomFormDialog.tsx` | 新增 / 編輯教室共用的視窗（名稱、簡介） | 教室列表、教室頁 |
 | `pages/ClassroomTopicPage.tsx` | 議題詳情：說明、相關資料（老師可加連結、上傳檔案）、學生的「開始討論」、團體議題的辯論入口、老師的編輯與刪除 | `/classrooms/:id/topics/:id` |
 | `pages/TopicFormDialog.tsx` | 新增 / 編輯議題的視窗：類型、說明、截止時間、是否收報告；團體議題另有辯論設定（回答方式、價值軸、組別人數） | 教室頁、議題頁 |
@@ -122,6 +123,9 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 學生接受 / 拒絕邀請 | `ClassroomsPage` → `api.acceptInvite`、`api.declineInvite` | `POST /api/classrooms/:id/invite/accept`、`…/decline` |
 | 教室成員表（成員分頁） | `ClassroomPage.tsx` 的 `MembersTab` → `useClassroomMembers` | `GET /api/classrooms/:id/members` |
 | 老師新增 / 移除成員 | `MembersTab` → `api.addClassroomMember`、`api.removeClassroomMember` | `POST /api/classrooms/:id/members`、`DELETE …/members/:memberId` |
+| 公告列表（學生只拿得到已發布的；每分鐘重抓一次） | `useAnnouncements`（`Announcements.tsx`） | `GET /api/classrooms/:id/announcements` |
+| 老師新增 / 編輯公告（含排程） | `AnnouncementFormDialog` → `useSaveAnnouncement` | `POST /api/classrooms/:id/announcements`、`PATCH /api/announcements/:id` |
+| 老師刪除公告 | `Announcements.tsx` 的 `DeleteDialog` → `useDeleteAnnouncement` | `DELETE /api/announcements/:id` |
 | 教室議題列表 | `useTopics`（`ClassroomPage.tsx`） | `GET /api/classrooms/:id/topics` |
 | 議題詳情 | `useTopic`（`ClassroomTopicPage.tsx`） | `GET /api/topics/:id` |
 | 老師新增 / 編輯議題（團體議題同時建立辯論活動） | `TopicFormDialog.tsx` → `useSaveTopic` | `POST /api/classrooms/:id/topics`、`PATCH /api/topics/:id` |

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { BankKind, ClassroomInput, ClassroomTopic, PositionDraft, TopicInput } from "./index";
+import type { AnnouncementInput, BankKind, ClassroomInput, ClassroomTopic, PositionDraft, TopicInput } from "./index";
 
 /** 每個查詢的 key 集中在這裡，讓後端事件（SSE）進來時知道要讓哪些資料失效 */
 export const keys = {
@@ -12,6 +12,7 @@ export const keys = {
   classroomMembers: (id: string) => ["classroomMembers", id] as const,
   activities: (cid: string) => ["activities", cid] as const,
   topics: (cid: string) => ["topics", cid] as const,
+  announcements: (cid: string) => ["announcements", cid] as const,
   topic: (id: string) => ["topic", id] as const,
   activity: (id: string) => ["activity", id] as const,
   dialogue: (id: string) => ["dialogue", id] as const,
@@ -32,6 +33,8 @@ export const useArchives = () => useQuery({ queryKey: keys.archives, queryFn: ()
 export const useClassrooms = () => useQuery({ queryKey: keys.classrooms, queryFn: () => api.listClassrooms() });
 export const useClassroom = (id: string) => useQuery({ queryKey: keys.classroom(id), queryFn: () => api.getClassroom(id) });
 export const useActivities = (cid: string) => useQuery({ queryKey: keys.activities(cid), queryFn: () => api.listActivities(cid) });
+/** 每分鐘重抓一次：排程的公告到時間後，學生不用重新整理就看得到 */
+export const useAnnouncements = (cid: string) => useQuery({ queryKey: keys.announcements(cid), queryFn: () => api.listAnnouncements(cid), refetchInterval: 60_000 });
 export const useTopics = (cid: string) => useQuery({ queryKey: keys.topics(cid), queryFn: () => api.listTopics(cid) });
 export const useTopic = (id: string) => useQuery({ queryKey: keys.topic(id), queryFn: () => api.getTopic(id) });
 export const useActivity = (id: string) => useQuery({ queryKey: keys.activity(id), queryFn: () => api.getActivity(id), enabled: !!id });
@@ -78,6 +81,23 @@ export function useSaveTopic(classroomId: string, topicId?: string) {
   return useMutation({
     mutationFn: ({ type, ...rest }: TopicInput) => (topicId ? api.updateTopic(topicId, rest) : api.createTopic(classroomId, { type, ...rest })),
     onSuccess: (t) => invalidate(t),
+  });
+}
+
+/** 新增（不帶 announcementId）或編輯公告 */
+export function useSaveAnnouncement(classroomId: string, announcementId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AnnouncementInput) => (announcementId ? api.updateAnnouncement(announcementId, input) : api.createAnnouncement(classroomId, input)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.announcements(classroomId) }),
+  });
+}
+
+export function useDeleteAnnouncement(classroomId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteAnnouncement(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.announcements(classroomId) }),
   });
 }
 

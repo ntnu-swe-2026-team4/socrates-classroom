@@ -1,5 +1,5 @@
 import type { Api } from "./api";
-import type { Archive, Classroom, ClassroomMember, ClassroomTopic, CreateActivityInput, TopicResource, User } from "./types";
+import type { Announcement, Archive, Classroom, ClassroomMember, ClassroomTopic, CreateActivityInput, TopicResource, User } from "./types";
 import * as E from "@/mock/engine";
 
 /**
@@ -67,6 +67,23 @@ const findTopic = (id: string) => {
 const touch = (t: ClassroomTopic) => { t.updatedAt = new Date().toISOString(); };
 let seq = 0;
 const newId = (p: string) => `${p}${Date.now().toString(36)}${seq++}`;
+
+/* 公告：published 由讀取當下的時間計算，學生只拿得到已發布的 */
+type StoredAnnouncement = Omit<Announcement, "published">;
+const announcements: StoredAnnouncement[] = [
+  { id: "an1", classroomId: "c1", title: "期中辯論的評分方式", pinned: true, authorName: "林老師", publishAt: iso(-5), createdAt: iso(-5), updatedAt: iso(-5),
+    body: "期中辯論占學期成績 30%：\n・個人調查 30%\n・團隊提純 30%\n・辯論比賽 40%\n\nAI 裁判的分數僅供參考，最後由老師確認。" },
+  { id: "an2", classroomId: "c1", title: "下週請先讀完《理想國》第一卷", pinned: false, authorName: "林老師", publishAt: iso(-1), createdAt: iso(-1), updatedAt: iso(-1),
+    body: "議題「正義是否只是強者的利益？」的閱讀材料已放在議題頁，上課前請先讀完。" },
+  { id: "an3", classroomId: "c1", title: "第二場辯論開放報名", pinned: false, authorName: "林老師", publishAt: iso(3), createdAt: iso(0), updatedAt: iso(0),
+    body: "（排程中的公告：學生要到發布時間才看得到）" },
+];
+const toAnnouncement = (a: StoredAnnouncement): Announcement => ({ ...a, published: new Date(a.publishAt).getTime() <= Date.now() });
+const findAnnouncement = (id: string) => {
+  const a = announcements.find((x) => x.id === id);
+  if (!a) throw new Error("找不到公告");
+  return a;
+};
 
 const topicDialogues = new Map<string, import("./types").DialogueMessage[]>();
 const TOPIC_REPLIES = [
@@ -247,10 +264,6 @@ export const mockApi: Api = {
   cancelApplication: notYet("P3"),
   listApplications: notYet("P3"),
   reviewApplication: notYet("P3"),
-  listAnnouncements: notYet("P2"),
-  createAnnouncement: notYet("P2"),
-  updateAnnouncement: notYet("P2"),
-  deleteAnnouncement: notYet("P2"),
   /* 教室議題（P4） */
   async listTopics(cid) {
     await delay();
@@ -333,6 +346,40 @@ export const mockApi: Api = {
     archives.unshift(a);
     topicArchive.set(tid, a.id);
     return { ...a };
+  },
+  /* 公告（P2） */
+  async listAnnouncements(cid) {
+    await delay();
+    return announcements.filter((a) => a.classroomId === cid).map(toAnnouncement)
+      .filter((a) => isTeacher() || a.published)
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.publishAt.localeCompare(a.publishAt));
+  },
+  async createAnnouncement(cid, input) {
+    await delay(); needTeacher();
+    findClassroom(cid);
+    if (!input.title.trim()) throw new Error("請填寫公告標題");
+    const at = new Date().toISOString();
+    const a: StoredAnnouncement = { id: newId("an"), classroomId: cid, title: input.title.trim(), body: input.body.trim(), pinned: input.pinned,
+      publishAt: input.publishAt ?? at, authorName: user?.name ?? "老師", createdAt: at, updatedAt: at };
+    announcements.push(a);
+    return toAnnouncement(a);
+  },
+  async updateAnnouncement(id, patch) {
+    await delay(); needTeacher();
+    const a = findAnnouncement(id);
+    if (patch.title !== undefined) {
+      if (!patch.title.trim()) throw new Error("請填寫公告標題");
+      a.title = patch.title.trim();
+    }
+    if (patch.body !== undefined) a.body = patch.body.trim();
+    if (patch.pinned !== undefined) a.pinned = patch.pinned;
+    if (patch.publishAt !== undefined) a.publishAt = patch.publishAt ?? new Date().toISOString();
+    a.updatedAt = new Date().toISOString();
+    return toAnnouncement(a);
+  },
+  async deleteAnnouncement(id) {
+    await delay(); needTeacher();
+    announcements.splice(announcements.indexOf(findAnnouncement(id)), 1);
   },
   listReports: notYet("P7"),
   submitReport: notYet("P7"),
