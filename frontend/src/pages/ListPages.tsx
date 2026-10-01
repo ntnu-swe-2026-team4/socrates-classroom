@@ -59,7 +59,7 @@ export function ClassroomsPage() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const refresh = () => qc.invalidateQueries({ queryKey: keys.classrooms });
-  const create = useMutation({ mutationFn: () => api.createClassroom(name.trim()), onSuccess: () => { setOpen(false); setName(""); refresh(); } });
+  const create = useMutation({ mutationFn: () => api.createClassroom({ name: name.trim(), description: "" }), onSuccess: () => { setOpen(false); setName(""); refresh(); } });
 
   return (
     <div className="mx-auto max-w-4xl p-8">

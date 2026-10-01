@@ -107,6 +107,12 @@ export function useActivityEvents(activityId: string) {
           qc.invalidateQueries({ queryKey: keys.rooms(activityId) });
           qc.invalidateQueries({ queryKey: keys.turns(e.room.id) });
           break;
+        case "deadline_changed":
+          qc.invalidateQueries({ queryKey: keys.activity(activityId) });
+          break;
+        case "member_ready":
+          qc.invalidateQueries({ queryKey: keys.members(activityId) });
+          break;
       }
     });
   }, [activityId, qc]);

@@ -41,6 +41,7 @@ export const toActivity = (a: any) => ({
   id: a.id, classroomId: a.classroomId, title: a.title, statement: a.statement, answerMode: a.answerMode,
   axes: a.axes.map((x: any) => ({ key: x.key, name: x.name, left: x.left, right: x.right })),
   groupSize: a.groupSize, stage: a.stage, memberCount: a.members.length, createdAt: a.createdAt,
+  stageDeadline: a.stageDeadline ?? null,
 });
 
 /* ---------------- 階段 1 ---------------- */

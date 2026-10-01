@@ -1,7 +1,10 @@
 import type {
-  Activity, ActivityEvent, Archive, BankKind, Classroom, ClassroomMember, CreateActivityInput,
-  DialogueMessage, Group, GroupArgument, GroupMessage, Judgment, Member, Position,
-  PositionDraft, Progress, Room, ScoreRow, StarData, Turn, User, Role, Vote,
+  Activity, ActivityEvent, Announcement, AnnouncementInput, ApplicationStatus, Archive, BankKind,
+  CalendarEvent, Classroom, ClassroomInput, ClassroomMember, ClassroomPreview, ClassroomTopic,
+  CreateActivityInput, DialogueMessage, DiscussionPost, Group, GroupArgument, GroupMessage,
+  ImportMembersResult, JoinApplication, JoinInput, JoinPolicy, JoinResult, Judgment, Member,
+  NoteInput, Position, PositionDraft, PostInput, Progress, Room, ScoreRow, StarData,
+  ThinkingNote, TopicInput, TopicReport, TopicResource, Turn, User, Role, Vote,
 } from "./types";
 
 /**
@@ -28,17 +31,67 @@ export interface Api {
   /* 教室與辯論活動 */
   listClassrooms(): Promise<Classroom[]>;
   getClassroom(id: string): Promise<Classroom>;
-  createClassroom(name: string): Promise<Classroom>; // 僅老師
+  createClassroom(input: ClassroomInput): Promise<Classroom>; // 僅老師
+  updateClassroom(id: string, patch: Partial<ClassroomInput>): Promise<Classroom>; // 僅老師
   acceptInvite(classroomId: string): Promise<Classroom>; // 學生接受邀請
   declineInvite(classroomId: string): Promise<void>;
   listClassroomMembers(classroomId: string): Promise<ClassroomMember[]>;
   addClassroomMember(classroomId: string, name: string): Promise<ClassroomMember>; // 僅老師
+  /** 批次匯入（每行一個帳號或姓名）；僅老師 */
+  importClassroomMembers(classroomId: string, names: string[]): Promise<ImportMembersResult>;
   removeClassroomMember(classroomId: string, memberId: string): Promise<void>; // 僅老師
   listActivities(classroomId: string): Promise<Activity[]>;
   getActivity(id: string): Promise<Activity>;
   createActivity(classroomId: string, input: CreateActivityInput): Promise<Activity>;
   /** 老師推進階段；後端的活動狀態機（FSM）決定能不能推進 */
   advanceActivity(id: string): Promise<Activity>;
+  /** 老師直接結束活動（從任何階段跳到結果） */
+  finishActivity(id: string): Promise<Activity>;
+  /** 老師設定目前階段的截止時間；null = 取消限時 */
+  setStageDeadline(id: string, deadline: string | null): Promise<Activity>;
+
+  /* 加入教室：邀請碼、公開探索、審核 */
+  getJoinPolicy(classroomId: string): Promise<JoinPolicy>; // 僅老師
+  updateJoinPolicy(classroomId: string, patch: Partial<Omit<JoinPolicy, "code">>): Promise<JoinPolicy>; // 僅老師
+  regenerateJoinCode(classroomId: string): Promise<JoinPolicy>; // 僅老師
+  discoverClassrooms(query?: string): Promise<ClassroomPreview[]>; // 學生
+  lookupJoinCode(code: string): Promise<ClassroomPreview>; // 學生；代碼無效回 404
+  joinClassroom(classroomId: string, input: JoinInput): Promise<JoinResult>; // 學生
+  listMyApplications(): Promise<JoinApplication[]>; // 學生
+  cancelApplication(applicationId: string): Promise<void>; // 學生，只能取消 pending
+  listApplications(classroomId: string, status?: ApplicationStatus): Promise<JoinApplication[]>; // 僅老師
+  reviewApplication(applicationId: string, decision: "approve" | "reject", note?: string): Promise<JoinApplication>; // 僅老師
+
+  /* 公告（學生只拿得到已發布的） */
+  listAnnouncements(classroomId: string): Promise<Announcement[]>;
+  createAnnouncement(classroomId: string, input: AnnouncementInput): Promise<Announcement>; // 僅老師
+  updateAnnouncement(id: string, patch: Partial<AnnouncementInput>): Promise<Announcement>; // 僅老師
+  deleteAnnouncement(id: string): Promise<void>; // 僅老師
+
+  /* 教室議題 */
+  listTopics(classroomId: string): Promise<ClassroomTopic[]>;
+  getTopic(id: string): Promise<ClassroomTopic>;
+  createTopic(classroomId: string, input: TopicInput): Promise<ClassroomTopic>; // 僅老師；團體議題同時建立辯論活動
+  updateTopic(id: string, patch: Partial<Omit<TopicInput, "type">>): Promise<ClassroomTopic>; // 僅老師
+  deleteTopic(id: string): Promise<void>; // 僅老師；團體議題連同辯論活動一起刪除
+  addTopicLink(topicId: string, link: { name: string; url: string }): Promise<TopicResource>; // 僅老師
+  uploadTopicFile(topicId: string, file: File): Promise<TopicResource>; // 僅老師
+  deleteTopicResource(topicId: string, resourceId: string): Promise<void>; // 僅老師
+  /** 個人議題「開始討論」：建立或取回自己在這個議題的對話（Archive.topicId 指向議題） */
+  startTopicDialogue(topicId: string): Promise<Archive>;
+  /** 老師：全班；學生：只有自己 */
+  listReports(topicId: string): Promise<TopicReport[]>;
+  /** 學生上傳結論報告；重複上傳會取代舊的 */
+  submitReport(topicId: string, file: File, comment?: string): Promise<TopicReport>;
+  deleteReport(reportId: string): Promise<void>; // 作者本人
+
+  /* 討論區（topicId = null 為教室討論區） */
+  listPosts(classroomId: string, topicId: string | null): Promise<DiscussionPost[]>;
+  createPost(classroomId: string, input: PostInput): Promise<DiscussionPost>;
+  deletePost(postId: string): Promise<void>; // 作者本人或老師
+
+  /* 行事曆：classroomId 省略 = 自己所有教室 */
+  listCalendar(range: { from: string; to: string; classroomId?: string }): Promise<CalendarEvent[]>;
 
   /* 階段 1：個人調查 */
   listDialogue(activityId: string): Promise<DialogueMessage[]>;
@@ -48,6 +101,13 @@ export interface Api {
   draftPosition(activityId: string): Promise<PositionDraft>;
   confirmPosition(activityId: string, position: PositionDraft): Promise<Position>;
   listPositions(activityId: string): Promise<Position[]>; // 老師：全班；學生：只有自己
+  /** 學生在目前階段回報「我準備好了」 */
+  setReady(activityId: string, ready: boolean): Promise<void>;
+  /** 思路筆記（重點標註與自己的想法），只有本人看得到 */
+  listNotes(activityId: string): Promise<ThinkingNote[]>;
+  createNote(activityId: string, input: NoteInput): Promise<ThinkingNote>;
+  updateNote(noteId: string, text: string): Promise<ThinkingNote>;
+  deleteNote(noteId: string): Promise<void>;
 
   /* 階段 2：團隊提純 */
   listMembers(activityId: string): Promise<Member[]>;

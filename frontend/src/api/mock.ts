@@ -21,9 +21,9 @@ const archives: Archive[] = [
 ];
 
 const classrooms: (Classroom & { students: string[] })[] = [
-  { id: "c1", name: "高二哲學選修 A", teacherName: "林老師", studentCount: 5, debateCount: 1, joined: true,
-    students: ["王○安", "李○恩", "陳○宇", "林○彤", "吳○哲"] },
-  { id: "c2", name: "高二哲學選修 B", teacherName: "陳老師", studentCount: 1, debateCount: 0, joined: false, students: ["你"] },
+  { id: "c1", name: "高二哲學選修 A", description: "從柏拉圖《理想國》出發，練習用提問把自己的想法說清楚。", teacherName: "林老師",
+    studentCount: 5, debateCount: 1, joined: true, students: ["王○安", "李○恩", "陳○宇", "林○彤", "吳○哲"] },
+  { id: "c2", name: "高二哲學選修 B", description: "", teacherName: "陳老師", studentCount: 1, debateCount: 0, joined: false, students: ["你"] },
 ];
 
 const STATUS = [
@@ -106,9 +106,9 @@ export const mockApi: Api = {
     await delay(60);
     return pub(findClassroom(id));
   },
-  async createClassroom(name) {
+  async createClassroom({ name, description }) {
     await delay(); needTeacher();
-    const c = { id: "c" + (classrooms.length + 1), name, teacherName: user?.name ?? "老師", studentCount: 0, debateCount: 0, joined: true, students: [] as string[] };
+    const c = { id: "c" + (classrooms.length + 1), name, description, teacherName: user?.name ?? "老師", studentCount: 0, debateCount: 0, joined: true, students: [] as string[] };
     classrooms.push(c);
     return pub(c);
   },
@@ -199,7 +199,56 @@ export const mockApi: Api = {
   },
 
   subscribe: (id, cb) => E.subscribe(id, cb),
+
+  /* 以下為教室功能擴充（見 docs/api-contract.md），各階段實作時再換成真正的假資料 */
+  updateClassroom: notYet("P1"),
+  importClassroomMembers: notYet("P3"),
+  finishActivity: notYet("P8"),
+  setStageDeadline: notYet("P8"),
+  getJoinPolicy: notYet("P3"),
+  updateJoinPolicy: notYet("P3"),
+  regenerateJoinCode: notYet("P3"),
+  discoverClassrooms: notYet("P3"),
+  lookupJoinCode: notYet("P3"),
+  joinClassroom: notYet("P3"),
+  listMyApplications: notYet("P3"),
+  cancelApplication: notYet("P3"),
+  listApplications: notYet("P3"),
+  reviewApplication: notYet("P3"),
+  listAnnouncements: notYet("P2"),
+  createAnnouncement: notYet("P2"),
+  updateAnnouncement: notYet("P2"),
+  deleteAnnouncement: notYet("P2"),
+  listTopics: notYet("P4"),
+  getTopic: notYet("P4"),
+  createTopic: notYet("P4"),
+  updateTopic: notYet("P4"),
+  deleteTopic: notYet("P4"),
+  addTopicLink: notYet("P4"),
+  uploadTopicFile: notYet("P4"),
+  deleteTopicResource: notYet("P4"),
+  startTopicDialogue: notYet("P4"),
+  listReports: notYet("P7"),
+  submitReport: notYet("P7"),
+  deleteReport: notYet("P7"),
+  listPosts: notYet("P5"),
+  createPost: notYet("P5"),
+  deletePost: notYet("P5"),
+  listCalendar: notYet("P6"),
+  setReady: notYet("P8"),
+  listNotes: notYet("P8"),
+  createNote: notYet("P8"),
+  updateNote: notYet("P8"),
+  deleteNote: notYet("P8"),
 };
+
+/** 已在契約裡、但假後端還沒做的功能：呼叫時直接報錯，方便發現漏接 */
+function notYet(phase: string) {
+  return async (): Promise<never> => {
+    await delay(30);
+    throw new Error(`這個功能預計在 ${phase} 完成，假後端尚未實作`);
+  };
+}
 
 function groupAct(gid: string) {
   const a = E.acts.find((x) => x.groups.some((g: any) => g.id === gid));
