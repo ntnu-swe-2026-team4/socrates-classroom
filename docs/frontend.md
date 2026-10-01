@@ -61,7 +61,9 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `pages/HomePage.tsx` | 首頁：提問框、名言、接續上次對話、三個統計卡（對話數 / 論點總結數 / 教室數）、最近議題、教室概況 | `/` |
 | `pages/DialoguePage.tsx` | 3D 蘇格拉底 + 聊天面板 + 按住說話 | `/dialogue` |
 | `pages/TopicsPage.tsx` | 議題列表與詳情、私人 / 公開 / 論點總結 三個按鈕、繼續對話 | `/topics` |
-| `pages/ListPages.tsx` | 論點總結頁、題庫頁、教室列表頁（含新增教室、待處理邀請） | `/summary`、`/bank/*`、`/classrooms` |
+| `pages/ListPages.tsx` | 論點總結頁、題庫頁、教室列表頁（老師：新增教室；學生：用邀請碼加入、我的申請、待處理邀請、探索教室） | `/summary`、`/bank/*`、`/classrooms` |
+| `pages/JoinClassroom.tsx` | 學生加入教室：邀請碼查詢、填寫申請問卷、探索教室（搜尋）、我的申請（取消、看老師附註） | `/classrooms` |
+| `pages/ClassroomAdmin.tsx` | 老師的成員管理：加入方式（邀請碼、探索、審核開關）、申請問卷編輯、待審核申請、批次匯入 | 教室的「成員」分頁 |
 | `pages/ClassroomPage.tsx` | 教室內的「首頁」「公告」「議題」「成員」四個分頁：簡介與統計、議題卡片（可依個人 / 團體篩選）、成員表、老師的「新增議題」與「編輯教室」 | `/classrooms/:id` |
 | `pages/Announcements.tsx` | 公告分頁（老師新增、編輯、刪除、置頂、排程發布）與教室首頁的公告區 | `/classrooms/:id` |
 | `pages/ClassroomFormDialog.tsx` | 新增 / 編輯教室共用的視窗（名稱、簡介） | 教室列表、教室頁 |
@@ -123,6 +125,13 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 學生接受 / 拒絕邀請 | `ClassroomsPage` → `api.acceptInvite`、`api.declineInvite` | `POST /api/classrooms/:id/invite/accept`、`…/decline` |
 | 教室成員表（成員分頁） | `ClassroomPage.tsx` 的 `MembersTab` → `useClassroomMembers` | `GET /api/classrooms/:id/members` |
 | 老師新增 / 移除成員 | `MembersTab` → `api.addClassroomMember`、`api.removeClassroomMember` | `POST /api/classrooms/:id/members`、`DELETE …/members/:memberId` |
+| 老師批次匯入成員 | `ImportMembersButton` → `useImportMembers` | `POST /api/classrooms/:id/members/import` |
+| 老師的加入設定（邀請碼、探索、審核、問卷） | `JoinSettingsCard`、`QuestionnaireDialog` → `useJoinPolicy`、`useUpdateJoinPolicy`、`useRegenerateJoinCode` | `GET`、`PATCH /api/classrooms/:id/join-policy`、`POST …/join-policy/code` |
+| 老師審核加入申請 | `PendingApplications` → `usePendingApplications`、`useReviewApplication` | `GET /api/classrooms/:id/applications?status=pending`、`POST /api/applications/:id/review` |
+| 學生用邀請碼找教室 | `JoinDialog` → `api.lookupJoinCode` | `GET /api/join-codes/:code` |
+| 學生加入教室或送出申請 | `JoinDialog` → `useJoinClassroom` | `POST /api/classrooms/:id/join` |
+| 學生的探索教室 | `DiscoverClassrooms` → `useDiscoverClassrooms` | `GET /api/classrooms/discover?q=` |
+| 學生的申請列表、取消申請 | `MyApplications` → `useMyApplications`、`useCancelApplication` | `GET /api/me/applications`、`DELETE /api/applications/:id` |
 | 公告列表（學生只拿得到已發布的；每分鐘重抓一次） | `useAnnouncements`（`Announcements.tsx`） | `GET /api/classrooms/:id/announcements` |
 | 老師新增 / 編輯公告（含排程） | `AnnouncementFormDialog` → `useSaveAnnouncement` | `POST /api/classrooms/:id/announcements`、`PATCH /api/announcements/:id` |
 | 老師刪除公告 | `Announcements.tsx` 的 `DeleteDialog` → `useDeleteAnnouncement` | `DELETE /api/announcements/:id` |
@@ -296,7 +305,9 @@ data: {"message":{"id":"m1","role":"assistant","text":"完整回覆","at":"2026-
 3. 想體驗辯論：選單「教室」→「高二哲學選修 A」→「議題」→「正義是否只是強者的利益？」→「進入辯論」。
    - 學生：左邊進度下方有「示範：讓老師推進」，可以自己走完四個階段。
    - 老師：可以新增個人或團體議題、上傳資料、推進階段、看報告。
-4. 對話頁的語音功能需要瀏覽器允許麥克風；不支援時可直接打字。
+4. 想體驗加入教室（學生）：在「教室」頁按「用邀請碼加入」輸入 `LOGIC3`，或在「探索教室」申請「倫理學讀書會」（需要填問卷）；
+   再登出、改用教師登入，到「倫理學讀書會」→「成員」審核。示範資料存在記憶體裡，**要用選單的登出切換身分**，重新整理網頁會清空。
+5. 對話頁的語音功能需要瀏覽器允許麥克風；不支援時可直接打字。
 
 ### 常見問題
 

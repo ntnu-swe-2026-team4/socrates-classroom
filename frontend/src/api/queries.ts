@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { AnnouncementInput, BankKind, ClassroomInput, ClassroomTopic, PositionDraft, TopicInput } from "./index";
+import type { AnnouncementInput, BankKind, ClassroomInput, ClassroomTopic, JoinInput, JoinPolicy, PositionDraft, TopicInput } from "./index";
 
 /** 每個查詢的 key 集中在這裡，讓後端事件（SSE）進來時知道要讓哪些資料失效 */
 export const keys = {
@@ -13,6 +13,10 @@ export const keys = {
   activities: (cid: string) => ["activities", cid] as const,
   topics: (cid: string) => ["topics", cid] as const,
   announcements: (cid: string) => ["announcements", cid] as const,
+  joinPolicy: (cid: string) => ["joinPolicy", cid] as const,
+  applications: (cid: string) => ["applications", cid] as const,
+  myApplications: ["myApplications"] as const,
+  discover: (q: string) => ["discover", q] as const,
   topic: (id: string) => ["topic", id] as const,
   activity: (id: string) => ["activity", id] as const,
   dialogue: (id: string) => ["dialogue", id] as const,
@@ -35,6 +39,10 @@ export const useClassroom = (id: string) => useQuery({ queryKey: keys.classroom(
 export const useActivities = (cid: string) => useQuery({ queryKey: keys.activities(cid), queryFn: () => api.listActivities(cid) });
 /** 每分鐘重抓一次：排程的公告到時間後，學生不用重新整理就看得到 */
 export const useAnnouncements = (cid: string) => useQuery({ queryKey: keys.announcements(cid), queryFn: () => api.listAnnouncements(cid), refetchInterval: 60_000 });
+export const useJoinPolicy = (cid: string) => useQuery({ queryKey: keys.joinPolicy(cid), queryFn: () => api.getJoinPolicy(cid) });
+export const usePendingApplications = (cid: string) => useQuery({ queryKey: keys.applications(cid), queryFn: () => api.listApplications(cid, "pending") });
+export const useMyApplications = () => useQuery({ queryKey: keys.myApplications, queryFn: () => api.listMyApplications() });
+export const useDiscoverClassrooms = (q: string) => useQuery({ queryKey: keys.discover(q), queryFn: () => api.discoverClassrooms(q || undefined), placeholderData: (prev) => prev });
 export const useTopics = (cid: string) => useQuery({ queryKey: keys.topics(cid), queryFn: () => api.listTopics(cid) });
 export const useTopic = (id: string) => useQuery({ queryKey: keys.topic(id), queryFn: () => api.getTopic(id) });
 export const useActivity = (id: string) => useQuery({ queryKey: keys.activity(id), queryFn: () => api.getActivity(id), enabled: !!id });
@@ -98,6 +106,65 @@ export function useDeleteAnnouncement(classroomId: string) {
   return useMutation({
     mutationFn: (id: string) => api.deleteAnnouncement(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.announcements(classroomId) }),
+  });
+}
+
+/** 加入設定：開關與問卷用 PATCH；重新產生邀請碼另外一個動作 */
+export function useUpdateJoinPolicy(classroomId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: Partial<Omit<JoinPolicy, "code">>) => api.updateJoinPolicy(classroomId, patch),
+    onSuccess: (p) => qc.setQueryData(keys.joinPolicy(classroomId), p),
+  });
+}
+
+export function useRegenerateJoinCode(classroomId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.regenerateJoinCode(classroomId),
+    onSuccess: (p) => qc.setQueryData(keys.joinPolicy(classroomId), p),
+  });
+}
+
+/** 老師審核申請；通過時成員名單與人數也要更新 */
+export function useReviewApplication(classroomId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; decision: "approve" | "reject"; note?: string }) => api.reviewApplication(v.id, v.decision, v.note),
+    onSuccess: () => {
+      for (const k of [keys.applications(classroomId), keys.classroomMembers(classroomId), keys.classroom(classroomId), keys.classrooms]) qc.invalidateQueries({ queryKey: k });
+    },
+  });
+}
+
+export function useImportMembers(classroomId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (names: string[]) => api.importClassroomMembers(classroomId, names),
+    onSuccess: () => {
+      for (const k of [keys.classroomMembers(classroomId), keys.classroom(classroomId), keys.classrooms]) qc.invalidateQueries({ queryKey: k });
+    },
+  });
+}
+
+/** 學生加入教室（直接加入或送出申請）後，教室列表、探索列表、我的申請都要更新 */
+export function useJoinClassroom() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { classroomId: string; input: JoinInput }) => api.joinClassroom(v.classroomId, v.input),
+    onSuccess: () => {
+      for (const k of [keys.classrooms, keys.myApplications, ["discover"]]) qc.invalidateQueries({ queryKey: k });
+    },
+  });
+}
+
+export function useCancelApplication() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.cancelApplication(id),
+    onSuccess: () => {
+      for (const k of [keys.myApplications, ["discover"]]) qc.invalidateQueries({ queryKey: k });
+    },
   });
 }
 

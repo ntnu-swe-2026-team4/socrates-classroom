@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { KeyRound, Plus } from "lucide-react";
 import { api } from "@/api";
 import { keys, useArchives, useClassrooms, useMe, useUpdateArchive } from "@/api/queries";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ClassroomFormDialog } from "./ClassroomFormDialog";
+import { DiscoverClassrooms, JoinDialog, MyApplications } from "./JoinClassroom";
 
 export function SummaryPage() {
   const { data: archives = [] } = useArchives();
@@ -56,17 +57,20 @@ export function ClassroomsPage() {
   const list = teacher ? classrooms : classrooms.filter((c) => c.joined);
   const invites = teacher ? [] : classrooms.filter((c) => !c.joined);
   const [open, setOpen] = useState(false);
-  const refresh = () => qc.invalidateQueries({ queryKey: keys.classrooms });
+  const [joining, setJoining] = useState(false);
+  const refresh = () => { qc.invalidateQueries({ queryKey: keys.classrooms }); qc.invalidateQueries({ queryKey: ["discover"] }); };
 
   return (
     <div className="mx-auto max-w-4xl p-8">
       <div className="mb-6 flex items-end justify-between gap-4">
         <div>
           <h2 className="font-serif text-2xl">我的教室</h2>
-          <p className="mt-1 max-w-[52ch] text-sm leading-relaxed text-ink-dim">{teacher ? "建立教室、邀請學生加入，之後可以在教室裡管理成員、發起辯論。" : "老師建立教室後會邀請你加入，你沒有辦法自己建立教室。"}</p>
+          <p className="mt-1 max-w-[52ch] text-sm leading-relaxed text-ink-dim">{teacher ? "建立教室、邀請學生加入，之後可以在教室裡管理成員、發起辯論。" : "用老師給的邀請碼加入教室，或在下方「探索教室」找開放加入的教室。"}</p>
         </div>
-        {teacher && <Button onClick={() => setOpen(true)}><Plus className="size-4" />新增教室</Button>}
+        {teacher ? <Button onClick={() => setOpen(true)}><Plus className="size-4" />新增教室</Button> : <Button onClick={() => setJoining(true)}><KeyRound className="size-4" />用邀請碼加入</Button>}
       </div>
+
+      {!teacher && <MyApplications />}
 
       {invites.length > 0 && (
         <div className="mb-6">
@@ -96,6 +100,13 @@ export function ClassroomsPage() {
         ))}
       </div>
       {!list.length && <p className="text-sm text-ink-faint">{teacher ? "還沒有建立任何教室，按上面「新增教室」開始吧。" : "目前還沒有加入任何教室。"}</p>}
+
+      {!teacher && (
+        <div className="mt-10">
+          <DiscoverClassrooms />
+          <JoinDialog open={joining} onOpenChange={setJoining} />
+        </div>
+      )}
 
       <ClassroomFormDialog open={open} onOpenChange={setOpen} />
     </div>

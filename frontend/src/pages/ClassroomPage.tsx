@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn, formatDateTime } from "@/lib/utils";
 import { AnnouncementPreview, AnnouncementsTab } from "./Announcements";
+import { ImportMembersButton, JoinSettingsCard, PendingApplications } from "./ClassroomAdmin";
 import { ClassroomFormDialog } from "./ClassroomFormDialog";
 import { TopicFormDialog } from "./TopicFormDialog";
 
@@ -87,12 +88,17 @@ function MembersTab({ classroomId, teacher }: { classroomId: string; teacher: bo
   const refresh = () => { qc.invalidateQueries({ queryKey: keys.classroomMembers(classroomId) }); qc.invalidateQueries({ queryKey: keys.classrooms }); qc.invalidateQueries({ queryKey: keys.classroom(classroomId) }); };
   const add = useMutation({ mutationFn: () => api.addClassroomMember(classroomId, name.trim()), onSuccess: () => { setName(""); refresh(); } });
   return (
-    <div>
+    <div className="space-y-4">
       {teacher && (
-        <div className="mb-4 flex gap-2.5">
-          <Input placeholder="輸入帳號或姓名，新增成員…" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && add.mutate()} />
-          <Button className="h-10" disabled={!name.trim() || add.isPending} onClick={() => add.mutate()}>新增成員</Button>
-        </div>
+        <>
+          <PendingApplications classroomId={classroomId} />
+          <JoinSettingsCard classroomId={classroomId} />
+          <div className="flex flex-wrap gap-2.5">
+            <Input className="min-w-48 flex-1" placeholder="輸入帳號或姓名，新增成員…" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && add.mutate()} />
+            <Button className="h-10" disabled={!name.trim() || add.isPending} onClick={() => add.mutate()}>新增成員</Button>
+            <ImportMembersButton classroomId={classroomId} />
+          </div>
+        </>
       )}
       <Card className="p-2">
         <div className="grid grid-cols-[1.4fr_.7fr_1fr_1.2fr_2rem] items-center gap-3 px-3 py-2.5 text-[11.5px] text-ink-faint max-md:grid-cols-[1fr_auto]">

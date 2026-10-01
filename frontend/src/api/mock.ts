@@ -1,5 +1,8 @@
 import type { Api } from "./api";
-import type { Announcement, Archive, Classroom, ClassroomMember, ClassroomTopic, CreateActivityInput, TopicResource, User } from "./types";
+import type {
+  Announcement, Archive, Classroom, ClassroomMember, ClassroomPreview, ClassroomTopic, CreateActivityInput, JoinApplication,
+  JoinPolicy, TopicResource, User,
+} from "./types";
 import * as E from "@/mock/engine";
 
 /**
@@ -20,11 +23,69 @@ const archives: Archive[] = [
     snippet: "從一片木板到整艘船，我發現「同一性」比我想的更依賴我們怎麼定義它。" },
 ];
 
-const classrooms: (Classroom & { students: string[] })[] = [
+/**
+ * 假後端只有一位學生（名字固定為「你」）：joined = 已加入；invited = 老師邀請了、還沒回應；
+ * 兩者都不是的教室，學生只能從「探索教室」或邀請碼找到。老師只看得到自己（同名）開的教室。
+ */
+type StoredClassroom = Classroom & { students: string[]; invited?: boolean };
+const ME = "你";
+const classrooms: StoredClassroom[] = [
   { id: "c1", name: "高二哲學選修 A", description: "從柏拉圖《理想國》出發，練習用提問把自己的想法說清楚。", teacherName: "林老師",
     studentCount: 5, debateCount: 1, joined: true, students: ["王○安", "李○恩", "陳○宇", "林○彤", "吳○哲"] },
-  { id: "c2", name: "高二哲學選修 B", description: "", teacherName: "陳老師", studentCount: 1, debateCount: 0, joined: false, students: ["你"] },
+  { id: "c2", name: "高二哲學選修 B", description: "", teacherName: "陳老師", studentCount: 0, debateCount: 0, joined: false, invited: true, students: [] },
+  { id: "c3", name: "大學先修：邏輯與論證", description: "認識常見的謬誤，練習把一段論證拆成前提與結論。開放所有高中生加入。", teacherName: "張老師",
+    studentCount: 3, debateCount: 0, joined: false, students: ["周○妤", "鄭○翰", "許○晴"] },
+  { id: "c4", name: "倫理學讀書會", description: "每週讀一篇倫理學經典，名額有限，請簡單說明你想參加的原因。", teacherName: "林老師",
+    studentCount: 2, debateCount: 0, joined: false, students: ["蔡○彥", "郭○廷"] },
 ];
+
+/* 加入設定與申請 */
+const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 去掉容易看錯的 0 / O / 1 / I
+const newCode = () => Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
+const defaultPolicy = (): JoinPolicy => ({ code: newCode(), codeEnabled: true, discoverable: false, requireApproval: false, questionnaire: [] });
+const READING_QUESTIONS: JoinPolicy["questionnaire"] = [
+  { id: "q1", prompt: "你為什麼想參加這個讀書會？", kind: "paragraph", required: true },
+  { id: "q2", prompt: "你讀過哪些哲學或倫理學的書？", kind: "text", required: false },
+  { id: "q3", prompt: "每週能固定參加嗎？", kind: "choice", options: ["可以", "大部分可以", "不一定"], required: true },
+];
+const policies = new Map<string, JoinPolicy>([
+  ["c1", { code: "PLATO7", codeEnabled: true, discoverable: false, requireApproval: false, questionnaire: [] }],
+  ["c2", defaultPolicy()],
+  ["c3", { code: "LOGIC3", codeEnabled: true, discoverable: true, requireApproval: false, questionnaire: [] }],
+  ["c4", { code: "ETHIC5", codeEnabled: true, discoverable: true, requireApproval: true, questionnaire: READING_QUESTIONS }],
+]);
+const policyOf = (cid: string) => {
+  let p = policies.get(cid);
+  if (!p) policies.set(cid, (p = defaultPolicy()));
+  return p;
+};
+const applications: JoinApplication[] = [
+  { id: "ap1", classroomId: "c4", classroomName: "倫理學讀書會", studentId: "s7", studentName: "黃○婷", status: "pending", createdAt: new Date(Date.now() - 2 * 864e5).toISOString(),
+    reviewedAt: null, note: null, answers: [
+      { questionId: "q1", prompt: READING_QUESTIONS[0].prompt, answer: "上學期讀了《正義：一場思辨之旅》，想找人一起討論。" },
+      { questionId: "q2", prompt: READING_QUESTIONS[1].prompt, answer: "桑德爾《正義》、《蘇菲的世界》" },
+      { questionId: "q3", prompt: READING_QUESTIONS[2].prompt, answer: "可以" },
+    ] },
+  { id: "ap2", classroomId: "c4", classroomName: "倫理學讀書會", studentId: "s8", studentName: "劉○安", status: "pending", createdAt: new Date(Date.now() - 864e5).toISOString(),
+    reviewedAt: null, note: null, answers: [
+      { questionId: "q1", prompt: READING_QUESTIONS[0].prompt, answer: "想準備哲學系的申請。" },
+      { questionId: "q2", prompt: READING_QUESTIONS[1].prompt, answer: "" },
+      { questionId: "q3", prompt: READING_QUESTIONS[2].prompt, answer: "大部分可以" },
+    ] },
+];
+const MY_ID = "s1";
+const findApplication = (id: string) => {
+  const a = applications.find((x) => x.id === id);
+  if (!a) throw new Error("找不到申請");
+  return a;
+};
+const myLatestApplication = (cid: string) => applications.filter((a) => a.classroomId === cid && a.studentId === MY_ID).at(-1) ?? null;
+const preview = (c: StoredClassroom): ClassroomPreview => {
+  const p = policyOf(c.id);
+  return { id: c.id, name: c.name, description: c.description, teacherName: c.teacherName, studentCount: c.students.length,
+    requireApproval: p.requireApproval, questionnaire: p.requireApproval ? structuredClone(p.questionnaire) : [],
+    joined: !!c.joined, myApplication: myLatestApplication(c.id)?.status ?? null };
+};
 
 const STATUS = [
   { on: true, last: "今天 14:32", pct: 82 }, { on: false, last: "昨天 09:10", pct: 56 }, { on: true, last: "今天 13:47", pct: 95 },
@@ -37,7 +98,7 @@ const findClassroom = (id: string) => {
   if (!c) throw new Error("找不到教室");
   return c;
 };
-const pub = ({ students: _s, ...c }: Classroom & { students: string[] }): Classroom => ({ ...c, studentCount: _s.length, debateCount: E.acts.filter((a) => a.classroomId === c.id).length });
+const pub = ({ students: _s, invited: _i, ...c }: StoredClassroom): Classroom => ({ ...c, studentCount: _s.length, debateCount: E.acts.filter((a) => a.classroomId === c.id).length });
 
 const DEMO_AXES = [
   { name: "正義來源", left: "約定", right: "本性" },
@@ -95,6 +156,12 @@ const TOPIC_REPLIES = [
 ];
 
 const isTeacher = () => user?.role === "teacher";
+const needStudent = () => { if (isTeacher()) throw new Error("只有學生可以這樣做"); };
+const join = (c: StoredClassroom) => {
+  c.joined = true;
+  c.invited = false;
+  if (!c.students.includes(ME)) c.students.push(ME);
+};
 const MAX_UPLOAD = 50 * 1024 * 1024;
 const needTeacher = () => { if (!isTeacher()) throw new Error("只有老師可以這樣做"); };
 const roomAct = (id: string) => E.findRoom(id);
@@ -140,7 +207,7 @@ export const mockApi: Api = {
 
   async listClassrooms() {
     await delay();
-    return classrooms.map(pub);
+    return classrooms.filter((c) => (isTeacher() ? c.teacherName === user?.name : c.joined || c.invited)).map(pub);
   },
   async getClassroom(id) {
     await delay(60);
@@ -148,7 +215,7 @@ export const mockApi: Api = {
   },
   async createClassroom({ name, description }) {
     await delay(); needTeacher();
-    const c = { id: "c" + (classrooms.length + 1), name, description, teacherName: user?.name ?? "老師", studentCount: 0, debateCount: 0, joined: true, students: [] as string[] };
+    const c: StoredClassroom = { id: newId("c"), name, description, teacherName: user?.name ?? "老師", studentCount: 0, debateCount: 0, joined: true, students: [] };
     classrooms.push(c);
     return pub(c);
   },
@@ -162,8 +229,8 @@ export const mockApi: Api = {
     if (patch.description !== undefined) c.description = patch.description.trim();
     return pub(c);
   },
-  async acceptInvite(id) { await delay(); const c = findClassroom(id); c.joined = true; if (!c.students.includes("你")) c.students.push("你"); return pub(c); },
-  async declineInvite(id) { await delay(); const i = classrooms.findIndex((x) => x.id === id); if (i >= 0 && !classrooms[i].joined) classrooms.splice(i, 1); },
+  async acceptInvite(id) { await delay(); const c = findClassroom(id); join(c); return pub(c); },
+  async declineInvite(id) { await delay(); findClassroom(id).invited = false; },
   async listClassroomMembers(id) { await delay(40); return memberRows(findClassroom(id)); },
   async addClassroomMember(id, name) {
     await delay(); needTeacher();
@@ -251,19 +318,8 @@ export const mockApi: Api = {
   subscribe: (id, cb) => E.subscribe(id, cb),
 
   /* 以下為教室功能擴充（見 docs/api-contract.md），各階段實作時再換成真正的假資料 */
-  importClassroomMembers: notYet("P3"),
   finishActivity: notYet("P8"),
   setStageDeadline: notYet("P8"),
-  getJoinPolicy: notYet("P3"),
-  updateJoinPolicy: notYet("P3"),
-  regenerateJoinCode: notYet("P3"),
-  discoverClassrooms: notYet("P3"),
-  lookupJoinCode: notYet("P3"),
-  joinClassroom: notYet("P3"),
-  listMyApplications: notYet("P3"),
-  cancelApplication: notYet("P3"),
-  listApplications: notYet("P3"),
-  reviewApplication: notYet("P3"),
   /* 教室議題（P4） */
   async listTopics(cid) {
     await delay();
@@ -380,6 +436,98 @@ export const mockApi: Api = {
   async deleteAnnouncement(id) {
     await delay(); needTeacher();
     announcements.splice(announcements.indexOf(findAnnouncement(id)), 1);
+  },
+  /* 加入教室與成員管理（P3） */
+  async importClassroomMembers(cid, names) {
+    await delay(); needTeacher();
+    const c = findClassroom(cid);
+    const result: Awaited<ReturnType<Api["importClassroomMembers"]>> = { added: [], skipped: [] };
+    const seen = new Set<string>();
+    for (const raw of names) {
+      const name = raw.trim();
+      if (!name) continue;
+      if (seen.has(name)) { result.skipped.push({ name, reason: "名單裡重複" }); continue; }
+      seen.add(name);
+      if (c.students.includes(name)) { result.skipped.push({ name, reason: "已經在教室裡" }); continue; }
+      c.students.push(name);
+      result.added.push(memberRows(c)[c.students.length - 1]);
+    }
+    return result;
+  },
+  async getJoinPolicy(cid) { await delay(40); needTeacher(); findClassroom(cid); return structuredClone(policyOf(cid)); },
+  async updateJoinPolicy(cid, patch) {
+    await delay(); needTeacher(); findClassroom(cid);
+    const p = policyOf(cid);
+    if (patch.questionnaire) {
+      for (const q of patch.questionnaire) {
+        if (!q.prompt.trim()) throw new Error("每一題都要有題目");
+        if (q.kind === "choice" && (q.options?.filter((o) => o.trim()).length ?? 0) < 2) throw new Error(`「${q.prompt}」至少要有兩個選項`);
+      }
+      p.questionnaire = patch.questionnaire.map((q) => ({ ...q, prompt: q.prompt.trim(), options: q.kind === "choice" ? q.options?.map((o) => o.trim()).filter(Boolean) : undefined }));
+    }
+    if (patch.codeEnabled !== undefined) p.codeEnabled = patch.codeEnabled;
+    if (patch.discoverable !== undefined) p.discoverable = patch.discoverable;
+    if (patch.requireApproval !== undefined) p.requireApproval = patch.requireApproval;
+    return structuredClone(p);
+  },
+  async regenerateJoinCode(cid) { await delay(); needTeacher(); findClassroom(cid); const p = policyOf(cid); p.code = newCode(); return structuredClone(p); },
+  async discoverClassrooms(q) {
+    await delay(); needStudent();
+    const k = q?.trim().toLowerCase() ?? "";
+    return classrooms.filter((c) => policyOf(c.id).discoverable && (!k || [c.name, c.description, c.teacherName].some((t) => t.toLowerCase().includes(k)))).map(preview);
+  },
+  async lookupJoinCode(code) {
+    await delay(); needStudent();
+    const c = classrooms.find((x) => { const p = policyOf(x.id); return p.codeEnabled && p.code === code.trim().toUpperCase(); });
+    if (!c) throw new Error("邀請碼無效或已停用，請向老師確認");
+    return preview(c);
+  },
+  async joinClassroom(cid, input) {
+    await delay(); needStudent();
+    const c = findClassroom(cid);
+    const p = policyOf(cid);
+    if (c.joined) throw new Error("你已經是這個教室的成員");
+    const codeOk = !!input.code && p.codeEnabled && p.code === input.code.trim().toUpperCase();
+    if (!p.discoverable && !codeOk && !c.invited) throw new Error("需要有效的邀請碼才能加入這個教室");
+    if (!p.requireApproval) { join(c); return { status: "joined", classroom: pub(c) }; }
+    if (myLatestApplication(cid)?.status === "pending") throw new Error("你已經送出申請，請等老師審核");
+    const answers = p.questionnaire.map((q) => ({ questionId: q.id, prompt: q.prompt, answer: (input.answers?.[q.id] ?? "").trim() }));
+    const missing = p.questionnaire.find((q, i) => q.required && !answers[i].answer);
+    if (missing) throw new Error(`請回答「${missing.prompt}」`);
+    const bad = p.questionnaire.find((q, i) => q.kind === "choice" && answers[i].answer && !q.options?.includes(answers[i].answer));
+    if (bad) throw new Error(`「${bad.prompt}」的選項不正確`);
+    const app: JoinApplication = { id: newId("ap"), classroomId: cid, classroomName: c.name, studentId: MY_ID, studentName: ME, answers,
+      status: "pending", createdAt: new Date().toISOString(), reviewedAt: null, note: null };
+    applications.push(app);
+    return { status: "pending", application: structuredClone(app) };
+  },
+  async listMyApplications() {
+    await delay(); needStudent();
+    return applications.filter((a) => a.studentId === MY_ID).map((a) => structuredClone(a)).reverse();
+  },
+  async cancelApplication(id) {
+    await delay(); needStudent();
+    const a = findApplication(id);
+    if (a.studentId !== MY_ID || a.status !== "pending") throw new Error("只能取消自己還在審核中的申請");
+    applications.splice(applications.indexOf(a), 1);
+  },
+  async listApplications(cid, status) {
+    await delay(); needTeacher();
+    return applications.filter((a) => a.classroomId === cid && (!status || a.status === status)).map((a) => structuredClone(a));
+  },
+  async reviewApplication(id, decision, note) {
+    await delay(); needTeacher();
+    const a = findApplication(id);
+    if (a.status !== "pending") throw new Error("這筆申請已經審核過了");
+    a.status = decision === "approve" ? "approved" : "rejected";
+    a.reviewedAt = new Date().toISOString();
+    a.note = note?.trim() || null;
+    if (decision === "approve") {
+      const c = findClassroom(a.classroomId);
+      if (a.studentId === MY_ID) join(c);
+      else if (!c.students.includes(a.studentName)) c.students.push(a.studentName);
+    }
+    return structuredClone(a);
   },
   listReports: notYet("P7"),
   submitReport: notYet("P7"),
