@@ -73,14 +73,14 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `pages/ClassroomTopicPage.tsx` | 議題詳情：左欄是說明與相關資料（同一格）、開始討論 / 辯論入口、結論報告；右欄是討論區；老師可編輯與刪除 | `/classrooms/:id/topics/:id` |
 | `pages/ReportsCard.tsx` | 結論報告：學生繳交 / 重新上傳 / 刪除；老師看全班繳交狀況（標示逾期） | 議題頁 |
 | `pages/TopicFormDialog.tsx` | 新增 / 編輯議題的視窗：類型、說明、截止時間、是否收報告；團體議題另有辯論設定（回答方式、價值軸、組別人數） | 教室頁、議題頁 |
-| `pages/ActivityPage.tsx` | 辯論活動的外框：標題、橫向進度（設定→調查→提純→比賽→結束）、依階段切換內容 | `/classrooms/:id/activities/:id` |
-| `pages/StageControls.tsx` | 進度列下方：階段倒數；老師限時、看準備人數、直接結束活動；學生回報「我準備好了」 | 辯論活動裡 |
-| `pages/stages/IndividualStage.tsx` | 階段 1：與蘇格拉底對話（可標註成筆記）、調查進度、整理論點視窗（不顯示座標）；老師視角的成員進度表與星圖 | 辯論活動裡 |
-| `pages/stages/NotesCard.tsx` | 學生的思路筆記：標註的重點與自己寫的想法，只有本人看得到 | 階段 1、2 左側 |
-| `pages/stages/TeamStage.tsx` | 階段 2：分組、組內討論、AI 整理論點 / 丟反例、投票、分裂、重新分組；星圖只有老師看得到 | 辯論活動裡 |
+| `pages/ActivityPage.tsx` | 辯論活動的外框：標題列（右上角是目前階段與控制）、依階段切換的左右兩欄、最下方的進度色條 | `/classrooms/:id/activities/:id` |
+| `pages/StageControls.tsx` | 標題列右上角：目前階段、倒數、準備人數 / 「我準備好了」、推進；老師的「⋯」選單（限時、直接結束）；最下方的進度色條（點已過的段落可回顧） | 辯論活動裡 |
+| `pages/stages/IndividualStage.tsx` | 階段 1：左欄用切換按鈕在「個人調查」（進度、直接在欄內整理 / 修改論點，不顯示座標）與「我的筆記」之間切換；右欄與蘇格拉底對話（可標註成筆記）；老師視角的成員進度表與星圖 | 辯論活動裡 |
+| `pages/stages/NotesPanel.tsx` | 學生的思路筆記：標註的重點與自己寫的想法，只有本人看得到 | 階段 1、2 左欄的「我的筆記」 |
+| `pages/stages/TeamStage.tsx` | 階段 2：分組、組內討論、AI 整理論點 / 丟反例、投票、分裂、重新分組；學生左欄可切換「我的組別 / 我的筆記」；星圖只有老師看得到 | 辯論活動裡 |
 | `pages/stages/DebateStage.tsx` | 階段 3：場次、主持人、發言與計時、AI 裁判分數 | 辯論活動裡 |
 | `pages/stages/ResultsStage.tsx` | 結果：立場星圖、班級報告、學生報告、計分、儀表板 | 辯論活動結束後 |
-| `pages/stages/shared.tsx` | 四個階段共用的小元件（兩欄版面、成員標籤、分數條） | 辯論活動裡 |
+| `pages/stages/shared.tsx` | 四個階段共用：可拖曳調整占比、可收成側欄的兩欄版面（`StageLayout`，占比與收合存在瀏覽器）、區塊、模式切換、成員標籤、分數條 | 辯論活動裡 |
 | **`components/`** | | |
 | `components/ui/*` | 按鈕、輸入框、卡片、標籤、對話視窗（shadcn 風格） | 全站 |
 | `components/star/StarMap.tsx` | 立場星圖：3D 畫面、量軸勾選、時間軸、分群、放大 | 階段 2 左側、結果頁 |
@@ -152,8 +152,8 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 學生開始個人議題的討論 | `ClassroomTopicPage.tsx` 的 `StartPanel` → `api.startTopicDialogue` | `POST /api/topics/:id/dialogue` |
 | 團體議題的辯論進度（卡片上的進度條） | `useActivities`、`useActivity` | `GET /api/classrooms/:id/activities`、`GET /api/activities/:id` |
 | 辯論活動資料 | `ActivityPage.tsx` → `useActivity` | `GET /api/activities/:id` |
-| 老師推進階段 | `ActivityPage.tsx` 的 `Flow` → `useAdvanceActivity` | `POST /api/activities/:id/advance` |
-| 老師直接結束活動、設定階段限時 | `StageControls` → `useActivityControls` | `POST /api/activities/:id/finish`、`PUT /api/activities/:id/deadline` |
+| 老師推進階段 | `StageControls.tsx` 的 `StageStatus` → `useAdvanceActivity` | `POST /api/activities/:id/advance` |
+| 老師直接結束活動、設定階段限時 | `StageControls.tsx` 的 `TeacherMenu` → `useActivityControls` | `POST /api/activities/:id/finish`、`PUT /api/activities/:id/deadline` |
 | 即時更新（階段切換、新訊息、輪到誰） | `queries.ts` 的 `useActivityEvents` → `api.subscribe` | `GET /api/activities/:id/events`（**SSE**） |
 | **階段 1** 載入對話 | `IndividualStage.tsx` → `useDialogue` | `GET /api/activities/:id/dialogue` |
 | 階段 1 送出並串流回覆 | `IndividualStage.tsx` 的 `ChatPanel` → `api.sendDialogue` | `POST /api/activities/:id/dialogue`（**SSE**） |
@@ -161,8 +161,8 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 階段 1 AI 整理論點 | `PositionDialog` → `api.draftPosition` | `POST /api/activities/:id/position/draft` |
 | 階段 1 確認論點（座標由後端估算） | `PositionDialog` → `useConfirmPosition` | `PUT /api/activities/:id/position` |
 | 階段 1 讀取座標（學生在活動結束前拿到 `null`） | `usePositions` | `GET /api/activities/:id/positions` |
-| 思路筆記 | `NotesCard`、`IndividualStage` 的標註 → `useNotes`、`useNoteActions` | `GET`、`POST /api/activities/:id/notes`、`PATCH`、`DELETE /api/notes/:id` |
-| 學生回報準備好了 | `StageControls` → `useSetReady` | `PUT /api/activities/:id/ready` |
+| 思路筆記 | `NotesPanel`、`IndividualStage` 的標註 → `useNotes`、`useNoteActions` | `GET`、`POST /api/activities/:id/notes`、`PATCH`、`DELETE /api/notes/:id` |
+| 學生回報準備好了 | `StageControls.tsx` 的 `StageStatus` → `useSetReady` | `PUT /api/activities/:id/ready` |
 | 老師：成員進度表 | `TeacherIndividual` → `useMembers` | `GET /api/activities/:id/members` |
 | **階段 2** 組別列表 | `TeamStage.tsx` → `useGroups` | `GET /api/activities/:id/groups` |
 | 階段 2 重新分組（老師） | `RegroupRow` → `api.regroup` | `POST /api/activities/:id/groups/regroup` |

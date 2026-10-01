@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Activity, type Group, type Judgment, type Room, type Side, type Turn } from "@/api";
 import { keys, useArguments, useGroups, useMembers, useRooms, useTurns } from "@/api/queries";
 import { Button } from "@/components/ui/button";
-import { Card, CardTitle } from "@/components/ui/card";
+import { CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import { CRITERIA, PHASES, PHASE_NAME, ROLE_NAME, SIDE_NAME, VERIFY_NAME, avgScores, fmt, groupColor } from "@/lib/debate";
 import { cn } from "@/lib/utils";
-import { Bar, Panel, StageLayout } from "./shared";
+import { Bar, Panel, Section, StageLayout } from "./shared";
 
 function useCountdown(deadline?: string) {
   const [left, setLeft] = useState(0);
@@ -51,7 +51,7 @@ function TurnBubble({ t, j, group, name, teacher, onOverride }: { t: Turn; j?: J
   );
 }
 
-export function DebateStage({ a, teacher, flow, over }: { a: Activity; teacher: boolean; flow: ReactNode; over: boolean }) {
+export function DebateStage({ a, teacher, over }: { a: Activity; teacher: boolean; over: boolean }) {
   const qc = useQueryClient();
   const { data: members = [] } = useMembers(a.id);
   const { data: groups = [] } = useGroups(a.id);
@@ -101,11 +101,11 @@ export function DebateStage({ a, teacher, flow, over }: { a: Activity; teacher: 
     <div className="mb-2"><b className="flex items-center gap-2 text-[12.5px]"><i className="size-2.5 rounded-full" style={{ background: groupColor(groups.indexOf(g)) }} />{g.label}</b></div>
   );
 
-  if (!room || !ga || !gb) return <StageLayout flow={flow} left={<Card className="p-4 text-sm text-ink-faint">還沒有場次。</Card>} right={null} />;
+  if (!room || !ga || !gb) return <StageLayout leftLabel="場次" left={<p className="px-5 py-4 text-sm text-ink-faint">還沒有場次。</p>} rightLabel="比賽" right={null} />;
 
   const left = (
     <>
-      <Card className="p-4">
+      <Section>
         <div className="mb-2.5 flex items-center justify-between"><CardTitle className="mb-0">場次</CardTitle>
           {api.dev && teacher && !over && unfinished > 0 && <Button variant="outline" size="sm" onClick={async () => { await api.dev!.simulateAllRooms(a.id); invalidate(); }}>模擬全部</Button>}</div>
         <div className="flex flex-col gap-1.5">
@@ -120,8 +120,8 @@ export function DebateStage({ a, teacher, flow, over }: { a: Activity; teacher: 
           })}
         </div>
         {bye && <p className="mt-2 text-xs text-ink-faint">{bye.label}本輪輪空，擔任觀察組。</p>}
-      </Card>
-      <Card className="p-4">
+      </Section>
+      <Section>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
           {([["a", ga], ["b", gb]] as const).map(([side, g], i) => (
             <div key={side} className={cn("contents")}>
@@ -135,24 +135,24 @@ export function DebateStage({ a, teacher, flow, over }: { a: Activity; teacher: 
         <div className="mt-3 flex flex-wrap justify-center gap-1.5 text-[11.5px]">
           {PHASES.map((p, i) => <span key={p} className={cn("rounded-full border px-2.5 py-0.5", room.status === "finished" || i < phaseIdx ? "border-olive-soft text-olive" : i === phaseIdx && room.status === "live" ? "border-bronze bg-bronze font-bold text-[#221a0c]" : "border-line text-ink-faint")}>{PHASE_NAME[p]}</span>)}
         </div>
-      </Card>
-      <Card className="p-4">
+      </Section>
+      <Section>
         <CardTitle>AI 裁判 <span className="font-sans text-xs font-normal text-ink-faint">只評論證品質</span></CardTitle>
         <div className="grid grid-cols-2 gap-2.5">{judgeSide("a", ga)}{judgeSide("b", gb)}</div>
         <p className="mt-3 text-[11.5px] leading-relaxed text-ink-faint">分數由後端的 AI 裁判產生，只看證據、推理、回應、表達，不判斷立場，也不查證事實。</p>
-      </Card>
-      <Card className="p-4">
+      </Section>
+      <Section>
         <CardTitle>{mySide ? "我方論點" : "雙方論點"}</CardTitle>
         {mySide ? (
           <div className="space-y-1.5">{argList(myGroup)}{myArgs.filter((x) => x.kind === "claim" && x.status !== "dropped").map((c) => <p key={c.id} className="border-l-2 border-line-strong pl-2.5 font-serif text-[12.5px] leading-relaxed text-ink-dim">{c.text}</p>)}</div>
         ) : <p className="text-xs text-ink-faint">雙方的論點可在階段 2 的各組頁面查看。</p>}
-      </Card>
+      </Section>
     </>
   );
 
   const right = (
     <Panel>
-      <div className="m-3 mb-0 flex items-start gap-3 rounded-2xl border border-olive-soft bg-olive-soft/40 p-3">
+      <div className="flex items-start gap-3 border-b border-line bg-olive-soft/30 px-5 py-3">
         <span className="flex size-[30px] shrink-0 items-center justify-center rounded-full border border-olive bg-olive-soft font-serif text-olive">Σ</span>
         <div><small className="text-[10.5px] text-olive">AI 主持人</small><p className="font-serif text-[13.5px] leading-relaxed">{lastMod?.text ?? "等待開場。"}</p></div>
       </div>
@@ -197,7 +197,7 @@ export function DebateStage({ a, teacher, flow, over }: { a: Activity; teacher: 
       {room.status === "finished" && <div className="m-3.5 mt-0 rounded-xl bg-bg-2 p-3 text-[13px] text-ink-dim">這場比賽已結束。{teacher && !over && rooms.every((r) => r.status === "finished") ? "全部場次結束，可以「結束活動並結算」。" : ""}</div>}
     </Panel>
   );
-  return <StageLayout flow={flow} left={left} right={right} />;
+  return <StageLayout leftLabel="場次與裁判" left={left} rightLabel="比賽" right={right} />;
 }
 
 

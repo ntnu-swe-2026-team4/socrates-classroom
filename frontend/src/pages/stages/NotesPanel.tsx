@@ -3,7 +3,6 @@ import { Check, Pencil, Trash2, X } from "lucide-react";
 import { useNoteActions, useNotes } from "@/api/queries";
 import type { Activity, ThinkingNote } from "@/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -37,16 +36,16 @@ function NoteRow({ n, activityId, readOnly }: { n: ThinkingNote; activityId: str
 }
 
 /** 學生自己的思路筆記：對話中標註的重點（引言樣式）與自己寫下的想法，只有本人看得到 */
-export function NotesCard({ a, readOnly }: { a: Activity; readOnly: boolean }) {
+export function NotesPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
   const { data: notes = [] } = useNotes(a.id);
   const { create } = useNoteActions(a.id);
   const [text, setText] = useState("");
   const add = () => text.trim() && create.mutate({ kind: "thought", text }, { onSuccess: () => setText("") });
   return (
-    <Card className="p-4">
-      <CardTitle className="flex items-center justify-between">我的筆記 <span className="font-sans text-xs font-normal text-ink-faint">只有你看得到</span></CardTitle>
+    <div className="px-5 py-4">
+      <p className="mb-2 text-[11.5px] text-ink-faint">只有你看得到。</p>
       {notes.length > 0
-        ? <ul className="max-h-64 overflow-y-auto">{notes.map((n) => <NoteRow key={n.id} n={n} activityId={a.id} readOnly={readOnly} />)}</ul>
+        ? <ul>{notes.map((n) => <NoteRow key={n.id} n={n} activityId={a.id} readOnly={readOnly} />)}</ul>
         : <p className="text-[12.5px] leading-relaxed text-ink-faint">在對話裡把滑鼠移到一句話上，按「標註」就會收進這裡；也可以寫下自己的想法。</p>}
       {!readOnly && (
         <div className="mt-3 flex items-end gap-2">
@@ -56,6 +55,6 @@ export function NotesCard({ a, readOnly }: { a: Activity; readOnly: boolean }) {
         </div>
       )}
       {create.error && <p className="mt-1.5 text-[12.5px] text-wine">{create.error.message}</p>}
-    </Card>
+    </div>
   );
 }

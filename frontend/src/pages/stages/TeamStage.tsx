@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Activity, type Group, type GroupArgument, type Vote } from "@/api";
 import { keys, useArguments, useGroupMessages, useGroups, useMembers, useStar } from "@/api/queries";
 import { StarMap } from "@/components/star/StarMap";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardTitle } from "@/components/ui/card";
+import { CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import { STATUS_NAME, groupColor, tally } from "@/lib/debate";
 import { cn } from "@/lib/utils";
-import { NotesCard } from "./NotesCard";
-import { MemberChip, Panel, StageLayout } from "./shared";
+import { NotesPanel } from "./NotesPanel";
+import { MemberChip, ModeTabs, Panel, Section, StageLayout } from "./shared";
 
 const VOTES: [Vote, string][] = [["endorse", "贊成"], ["revise", "需要修改"], ["oppose", "反對"]];
 const VOTE_ON: Record<Vote, string> = { endorse: "border-olive bg-olive text-[#1b1d22]", revise: "border-bronze bg-bronze text-[#221a0c]", oppose: "border-wine bg-wine text-white" };
@@ -36,7 +36,7 @@ function ArgCard({ arg, kids, group, myId, canVote, onVote }: { arg: GroupArgume
   );
 }
 
-export function TeamStage({ a, teacher, flow, over }: { a: Activity; teacher: boolean; flow: ReactNode; over: boolean }) {
+export function TeamStage({ a, teacher, over }: { a: Activity; teacher: boolean; over: boolean }) {
   const qc = useQueryClient();
   const { data: members = [] } = useMembers(a.id);
   const { data: groups = [] } = useGroups(a.id);
@@ -53,6 +53,7 @@ export function TeamStage({ a, teacher, flow, over }: { a: Activity; teacher: bo
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
   const [argsOpen, setArgsOpen] = useState(true);
+  const [mode, setMode] = useState<"group" | "notes">("group");
   const feedEnd = useRef<HTMLDivElement>(null);
   useEffect(() => { feedEnd.current?.scrollIntoView({ block: "end" }); }, [messages.length, g?.id]);
 
@@ -70,11 +71,11 @@ export function TeamStage({ a, teacher, flow, over }: { a: Activity; teacher: bo
   const dissent = contested && g ? g.memberIds.filter((id) => contested.votes[id] && contested.votes[id] !== "endorse") : [];
   const canSplit = !!g && !!contested && dissent.length >= 2 && g.memberIds.length - dissent.length >= 2;
 
-  if (!g) return <StageLayout flow={flow} left={<Card className="p-4 text-sm text-ink-faint">還沒有分組。</Card>} right={null} />;
+  if (!g) return <StageLayout leftLabel="組別" left={<p className="px-5 py-4 text-sm text-ink-faint">還沒有分組。</p>} rightLabel="組內討論" right={null} />;
 
-  const left = (
+  const groupInfo = (
     <>
-      <Card className="p-4">
+      <Section>
         {teacher && (
           <div className="mb-3 flex flex-wrap gap-2">
             {groups.map((x, i) => (
@@ -87,21 +88,24 @@ export function TeamStage({ a, teacher, flow, over }: { a: Activity; teacher: bo
         <CardTitle className="mb-2 flex items-center gap-2"><i className="size-2.5 rounded-full" style={{ background: groupColor(gi) }} />{g.label}{canAct && <Badge tone="olive">你的組別</Badge>}{g.formedBy === "split" && <Badge tone="bronze">分裂而成</Badge>}</CardTitle>
         <div className="flex flex-wrap gap-x-4 gap-y-2">{g.memberIds.map((id) => { const m = nameOf(id); return m ? <MemberChip key={id} m={m} /> : null; })}</div>
         {teacher && !over && <RegroupRow a={a} onDone={() => { setPick(null); qc.invalidateQueries({ queryKey: keys.groups(a.id) }); qc.invalidateQueries({ queryKey: keys.star(a.id) }); }} />}
-      </Card>
-      {teacher ? (
-        <Card className="p-4">
+      </Section>
+      {teacher && (
+        <Section>
           <CardTitle className="flex items-center justify-between">立場星圖 <span className="font-sans text-xs font-normal text-ink-faint">顏色 = 組別 · 只有老師看得到</span></CardTitle>
           {star && <StarMap data={star} compact />}
           <div className="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-1 text-xs text-ink-dim">{groups.map((x, i) => <span key={x.id}><i className="mr-1.5 inline-block size-2.5 rounded-full align-middle" style={{ background: groupColor(i) }} />{x.label}</span>)}</div>
-        </Card>
-      ) : <NotesCard a={a} readOnly={over} />}
+        </Section>
+      )}
     </>
   );
+  // 學生：組別與筆記用最上方的切換按鈕切換
+  const left = teacher || mode === "group" ? groupInfo : <NotesPanel a={a} readOnly={over} />;
+  const leftHeader = teacher ? undefined : <ModeTabs items={[["group", "我的組別"], ["notes", "我的筆記"]]} value={mode} onChange={setMode} />;
 
   const right = (
     <Panel>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
-        <div className="font-serif text-[14.5px]">組內討論 <span className="font-sans text-xs text-ink-faint">· {g.label}</span></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-2.5">
+        <div className="text-[13px] text-ink-dim">{g.label}</div>
         {canAct && (
           <div className="flex items-center gap-2 text-xs text-ink-faint">AI
             <Button variant="outline" size="sm" disabled={claims.length > 0} onClick={wrap(() => api.summarizeGroup(g.id))}>Σ {claims.length ? "已整理論點" : "整理論點"}</Button>
@@ -149,7 +153,7 @@ export function TeamStage({ a, teacher, flow, over }: { a: Activity; teacher: bo
       ) : <p className="border-t border-line px-5 py-3 text-xs text-ink-faint">{over ? "此階段已結束。" : teacher ? "老師觀察中：看得到這組的討論，但不會加入發言。" : "這是其他組別的討論。"}</p>}
     </Panel>
   );
-  return <StageLayout flow={flow} left={left} right={right} />;
+  return <StageLayout leftLabel={teacher || mode === "group" ? "組別" : "我的筆記"} leftHeader={leftHeader} left={left} rightLabel="組內討論" right={right} />;
 }
 
 function RegroupRow({ a, onDone }: { a: Activity; onDone: () => void }) {
