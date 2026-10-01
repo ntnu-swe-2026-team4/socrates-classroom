@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { api } from "@/api";
-import { useCancelApplication, useDiscoverClassrooms, useJoinClassroom, useMyApplications } from "@/api/queries";
+import { keys, useCancelApplication, useClassrooms, useDiscoverClassrooms, useJoinClassroom, useMe, useMyApplications } from "@/api/queries";
 import type { ApplicationStatus, ClassroomPreview, JoinQuestion } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -126,9 +126,8 @@ export function DiscoverClassrooms() {
   const shown = list.filter((c) => !c.joined);
   return (
     <section>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h3 className="font-serif text-lg">探索教室</h3>
-        <span className="relative w-64 max-w-full">
+      <div className="mb-4">
+        <span className="relative block w-72 max-w-full">
           <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-ink-faint" />
           <Input className="h-9 pl-9" placeholder="搜尋教室、老師…" value={q} onChange={(e) => setQ(e.target.value)} />
         </span>
@@ -176,5 +175,49 @@ export function MyApplications() {
       ))}
       {cancel.error && <p className="text-[12.5px] text-wine">{cancel.error.message}</p>}
     </div>
+  );
+}
+
+/** 學生的「探索課程」頁（側欄）：自己的申請狀態 + 開放探索的教室 */
+export function ExplorePage() {
+  const { data: me } = useMe();
+  return (
+    <div className="mx-auto max-w-4xl p-8">
+      <h2 className="font-serif text-2xl">探索課程</h2>
+      <p className="mb-6 mt-1 text-sm text-ink-dim">老師開放加入的課程都在這裡；需要審核的課程，送出申請後會出現在「我的申請」。</p>
+      {me?.role === "teacher" ? <p className="text-sm text-ink-faint">這個頁面是給學生找課程用的。</p> : <><MyApplications /><DiscoverClassrooms /></>}
+    </div>
+  );
+}
+
+/** 學生的待處理邀請（從「教室」頁的按鈕打開） */
+export function InvitesDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const qc = useQueryClient();
+  const { data: classrooms = [] } = useClassrooms();
+  const invites = classrooms.filter((c) => !c.joined);
+  const respond = useMutation({
+    mutationFn: (v: { id: string; accept: boolean }) => (v.accept ? api.acceptInvite(v.id).then(() => undefined) : api.declineInvite(v.id)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: keys.classrooms }); qc.invalidateQueries({ queryKey: ["discover"] }); },
+  });
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogTitle>待處理邀請</DialogTitle>
+        <DialogDescription>老師邀請你加入的課程。接受後會出現在你的教室列表。</DialogDescription>
+        <div className="space-y-2">
+          {invites.map((c) => (
+            <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line px-4 py-3">
+              <span className="min-w-0"><b className="font-serif">{c.name}</b><small className="block text-xs text-ink-faint">{c.teacherName} 邀請你加入</small></span>
+              <span className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={respond.isPending} onClick={() => respond.mutate({ id: c.id, accept: false })}>拒絕</Button>
+                <Button size="sm" disabled={respond.isPending} onClick={() => respond.mutate({ id: c.id, accept: true })}>接受</Button>
+              </span>
+            </div>
+          ))}
+          {!invites.length && <p className="text-sm text-ink-faint">目前沒有待處理的邀請。</p>}
+          {respond.error && <p className="text-[12.5px] text-wine">{respond.error.message}</p>}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

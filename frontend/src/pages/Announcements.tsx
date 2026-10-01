@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input, Textarea } from "@/components/ui/input";
 import { cn, formatDateTime, fromLocalInput, toLocalInput } from "@/lib/utils";
 
-function AnnouncementCard({ a, compact, onEdit, onDelete }: { a: Announcement; compact?: boolean; onEdit?: () => void; onDelete?: () => void }) {
+function AnnouncementCard({ a, onEdit, onDelete }: { a: Announcement; onEdit?: () => void; onDelete?: () => void }) {
   return (
     <Card className={cn(!a.published && "border-dashed")}>
       <div className="flex items-start justify-between gap-3">
@@ -28,7 +28,7 @@ function AnnouncementCard({ a, compact, onEdit, onDelete }: { a: Announcement; c
           </span>
         )}
       </div>
-      {a.body && <p className={cn("mt-2.5 whitespace-pre-line text-[13.5px] leading-relaxed text-ink-dim", compact && "line-clamp-3")}>{a.body}</p>}
+      {a.body && <p className="mt-2.5 whitespace-pre-line text-[13.5px] leading-relaxed text-ink-dim">{a.body}</p>}
     </Card>
   );
 }
@@ -139,23 +139,6 @@ export function AnnouncementsTab({ classroomId, teacher }: { classroomId: string
           <DeleteDialog classroomId={classroomId} announcement={deleting} onOpenChange={(v) => !v && setDeleting(null)} />
         </>
       )}
-    </div>
-  );
-}
-
-/** 教室首頁的公告區：置頂與最新的幾則，只列已發布的 */
-export function AnnouncementPreview({ classroomId, onSeeAll }: { classroomId: string; onSeeAll: () => void }) {
-  const { data: list = [] } = useAnnouncements(classroomId);
-  const shown = list.filter((a) => a.published).slice(0, 2);
-  const scheduled = list.length - list.filter((a) => a.published).length;
-  return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs tracking-wider text-ink-faint">公告{scheduled > 0 && <span className="ml-2 normal-case">· {scheduled} 則排程中</span>}</span>
-        <button type="button" onClick={onSeeAll} className="cursor-pointer text-xs text-bronze hover:underline">全部公告 →</button>
-      </div>
-      <div className="space-y-3">{shown.map((a) => <AnnouncementCard key={a.id} a={a} compact />)}</div>
-      {!shown.length && <p className="text-sm text-ink-faint">目前沒有公告。</p>}
     </div>
   );
 }

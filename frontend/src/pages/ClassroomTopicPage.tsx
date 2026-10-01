@@ -29,7 +29,8 @@ function ResourceRow({ r, onDelete }: { r: TopicResource; onDelete?: () => void 
   );
 }
 
-function Resources({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean }) {
+/** 議題說明與相關資料（老師可加連結、上傳檔案） */
+function TopicInfo({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean }) {
   const invalidate = useInvalidateTopic(topic.classroomId);
   const fileInput = useRef<HTMLInputElement>(null);
   const [adding, setAdding] = useState(false);
@@ -41,10 +42,11 @@ function Resources({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean
   const remove = useMutation({ mutationFn: (rid: string) => api.deleteTopicResource(topic.id, rid), onSuccess: done });
   const error = addLink.error ?? upload.error ?? remove.error;
 
-  if (!teacher && !topic.resources.length) return null;
   return (
     <Card>
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2 text-xs tracking-wider text-ink-faint">議題說明</div>
+      {topic.description ? <p className="whitespace-pre-line text-[14px] leading-relaxed">{topic.description}</p> : <p className="text-sm text-ink-faint">沒有額外說明。</p>}
+      {(teacher || topic.resources.length > 0) && <div className="mb-2 mt-5 flex items-center justify-between gap-2 border-t border-line pt-4">
         <span className="text-xs tracking-wider text-ink-faint">相關資料</span>
         {teacher && (
           <span className="flex gap-2">
@@ -53,7 +55,7 @@ function Resources({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean
             <input ref={fileInput} type="file" multiple hidden onChange={(e) => { for (const f of e.target.files ?? []) upload.mutate(f); e.target.value = ""; }} />
           </span>
         )}
-      </div>
+      </div>}
       {adding && (
         <div className="mb-3 flex flex-wrap gap-2">
           <Input className="h-9 min-w-40 flex-1" placeholder="名稱（選填）" value={name} onChange={(e) => setName(e.target.value)} />
@@ -62,7 +64,7 @@ function Resources({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean
         </div>
       )}
       {topic.resources.map((r) => <ResourceRow key={r.id} r={r} onDelete={teacher ? () => remove.mutate(r.id) : undefined} />)}
-      {!topic.resources.length && <p className="text-sm text-ink-faint">還沒有資料。可以加入閱讀材料的連結，或上傳講義、影片等檔案。</p>}
+      {teacher && !topic.resources.length && <p className="text-sm text-ink-faint">還沒有資料。可以加入閱讀材料的連結，或上傳講義、影片等檔案。</p>}
       {error && <p className="mt-2 text-[12.5px] text-wine">{error.message}</p>}
     </Card>
   );
@@ -100,7 +102,7 @@ function StartPanel({ topic, teacher }: { topic: ClassroomTopic; teacher: boolea
       </Card>
     );
   }
-  if (teacher) return <Card><p className="text-sm text-ink-dim">學生按「開始討論」後，會和蘇格拉底一對一對話；對話會出現在學生自己的「議題」列表。</p></Card>;
+  if (teacher) return null;
   return (
     <Card className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-ink-dim">{started ? "你已經開始討論這個議題，可以接著上次的對話。" : "讀完說明和資料後，和蘇格拉底聊聊你的想法。"}</p>
@@ -145,7 +147,7 @@ export function ClassroomTopicPage() {
   if (error) return <div className="mx-auto max-w-3xl p-8">{back}<p className="mt-6 text-sm text-ink-faint">{error.message}</p></div>;
   if (!topic) return null;
   return (
-    <div className="mx-auto max-w-3xl space-y-5 p-8">
+    <div className="mx-auto max-w-6xl space-y-5 p-8">
       {back}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
@@ -159,17 +161,17 @@ export function ClassroomTopicPage() {
           </span>
         )}
       </div>
-      <Card>
-        <div className="mb-2 text-xs tracking-wider text-ink-faint">議題說明</div>
-        {topic.description ? <p className="whitespace-pre-line text-[14px] leading-relaxed">{topic.description}</p> : <p className="text-sm text-ink-faint">沒有額外說明。</p>}
-      </Card>
-      <Resources topic={topic} teacher={teacher} />
-      <StartPanel topic={topic} teacher={teacher} />
-      <ReportsCard topic={topic} teacher={teacher} />
-      <section>
-        <h3 className="mb-2 mt-8 font-serif text-lg">討論{topic.postCount > 0 && <span className="ml-2 font-sans text-sm text-ink-faint">{topic.postCount}</span>}</h3>
-        <DiscussionBoard classroomId={classroomId} topicId={topic.id} />
-      </section>
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="space-y-5">
+          <TopicInfo topic={topic} teacher={teacher} />
+          <StartPanel topic={topic} teacher={teacher} />
+          <ReportsCard topic={topic} teacher={teacher} />
+        </div>
+        <section>
+          <h3 className="mb-2 font-serif text-lg max-lg:mt-3">討論{topic.postCount > 0 && <span className="ml-2 font-sans text-sm text-ink-faint">{topic.postCount}</span>}</h3>
+          <DiscussionBoard classroomId={classroomId} topicId={topic.id} />
+        </section>
+      </div>
       {teacher && (
         <>
           <TopicFormDialog classroomId={classroomId} topic={topic} activity={activity} open={editing} onOpenChange={setEditing} />

@@ -10,6 +10,7 @@ import { BankPage, ClassroomsPage, SummaryPage } from "@/pages/ListPages";
 import { CLASSROOM_TABS, ClassroomPage, type ClassroomTab } from "@/pages/ClassroomPage";
 import { ActivityPage } from "@/pages/ActivityPage";
 import { ClassroomTopicPage } from "@/pages/ClassroomTopicPage";
+import { ExplorePage } from "@/pages/JoinClassroom";
 import { DialoguePage } from "@/pages/DialoguePage";
 
 const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: Outlet });
@@ -38,6 +39,7 @@ const routeTree = root.addChildren([
     createRoute({ getParentRoute: () => app, path: "/summary", component: SummaryPage }),
     createRoute({ getParentRoute: () => app, path: "/bank/$kind", component: BankPage }),
     createRoute({ getParentRoute: () => app, path: "/classrooms", component: ClassroomsPage }),
+    createRoute({ getParentRoute: () => app, path: "/explore", component: ExplorePage }),
     createRoute({ getParentRoute: () => app, path: "/classrooms/$classroomId", component: ClassroomPage, validateSearch: (s: Record<string, unknown>): { tab?: ClassroomTab } => ({ tab: s.tab === "debate" ? "topics" : CLASSROOM_TABS.find((t) => t === s.tab) }) }),
     createRoute({ getParentRoute: () => app, path: "/classrooms/$classroomId/topics/$topicId", component: ClassroomTopicPage }),
     createRoute({ getParentRoute: () => app, path: "/classrooms/$classroomId/activities/$activityId", component: ActivityPage }),

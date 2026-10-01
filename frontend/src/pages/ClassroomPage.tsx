@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn, formatDateTime } from "@/lib/utils";
-import { AnnouncementPreview, AnnouncementsTab } from "./Announcements";
+import { AnnouncementsTab } from "./Announcements";
 import { ImportMembersButton, JoinSettingsCard, PendingApplications } from "./ClassroomAdmin";
 import { CalendarCard } from "./CalendarCard";
 import { ClassroomFormDialog } from "./ClassroomFormDialog";
@@ -121,11 +121,8 @@ function MembersTab({ classroomId, teacher }: { classroomId: string; teacher: bo
   );
 }
 
-function HomeTab({ classroom, topics, activities, teacher, onEdit, onSeeAll }: {
-  classroom: Classroom; topics: ClassroomTopic[]; activities: Activity[]; teacher: boolean; onEdit: () => void; onSeeAll: (tab: ClassroomTab) => void;
-}) {
-  const recent = topics.slice(0, 4);
-  const live = activities.filter((a) => a.stage !== "done").length;
+/** 教室首頁：簡介與行事曆 */
+function HomeTab({ classroom, teacher, onEdit }: { classroom: Classroom; teacher: boolean; onEdit: () => void }) {
   return (
     <div className="space-y-6">
       <Card>
@@ -135,21 +132,7 @@ function HomeTab({ classroom, topics, activities, teacher, onEdit, onSeeAll }: {
           : <p className="text-sm text-ink-faint">{teacher ? <>還沒有簡介。<button type="button" onClick={onEdit} className="cursor-pointer text-bronze hover:underline">補上簡介</button>，讓學生知道這堂課要討論什麼。</> : "老師還沒有寫教室簡介。"}</p>}
         <p className="mt-3 text-xs text-ink-faint">授課老師：{classroom.teacherName}</p>
       </Card>
-      <AnnouncementPreview classroomId={classroom.id} onSeeAll={() => onSeeAll("announcements")} />
-      <div className="grid grid-cols-3 gap-3">
-        {([["學生", classroom.studentCount], ["議題", topics.length], ["進行中的辯論", live]] as const).map(([n, v]) => (
-          <Card key={n} className="py-4 text-center"><b className="block font-serif text-2xl">{v}</b><span className="text-xs text-ink-faint">{n}</span></Card>
-        ))}
-      </div>
       <CalendarCard classroomId={classroom.id} />
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs tracking-wider text-ink-faint">最近的議題</span>
-          {topics.length > recent.length && <button type="button" onClick={() => onSeeAll("topics")} className="cursor-pointer text-xs text-bronze hover:underline">查看全部 →</button>}
-        </div>
-        <TopicGrid topics={recent} activities={activities} />
-        {!recent.length && <p className="text-sm text-ink-faint">{teacher ? "還沒有議題，到「議題」分頁新增第一個。" : "老師還沒有新增任何議題。"}</p>}
-      </div>
     </div>
   );
 }
@@ -178,7 +161,7 @@ export function ClassroomPage() {
         ))}
       </div>
       {classroom && <ClassroomFormDialog classroom={classroom} open={editing} onOpenChange={setEditing} />}
-      {tab === "home" && classroom && <HomeTab classroom={classroom} topics={topics} activities={activities} teacher={teacher} onEdit={() => setEditing(true)} onSeeAll={setTab} />}
+      {tab === "home" && classroom && <HomeTab classroom={classroom} teacher={teacher} onEdit={() => setEditing(true)} />}
       {tab === "announcements" && <AnnouncementsTab classroomId={classroomId} teacher={teacher} />}
       {tab === "topics" && <TopicsTab classroomId={classroomId} teacher={teacher} topics={topics} activities={activities} />}
       {tab === "discussion" && <DiscussionBoard classroomId={classroomId} topicId={null} />}
