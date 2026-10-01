@@ -66,7 +66,11 @@ export function ActivityPage() {
   return (
     <div className="flex h-full flex-col gap-3 p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="outline" size="sm" asChild><Link to="/classrooms/$classroomId" params={{ classroomId }} search={{ tab: "debate" }}><ArrowLeft className="size-3.5" />教室</Link></Button>
+        <Button variant="outline" size="sm" asChild>
+          {a.topicId
+            ? <Link to="/classrooms/$classroomId/topics/$topicId" params={{ classroomId, topicId: a.topicId }}><ArrowLeft className="size-3.5" />議題</Link>
+            : <Link to="/classrooms/$classroomId" params={{ classroomId }} search={{ tab: "topics" }}><ArrowLeft className="size-3.5" />教室</Link>}
+        </Button>
         <div className="min-w-0 flex-1"><span className="text-xs text-bronze">辯論 · {a.title}</span><h2 className="font-serif text-[19px] leading-tight">{a.statement}</h2></div>
         <div className="flex flex-wrap gap-1.5">{a.axes.map((x) => <Badge key={x.key}>{x.left} ⟷ {x.right}</Badge>)}</div>
       </div>

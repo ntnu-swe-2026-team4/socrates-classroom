@@ -37,11 +37,26 @@ export function createActivity(classroom: { id: string; students: string[] }, in
   return a;
 }
 
+export function removeActivity(id: string) {
+  const i = acts.findIndex((x) => x.id === id);
+  if (i >= 0) acts.splice(i, 1);
+}
+
+/** 有人開始對話（或已過階段 1）後，辯論設定就不能再改 */
+export const hasStarted = (a: any) => a.stage !== "individual" || a.dialogue.length > 0 || Object.keys(a.positions).length > 0;
+
+export function updateSettings(a: any, s: { answerMode?: string; axes?: any[]; groupSize?: number }) {
+  if (hasStarted(a)) throw new Error("已經有學生開始對話，辯論設定不能再修改");
+  if (s.answerMode) a.answerMode = s.answerMode;
+  if (s.groupSize) a.groupSize = s.groupSize;
+  if (s.axes) a.axes = D.makeAxes(s.axes);
+}
+
 export const toActivity = (a: any) => ({
   id: a.id, classroomId: a.classroomId, title: a.title, statement: a.statement, answerMode: a.answerMode,
   axes: a.axes.map((x: any) => ({ key: x.key, name: x.name, left: x.left, right: x.right })),
   groupSize: a.groupSize, stage: a.stage, memberCount: a.members.length, createdAt: a.createdAt,
-  stageDeadline: a.stageDeadline ?? null,
+  stageDeadline: a.stageDeadline ?? null, topicId: a.topicId,
 });
 
 /* ---------------- 階段 1 ---------------- */

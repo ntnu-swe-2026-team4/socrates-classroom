@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { BankKind, ClassroomInput, CreateActivityInput, PositionDraft } from "./index";
+import type { BankKind, ClassroomInput, ClassroomTopic, PositionDraft, TopicInput } from "./index";
 
 /** 每個查詢的 key 集中在這裡，讓後端事件（SSE）進來時知道要讓哪些資料失效 */
 export const keys = {
@@ -11,6 +11,8 @@ export const keys = {
   classroom: (id: string) => ["classroom", id] as const,
   classroomMembers: (id: string) => ["classroomMembers", id] as const,
   activities: (cid: string) => ["activities", cid] as const,
+  topics: (cid: string) => ["topics", cid] as const,
+  topic: (id: string) => ["topic", id] as const,
   activity: (id: string) => ["activity", id] as const,
   dialogue: (id: string) => ["dialogue", id] as const,
   progress: (id: string) => ["progress", id] as const,
@@ -30,7 +32,9 @@ export const useArchives = () => useQuery({ queryKey: keys.archives, queryFn: ()
 export const useClassrooms = () => useQuery({ queryKey: keys.classrooms, queryFn: () => api.listClassrooms() });
 export const useClassroom = (id: string) => useQuery({ queryKey: keys.classroom(id), queryFn: () => api.getClassroom(id) });
 export const useActivities = (cid: string) => useQuery({ queryKey: keys.activities(cid), queryFn: () => api.listActivities(cid) });
-export const useActivity = (id: string) => useQuery({ queryKey: keys.activity(id), queryFn: () => api.getActivity(id) });
+export const useTopics = (cid: string) => useQuery({ queryKey: keys.topics(cid), queryFn: () => api.listTopics(cid) });
+export const useTopic = (id: string) => useQuery({ queryKey: keys.topic(id), queryFn: () => api.getTopic(id) });
+export const useActivity = (id: string) => useQuery({ queryKey: keys.activity(id), queryFn: () => api.getActivity(id), enabled: !!id });
 export const useDialogue = (id: string) => useQuery({ queryKey: keys.dialogue(id), queryFn: () => api.listDialogue(id) });
 export const useProgress = (id: string) => useQuery({ queryKey: keys.progress(id), queryFn: () => api.getProgress(id) });
 export const usePositions = (id: string) => useQuery({ queryKey: keys.positions(id), queryFn: () => api.listPositions(id) });
@@ -55,14 +59,25 @@ export function useSaveClassroom(classroomId?: string) {
   });
 }
 
-export function useCreateActivity(classroomId: string) {
+/** 議題變動後要更新的資料：議題列表、單一議題，以及團體議題連動的辯論活動與教室統計 */
+export function useInvalidateTopic(classroomId: string) {
   const qc = useQueryClient();
+  return (topic?: Pick<ClassroomTopic, "id" | "activityId">) => {
+    qc.invalidateQueries({ queryKey: keys.topics(classroomId) });
+    qc.invalidateQueries({ queryKey: keys.activities(classroomId) });
+    qc.invalidateQueries({ queryKey: keys.classrooms });
+    qc.invalidateQueries({ queryKey: keys.classroom(classroomId) });
+    if (topic) qc.invalidateQueries({ queryKey: keys.topic(topic.id) });
+    if (topic?.activityId) qc.invalidateQueries({ queryKey: keys.activity(topic.activityId) });
+  };
+}
+
+/** 新增（不帶 topicId）或編輯議題；編輯時不能改類型 */
+export function useSaveTopic(classroomId: string, topicId?: string) {
+  const invalidate = useInvalidateTopic(classroomId);
   return useMutation({
-    mutationFn: (input: CreateActivityInput) => api.createActivity(classroomId, input),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: keys.activities(classroomId) });
-      qc.invalidateQueries({ queryKey: keys.classrooms });
-    },
+    mutationFn: ({ type, ...rest }: TopicInput) => (topicId ? api.updateTopic(topicId, rest) : api.createTopic(classroomId, { type, ...rest })),
+    onSuccess: (t) => invalidate(t),
   });
 }
 

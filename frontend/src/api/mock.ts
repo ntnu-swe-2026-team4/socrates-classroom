@@ -1,5 +1,5 @@
 import type { Api } from "./api";
-import type { Archive, Classroom, ClassroomMember, CreateActivityInput, User } from "./types";
+import type { Archive, Classroom, ClassroomMember, ClassroomTopic, CreateActivityInput, TopicResource, User } from "./types";
 import * as E from "@/mock/engine";
 
 /**
@@ -46,6 +46,28 @@ const DEMO_AXES = [
 ];
 E.createActivity(classrooms[0], { title: "第 1 場辯論", statement: "正義是否只是強者的利益？", answerMode: "both", groupSize: 3, axes: DEMO_AXES }, "d1");
 
+/* 教室議題：團體議題對應 engine 裡的辯論活動；個人議題的對話存在 archives（topicId 指回議題） */
+const iso = (daysFromNow: number) => new Date(Date.now() + daysFromNow * 864e5).toISOString();
+const topics: ClassroomTopic[] = [
+  { id: "t1", classroomId: "c1", type: "group", title: "正義是否只是強者的利益？", activityId: "d1", acceptsReports: false, postCount: 0,
+    description: "《理想國》第一卷，色拉敘馬霍斯主張「正義就是強者的利益」。先各自和蘇格拉底對話釐清立場，再分組辯論。",
+    dueAt: iso(7), resources: [{ id: "r1", kind: "link", name: "《理想國》第一卷導讀", url: "https://zh.wikipedia.org/wiki/理想國", addedAt: iso(-3) }],
+    createdAt: iso(-3), updatedAt: iso(-3) },
+  { id: "t2", classroomId: "c1", type: "individual", title: "我們該不該永遠說實話？", activityId: null, acceptsReports: true, postCount: 0,
+    description: "康德認為說謊在任何情況下都是錯的，即使門口的殺人犯問你朋友躲在哪裡。你同意嗎？和蘇格拉底聊聊你的理由。",
+    dueAt: iso(14), resources: [], createdAt: iso(-1), updatedAt: iso(-1) },
+];
+E.findAct("d1").topicId = "t1";
+const topicArchive = new Map<string, string>(); // topicId → archiveId（假後端只有一位學生）
+const findTopic = (id: string) => {
+  const t = topics.find((x) => x.id === id);
+  if (!t) throw new Error("找不到議題");
+  return t;
+};
+const touch = (t: ClassroomTopic) => { t.updatedAt = new Date().toISOString(); };
+let seq = 0;
+const newId = (p: string) => `${p}${Date.now().toString(36)}${seq++}`;
+
 const topicDialogues = new Map<string, import("./types").DialogueMessage[]>();
 const TOPIC_REPLIES = [
   "有意思。但你剛才那句話裡，有沒有哪個詞，其實你自己也還沒完全想清楚是什麼意思？",
@@ -56,6 +78,7 @@ const TOPIC_REPLIES = [
 ];
 
 const isTeacher = () => user?.role === "teacher";
+const MAX_UPLOAD = 50 * 1024 * 1024;
 const needTeacher = () => { if (!isTeacher()) throw new Error("只有老師可以這樣做"); };
 const roomAct = (id: string) => E.findRoom(id);
 
@@ -228,15 +251,89 @@ export const mockApi: Api = {
   createAnnouncement: notYet("P2"),
   updateAnnouncement: notYet("P2"),
   deleteAnnouncement: notYet("P2"),
-  listTopics: notYet("P4"),
-  getTopic: notYet("P4"),
-  createTopic: notYet("P4"),
-  updateTopic: notYet("P4"),
-  deleteTopic: notYet("P4"),
-  addTopicLink: notYet("P4"),
-  uploadTopicFile: notYet("P4"),
-  deleteTopicResource: notYet("P4"),
-  startTopicDialogue: notYet("P4"),
+  /* 教室議題（P4） */
+  async listTopics(cid) {
+    await delay();
+    return topics.filter((t) => t.classroomId === cid).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((t) => structuredClone(t));
+  },
+  async getTopic(id) { await delay(40); return structuredClone(findTopic(id)); },
+  async createTopic(cid, input) {
+    await delay(); needTeacher();
+    const c = findClassroom(cid);
+    if (!input.title.trim()) throw new Error("請填寫議題標題");
+    if (input.type === "group" && !input.activity) throw new Error("團體議題需要辯論設定");
+    const at = new Date().toISOString();
+    const t: ClassroomTopic = {
+      id: newId("t"), classroomId: cid, type: input.type, title: input.title.trim(), description: input.description.trim(),
+      dueAt: input.dueAt, acceptsReports: input.acceptsReports, activityId: null, resources: [], postCount: 0, createdAt: at, updatedAt: at,
+    };
+    if (input.type === "group" && input.activity) {
+      const a = E.createActivity(c, { ...input.activity, title: t.title, statement: t.title });
+      a.topicId = t.id;
+      t.activityId = a.id;
+    }
+    topics.push(t);
+    return structuredClone(t);
+  },
+  async updateTopic(id, patch) {
+    await delay(); needTeacher();
+    const t = findTopic(id);
+    if (patch.title !== undefined && !patch.title.trim()) throw new Error("請填寫議題標題");
+    if (patch.activity && t.activityId) E.updateSettings(E.findAct(t.activityId), patch.activity);
+    if (patch.title !== undefined) {
+      t.title = patch.title.trim();
+      if (t.activityId) Object.assign(E.findAct(t.activityId), { title: t.title, statement: t.title });
+    }
+    if (patch.description !== undefined) t.description = patch.description.trim();
+    if (patch.dueAt !== undefined) t.dueAt = patch.dueAt;
+    if (patch.acceptsReports !== undefined) t.acceptsReports = patch.acceptsReports;
+    touch(t);
+    return structuredClone(t);
+  },
+  async deleteTopic(id) {
+    await delay(); needTeacher();
+    const t = findTopic(id);
+    if (t.activityId) E.removeActivity(t.activityId);
+    for (const r of t.resources) if (r.kind === "file") URL.revokeObjectURL(r.file.url);
+    topics.splice(topics.indexOf(t), 1);
+  },
+  async addTopicLink(tid, { name, url }) {
+    await delay(); needTeacher();
+    if (!/^https?:\/\//.test(url.trim())) throw new Error("連結要以 http:// 或 https:// 開頭");
+    const t = findTopic(tid);
+    const r: TopicResource = { id: newId("r"), kind: "link", name: name.trim() || url.trim(), url: url.trim(), addedAt: new Date().toISOString() };
+    t.resources.push(r); touch(t);
+    return { ...r };
+  },
+  async uploadTopicFile(tid, file) {
+    await delay(300); needTeacher();
+    if (file.size > MAX_UPLOAD) throw new Error("檔案太大（上限 50 MB）");
+    const t = findTopic(tid);
+    // 假後端：檔案只存在這個分頁的記憶體裡，重新整理就消失
+    const r: TopicResource = { id: newId("r"), kind: "file", addedAt: new Date().toISOString(),
+      file: { name: file.name, url: URL.createObjectURL(file), size: file.size, mimeType: file.type || "application/octet-stream" } };
+    t.resources.push(r); touch(t);
+    return structuredClone(r);
+  },
+  async deleteTopicResource(tid, rid) {
+    await delay(); needTeacher();
+    const t = findTopic(tid);
+    const r = t.resources.find((x) => x.id === rid);
+    if (r?.kind === "file") URL.revokeObjectURL(r.file.url);
+    t.resources = t.resources.filter((x) => x.id !== rid); touch(t);
+  },
+  async startTopicDialogue(tid) {
+    await delay();
+    if (isTeacher()) throw new Error("老師不能開始個人議題的對話");
+    const t = findTopic(tid);
+    if (t.type !== "individual") throw new Error("團體議題請從辯論活動進入");
+    const existing = archives.find((a) => a.id === topicArchive.get(tid));
+    if (existing) return { ...existing };
+    const a: Archive = { id: newId("n"), title: t.title, date: "剛剛", rounds: 0, bank: null, inSummary: false, snippet: "（剛開始的對話）", topicId: t.id };
+    archives.unshift(a);
+    topicArchive.set(tid, a.id);
+    return { ...a };
+  },
   listReports: notYet("P7"),
   submitReport: notYet("P7"),
   deleteReport: notYet("P7"),

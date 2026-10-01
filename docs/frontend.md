@@ -27,7 +27,8 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `/summary` | 論點總結 | 選單「單人 → 論點總結」 |
 | `/bank/private`、`/bank/public` | 私人 / 公開題庫 | 選單「題庫」 |
 | `/classrooms` | 教室列表 | 選單「教室」 |
-| `/classrooms/:id?tab=home\|members\|debate` | 教室：首頁（簡介、統計、最近的辯論）、成員、辯論列表（老師可新增） | 點進某個教室 |
+| `/classrooms/:id?tab=home\|topics\|members` | 教室：首頁（簡介、統計、最近的議題）、議題列表（老師可新增）、成員 | 點進某個教室 |
+| `/classrooms/:id/topics/:id` | 教室議題：說明、相關資料（連結 / 檔案）、開始討論或進入辯論 | 點進某個議題 |
 | `/classrooms/:id/activities/:id` | 辯論活動（四個階段 + 結果） | 點進某場辯論 |
 
 ### 專案根目錄
@@ -61,8 +62,10 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `pages/DialoguePage.tsx` | 3D 蘇格拉底 + 聊天面板 + 按住說話 | `/dialogue` |
 | `pages/TopicsPage.tsx` | 議題列表與詳情、私人 / 公開 / 論點總結 三個按鈕、繼續對話 | `/topics` |
 | `pages/ListPages.tsx` | 論點總結頁、題庫頁、教室列表頁（含新增教室、待處理邀請） | `/summary`、`/bank/*`、`/classrooms` |
-| `pages/ClassroomPage.tsx` | 教室內的「首頁」「成員」「辯論」三個分頁：簡介與統計、成員表、辯論卡片列表、老師的「新增辯論」與「編輯教室」 | `/classrooms/:id` |
+| `pages/ClassroomPage.tsx` | 教室內的「首頁」「議題」「成員」三個分頁：簡介與統計、議題卡片（可依個人 / 團體篩選）、成員表、老師的「新增議題」與「編輯教室」 | `/classrooms/:id` |
 | `pages/ClassroomFormDialog.tsx` | 新增 / 編輯教室共用的視窗（名稱、簡介） | 教室列表、教室頁 |
+| `pages/ClassroomTopicPage.tsx` | 議題詳情：說明、相關資料（老師可加連結、上傳檔案）、學生的「開始討論」、團體議題的辯論入口、老師的編輯與刪除 | `/classrooms/:id/topics/:id` |
+| `pages/TopicFormDialog.tsx` | 新增 / 編輯議題的視窗：類型、說明、截止時間、是否收報告；團體議題另有辯論設定（回答方式、價值軸、組別人數） | 教室頁、議題頁 |
 | `pages/ActivityPage.tsx` | 辯論活動的外框：標題、橫向進度（設定→調查→提純→比賽→結束）、依階段切換內容 | `/classrooms/:id/activities/:id` |
 | `pages/stages/IndividualStage.tsx` | 階段 1：與蘇格拉底對話、調查進度、整理座標視窗；老師視角的成員進度表 | 辯論活動裡 |
 | `pages/stages/TeamStage.tsx` | 階段 2：分組、組內討論、AI 整理論點 / 丟反例、投票、分裂、重新分組 | 辯論活動裡 |
@@ -119,8 +122,13 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 學生接受 / 拒絕邀請 | `ClassroomsPage` → `api.acceptInvite`、`api.declineInvite` | `POST /api/classrooms/:id/invite/accept`、`…/decline` |
 | 教室成員表（成員分頁） | `ClassroomPage.tsx` 的 `MembersTab` → `useClassroomMembers` | `GET /api/classrooms/:id/members` |
 | 老師新增 / 移除成員 | `MembersTab` → `api.addClassroomMember`、`api.removeClassroomMember` | `POST /api/classrooms/:id/members`、`DELETE …/members/:memberId` |
-| 教室內的辯論列表 | `useActivities`（`ClassroomPage.tsx`） | `GET /api/classrooms/:id/activities` |
-| 老師新增辯論 | `ClassroomPage.tsx` 的 `CreateDialog` → `useCreateActivity` | `POST /api/classrooms/:id/activities` |
+| 教室議題列表 | `useTopics`（`ClassroomPage.tsx`） | `GET /api/classrooms/:id/topics` |
+| 議題詳情 | `useTopic`（`ClassroomTopicPage.tsx`） | `GET /api/topics/:id` |
+| 老師新增 / 編輯議題（團體議題同時建立辯論活動） | `TopicFormDialog.tsx` → `useSaveTopic` | `POST /api/classrooms/:id/topics`、`PATCH /api/topics/:id` |
+| 老師刪除議題 | `ClassroomTopicPage.tsx` 的 `DeleteDialog` → `api.deleteTopic` | `DELETE /api/topics/:id` |
+| 老師加連結 / 上傳檔案 / 移除資料 | `ClassroomTopicPage.tsx` 的 `Resources` | `POST /api/topics/:id/resources`、`POST …/resources/files`（multipart）、`DELETE …/resources/:id` |
+| 學生開始個人議題的討論 | `ClassroomTopicPage.tsx` 的 `StartPanel` → `api.startTopicDialogue` | `POST /api/topics/:id/dialogue` |
+| 團體議題的辯論進度（卡片上的進度條） | `useActivities`、`useActivity` | `GET /api/classrooms/:id/activities`、`GET /api/activities/:id` |
 | 辯論活動資料 | `ActivityPage.tsx` → `useActivity` | `GET /api/activities/:id` |
 | 老師推進階段 | `ActivityPage.tsx` 的 `Flow` → `useAdvanceActivity` | `POST /api/activities/:id/advance` |
 | 即時更新（階段切換、新訊息、輪到誰） | `queries.ts` 的 `useActivityEvents` → `api.subscribe` | `GET /api/activities/:id/events`（**SSE**） |
@@ -281,9 +289,9 @@ data: {"message":{"id":"m1","role":"assistant","text":"完整回覆","at":"2026-
 
 1. 打開後會先看到 Logo 動畫頁，往下捲（或按右上角「Login」）到登入區。
 2. 選「學生」或「教師」，按「進入教室」。
-3. 想體驗辯論：選單「教室」→「高二哲學選修 A」→「第 1 場辯論」。
+3. 想體驗辯論：選單「教室」→「高二哲學選修 A」→「議題」→「正義是否只是強者的利益？」→「進入辯論」。
    - 學生：左邊進度下方有「示範：讓老師推進」，可以自己走完四個階段。
-   - 老師：可以新增辯論、推進階段、看報告。
+   - 老師：可以新增個人或團體議題、上傳資料、推進階段、看報告。
 4. 對話頁的語音功能需要瀏覽器允許麥克風；不支援時可直接打字。
 
 ### 常見問題
