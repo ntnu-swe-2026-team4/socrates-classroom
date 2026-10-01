@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Send } from "lucide-react";
-import { api, type Activity, type Coverage, type PositionDraft } from "@/api";
-import { keys, useConfirmPosition, useDialogue, useMembers, usePositions, useProgress, useStar } from "@/api/queries";
+import { Bookmark, BookmarkCheck, Send } from "lucide-react";
+import { api, type Activity, type ArgumentSummary, type Coverage } from "@/api";
+import { keys, useConfirmPosition, useDialogue, useMembers, useNoteActions, useNotes, usePositions, useProgress, useStar } from "@/api/queries";
 import { StarMap } from "@/components/star/StarMap";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,15 +10,18 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { NotesCard } from "./NotesCard";
 import { MemberChip, Panel, StageLayout } from "./shared";
 
 const COV: [keyof Coverage, string][] = [["claim", "主張"], ["reason", "理由"], ["evidence", "證據或例子"], ["counter", "反例的回應"]];
-const STEPS = [-1, -2 / 3, -1 / 3, 0, 1 / 3, 2 / 3, 1];
+const SUMMARY_LABEL: Record<keyof ArgumentSummary, string> = { claim: "我的主張", reason: "我的理由", evidence: "證據或例子" };
 
 /** 右側：跟蘇格拉底的對話（回覆用串流一段一段出現） */
 function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
   const qc = useQueryClient();
   const { data: messages = [] } = useDialogue(a.id);
+  const { data: notes = [] } = useNotes(a.id);
+  const { create, remove } = useNoteActions(a.id);
   const [text, setText] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [mine, setMine] = useState<string | null>(null);
@@ -41,18 +44,33 @@ function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
     }
   }
 
-  const bubble = (role: "user" | "assistant", body: string, key: string) => (
-    <div key={key} className={cn("flex gap-3", role === "user" && "flex-row-reverse")}>
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-line-strong bg-bg-2 font-serif text-sm text-bronze">{role === "user" ? "我" : "Σ"}</span>
-      <p className={cn("max-w-[80%] rounded-2xl border border-line px-4 py-2.5 font-serif text-[14.5px] leading-7", role === "user" ? "bg-bronze-soft" : "bg-bg-2")}>{body}</p>
-    </div>
-  );
+  /** 已存的訊息可以標註成筆記，再按一次取消 */
+  const toggleMark = (id: string, body: string) => {
+    const note = notes.find((n) => n.sourceMessageId === id);
+    if (note) remove.mutate(note.id);
+    else create.mutate({ kind: "highlight", sourceMessageId: id, text: body });
+  };
+  const bubble = (role: "user" | "assistant", body: string, key: string, savedId?: string) => {
+    const marked = !!savedId && notes.some((n) => n.sourceMessageId === savedId);
+    return (
+      <div key={key} className={cn("group flex items-start gap-3", role === "user" && "flex-row-reverse")}>
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-line-strong bg-bg-2 font-serif text-sm text-bronze">{role === "user" ? "我" : "Σ"}</span>
+        <p className={cn("max-w-[80%] rounded-2xl border px-4 py-2.5 font-serif text-[14.5px] leading-7", role === "user" ? "bg-bronze-soft" : "bg-bg-2", marked ? "border-bronze-dim" : "border-line")}>{body}</p>
+        {savedId && !readOnly && (
+          <button type="button" onClick={() => toggleMark(savedId, body)} aria-label={marked ? "取消標註" : "標註成筆記"} title={marked ? "取消標註" : "標註成筆記"}
+            className={cn("mt-2 cursor-pointer text-ink-faint transition-opacity hover:text-bronze", marked ? "text-bronze" : "opacity-0 group-hover:opacity-100 focus:opacity-100")}>
+            {marked ? <BookmarkCheck className="size-4" /> : <Bookmark className="size-4" />}
+          </button>
+        )}
+      </div>
+    );
+  };
   return (
     <Panel>
       <div className="border-b border-line px-5 py-3 font-serif text-sm">與蘇格拉底對話</div>
       <div className="flex-1 space-y-4 overflow-y-auto p-5">
         {bubble("assistant", `這場辯論的議題是「${a.statement}」。先不用急著下結論——你現在怎麼想？`, "opener")}
-        {messages.map((m) => bubble(m.role, m.text, m.id))}
+        {messages.map((m) => bubble(m.role, m.text, m.id, m.id))}
         {mine && bubble("user", mine, "mine")}
         {pending !== null && bubble("assistant", pending || "…", "pending")}
         {error && <p className="text-[12.5px] text-wine">{error}</p>}
@@ -72,41 +90,24 @@ function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
 function PositionDialog({ a, open, onOpenChange }: { a: Activity; open: boolean; onOpenChange: (v: boolean) => void }) {
   const confirm = useConfirmPosition(a.id);
   const { data: draft } = useQuery({ queryKey: ["draft", a.id, open], queryFn: () => api.draftPosition(a.id), enabled: open });
-  const [form, setForm] = useState<PositionDraft | null>(null);
-  const cur = form ?? draft ?? null;
-  const nearest = (v: number) => STEPS.reduce((bi, s, i) => (Math.abs(s - v) < Math.abs(STEPS[bi] - v) ? i : bi), 0);
-  const upd = (patch: Partial<PositionDraft>) => cur && setForm({ ...cur, ...patch });
-  const sugIdx = (i: number) => (draft && draft.coords[i] !== 0 ? nearest(draft.coords[i]) : -1);
+  const [form, setForm] = useState<ArgumentSummary | null>(null);
+  const cur = form ?? draft?.summary ?? null;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) setForm(null); onOpenChange(v); }}>
       <DialogContent>
         <DialogTitle>整理我的想法</DialogTitle>
-        <DialogDescription>AI 依對話估計了位置（標有 AI 的點），這只是估計，請依你真正的想法自己選。</DialogDescription>
+        <DialogDescription>AI 依你的對話整理了論點，請改成你真正的想法再確認。你在各條價值軸上的位置會由 AI 估算，活動結束後才會公開。</DialogDescription>
         {cur ? (
-          <div className="space-y-5">
-            {a.axes.map((ax, i) => (
-              <div key={ax.key}>
-                <div className="mb-2 text-[13.5px] font-semibold text-bronze">{ax.name}</div>
-                <div className="relative flex h-8 items-center justify-between px-1">
-                  <span className="absolute inset-x-4 top-1/2 h-0.5 -translate-y-1/2 bg-bg-3" />
-                  {STEPS.map((s, k) => (
-                    <button key={k} type="button" aria-label={`${ax.name} ${k - 3}`} onClick={() => upd({ coords: cur.coords.map((c, j) => (j === i ? s : c)) })}
-                      className={cn("relative size-6 cursor-pointer rounded-full border-2 bg-bg-1", nearest(cur.coords[i]) === k ? "border-bronze bg-bronze ring-4 ring-bronze-soft" : "border-bg-3 hover:border-bronze-dim")}>
-                      {sugIdx(i) === k && <em className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-olive-soft px-1.5 text-[9.5px] font-bold not-italic text-olive">AI</em>}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-between text-[11.5px] text-ink-faint"><span>{ax.left}</span><span>中立</span><span>{ax.right}</span></div>
-              </div>
+          <div className="space-y-4">
+            {(Object.keys(SUMMARY_LABEL) as (keyof ArgumentSummary)[]).map((k) => (
+              <label key={k} className="block"><span className="mb-1 block text-xs text-ink-dim">{SUMMARY_LABEL[k]}</span>
+                <Textarea rows={2} value={cur[k]} onChange={(e) => setForm({ ...cur, [k]: e.target.value })} /></label>
             ))}
-            {(["claim", "reason", "evidence"] as const).map((k) => (
-              <label key={k} className="block"><span className="mb-1 block text-xs text-ink-dim">{{ claim: "我的主張", reason: "我的理由", evidence: "證據或例子" }[k]}</span>
-                <Textarea rows={2} value={cur.summary[k]} onChange={(e) => upd({ summary: { ...cur.summary, [k]: e.target.value } })} /></label>
-            ))}
+            {confirm.error && <p className="text-[12.5px] text-wine">{confirm.error.message}</p>}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => onOpenChange(false)}>先不整理</Button>
-              <Button disabled={confirm.isPending} onClick={() => confirm.mutate(cur, { onSuccess: () => { setForm(null); onOpenChange(false); } })}>確認送出</Button>
+              <Button disabled={confirm.isPending || !cur.claim.trim()} onClick={() => confirm.mutate(cur, { onSuccess: () => { setForm(null); onOpenChange(false); } })}>確認送出</Button>
             </div>
           </div>
         ) : <p className="text-sm text-ink-faint">整理中…</p>}
@@ -115,23 +116,11 @@ function PositionDialog({ a, open, onOpenChange }: { a: Activity; open: boolean;
   );
 }
 
-function PositionReadout({ a, coords, summary }: { a: Activity; coords: number[]; summary: PositionDraft["summary"] }) {
+function SummaryReadout({ summary }: { summary: ArgumentSummary }) {
   return (
     <div className="space-y-3">
-      {a.axes.map((ax, i) => (
-        <div key={ax.key} className="grid grid-cols-[4.4em_1fr_3em] items-center gap-2 text-[13px]">
-          <b className="text-bronze">{ax.name}</b>
-          <span className="relative flex h-6 items-center justify-between text-[11px] text-ink-faint">
-            <span className="absolute inset-x-8 top-1/2 h-0.5 -translate-y-1/2 bg-bg-3" />
-            <em className="relative z-10 bg-bg-1 px-1 not-italic">{ax.left}</em>
-            <i className="absolute top-1/2 z-20 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-bronze ring-4 ring-bg-1" style={{ left: `${((coords[i] + 1) / 2) * 100}%` }} />
-            <em className="relative z-10 bg-bg-1 px-1 not-italic">{ax.right}</em>
-          </span>
-          <span className="text-right text-xs text-ink-dim">{coords[i] >= 0 ? "+" : "−"}{Math.abs(coords[i]).toFixed(2)}</span>
-        </div>
-      ))}
-      {(["claim", "reason", "evidence"] as const).map((k) => (
-        <div key={k}><small className="text-[11px] text-ink-faint">{{ claim: "主張", reason: "理由", evidence: "證據或例子" }[k]}</small><p className="font-serif text-sm leading-relaxed">{summary[k] || "—"}</p></div>
+      {(Object.keys(SUMMARY_LABEL) as (keyof ArgumentSummary)[]).map((k) => (
+        <div key={k}><small className="text-[11px] text-ink-faint">{SUMMARY_LABEL[k]}</small><p className="font-serif text-sm leading-relaxed">{summary[k] || "—"}</p></div>
       ))}
     </div>
   );
@@ -150,8 +139,8 @@ export function IndividualStage({ a, teacher, flow, view }: { a: Activity; teach
   const left = (
     <Card className="p-4">
       <CardTitle className="flex items-center gap-2">個人調查 <Badge tone={mine ? "olive" : progress?.rounds ? "bronze" : "neutral"}>{mine ? "已確認" : progress?.rounds ? "對話中" : "尚未開始"}</Badge></CardTitle>
-      <p className="mb-3 text-[12.5px] leading-relaxed text-ink-faint">右邊跟蘇格拉底聊。<b className="text-ink">AI 只提問、不給答案</b>，追問到你把想法講清楚，再整理成座標與論點總結。</p>
-      {mine ? <PositionReadout a={a} coords={mine.coords} summary={mine.summary} /> : (
+      <p className="mb-3 text-[12.5px] leading-relaxed text-ink-faint">右邊跟蘇格拉底聊。<b className="text-ink">AI 只提問、不給答案</b>，追問到你把想法講清楚，再整理成論點總結。</p>
+      {mine ? <SummaryReadout summary={mine.summary} /> : (
         <>
           <div className="flex flex-wrap gap-1.5">
             {COV.map(([k, n]) => <span key={k} className={cn("rounded-full border px-3 py-1 text-[11.5px]", progress?.coverage[k] ? "border-olive-soft bg-olive-soft text-olive" : "border-line text-ink-faint")}>{progress?.coverage[k] ? "✓ " : ""}{n}</span>)}
@@ -159,12 +148,13 @@ export function IndividualStage({ a, teacher, flow, view }: { a: Activity; teach
           <p className="my-3 text-[12.5px] text-ink-faint">已對話 <b>{progress?.rounds ?? 0}</b> / {progress?.maxRounds ?? 20} 輪{progress?.readyToSummarize ? "" : "（至少聊 2 輪才能整理）"}</p>
         </>
       )}
-      {!over && <Button className="mt-2" size="sm" disabled={!mine && !progress?.readyToSummarize} onClick={() => setDlg(true)}>{mine ? "修改座標與論點" : "整理我的想法"}</Button>}
-      <p className="mt-3 text-[11.5px] text-ink-faint">其他同學的座標，在階段 2 分組之前不會公開。</p>
+      {!over && <Button className="mt-2" size="sm" disabled={!mine && !progress?.readyToSummarize} onClick={() => setDlg(true)}>{mine ? "修改論點" : "整理我的想法"}</Button>}
+      {!mine && progress?.readyToSummarize && !over && <p className="mt-2 text-[12px] text-olive">蘇格拉底覺得你已經說得差不多了，可以整理想法了。</p>}
+      <p className="mt-3 text-[11.5px] text-ink-faint">你和同學的立場座標，在活動結束後才會公開。</p>
       <PositionDialog a={a} open={dlg} onOpenChange={(v) => { setDlg(v); if (!v) qc.invalidateQueries({ queryKey: keys.positions(a.id) }); }} />
     </Card>
   );
-  return <StageLayout flow={flow} left={left} right={<ChatPanel a={a} readOnly={over} />} />;
+  return <StageLayout flow={flow} left={<>{left}<NotesCard a={a} readOnly={over} /></>} right={<ChatPanel a={a} readOnly={over} />} />;
 }
 
 function TeacherIndividual({ a, flow }: { a: Activity; flow: ReactNode }) {

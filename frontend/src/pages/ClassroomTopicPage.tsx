@@ -12,6 +12,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { formatBytes } from "@/lib/utils";
 import { DueLabel, STAGE_NAME, StageBar, TOPIC_TYPE } from "./ClassroomPage";
+import { DiscussionBoard } from "./Discussion";
+import { ReportsCard } from "./ReportsCard";
 import { TopicFormDialog } from "./TopicFormDialog";
 
 function ResourceRow({ r, onDelete }: { r: TopicResource; onDelete?: () => void }) {
@@ -163,6 +165,11 @@ export function ClassroomTopicPage() {
       </Card>
       <Resources topic={topic} teacher={teacher} />
       <StartPanel topic={topic} teacher={teacher} />
+      <ReportsCard topic={topic} teacher={teacher} />
+      <section>
+        <h3 className="mb-2 mt-8 font-serif text-lg">討論{topic.postCount > 0 && <span className="ml-2 font-sans text-sm text-ink-faint">{topic.postCount}</span>}</h3>
+        <DiscussionBoard classroomId={classroomId} topicId={topic.id} />
+      </section>
       {teacher && (
         <>
           <TopicFormDialog classroomId={classroomId} topic={topic} activity={activity} open={editing} onOpenChange={setEditing} />

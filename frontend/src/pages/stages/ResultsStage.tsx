@@ -138,6 +138,7 @@ export function ResultsStage({ a, teacher, flow }: { a: Activity; teacher: boole
 
   const who = teacher ? members.find((m) => m.id === (sid ?? members[0]?.id)) : me;
   const pos = positions.find((p) => p.memberId === who?.id);
+  const coords = pos?.coords ?? null;
   const grp = groups.find((g) => g.memberIds.includes(who?.id ?? ""));
   const myJ = allJ.filter((j) => j.memberId === who?.id);
   const avg = avgScores(myJ);
@@ -151,7 +152,7 @@ export function ResultsStage({ a, teacher, flow }: { a: Activity; teacher: boole
           <Card><CardTitle>{who?.isMe ? "我" : who?.name}的座標與論點</CardTitle>
             {pos && who ? (
               <div className="space-y-2.5">
-                {star?.axes.map((ax, i) => <div key={ax.key} className="grid grid-cols-[5em_1fr_3em] items-center gap-2 text-[13px]"><b className="text-bronze">{ax.name}</b><span className="flex justify-between text-[11px] text-ink-faint"><span>{ax.left}</span><span>{ax.right}</span></span><span className="text-right text-xs text-ink-dim">{pos.coords[i] >= 0 ? "+" : "−"}{Math.abs(pos.coords[i]).toFixed(2)}</span></div>)}
+                {coords && star?.axes.map((ax, i) => <div key={ax.key} className="grid grid-cols-[5em_1fr_3em] items-center gap-2 text-[13px]"><b className="text-bronze">{ax.name}</b><span className="flex justify-between text-[11px] text-ink-faint"><span>{ax.left}</span><span>{ax.right}</span></span><span className="text-right text-xs text-ink-dim">{coords[i] >= 0 ? "+" : "−"}{Math.abs(coords[i]).toFixed(2)}</span></div>)}
                 {(["claim", "reason", "evidence"] as const).map((k) => <div key={k}><small className="text-[11px] text-ink-faint">{{ claim: "主張", reason: "理由", evidence: "證據或例子" }[k]}</small><p className="font-serif text-sm leading-relaxed">{pos.summary[k] || "—"}</p></div>)}
                 {!pos.confirmed && <p className="text-xs text-ink-faint">這份座標是 AI 依對話估計的，本人沒有確認。</p>}
               </div>

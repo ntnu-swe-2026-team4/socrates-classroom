@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { STAGE_NAME } from "./ClassroomPage";
+import { StageControls } from "./StageControls";
 import { DebateStage } from "./stages/DebateStage";
 import { IndividualStage } from "./stages/IndividualStage";
 import { ResultsStage } from "./stages/ResultsStage";
@@ -47,6 +48,7 @@ function Flow({ a, teacher, seeing, onSee }: { a: Activity; teacher: boolean; se
           ? <Button className="mt-3 w-full" size="sm" onClick={() => advance.mutate()} disabled={advance.isPending}>{a.stage === "debate" ? "結束活動並結算" : `進入「${STAGE_NAME[next]}」`} →</Button>
           : <button type="button" onClick={() => advance.mutate()} disabled={advance.isPending} className="mt-3 w-full cursor-pointer rounded-xl border border-dashed border-line-strong px-3 py-2 text-xs text-ink-dim hover:border-bronze hover:text-bronze">示範：讓老師推進 →<span className="block text-[11px] text-ink-faint">正式使用由老師推進</span></button>
       )}
+      <StageControls a={a} teacher={teacher} />
     </div>
   );
 }

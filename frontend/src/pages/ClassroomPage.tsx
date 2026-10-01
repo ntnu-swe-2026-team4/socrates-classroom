@@ -12,12 +12,14 @@ import { Input } from "@/components/ui/input";
 import { cn, formatDateTime } from "@/lib/utils";
 import { AnnouncementPreview, AnnouncementsTab } from "./Announcements";
 import { ImportMembersButton, JoinSettingsCard, PendingApplications } from "./ClassroomAdmin";
+import { CalendarCard } from "./CalendarCard";
 import { ClassroomFormDialog } from "./ClassroomFormDialog";
+import { DiscussionBoard } from "./Discussion";
 import { TopicFormDialog } from "./TopicFormDialog";
 
-export const CLASSROOM_TABS = ["home", "announcements", "topics", "members"] as const;
+export const CLASSROOM_TABS = ["home", "announcements", "topics", "discussion", "members"] as const;
 export type ClassroomTab = (typeof CLASSROOM_TABS)[number];
-const TAB_NAME: Record<ClassroomTab, string> = { home: "首頁", announcements: "公告", topics: "議題", members: "成員" };
+const TAB_NAME: Record<ClassroomTab, string> = { home: "首頁", announcements: "公告", topics: "議題", discussion: "討論", members: "成員" };
 
 export const STAGE_NAME: Record<Stage, string> = { individual: "個人調查", team: "團隊提純", debate: "辯論比賽", done: "已結束" };
 const STAGE_ORDER: Stage[] = ["individual", "team", "debate", "done"];
@@ -139,6 +141,7 @@ function HomeTab({ classroom, topics, activities, teacher, onEdit, onSeeAll }: {
           <Card key={n} className="py-4 text-center"><b className="block font-serif text-2xl">{v}</b><span className="text-xs text-ink-faint">{n}</span></Card>
         ))}
       </div>
+      <CalendarCard classroomId={classroom.id} />
       <div>
         <div className="mb-2 flex items-center justify-between">
           <span className="text-xs tracking-wider text-ink-faint">最近的議題</span>
@@ -169,15 +172,16 @@ export function ClassroomPage() {
         <div><h2 className="font-serif text-2xl">{classroom?.name}</h2><p className="text-sm text-ink-faint">{classroom?.studentCount} 位學生</p></div>
         {teacher && classroom && <Button variant="outline" size="sm" onClick={() => setEditing(true)}><Pencil className="size-3.5" />編輯教室</Button>}
       </div>
-      <div className="mb-5 inline-flex gap-1 rounded-full border border-line bg-bg-1 p-1">
+      <div className="no-scrollbar mb-5 inline-flex max-w-full gap-1 overflow-x-auto rounded-full border border-line bg-bg-1 p-1">
         {CLASSROOM_TABS.map((k) => (
-          <button key={k} type="button" onClick={() => setTab(k)} className={cn("cursor-pointer rounded-full px-5 py-1.5 text-[13px]", tab === k ? "bg-bronze font-semibold text-[#221a0c]" : "text-ink-dim")}>{TAB_NAME[k]}</button>
+          <button key={k} type="button" onClick={() => setTab(k)} className={cn("shrink-0 cursor-pointer rounded-full px-5 py-1.5 text-[13px]", tab === k ? "bg-bronze font-semibold text-[#221a0c]" : "text-ink-dim")}>{TAB_NAME[k]}</button>
         ))}
       </div>
       {classroom && <ClassroomFormDialog classroom={classroom} open={editing} onOpenChange={setEditing} />}
       {tab === "home" && classroom && <HomeTab classroom={classroom} topics={topics} activities={activities} teacher={teacher} onEdit={() => setEditing(true)} onSeeAll={setTab} />}
       {tab === "announcements" && <AnnouncementsTab classroomId={classroomId} teacher={teacher} />}
       {tab === "topics" && <TopicsTab classroomId={classroomId} teacher={teacher} topics={topics} activities={activities} />}
+      {tab === "discussion" && <DiscussionBoard classroomId={classroomId} topicId={null} />}
       {tab === "members" && <MembersTab classroomId={classroomId} teacher={teacher} />}
     </div>
   );

@@ -311,17 +311,29 @@ export interface Progress {
   readyToSummarize: boolean;
 }
 
-export interface PositionDraft {
-  /** 每條價值軸一個 -1..+1 的座標，順序同 Activity.axes */
-  coords: number[];
-  summary: { claim: string; reason: string; evidence: string };
-  /** AI 只是估計，最後由學生確認 */
-  aiSuggested: boolean;
+/** 學生的論點總結（AI 依對話整理，學生確認或修改） */
+export interface ArgumentSummary {
+  claim: string;
+  reason: string;
+  evidence: string;
 }
 
-export interface Position extends PositionDraft {
+/** AI 依對話整理的草稿：學生只看得到論點，座標由後端估算、不給學生 */
+export interface PositionDraft {
+  summary: ArgumentSummary;
+}
+
+export interface Position {
   memberId: string;
+  summary: ArgumentSummary;
+  /**
+   * 每條價值軸一個 -1..+1 的座標，順序同 Activity.axes；由後端依對話估算。
+   * 活動結束（stage = done）前，學生拿到的是 null；老師一律拿得到。
+   */
+  coords: number[] | null;
   confirmed: boolean;
+  /** 本人沒有確認、由 AI 自動補上的 */
+  aiSuggested: boolean;
 }
 
 /* ---------- 階段 2：團隊提純 ---------- */

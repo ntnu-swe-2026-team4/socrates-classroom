@@ -3,7 +3,7 @@ import type {
   CalendarEvent, Classroom, ClassroomInput, ClassroomMember, ClassroomPreview, ClassroomTopic,
   CreateActivityInput, DialogueMessage, DiscussionPost, Group, GroupArgument, GroupMessage,
   ImportMembersResult, JoinApplication, JoinInput, JoinPolicy, JoinResult, Judgment, Member,
-  NoteInput, Position, PositionDraft, PostInput, Progress, Room, ScoreRow, StarData,
+  ArgumentSummary, NoteInput, Position, PositionDraft, PostInput, Progress, Room, ScoreRow, StarData,
   ThinkingNote, TopicInput, TopicReport, TopicResource, Turn, User, Role, Vote,
 } from "./types";
 
@@ -99,7 +99,8 @@ export interface Api {
   sendDialogue(activityId: string, text: string, onDelta?: (chunk: string) => void): Promise<DialogueMessage>;
   getProgress(activityId: string): Promise<Progress>;
   draftPosition(activityId: string): Promise<PositionDraft>;
-  confirmPosition(activityId: string, position: PositionDraft): Promise<Position>;
+  /** 學生確認（或修改）論點；座標由後端依對話估算 */
+  confirmPosition(activityId: string, summary: ArgumentSummary): Promise<Position>;
   listPositions(activityId: string): Promise<Position[]>; // 老師：全班；學生：只有自己
   /** 學生在目前階段回報「我準備好了」 */
   setReady(activityId: string, ready: boolean): Promise<void>;

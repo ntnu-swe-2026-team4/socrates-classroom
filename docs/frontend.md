@@ -27,8 +27,8 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `/summary` | 論點總結 | 選單「單人 → 論點總結」 |
 | `/bank/private`、`/bank/public` | 私人 / 公開題庫 | 選單「題庫」 |
 | `/classrooms` | 教室列表 | 選單「教室」 |
-| `/classrooms/:id?tab=home\|announcements\|topics\|members` | 教室：首頁（簡介、公告、統計、最近的議題）、公告、議題列表（老師可新增）、成員 | 點進某個教室 |
-| `/classrooms/:id/topics/:id` | 教室議題：說明、相關資料（連結 / 檔案）、開始討論或進入辯論 | 點進某個議題 |
+| `/classrooms/:id?tab=home\|announcements\|topics\|discussion\|members` | 教室：首頁（簡介、公告、統計、行事曆、最近的議題）、公告、議題列表（老師可新增）、教室討論區、成員 | 點進某個教室 |
+| `/classrooms/:id/topics/:id` | 教室議題：說明、相關資料（連結 / 檔案）、開始討論或進入辯論、結論報告、議題討論區 | 點進某個議題 |
 | `/classrooms/:id/activities/:id` | 辯論活動（四個階段 + 結果） | 點進某場辯論 |
 
 ### 專案根目錄
@@ -64,14 +64,19 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `pages/ListPages.tsx` | 論點總結頁、題庫頁、教室列表頁（老師：新增教室；學生：用邀請碼加入、我的申請、待處理邀請、探索教室） | `/summary`、`/bank/*`、`/classrooms` |
 | `pages/JoinClassroom.tsx` | 學生加入教室：邀請碼查詢、填寫申請問卷、探索教室（搜尋）、我的申請（取消、看老師附註） | `/classrooms` |
 | `pages/ClassroomAdmin.tsx` | 老師的成員管理：加入方式（邀請碼、探索、審核開關）、申請問卷編輯、待審核申請、批次匯入 | 教室的「成員」分頁 |
-| `pages/ClassroomPage.tsx` | 教室內的「首頁」「公告」「議題」「成員」四個分頁：簡介與統計、議題卡片（可依個人 / 團體篩選）、成員表、老師的「新增議題」與「編輯教室」 | `/classrooms/:id` |
+| `pages/ClassroomPage.tsx` | 教室內的「首頁」「公告」「議題」「討論」「成員」五個分頁：簡介與統計、議題卡片（可依個人 / 團體篩選）、成員表、老師的「新增議題」與「編輯教室」 | `/classrooms/:id` |
+| `pages/CalendarCard.tsx` | 教室首頁的月曆：議題截止、公告、辯論階段截止，點了跳到對應頁面 | 教室首頁 |
+| `pages/Discussion.tsx` | 討論區（教室或議題）：發文、匿名、一層回覆、刪除 | 教室「討論」分頁、議題頁 |
 | `pages/Announcements.tsx` | 公告分頁（老師新增、編輯、刪除、置頂、排程發布）與教室首頁的公告區 | `/classrooms/:id` |
 | `pages/ClassroomFormDialog.tsx` | 新增 / 編輯教室共用的視窗（名稱、簡介） | 教室列表、教室頁 |
 | `pages/ClassroomTopicPage.tsx` | 議題詳情：說明、相關資料（老師可加連結、上傳檔案）、學生的「開始討論」、團體議題的辯論入口、老師的編輯與刪除 | `/classrooms/:id/topics/:id` |
+| `pages/ReportsCard.tsx` | 結論報告：學生繳交 / 重新上傳 / 刪除；老師看全班繳交狀況（標示逾期） | 議題頁 |
 | `pages/TopicFormDialog.tsx` | 新增 / 編輯議題的視窗：類型、說明、截止時間、是否收報告；團體議題另有辯論設定（回答方式、價值軸、組別人數） | 教室頁、議題頁 |
 | `pages/ActivityPage.tsx` | 辯論活動的外框：標題、橫向進度（設定→調查→提純→比賽→結束）、依階段切換內容 | `/classrooms/:id/activities/:id` |
-| `pages/stages/IndividualStage.tsx` | 階段 1：與蘇格拉底對話、調查進度、整理座標視窗；老師視角的成員進度表 | 辯論活動裡 |
-| `pages/stages/TeamStage.tsx` | 階段 2：分組、組內討論、AI 整理論點 / 丟反例、投票、分裂、重新分組 | 辯論活動裡 |
+| `pages/StageControls.tsx` | 進度列下方：階段倒數；老師限時、看準備人數、直接結束活動；學生回報「我準備好了」 | 辯論活動裡 |
+| `pages/stages/IndividualStage.tsx` | 階段 1：與蘇格拉底對話（可標註成筆記）、調查進度、整理論點視窗（不顯示座標）；老師視角的成員進度表與星圖 | 辯論活動裡 |
+| `pages/stages/NotesCard.tsx` | 學生的思路筆記：標註的重點與自己寫的想法，只有本人看得到 | 階段 1、2 左側 |
+| `pages/stages/TeamStage.tsx` | 階段 2：分組、組內討論、AI 整理論點 / 丟反例、投票、分裂、重新分組；星圖只有老師看得到 | 辯論活動裡 |
 | `pages/stages/DebateStage.tsx` | 階段 3：場次、主持人、發言與計時、AI 裁判分數 | 辯論活動裡 |
 | `pages/stages/ResultsStage.tsx` | 結果：立場星圖、班級報告、學生報告、計分、儀表板 | 辯論活動結束後 |
 | `pages/stages/shared.tsx` | 四個階段共用的小元件（兩欄版面、成員標籤、分數條） | 辯論活動裡 |
@@ -136,6 +141,9 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 老師新增 / 編輯公告（含排程） | `AnnouncementFormDialog` → `useSaveAnnouncement` | `POST /api/classrooms/:id/announcements`、`PATCH /api/announcements/:id` |
 | 老師刪除公告 | `Announcements.tsx` 的 `DeleteDialog` → `useDeleteAnnouncement` | `DELETE /api/announcements/:id` |
 | 教室議題列表 | `useTopics`（`ClassroomPage.tsx`） | `GET /api/classrooms/:id/topics` |
+| 討論區（教室 / 議題）發文、回覆、刪除 | `Discussion.tsx` → `usePosts`、`useCreatePost`、`useDeletePost` | `GET`、`POST /api/classrooms/:id/posts`、`DELETE /api/posts/:id` |
+| 教室行事曆 | `CalendarCard.tsx` → `useCalendar` | `GET /api/classrooms/:id/calendar?from=&to=` |
+| 結論報告 | `ReportsCard.tsx` → `useReports`、`useSubmitReport`、`useDeleteReport` | `GET`、`POST /api/topics/:id/reports`（multipart）、`DELETE /api/reports/:id` |
 | 議題詳情 | `useTopic`（`ClassroomTopicPage.tsx`） | `GET /api/topics/:id` |
 | 老師新增 / 編輯議題（團體議題同時建立辯論活動） | `TopicFormDialog.tsx` → `useSaveTopic` | `POST /api/classrooms/:id/topics`、`PATCH /api/topics/:id` |
 | 老師刪除議題 | `ClassroomTopicPage.tsx` 的 `DeleteDialog` → `api.deleteTopic` | `DELETE /api/topics/:id` |
@@ -144,13 +152,16 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 團體議題的辯論進度（卡片上的進度條） | `useActivities`、`useActivity` | `GET /api/classrooms/:id/activities`、`GET /api/activities/:id` |
 | 辯論活動資料 | `ActivityPage.tsx` → `useActivity` | `GET /api/activities/:id` |
 | 老師推進階段 | `ActivityPage.tsx` 的 `Flow` → `useAdvanceActivity` | `POST /api/activities/:id/advance` |
+| 老師直接結束活動、設定階段限時 | `StageControls` → `useActivityControls` | `POST /api/activities/:id/finish`、`PUT /api/activities/:id/deadline` |
 | 即時更新（階段切換、新訊息、輪到誰） | `queries.ts` 的 `useActivityEvents` → `api.subscribe` | `GET /api/activities/:id/events`（**SSE**） |
 | **階段 1** 載入對話 | `IndividualStage.tsx` → `useDialogue` | `GET /api/activities/:id/dialogue` |
 | 階段 1 送出並串流回覆 | `IndividualStage.tsx` 的 `ChatPanel` → `api.sendDialogue` | `POST /api/activities/:id/dialogue`（**SSE**） |
 | 階段 1 調查進度（四面向、輪數） | `useProgress` | `GET /api/activities/:id/progress` |
-| 階段 1 AI 估計座標 | `PositionDialog` → `api.draftPosition` | `POST /api/activities/:id/position/draft` |
-| 階段 1 確認座標與論點 | `PositionDialog` → `useConfirmPosition` | `PUT /api/activities/:id/position` |
-| 階段 1 讀取座標 | `usePositions` | `GET /api/activities/:id/positions` |
+| 階段 1 AI 整理論點 | `PositionDialog` → `api.draftPosition` | `POST /api/activities/:id/position/draft` |
+| 階段 1 確認論點（座標由後端估算） | `PositionDialog` → `useConfirmPosition` | `PUT /api/activities/:id/position` |
+| 階段 1 讀取座標（學生在活動結束前拿到 `null`） | `usePositions` | `GET /api/activities/:id/positions` |
+| 思路筆記 | `NotesCard`、`IndividualStage` 的標註 → `useNotes`、`useNoteActions` | `GET`、`POST /api/activities/:id/notes`、`PATCH`、`DELETE /api/notes/:id` |
+| 學生回報準備好了 | `StageControls` → `useSetReady` | `PUT /api/activities/:id/ready` |
 | 老師：成員進度表 | `TeacherIndividual` → `useMembers` | `GET /api/activities/:id/members` |
 | **階段 2** 組別列表 | `TeamStage.tsx` → `useGroups` | `GET /api/activities/:id/groups` |
 | 階段 2 重新分組（老師） | `RegroupRow` → `api.regroup` | `POST /api/activities/:id/groups/regroup` |
@@ -167,7 +178,7 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 老師覆寫 AI 評分 | `DebateStage`、`ResultsStage` → `api.overrideJudgment` | `PATCH /api/judgments/:id` |
 | **結果** 計分表 | `ResultsStage.tsx` → `useScores` | `GET /api/activities/:id/scores` |
 | 老師調整分數 | `api.adjustScore` | `PATCH /api/activities/:id/scores/:memberId` |
-| **立場星圖**資料（階段 1 老師 / 階段 2 / 結果） | `useStar`（`StarMap.tsx` 使用） | `GET /api/activities/:id/star` |
+| **立場星圖**資料（階段 1、2 只有老師；結果頁所有人） | `useStar`（`StarMap.tsx` 使用） | `GET /api/activities/:id/star` |
 
 ### 不需要 API 的部分（純前端）
 

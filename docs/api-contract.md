@@ -115,9 +115,9 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 | GET | `/api/activities/:id/dialogue` | `DialogueMessage[]`（只有自己的） |
 | POST | `/api/activities/:id/dialogue` | `{ text }`，回應為 **SSE**：`event: delta` `data: {"text":"…"}` 多次，最後 `event: done` `data: {"message": DialogueMessage}`。最多 20 輪與收尾條件由後端控制 |
 | GET | `/api/activities/:id/progress` | `Progress`（四個面向 `coverage`、`rounds`、`maxRounds`、`readyToSummarize`） |
-| POST | `/api/activities/:id/position/draft` | AI 依對話估計座標與論點 → `PositionDraft` |
-| PUT | `/api/activities/:id/position` | 學生確認 → `Position`（階段 1 結束前可再改） |
-| GET | `/api/activities/:id/positions` | 老師：全班；學生：只有自己（階段 2 分組前不公開他人座標） |
+| POST | `/api/activities/:id/position/draft` | AI 依對話整理論點 → `PositionDraft` = `{ summary }`（**不含座標**） |
+| PUT | `/api/activities/:id/position` | `{ summary }`（學生確認或修改論點；階段 1 結束前可再改）→ `Position`。座標由後端依對話估算後保存，學生不送座標 |
+| GET | `/api/activities/:id/positions` | 老師：全班；學生：只有自己。**活動 `stage !== "done"` 前，學生拿到的 `coords` 為 `null`** |
 | GET | `/api/activities/:id/notes` | 自己的 `ThinkingNote[]`（重點標註與想法，**只有本人看得到，老師也看不到**） |
 | POST | `/api/activities/:id/notes` | `NoteInput` = `{ kind: "highlight"\|"thought", sourceMessageId?, text }` → `ThinkingNote` |
 | PATCH | `/api/notes/:id` | `{ text }` → `ThinkingNote`（本人） |
@@ -147,21 +147,13 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 ## 立場星圖
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/api/activities/:id/star` | `StarData`。階段 1：老師只看到已確認的人、沒有分組；階段 2 之後含分組；活動結束後多一步「團隊提純後」。學生看不到其他人的名字 |
+| GET | `/api/activities/:id/star` | `StarData`。階段 1：老師只看到已確認的人、沒有分組；階段 2 之後含分組；活動結束後多一步「團隊提純後」。**活動結束前學生呼叫回 403**；結束後學生看得到，但看不到其他人的名字 |
 
 ## 結果
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/api/activities/:id/scores` | `ScoreRow[]`（老師：全班；學生：自己） |
 | PATCH | `/api/activities/:id/scores/:memberId` | `{ adjust }`（僅老師） |
-
-## 已定案、尚未實作：立場座標延到活動結束才給學生看（P8）
-以下是**既有 API 的行為與格式變更**，前端會在 P8 一起改，後端可以直接照新規則做：
-- `POST /api/activities/:id/position/draft`：學生只拿到 AI 整理的論點 `summary`，**不含座標**；座標由後端依對話估算後保存。
-- `PUT /api/activities/:id/position`：學生只送出（或修改）`summary`，不送座標。
-- `GET /api/activities/:id/positions`：活動 `stage !== "done"` 前，學生拿到的自己那筆 `coords` 為 `null`。
-- `GET /api/activities/:id/star`：活動結束前，學生呼叫回 403（老師不受影響）。
-- 活動結束後，學生在結果頁看得到自己的座標與星圖（其他人仍不具名）。
 
 ## 原型裡「模擬」的部分，對應到後端要做的事
 | 原型（`debate-ai.js`） | 後端 |

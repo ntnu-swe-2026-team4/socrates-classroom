@@ -1,7 +1,7 @@
 import type { Api } from "./api";
 import type {
-  Announcement, Archive, Classroom, ClassroomMember, ClassroomPreview, ClassroomTopic, CreateActivityInput, JoinApplication,
-  JoinPolicy, TopicResource, User,
+  Announcement, Archive, CalendarEvent, Classroom, ClassroomMember, ClassroomPreview, ClassroomTopic, CreateActivityInput, DiscussionPost,
+  JoinApplication, JoinPolicy, ThinkingNote, TopicReport, TopicResource, User,
 } from "./types";
 import * as E from "@/mock/engine";
 
@@ -139,6 +139,33 @@ const announcements: StoredAnnouncement[] = [
   { id: "an3", classroomId: "c1", title: "第二場辯論開放報名", pinned: false, authorName: "林老師", publishAt: iso(3), createdAt: iso(0), updatedAt: iso(0),
     body: "（排程中的公告：學生要到發布時間才看得到）" },
 ];
+/* 討論區：authorLabel / authorId 依讀取者身分決定（匿名對同學隱藏、對老師與本人顯示） */
+type StoredPost = Omit<DiscussionPost, "authorLabel" | "authorId" | "isMine"> & { authorId: string; authorName: string };
+const posts: StoredPost[] = [
+  { id: "p1", classroomId: "c1", topicId: null, parentId: null, authorId: "t1", authorName: "林老師", authorRole: "teacher", anonymous: false, deleted: false,
+    createdAt: iso(-4), body: "課堂上來不及問的問題，都可以在這裡發問。也可以匿名，同學看不到你是誰。" },
+  { id: "p2", classroomId: "c1", topicId: null, parentId: null, authorId: "s9", authorName: "陳○宇", authorRole: "student", anonymous: true, deleted: false,
+    createdAt: iso(-2), body: "期中辯論可以和別組的同學一起準備資料嗎？" },
+  { id: "p3", classroomId: "c1", topicId: null, parentId: "p2", authorId: "t1", authorName: "林老師", authorRole: "teacher", anonymous: false, deleted: false,
+    createdAt: iso(-1.8), body: "可以一起找資料，但發言內容請自己準備。" },
+  { id: "p4", classroomId: "c1", topicId: "t1", parentId: null, authorId: "s2", authorName: "王○安", authorRole: "student", anonymous: false, deleted: false,
+    createdAt: iso(-1), body: "色拉敘馬霍斯說的「強者」，是指統治者，還是任何有力量的人？" },
+];
+
+/* 結論報告：假後端的檔案用 data URL 或 object URL，重新整理就消失 */
+const reports: TopicReport[] = [
+  { id: "rp1", topicId: "t2", studentId: "s2", studentName: "王○安", comment: "我的結論是：說實話是原則，但不是唯一的原則。", submittedAt: iso(-0.5),
+    file: { name: "王○安-結論報告.txt", url: "data:text/plain;charset=utf-8," + encodeURIComponent("（示範用的報告內容）"), size: 1520, mimeType: "text/plain" } },
+];
+
+/* 思路筆記：activityId → 筆記（假後端只有一位學生） */
+const notes = new Map<string, ThinkingNote[]>();
+const notesOf = (aid: string) => {
+  let list = notes.get(aid);
+  if (!list) notes.set(aid, (list = []));
+  return list;
+};
+
 const toAnnouncement = (a: StoredAnnouncement): Announcement => ({ ...a, published: new Date(a.publishAt).getTime() <= Date.now() });
 const findAnnouncement = (id: string) => {
   const a = announcements.find((x) => x.id === id);
@@ -156,6 +183,20 @@ const TOPIC_REPLIES = [
 ];
 
 const isTeacher = () => user?.role === "teacher";
+const myId = () => (isTeacher() ? "t1" : MY_ID);
+/** 讀取者看得到的教室：老師是自己開的，學生是已加入的 */
+const visibleClassrooms = () => classrooms.filter((c) => (isTeacher() ? c.teacherName === user?.name : c.joined));
+const toPost = (x: StoredPost): DiscussionPost => {
+  const mine = x.authorId === myId();
+  const reveal = !x.anonymous || isTeacher() || mine;
+  const label = !x.anonymous ? x.authorName : mine ? "你（匿名）" : isTeacher() ? `${x.authorName}（匿名）` : "匿名同學";
+  return { id: x.id, classroomId: x.classroomId, topicId: x.topicId, parentId: x.parentId, body: x.deleted ? "" : x.body, anonymous: x.anonymous,
+    authorLabel: label, authorId: reveal ? x.authorId : null, authorRole: x.authorRole, isMine: mine, createdAt: x.createdAt, deleted: x.deleted };
+};
+const recountPosts = (topicId: string | null) => {
+  const t = topicId ? topics.find((x) => x.id === topicId) : null;
+  if (t) t.postCount = posts.filter((x) => x.topicId === topicId && !x.deleted).length;
+};
 const needStudent = () => { if (isTeacher()) throw new Error("只有學生可以這樣做"); };
 const join = (c: StoredClassroom) => {
   c.joined = true;
@@ -255,6 +296,8 @@ export const mockApi: Api = {
     return E.toActivity(E.createActivity(c, input));
   },
   async advanceActivity(id) { await delay(); return E.toActivity(E.advance(E.findAct(id))); },
+  async finishActivity(id) { await delay(); needTeacher(); return E.toActivity(E.finish(E.findAct(id))); },
+  async setStageDeadline(id, deadline) { await delay(60); needTeacher(); return E.toActivity(E.setDeadline(E.findAct(id), deadline)); },
 
   async listDialogue(id) { await delay(30); return [...E.findAct(id).dialogue]; },
   sendDialogue: (id, text, onDelta) => E.sendDialogue(E.findAct(id), text, onDelta),
@@ -262,6 +305,29 @@ export const mockApi: Api = {
   async draftPosition(id) { await delay(); return E.draftPosition(E.findAct(id)); },
   async confirmPosition(id, p) { await delay(); return E.confirmPosition(E.findAct(id), p); },
   async listPositions(id) { await delay(); return E.listPositions(E.findAct(id), isTeacher()); },
+  async setReady(id, ready) { await delay(60); needStudent(); E.setReady(E.findAct(id), ready); },
+  async listNotes(id) { await delay(40); needStudent(); E.findAct(id); return notesOf(id).map((n) => ({ ...n })); },
+  async createNote(id, input) {
+    await delay(60); needStudent();
+    const a = E.findAct(id);
+    if (!input.text.trim()) throw new Error("筆記不能是空的");
+    const at = new Date().toISOString();
+    const n: ThinkingNote = { id: newId("nt"), activityId: id, stage: a.stage, kind: input.kind, sourceMessageId: input.sourceMessageId ?? null, text: input.text.trim(), createdAt: at, updatedAt: at };
+    notesOf(id).push(n);
+    return { ...n };
+  },
+  async updateNote(nid, text) {
+    await delay(60); needStudent();
+    const n = [...notes.values()].flat().find((x) => x.id === nid);
+    if (!n) throw new Error("找不到筆記");
+    if (!text.trim()) throw new Error("筆記不能是空的");
+    n.text = text.trim(); n.updatedAt = new Date().toISOString();
+    return { ...n };
+  },
+  async deleteNote(nid) {
+    await delay(60); needStudent();
+    for (const list of notes.values()) { const i = list.findIndex((x) => x.id === nid); if (i >= 0) list.splice(i, 1); }
+  },
 
   async listMembers(id) { await delay(40); return E.listMembers(E.findAct(id), isTeacher(), !isTeacher()); },
   async listGroups(id) { await delay(40); const a = E.findAct(id); return a.groups.map((g: any) => E.toGroup(a, g, isTeacher())); },
@@ -307,7 +373,12 @@ export const mockApi: Api = {
 
   async listScores(id) { await delay(40); return E.listScores(E.findAct(id), isTeacher()); },
   async adjustScore(id, memberId, adjust) { needTeacher(); return E.adjustScore(E.findAct(id), memberId, adjust); },
-  async getStarData(id) { await delay(60); return E.starData(E.findAct(id)); },
+  async getStarData(id) {
+    await delay(60);
+    const a = E.findAct(id);
+    if (!E.coordsVisible(a, isTeacher())) throw new Error("立場星圖在活動結束後才會公開");
+    return E.starData(a);
+  },
 
   dev: {
     async simulateIndividual(id) { return E.simulateIndividual(E.findAct(id)); },
@@ -317,9 +388,6 @@ export const mockApi: Api = {
 
   subscribe: (id, cb) => E.subscribe(id, cb),
 
-  /* 以下為教室功能擴充（見 docs/api-contract.md），各階段實作時再換成真正的假資料 */
-  finishActivity: notYet("P8"),
-  setStageDeadline: notYet("P8"),
   /* 教室議題（P4） */
   async listTopics(cid) {
     await delay();
@@ -529,27 +597,82 @@ export const mockApi: Api = {
     }
     return structuredClone(a);
   },
-  listReports: notYet("P7"),
-  submitReport: notYet("P7"),
-  deleteReport: notYet("P7"),
-  listPosts: notYet("P5"),
-  createPost: notYet("P5"),
-  deletePost: notYet("P5"),
-  listCalendar: notYet("P6"),
-  setReady: notYet("P8"),
-  listNotes: notYet("P8"),
-  createNote: notYet("P8"),
-  updateNote: notYet("P8"),
-  deleteNote: notYet("P8"),
-};
+  /* 結論報告（P7） */
+  async listReports(tid) {
+    await delay();
+    findTopic(tid);
+    return reports.filter((r) => r.topicId === tid && (isTeacher() || r.studentId === MY_ID)).map((r) => structuredClone(r));
+  },
+  async submitReport(tid, file, comment) {
+    await delay(300); needStudent();
+    const t = findTopic(tid);
+    if (!t.acceptsReports) throw new Error("這個議題沒有開放上傳報告");
+    if (file.size > MAX_UPLOAD) throw new Error("檔案太大（上限 50 MB）");
+    const old = reports.findIndex((r) => r.topicId === tid && r.studentId === MY_ID);
+    if (old >= 0) { if (reports[old].file.url.startsWith("blob:")) URL.revokeObjectURL(reports[old].file.url); reports.splice(old, 1); }
+    const r: TopicReport = { id: newId("rp"), topicId: tid, studentId: MY_ID, studentName: ME, comment: comment?.trim() ?? "", submittedAt: new Date().toISOString(),
+      file: { name: file.name, url: URL.createObjectURL(file), size: file.size, mimeType: file.type || "application/octet-stream" } };
+    reports.push(r);
+    return structuredClone(r);
+  },
+  async deleteReport(rid) {
+    await delay(); needStudent();
+    const i = reports.findIndex((r) => r.id === rid && r.studentId === MY_ID);
+    if (i < 0) throw new Error("找不到報告");
+    if (reports[i].file.url.startsWith("blob:")) URL.revokeObjectURL(reports[i].file.url);
+    reports.splice(i, 1);
+  },
 
-/** 已在契約裡、但假後端還沒做的功能：呼叫時直接報錯，方便發現漏接 */
-function notYet(phase: string) {
-  return async (): Promise<never> => {
-    await delay(30);
-    throw new Error(`這個功能預計在 ${phase} 完成，假後端尚未實作`);
-  };
-}
+  /* 討論區（P5） */
+  async listPosts(cid, topicId) {
+    await delay();
+    findClassroom(cid);
+    return posts.filter((x) => x.classroomId === cid && x.topicId === topicId)
+      // 已刪除且沒有回覆的主貼文不用再顯示
+      .filter((x) => !x.deleted || posts.some((y) => y.parentId === x.id && !y.deleted))
+      .map(toPost);
+  },
+  async createPost(cid, input) {
+    await delay();
+    findClassroom(cid);
+    const body = input.body.trim();
+    if (!body) throw new Error("內容不能是空的");
+    if (body.length > 2000) throw new Error("內容最多 2000 字");
+    if (input.parentId) {
+      const parent = posts.find((x) => x.id === input.parentId);
+      if (!parent || parent.parentId || parent.topicId !== input.topicId) throw new Error("只能回覆同一個討論區的主貼文");
+    }
+    const x: StoredPost = { id: newId("p"), classroomId: cid, topicId: input.topicId, parentId: input.parentId ?? null, body,
+      anonymous: !isTeacher() && input.anonymous, authorId: myId(), authorName: isTeacher() ? user?.name ?? "老師" : ME,
+      authorRole: isTeacher() ? "teacher" : "student", createdAt: new Date().toISOString(), deleted: false };
+    posts.push(x);
+    recountPosts(x.topicId);
+    return toPost(x);
+  },
+  async deletePost(pid) {
+    await delay();
+    const x = posts.find((y) => y.id === pid);
+    if (!x) throw new Error("找不到貼文");
+    if (x.authorId !== myId() && !isTeacher()) throw new Error("只能刪除自己的貼文");
+    if (posts.some((y) => y.parentId === x.id && !y.deleted)) x.deleted = true;
+    else posts.splice(posts.indexOf(x), 1);
+    recountPosts(x.topicId);
+  },
+
+  /* 行事曆（P6）：從議題截止日、公告、活動階段截止時間整理出來 */
+  async listCalendar({ from, to, classroomId }) {
+    await delay();
+    const scope = visibleClassrooms().filter((c) => !classroomId || c.id === classroomId);
+    const events: CalendarEvent[] = [];
+    for (const c of scope) {
+      const base = { classroomId: c.id, classroomName: c.name };
+      for (const t of topics) if (t.classroomId === c.id && t.dueAt) events.push({ ...base, id: "due-" + t.id, kind: "topic_due", title: t.title, at: t.dueAt, topicId: t.id, activityId: t.activityId ?? undefined });
+      for (const an of announcements.map(toAnnouncement)) if (an.classroomId === c.id && (isTeacher() || an.published)) events.push({ ...base, id: "an-" + an.id, kind: "announcement", title: an.title, at: an.publishAt, announcementId: an.id });
+      for (const act of E.acts) if (act.classroomId === c.id && act.stageDeadline) events.push({ ...base, id: "dl-" + act.id, kind: "stage_deadline", title: act.title, at: act.stageDeadline, activityId: act.id, topicId: act.topicId });
+    }
+    return events.filter((e) => e.at >= from && e.at < to).sort((x, y) => x.at.localeCompare(y.at));
+  },
+};
 
 function groupAct(gid: string) {
   const a = E.acts.find((x) => x.groups.some((g: any) => g.id === gid));

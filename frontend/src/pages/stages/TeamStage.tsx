@@ -9,6 +9,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import { STATUS_NAME, groupColor, tally } from "@/lib/debate";
 import { cn } from "@/lib/utils";
+import { NotesCard } from "./NotesCard";
 import { MemberChip, Panel, StageLayout } from "./shared";
 
 const VOTES: [Vote, string][] = [["endorse", "贊成"], ["revise", "需要修改"], ["oppose", "反對"]];
@@ -39,7 +40,7 @@ export function TeamStage({ a, teacher, flow, over }: { a: Activity; teacher: bo
   const qc = useQueryClient();
   const { data: members = [] } = useMembers(a.id);
   const { data: groups = [] } = useGroups(a.id);
-  const { data: star } = useStar(a.id, "team");
+  const { data: star } = useStar(a.id, "team", teacher);
   const me = members.find((m) => m.isMe);
   const mineGroup = me ? groups.find((g) => g.memberIds.includes(me.id)) : undefined;
   const [pick, setPick] = useState<string | null>(null);
@@ -87,11 +88,13 @@ export function TeamStage({ a, teacher, flow, over }: { a: Activity; teacher: bo
         <div className="flex flex-wrap gap-x-4 gap-y-2">{g.memberIds.map((id) => { const m = nameOf(id); return m ? <MemberChip key={id} m={m} /> : null; })}</div>
         {teacher && !over && <RegroupRow a={a} onDone={() => { setPick(null); qc.invalidateQueries({ queryKey: keys.groups(a.id) }); qc.invalidateQueries({ queryKey: keys.star(a.id) }); }} />}
       </Card>
-      <Card className="p-4">
-        <CardTitle className="flex items-center justify-between">立場星圖 <span className="font-sans text-xs font-normal text-ink-faint">顏色 = 組別 · 圓環是你</span></CardTitle>
-        {star && <StarMap data={star} compact />}
-        <div className="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-1 text-xs text-ink-dim">{groups.map((x, i) => <span key={x.id}><i className="mr-1.5 inline-block size-2.5 rounded-full align-middle" style={{ background: groupColor(i) }} />{x.label}</span>)}</div>
-      </Card>
+      {teacher ? (
+        <Card className="p-4">
+          <CardTitle className="flex items-center justify-between">立場星圖 <span className="font-sans text-xs font-normal text-ink-faint">顏色 = 組別 · 只有老師看得到</span></CardTitle>
+          {star && <StarMap data={star} compact />}
+          <div className="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-1 text-xs text-ink-dim">{groups.map((x, i) => <span key={x.id}><i className="mr-1.5 inline-block size-2.5 rounded-full align-middle" style={{ background: groupColor(i) }} />{x.label}</span>)}</div>
+        </Card>
+      ) : <NotesCard a={a} readOnly={over} />}
     </>
   );
 
