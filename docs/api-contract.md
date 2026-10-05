@@ -33,11 +33,12 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 | POST | `/api/classrooms/:id/members` | `{ name }`（僅老師）→ `ClassroomMember` |
 | POST | `/api/classrooms/:id/members/import` | `{ names: string[] }`（僅老師，每個是帳號或姓名）→ `ImportMembersResult`（`added` 與 `skipped`，不因單筆失敗整批失敗） |
 | DELETE | `/api/classrooms/:id/members/:memberId` | 僅老師，204 |
-| GET | `/api/classrooms/:id/activities` | `Activity[]` |
+| GET | `/api/classrooms/:id/activities` | `Activity[]`，**只列辯論活動**（`kind = "debate"`）；個人議題的個人思辨活動透過議題的 `activityId` 取得 |
 | POST | `/api/classrooms/:id/activities` | `CreateActivityInput`（僅老師）→ `Activity`。P4 之後改由「新增團體議題」建立，這條保留給舊畫面 |
-| GET | `/api/activities/:id` | `Activity`（含 `stageDeadline`、`topicId`） |
-| POST | `/api/activities/:id/advance` | 僅老師；**由活動狀態機（FSM）決定能否推進**；個人調查→團隊提純時由後端分組 |
-| POST | `/api/activities/:id/finish` | 僅老師；從任何階段直接進入 `done`，用目前已有的資料計分 → `Activity` |
+| GET | `/api/activities/:id` | `Activity`（含 `kind`、`stageDeadline`、`topicId`） |
+| POST | `/api/activities/:id/advance` | 僅老師；**由活動狀態機（FSM）決定能否推進**；個人調查→團隊提純時由後端分組。個人思辨（`kind = "individual"`）不推進，回 409 |
+| POST | `/api/activities/:id/finish` | 僅老師；從任何階段直接進入 `done`，用目前已有的資料計分 → `Activity`。個人思辨（`kind = "individual"`）回 409 |
+| PUT | `/api/activities/:id/completion` | `{ done: boolean }`（學生，只限 `kind = "individual"`）→ 204。`true` = 完成並進入結算（要先確認論點，否則 422）；`false` = 重新開啟。完成期間送對話或改論點回 409；`Member.individual.status` 會是 `"done"` |
 | PUT | `/api/activities/:id/deadline` | `{ deadline: string\|null }`（僅老師）→ `Activity`。**到時間只提醒、不自動推進**；換階段時後端清為 null；變更時發 `deadline_changed` 事件 |
 | GET | `/api/activities/:id/events` | **SSE**，事件見 `ActivityEvent`（階段切換、組內訊息、輪到誰、新發言與評分、截止時間變更、成員準備好了） |
 | GET | `/api/activities/:id/members` | `Member[]`（含 `ready`） |
@@ -70,8 +71,10 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 只做排程發布，不做推播或 email。
 
 ## 教室議題
-議題分**個人**與**團體**。團體議題建立時，後端同時建立一個辯論 `Activity`（`title` / `statement` 用議題標題），
-並把 `activityId` 填回議題；個人議題的「開始討論」會建立或取回該學生在這個議題的 `Archive`（`topicId` 指向議題）。
+議題分**個人**與**團體**。建立議題時，後端同時建立一個 `Activity`（`title` / `statement` 用議題標題），並把 `activityId` 填回議題：
+- 團體議題：`kind = "debate"`，四階段辯論（個人調查 → 團隊提純 → 辯論比賽 → 結果），由老師推進。
+- 個人議題：`kind = "individual"`，沒有價值軸、不分組、不推進。每位學生各自走「個人思辨（同階段 1 的對話與整理論點）→ 完成 → 結算」，
+  完成後可以重新開啟。對話、進度、論點、筆記都沿用階段 1 的 `/api/activities/:id/...` 路徑。
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/api/classrooms/:id/topics` | `ClassroomTopic[]` |
@@ -82,7 +85,6 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 | POST | `/api/topics/:id/resources` | `{ name, url }` 新增連結（僅老師）→ `TopicResource` |
 | POST | `/api/topics/:id/resources/files` | **multipart/form-data**，欄位 `file`（僅老師）→ `TopicResource`。超過大小上限回 413 |
 | DELETE | `/api/topics/:id/resources/:resourceId` | 僅老師，204 |
-| POST | `/api/topics/:id/dialogue` | 個人議題「開始討論」→ `Archive`（已存在就回傳原本那筆）。之後的對話沿用 `/api/archives/:id/dialogue` |
 | GET | `/api/topics/:id/reports` | `TopicReport[]`（老師：全班；學生：只有自己） |
 | POST | `/api/topics/:id/reports` | **multipart/form-data**，欄位 `file`、`comment`（學生；`acceptsReports = false` 時回 403）→ `TopicReport`。再次上傳取代舊檔 |
 | DELETE | `/api/reports/:id` | 作者本人，204 |

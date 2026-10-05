@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { ArrowLeft, FileText, Link2, MessageCircle, Pencil, Trash2, Upload, X } from "lucide-react";
 import { api } from "@/api";
-import { keys, useActivity, useArchives, useInvalidateTopic, useMe, useTopic } from "@/api/queries";
+import { useActivity, useInvalidateTopic, useMe, useMembers, useTopic } from "@/api/queries";
 import type { ClassroomTopic, TopicResource } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,23 +69,13 @@ function TopicInfo({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean
   );
 }
 
-/** 學生的「開始討論」：個人議題進入單人對話；團體議題進入辯論活動 */
+/** 進入議題的活動：團體議題是辯論，個人議題是個人思辨（完成後看到結算） */
 function StartPanel({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean }) {
-  const navigate = useNavigate();
-  const qc = useQueryClient();
-  const { data: archives = [] } = useArchives();
   const { data: activity } = useActivity(topic.activityId ?? "");
-  const started = archives.some((a) => a.topicId === topic.id);
-  const start = useMutation({
-    mutationFn: () => api.startTopicDialogue(topic.id),
-    onSuccess: async (a) => {
-      await qc.invalidateQueries({ queryKey: keys.archives });
-      navigate({ to: "/dialogue", search: { topic: a.id } });
-    },
-  });
+  const { data: members = [] } = useMembers(topic.activityId ?? "", topic.type === "individual");
+  if (!activity) return null;
 
   if (topic.type === "group") {
-    if (!activity) return null;
     return (
       <section className="border-b border-line py-5 first:pt-0 last:border-b-0">
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -101,12 +91,19 @@ function StartPanel({ topic, teacher }: { topic: ClassroomTopic; teacher: boolea
       </section>
     );
   }
-  if (teacher) return null;
+
+  // 個人議題：學生看自己的狀態，老師看完成人數
+  const status = members.find((m) => m.isMe)?.individual?.status ?? "todo";
+  const doneCount = members.filter((m) => m.individual?.status === "done").length;
+  const text = teacher ? `已完成 ${doneCount} / ${members.length} 人`
+    : { todo: "讀完說明和資料後，和蘇格拉底一起思辨你的想法。", talking: "你已經開始思辨了，可以接著上次的對話。", confirmed: "你已經整理好論點，確認後按「完成」就能看到結算。", done: "你已經完成這個議題的思辨。" }[status];
+  const label = teacher ? "查看學生進度" : { todo: "開始個人思辨", talking: "繼續個人思辨", confirmed: "繼續個人思辨", done: "查看結算" }[status];
   return (
     <section className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-5 first:pt-0 last:border-b-0">
-      <p className="text-sm text-ink-dim">{started ? "你已經開始討論這個議題，可以接著上次的對話。" : "讀完說明和資料後，和蘇格拉底聊聊你的想法。"}</p>
-      <Button disabled={start.isPending} onClick={() => start.mutate()}><MessageCircle className="size-4" />{started ? "繼續討論" : "開始討論"}</Button>
-      {start.error && <p className="w-full text-[12.5px] text-wine">{start.error.message}</p>}
+      <p className="text-sm text-ink-dim">{text}</p>
+      <Button asChild>
+        <Link to="/classrooms/$classroomId/activities/$activityId" params={{ classroomId: topic.classroomId, activityId: activity.id }}><MessageCircle className="size-4" />{label}</Link>
+      </Button>
     </section>
   );
 }

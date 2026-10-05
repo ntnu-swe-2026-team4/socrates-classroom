@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { Member } from "@/api";
 import { cn } from "@/lib/utils";
@@ -22,18 +22,6 @@ function writePref(key: string, v: unknown) {
   try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* 存不了就算了 */ }
 }
 
-function useWide() {
-  const query = "(min-width: 768px)";
-  const [wide, setWide] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const m = window.matchMedia(query);
-    const on = () => setWide(m.matches);
-    m.addEventListener("change", on);
-    return () => m.removeEventListener("change", on);
-  }, []);
-  return wide;
-}
-
 const iconBtn = "flex size-7 cursor-pointer items-center justify-center rounded-md text-ink-faint hover:bg-bg-2 hover:text-ink";
 
 function PaneHeader({ side, label, header, onCollapse }: { side: "left" | "right"; label: string; header?: ReactNode; onCollapse: () => void }) {
@@ -46,14 +34,15 @@ function PaneHeader({ side, label, header, onCollapse }: { side: "left" | "right
   );
 }
 
-/** 收起後留下的窄側欄：點一下展開 */
-function CollapsedBar({ side, label, onExpand, horizontal }: { side: "left" | "right"; label: string; onExpand: () => void; horizontal: boolean }) {
+/** 收起後留下的側欄（窄螢幕上是一條橫列）：點一下展開 */
+function CollapsedBar({ side, label, onExpand }: { side: "left" | "right"; label: string; onExpand: () => void }) {
   const Icon = side === "left" ? PanelLeftOpen : PanelRightOpen;
   return (
     <button type="button" onClick={onExpand} aria-label={`展開「${label}」`} title={`展開「${label}」`}
-      className={cn("flex cursor-pointer items-center gap-2 text-ink-faint hover:bg-bg-2 hover:text-ink", horizontal ? "h-10 w-full border-y border-line px-3 text-[12.5px]" : "h-full w-full flex-col border-line py-3", !horizontal && (side === "left" ? "border-r" : "border-l"))}>
+      className={cn("flex h-10 w-full shrink-0 cursor-pointer items-center gap-2 border-y border-line px-3 text-ink-faint hover:bg-bg-2 hover:text-ink",
+        "md:h-full md:flex-col md:border-y-0 md:px-0 md:py-3", side === "left" ? "md:border-r" : "md:border-l")}>
       <Icon className="size-4 shrink-0" />
-      <span className={cn("text-[12.5px] tracking-wider", !horizontal && "[writing-mode:vertical-rl]")}>{label}</span>
+      <span className="text-[12.5px] tracking-wider md:[writing-mode:vertical-rl]">{label}</span>
     </button>
   );
 }
@@ -66,7 +55,6 @@ function CollapsedBar({ side, label, onExpand, horizontal }: { side: "left" | "r
 export function StageLayout({ left, right, leftLabel, rightLabel, leftHeader, rightHeader }: {
   left: ReactNode; right: ReactNode; leftLabel: string; rightLabel: string; leftHeader?: ReactNode; rightHeader?: ReactNode;
 }) {
-  const wide = useWide();
   const box = useRef<HTMLDivElement>(null);
   const [ratio, setRatio] = useState(() => readPref(RATIO_KEY, DEFAULT));
   const [collapsed, setCollapsed] = useState<Collapsed>(() => readPref<Collapsed>(COLLAPSED_KEY, null));
@@ -81,28 +69,28 @@ export function StageLayout({ left, right, leftLabel, rightLabel, leftHeader, ri
   };
 
   const leftPane = collapsed === "left"
-    ? <CollapsedBar side="left" label={leftLabel} onExpand={() => collapse(null)} horizontal={!wide} />
+    ? <CollapsedBar side="left" label={leftLabel} onExpand={() => collapse(null)} />
     : (
-      <div className="flex min-h-0 min-w-0 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-col max-md:shrink-0">
         <PaneHeader side="left" label={leftLabel} header={leftHeader} onCollapse={() => collapse("left")} />
-        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">{left}</div>
+        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto max-md:overflow-visible">{left}</div>
       </div>
     );
   const rightPane = collapsed === "right"
-    ? <CollapsedBar side="right" label={rightLabel} onExpand={() => collapse(null)} horizontal={!wide} />
+    ? <CollapsedBar side="right" label={rightLabel} onExpand={() => collapse(null)} />
     : (
-      <div className="flex min-h-0 min-w-0 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-col max-md:min-h-[60vh]">
         <PaneHeader side="right" label={rightLabel} header={rightHeader} onCollapse={() => collapse("right")} />
         <div className="flex min-h-0 flex-1 flex-col">{right}</div>
       </div>
     );
 
-  if (!wide) return <div className="flex min-h-0 flex-1 flex-col">{leftPane}<div className="flex min-h-[60vh] flex-col">{rightPane}</div></div>;
-
   const columns = collapsed === "left" ? "40px minmax(0,1fr)" : collapsed === "right" ? "minmax(0,1fr) 40px"
     : `minmax(0,${ratio}fr) 7px minmax(0,${1 - ratio}fr)`;
   return (
-    <div ref={box} className={cn("grid min-h-0 flex-1", dragging && "cursor-col-resize select-none")} style={{ gridTemplateColumns: columns }}>
+    // 窄螢幕：上下排列（不能拖曳，但可以收起）；md 以上：照占比分成左右兩欄
+    <div ref={box} className={cn("flex min-h-0 flex-1 flex-col overflow-y-auto md:grid md:overflow-visible md:[grid-template-columns:var(--stage-cols)]", dragging && "cursor-col-resize select-none")}
+      style={{ "--stage-cols": columns } as React.CSSProperties}>
       {leftPane}
       {!collapsed && (
         <div role="separator" aria-orientation="vertical" aria-label="拖曳調整兩欄的寬度" aria-valuenow={Math.round(ratio * 100)} aria-valuemin={MIN * 100} aria-valuemax={MAX * 100} tabIndex={0}
@@ -111,7 +99,7 @@ export function StageLayout({ left, right, leftLabel, rightLabel, leftHeader, ri
           onPointerMove={onMove} onPointerUp={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); setDragging(false); }}
           onDoubleClick={() => saveRatio(DEFAULT)}
           onKeyDown={(e) => { if (e.key === "ArrowLeft") saveRatio(ratio - 0.02); if (e.key === "ArrowRight") saveRatio(ratio + 0.02); }}
-          className="group flex cursor-col-resize justify-center outline-none">
+          className="group flex cursor-col-resize justify-center outline-none max-md:hidden">
           <span className={cn("h-full w-px bg-line transition-colors group-hover:w-[3px] group-hover:bg-bronze-dim group-focus-visible:w-[3px] group-focus-visible:bg-bronze", dragging && "w-[3px] bg-bronze")} />
         </div>
       )}

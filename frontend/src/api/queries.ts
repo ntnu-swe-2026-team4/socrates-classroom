@@ -238,6 +238,15 @@ export function useActivityControls(id: string) {
   };
 }
 
+/** 個人思辨：學生完成（進入結算）或重新開啟 */
+export function useSetCompleted(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (done: boolean) => api.setCompleted(id, done),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: keys.members(id) }); qc.invalidateQueries({ queryKey: keys.positions(id) }); },
+  });
+}
+
 export function useSetReady(id: string) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (ready: boolean) => api.setReady(id, ready), onSuccess: () => qc.invalidateQueries({ queryKey: keys.members(id) }) });
@@ -262,7 +271,7 @@ export function useConfirmPosition(id: string) {
   });
 }
 
-export const useMembers = (id: string) => useQuery({ queryKey: keys.members(id), queryFn: () => api.listMembers(id) });
+export const useMembers = (id: string, enabled = true) => useQuery({ queryKey: keys.members(id), queryFn: () => api.listMembers(id), enabled: enabled && !!id });
 export const useGroups = (id: string, enabled = true) => useQuery({ queryKey: keys.groups(id), queryFn: () => api.listGroups(id), enabled });
 export const useGroupMessages = (gid: string | undefined) => useQuery({ queryKey: keys.groupMessages(gid ?? ""), queryFn: () => api.listGroupMessages(gid!), enabled: !!gid });
 export const useArguments = (gid: string | undefined) => useQuery({ queryKey: keys.arguments(gid ?? ""), queryFn: () => api.listArguments(gid!), enabled: !!gid });

@@ -47,6 +47,8 @@ export interface Api {
   advanceActivity(id: string): Promise<Activity>;
   /** 老師直接結束活動（從任何階段跳到結果） */
   finishActivity(id: string): Promise<Activity>;
+  /** 個人思辨活動：學生完成（進入結算）或重新開啟；完成前要先確認論點 */
+  setCompleted(id: string, done: boolean): Promise<void>;
   /** 老師設定目前階段的截止時間；null = 取消限時 */
   setStageDeadline(id: string, deadline: string | null): Promise<Activity>;
 
@@ -71,14 +73,12 @@ export interface Api {
   /* 教室議題 */
   listTopics(classroomId: string): Promise<ClassroomTopic[]>;
   getTopic(id: string): Promise<ClassroomTopic>;
-  createTopic(classroomId: string, input: TopicInput): Promise<ClassroomTopic>; // 僅老師；團體議題同時建立辯論活動
+  createTopic(classroomId: string, input: TopicInput): Promise<ClassroomTopic>; // 僅老師；同時建立議題的活動（團體 = 辯論、個人 = 個人思辨）
   updateTopic(id: string, patch: Partial<Omit<TopicInput, "type">>): Promise<ClassroomTopic>; // 僅老師
-  deleteTopic(id: string): Promise<void>; // 僅老師；團體議題連同辯論活動一起刪除
+  deleteTopic(id: string): Promise<void>; // 僅老師；連同議題的活動一起刪除
   addTopicLink(topicId: string, link: { name: string; url: string }): Promise<TopicResource>; // 僅老師
   uploadTopicFile(topicId: string, file: File): Promise<TopicResource>; // 僅老師
   deleteTopicResource(topicId: string, resourceId: string): Promise<void>; // 僅老師
-  /** 個人議題「開始討論」：建立或取回自己在這個議題的對話（Archive.topicId 指向議題） */
-  startTopicDialogue(topicId: string): Promise<Archive>;
   /** 老師：全班；學生：只有自己 */
   listReports(topicId: string): Promise<TopicReport[]>;
   /** 學生上傳結論報告；重複上傳會取代舊的 */

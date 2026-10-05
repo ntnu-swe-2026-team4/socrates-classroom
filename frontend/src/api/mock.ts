@@ -98,7 +98,7 @@ const findClassroom = (id: string) => {
   if (!c) throw new Error("找不到教室");
   return c;
 };
-const pub = ({ students: _s, invited: _i, ...c }: StoredClassroom): Classroom => ({ ...c, studentCount: _s.length, debateCount: E.acts.filter((a) => a.classroomId === c.id).length });
+const pub = ({ students: _s, invited: _i, ...c }: StoredClassroom): Classroom => ({ ...c, studentCount: _s.length, debateCount: E.acts.filter((a) => a.classroomId === c.id && a.kind === "debate").length });
 
 const DEMO_AXES = [
   { name: "正義來源", left: "約定", right: "本性" },
@@ -107,19 +107,19 @@ const DEMO_AXES = [
 ];
 E.createActivity(classrooms[0], { title: "第 1 場辯論", statement: "正義是否只是強者的利益？", answerMode: "both", groupSize: 3, axes: DEMO_AXES }, "d1");
 
-/* 教室議題：團體議題對應 engine 裡的辯論活動；個人議題的對話存在 archives（topicId 指回議題） */
+/* 教室議題：每個議題對應 engine 裡的一個活動（團體 = 辯論、個人 = 個人思辨） */
 const iso = (daysFromNow: number) => new Date(Date.now() + daysFromNow * 864e5).toISOString();
 const topics: ClassroomTopic[] = [
   { id: "t1", classroomId: "c1", type: "group", title: "正義是否只是強者的利益？", activityId: "d1", acceptsReports: false, postCount: 0,
     description: "《理想國》第一卷，色拉敘馬霍斯主張「正義就是強者的利益」。先各自和蘇格拉底對話釐清立場，再分組辯論。",
     dueAt: iso(7), resources: [{ id: "r1", kind: "link", name: "《理想國》第一卷導讀", url: "https://zh.wikipedia.org/wiki/理想國", addedAt: iso(-3) }],
     createdAt: iso(-3), updatedAt: iso(-3) },
-  { id: "t2", classroomId: "c1", type: "individual", title: "我們該不該永遠說實話？", activityId: null, acceptsReports: true, postCount: 0,
+  { id: "t2", classroomId: "c1", type: "individual", title: "我們該不該永遠說實話？", activityId: "d2", acceptsReports: true, postCount: 0,
     description: "康德認為說謊在任何情況下都是錯的，即使門口的殺人犯問你朋友躲在哪裡。你同意嗎？和蘇格拉底聊聊你的理由。",
     dueAt: iso(14), resources: [], createdAt: iso(-1), updatedAt: iso(-1) },
 ];
 E.findAct("d1").topicId = "t1";
-const topicArchive = new Map<string, string>(); // topicId → archiveId（假後端只有一位學生）
+E.createActivity(classrooms[0], { kind: "individual", title: topics[1].title, statement: topics[1].title, answerMode: "both", groupSize: 3, axes: [] }, "d2").topicId = "t2";
 const findTopic = (id: string) => {
   const t = topics.find((x) => x.id === id);
   if (!t) throw new Error("找不到議題");
@@ -286,7 +286,7 @@ export const mockApi: Api = {
     const i = rows.findIndex((r) => r.id === mid);
     if (i >= 0) c.students.splice(i, 1);
   },
-  async listActivities(cid) { await delay(); return E.acts.filter((a) => a.classroomId === cid).map(E.toActivity); },
+  async listActivities(cid) { await delay(); return E.acts.filter((a) => a.classroomId === cid && a.kind === "debate").map(E.toActivity); },
   async getActivity(id) { await delay(40); return E.toActivity(E.findAct(id)); },
   async createActivity(cid, input: CreateActivityInput) {
     await delay();
@@ -297,6 +297,7 @@ export const mockApi: Api = {
   },
   async advanceActivity(id) { await delay(); return E.toActivity(E.advance(E.findAct(id))); },
   async finishActivity(id) { await delay(); needTeacher(); return E.toActivity(E.finish(E.findAct(id))); },
+  async setCompleted(id, done) { await delay(); needStudent(); E.setCompleted(E.findAct(id), done); },
   async setStageDeadline(id, deadline) { await delay(60); needTeacher(); return E.toActivity(E.setDeadline(E.findAct(id), deadline)); },
 
   async listDialogue(id) { await delay(30); return [...E.findAct(id).dialogue]; },
@@ -404,11 +405,11 @@ export const mockApi: Api = {
       id: newId("t"), classroomId: cid, type: input.type, title: input.title.trim(), description: input.description.trim(),
       dueAt: input.dueAt, acceptsReports: input.acceptsReports, activityId: null, resources: [], postCount: 0, createdAt: at, updatedAt: at,
     };
-    if (input.type === "group" && input.activity) {
-      const a = E.createActivity(c, { ...input.activity, title: t.title, statement: t.title });
-      a.topicId = t.id;
-      t.activityId = a.id;
-    }
+    const a = input.type === "group" && input.activity
+      ? E.createActivity(c, { ...input.activity, title: t.title, statement: t.title })
+      : E.createActivity(c, { kind: "individual", title: t.title, statement: t.title, answerMode: "both", groupSize: 3, axes: [] });
+    a.topicId = t.id;
+    t.activityId = a.id;
     topics.push(t);
     return structuredClone(t);
   },
@@ -458,18 +459,6 @@ export const mockApi: Api = {
     const r = t.resources.find((x) => x.id === rid);
     if (r?.kind === "file") URL.revokeObjectURL(r.file.url);
     t.resources = t.resources.filter((x) => x.id !== rid); touch(t);
-  },
-  async startTopicDialogue(tid) {
-    await delay();
-    if (isTeacher()) throw new Error("老師不能開始個人議題的對話");
-    const t = findTopic(tid);
-    if (t.type !== "individual") throw new Error("團體議題請從辯論活動進入");
-    const existing = archives.find((a) => a.id === topicArchive.get(tid));
-    if (existing) return { ...existing };
-    const a: Archive = { id: newId("n"), title: t.title, date: "剛剛", rounds: 0, bank: null, inSummary: false, snippet: "（剛開始的對話）", topicId: t.id };
-    archives.unshift(a);
-    topicArchive.set(tid, a.id);
-    return { ...a };
   },
   /* 公告（P2） */
   async listAnnouncements(cid) {

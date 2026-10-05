@@ -57,7 +57,7 @@ function TopicCard({ t, activity }: { t: ClassroomTopic; activity?: Activity }) 
 }
 
 function TopicGrid({ topics, activities }: { topics: ClassroomTopic[]; activities: Activity[] }) {
-  return <div className="grid gap-4 sm:grid-cols-2">{topics.map((t) => <TopicCard key={t.id} t={t} activity={activities.find((a) => a.id === t.activityId)} />)}</div>;
+  return <div className="grid gap-4 sm:grid-cols-2">{topics.map((t) => <TopicCard key={t.id} t={t} activity={activities.find((a) => a.id === t.activityId && a.kind === "debate")} />)}</div>;
 }
 
 function TopicsTab({ classroomId, teacher, topics, activities }: { classroomId: string; teacher: boolean; topics: ClassroomTopic[]; activities: Activity[] }) {

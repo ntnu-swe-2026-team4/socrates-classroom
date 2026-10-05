@@ -11,8 +11,8 @@ import { ResultsStage } from "./stages/ResultsStage";
 import { TeamStage } from "./stages/TeamStage";
 
 /**
- * 辯論活動：上方標題列（右上角是目前階段與控制）、中間左右兩欄、最下方是進度色條。
- * 點色條上已經過的段落可以回顧之前的階段。
+ * 議題的活動頁：上方標題列（右上角是目前階段與控制）、中間左右兩欄、最下方是進度色條。
+ * 團體議題是四階段辯論（點色條上已經過的段落可以回顧）；個人議題是個人思辨 → 結算。
  */
 export function ActivityPage() {
   const { classroomId, activityId } = useParams({ from: "/_app/classrooms/$classroomId/activities/$activityId" });
@@ -42,7 +42,7 @@ export function ActivityPage() {
         {view === "debate" && <DebateStage a={a} teacher={teacher} over={past || a.stage !== "debate"} />}
         {view === "done" && <ResultsStage a={a} teacher={teacher} />}
       </div>
-      <div className="px-4 py-1"><ProgressStrip a={a} seeing={view} onSee={(s) => setSeeing(s === a.stage ? null : s)} /></div>
+      <div className="px-4 py-1"><ProgressStrip a={a} teacher={teacher} seeing={view} onSee={(s) => setSeeing(s === a.stage ? null : s)} /></div>
     </div>
   );
 }

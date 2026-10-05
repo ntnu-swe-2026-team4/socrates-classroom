@@ -22,7 +22,7 @@ function Countdown({ deadline }: { deadline: string }) {
   );
 }
 
-/** 老師的「⋯」選單：限時、取消限時、直接結束活動 */
+/** 老師的「⋯」選單：限時、取消限時、直接結束活動（個人思辨沒有結束活動） */
 function TeacherMenu({ a }: { a: Activity }) {
   const { finish, deadline } = useActivityControls(a.id);
   const [open, setOpen] = useState(false);
@@ -52,8 +52,8 @@ function TeacherMenu({ a }: { a: Activity }) {
                 </div>
               </>
             )}
-          <div className="my-1 h-px bg-line" />
-          {confirming ? (
+          {a.kind === "debate" && <div className="my-1 h-px bg-line" />}
+          {a.kind === "individual" ? null : confirming ? (
             <div className="px-3 py-1.5 text-[12.5px]">
               <p className="mb-2 text-wine">跳過剩下的階段，用目前的資料結算成績？</p>
               <span className="flex gap-1.5"><Button size="sm" variant="danger" disabled={finish.isPending} onClick={() => finish.mutate(undefined, { onSuccess: () => { setOpen(false); setConfirming(false); } })}>確定結束</Button><Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>取消</Button></span>
@@ -83,6 +83,18 @@ export function StageStatus({ a, teacher, seeing, onBackToNow }: { a: Activity; 
   const readyCount = members.filter((m) => m.ready).length;
   const error = advance.error ?? setReady.error;
 
+  // 個人思辨：每位學生各自完成，沒有推進、準備好了、直接結束
+  if (a.kind === "individual") {
+    const done = !teacher && me?.individual?.status === "done";
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+        <span className="text-[13px] font-semibold text-bronze">{done ? "結算" : "個人思辨"}</span>
+        {a.stageDeadline && <Countdown deadline={a.stageDeadline} />}
+        {teacher && <TeacherMenu a={a} />}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
       {past
@@ -100,8 +112,26 @@ export function StageStatus({ a, teacher, seeing, onBackToNow }: { a: Activity; 
   );
 }
 
+/** 個人思辨的進度色條：思辨中填一半，完成（結算）填滿 */
+function IndividualStrip({ a }: { a: Activity }) {
+  const { data: members = [] } = useMembers(a.id);
+  const done = members.find((m) => m.isMe)?.individual?.status === "done";
+  return (
+    <div className="flex h-4 shrink-0 items-center" role="progressbar" aria-label="個人思辨進度" aria-valuemin={1} aria-valuemax={2} aria-valuenow={done ? 2 : 1} aria-valuetext={done ? "結算" : "個人思辨"}>
+      <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-bg-3">
+        <i className="absolute inset-y-0 left-0 rounded-full bg-bronze transition-[width] duration-500" style={{ width: done ? "100%" : "50%" }} />
+      </div>
+    </div>
+  );
+}
+
 /** 畫面最下方的進度色條：依階段往前填色；點已經過的那一段可以回顧 */
-export function ProgressStrip({ a, seeing, onSee }: { a: Activity; seeing: Stage; onSee: (s: Stage) => void }) {
+export function ProgressStrip({ a, teacher, seeing, onSee }: { a: Activity; teacher: boolean; seeing: Stage; onSee: (s: Stage) => void }) {
+  if (a.kind === "individual") return teacher ? null : <IndividualStrip a={a} />;
+  return <DebateStrip a={a} seeing={seeing} onSee={onSee} />;
+}
+
+function DebateStrip({ a, seeing, onSee }: { a: Activity; seeing: Stage; onSee: (s: Stage) => void }) {
   const cur = STAGE_ORDER.indexOf(a.stage);
   return (
     <div className="group relative flex h-4 shrink-0 items-center" role="progressbar" aria-label="活動進度" aria-valuemin={1} aria-valuemax={4} aria-valuenow={cur + 1} aria-valuetext={STAGE_NAME[a.stage]}>

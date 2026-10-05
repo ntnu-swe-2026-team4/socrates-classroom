@@ -17,7 +17,7 @@ const TITLES: [RegExp, string, (role?: string) => string][] = [
   [/^\/summary/, "論點總結", () => "從「議題」加進來的對話"],
   [/^\/bank\/private/, "私人題庫", () => "只有你看得到"],
   [/^\/bank\/public/, "公開題庫", () => "大家都看得到"],
-  [/^\/classrooms\/[^/]+\/activities/, "教室", () => "辯論活動"],
+  [/^\/classrooms\/[^/]+\/activities/, "教室", () => "議題活動"],
   [/^\/classrooms/, "教室", (r) => (r === "teacher" ? "教師工具" : "")],
   [/^\/explore/, "探索課程", () => "開放加入的課程"],
 ];

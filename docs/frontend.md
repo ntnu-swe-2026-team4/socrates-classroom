@@ -70,12 +70,12 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `pages/Discussion.tsx` | 討論區（教室或議題）：發文、匿名、一層回覆、刪除 | 教室「討論」分頁、議題頁 |
 | `pages/Announcements.tsx` | 公告分頁（老師新增、編輯、刪除、置頂、排程發布） | `/classrooms/:id` |
 | `pages/ClassroomFormDialog.tsx` | 新增 / 編輯教室共用的視窗（名稱、簡介） | 教室列表、教室頁 |
-| `pages/ClassroomTopicPage.tsx` | 議題詳情：左欄是說明與相關資料（同一格）、開始討論 / 辯論入口、結論報告；右欄是討論區；老師可編輯與刪除 | `/classrooms/:id/topics/:id` |
+| `pages/ClassroomTopicPage.tsx` | 議題詳情：左欄是說明與相關資料（同一格）、個人思辨 / 辯論入口、結論報告；右欄是討論區；老師可編輯與刪除 | `/classrooms/:id/topics/:id` |
 | `pages/TopicReports.tsx` | 結論報告：學生繳交 / 重新上傳 / 刪除；老師看全班繳交狀況（標示逾期） | 議題頁 |
 | `pages/TopicFormDialog.tsx` | 新增 / 編輯議題的視窗：類型、說明、截止時間、是否收報告；團體議題另有辯論設定（回答方式、價值軸、組別人數） | 教室頁、議題頁 |
-| `pages/ActivityPage.tsx` | 辯論活動的外框：標題列（右上角是目前階段與控制）、依階段切換的左右兩欄、最下方的進度色條 | `/classrooms/:id/activities/:id` |
+| `pages/ActivityPage.tsx` | 議題活動的外框：標題列（右上角是目前階段與控制）、依階段切換的左右兩欄、最下方的進度色條。團體議題是四階段辯論，個人議題是個人思辨 → 結算 | `/classrooms/:id/activities/:id` |
 | `pages/StageControls.tsx` | 標題列右上角：目前階段、倒數、準備人數 / 「我準備好了」、推進；老師的「⋯」選單（限時、直接結束）；最下方的進度色條（點已過的段落可回顧） | 辯論活動裡 |
-| `pages/stages/IndividualStage.tsx` | 階段 1：左欄用切換按鈕在「個人調查」（進度、直接在欄內整理 / 修改論點，不顯示座標）與「我的筆記」之間切換；右欄與蘇格拉底對話（可標註成筆記）；老師視角的成員進度表與星圖 | 辯論活動裡 |
+| `pages/stages/IndividualStage.tsx` | 辯論的階段 1，也是個人議題的「個人思辨」：左欄用切換按鈕在「個人調查 / 個人思辨」（進度、直接在欄內整理 / 修改論點，不顯示座標）與「我的筆記」之間切換；右欄與蘇格拉底對話（可標註成筆記）。個人思辨確認論點後按「完成」進入結算（論點、四個面向、筆記、對話紀錄），可重新開啟。老師視角是成員進度表（辯論另有星圖） | 議題活動裡 |
 | `pages/stages/NotesPanel.tsx` | 學生的思路筆記：標註的重點與自己寫的想法，只有本人看得到 | 階段 1、2 左欄的「我的筆記」 |
 | `pages/stages/TeamStage.tsx` | 階段 2：分組、組內討論、AI 整理論點 / 丟反例、投票、分裂、重新分組；學生左欄可切換「我的組別 / 我的筆記」；星圖只有老師看得到 | 辯論活動裡 |
 | `pages/stages/DebateStage.tsx` | 階段 3：場次、主持人、發言與計時、AI 裁判分數 | 辯論活動裡 |
@@ -149,7 +149,8 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 老師新增 / 編輯議題（團體議題同時建立辯論活動） | `TopicFormDialog.tsx` → `useSaveTopic` | `POST /api/classrooms/:id/topics`、`PATCH /api/topics/:id` |
 | 老師刪除議題 | `ClassroomTopicPage.tsx` 的 `DeleteDialog` → `api.deleteTopic` | `DELETE /api/topics/:id` |
 | 老師加連結 / 上傳檔案 / 移除資料 | `ClassroomTopicPage.tsx` 的 `Resources` | `POST /api/topics/:id/resources`、`POST …/resources/files`（multipart）、`DELETE …/resources/:id` |
-| 學生開始個人議題的討論 | `ClassroomTopicPage.tsx` 的 `StartPanel` → `api.startTopicDialogue` | `POST /api/topics/:id/dialogue` |
+| 個人議題的入口與完成人數 | `ClassroomTopicPage.tsx` 的 `StartPanel` → `useMembers` | `GET /api/activities/:id/members` |
+| 個人思辨完成 / 重新開啟 | `IndividualStage.tsx` → `useSetCompleted` | `PUT /api/activities/:id/completion` |
 | 團體議題的辯論進度（卡片上的進度條） | `useActivities`、`useActivity` | `GET /api/classrooms/:id/activities`、`GET /api/activities/:id` |
 | 辯論活動資料 | `ActivityPage.tsx` → `useActivity` | `GET /api/activities/:id` |
 | 老師推進階段 | `StageControls.tsx` 的 `StageStatus` → `useAdvanceActivity` | `POST /api/activities/:id/advance` |

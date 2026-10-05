@@ -25,8 +25,6 @@ export interface Archive {
   inSummary: boolean;
   /** 由辯論活動產生的議題，繼續對話時要回到該活動 */
   activityId?: string;
-  /** 由教室的個人議題開始的對話 */
-  topicId?: string;
 }
 
 /* ---------- 教室 ---------- */
@@ -171,7 +169,7 @@ export interface ClassroomTopic {
   resources: TopicResource[];
   /** 是否讓學生上傳結論報告 */
   acceptsReports: boolean;
-  /** 團體議題對應的辯論活動 */
+  /** 議題對應的活動：團體議題是辯論活動，個人議題是個人思辨活動 */
   activityId: string | null;
   postCount: number;
   createdAt: string;
@@ -263,9 +261,13 @@ export interface Axis {
   right: string;
 }
 
+/** debate = 團體議題的四階段辯論；individual = 個人議題的個人思辨（每位學生各自完成，只有「思辨 → 結算」） */
+export type ActivityKind = "debate" | "individual";
+
 export interface Activity {
   id: string;
   classroomId: string;
+  kind: ActivityKind;
   title: string;
   statement: string;
   answerMode: AnswerMode;
@@ -345,8 +347,11 @@ export interface Member {
   simulated: boolean;
   /** 在目前階段按了「我準備好了」；換階段時由後端重設為 false */
   ready?: boolean;
-  /** 階段 1 的進度（老師看得到全班；學生只看得到自己） */
-  individual?: { status: "todo" | "talking" | "confirmed"; rounds: number; claim?: string };
+  /**
+   * 階段 1 的進度（老師看得到全班；學生只看得到自己）。
+   * done 只出現在個人思辨活動：學生按了「完成」，進入結算畫面（可以再重新開啟）
+   */
+  individual?: { status: "todo" | "talking" | "confirmed" | "done"; rounds: number; claim?: string };
 }
 
 export interface Group {

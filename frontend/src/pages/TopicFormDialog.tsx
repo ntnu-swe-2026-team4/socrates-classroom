@@ -12,7 +12,7 @@ type AxisDraft = Settings["axes"][number];
 
 const EMPTY_AXES: AxisDraft[] = [{ name: "", left: "", right: "" }, { name: "", left: "", right: "" }];
 const TYPE_INFO: Record<TopicType, [string, string]> = {
-  individual: ["個人議題", "每位學生各自和蘇格拉底一對一對話。"],
+  individual: ["個人議題", "每位學生各自和蘇格拉底進行個人思辨，完成後看到自己的結算。"],
   group: ["團體議題", "先各自對話找出立場，再依立場分組、辯論。"],
 };
 

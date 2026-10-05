@@ -125,6 +125,7 @@ export const httpApi: Api = {
   createActivity: (cid, i) => post(`/api/classrooms/${cid}/activities`, i),
   advanceActivity: (id) => post(`/api/activities/${id}/advance`),
   finishActivity: (id) => post(`/api/activities/${id}/finish`),
+  setCompleted: (id, done) => put(`/api/activities/${id}/completion`, { done }),
   setStageDeadline: (id, deadline) => put(`/api/activities/${id}/deadline`, { deadline }),
 
   getJoinPolicy: (cid) => get(`/api/classrooms/${cid}/join-policy`),
@@ -151,7 +152,6 @@ export const httpApi: Api = {
   addTopicLink: (tid, link) => post(`/api/topics/${tid}/resources`, link),
   uploadTopicFile: (tid, file) => upload(`/api/topics/${tid}/resources/files`, file),
   deleteTopicResource: (tid, rid) => del(`/api/topics/${tid}/resources/${rid}`),
-  startTopicDialogue: (tid) => post(`/api/topics/${tid}/dialogue`),
   listReports: (tid) => get(`/api/topics/${tid}/reports`),
   submitReport: (tid, file, comment) => upload(`/api/topics/${tid}/reports`, file, { comment: comment ?? "" }),
   deleteReport: (rid) => del(`/api/reports/${rid}`),
