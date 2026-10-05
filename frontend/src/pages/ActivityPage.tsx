@@ -11,8 +11,8 @@ import { ResultsStage } from "./stages/ResultsStage";
 import { TeamStage } from "./stages/TeamStage";
 
 /**
- * 議題的活動頁：上方標題列（右上角是目前階段與控制）、中間左右兩欄、最下方是進度色條。
- * 團體議題是四階段辯論（點色條上已經過的段落可以回顧）；個人議題是個人思辨 → 結算。
+ * 辯論的活動頁：上方標題列（右上角是目前階段與控制）、中間左右兩欄、最下方是進度色條。
+ * 團體辯論是四階段辯論（點色條上已經過的段落可以回顧）；個人辯論是個人思辨 → 結算。
  */
 export function ActivityPage() {
   const { classroomId, activityId } = useParams({ from: "/_app/classrooms/$classroomId/activities/$activityId" });
@@ -30,8 +30,8 @@ export function ActivityPage() {
       <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
         <Button variant="outline" size="sm" asChild>
           {a.topicId
-            ? <Link to="/classrooms/$classroomId/topics/$topicId" params={{ classroomId, topicId: a.topicId }}><ArrowLeft className="size-3.5" />議題</Link>
-            : <Link to="/classrooms/$classroomId" params={{ classroomId }} search={{ tab: "topics" }}><ArrowLeft className="size-3.5" />教室</Link>}
+            ? <Link to="/classrooms/$classroomId/debates/$debateId" params={{ classroomId, debateId: a.topicId }}><ArrowLeft className="size-3.5" />辯論</Link>
+            : <Link to="/classrooms/$classroomId" params={{ classroomId }} search={{ tab: "debates" }}><ArrowLeft className="size-3.5" />教室</Link>}
         </Button>
         <h2 className="min-w-0 flex-1 truncate font-serif text-[19px] leading-tight" title={a.statement}>{a.statement}</h2>
         <StageStatus a={a} teacher={teacher} seeing={view} onBackToNow={() => setSeeing(null)} />

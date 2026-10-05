@@ -49,7 +49,7 @@ function PostBody({ p, canDelete, onDelete }: { p: DiscussionPost; canDelete: bo
   );
 }
 
-/** 討論區：topicId = null 為教室討論區，否則為議題討論區。回覆只有一層 */
+/** 討論區：topicId = null 為教室討論區，否則為該場辯論的討論區。回覆只有一層 */
 export function DiscussionBoard({ classroomId, topicId }: { classroomId: string; topicId: string | null }) {
   const { data: me } = useMe();
   const { data: posts = [] } = usePosts(classroomId, topicId);
@@ -62,7 +62,7 @@ export function DiscussionBoard({ classroomId, topicId }: { classroomId: string;
 
   return (
     <div>
-      <div className="border-b border-line pb-5"><Composer classroomId={classroomId} topicId={topicId} placeholder={topicId ? "對這個議題有什麼想法或疑問？" : "想問老師或同學什麼？"} /></div>
+      <div className="border-b border-line pb-5"><Composer classroomId={classroomId} topicId={topicId} placeholder={topicId ? "對這場辯論有什麼想法或疑問？" : "想問老師或同學什麼？"} /></div>
       {threads.map((t) => (
         <article key={t.id} className="border-b border-line py-4 last:border-b-0">
           <PostBody p={t} canDelete={canDelete(t)} onDelete={() => del.mutate(t.id)} />

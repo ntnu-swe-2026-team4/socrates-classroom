@@ -7,7 +7,7 @@ import * as E from "@/mock/engine";
 
 /**
  * 示範用的假後端（全部在記憶體，重整就消失）。
- * 認證、議題、教室在這裡；辯論的整套流程（對話、分組、比賽、計分、星圖）在 src/mock/engine.ts。
+ * 認證、議題（單人對話）、教室在這裡；辯論的整套流程（對話、分組、比賽、計分、星圖）在 src/mock/engine.ts。
  * 真後端上線後，整個 src/mock 與這個檔案都可以刪掉。
  */
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
@@ -107,7 +107,7 @@ const DEMO_AXES = [
 ];
 E.createActivity(classrooms[0], { title: "第 1 場辯論", statement: "正義是否只是強者的利益？", answerMode: "both", groupSize: 3, axes: DEMO_AXES }, "d1");
 
-/* 教室議題：每個議題對應 engine 裡的一個活動（團體 = 辯論、個人 = 個人思辨） */
+/* 教室的辯論（API 上叫 topic）：每場對應 engine 裡的一個活動（團體 = 四階段辯論、個人 = 個人思辨） */
 const iso = (daysFromNow: number) => new Date(Date.now() + daysFromNow * 864e5).toISOString();
 const topics: ClassroomTopic[] = [
   { id: "t1", classroomId: "c1", type: "group", title: "正義是否只是強者的利益？", activityId: "d1", acceptsReports: false, postCount: 0,
@@ -122,7 +122,7 @@ E.findAct("d1").topicId = "t1";
 E.createActivity(classrooms[0], { kind: "individual", title: topics[1].title, statement: topics[1].title, answerMode: "both", groupSize: 3, axes: [] }, "d2").topicId = "t2";
 const findTopic = (id: string) => {
   const t = topics.find((x) => x.id === id);
-  if (!t) throw new Error("找不到議題");
+  if (!t) throw new Error("找不到辯論");
   return t;
 };
 const touch = (t: ClassroomTopic) => { t.updatedAt = new Date().toISOString(); };
@@ -135,7 +135,7 @@ const announcements: StoredAnnouncement[] = [
   { id: "an1", classroomId: "c1", title: "期中辯論的評分方式", pinned: true, authorName: "林老師", publishAt: iso(-5), createdAt: iso(-5), updatedAt: iso(-5),
     body: "期中辯論占學期成績 30%：\n・個人調查 30%\n・團隊提純 30%\n・辯論比賽 40%\n\nAI 裁判的分數僅供參考，最後由老師確認。" },
   { id: "an2", classroomId: "c1", title: "下週請先讀完《理想國》第一卷", pinned: false, authorName: "林老師", publishAt: iso(-1), createdAt: iso(-1), updatedAt: iso(-1),
-    body: "議題「正義是否只是強者的利益？」的閱讀材料已放在議題頁，上課前請先讀完。" },
+    body: "辯論「正義是否只是強者的利益？」的閱讀材料已放在辯論頁，上課前請先讀完。" },
   { id: "an3", classroomId: "c1", title: "第二場辯論開放報名", pinned: false, authorName: "林老師", publishAt: iso(3), createdAt: iso(0), updatedAt: iso(0),
     body: "（排程中的公告：學生要到發布時間才看得到）" },
 ];
@@ -220,7 +220,7 @@ export const mockApi: Api = {
   async updateArchive(id, patch) {
     await delay(60);
     const a = archives.find((x) => x.id === id);
-    if (!a) throw new Error("找不到議題");
+    if (!a) throw new Error("找不到辯論");
     if (patch.bank !== undefined) a.bank = patch.bank;
     if (patch.inSummary !== undefined) a.inSummary = patch.inSummary;
     return { ...a };
@@ -389,7 +389,7 @@ export const mockApi: Api = {
 
   subscribe: (id, cb) => E.subscribe(id, cb),
 
-  /* 教室議題（P4） */
+  /* 教室的辯論（API 上叫 topic，P4） */
   async listTopics(cid) {
     await delay();
     return topics.filter((t) => t.classroomId === cid).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((t) => structuredClone(t));
@@ -398,8 +398,8 @@ export const mockApi: Api = {
   async createTopic(cid, input) {
     await delay(); needTeacher();
     const c = findClassroom(cid);
-    if (!input.title.trim()) throw new Error("請填寫議題標題");
-    if (input.type === "group" && !input.activity) throw new Error("團體議題需要辯論設定");
+    if (!input.title.trim()) throw new Error("請填寫辯論主題");
+    if (input.type === "group" && !input.activity) throw new Error("團體辯論需要辯論設定");
     const at = new Date().toISOString();
     const t: ClassroomTopic = {
       id: newId("t"), classroomId: cid, type: input.type, title: input.title.trim(), description: input.description.trim(),
@@ -416,7 +416,7 @@ export const mockApi: Api = {
   async updateTopic(id, patch) {
     await delay(); needTeacher();
     const t = findTopic(id);
-    if (patch.title !== undefined && !patch.title.trim()) throw new Error("請填寫議題標題");
+    if (patch.title !== undefined && !patch.title.trim()) throw new Error("請填寫辯論主題");
     if (patch.activity && t.activityId) E.updateSettings(E.findAct(t.activityId), patch.activity);
     if (patch.title !== undefined) {
       t.title = patch.title.trim();
@@ -595,7 +595,7 @@ export const mockApi: Api = {
   async submitReport(tid, file, comment) {
     await delay(300); needStudent();
     const t = findTopic(tid);
-    if (!t.acceptsReports) throw new Error("這個議題沒有開放上傳報告");
+    if (!t.acceptsReports) throw new Error("這場辯論沒有開放上傳報告");
     if (file.size > MAX_UPLOAD) throw new Error("檔案太大（上限 50 MB）");
     const old = reports.findIndex((r) => r.topicId === tid && r.studentId === MY_ID);
     if (old >= 0) { if (reports[old].file.url.startsWith("blob:")) URL.revokeObjectURL(reports[old].file.url); reports.splice(old, 1); }
@@ -648,7 +648,7 @@ export const mockApi: Api = {
     recountPosts(x.topicId);
   },
 
-  /* 行事曆（P6）：從議題截止日、公告、活動階段截止時間整理出來 */
+  /* 行事曆（P6）：從辯論截止日、公告、活動階段截止時間整理出來 */
   async listCalendar({ from, to, classroomId }) {
     await delay();
     const scope = visibleClassrooms().filter((c) => !classroomId || c.id === classroomId);

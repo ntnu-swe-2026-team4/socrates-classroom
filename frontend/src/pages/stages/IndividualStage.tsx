@@ -79,7 +79,7 @@ function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
   return (
     <Panel>
       <div className="flex-1 space-y-4 overflow-y-auto p-5">
-        {bubble("assistant", `${a.kind === "individual" ? "這次的議題" : "這場辯論的議題"}是「${a.statement}」。先不用急著下結論——你現在怎麼想？`, "opener")}
+        {bubble("assistant", `${a.kind === "individual" ? "這次要思考的是" : "這場辯論的主題是"}「${a.statement}」。先不用急著下結論——你現在怎麼想？`, "opener")}
         {messages.map((m) => bubble(m.role, m.text, m.id, m.id))}
         {mine && bubble("user", mine, "mine")}
         {pending !== null && bubble("assistant", pending || "…", "pending")}

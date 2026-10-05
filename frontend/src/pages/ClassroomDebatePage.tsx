@@ -10,10 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { formatBytes } from "@/lib/utils";
-import { DueLabel, STAGE_NAME, StageBar, TOPIC_TYPE } from "./ClassroomPage";
+import { DEBATE_TYPE, DueLabel, STAGE_NAME, StageBar } from "./ClassroomPage";
 import { DiscussionBoard } from "./Discussion";
-import { TopicReports } from "./TopicReports";
-import { TopicFormDialog } from "./TopicFormDialog";
+import { DebateFormDialog } from "./DebateFormDialog";
+import { DebateReports } from "./DebateReports";
 
 function ResourceRow({ r, onDelete }: { r: TopicResource; onDelete?: () => void }) {
   const file = r.kind === "file" ? r.file : null;
@@ -28,8 +28,8 @@ function ResourceRow({ r, onDelete }: { r: TopicResource; onDelete?: () => void 
   );
 }
 
-/** 議題說明與相關資料（老師可加連結、上傳檔案） */
-function TopicInfo({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean }) {
+/** 辯論說明與相關資料（老師可加連結、上傳檔案） */
+function DebateInfo({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean }) {
   const invalidate = useInvalidateTopic(topic.classroomId);
   const fileInput = useRef<HTMLInputElement>(null);
   const [adding, setAdding] = useState(false);
@@ -43,7 +43,7 @@ function TopicInfo({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean
 
   return (
     <section className="border-b border-line py-5 first:pt-0 last:border-b-0">
-      <div className="mb-2 text-xs tracking-wider text-ink-faint">議題說明</div>
+      <div className="mb-2 text-xs tracking-wider text-ink-faint">辯論說明</div>
       {topic.description ? <p className="whitespace-pre-line text-[14px] leading-relaxed">{topic.description}</p> : <p className="text-sm text-ink-faint">沒有額外說明。</p>}
       {(teacher || topic.resources.length > 0) && <div className="mb-2 mt-5 flex items-center justify-between gap-2 border-t border-line pt-4">
         <span className="text-xs tracking-wider text-ink-faint">相關資料</span>
@@ -69,7 +69,7 @@ function TopicInfo({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean
   );
 }
 
-/** 進入議題的活動：團體議題是辯論，個人議題是個人思辨（完成後看到結算） */
+/** 進入辯論的活動：團體辯論是四階段辯論，個人辯論是個人思辨（完成後看到結算） */
 function StartPanel({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean }) {
   const { data: activity } = useActivity(topic.activityId ?? "");
   const { data: members = [] } = useMembers(topic.activityId ?? "", topic.type === "individual");
@@ -92,11 +92,11 @@ function StartPanel({ topic, teacher }: { topic: ClassroomTopic; teacher: boolea
     );
   }
 
-  // 個人議題：學生看自己的狀態，老師看完成人數
+  // 個人辯論：學生看自己的狀態，老師看完成人數
   const status = members.find((m) => m.isMe)?.individual?.status ?? "todo";
   const doneCount = members.filter((m) => m.individual?.status === "done").length;
   const text = teacher ? `已完成 ${doneCount} / ${members.length} 人`
-    : { todo: "讀完說明和資料後，和蘇格拉底一起思辨你的想法。", talking: "你已經開始思辨了，可以接著上次的對話。", confirmed: "你已經整理好論點，確認後按「完成」就能看到結算。", done: "你已經完成這個議題的思辨。" }[status];
+    : { todo: "讀完說明和資料後，和蘇格拉底一起思辨你的想法。", talking: "你已經開始思辨了，可以接著上次的對話。", confirmed: "你已經整理好論點，確認後按「完成」就能看到結算。", done: "你已經完成這場辯論的個人思辨。" }[status];
   const label = teacher ? "查看學生進度" : { todo: "開始個人思辨", talking: "繼續個人思辨", confirmed: "繼續個人思辨", done: "查看結算" }[status];
   return (
     <section className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-5 first:pt-0 last:border-b-0">
@@ -113,12 +113,12 @@ function DeleteDialog({ topic, open, onOpenChange }: { topic: ClassroomTopic; op
   const invalidate = useInvalidateTopic(topic.classroomId);
   const del = useMutation({
     mutationFn: () => api.deleteTopic(topic.id),
-    onSuccess: () => { invalidate(); navigate({ to: "/classrooms/$classroomId", params: { classroomId: topic.classroomId }, search: { tab: "topics" } }); },
+    onSuccess: () => { invalidate(); navigate({ to: "/classrooms/$classroomId", params: { classroomId: topic.classroomId }, search: { tab: "debates" } }); },
   });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogTitle>刪除議題？</DialogTitle>
+        <DialogTitle>刪除辯論？</DialogTitle>
         <DialogDescription>「{topic.title}」會被永久刪除{topic.type === "group" ? "，連同辯論活動裡學生的對話、分組與成績" : ""}，無法復原。</DialogDescription>
         {del.error && <p className="mb-3 text-[12.5px] text-wine">{del.error.message}</p>}
         <div className="flex justify-end gap-2">
@@ -130,8 +130,8 @@ function DeleteDialog({ topic, open, onOpenChange }: { topic: ClassroomTopic; op
   );
 }
 
-export function ClassroomTopicPage() {
-  const { classroomId, topicId } = useParams({ from: "/_app/classrooms/$classroomId/topics/$topicId" });
+export function ClassroomDebatePage() {
+  const { classroomId, debateId: topicId } = useParams({ from: "/_app/classrooms/$classroomId/debates/$debateId" });
   const { data: me } = useMe();
   const { data: topic, error } = useTopic(topicId);
   const { data: activity } = useActivity(topic?.activityId ?? "");
@@ -139,7 +139,7 @@ export function ClassroomTopicPage() {
   const [deleting, setDeleting] = useState(false);
   const teacher = me?.role === "teacher";
 
-  const back = <Link to="/classrooms/$classroomId" params={{ classroomId }} search={{ tab: "topics" }} className="inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-bg-2 px-3.5 py-1.5 text-[13px] text-ink-dim hover:text-ink"><ArrowLeft className="size-3.5" />回議題列表</Link>;
+  const back = <Link to="/classrooms/$classroomId" params={{ classroomId }} search={{ tab: "debates" }} className="inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-bg-2 px-3.5 py-1.5 text-[13px] text-ink-dim hover:text-ink"><ArrowLeft className="size-3.5" />回辯論列表</Link>;
   if (error) return <div className="mx-auto max-w-3xl p-8">{back}<p className="mt-6 text-sm text-ink-faint">{error.message}</p></div>;
   if (!topic) return null;
   return (
@@ -147,7 +147,7 @@ export function ClassroomTopicPage() {
       {back}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="mb-1.5 flex flex-wrap items-center gap-2"><Badge tone={TOPIC_TYPE[topic.type].tone}>{TOPIC_TYPE[topic.type].name}議題</Badge><DueLabel at={topic.dueAt} /></div>
+          <div className="mb-1.5 flex flex-wrap items-center gap-2"><Badge tone={DEBATE_TYPE[topic.type].tone}>{DEBATE_TYPE[topic.type].name}辯論</Badge><DueLabel at={topic.dueAt} /></div>
           <h2 className="font-serif text-2xl leading-snug">{topic.title}</h2>
         </div>
         {teacher && (
@@ -159,9 +159,9 @@ export function ClassroomTopicPage() {
       </div>
       <div className="grid items-start border-t border-line pt-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="lg:pr-8">
-          <TopicInfo topic={topic} teacher={teacher} />
+          <DebateInfo topic={topic} teacher={teacher} />
           <StartPanel topic={topic} teacher={teacher} />
-          <TopicReports topic={topic} teacher={teacher} />
+          <DebateReports topic={topic} teacher={teacher} />
         </div>
         <section className="max-lg:mt-2 max-lg:border-t max-lg:border-line max-lg:pt-6 lg:min-h-full lg:border-l lg:border-line lg:pl-8">
           <h3 className="mb-3 font-serif text-lg">討論{topic.postCount > 0 && <span className="ml-2 font-sans text-sm text-ink-faint">{topic.postCount}</span>}</h3>
@@ -170,7 +170,7 @@ export function ClassroomTopicPage() {
       </div>
       {teacher && (
         <>
-          <TopicFormDialog classroomId={classroomId} topic={topic} activity={activity} open={editing} onOpenChange={setEditing} />
+          <DebateFormDialog classroomId={classroomId} topic={topic} activity={activity} open={editing} onOpenChange={setEditing} />
           <DeleteDialog topic={topic} open={deleting} onOpenChange={setDeleting} />
         </>
       )}

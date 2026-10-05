@@ -80,7 +80,7 @@ export function useSaveClassroom(classroomId?: string) {
   });
 }
 
-/** 議題變動後要更新的資料：議題列表、單一議題，以及團體議題連動的辯論活動與教室統計 */
+/** 辯論（API 上的 topic）變動後要更新的資料：辯論列表、單一辯論，以及連動的活動與教室統計 */
 export function useInvalidateTopic(classroomId: string) {
   const qc = useQueryClient();
   return (topic?: Pick<ClassroomTopic, "id" | "activityId">) => {
@@ -93,7 +93,7 @@ export function useInvalidateTopic(classroomId: string) {
   };
 }
 
-/** 新增（不帶 topicId）或編輯議題；編輯時不能改類型 */
+/** 新增（不帶 topicId）或編輯辯論；編輯時不能改類型 */
 export function useSaveTopic(classroomId: string, topicId?: string) {
   const invalidate = useInvalidateTopic(classroomId);
   return useMutation({
@@ -178,7 +178,7 @@ export function useCancelApplication() {
   });
 }
 
-/** 發文或回覆；議題討論區的則數也要更新 */
+/** 發文或回覆；辯論討論區的則數也要更新 */
 export function useCreatePost(classroomId: string, topicId: string | null) {
   const qc = useQueryClient();
   return useMutation({

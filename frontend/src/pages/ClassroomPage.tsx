@@ -15,15 +15,15 @@ import { ImportMembersButton, JoinSettingsCard, PendingApplications } from "./Cl
 import { CalendarCard } from "./CalendarCard";
 import { ClassroomFormDialog } from "./ClassroomFormDialog";
 import { DiscussionBoard } from "./Discussion";
-import { TopicFormDialog } from "./TopicFormDialog";
+import { DebateFormDialog } from "./DebateFormDialog";
 
-export const CLASSROOM_TABS = ["home", "announcements", "topics", "discussion", "members"] as const;
+export const CLASSROOM_TABS = ["home", "announcements", "debates", "discussion", "members"] as const;
 export type ClassroomTab = (typeof CLASSROOM_TABS)[number];
-const TAB_NAME: Record<ClassroomTab, string> = { home: "首頁", announcements: "公告", topics: "議題", discussion: "討論", members: "成員" };
+const TAB_NAME: Record<ClassroomTab, string> = { home: "首頁", announcements: "公告", debates: "辯論", discussion: "討論", members: "成員" };
 
 export const STAGE_NAME: Record<Stage, string> = { individual: "個人調查", team: "團隊提純", debate: "辯論比賽", done: "已結束" };
 const STAGE_ORDER: Stage[] = ["individual", "team", "debate", "done"];
-export const TOPIC_TYPE: Record<TopicType, { name: string; tone: "olive" | "bronze" }> = { individual: { name: "個人", tone: "olive" }, group: { name: "團體", tone: "bronze" } };
+export const DEBATE_TYPE: Record<TopicType, { name: string; tone: "olive" | "bronze" }> = { individual: { name: "個人", tone: "olive" }, group: { name: "團體", tone: "bronze" } };
 
 /** 截止時間；已過期顯示紅色 */
 export function DueLabel({ at }: { at: string | null }) {
@@ -32,17 +32,17 @@ export function DueLabel({ at }: { at: string | null }) {
   return <span className={cn("inline-flex items-center gap-1 text-[11.5px]", over ? "text-wine" : "text-ink-faint")}><CalendarClock className="size-3.5" />{over ? "已截止 " : "截止 "}{formatDateTime(at)}</span>;
 }
 
-/** 團體議題的辯論進度條 */
+/** 團體辯論的進度條 */
 export function StageBar({ stage }: { stage: Stage }) {
   return <div className="flex gap-1">{STAGE_ORDER.map((s, i) => <b key={s} className={cn("h-1 flex-1 rounded-full bg-bg-3", STAGE_ORDER.indexOf(stage) > i && "bg-bronze-dim", stage === s && "bg-bronze")} />)}</div>;
 }
 
-function TopicCard({ t, activity }: { t: ClassroomTopic; activity?: Activity }) {
+function DebateCard({ t, activity }: { t: ClassroomTopic; activity?: Activity }) {
   return (
-    <Link to="/classrooms/$classroomId/topics/$topicId" params={{ classroomId: t.classroomId, topicId: t.id }}>
+    <Link to="/classrooms/$classroomId/debates/$debateId" params={{ classroomId: t.classroomId, debateId: t.id }}>
       <Card className="flex h-full flex-col transition-colors hover:border-bronze-dim">
         <div className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-1.5"><Badge tone={TOPIC_TYPE[t.type].tone}>{TOPIC_TYPE[t.type].name}</Badge>{activity && <span className="text-[11px] text-ink-faint">{STAGE_NAME[activity.stage]}</span>}</span>
+          <span className="flex items-center gap-1.5"><Badge tone={DEBATE_TYPE[t.type].tone}>{DEBATE_TYPE[t.type].name}</Badge>{activity && <span className="text-[11px] text-ink-faint">{STAGE_NAME[activity.stage]}</span>}</span>
           {t.resources.length > 0 && <span className="inline-flex items-center gap-1 text-[11px] text-ink-faint"><Paperclip className="size-3" />{t.resources.length}</span>}
         </div>
         <h3 className="mt-3 font-serif text-[15.5px] leading-snug">{t.title}</h3>
@@ -56,11 +56,11 @@ function TopicCard({ t, activity }: { t: ClassroomTopic; activity?: Activity }) 
   );
 }
 
-function TopicGrid({ topics, activities }: { topics: ClassroomTopic[]; activities: Activity[] }) {
-  return <div className="grid gap-4 sm:grid-cols-2">{topics.map((t) => <TopicCard key={t.id} t={t} activity={activities.find((a) => a.id === t.activityId && a.kind === "debate")} />)}</div>;
+function DebateGrid({ topics, activities }: { topics: ClassroomTopic[]; activities: Activity[] }) {
+  return <div className="grid gap-4 sm:grid-cols-2">{topics.map((t) => <DebateCard key={t.id} t={t} activity={activities.find((a) => a.id === t.activityId && a.kind === "debate")} />)}</div>;
 }
 
-function TopicsTab({ classroomId, teacher, topics, activities }: { classroomId: string; teacher: boolean; topics: ClassroomTopic[]; activities: Activity[] }) {
+function DebatesTab({ classroomId, teacher, topics, activities }: { classroomId: string; teacher: boolean; topics: ClassroomTopic[]; activities: Activity[] }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<TopicType | "all">("all");
   const navigate = useNavigate();
@@ -73,12 +73,12 @@ function TopicsTab({ classroomId, teacher, topics, activities }: { classroomId: 
             <button key={k} type="button" onClick={() => setFilter(k)} className={cn("cursor-pointer rounded-full border px-3 py-1", filter === k ? "border-bronze-dim text-bronze" : "border-line text-ink-dim hover:text-ink")}>{n}</button>
           ))}
         </div>
-        {teacher && <Button onClick={() => setOpen(true)}><Plus className="size-4" />新增議題</Button>}
+        {teacher && <Button onClick={() => setOpen(true)}><Plus className="size-4" />新增辯論</Button>}
       </div>
-      <TopicGrid topics={shown} activities={activities} />
-      {!shown.length && <p className="text-sm text-ink-faint">{topics.length ? "沒有這個類型的議題。" : teacher ? "還沒有議題。按右上「新增議題」，設定第一個議題吧。" : "老師還沒有新增任何議題。"}</p>}
-      {teacher && <TopicFormDialog classroomId={classroomId} open={open} onOpenChange={setOpen}
-        onSaved={(t) => navigate({ to: "/classrooms/$classroomId/topics/$topicId", params: { classroomId, topicId: t.id } })} />}
+      <DebateGrid topics={shown} activities={activities} />
+      {!shown.length && <p className="text-sm text-ink-faint">{topics.length ? "沒有這個類型的辯論。" : teacher ? "還沒有辯論。按右上「新增辯論」，設定第一場辯論吧。" : "老師還沒有新增任何辯論。"}</p>}
+      {teacher && <DebateFormDialog classroomId={classroomId} open={open} onOpenChange={setOpen}
+        onSaved={(t) => navigate({ to: "/classrooms/$classroomId/debates/$debateId", params: { classroomId, debateId: t.id } })} />}
     </>
   );
 }
@@ -163,7 +163,7 @@ export function ClassroomPage() {
       {classroom && <ClassroomFormDialog classroom={classroom} open={editing} onOpenChange={setEditing} />}
       {tab === "home" && classroom && <HomeTab classroom={classroom} teacher={teacher} onEdit={() => setEditing(true)} />}
       {tab === "announcements" && <AnnouncementsTab classroomId={classroomId} teacher={teacher} />}
-      {tab === "topics" && <TopicsTab classroomId={classroomId} teacher={teacher} topics={topics} activities={activities} />}
+      {tab === "debates" && <DebatesTab classroomId={classroomId} teacher={teacher} topics={topics} activities={activities} />}
       {tab === "discussion" && <DiscussionBoard classroomId={classroomId} topicId={null} />}
       {tab === "members" && <MembersTab classroomId={classroomId} teacher={teacher} />}
     </div>

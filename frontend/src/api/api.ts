@@ -70,12 +70,12 @@ export interface Api {
   updateAnnouncement(id: string, patch: Partial<AnnouncementInput>): Promise<Announcement>; // 僅老師
   deleteAnnouncement(id: string): Promise<void>; // 僅老師
 
-  /* 教室議題 */
+  /* 教室的辯論（API 名稱沿用 topic；畫面上稱為「辯論」） */
   listTopics(classroomId: string): Promise<ClassroomTopic[]>;
   getTopic(id: string): Promise<ClassroomTopic>;
-  createTopic(classroomId: string, input: TopicInput): Promise<ClassroomTopic>; // 僅老師；同時建立議題的活動（團體 = 辯論、個人 = 個人思辨）
+  createTopic(classroomId: string, input: TopicInput): Promise<ClassroomTopic>; // 僅老師；同時建立這場辯論的活動（團體 = 四階段辯論、個人 = 個人思辨）
   updateTopic(id: string, patch: Partial<Omit<TopicInput, "type">>): Promise<ClassroomTopic>; // 僅老師
-  deleteTopic(id: string): Promise<void>; // 僅老師；連同議題的活動一起刪除
+  deleteTopic(id: string): Promise<void>; // 僅老師；連同這場辯論的活動一起刪除
   addTopicLink(topicId: string, link: { name: string; url: string }): Promise<TopicResource>; // 僅老師
   uploadTopicFile(topicId: string, file: File): Promise<TopicResource>; // 僅老師
   deleteTopicResource(topicId: string, resourceId: string): Promise<void>; // 僅老師

@@ -71,6 +71,8 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 只做排程發布，不做推播或 email。
 
 ## 教室議題
+> 畫面上稱為「**辯論**」（個人辯論 / 團體辯論，網址 `/classrooms/:id/debates/:id`）；API 名稱沿用 `topics`。
+
 議題分**個人**與**團體**。建立議題時，後端同時建立一個 `Activity`（`title` / `statement` 用議題標題），並把 `activityId` 填回議題：
 - 團體議題：`kind = "debate"`，四階段辯論（個人調查 → 團隊提純 → 辯論比賽 → 結果），由老師推進。
 - 個人議題：`kind = "individual"`，沒有價值軸、不分組、不推進。每位學生各自走「個人思辨（同階段 1 的對話與整理論點）→ 完成 → 結算」，

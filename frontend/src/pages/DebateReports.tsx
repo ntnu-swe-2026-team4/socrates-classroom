@@ -80,7 +80,7 @@ function AllReports({ topic }: { topic: ClassroomTopic }) {
   );
 }
 
-export function TopicReports({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean }) {
+export function DebateReports({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean }) {
   if (!topic.acceptsReports) return null;
   return (
     <section className="border-b border-line py-5 first:pt-0 last:border-b-0">

@@ -142,7 +142,7 @@ export interface AnnouncementInput {
   publishAt: string | null;
 }
 
-/* ---------- 教室議題 ---------- */
+/* ---------- 教室的辯論（API 名稱沿用 topic；畫面上稱為「辯論」） ---------- */
 export type TopicType = "individual" | "group";
 
 /** 上傳檔案的共用描述（教學資源、學生報告） */
@@ -163,13 +163,13 @@ export interface ClassroomTopic {
   classroomId: string;
   type: TopicType;
   title: string;
-  /** 議題詳細說明 */
+  /** 辯論的詳細說明 */
   description: string;
   dueAt: string | null;
   resources: TopicResource[];
   /** 是否讓學生上傳結論報告 */
   acceptsReports: boolean;
-  /** 議題對應的活動：團體議題是辯論活動，個人議題是個人思辨活動 */
+  /** 對應的活動：團體辯論是四階段辯論活動，個人辯論是個人思辨活動 */
   activityId: string | null;
   postCount: number;
   createdAt: string;
@@ -182,7 +182,7 @@ export interface TopicInput {
   description: string;
   dueAt: string | null;
   acceptsReports: boolean;
-  /** 團體議題必填：辯論活動的設定（活動的 title / statement 由後端用議題標題填入） */
+  /** 團體辯論必填：辯論活動的設定（活動的 title / statement 由後端用辯論主題填入） */
   activity?: Pick<CreateActivityInput, "answerMode" | "axes" | "groupSize">;
 }
 
@@ -200,7 +200,7 @@ export interface TopicReport {
 export interface DiscussionPost {
   id: string;
   classroomId: string;
-  /** null = 教室討論區；否則為該議題的討論區 */
+  /** null = 教室討論區；否則為該場辯論的討論區 */
   topicId: string | null;
   /** 回覆的對象；null = 主貼文 */
   parentId: string | null;
@@ -261,7 +261,7 @@ export interface Axis {
   right: string;
 }
 
-/** debate = 團體議題的四階段辯論；individual = 個人議題的個人思辨（每位學生各自完成，只有「思辨 → 結算」） */
+/** debate = 團體辯論的四個階段；individual = 個人辯論的個人思辨（每位學生各自完成，只有「思辨 → 結算」） */
 export type ActivityKind = "debate" | "individual";
 
 export interface Activity {
@@ -276,7 +276,7 @@ export interface Activity {
   stage: Stage;
   memberCount: number;
   createdAt: string;
-  /** 所屬的教室議題（P4 之後由議題建立的活動才有） */
+  /** 所屬的教室辯論（API 上的 topic；P4 之後建立的活動才有） */
   topicId?: string;
   /** 老師為目前階段設的截止時間；null = 不限時。到時間只提醒，不會自動推進 */
   stageDeadline: string | null;

@@ -12,8 +12,8 @@ type AxisDraft = Settings["axes"][number];
 
 const EMPTY_AXES: AxisDraft[] = [{ name: "", left: "", right: "" }, { name: "", left: "", right: "" }];
 const TYPE_INFO: Record<TopicType, [string, string]> = {
-  individual: ["個人議題", "每位學生各自和蘇格拉底進行個人思辨，完成後看到自己的結算。"],
-  group: ["團體議題", "先各自對話找出立場，再依立場分組、辯論。"],
+  individual: ["個人辯論", "每位學生各自和蘇格拉底進行個人思辨，完成後看到自己的結算。"],
+  group: ["團體辯論", "先各自對話找出立場，再依立場分組、辯論。"],
 };
 
 function Segmented<T extends string>({ items, value, onChange }: { items: [T, string][]; value: T; onChange: (v: T) => void }) {
@@ -27,7 +27,7 @@ function Segmented<T extends string>({ items, value, onChange }: { items: [T, st
   );
 }
 
-/** 團體議題的辯論設定：回答方式、價值軸、組別人數 */
+/** 團體辯論的設定：回答方式、價值軸、組別人數 */
 function DebateSettingsFields({ mode, setMode, axes, setAxes, size, setSize }: {
   mode: AnswerMode; setMode: (v: AnswerMode) => void;
   axes: AxisDraft[]; setAxes: (v: AxisDraft[]) => void;
@@ -57,8 +57,8 @@ function DebateSettingsFields({ mode, setMode, axes, setAxes, size, setSize }: {
   );
 }
 
-/** 新增議題（不帶 topic）或編輯議題。團體議題編輯時要帶 activity 才能顯示原本的辯論設定 */
-export function TopicFormDialog({ classroomId, topic, activity, open, onOpenChange, onSaved }: {
+/** 新增辯論（不帶 topic）或編輯辯論。團體辯論編輯時要帶 activity 才能顯示原本的辯論設定 */
+export function DebateFormDialog({ classroomId, topic, activity, open, onOpenChange, onSaved }: {
   classroomId: string;
   topic?: ClassroomTopic;
   activity?: Activity;
@@ -95,7 +95,7 @@ export function TopicFormDialog({ classroomId, topic, activity, open, onOpenChan
   }, [open]);
 
   function submit() {
-    if (!title.trim()) return setErr("請填寫議題標題。");
+    if (!title.trim()) return setErr("請填寫辯論主題。");
     const input: TopicInput = { type, title: title.trim(), description: description.trim(), dueAt: fromLocalInput(due), acceptsReports: reports };
     if (type === "group") {
       const clean = axes.filter((x) => x.name.trim() && x.left.trim() && x.right.trim()).map((x) => ({ name: x.name.trim(), left: x.left.trim(), right: x.right.trim() }));
@@ -112,12 +112,12 @@ export function TopicFormDialog({ classroomId, topic, activity, open, onOpenChan
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
-        <DialogTitle>{editing ? "編輯議題" : "新增議題"}</DialogTitle>
+        <DialogTitle>{editing ? "編輯辯論" : "新增辯論"}</DialogTitle>
         <DialogDescription>{TYPE_INFO[type][1]}</DialogDescription>
         <div className="space-y-4 text-sm">
-          {!editing && <div><span className="mb-1 block text-xs text-ink-dim">議題類型</span><Segmented items={[["individual", TYPE_INFO.individual[0]], ["group", TYPE_INFO.group[0]]]} value={type} onChange={setType} /></div>}
-          <label className="block"><span className="mb-1 block text-xs text-ink-dim">議題</span><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例如：正義是否只是強者的利益？" /></label>
-          <label className="block"><span className="mb-1 block text-xs text-ink-dim">詳細說明（選填）</span><Textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="議題背景、要思考的方向、閱讀材料的重點……" /></label>
+          {!editing && <div><span className="mb-1 block text-xs text-ink-dim">辯論類型</span><Segmented items={[["individual", TYPE_INFO.individual[0]], ["group", TYPE_INFO.group[0]]]} value={type} onChange={setType} /></div>}
+          <label className="block"><span className="mb-1 block text-xs text-ink-dim">辯論主題</span><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例如：正義是否只是強者的利益？" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-ink-dim">詳細說明（選填）</span><Textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="辯論背景、要思考的方向、閱讀材料的重點……" /></label>
           <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
             <label className="block">
               <span className="mb-1 block text-xs text-ink-dim">截止時間（選填）</span>
@@ -139,7 +139,7 @@ export function TopicFormDialog({ classroomId, topic, activity, open, onOpenChan
           {(err || save.error) && <p className="text-[12.5px] text-wine">{err || save.error?.message}</p>}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-            <Button onClick={submit} disabled={save.isPending}>{editing ? "儲存" : "建立議題"}</Button>
+            <Button onClick={submit} disabled={save.isPending}>{editing ? "儲存" : "建立辯論"}</Button>
           </div>
         </div>
       </DialogContent>

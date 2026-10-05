@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 const KIND: Record<CalendarEvent["kind"], { name: string; dot: string }> = {
-  topic_due: { name: "議題截止", dot: "bg-wine" },
+  topic_due: { name: "辯論截止", dot: "bg-wine" },
   stage_deadline: { name: "辯論階段截止", dot: "bg-bronze" },
   announcement: { name: "公告", dot: "bg-olive" },
 };
@@ -16,7 +16,7 @@ const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 const pad = (n: number) => String(n).padStart(2, "0");
 
-/** 教室的月曆：議題截止日、公告、辯論階段截止時間（由後端從既有資料整理） */
+/** 教室的月曆：辯論截止日、公告、辯論階段截止時間（由後端從既有資料整理） */
 export function CalendarCard({ classroomId }: { classroomId: string }) {
   const navigate = useNavigate();
   const today = new Date();
@@ -36,7 +36,7 @@ export function CalendarCard({ classroomId }: { classroomId: string }) {
   const open = (e: CalendarEvent) => {
     if (e.kind === "announcement") navigate({ to: "/classrooms/$classroomId", params: { classroomId: e.classroomId }, search: { tab: "announcements" } });
     else if (e.kind === "stage_deadline" && e.activityId) navigate({ to: "/classrooms/$classroomId/activities/$activityId", params: { classroomId: e.classroomId, activityId: e.activityId } });
-    else if (e.topicId) navigate({ to: "/classrooms/$classroomId/topics/$topicId", params: { classroomId: e.classroomId, topicId: e.topicId } });
+    else if (e.topicId) navigate({ to: "/classrooms/$classroomId/debates/$debateId", params: { classroomId: e.classroomId, debateId: e.topicId } });
   };
   const shift = (d: number) => { setMonth(new Date(month.getFullYear(), month.getMonth() + d, 1)); setPicked(null); };
 
