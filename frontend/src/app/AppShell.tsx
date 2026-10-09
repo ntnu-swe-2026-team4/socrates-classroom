@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { BookOpen, ChevronDown, GraduationCap, Home, Moon, Settings, Sun, User as UserIcon } from "lucide-react";
+import { BookOpen, ChevronDown, Compass, GraduationCap, Home, Moon, Settings, Sun, User as UserIcon } from "lucide-react";
 import { api } from "@/api";
 import { keys, useMe } from "@/api/queries";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ const TITLES: [RegExp, string, (role?: string) => string][] = [
   [/^\/bank\/public/, "公開題庫", () => "大家都看得到"],
   [/^\/classrooms\/[^/]+\/activities/, "教室", () => "辯論活動"],
   [/^\/classrooms/, "教室", (r) => (r === "teacher" ? "教師工具" : "")],
+  [/^\/explore/, "探索課程", () => "開放加入的課程"],
 ];
 
 const navBtn =
@@ -81,6 +82,7 @@ export function AppShell() {
           <Link to="/bank/$kind" params={{ kind: "public" }} className={sub} activeProps={navActive}>公開題庫</Link>
         </NavGroup>
         <Link to="/classrooms" className={navBtn} activeProps={navActive}><GraduationCap className="size-5" /><span>教室</span></Link>
+        {me?.role === "student" && <Link to="/explore" className={navBtn} activeProps={navActive}><Compass className="size-5" /><span>探索</span></Link>}
 
         <div className="flex-1" />
         <button

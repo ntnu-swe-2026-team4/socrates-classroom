@@ -27,20 +27,36 @@ export const findAct = (id: string) => {
 /* ---------------- 活動 ---------------- */
 export function createActivity(classroom: { id: string; students: string[] }, input: any, id?: string) {
   const a: any = {
-    id: id ?? uid("d"), classroomId: classroom.id, title: input.title, statement: input.statement,
+    id: id ?? uid("d"), kind: input.kind ?? "debate", classroomId: classroom.id, title: input.title, statement: input.statement,
     answerMode: input.answerMode, axes: D.makeAxes(input.axes), groupSize: input.groupSize,
     stage: "individual", createdAt: now(), weights: { ...D.DEFAULT_WEIGHTS },
-    members: [], positions: {}, dialogue: [], groups: [], groupState: {}, rooms: [], bye: null, scores: {},
+    members: [], positions: {}, dialogue: [], groups: [], groupState: {}, rooms: [], bye: null, scores: {}, ready: new Set(), stageDeadline: null, completed: new Set(),
   };
   a.members = D.makeCohort({ students: classroom.students }, { activityId: a.id });
   acts.push(a);
   return a;
 }
 
+export function removeActivity(id: string) {
+  const i = acts.findIndex((x) => x.id === id);
+  if (i >= 0) acts.splice(i, 1);
+}
+
+/** 有人開始對話（或已過階段 1）後，辯論設定就不能再改 */
+export const hasStarted = (a: any) => a.stage !== "individual" || a.dialogue.length > 0 || Object.keys(a.positions).length > 0;
+
+export function updateSettings(a: any, s: { answerMode?: string; axes?: any[]; groupSize?: number }) {
+  if (hasStarted(a)) throw new Error("已經有學生開始對話，辯論設定不能再修改");
+  if (s.answerMode) a.answerMode = s.answerMode;
+  if (s.groupSize) a.groupSize = s.groupSize;
+  if (s.axes) a.axes = D.makeAxes(s.axes);
+}
+
 export const toActivity = (a: any) => ({
-  id: a.id, classroomId: a.classroomId, title: a.title, statement: a.statement, answerMode: a.answerMode,
+  id: a.id, kind: a.kind, classroomId: a.classroomId, title: a.title, statement: a.statement, answerMode: a.answerMode,
   axes: a.axes.map((x: any) => ({ key: x.key, name: x.name, left: x.left, right: x.right })),
   groupSize: a.groupSize, stage: a.stage, memberCount: a.members.length, createdAt: a.createdAt,
+  stageDeadline: a.stageDeadline ?? null, topicId: a.topicId,
 });
 
 /* ---------------- 階段 1 ---------------- */
@@ -56,6 +72,7 @@ const userTexts = (a: any) => a.dialogue.filter((m: any) => m.role === "user").m
 
 export async function sendDialogue(a: any, text: string, onDelta?: (c: string) => void): Promise<any> {
   if (a.stage !== "individual") throw new Error("個人調查已經結束");
+  if (a.completed.has("you")) throw new Error("你已經完成了，要繼續請先重新開啟");
   if (userTexts(a).length >= 20) throw new Error("已達最多 20 輪");
   a.dialogue.push({ id: uid("m"), role: "user", text, at: now() });
   const reply = REPLIES[a.dialogue.filter((m: any) => m.role === "assistant").length % REPLIES.length];
@@ -70,15 +87,18 @@ export function progress(a: any) {
   return { rounds: texts.length, maxRounds: 20, coverage: D.coverage(texts), readyToSummarize: texts.length >= 2 };
 }
 
+/** 學生只拿到 AI 整理的論點；座標在確認時由「後端」估算，不給學生 */
 export function draftPosition(a: any) {
   const d = D.draftPosition(a, userTexts(a));
-  return { coords: d.coords, summary: { claim: d.claim, reason: d.reason, evidence: d.evidence }, aiSuggested: true };
+  return { summary: { claim: d.claim, reason: d.reason, evidence: d.evidence } };
 }
 
-export function confirmPosition(a: any, p: any) {
+export function confirmPosition(a: any, summary: any) {
   if (a.stage !== "individual") throw new Error("個人調查已經結束");
-  a.positions.you = { coords: p.coords, summary: p.summary, confirmed: true, rounds: userTexts(a).length };
-  return toPosition(a, "you");
+  if (a.completed.has("you")) throw new Error("你已經完成了，要修改請先重新開啟");
+  const d = D.draftPosition(a, userTexts(a));
+  a.positions.you = { coords: d.coords, summary, confirmed: true, rounds: userTexts(a).length };
+  return toPosition(a, "you", false);
 }
 
 export function simulateIndividual(a: any) {
@@ -87,19 +107,24 @@ export function simulateIndividual(a: any) {
     if (!m.sim || a.positions[m.id]?.confirmed) continue;
     const coords = D.simPosition(a, m);
     a.positions[m.id] = { coords, summary: D.simSummary(a, m, coords), confirmed: true, rounds: 3 + (n % 5), sim: true };
+    a.ready.add(m.id); // 模擬同學完成調查就算準備好了
+    if (a.kind === "individual") a.completed.add(m.id);
     n++;
   }
   return n;
 }
 
-export const toPosition = (a: any, id: string) => {
+/** 活動結束前，學生拿到的座標是 null（老師一律看得到） */
+export const coordsVisible = (a: any, teacher: boolean) => teacher || a.stage === "done";
+
+export const toPosition = (a: any, id: string, teacher: boolean) => {
   const p = a.positions[id];
-  return { memberId: id, coords: p.coords, summary: { claim: p.summary.claim, reason: p.summary.reason, evidence: p.summary.evidence }, confirmed: !!p.confirmed, aiSuggested: !!p.auto };
+  return { memberId: id, coords: coordsVisible(a, teacher) ? p.coords : null, summary: { claim: p.summary.claim, reason: p.summary.reason, evidence: p.summary.evidence }, confirmed: !!p.confirmed, aiSuggested: !!p.auto };
 };
 
 export function listPositions(a: any, teacher: boolean) {
   const ids = teacher ? a.members.map((m: any) => m.id) : ["you"];
-  return ids.filter((id: string) => a.positions[id]).map((id: string) => toPosition(a, id));
+  return ids.filter((id: string) => a.positions[id]).map((id: string) => toPosition(a, id, teacher));
 }
 
 export function listMembers(a: any, teacher: boolean, isStudent: boolean) {
@@ -107,10 +132,10 @@ export function listMembers(a: any, teacher: boolean, isStudent: boolean) {
   return a.members.map((m: any) => {
     const p = a.positions[m.id];
     const r = m.isYou ? rounds : p?.rounds || 0;
-    const status = p?.confirmed ? "confirmed" : r ? "talking" : "todo";
+    const status = a.completed.has(m.id) ? "done" : p?.confirmed ? "confirmed" : r ? "talking" : "todo";
     const visible = teacher || m.isYou;
     return {
-      id: m.id, name: m.name, isMe: !!m.isYou && isStudent, simulated: !!m.sim,
+      id: m.id, name: m.name, isMe: !!m.isYou && isStudent, simulated: !!m.sim, ready: a.ready.has(m.id),
       individual: visible ? { status, rounds: r, claim: p?.confirmed ? p.summary.claim : undefined } : undefined,
     };
   });
@@ -118,6 +143,7 @@ export function listMembers(a: any, teacher: boolean, isStudent: boolean) {
 
 /* ---------------- 推進階段 ---------------- */
 export function advance(a: any) {
+  if (a.kind === "individual") throw new Error("個人思辨不需要推進，每位學生各自完成");
   const i = D.STAGES.indexOf(a.stage);
   const next = D.STAGES[i + 1];
   if (!next) throw new Error("活動已經結束");
@@ -135,9 +161,50 @@ export function advance(a: any) {
     for (const r of a.rooms) if (r.status !== "finished") simulateRoom(a, r);
     finalizeScores(a);
   }
-  a.stage = next;
-  emit(a.id, { type: "stage_changed", stage: next });
+  enterStage(a, next);
   return a;
+}
+
+/** 換階段：截止時間與「準備好了」都重設 */
+function enterStage(a: any, stage: string) {
+  a.stage = stage;
+  a.stageDeadline = null;
+  a.ready = new Set();
+  emit(a.id, { type: "stage_changed", stage });
+}
+
+/** 老師直接結束活動：依序推進到結果；組別不足兩組時跳過辯論，直接結算 */
+export function finish(a: any) {
+  if (a.kind === "individual") throw new Error("個人思辨沒有「結束活動」，每位學生各自完成");
+  if (a.stage === "done") throw new Error("活動已經結束");
+  while (a.stage !== "done") {
+    if (a.stage === "team" && a.groups.length < 2) {
+      finalizeScores(a);
+      enterStage(a, "done");
+    } else advance(a);
+  }
+  return a;
+}
+
+export function setDeadline(a: any, deadline: string | null) {
+  if (a.stage === "done") throw new Error("活動已經結束");
+  if (deadline && new Date(deadline).getTime() <= Date.now()) throw new Error("截止時間要晚於現在");
+  a.stageDeadline = deadline;
+  emit(a.id, { type: "deadline_changed", deadline });
+  return a;
+}
+
+/** 個人思辨：學生完成（進入結算）或重新開啟 */
+export function setCompleted(a: any, done: boolean) {
+  if (a.kind !== "individual") throw new Error("只有個人思辨可以這樣做");
+  if (done && !a.positions.you?.confirmed) throw new Error("請先整理並確認你的論點");
+  if (done) a.completed.add("you"); else a.completed.delete("you");
+}
+
+export function setReady(a: any, ready: boolean) {
+  if (a.stage === "done" || a.stage === "debate") throw new Error("這個階段不需要回報");
+  if (ready) a.ready.add("you"); else a.ready.delete("you");
+  emit(a.id, { type: "member_ready", memberId: "you", ready });
 }
 
 /* ---------------- 階段 2 ---------------- */

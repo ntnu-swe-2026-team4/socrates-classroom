@@ -1,14 +1,11 @@
 import { useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
-import { api } from "@/api";
-import { keys, useArchives, useClassrooms, useMe, useUpdateArchive } from "@/api/queries";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { KeyRound, Mail, Plus } from "lucide-react";
+import { useArchives, useClassrooms, useMe, useUpdateArchive } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ClassroomFormDialog } from "./ClassroomFormDialog";
+import { InvitesDialog, JoinDialog } from "./JoinClassroom";
 
 export function SummaryPage() {
   const { data: archives = [] } = useArchives();
@@ -52,61 +49,47 @@ export function BankPage() {
 export function ClassroomsPage() {
   const { data: me } = useMe();
   const { data: classrooms = [] } = useClassrooms();
-  const qc = useQueryClient();
   const teacher = me?.role === "teacher";
   const list = teacher ? classrooms : classrooms.filter((c) => c.joined);
-  const invites = teacher ? [] : classrooms.filter((c) => !c.joined);
+  const inviteCount = teacher ? 0 : classrooms.filter((c) => !c.joined).length;
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const refresh = () => qc.invalidateQueries({ queryKey: keys.classrooms });
-  const create = useMutation({ mutationFn: () => api.createClassroom(name.trim()), onSuccess: () => { setOpen(false); setName(""); refresh(); } });
+  const [joining, setJoining] = useState(false);
+  const [inviting, setInviting] = useState(false);
 
   return (
     <div className="mx-auto max-w-4xl p-8">
-      <div className="mb-6 flex items-end justify-between gap-4">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="font-serif text-2xl">我的教室</h2>
-          <p className="mt-1 max-w-[52ch] text-sm leading-relaxed text-ink-dim">{teacher ? "建立教室、邀請學生加入，之後可以在教室裡管理成員、發起辯論。" : "老師建立教室後會邀請你加入，你沒有辦法自己建立教室。"}</p>
+          <p className="mt-1 max-w-[52ch] text-sm leading-relaxed text-ink-dim">{teacher ? "建立教室、邀請學生加入，之後可以在教室裡管理成員、發起辯論。" : "用老師給的邀請碼加入，或到左側「探索」找開放加入的課程。"}</p>
         </div>
-        {teacher && <Button onClick={() => setOpen(true)}><Plus className="size-4" />新增教室</Button>}
+        {teacher ? <Button onClick={() => setOpen(true)}><Plus className="size-4" />新增教室</Button> : (
+          <span className="flex gap-2">
+            <Button variant="outline" onClick={() => setInviting(true)}><Mail className="size-4" />待處理邀請{inviteCount > 0 && <span className="rounded-full bg-bronze px-1.5 text-[11px] font-semibold text-[#221a0c]">{inviteCount}</span>}</Button>
+            <Button onClick={() => setJoining(true)}><KeyRound className="size-4" />用邀請碼加入</Button>
+          </span>
+        )}
       </div>
-
-      {invites.length > 0 && (
-        <div className="mb-6">
-          <div className="mb-2 text-xs tracking-wider text-ink-faint">待處理邀請</div>
-          {invites.map((c) => (
-            <Card key={c.id} className="mb-2 flex items-center justify-between gap-3 py-3.5">
-              <span><b className="font-serif">{c.name}</b><small className="block text-xs text-ink-faint">{c.teacherName} 邀請你加入</small></span>
-              <span className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => api.declineInvite(c.id).then(refresh)}>拒絕</Button>
-                <Button size="sm" onClick={() => api.acceptInvite(c.id).then(refresh)}>接受</Button>
-              </span>
-            </Card>
-          ))}
-        </div>
-      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         {list.map((c) => (
           <Link key={c.id} to="/classrooms/$classroomId" params={{ classroomId: c.id }}>
             <Card className="h-full transition-colors hover:border-bronze-dim">
               <h3 className="font-serif text-lg">{c.name}</h3>
-              <p className="mt-1 text-sm text-ink-faint">{c.studentCount} 位學生 · {c.debateCount} 場辯論</p>
-              <Badge tone="bronze" className="mt-3">進入教室</Badge>
+              {c.description && <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-ink-dim">{c.description}</p>}
+              <p className="mt-1 text-sm text-ink-faint">{c.teacherName} · {c.studentCount} 位學生</p>
             </Card>
           </Link>
         ))}
       </div>
       {!list.length && <p className="text-sm text-ink-faint">{teacher ? "還沒有建立任何教室，按上面「新增教室」開始吧。" : "目前還沒有加入任何教室。"}</p>}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogTitle>新增教室</DialogTitle>
-          <DialogDescription>建立之後，可以在教室裡新增成員、發起辯論。</DialogDescription>
-          <Input placeholder="教室名稱，例如：高二哲學選修 C" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && create.mutate()} />
-          <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => setOpen(false)}>取消</Button><Button disabled={!name.trim() || create.isPending} onClick={() => create.mutate()}>建立</Button></div>
-        </DialogContent>
-      </Dialog>
+      {teacher ? <ClassroomFormDialog open={open} onOpenChange={setOpen} /> : (
+        <>
+          <JoinDialog open={joining} onOpenChange={setJoining} />
+          <InvitesDialog open={inviting} onOpenChange={setInviting} />
+        </>
+      )}
     </div>
   );
 }

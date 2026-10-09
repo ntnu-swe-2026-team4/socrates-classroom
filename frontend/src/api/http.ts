@@ -34,6 +34,29 @@ const get = <T>(p: string) => req<T>("GET", p);
 const post = <T>(p: string, b?: unknown) => req<T>("POST", p, b ?? {});
 const put = <T>(p: string, b: unknown) => req<T>("PUT", p, b);
 const patch = <T>(p: string, b: unknown) => req<T>("PATCH", p, b);
+const del = (p: string) => req<void>("DELETE", p);
+const qs = (o: Record<string, string | undefined>) => {
+  const s = new URLSearchParams(Object.entries(o).filter((e): e is [string, string] => e[1] !== undefined)).toString();
+  return s ? `?${s}` : "";
+};
+
+/** 上傳檔案：multipart/form-data，檔案欄位名為 file，其餘欄位為字串 */
+async function upload<T>(path: string, file: File, fields: Record<string, string> = {}): Promise<T> {
+  const form = new FormData();
+  form.append("file", file);
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  const res = await fetch(`${BASE}${path}`, { method: "POST", credentials: "include", body: form });
+  if (!res.ok) {
+    let detail = res.status === 413 ? "檔案太大" : res.statusText;
+    try {
+      detail = ((await res.json()) as { message?: string }).message ?? detail;
+    } catch {
+      /* 不是 JSON 就用預設說明 */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  return (await res.json()) as T;
+}
 
 /** 送出對話並讀取 SSE：event: delta {text} … event: done {message} */
 async function streamDialogue(path: string, text: string, onDelta?: (c: string) => void): Promise<DialogueMessage> {
@@ -89,23 +112,68 @@ export const httpApi: Api = {
 
   listClassrooms: () => get("/api/classrooms"),
   getClassroom: (id) => get(`/api/classrooms/${id}`),
-  createClassroom: (name) => post("/api/classrooms", { name }),
+  createClassroom: (i) => post("/api/classrooms", i),
+  updateClassroom: (id, p) => patch(`/api/classrooms/${id}`, p),
   acceptInvite: (id) => post(`/api/classrooms/${id}/invite/accept`),
   declineInvite: (id) => post(`/api/classrooms/${id}/invite/decline`),
   listClassroomMembers: (id) => get(`/api/classrooms/${id}/members`),
   addClassroomMember: (id, name) => post(`/api/classrooms/${id}/members`, { name }),
-  removeClassroomMember: (id, mid) => req("DELETE", `/api/classrooms/${id}/members/${mid}`),
+  importClassroomMembers: (id, names) => post(`/api/classrooms/${id}/members/import`, { names }),
+  removeClassroomMember: (id, mid) => del(`/api/classrooms/${id}/members/${mid}`),
   listActivities: (cid) => get(`/api/classrooms/${cid}/activities`),
   getActivity: (id) => get(`/api/activities/${id}`),
   createActivity: (cid, i) => post(`/api/classrooms/${cid}/activities`, i),
   advanceActivity: (id) => post(`/api/activities/${id}/advance`),
+  finishActivity: (id) => post(`/api/activities/${id}/finish`),
+  setCompleted: (id, done) => put(`/api/activities/${id}/completion`, { done }),
+  setStageDeadline: (id, deadline) => put(`/api/activities/${id}/deadline`, { deadline }),
+
+  getJoinPolicy: (cid) => get(`/api/classrooms/${cid}/join-policy`),
+  updateJoinPolicy: (cid, p) => patch(`/api/classrooms/${cid}/join-policy`, p),
+  regenerateJoinCode: (cid) => post(`/api/classrooms/${cid}/join-policy/code`),
+  discoverClassrooms: (q) => get(`/api/classrooms/discover${qs({ q })}`),
+  lookupJoinCode: (code) => get(`/api/join-codes/${encodeURIComponent(code)}`),
+  joinClassroom: (cid, i) => post(`/api/classrooms/${cid}/join`, i),
+  listMyApplications: () => get("/api/me/applications"),
+  cancelApplication: (aid) => del(`/api/applications/${aid}`),
+  listApplications: (cid, status) => get(`/api/classrooms/${cid}/applications${qs({ status })}`),
+  reviewApplication: (aid, decision, note) => post(`/api/applications/${aid}/review`, { decision, note: note ?? null }),
+
+  listAnnouncements: (cid) => get(`/api/classrooms/${cid}/announcements`),
+  createAnnouncement: (cid, i) => post(`/api/classrooms/${cid}/announcements`, i),
+  updateAnnouncement: (id, p) => patch(`/api/announcements/${id}`, p),
+  deleteAnnouncement: (id) => del(`/api/announcements/${id}`),
+
+  listTopics: (cid) => get(`/api/classrooms/${cid}/topics`),
+  getTopic: (id) => get(`/api/topics/${id}`),
+  createTopic: (cid, i) => post(`/api/classrooms/${cid}/topics`, i),
+  updateTopic: (id, p) => patch(`/api/topics/${id}`, p),
+  deleteTopic: (id) => del(`/api/topics/${id}`),
+  addTopicLink: (tid, link) => post(`/api/topics/${tid}/resources`, link),
+  uploadTopicFile: (tid, file) => upload(`/api/topics/${tid}/resources/files`, file),
+  deleteTopicResource: (tid, rid) => del(`/api/topics/${tid}/resources/${rid}`),
+  listReports: (tid) => get(`/api/topics/${tid}/reports`),
+  submitReport: (tid, file, comment) => upload(`/api/topics/${tid}/reports`, file, { comment: comment ?? "" }),
+  deleteReport: (rid) => del(`/api/reports/${rid}`),
+
+  listPosts: (cid, topicId) => get(`/api/classrooms/${cid}/posts${qs({ topicId: topicId ?? undefined })}`),
+  createPost: (cid, i) => post(`/api/classrooms/${cid}/posts`, i),
+  deletePost: (pid) => del(`/api/posts/${pid}`),
+
+  listCalendar: ({ from, to, classroomId }) =>
+    get(classroomId ? `/api/classrooms/${classroomId}/calendar${qs({ from, to })}` : `/api/calendar${qs({ from, to })}`),
 
   listDialogue: (id) => get(`/api/activities/${id}/dialogue`),
   sendDialogue: (id, text, onDelta) => streamDialogue(`/api/activities/${id}/dialogue`, text, onDelta),
   getProgress: (id) => get(`/api/activities/${id}/progress`),
   draftPosition: (id) => post(`/api/activities/${id}/position/draft`),
-  confirmPosition: (id, p) => put(`/api/activities/${id}/position`, p),
+  confirmPosition: (id, summary) => put(`/api/activities/${id}/position`, { summary }),
   listPositions: (id) => get(`/api/activities/${id}/positions`),
+  setReady: (id, ready) => put(`/api/activities/${id}/ready`, { ready }),
+  listNotes: (id) => get(`/api/activities/${id}/notes`),
+  createNote: (id, i) => post(`/api/activities/${id}/notes`, i),
+  updateNote: (nid, text) => patch(`/api/notes/${nid}`, { text }),
+  deleteNote: (nid) => del(`/api/notes/${nid}`),
 
   listMembers: (id) => get(`/api/activities/${id}/members`),
   listGroups: (id) => get(`/api/activities/${id}/groups`),
