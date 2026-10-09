@@ -1,1 +1,7 @@
-* @ccohongrui @G36maid
+# 預設（根層共用：CI、compose、workspace、docs）→ 組長 + PM
+* @ccohongrui @G36maid @minstrike520 @shiraga1094 @alifestone
+
+# 各目錄：team 全員 review + 組長必定入列
+/frontend/       @ntnu-swe-2026-team4/frontend @ccohongrui
+/server/         @ntnu-swe-2026-team4/backend  @minstrike520
+/llm/            @ntnu-swe-2026-team4/llm      @shiraga1094 @alifestone

@@ -1,0 +1,45 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 顏色沿用原型（純 HTML 版）的兩套主題 */
+:root {
+  --bg: #ffffff; --bg-1: #f7f7f5; --bg-2: #efeeea; --bg-3: #e2e0d9;
+  --line: rgba(20,20,20,.09); --line-strong: rgba(20,20,20,.18);
+  --ink: #17181c; --ink-dim: #55575e; --ink-faint: #8d8f96;
+  --bronze: #b3813a; --bronze-soft: rgba(179,129,58,.13); --bronze-dim: #8a6329;
+  --olive: #66794f; --olive-soft: rgba(102,121,79,.13);
+  --wine: #9c4a3c; --wine-soft: rgba(156,74,60,.13);
+}
+.dark {
+  --bg: #1f2228; --bg-1: #262a31; --bg-2: #2d3139; --bg-3: #383d47;
+  --line: rgba(237,234,226,.10); --line-strong: rgba(237,234,226,.19);
+  --ink: #EDEAE2; --ink-dim: #aeb1ba; --ink-faint: #7d818d;
+  --bronze: #c9a15a; --bronze-soft: rgba(201,161,90,.14); --bronze-dim: #8f7442;
+  --olive: #8ca07a; --olive-soft: rgba(140,160,122,.14);
+  --wine: #b2604f; --wine-soft: rgba(178,96,79,.14);
+}
+
+@theme inline {
+  --color-bg: var(--bg); --color-bg-1: var(--bg-1); --color-bg-2: var(--bg-2); --color-bg-3: var(--bg-3);
+  --color-line: var(--line); --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink); --color-ink-dim: var(--ink-dim); --color-ink-faint: var(--ink-faint);
+  --color-bronze: var(--bronze); --color-bronze-soft: var(--bronze-soft); --color-bronze-dim: var(--bronze-dim);
+  --color-olive: var(--olive); --color-olive-soft: var(--olive-soft);
+  --color-wine: var(--wine); --color-wine-soft: var(--wine-soft);
+  --font-serif: "Iowan Old Style", "Songti TC", "Noto Serif TC", Georgia, "Times New Roman", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Helvetica Neue", Arial, sans-serif;
+}
+
+html, body, #root { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-sans); }
+* { border-color: var(--line); }
+
+/* 捲軸：細、跟著主題換色，不要用瀏覽器預設的粗灰條 */
+* { scrollbar-width: thin; scrollbar-color: var(--bg-3) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 8px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
+*::-webkit-scrollbar-track { background: transparent; }
+/* 需要隱藏捲軸的地方（仍然可以捲動）：辯論頁左側資訊欄 */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

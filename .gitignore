@@ -3,3 +3,8 @@ dist/
 .env
 .env.local
 .DS_Store
+.env.*.local
+.DS_Store
+coverage/
+target/
+llm/sessions/
