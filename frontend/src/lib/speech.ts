@@ -1,3 +1,8 @@
+import { currentLang } from "@/i18n";
+
+/** 語音辨識 / 合成的語言：跟著介面語言走 */
+const speechLang = () => ({ "zh-TW": "zh-TW", en: "en-US", es: "es-ES" })[currentLang()];
+
 /**
  * 瀏覽器內建的語音辨識與語音合成（Web Speech API）。
  * 注意：Chrome 的辨識與部分語音實際上是 Google 的服務；要統一品質請之後接後端語音服務。
@@ -13,7 +18,7 @@ export function createRecognizer() {
   const C = Ctor();
   if (!C) return null;
   const rec = new C();
-  rec.lang = "zh-TW"; rec.interimResults = false; rec.continuous = false;
+  rec.lang = speechLang(); rec.interimResults = false; rec.continuous = false;
   let listening = false;
   return {
     start() { if (listening) return; listening = true; rec.start(); },
@@ -33,7 +38,7 @@ export function speak(text: string, opts: { rate?: number; pitch?: number; volum
   if (!speechOutputSupported()) return opts.onEnd?.();
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = "zh-TW"; u.rate = opts.rate ?? 0.95; u.pitch = opts.pitch ?? 0.9; u.volume = opts.volume ?? 1;
+  u.lang = speechLang(); u.rate = opts.rate ?? 0.95; u.pitch = opts.pitch ?? 0.9; u.volume = opts.volume ?? 1;
   u.onstart = () => opts.onStart?.();
   u.onend = () => opts.onEnd?.();
   u.onerror = () => opts.onEnd?.();

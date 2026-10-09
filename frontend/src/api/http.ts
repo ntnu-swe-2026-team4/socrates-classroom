@@ -1,4 +1,5 @@
 import type { Api } from "./api";
+import { currentLang, tr } from "@/i18n";
 import type { ActivityEvent, DialogueMessage } from "./types";
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
@@ -13,7 +14,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   const res = await fetch(`${BASE}${path}`, {
     method,
     credentials: "include",
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    headers: { "Accept-Language": currentLang(), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) {
@@ -45,9 +46,9 @@ async function upload<T>(path: string, file: File, fields: Record<string, string
   const form = new FormData();
   form.append("file", file);
   for (const [k, v] of Object.entries(fields)) form.append(k, v);
-  const res = await fetch(`${BASE}${path}`, { method: "POST", credentials: "include", body: form });
+  const res = await fetch(`${BASE}${path}`, { method: "POST", credentials: "include", headers: { "Accept-Language": currentLang() }, body: form });
   if (!res.ok) {
-    let detail = res.status === 413 ? "檔案太大" : res.statusText;
+    let detail = res.status === 413 ? tr("檔案太大") : res.statusText;
     try {
       detail = ((await res.json()) as { message?: string }).message ?? detail;
     } catch {
@@ -63,7 +64,7 @@ async function streamDialogue(path: string, text: string, onDelta?: (c: string) 
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream", "Accept-Language": currentLang() },
     body: JSON.stringify({ text }),
   });
   if (!res.ok || !res.body) throw new ApiError(res.status, res.statusText);
@@ -87,7 +88,7 @@ async function streamDialogue(path: string, text: string, onDelta?: (c: string) 
       if (ev === "done" && payload.message) final = payload.message;
     }
   }
-  if (!final) throw new ApiError(502, "串流結束但沒有收到完整訊息");
+  if (!final) throw new ApiError(502, tr("串流結束但沒有收到完整訊息"));
   return final;
 }
 
@@ -101,6 +102,7 @@ export const httpApi: Api = {
       throw e;
     }
   },
+  updateMe: (p) => patch("/api/me", p),
   logout: () => post("/api/auth/logout"),
 
   listArchives: () => get("/api/archives"),
@@ -120,12 +122,11 @@ export const httpApi: Api = {
   addClassroomMember: (id, name) => post(`/api/classrooms/${id}/members`, { name }),
   importClassroomMembers: (id, names) => post(`/api/classrooms/${id}/members/import`, { names }),
   removeClassroomMember: (id, mid) => del(`/api/classrooms/${id}/members/${mid}`),
+  setMemberRole: (id, mid, role) => patch(`/api/classrooms/${id}/members/${mid}`, { role }),
   listActivities: (cid) => get(`/api/classrooms/${cid}/activities`),
   getActivity: (id) => get(`/api/activities/${id}`),
-  createActivity: (cid, i) => post(`/api/classrooms/${cid}/activities`, i),
   advanceActivity: (id) => post(`/api/activities/${id}/advance`),
   finishActivity: (id) => post(`/api/activities/${id}/finish`),
-  setCompleted: (id, done) => put(`/api/activities/${id}/completion`, { done }),
   setStageDeadline: (id, deadline) => put(`/api/activities/${id}/deadline`, { deadline }),
 
   getJoinPolicy: (cid) => get(`/api/classrooms/${cid}/join-policy`),
@@ -160,8 +161,11 @@ export const httpApi: Api = {
   createPost: (cid, i) => post(`/api/classrooms/${cid}/posts`, i),
   deletePost: (pid) => del(`/api/posts/${pid}`),
 
+  createCalendarEvent: (cid, i) => post(`/api/classrooms/${cid}/calendar-events`, i),
+  updateCalendarEvent: (id, p) => patch(`/api/calendar-events/${id}`, p),
+  deleteCalendarEvent: (id) => del(`/api/calendar-events/${id}`),
   listCalendar: ({ from, to, classroomId }) =>
-    get(classroomId ? `/api/classrooms/${classroomId}/calendar${qs({ from, to })}` : `/api/calendar${qs({ from, to })}`),
+    get(`/api/classrooms/${classroomId}/calendar${qs({ from, to })}`),
 
   listDialogue: (id) => get(`/api/activities/${id}/dialogue`),
   sendDialogue: (id, text, onDelta) => streamDialogue(`/api/activities/${id}/dialogue`, text, onDelta),

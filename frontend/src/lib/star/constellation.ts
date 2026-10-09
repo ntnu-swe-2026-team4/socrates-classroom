@@ -16,6 +16,7 @@
    ========================================================= */
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { tr } from "@/i18n";
 
 const CUBE = 1;
 const SLOTS = ["x", "y", "z"];
@@ -239,7 +240,7 @@ export function createConstellation(mount, { light = false } = {}) {
     if (meLabel) { scene.remove(meLabel); disposeObject(meLabel); meLabel = null; }
     if (meIndex < 0) return;
     meRing = makeRingSprite(theme.me);
-    meLabel = makeTextSprite("你", theme.me, theme.labelShadow, theme.labelBlur, 40);
+    meLabel = makeTextSprite(tr("你"), theme.me, theme.labelShadow, theme.labelBlur, 40);
     meLabel.scale.set(0.42, 0.105, 1);
     meLabel.renderOrder = 11;
     scene.add(meRing, meLabel);
