@@ -238,11 +238,13 @@ export function alignClusters(prev, next) {
  * 依群心自動命名，例如「偏 本性・動機」。
  * activeAxes：目前顯示中的軸；centroid 依 [x,y,z] 槽位排列，slotIdx 為各軸對應的槽位索引。
  */
-export function labelCluster(centroid, activeAxes, slotIdx) {
+export function labelCluster(centroid, activeAxes, slotIdx, t) {
+  // t：翻譯函式（元件傳入）；沒給就原樣輸出中文
+  const T = t || ((k, v) => (v ? k.replace(/\{(\w+)\}/g, (m, n) => (n in v ? v[n] : m)) : k));
   const parts = [];
   activeAxes.forEach((ax, i) => {
     const v = centroid[slotIdx[i]];
-    if (Math.abs(v) >= 0.28) parts.push(v > 0 ? ax.right : ax.left);
+    if (Math.abs(v) >= 0.28) parts.push(T(v > 0 ? ax.right : ax.left));
   });
-  return parts.length ? '偏 ' + parts.slice(0, 3).join('・') : '居中派';
+  return parts.length ? T('偏 {labels}', { labels: parts.slice(0, 3).join(T('・')) }) : T('居中派');
 }

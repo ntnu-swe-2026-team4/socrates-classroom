@@ -2,14 +2,20 @@
 /**
  * 3D 蘇格拉底半身像（three.js）。從原型的 scene.js 抽出「只管畫面」的部分：
  * 模型、燈光、拖曳旋轉、全息效果、嘴形動畫。語音辨識 / 合成與對話都改在 React 裡做。
- * 用法：const s = createSocratesScene(canvas, container, { light, onReady, onError });
+ * opts.mini = true 是「小雕像」模式（放在各階段的資訊欄）：低解析度、不抗鋸齒、不能拖曳、限制幀率，
+ *   而且只有在說話 / 載入 / 全息切換時才持續繪製，閒置時停止迴圈；看不到（捲出畫面、分頁隱藏）也不繪製。
+ * 用法：const s = createSocratesScene(canvas, container, { light, mini, onReady, onError });
  *       s.setSpeaking(true) → 嘴巴會動；s.setTheme(light)；s.dispose()
  */
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Avatar } from "./avatar";
+
+/** 同一個模型網址只載入一次 */
+const modelCache = new Map();
 
 export function createSocratesScene(canvas, stage, opts = {}) {
   let speaking = false;
@@ -19,8 +25,9 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     const idx = Math.floor(t * 8) % FAKE_VISEMES.length;
     return { viseme: FAKE_VISEMES[idx], weight: 0.4 + 0.4 * Math.abs(Math.sin(t * 13)) };
   }
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const mini = !!opts.mini;
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: "default" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, mini ? 1.75 : 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
@@ -28,8 +35,8 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   const scene = new THREE.Scene();
   const STAGE_DARK = new THREE.Color(0x2b2d33); // 原本 0x1a1714 太黑，調成偏灰的深色
   const STAGE_LIGHT = new THREE.Color(0xdcdad3); // matches the CSS light-mode gradient's base tone
-  scene.background = opts.light ? STAGE_LIGHT : STAGE_DARK;
-  const setTheme = (light) => { scene.background = light ? STAGE_LIGHT : STAGE_DARK; };
+  scene.background = null; renderer.setClearColor(0x000000, 0); // 透明背景，直接融入頁面
+  const setTheme = (_light) => { /* 背景透明，不隨主題變 */ };
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.35;
@@ -66,7 +73,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     // moderate, centered size: distance derived from the model's own
     // height so it reads the same regardless of the model's raw scale
     const fovRad = (camera.fov * Math.PI) / 180;
-    const desiredScreenFrac = 1.65; // larger => smaller on screen
+    const desiredScreenFrac = mini ? 1.15 : 1.65; // larger => smaller on screen
     const distance = (modelHeight * desiredScreenFrac) / (2 * Math.tan(fovRad / 2));
 
     const angle = controls.getAzimuthalAngle();
@@ -78,6 +85,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     camera.lookAt(modelCenter);
     camera.updateProjectionMatrix();
     controls.target.copy(modelCenter);
+    kick();
   }
   window.addEventListener("resize", resize);
   const ro = new ResizeObserver(() => resize());
@@ -244,9 +252,8 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     if (hits.length > 0) startTransition(hits[0].point);
   });
 
-  function loadModel(url) {
-    return new GLTFLoader().loadAsync(url).then((gltf) => gltf.scene);
-  }
+  // 模型只下載、解析一次；每個畫面各自複製一份（幾何與貼圖共用，不重複佔記憶體）
+  const loadModel = (url) => (modelCache.get(url) ?? modelCache.set(url, new GLTFLoader().loadAsync(url).then((g) => g.scene)).get(url)).then((m) => cloneSkinned(m));
 
   loadModel("/socrates.glb")
     .then((model) => {
@@ -281,7 +288,9 @@ export function createSocratesScene(canvas, stage, opts = {}) {
       });
 
       resize();
+      loaded = true;
       opts.onReady?.();
+      kick();
     })
     .catch((e) => {
       console.error(e);
@@ -290,8 +299,18 @@ export function createSocratesScene(canvas, stage, opts = {}) {
 
   const clock = new THREE.Clock();
   let raf = 0;
-  function animate() {
-    raf = requestAnimationFrame(animate);
+  let loaded = false;
+  let visible = true;
+  let settle = 0; // 停止說話後再多畫幾幀，讓嘴巴回到閉合
+  const FRAME_MS = mini ? 1000 / 30 : 0; // 小尺寸版限制 30 fps，其餘功能（拖曳、全息、眨眼）跟大版一樣
+  let last = 0;
+  /** 需要持續繪製嗎？大畫面一直畫（可拖曳 / 有全息動畫）；小雕像只在需要動的時候畫 */
+  const busy = () => true; // 眨眼與微動作需要持續繪製；看不到（捲出畫面、分頁隱藏）時 frame() 會自己停
+  function frame(now) {
+    raf = 0;
+    if (!visible || document.hidden) return; // 看不到就完全不畫，等 kick() 再喚醒
+    if (FRAME_MS && now - last < FRAME_MS) { raf = requestAnimationFrame(frame); return; }
+    last = now;
     const dt = Math.min(clock.getDelta(), 0.1);
     if (avatar) {
       if (speaking) {
@@ -303,18 +322,31 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     hybridMaterials.forEach((m) => { m.uniforms.uTime.value += dt; });
     controls.update();
     renderer.render(scene, camera);
+    if (settle > 0) settle -= 1;
+    if (busy()) raf = requestAnimationFrame(frame);
   }
-  animate();
+  function kick() {
+    if (!raf && visible && !document.hidden) { clock.getDelta(); raf = requestAnimationFrame(frame); }
+  }
+  const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; if (visible) kick(); });
+  io.observe(stage);
+  const onVisibility = () => { if (!document.hidden) kick(); };
+  document.addEventListener("visibilitychange", onVisibility);
+  kick();
 
   return {
-    setSpeaking(on) { speaking = on; if (!on && avatar) avatar.setViseme(null, 0); },
-    setTheme,
+    setSpeaking(on) { speaking = on; if (!on && avatar) avatar.setViseme(null, 0); settle = on ? 0 : 6; kick(); },
+    setTheme(light) { setTheme(light); kick(); },
     dispose() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
+      document.removeEventListener("visibilitychange", onVisibility);
+      io.disconnect();
       ro.disconnect();
       controls.dispose();
+      pmrem.dispose();
       renderer.dispose();
+      renderer.forceContextLoss(); // 馬上釋放 WebGL 內容，換階段時不會累積
     },
   };
 }

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { Activity, AnnouncementInput, ArgumentSummary, BankKind, ClassroomInput, ClassroomTopic, JoinInput, JoinPolicy, NoteInput, PostInput, TopicInput } from "./index";
+import type { Activity, AnnouncementInput, ArgumentSummary, BankKind, CalendarEventInput, ClassroomInput, ClassroomRole, ClassroomTopic, JoinInput, JoinPolicy, NoteInput, PostInput, TopicInput } from "./index";
 
 /** 每個查詢的 key 集中在這裡，讓後端事件（SSE）進來時知道要讓哪些資料失效 */
 export const keys = {
@@ -97,7 +97,7 @@ export function useInvalidateTopic(classroomId: string) {
 export function useSaveTopic(classroomId: string, topicId?: string) {
   const invalidate = useInvalidateTopic(classroomId);
   return useMutation({
-    mutationFn: ({ type, ...rest }: TopicInput) => (topicId ? api.updateTopic(topicId, rest) : api.createTopic(classroomId, { type, ...rest })),
+    mutationFn: (input: TopicInput) => (topicId ? api.updateTopic(topicId, input) : api.createTopic(classroomId, input)),
     onSuccess: (t) => invalidate(t),
   });
 }
@@ -238,15 +238,6 @@ export function useActivityControls(id: string) {
   };
 }
 
-/** 個人思辨：學生完成（進入結算）或重新開啟 */
-export function useSetCompleted(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (done: boolean) => api.setCompleted(id, done),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: keys.members(id) }); qc.invalidateQueries({ queryKey: keys.positions(id) }); },
-  });
-}
-
 export function useSetReady(id: string) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (ready: boolean) => api.setReady(id, ready), onSuccess: () => qc.invalidateQueries({ queryKey: keys.members(id) }) });
@@ -317,3 +308,47 @@ export function useActivityEvents(activityId: string) {
 }
 
 export const useClassroomMembers = (id: string) => useQuery({ queryKey: keys.classroomMembers(id), queryFn: () => api.listClassroomMembers(id) });
+
+/** 修改自己的顯示名稱；教室成員表、側邊欄都會跟著更新 */
+export function useUpdateMe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: { name?: string; avatarUrl?: string | null }) => api.updateMe(patch),
+    onSuccess: (u) => {
+      qc.setQueryData(keys.me, u);
+      qc.invalidateQueries({ queryKey: ["classroomMembers"] });
+    },
+  });
+}
+
+/** 老師把學生設為助教（或改回學生） */
+export function useSetMemberRole(classroomId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ memberId, role }: { memberId: string; role: Exclude<ClassroomRole, "teacher"> }) => api.setMemberRole(classroomId, memberId, role),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.classroomMembers(classroomId) }),
+  });
+}
+
+/** 新增（不帶 eventId）或編輯行事曆的自訂事件 */
+export function useSaveCalendarEvent(classroomId: string, eventId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CalendarEventInput) => (eventId ? api.updateCalendarEvent(eventId, input) : api.createCalendarEvent(classroomId, input)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }),
+  });
+}
+
+export function useDeleteCalendarEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteCalendarEvent(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }),
+  });
+}
+
+/** 目前使用者在這間教室能不能管理內容（老師或助教：公告、行事曆、辯論資料） */
+export function useIsStaff(classroomId: string) {
+  const { data: c } = useClassroom(classroomId);
+  return c?.myRole === "teacher" || c?.myRole === "assistant";
+}

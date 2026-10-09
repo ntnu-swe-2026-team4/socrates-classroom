@@ -6,6 +6,7 @@
  * 所有「AI」都是規則式範本（見 debate-ai.ts 開頭說明），不是真正的 LLM。
  */
 import * as D from "./debate-ai";
+import { tr } from "@/i18n";
 
 const uid = (p: string) => p + Math.random().toString(36).slice(2, 8);
 const now = () => new Date().toISOString();
@@ -20,17 +21,17 @@ export function subscribe(id: string, cb: (e: any) => void) {
 export const acts: any[] = [];
 export const findAct = (id: string) => {
   const a = acts.find((x) => x.id === id);
-  if (!a) throw new Error("找不到活動");
+  if (!a) throw new Error(tr("找不到活動"));
   return a;
 };
 
 /* ---------------- 活動 ---------------- */
 export function createActivity(classroom: { id: string; students: string[] }, input: any, id?: string) {
   const a: any = {
-    id: id ?? uid("d"), kind: input.kind ?? "debate", classroomId: classroom.id, title: input.title, statement: input.statement,
+    id: id ?? uid("d"), classroomId: classroom.id, title: input.title, statement: input.statement,
     answerMode: input.answerMode, axes: D.makeAxes(input.axes), groupSize: input.groupSize,
     stage: "individual", createdAt: now(), weights: { ...D.DEFAULT_WEIGHTS },
-    members: [], positions: {}, dialogue: [], groups: [], groupState: {}, rooms: [], bye: null, scores: {}, ready: new Set(), stageDeadline: null, completed: new Set(),
+    members: [], positions: {}, dialogue: [], groups: [], groupState: {}, rooms: [], bye: null, scores: {}, ready: new Set(), stageDeadline: null,
   };
   a.members = D.makeCohort({ students: classroom.students }, { activityId: a.id });
   acts.push(a);
@@ -46,36 +47,36 @@ export function removeActivity(id: string) {
 export const hasStarted = (a: any) => a.stage !== "individual" || a.dialogue.length > 0 || Object.keys(a.positions).length > 0;
 
 export function updateSettings(a: any, s: { answerMode?: string; axes?: any[]; groupSize?: number }) {
-  if (hasStarted(a)) throw new Error("已經有學生開始對話，辯論設定不能再修改");
+  if (hasStarted(a)) throw new Error(tr("已經有學生開始對話，辯論設定不能再修改"));
   if (s.answerMode) a.answerMode = s.answerMode;
   if (s.groupSize) a.groupSize = s.groupSize;
   if (s.axes) a.axes = D.makeAxes(s.axes);
 }
 
 export const toActivity = (a: any) => ({
-  id: a.id, kind: a.kind, classroomId: a.classroomId, title: a.title, statement: a.statement, answerMode: a.answerMode,
+  id: a.id, classroomId: a.classroomId, title: a.title, statement: a.statement, answerMode: a.answerMode,
   axes: a.axes.map((x: any) => ({ key: x.key, name: x.name, left: x.left, right: x.right })),
   groupSize: a.groupSize, stage: a.stage, memberCount: a.members.length, createdAt: a.createdAt,
   stageDeadline: a.stageDeadline ?? null, topicId: a.topicId,
 });
 
 /* ---------------- 階段 1 ---------------- */
-const REPLIES = [
-  "有意思。但你剛才那句話裡，有沒有哪個詞，其實你自己也還沒完全想清楚是什麼意思？",
-  "換個角度想：如果反過來看，你剛剛的說法還會成立嗎？",
-  "你會怎麼跟一個完全不同意你的人，解釋你為什麼這樣想？",
-  "假設有一個例外情況，你的說法在那個情況下還站得住腳嗎？",
-  "你說的這件事，是你自己觀察到的，還是別人告訴你的？這兩者對你來說有差別嗎？",
+const replies = () => [
+  tr("有意思。但你剛才那句話裡，有沒有哪個詞，其實你自己也還沒完全想清楚是什麼意思？"),
+  tr("換個角度想：如果反過來看，你剛剛的說法還會成立嗎？"),
+  tr("你會怎麼跟一個完全不同意你的人，解釋你為什麼這樣想？"),
+  tr("假設有一個例外情況，你的說法在那個情況下還站得住腳嗎？"),
+  tr("你說的這件事，是你自己觀察到的，還是別人告訴你的？這兩者對你來說有差別嗎？"),
 ];
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const userTexts = (a: any) => a.dialogue.filter((m: any) => m.role === "user").map((m: any) => m.text);
 
 export async function sendDialogue(a: any, text: string, onDelta?: (c: string) => void): Promise<any> {
-  if (a.stage !== "individual") throw new Error("個人調查已經結束");
-  if (a.completed.has("you")) throw new Error("你已經完成了，要繼續請先重新開啟");
-  if (userTexts(a).length >= 20) throw new Error("已達最多 20 輪");
+  if (a.stage !== "individual") throw new Error(tr("個人調查已經結束"));
+  if (userTexts(a).length >= 20) throw new Error(tr("已達最多 20 輪"));
   a.dialogue.push({ id: uid("m"), role: "user", text, at: now() });
-  const reply = REPLIES[a.dialogue.filter((m: any) => m.role === "assistant").length % REPLIES.length];
+  const rs = replies();
+  const reply = rs[a.dialogue.filter((m: any) => m.role === "assistant").length % rs.length];
   for (let i = 0; i < reply.length; i += 4) { await wait(25); onDelta?.(reply.slice(i, i + 4)); }
   const msg = { id: uid("m"), role: "assistant", text: reply, at: now() };
   a.dialogue.push(msg);
@@ -94,8 +95,7 @@ export function draftPosition(a: any) {
 }
 
 export function confirmPosition(a: any, summary: any) {
-  if (a.stage !== "individual") throw new Error("個人調查已經結束");
-  if (a.completed.has("you")) throw new Error("你已經完成了，要修改請先重新開啟");
+  if (a.stage !== "individual") throw new Error(tr("個人調查已經結束"));
   const d = D.draftPosition(a, userTexts(a));
   a.positions.you = { coords: d.coords, summary, confirmed: true, rounds: userTexts(a).length };
   return toPosition(a, "you", false);
@@ -108,7 +108,6 @@ export function simulateIndividual(a: any) {
     const coords = D.simPosition(a, m);
     a.positions[m.id] = { coords, summary: D.simSummary(a, m, coords), confirmed: true, rounds: 3 + (n % 5), sim: true };
     a.ready.add(m.id); // 模擬同學完成調查就算準備好了
-    if (a.kind === "individual") a.completed.add(m.id);
     n++;
   }
   return n;
@@ -132,7 +131,7 @@ export function listMembers(a: any, teacher: boolean, isStudent: boolean) {
   return a.members.map((m: any) => {
     const p = a.positions[m.id];
     const r = m.isYou ? rounds : p?.rounds || 0;
-    const status = a.completed.has(m.id) ? "done" : p?.confirmed ? "confirmed" : r ? "talking" : "todo";
+    const status = p?.confirmed ? "confirmed" : r ? "talking" : "todo";
     const visible = teacher || m.isYou;
     return {
       id: m.id, name: m.name, isMe: !!m.isYou && isStudent, simulated: !!m.sim, ready: a.ready.has(m.id),
@@ -143,10 +142,9 @@ export function listMembers(a: any, teacher: boolean, isStudent: boolean) {
 
 /* ---------------- 推進階段 ---------------- */
 export function advance(a: any) {
-  if (a.kind === "individual") throw new Error("個人思辨不需要推進，每位學生各自完成");
   const i = D.STAGES.indexOf(a.stage);
   const next = D.STAGES[i + 1];
-  if (!next) throw new Error("活動已經結束");
+  if (!next) throw new Error(tr("活動已經結束"));
   if (a.stage === "individual") {
     simulateIndividual(a);
     if (!a.positions.you?.confirmed) {
@@ -155,7 +153,7 @@ export function advance(a: any) {
     }
     formTeams(a);
   } else if (a.stage === "team") {
-    if (a.groups.length < 2) throw new Error("至少需要兩個組別才能辯論");
+    if (a.groups.length < 2) throw new Error(tr("至少需要兩個組別才能辯論"));
     enterDebate(a);
   } else if (a.stage === "debate") {
     for (const r of a.rooms) if (r.status !== "finished") simulateRoom(a, r);
@@ -175,8 +173,7 @@ function enterStage(a: any, stage: string) {
 
 /** 老師直接結束活動：依序推進到結果；組別不足兩組時跳過辯論，直接結算 */
 export function finish(a: any) {
-  if (a.kind === "individual") throw new Error("個人思辨沒有「結束活動」，每位學生各自完成");
-  if (a.stage === "done") throw new Error("活動已經結束");
+  if (a.stage === "done") throw new Error(tr("活動已經結束"));
   while (a.stage !== "done") {
     if (a.stage === "team" && a.groups.length < 2) {
       finalizeScores(a);
@@ -187,22 +184,15 @@ export function finish(a: any) {
 }
 
 export function setDeadline(a: any, deadline: string | null) {
-  if (a.stage === "done") throw new Error("活動已經結束");
-  if (deadline && new Date(deadline).getTime() <= Date.now()) throw new Error("截止時間要晚於現在");
+  if (a.stage === "done") throw new Error(tr("活動已經結束"));
+  if (deadline && new Date(deadline).getTime() <= Date.now()) throw new Error(tr("截止時間要晚於現在"));
   a.stageDeadline = deadline;
   emit(a.id, { type: "deadline_changed", deadline });
   return a;
 }
 
-/** 個人思辨：學生完成（進入結算）或重新開啟 */
-export function setCompleted(a: any, done: boolean) {
-  if (a.kind !== "individual") throw new Error("只有個人思辨可以這樣做");
-  if (done && !a.positions.you?.confirmed) throw new Error("請先整理並確認你的論點");
-  if (done) a.completed.add("you"); else a.completed.delete("you");
-}
-
 export function setReady(a: any, ready: boolean) {
-  if (a.stage === "done" || a.stage === "debate") throw new Error("這個階段不需要回報");
+  if (a.stage === "done" || a.stage === "debate") throw new Error(tr("這個階段不需要回報"));
   if (ready) a.ready.add("you"); else a.ready.delete("you");
   emit(a.id, { type: "member_ready", memberId: "you", ready });
 }
@@ -227,7 +217,7 @@ function initGroupState(a: any, g: any, sums: any) {
   sims.slice(0, 2).forEach((m: any, i: number) => {
     messages.push({ id: uid("gm"), kind: "chat", authorId: m.id, text: D.simChatLine(a, m, cm[m.id], sums[m.id] || a.positions[m.id].summary, i), at: now() });
   });
-  messages.push({ id: uid("gm"), kind: "system", text: "組別已依座標分好。可以先聊聊彼此的想法，再請 AI 整理論點、丟反例。", at: now() });
+  messages.push({ id: uid("gm"), kind: "system", text: tr("組別已依座標分好。可以先聊聊彼此的想法，再請 AI 整理論點、丟反例。"), at: now() });
   a.groupState[g.id] = { messages, args: [], countered: {}, splitDone: false, chatCount: 0, votesCast: 0 };
 }
 
@@ -266,7 +256,7 @@ const groupOfArg = (a: any, argId: string) => a.groups.find((g: any) => a.groupS
 
 export function postGroupMessage(a: any, gid: string, text: string) {
   const g = gById(a, gid), st = a.groupState[gid];
-  if (!g.memberIds.includes("you")) throw new Error("只能在自己的組別發言");
+  if (!g.memberIds.includes("you")) throw new Error(tr("只能在自己的組別發言"));
   const msg = { id: uid("gm"), kind: "chat", authorId: "you", text, at: now() };
   st.messages.push(msg);
   st.chatCount++;
@@ -286,7 +276,7 @@ export function summarize(a: any, gid: string) {
   const g = gById(a, gid), st = a.groupState[gid];
   if (ensureArgs(a, g)) a.aiCalls = (a.aiCalls ?? 0) + 1;
   const claims = st.args.filter((x: any) => x.kind === "claim");
-  const msg = { id: uid("gm"), kind: "ai_summary", text: `我把你們的討論與每個人的論點總結合併，整理出 ${claims.length} 條主張：\n` + claims.map((c: any, i: number) => `${i + 1}. ${c.text}`).join("\n") + "\n請針對每一條投票：贊成、需要修改，或反對。", at: now() };
+  const msg = { id: uid("gm"), kind: "ai_summary", text: tr("我把你們的討論與每個人的論點總結合併，整理出 {n} 條主張：", { n: claims.length }) + "\n" + claims.map((c: any, i: number) => `${i + 1}. ${c.text}`).join("\n") + "\n" + tr("請針對每一條投票：贊成、需要修改，或反對。"), at: now() };
   st.messages.push(msg);
   emit(a.id, { type: "group_message", message: toMessage(gid, msg) });
   return st.args.map((x: any) => toArg(gid, x, st));
@@ -294,13 +284,13 @@ export function summarize(a: any, gid: string) {
 
 export function counterexample(a: any, gid: string) {
   const g = gById(a, gid), st = a.groupState[gid];
-  if (!st.args.length) throw new Error("先請 AI 整理論點，才有東西可以丟反例");
+  if (!st.args.length) throw new Error(tr("先請 AI 整理論點，才有東西可以丟反例"));
   const cands = st.args.filter((x: any) => x.kind === "claim" && x.status !== "dropped" && !st.countered[x.id]);
-  if (!cands.length) throw new Error("每一條主張都丟過反例了");
+  if (!cands.length) throw new Error(tr("每一條主張都丟過反例了"));
   cands.sort((x: any, y: any) => D.tally(y, g.memberIds).endorse - D.tally(x, g.memberIds).endorse);
   const target = cands[0];
   st.countered[target.id] = true;
-  const msg = { id: uid("gm"), kind: "ai_counterexample", text: `針對「${target.text}」：\n` + D.counterexampleFor(a, target) + "\n想過之後，請重新投票。", at: now() };
+  const msg = { id: uid("gm"), kind: "ai_counterexample", text: tr("針對「{claim}」：", { claim: target.text }) + "\n" + D.counterexampleFor(a, target) + "\n" + tr("想過之後，請重新投票。"), at: now() };
   st.messages.push(msg);
   castSimVotes(a, g, { only: target.id, afterCounter: true });
   emit(a.id, { type: "group_message", message: toMessage(gid, msg) });
@@ -309,7 +299,7 @@ export function counterexample(a: any, gid: string) {
 
 export function vote(a: any, argId: string, v: string) {
   const g = groupOfArg(a, argId);
-  if (!g) throw new Error("找不到論點");
+  if (!g) throw new Error(tr("找不到論點"));
   const st = a.groupState[g.id];
   const arg = st.args.find((x: any) => x.id === argId);
   if (!arg.votes.you) st.votesCast++;
@@ -333,13 +323,13 @@ export function splitCandidate(a: any, g: any) {
 export function splitGroup(a: any, gid: string) {
   const g = gById(a, gid);
   const s = splitCandidate(a, g);
-  if (!s) throw new Error("目前沒有需要分裂的分歧");
+  if (!s) throw new Error(tr("目前沒有需要分裂的分歧"));
   const st = a.groupState[gid];
   const cm = cmap(a);
   const sums = Object.fromEntries(a.members.map((m: any) => [m.id, a.positions[m.id].summary]));
   g.memberIds = g.memberIds.filter((id: string) => !s.dissent.includes(id));
   const n = a.groups.length + 1;
-  const ng = { id: "g" + n, label: "第 " + n + " 組", memberIds: s.dissent, centroid: [], formedBy: "split", parent: g.id, color: D.GROUP_COLORS[(n - 1) % D.GROUP_COLORS.length] };
+  const ng = { id: "g" + n, label: tr("第 {n} 組", { n }), memberIds: s.dissent, centroid: [], formedBy: "split", parent: g.id, color: D.GROUP_COLORS[(n - 1) % D.GROUP_COLORS.length] };
   D.recomputeCentroid(g, cm); D.recomputeCentroid(ng, cm);
   a.groups.push(ng);
   initGroupState(a, ng, sums);
@@ -348,8 +338,8 @@ export function splitGroup(a: any, gid: string) {
   for (const k of Object.keys(s.claim.votes)) if (!rest.has(k)) delete s.claim.votes[k];
   st.splitDone = true;
   D.refreshStatuses(st.args, g.memberIds);
-  st.messages.push({ id: uid("gm"), kind: "system", text: `有 ${s.dissent.length} 位組員因為分歧，分出去成為「${ng.label}」。`, at: now() });
-  a.groupState[ng.id].messages.unshift({ id: uid("gm"), kind: "system", text: `你們從「${g.label}」分裂出來，因為對「${s.claim.text}」有不同的看法。`, at: now() });
+  st.messages.push({ id: uid("gm"), kind: "system", text: tr("有 {count} 位組員因為分歧，分出去成為「{label}」。", { count: s.dissent.length, label: ng.label }), at: now() });
+  a.groupState[ng.id].messages.unshift({ id: uid("gm"), kind: "system", text: tr("你們從「{label}」分裂出來，因為對「{claim}」有不同的看法。", { label: g.label, claim: s.claim.text }), at: now() });
   return a.groups;
 }
 
@@ -370,7 +360,7 @@ export function enterDebate(a: any) {
 
 export const findRoom = (id: string) => {
   for (const a of acts) { const r = a.rooms.find((x: any) => x.id === id); if (r) return { a, r }; }
-  throw new Error("找不到場次");
+  throw new Error(tr("找不到場次"));
 };
 const sideGroup = (a: any, r: any, side: string) => gById(a, side === "a" ? r.a : r.b);
 
@@ -403,7 +393,7 @@ function commitTurn(a: any, r: any, spec: any, text: string) {
   r.sideCount[spec.side]++;
   if (j.scores.evidence <= 2 && (spec.phase === "opening" || spec.phase === "rebuttal") && !r.asked[spec.side]) {
     r.asked[spec.side] = true;
-    modLine(a, r, (spec.side === "a" ? "A 方，" : "B 方，") + D.MODERATOR.askSource());
+    modLine(a, r, (spec.side === "a" ? tr("A 方，") : tr("B 方，")) + D.MODERATOR.askSource());
   }
   r.turnIdx++;
   const order = D.SPEAKING_ORDER[spec.phase];
@@ -461,7 +451,7 @@ function drive(a: any, r: any) {
     r.deadline = r.deadline ?? Date.now() + D.DEFAULT_SECONDS[spec.phase] * 1000;
     r._timer = setTimeout(() => {
       const before = r.turns.length;
-      commitTurn(a, r, roomSpec(a, r), "（逾時，這一則沒有發言）");
+      commitTurn(a, r, roomSpec(a, r), tr("（逾時，這一則沒有發言）"));
       r.deadline = null;
       pushTurnEvents(a, r, before);
       drive(a, r);
@@ -478,9 +468,9 @@ function drive(a: any, r: any) {
 }
 
 export function postTurn(a: any, r: any, text: string) {
-  if (r.status !== "live") throw new Error("這場比賽不在進行中");
+  if (r.status !== "live") throw new Error(tr("這場比賽不在進行中"));
   const spec = roomSpec(a, r);
-  if (!spec.isYou) throw new Error("還沒輪到你");
+  if (!spec.isYou) throw new Error(tr("還沒輪到你"));
   clearTimeout(r._timer);
   const before = r.turns.length;
   const { turn } = commitTurn(a, r, spec, text);
@@ -512,7 +502,7 @@ export function overrideJudgment(jid: string, teacherScore: number | null) {
     const j = r.judgments.find((x: any) => x.id === jid);
     if (j) { j.teacher = teacherScore; if (a.stage === "done") finalizeScores(a); return toJudgment(r, j); }
   }
-  throw new Error("找不到評分");
+  throw new Error(tr("找不到評分"));
 }
 
 /* ---------------- 計分 ---------------- */
@@ -553,7 +543,7 @@ export function listScores(a: any, teacher: boolean) {
   return rows;
 }
 export function adjustScore(a: any, memberId: string, adjust: number) {
-  if (!a.scores[memberId]) throw new Error("還沒有成績");
+  if (!a.scores[memberId]) throw new Error(tr("還沒有成績"));
   a.scores[memberId].adjust = adjust;
   return listScores(a, true).find((r: any) => r.memberId === memberId);
 }
@@ -564,7 +554,7 @@ export function starData(a: any) {
   if (!a.groups.length) {
     const order = a.members.filter((m: any) => a.positions[m.id]?.confirmed).sort((x: any, y: any) => (y.isYou ? 1 : 0) - (x.isYou ? 1 : 0));
     return {
-      axes, hasTimeline: false, initialStep: 0, stepLabels: ["個人調查"], stepNotes: ["每個人自己確認的座標"], groups: null,
+      axes, hasTimeline: false, initialStep: 0, stepLabels: [tr("個人調查")], stepNotes: [tr("每個人自己確認的座標")], groups: null,
       agents: order.map((m: any, i: number) => ({ id: i, me: !!m.isYou, history: [a.positions[m.id].coords, a.positions[m.id].coords] })),
     };
   }
@@ -587,6 +577,6 @@ export function starData(a: any) {
   return {
     axes, agents, hasTimeline: true, initialStep: a.stage === "done" ? 1 : 0,
     groups: { labels: a.groups.map((g: any) => g.label), assignments },
-    stepLabels: ["個人調查後", "團隊提純後"], stepNotes: ["每個人自己確認的座標", "依組內投票推估（示範）"],
+    stepLabels: [tr("個人調查後"), tr("團隊提純後")], stepNotes: [tr("每個人自己確認的座標"), tr("依組內投票推估（示範）")],
   };
 }

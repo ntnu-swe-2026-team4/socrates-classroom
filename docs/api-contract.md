@@ -3,6 +3,7 @@
 型別定義在 `src/api/types.ts`，介面在 `src/api/api.ts`，HTTP 實作在 `src/api/http.ts`。
 後端只要照下表提供路徑與 JSON，把 `.env` 設成 `VITE_API_MODE=http`，前端不用改頁面程式。
 JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie（`credentials: include`）。
+語言：前端每個請求都帶 `Accept-Language: zh-TW | en | es`（使用者在設定選的介面語言）。後端用這個語言產生給使用者看的文字——錯誤訊息的 `message`、AI 蘇格拉底的追問與辯論主持 / 裁判的發言、系統訊息；資料本身（教室名稱、公告、使用者輸入）原樣保存，不翻譯。
 錯誤格式：HTTP 狀態碼 + `{ "message": "給使用者看的說明" }`；未登入回 401。
 
 ## 認證
@@ -10,6 +11,7 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 |---|---|---|
 | POST | `/api/auth/login` | `{ role, name }` → `User`（目前示範用，之後換真的登入） |
 | GET | `/api/me` | 目前使用者；未登入 401 |
+| PATCH | `/api/me` | `{ name?, avatarUrl? }` → `User`。`avatarUrl` 是前端縮成 256×256 的圖片 data URL（約 20–60 KB，後端可限制在 200 KB 內，或改存成檔案後回傳網址）；`null` = 移除頭像（回到預設的黑色頭像） |
 | POST | `/api/auth/logout` | 204 |
 
 ## 議題與題庫
@@ -33,12 +35,11 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 | POST | `/api/classrooms/:id/members` | `{ name }`（僅老師）→ `ClassroomMember` |
 | POST | `/api/classrooms/:id/members/import` | `{ names: string[] }`（僅老師，每個是帳號或姓名）→ `ImportMembersResult`（`added` 與 `skipped`，不因單筆失敗整批失敗） |
 | DELETE | `/api/classrooms/:id/members/:memberId` | 僅老師，204 |
-| GET | `/api/classrooms/:id/activities` | `Activity[]`，**只列辯論活動**（`kind = "debate"`）；個人議題的個人思辨活動透過議題的 `activityId` 取得 |
-| POST | `/api/classrooms/:id/activities` | `CreateActivityInput`（僅老師）→ `Activity`。P4 之後改由「新增團體議題」建立，這條保留給舊畫面 |
+| PATCH | `/api/classrooms/:id/members/:memberId` | `{ role: "student" \| "assistant" }`（僅老師）→ `ClassroomMember`。助教可發公告、編輯行事曆、上傳 / 移除辯論資料；不能管理成員、教室設定與辯論階段 |
+| GET | `/api/classrooms/:id/activities` | `Activity[]`（這間教室所有辯論活動） |
 | GET | `/api/activities/:id` | `Activity`（含 `kind`、`stageDeadline`、`topicId`） |
-| POST | `/api/activities/:id/advance` | 僅老師；**由活動狀態機（FSM）決定能否推進**；個人調查→團隊提純時由後端分組。個人思辨（`kind = "individual"`）不推進，回 409 |
-| POST | `/api/activities/:id/finish` | 僅老師；從任何階段直接進入 `done`，用目前已有的資料計分 → `Activity`。個人思辨（`kind = "individual"`）回 409 |
-| PUT | `/api/activities/:id/completion` | `{ done: boolean }`（學生，只限 `kind = "individual"`）→ 204。`true` = 完成並進入結算（要先確認論點，否則 422）；`false` = 重新開啟。完成期間送對話或改論點回 409；`Member.individual.status` 會是 `"done"` |
+| POST | `/api/activities/:id/advance` | 僅老師；**由活動狀態機（FSM）決定能否推進**；個人調查→團隊提純時由後端分組 |
+| POST | `/api/activities/:id/finish` | 僅老師；從任何階段直接進入 `done`，用目前已有的資料計分 → `Activity` |
 | PUT | `/api/activities/:id/deadline` | `{ deadline: string\|null }`（僅老師）→ `Activity`。**到時間只提醒、不自動推進**；換階段時後端清為 null；變更時發 `deadline_changed` 事件 |
 | GET | `/api/activities/:id/events` | **SSE**，事件見 `ActivityEvent`（階段切換、組內訊息、輪到誰、新發言與評分、截止時間變更、成員準備好了） |
 | GET | `/api/activities/:id/members` | `Member[]`（含 `ready`） |
@@ -64,29 +65,26 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/api/classrooms/:id/announcements` | `Announcement[]`，置頂優先、再依 `publishAt` 新到舊。**學生只拿得到 `publishAt` 已到的**（以伺服器時間為準）；老師拿得到全部 |
-| POST | `/api/classrooms/:id/announcements` | `AnnouncementInput` = `{ title, body, pinned, publishAt }`（僅老師；`publishAt = null` 表示立即）→ `Announcement` |
-| PATCH | `/api/announcements/:id` | `Partial<AnnouncementInput>`（僅老師）→ `Announcement` |
-| DELETE | `/api/announcements/:id` | 僅老師，204 |
+| POST | `/api/classrooms/:id/announcements` | `AnnouncementInput` = `{ title, body, pinned, publishAt }`（老師或助教；`publishAt = null` 表示立即）→ `Announcement` |
+| PATCH | `/api/announcements/:id` | `Partial<AnnouncementInput>`（老師或助教）→ `Announcement` |
+| DELETE | `/api/announcements/:id` | 老師或助教，204 |
 
 只做排程發布，不做推播或 email。
 
 ## 教室議題
-> 畫面上稱為「**辯論**」（個人辯論 / 團體辯論，網址 `/classrooms/:id/debates/:id`）；API 名稱沿用 `topics`。
+> 畫面上稱為「**辯論**」（網址 `/classrooms/:id/debates/:id`）；API 名稱沿用 `topics`。
 
-議題分**個人**與**團體**。建立議題時，後端同時建立一個 `Activity`（`title` / `statement` 用議題標題），並把 `activityId` 填回議題：
-- 團體議題：`kind = "debate"`，四階段辯論（個人調查 → 團隊提純 → 辯論比賽 → 結果），由老師推進。
-- 個人議題：`kind = "individual"`，沒有價值軸、不分組、不推進。每位學生各自走「個人思辨（同階段 1 的對話與整理論點）→ 完成 → 結算」，
-  完成後可以重新開啟。對話、進度、論點、筆記都沿用階段 1 的 `/api/activities/:id/...` 路徑。
+建立議題時，後端同時建立一個 `Activity`（`title` / `statement` 用議題標題），並把 `activityId` 填回議題。活動是四階段辯論（個人調查 → 團隊提純 → 辯論比賽 → 結果），由老師推進。
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/api/classrooms/:id/topics` | `ClassroomTopic[]` |
 | GET | `/api/topics/:id` | `ClassroomTopic` |
-| POST | `/api/classrooms/:id/topics` | `TopicInput`（僅老師）。`type = "group"` 時 `activity` 必填 → `ClassroomTopic` |
-| PATCH | `/api/topics/:id` | `Partial<TopicInput>`，不能改 `type`（僅老師）。團體議題的 `activity` 設定只能在還沒有學生開始對話前修改，否則回 409 |
-| DELETE | `/api/topics/:id` | 僅老師，204；團體議題連同辯論活動一起刪除 |
-| POST | `/api/topics/:id/resources` | `{ name, url }` 新增連結（僅老師）→ `TopicResource` |
-| POST | `/api/topics/:id/resources/files` | **multipart/form-data**，欄位 `file`（僅老師）→ `TopicResource`。超過大小上限回 413 |
-| DELETE | `/api/topics/:id/resources/:resourceId` | 僅老師，204 |
+| POST | `/api/classrooms/:id/topics` | `TopicInput`（僅老師）。`activity`（回答方式、價值軸、組別人數）必填 → `ClassroomTopic` |
+| PATCH | `/api/topics/:id` | `Partial<TopicInput>`（僅老師）。`activity` 設定只能在還沒有學生開始對話前修改，否則回 409 |
+| DELETE | `/api/topics/:id` | 僅老師，204；連同辯論活動一起刪除 |
+| POST | `/api/topics/:id/resources` | `{ name, url }` 新增連結（老師或助教）→ `TopicResource` |
+| POST | `/api/topics/:id/resources/files` | **multipart/form-data**，欄位 `file`（老師或助教）→ `TopicResource`。超過大小上限回 413 |
+| DELETE | `/api/topics/:id/resources/:resourceId` | 老師或助教，204 |
 | GET | `/api/topics/:id/reports` | `TopicReport[]`（老師：全班；學生：只有自己） |
 | POST | `/api/topics/:id/reports` | **multipart/form-data**，欄位 `file`、`comment`（學生；`acceptsReports = false` 時回 403）→ `TopicReport`。再次上傳取代舊檔 |
 | DELETE | `/api/reports/:id` | 作者本人，204 |
@@ -107,8 +105,10 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 ## 行事曆
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/api/calendar?from=&to=` | 自己所有教室的 `CalendarEvent[]` |
-| GET | `/api/classrooms/:id/calendar?from=&to=` | 單一教室的 `CalendarEvent[]` |
+| GET | `/api/classrooms/:id/calendar?from=&to=` | 單一教室的 `CalendarEvent[]`（系統事件之外，還有 `kind: "custom"` 的自訂事件） |
+| POST | `/api/classrooms/:id/calendar-events` | `CalendarEventInput` = `{ title, at, note? }`（老師或助教）→ `CalendarEvent`（`kind: "custom"`） |
+| PATCH | `/api/calendar-events/:id` | `Partial<CalendarEventInput>`（老師或助教；只能改 custom 事件）→ `CalendarEvent` |
+| DELETE | `/api/calendar-events/:id` | 老師或助教，204 |
 
 事件由後端從現有資料整理，不需要另外建立：議題截止日（`topic_due`）、已發布或已排程的公告（`announcement`，學生只看得到已發布的）、
 活動階段截止時間（`stage_deadline`）。

@@ -4,14 +4,14 @@
 
 ## Quickstart
 
-需要：**Bun** 1.2 以上（[安裝](https://bun.sh)）
+需要 **Bun** 1.2 以上（<https://bun.sh>）。前端與後端（`server/`，Bun + Hono）都用 Bun。
 
 ```bash
-bun install    # 安裝依賴（workspace 全部）
-bun run dev    # 前端開發伺服器 → http://localhost:5173（mock 模式，不需後端）
+bun install
+bun run dev     # → http://localhost:5173（mock 模式，不需後端）
 ```
 
-| 指令 | 作用 |
+| 指令（在專案根目錄） | 作用 |
 |---|---|
 | `bun run dev` | 前端開發伺服器 |
 | `bun run build` | 型別檢查 + 打包（`frontend/dist/`） |

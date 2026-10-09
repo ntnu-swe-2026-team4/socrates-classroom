@@ -13,6 +13,7 @@
    之後接後端時，把 AI.* 這幾個函式換成呼叫 API 即可，其餘流程不用動。
    ========================================================= */
 import { kmeans, mulberry32, hashSeed } from "@/lib/star/data";
+import { tr } from "@/i18n";
 
 export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const AXIS_COLORS = ["#c9a15a", "#6f95c9", "#7ea56a"];
@@ -59,7 +60,7 @@ export function makeCohort(classroom, { activityId, minSims = 8 } = {}) {
   const names = classroom.students.filter((n) => n !== "你");
   const members = names.map((name, i) => ({ id: "m" + i, name, sim: true }));
   for (let i = members.length; i < minSims; i++) {
-    members.push({ id: "m" + i, name: "模擬同學 " + (i + 1 - names.length), sim: true, padded: true });
+    members.push({ id: "m" + i, name: tr("模擬同學 {n}", { n: i + 1 - names.length }), sim: true, padded: true });
   }
   members.push({ id: "you", name: "你", isYou: true });
   return members;
@@ -111,19 +112,19 @@ export function simSummary(activity, member, coords) {
   let best = 0;
   coords.forEach((v, i) => { if (Math.abs(v) > Math.abs(coords[best])) best = i; });
   const ax = activity.axes[best];
-  const claim = `在「${ax.name}」上，我認為${pole(ax, coords[best])}比較重要`;
-  const reason = REASONS[(rng() * REASONS.length) | 0];
-  const evidence = EVIDENCES[(rng() * EVIDENCES.length) | 0];
+  const claim = tr("在「{axis}」上，我認為{pole}比較重要", { axis: ax.name, pole: pole(ax, coords[best]) });
+  const reason = tr(REASONS[(rng() * REASONS.length) | 0]);
+  const evidence = tr(EVIDENCES[(rng() * EVIDENCES.length) | 0]);
   return { claim, reason, evidence, axis: best, sign: coords[best] >= 0 ? 1 : -1 };
 }
 
 /* ---------------- 階段 1：對話 → 座標與論點草稿 ---------------- */
 
 const CUE = {
-  claim: /我(覺得|認為|想|主張|相信)|應該|不應該|才是|就是|不是/,
-  reason: /因為|由於|原因|所以|因此|畢竟/,
-  evidence: /例如|比如|像是|舉例|例子|研究|新聞|經驗|報導|統計|資料/,
-  counter: /但是|不過|然而|除非|可是|也許|可能|另一方面|反過來/,
+  claim: /我(覺得|認為|想|主張|相信)|應該|不應該|才是|就是|不是|\bI (think|believe|feel)\b|\bwe (think|believe)\b|\bshould(n't| not)?\b|\b(creo|pienso|opino|considero)\b|me parece|\bdeber[ií]a/i,
+  reason: /因為|由於|原因|所以|因此|畢竟|\b(because|since|therefore|after all)\b|\b(porque|ya que|puesto que|por lo tanto|por eso)\b/i,
+  evidence: /例如|比如|像是|舉例|例子|研究|新聞|經驗|報導|統計|資料|for example|for instance|such as|\b(study|studies|research|news|experience|data|statistics)\b|por ejemplo|\b(estudio|estudios|investigaci[oó]n|noticias?|experiencia|datos|estad[ií]sticas?)\b/i,
+  counter: /但是|不過|然而|除非|可是|也許|可能|另一方面|反過來|\b(but|however|unless|although|maybe|perhaps|possibly)\b|on the other hand|\b(pero|aunque|quiz[aá]s?|tal vez|posiblemente)\b|sin embargo|a menos que|por otro lado/i,
 };
 
 /** 「AI 追問到哪了」：以使用者的發言粗略判斷四個面向有沒有出現 */
@@ -200,7 +201,7 @@ export function formGroups(members, coordsById, targetSize = 3, seed = 42) {
     groups.push({ memberIds: idx.map((i) => members[i].id), centroid: centroidOf(c), formedBy: "auto" });
   }
   groups.sort((a, b) => a.centroid[0] - b.centroid[0]);
-  return groups.map((g, i) => ({ ...g, id: "g" + (i + 1), label: "第 " + (i + 1) + " 組", color: GROUP_COLORS[i % GROUP_COLORS.length] }));
+  return groups.map((g, i) => ({ ...g, id: "g" + (i + 1), label: tr("第 {n} 組", { n: i + 1 }), color: GROUP_COLORS[i % GROUP_COLORS.length] }));
 }
 
 export function recomputeCentroid(group, coordsById) {
@@ -244,13 +245,13 @@ export function summarizeGroup(activity, group, summaries, coordsById) {
       .map((id) => ({ id, v: coordsById[id][i] * sign }))
       .sort((a, b) => b.v - a.v)[0];
     const s = summaries[lead.id];
-    const claim = { id: newArgId(), kind: "claim", text: `我們傾向「${pole(ax, mean)}」，而不是「${pole(ax, -mean)}」（${ax.name}）`, axis: i, sign, parent: null, status: "active", votes: {} };
+    const claim = { id: newArgId(), kind: "claim", text: tr("我們傾向「{a}」，而不是「{b}」（{axis}）", { a: tr(pole(ax, mean)), b: tr(pole(ax, -mean)), axis: tr(ax.name) }), axis: i, sign, parent: null, status: "active", votes: {} };
     out.push(claim);
     if (s?.reason) out.push({ id: newArgId(), kind: "reason", text: s.reason, axis: i, sign, parent: claim.id, status: "active", votes: {} });
     if (s?.evidence) out.push({ id: newArgId(), kind: "evidence", text: s.evidence, axis: i, sign, parent: claim.id, status: "active", votes: {} });
   }
   if (!out.length) {
-    out.push({ id: newArgId(), kind: "claim", text: "我們的立場比較居中，還在找出彼此的共同點", axis: 0, sign: 1, parent: null, status: "active", votes: {} });
+    out.push({ id: newArgId(), kind: "claim", text: tr("我們的立場比較居中，還在找出彼此的共同點"), axis: 0, sign: 1, parent: null, status: "active", votes: {} });
   }
   return out;
 }
@@ -261,8 +262,8 @@ export function counterexampleFor(activity, arg) {
   const opp = pole(ax, -arg.sign);
   const mine = pole(ax, arg.sign);
   const cases = [
-    `假設有一個情境，「${opp}」才是大家都接受、結果也比較好的做法。你們主張「${mine}」，這個情境會不會讓主張失效？請說明它在什麼條件下仍然成立。`,
-    `想像一位跟你們立場完全相反的同學，他舉了一個生活中的例子，說明「${opp}」比「${mine}」更合理。你們會怎麼回應他，又有哪一步是你們自己也還沒有把握的？`,
+    tr("假設有一個情境，「{opp}」才是大家都接受、結果也比較好的做法。你們主張「{mine}」，這個情境會不會讓主張失效？請說明它在什麼條件下仍然成立。", { opp, mine }),
+    tr("想像一位跟你們立場完全相反的同學，他舉了一個生活中的例子，說明「{opp}」比「{mine}」更合理。你們會怎麼回應他，又有哪一步是你們自己也還沒有把握的？", { opp, mine }),
   ];
   return cases[hashSeed(arg.id) % cases.length];
 }
@@ -307,9 +308,9 @@ export function refreshStatuses(args, memberIds) {
 export function simChatLine(activity, member, coords, summary, i = 0) {
   const s = summary;
   const lines = [
-    `${s.claim}。${s.reason}。`,
-    `補充一下我的例子：${s.evidence.replace(/^例如/, "")}。`,
-    `我比較在意的是「${activity.axes[s.axis].name}」這條，你們覺得呢？`,
+    tr("{claim}。{reason}。", { claim: s.claim, reason: s.reason }),
+    tr("補充一下我的例子：{evidence}。", { evidence: s.evidence.replace(/^(例如|for example,?\s*|por ejemplo,?\s*)/i, "") }),
+    tr("我比較在意的是「{axis}」這條，你們覺得呢？", { axis: activity.axes[s.axis].name }),
   ];
   return lines[i % lines.length];
 }
@@ -319,50 +320,50 @@ export function simChatLine(activity, member, coords, summary, i = 0) {
 const snippet = (t, n = 18) => (t.length > n ? t.slice(0, n) + "…" : t);
 
 export const MODERATOR = {
-  intro: (a, b) => `各位好，我是這場辯論的主持人。${a.label}（A 方）對上${b.label}（B 方），共四個回合：開場、質詢、反駁、結辯。我只管流程與時間，也只看論證的證據與推理，不評判誰的立場才對。`,
+  intro: (a, b) => tr("各位好，我是這場辯論的主持人。{a}（A 方）對上{b}（B 方），共四個回合：開場、質詢、反駁、結辯。我只管流程與時間，也只看論證的證據與推理，不評判誰的立場才對。", { a: a.label, b: b.label }),
   phase: (phase, ctx = {}) =>
     ({
-      opening: "第一回合：開場。請 A 方先說明核心主張與證據，接著換 B 方。",
-      cross: "第二回合：質詢。A 方先提問、B 方回答，接著交換。提問請針對對方論點，回答請正面回應。",
-      rebuttal: "第三回合：反駁。請回應對方最強的論點，而不是重述自己的立場。",
-      closing: "最後一回合：結辯。請整理你們最有力的論點與證據。",
+      opening: tr("第一回合：開場。請 A 方先說明核心主張與證據，接著換 B 方。"),
+      cross: tr("第二回合：質詢。A 方先提問、B 方回答，接著交換。提問請針對對方論點，回答請正面回應。"),
+      rebuttal: tr("第三回合：反駁。請回應對方最強的論點，而不是重述自己的立場。"),
+      closing: tr("最後一回合：結辯。請整理你們最有力的論點與證據。"),
     })[phase],
-  recap: (aText, bText) => `小結：A 方提到「${snippet(aText, 22)}」；B 方提到「${snippet(bText, 22)}」。兩邊的說法我都記下來了。`,
-  askSource: () => "這個說法的出處或具體例子是什麼？可以補充一下嗎？",
-  end: () => "辯論結束。我會依證據、推理、回應、表達四項給分，只看論證品質，不評判立場。",
+  recap: (aText, bText) => tr("小結：A 方提到「{a}」；B 方提到「{b}」。兩邊的說法我都記下來了。", { a: snippet(aText, 22), b: snippet(bText, 22) }),
+  askSource: () => tr("這個說法的出處或具體例子是什麼？可以補充一下嗎？"),
+  end: () => tr("辯論結束。我會依證據、推理、回應、表達四項給分，只看論證品質，不評判立場。"),
 };
 
 /** 模擬選手的發言 */
 export function simTurnText({ phase, role, group, args, opponentArgs, opponentLast, seed }) {
   const rng = mulberry32(hashSeed(seed));
   const claims = args.filter((a) => a.kind === "claim" && a.status !== "dropped");
-  const mine = claims[0]?.text || "我們還在整理自己的主張";
-  const reason = args.find((a) => a.kind === "reason")?.text || REASONS[(rng() * REASONS.length) | 0];
-  const evidence = args.find((a) => a.kind === "evidence")?.text || EVIDENCES[(rng() * EVIDENCES.length) | 0];
-  const theirs = opponentArgs.find((a) => a.kind === "claim")?.text || "對方的主張";
+  const mine = claims[0]?.text || tr("我們還在整理自己的主張");
+  const reason = args.find((a) => a.kind === "reason")?.text || tr(REASONS[(rng() * REASONS.length) | 0]);
+  const evidence = args.find((a) => a.kind === "evidence")?.text || tr(EVIDENCES[(rng() * EVIDENCES.length) | 0]);
+  const theirs = opponentArgs.find((a) => a.kind === "claim")?.text || tr("對方的主張");
   const quiet = rng() < 0.25; // 有時候只講立場、沒有證據，讓評分有高有低
   if (phase === "opening")
     return quiet
-      ? `我方的主張是：${mine}。我們認為這樣比較合理。`
-      : `我方的核心主張是：${mine}。${reason}。${evidence}。`;
+      ? tr("我方的主張是：{mine}。我們認為這樣比較合理。", { mine })
+      : tr("我方的核心主張是：{mine}。{reason}。{evidence}。", { mine, reason, evidence });
   if (phase === "cross")
     return role === "ask"
-      ? `請問對方：你們主張「${snippet(theirs, 26)}」，如果情境反過來，這個主張還成立嗎？你們的根據是什麼？`
-      : `我方回答：${reason}，而且${evidence.replace(/^例如/, "例如")}。所以即使情境改變，我方的主張仍然有它的道理。`;
+      ? tr("請問對方：你們主張「{theirs}」，如果情境反過來，這個主張還成立嗎？你們的根據是什麼？", { theirs: snippet(theirs, 26) })
+      : tr("我方回答：{reason}，而且{evidence}。所以即使情境改變，我方的主張仍然有它的道理。", { reason, evidence });
   if (phase === "rebuttal")
-    return `對方剛才提到「${snippet(opponentLast || theirs, 20)}」。但是我方認為這忽略了：${mine}。因為${reason.replace(/^因為/, "")}，因此我方仍然堅持原本的看法。`;
+    return tr("對方剛才提到「{last}」。但是我方認為這忽略了：{mine}。因為{reason}，因此我方仍然堅持原本的看法。", { last: snippet(opponentLast || theirs, 20), mine, reason: reason.replace(/^(因為|because\s+|porque\s+)/i, "") });
   return quiet
-    ? `總結：我們認為我方的立場比較值得支持。`
-    : `總結我方：${mine}。我們的證據是：${evidence}。所以我們認為這個立場更值得支持。`;
+    ? tr("總結：我們認為我方的立場比較值得支持。")
+    : tr("總結我方：{mine}。我們的證據是：{evidence}。所以我們認為這個立場更值得支持。", { mine, evidence });
 }
 
 const RE = {
-  example: /例如|比如|舉例|例子|像是|假設/,
-  source: /根據|研究|報導|報告|統計|資料|實驗|調查|來源|新聞/,
+  example: /例如|比如|舉例|例子|像是|假設|for example|for instance|such as|\b(suppose|imagine)\b|por ejemplo|\b(ejemplo|supongamos|imagina)\b/i,
+  source: /根據|研究|報導|報告|統計|資料|實驗|調查|來源|新聞|according to|\b(study|studies|research|report|statistics|experiment|survey|source|news)\b|seg[uú]n|\b(estudio|estudios|investigaci[oó]n|informe|estad[ií]sticas?|experimento|encuesta|fuente|noticias?)\b/i,
   number: /\d|[一二三四五六七八九十百千萬]+(成|倍|個|次|人|年)/,
-  because: /因為|由於|所以|因此|因而|代表|意味/,
-  cond: /如果|若|假如|要是|除非/,
-  contrast: /但是|然而|不過|可是|反而/,
+  because: /因為|由於|所以|因此|因而|代表|意味|\b(because|since|therefore|thus|means)\b|\b(porque|puesto que|significa)\b|ya que|por lo tanto|por eso/i,
+  cond: /如果|若|假如|要是|除非|\b(if|unless|provided)\b|\bsi\b|a menos que|en caso de que/i,
+  contrast: /但是|然而|不過|可是|反而|\b(but|however|yet|although)\b|\b(pero|aunque)\b|sin embargo|no obstante/i,
 };
 
 /**
@@ -376,18 +377,18 @@ export function judgeTurn({ text, phase, opponentText }) {
   let ev = 1;
   const evHits = [];
   if (text.length > 40) ev += 1;
-  if (RE.example.test(text)) { ev += 1; evHits.push("具體例子"); }
-  if (RE.number.test(text)) { ev += 1; evHits.push("數字"); }
-  if (RE.source.test(text)) { ev += 1; evHits.push("出處用語"); }
-  notes.evidence = evHits.length ? `提到了${evHits.join("、")}` : "沒有提出具體例子或出處";
+  if (RE.example.test(text)) { ev += 1; evHits.push(tr("具體例子")); }
+  if (RE.number.test(text)) { ev += 1; evHits.push(tr("數字")); }
+  if (RE.source.test(text)) { ev += 1; evHits.push(tr("出處用語")); }
+  notes.evidence = evHits.length ? tr("提到了{items}", { items: evHits.join(tr("、")) }) : tr("沒有提出具體例子或出處");
   // 推理
   let rs = 1;
   const rsHits = [];
-  if (RE.because.test(text)) { rs += 1; rsHits.push("因果連結"); }
-  if (RE.cond.test(text)) { rs += 1; rsHits.push("條件推論"); }
-  if ((text.match(/[。！？]/g) || []).length >= 2) rs += 1;
-  if (RE.contrast.test(text)) { rs += 1; rsHits.push("考慮了另一面"); }
-  notes.reasoning = rsHits.length ? `使用了${rsHits.join("、")}` : "只有斷言，缺少理由";
+  if (RE.because.test(text)) { rs += 1; rsHits.push(tr("因果連結")); }
+  if (RE.cond.test(text)) { rs += 1; rsHits.push(tr("條件推論")); }
+  if ((text.match(/[。！？.!?]/g) || []).length >= 2) rs += 1;
+  if (RE.contrast.test(text)) { rs += 1; rsHits.push(tr("考慮了另一面")); }
+  notes.reasoning = rsHits.length ? tr("使用了{items}", { items: rsHits.join(tr("、")) }) : tr("只有斷言，缺少理由");
   // 回應
   let rb = null;
   if ((phase === "cross" || phase === "rebuttal") && opponentText) {
@@ -396,16 +397,16 @@ export function judgeTurn({ text, phase, opponentText }) {
     let hit = 0;
     for (let i = 0; i < text.length - 1; i++) if (grams.has(text.slice(i, i + 2))) hit++;
     const ratio = hit / Math.max(8, text.length);
-    rb = 1 + (ratio > 0.12 ? 1 : 0) + (ratio > 0.22 ? 1 : 0) + (/對方|你們|剛才|提到/.test(text) ? 1 : 0) + (RE.contrast.test(text) ? 1 : 0);
-    notes.rebuttal = rb >= 3 ? "有引用並回應對方的說法" : "和對方的論點連結不多";
+    rb = 1 + (ratio > 0.12 ? 1 : 0) + (ratio > 0.22 ? 1 : 0) + (/對方|你們|剛才|提到|\b(you|your|they|their|mentioned|earlier)\b|ustedes|mencion|dijeron|antes/i.test(text) ? 1 : 0) + (RE.contrast.test(text) ? 1 : 0);
+    notes.rebuttal = rb >= 3 ? tr("有引用並回應對方的說法") : tr("和對方的論點連結不多");
   }
   // 表達
   let cl = 3;
   if (text.length >= 20 && text.length <= 220) cl += 1;
-  if (/[，。]/.test(text)) cl += 1;
+  if (/[，。,.]/.test(text)) cl += 1;
   if (text.length < 12) cl -= 2;
   if (text.length > 320) cl -= 1;
-  notes.clarity = text.length < 12 ? "太短，看不出完整的想法" : text.length > 320 ? "偏長，重點可以再收斂" : "長度適中、句子完整";
+  notes.clarity = text.length < 12 ? tr("太短，看不出完整的想法") : text.length > 320 ? tr("偏長，重點可以再收斂") : tr("長度適中、句子完整");
 
   const verifiability = RE.source.test(text) ? "sourced" : RE.example.test(text) || RE.number.test(text) ? "checkable" : "unverified";
   const s = (v) => (v === null ? null : clamp(v, 0, 5));
