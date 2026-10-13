@@ -1,0 +1,19 @@
+FROM node:24-alpine3.23
+
+# 從官方 bun image 複製 bun 執行檔，版本請與團隊使用的一致
+COPY --from=oven/bun:1-alpine /usr/local/bin/bun /usr/local/bin/bun
+
+WORKDIR /app
+
+# 先複製依賴清單再安裝，善用 build cache
+COPY package.json ./
+RUN bun install --frozen-lockfile
+RUN apk add --no-cache bash
+
+COPY . .
+
+# node 官方 image 已內建 node 使用者，直接用，不必另外 useradd
+RUN chown -R node:node /app
+USER node
+
+CMD ["bun", "run", "dev"]
