@@ -6,8 +6,9 @@ COPY --from=oven/bun:1-alpine /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /app
 
 # 先複製依賴清單再安裝，善用 build cache
-COPY package.json ./
-RUN bun install --frozen-lockfile
+# bun.lock 位於 monorepo 根目錄（build context 之外），因此不使用 --frozen-lockfile
+COPY ./package.json ./
+RUN bun install
 RUN apk add --no-cache bash
 
 COPY . .
