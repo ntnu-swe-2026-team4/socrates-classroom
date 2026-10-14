@@ -63,11 +63,13 @@ export const usePositions = (id: string) => useQuery({ queryKey: keys.positions(
 export function useUpdateArchive() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; bank?: BankKind | null; inSummary?: boolean }) =>
-      api.updateArchive(v.id, { bank: v.bank, inSummary: v.inSummary }),
+    // 多支援 sharedWithIds 陣列傳入
+    mutationFn: (v: { id: string; bank?: BankKind | null; inSummary?: boolean; sharedWithIds?: string[] }) =>
+      api.updateArchive(v.id, { bank: v.bank, inSummary: v.inSummary, sharedWithIds: v.sharedWithIds }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.archives }),
   });
 }
+
 
 export function useSaveClassroom(classroomId?: string) {
   const qc = useQueryClient();
