@@ -1,3 +1,4 @@
+import { useT } from "@/i18n";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import lottie from "lottie-web/build/player/lottie_canvas";
 import type { AnimationItem } from "lottie-web";
@@ -17,6 +18,7 @@ type Props = {
 };
 
 export function LandAnimation({ n, className, label, reducedMotion, tourMode, active, playing, preload, session, onReady }: Props) {
+  const t = useT();
   const box = useRef<HTMLButtonElement>(null);
   const inner = useRef<HTMLSpanElement>(null);
   const anim = useRef<AnimationItem | null>(null);
@@ -114,12 +116,12 @@ export function LandAnimation({ n, className, label, reducedMotion, tourMode, ac
     <button
       type="button" ref={box} className={`land-json ${className}`} disabled={tourMode || reducedMotion}
       style={{ "--animation-ratio": ANIMATION_ASPECT_RATIOS[n] } as CSSProperties}
-      data-loaded={ready} data-animation={n} aria-label={`重播「${label}」的插畫`}
+      data-loaded={ready} data-animation={n} aria-label={t("重播「{label}」的插畫", { label })}
       onClick={() => { if (ready) anim.current?.goToAndPlay(0, true); }}
       onMouseMove={onMove} onMouseLeave={() => { if (box.current) box.current.style.transform = ""; }}
     >
       <span ref={inner} className="land-json-inner" aria-hidden="true" />
-      {!ready && <span className="animation-loading">{failed ? "插畫暫時無法顯示" : "插畫載入中…"}</span>}
+      {!ready && <span className="animation-loading">{failed ? t("插畫暫時無法顯示") : t("插畫載入中…")}</span>}
     </button>
   );
 }

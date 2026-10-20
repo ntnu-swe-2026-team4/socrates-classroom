@@ -1,5 +1,5 @@
 /**
- * 前後端的資料契約。後端（Rust / Axum）依這份型別回傳 JSON；
+ * 前後端的資料契約。後端（Bun + Hono）依這份型別回傳 JSON；
  * 之後可改成由 OpenAPI 自動產生，欄位名稱與意義維持一致即可。
  * 所有 id 都是字串，時間都是 ISO 8601。
  */
@@ -9,7 +9,8 @@ export interface User {
   id: string;
   name: string;
   role: Role;
-  avatarUrl?: string;
+  /** 頭像圖片（data URL 或網址）；沒有就用預設的黑色頭像 */
+  avatarUrl?: string | null;
 }
 
 /* ---------- 議題（對話存檔）與題庫 ---------- */
@@ -25,9 +26,27 @@ export interface Archive {
   inSummary: boolean;
   /** 由辯論活動產生的議題，繼續對話時要回到該活動 */
   activityId?: string;
+  /**
+   * 私人題庫的協作：這道題目分享給了哪些人（ShareTarget.id）。
+   * 只有題目的擁有者拿得到；別人分享給你的題目這裡是空陣列。
+   */
+  sharedWithIds: string[];
+  /** 別人分享給你的題目：分享者的名字；自己的題目為 null */
+  sharedBy: string | null;
+}
+
+/** 私人題庫可以分享的對象（同教室的同學、助教與老師） */
+export interface ShareTarget {
+  id: string;
+  name: string;
+  /** 顯示在名字後面的身分說明，例如「同學」「助教」「老師」 */
+  role: string;
 }
 
 /* ---------- 教室 ---------- */
+/** 教室內的角色：老師之外，成員分為學生與助教 */
+export type ClassroomRole = "teacher" | "assistant" | "student";
+
 export interface Classroom {
   id: string;
   name: string;
@@ -36,6 +55,8 @@ export interface Classroom {
   teacherName: string;
   studentCount: number;
   debateCount: number;
+  /** 你在這間教室的身分；助教可以發公告、編輯行事曆、上傳資料，但不能管理成員與教室設定 */
+  myRole: ClassroomRole;
   /** false = 老師邀請了你，還沒接受（學生看到「待處理邀請」） */
   joined: boolean;
 }
@@ -143,8 +164,6 @@ export interface AnnouncementInput {
 }
 
 /* ---------- 教室的辯論（API 名稱沿用 topic；畫面上稱為「辯論」） ---------- */
-export type TopicType = "individual" | "group";
-
 /** 上傳檔案的共用描述（教學資源、學生報告） */
 export interface FileRef {
   name: string;
@@ -161,7 +180,6 @@ export type TopicResource =
 export interface ClassroomTopic {
   id: string;
   classroomId: string;
-  type: TopicType;
   title: string;
   /** 辯論的詳細說明 */
   description: string;
@@ -169,7 +187,7 @@ export interface ClassroomTopic {
   resources: TopicResource[];
   /** 是否讓學生上傳結論報告 */
   acceptsReports: boolean;
-  /** 對應的活動：團體辯論是四階段辯論活動，個人辯論是個人思辨活動 */
+  /** 對應的辯論活動（四階段辯論） */
   activityId: string | null;
   postCount: number;
   createdAt: string;
@@ -177,12 +195,11 @@ export interface ClassroomTopic {
 }
 
 export interface TopicInput {
-  type: TopicType;
   title: string;
   description: string;
   dueAt: string | null;
   acceptsReports: boolean;
-  /** 團體辯論必填：辯論活動的設定（活動的 title / statement 由後端用辯論主題填入） */
+  /** 辯論活動的設定（活動的 title / statement 由後端用辯論主題填入）；建立時必填，編輯時只有要改設定才送 */
   activity?: Pick<CreateActivityInput, "answerMode" | "axes" | "groupSize">;
 }
 
@@ -225,23 +242,105 @@ export interface PostInput {
   anonymous: boolean;
 }
 
+/* ---------- 多人討論：老師出一題，每位同學各自跟 AI 蘇格拉底對話，老師看全班的討論成果 ---------- */
+/** open = 同學還能繼續對話；closed = 老師已經結束，只能回看 */
+export type DiscussionStatus = "open" | "closed";
+
+/** 一位同學在某個討論題目裡的狀態 */
+export type DiscussionSessionStatus = "todo" | "talking" | "submitted";
+
+export interface DiscussionStats {
+  /** 這間教室的學生人數（示範資料裡包含補齊的模擬同學） */
+  total: number;
+  /** 已經開始對話的人數 */
+  started: number;
+  /** 已經送出結論的人數 */
+  submitted: number;
+  /** 全班的平均對話輪數（取到小數一位） */
+  avgRounds: number;
+}
+
+export interface DiscussionTask {
+  id: string;
+  classroomId: string;
+  /** 老師出的統一題目 */
+  title: string;
+  /** 題目說明：背景、要思考的方向 */
+  prompt: string;
+  /** 希望同學在結論裡回答什麼（選填） */
+  conclusionHint: string;
+  dueAt: string | null;
+  /** 每位同學最多可以跟 AI 對話幾輪 */
+  maxRounds: number;
+  status: DiscussionStatus;
+  createdAt: string;
+  updatedAt: string;
+  stats: DiscussionStats;
+  /** 只有學生拿得到：自己的進度（老師為 undefined） */
+  myStatus?: DiscussionSessionStatus;
+}
+
+export interface DiscussionTaskInput {
+  title: string;
+  prompt: string;
+  conclusionHint: string;
+  dueAt: string | null;
+  maxRounds: number;
+}
+
+/** 老師的「討論成果」表格裡的一列 */
+export interface DiscussionSession {
+  id: string;
+  taskId: string;
+  studentId: string;
+  studentName: string;
+  status: DiscussionSessionStatus;
+  rounds: number;
+  /** 同學送出的結論；還沒送出為 null */
+  conclusion: string | null;
+  submittedAt: string | null;
+  lastActiveAt: string | null;
+  /** 對話裡出現了哪幾個面向（主張、理由、證據、反例的回應），由後端的 LLM 流程判斷 */
+  coverage: Coverage;
+  /** 示範資料裡由系統補齊的模擬同學（真後端沒有這個概念） */
+  simulated: boolean;
+  isMe: boolean;
+}
+
+/** 某位同學的完整討論內容：老師點開一位同學時取得；學生只拿得到自己的 */
+export interface DiscussionSessionDetail extends DiscussionSession {
+  messages: DialogueMessage[];
+}
+
 /* ---------- 行事曆 ---------- */
 export interface CalendarEvent {
   id: string;
   classroomId: string;
   classroomName: string;
-  kind: "topic_due" | "announcement" | "stage_deadline";
+  kind: "topic_due" | "announcement" | "stage_deadline" | "discussion_due" | "custom";
   title: string;
   at: string;
+  /** custom 事件的備註 */
+  note?: string;
   topicId?: string;
   announcementId?: string;
   activityId?: string;
+  discussionId?: string;
+}
+
+/** 老師與助教自己新增的行事曆事件 */
+export interface CalendarEventInput {
+  title: string;
+  at: string;
+  note?: string;
 }
 
 /** 教室成員表的一列（成員分頁） */
 export interface ClassroomMember {
   id: string;
   name: string;
+  /** 學生或助教（老師不在成員表裡） */
+  role: Exclude<ClassroomRole, "teacher">;
   online: boolean;
   lastActive: string;
   /** 完成度 0–100 */
@@ -261,13 +360,9 @@ export interface Axis {
   right: string;
 }
 
-/** debate = 團體辯論的四個階段；individual = 個人辯論的個人思辨（每位學生各自完成，只有「思辨 → 結算」） */
-export type ActivityKind = "debate" | "individual";
-
 export interface Activity {
   id: string;
   classroomId: string;
-  kind: ActivityKind;
   title: string;
   statement: string;
   answerMode: AnswerMode;
@@ -291,11 +386,16 @@ export interface CreateActivityInput {
 }
 
 /* ---------- 階段 1：個人調查 ---------- */
+/** AI 蘇格拉底這則回覆的情緒（由 LLM 決定），前端用來播 3D 模型的表情；neutral = 不播 */
+export type Emotion = "neutral" | "happy" | "confused" | "angry";
+
 export interface DialogueMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
   at: string;
+  /** 只有 assistant 的訊息有；舊資料或沒有判斷時省略，視為 neutral */
+  emotion?: Emotion;
 }
 
 /** 對話進度：四個面向有沒有出現（由後端的 LLM 流程判斷） */
@@ -347,11 +447,8 @@ export interface Member {
   simulated: boolean;
   /** 在目前階段按了「我準備好了」；換階段時由後端重設為 false */
   ready?: boolean;
-  /**
-   * 階段 1 的進度（老師看得到全班；學生只看得到自己）。
-   * done 只出現在個人思辨活動：學生按了「完成」，進入結算畫面（可以再重新開啟）
-   */
-  individual?: { status: "todo" | "talking" | "confirmed" | "done"; rounds: number; claim?: string };
+  /** 階段 1 的進度（老師看得到全班；學生只看得到自己） */
+  individual?: { status: "todo" | "talking" | "confirmed"; rounds: number; claim?: string };
 }
 
 export interface Group {

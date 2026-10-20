@@ -27,17 +27,17 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `/summary` | 論點總結 | 選單「單人 → 論點總結」 |
 | `/bank/private`、`/bank/public` | 私人 / 公開題庫 | 選單「題庫」 |
 | `/classrooms` | 已加入的教室（學生另有「待處理邀請」「用邀請碼加入」兩個按鈕） | 選單「教室」 |
-| `/explore` | 探索課程：開放加入的課程、我的申請（只有學生） | 選單「探索」 |
-| `/classrooms/:id?tab=home\|announcements\|debates\|discussion\|members` | 教室：首頁（簡介、行事曆）、公告、辯論列表（老師可新增）、教室討論區、成員 | 點進某個教室 |
+| `/classrooms/:id?tab=home\|announcements\|debates\|discussions\|discussion\|members` | 教室：首頁（簡介、行事曆）、公告、辯論列表（老師可新增）、多人討論列表、教室討論區、成員 | 點進某個教室 |
 | `/classrooms/:id/debates/:id` | 教室辯論：說明、相關資料（連結 / 檔案）、開始討論或進入辯論、結論報告、辯論討論區 | 點進某個辯論 |
 | `/classrooms/:id/activities/:id` | 辯論活動（四個階段 + 結果） | 點進某場辯論 |
+| `/classrooms/:id/discussions/:id` | 多人討論：學生是「題目與我的結論 + 與蘇格拉底對話」兩欄；老師是「題目與進度 + 全班討論成果」 | 點進某個多人討論 |
 
 ### 專案根目錄
 
 | 檔案 | 作用 |
 |---|---|
 | `index.html` | 網頁的唯一 HTML，只有一個 `<div id="root">`，React 從這裡長出整個網站 |
-| `package.json` | 套件清單與指令（`npm run dev`、`npm run build`） |
+| `package.json` | 套件清單與指令（`bun run dev`、`bun run build`） |
 | `vite.config.ts` | 開發伺服器與打包設定；把 `/api` 代理到後端 `localhost:8000` |
 | `tsconfig.json` | TypeScript 設定（`@/` 代表 `src/`） |
 | `.env.example` | 環境變數範本：`VITE_API_MODE=mock` 或 `http` |
@@ -62,20 +62,23 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `pages/HomePage.tsx` | 首頁：提問框、名言、接續上次對話、三個統計卡（對話數 / 論點總結數 / 教室數）、最近議題、教室概況 | `/` |
 | `pages/DialoguePage.tsx` | 3D 蘇格拉底 + 聊天面板 + 按住說話 | `/dialogue` |
 | `pages/TopicsPage.tsx` | 議題列表與詳情、私人 / 公開 / 論點總結 三個按鈕、繼續對話 | `/topics` |
-| `pages/ListPages.tsx` | 論點總結頁、題庫頁、教室列表頁（老師：新增教室；學生：已加入的教室，待處理邀請與邀請碼加入各是一個按鈕） | `/summary`、`/bank/*`、`/classrooms` |
-| `pages/JoinClassroom.tsx` | 學生加入教室：探索課程頁（搜尋、我的申請）、邀請碼查詢與申請問卷、待處理邀請視窗 | `/explore`、`/classrooms` |
+| `pages/ListPages.tsx` | 論點總結頁、題庫頁（私人題庫可以把題目分享給特定的人，也會收到別人分享過來的題目）、教室列表頁（老師：新增教室；學生：已加入的教室，待處理邀請與邀請碼加入各是一個按鈕） | `/summary`、`/bank/*`、`/classrooms` |
+| `pages/JoinClassroom.tsx` | 學生加入教室：「探索教室」視窗（搜尋、我的申請）、邀請碼查詢與申請問卷、待處理邀請視窗 | `/classrooms` |
 | `pages/ClassroomAdmin.tsx` | 老師的成員管理：加入方式（邀請碼、探索、審核開關）、申請問卷編輯、待審核申請、批次匯入 | 教室的「成員」分頁 |
-| `pages/ClassroomPage.tsx` | 教室內的「首頁」「公告」「辯論」「討論」「成員」五個分頁：簡介與行事曆、辯論卡片（可依個人 / 團體篩選）、成員表、老師的「新增辯論」與「編輯教室」 | `/classrooms/:id` |
-| `pages/CalendarCard.tsx` | 教室首頁的月曆：辯論截止、公告、辯論階段截止，點了跳到對應頁面 | 教室首頁 |
+| `pages/ClassroomPage.tsx` | 教室內的「首頁」「公告」「辯論」「多人討論」「討論區」「成員」六個分頁：簡介與行事曆、辯論卡片（可依個人 / 團體篩選）、成員表、老師的「新增辯論」與「編輯教室」 | `/classrooms/:id` |
+| `pages/CalendarCard.tsx` | 教室首頁的月曆：辯論截止、公告、辯論階段截止、多人討論截止，點了跳到對應頁面 | 教室首頁 |
 | `pages/Discussion.tsx` | 討論區（教室或辯論）：發文、匿名、一層回覆、刪除 | 教室「討論」分頁、辯論頁 |
 | `pages/Announcements.tsx` | 公告分頁（老師新增、編輯、刪除、置頂、排程發布） | `/classrooms/:id` |
 | `pages/ClassroomFormDialog.tsx` | 新增 / 編輯教室共用的視窗（名稱、簡介） | 教室列表、教室頁 |
-| `pages/ClassroomDebatePage.tsx` | 辯論詳情：左欄是說明與相關資料（同一格）、個人思辨 / 辯論入口、結論報告；右欄是討論區；老師可編輯與刪除 | `/classrooms/:id/debates/:id` |
+| `pages/ClassroomDebatePage.tsx` | 辯論詳情：緊湊標題列（返回、標題、截止時間、編輯 / 刪除）；主要區域是進入辯論、說明與討論區；相關資料、結論報告收在可展開的側欄（老師與助教可加資料） | `/classrooms/:id/debates/:id` |
 | `pages/DebateReports.tsx` | 結論報告：學生繳交 / 重新上傳 / 刪除；老師看全班繳交狀況（標示逾期） | 辯論頁 |
-| `pages/DebateFormDialog.tsx` | 新增 / 編輯辯論的視窗：類型、說明、截止時間、是否收報告；團體辯論另有辯論設定（回答方式、價值軸、組別人數） | 教室頁、辯論頁 |
-| `pages/ActivityPage.tsx` | 辯論活動的外框：標題列（右上角是目前階段與控制）、依階段切換的左右兩欄、最下方的進度色條。團體辯論是四階段辯論，個人辯論是個人思辨 → 結算 | `/classrooms/:id/activities/:id` |
+| `pages/DebateFormDialog.tsx` | 新增 / 編輯辯論的視窗：主題、說明、截止時間、是否收報告、辯論設定（回答方式、價值軸、組別人數） | 教室頁、辯論頁 |
+| `pages/DiscussionTasks.tsx` | 教室的「多人討論」分頁：題目卡片（老師看全班完成人數，學生看自己的狀態）、搜尋與「只看進行中」、老師的新增 / 編輯視窗 | 教室「多人討論」分頁 |
+| `pages/DiscussionTaskPage.tsx` | 多人討論的內頁：學生左欄是題目說明、四個面向與自己的結論，右欄跟蘇格拉底對話；老師左欄是題目與全班進度，右欄是每位同學的成果，點一位同學從右邊拉出他的完整對話 | `/classrooms/:id/discussions/:id` |
+| `pages/ShareArchiveDialog.tsx` | 私人題庫的分享視窗：勾選要分享的同學、助教或老師 | 私人題庫頁 |
+| `pages/ActivityPage.tsx` | 辯論活動的外框：標題列（右上角是目前階段與控制）、依階段切換的左右兩欄、最下方的進度色條。辯論是四階段 | `/classrooms/:id/activities/:id` |
 | `pages/StageControls.tsx` | 標題列右上角：目前階段、倒數、準備人數 / 「我準備好了」、推進；老師的「⋯」選單（限時、直接結束）；最下方的進度色條（點已過的段落可回顧） | 辯論活動裡 |
-| `pages/stages/IndividualStage.tsx` | 辯論的階段 1，也是個人辯論的「個人思辨」：左欄用切換按鈕在「個人調查 / 個人思辨」（進度、直接在欄內整理 / 修改論點，不顯示座標）與「我的筆記」之間切換；右欄與蘇格拉底對話（可標註成筆記）。個人思辨確認論點後按「完成」進入結算（論點、四個面向、筆記、對話紀錄），可重新開啟。老師視角是成員進度表（辯論另有星圖） | 辯論活動裡 |
+| `pages/stages/IndividualStage.tsx` | 辯論的階段 1：左欄用切換按鈕在「個人調查」（進度、直接在欄內整理 / 修改論點，不顯示座標）與「我的筆記」之間切換；右欄與蘇格拉底對話（可標註成筆記）。老師視角是成員進度表與星圖 | 辯論活動裡 |
 | `pages/stages/NotesPanel.tsx` | 學生的思路筆記：標註的重點與自己寫的想法，只有本人看得到 | 階段 1、2 左欄的「我的筆記」 |
 | `pages/stages/TeamStage.tsx` | 階段 2：分組、組內討論、AI 整理論點 / 丟反例、投票、分裂、重新分組；學生左欄可切換「我的組別 / 我的筆記」；星圖只有老師看得到 | 辯論活動裡 |
 | `pages/stages/DebateStage.tsx` | 階段 3：場次、主持人、發言與計時、AI 裁判分數 | 辯論活動裡 |
@@ -96,12 +99,13 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `api/types.ts` | 所有資料型別（使用者、活動、組別、發言、評分…） | 前後端共同遵守 |
 | `api/api.ts` | 前端能呼叫的所有後端功能（一個 `Api` 介面） | 前後端共同遵守 |
 | `api/http.ts` | **真後端的實作**：把 `Api` 的每個函式對應成 HTTP 請求與 SSE | `VITE_API_MODE=http` |
-| `api/mock.ts` | 假後端：認證、議題、教室；辯論交給 `mock/engine.ts` | `VITE_API_MODE=mock`（預設） |
+| `api/mock.ts` | 假後端：認證、議題、教室；辯論交給 `mock/engine.ts`、多人討論交給 `mock/discussion.ts` | `VITE_API_MODE=mock`（預設） |
 | `api/queries.ts` | TanStack Query 的資料查詢與更新（頁面都從這裡拿資料）、SSE 事件訂閱 | 全站 |
 | `api/index.ts` | 依環境變數決定用 `mock` 還是 `http` | 全站 |
 | **`mock/`（只在 mock 模式使用）** | | |
 | `mock/engine.ts` | 假的辯論引擎：階段推進、分組、討論、比賽、計時、計分 | mock 模式的辯論 |
 | `mock/debate-ai.ts` | 規則式的模擬同學 / 主持人 / 裁判 / k-means 分組 / 計分公式 | mock 模式的辯論 |
+| `mock/discussion.ts` | 假的多人討論：題目、每位同學各自的對話與結論、全班統計；模擬同學的對話由種子產生 | mock 模式的多人討論 |
 | `landing/lottie.d.ts` | Lottie 的型別宣告 | 開發用 |
 
 > 後端上線後，`src/mock/` 與 `src/api/mock.ts` 可以整個刪除；`http` 模式打包時本來就不會包含它們。
@@ -122,6 +126,7 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 登出 | `AppShell.tsx` → `api.logout` | `POST /api/auth/logout` |
 | 議題列表、論點總結、題庫 | `useArchives`（`TopicsPage`、`ListPages`、`HomePage`） | `GET /api/archives` |
 | 加入私人 / 公開 / 論點總結 | `TopicsPage.tsx` → `useUpdateArchive` | `PATCH /api/archives/:id` |
+| 私人題庫把題目分享給特定的人 | `ListPages.tsx` 的 `BankPage` → `ShareArchiveDialog` → `useShareTargets`、`useUpdateArchive` | `GET /api/me/share-targets`、`PATCH /api/archives/:id`（`sharedWithIds`） |
 | 首頁提問框開始新對話 | `HomePage.tsx` → `api.createArchive` | `POST /api/archives` |
 | 對話頁：載入歷史 | `DialoguePage.tsx` → `api.listTopicDialogue` | `GET /api/archives/:id/dialogue` |
 | 對話頁：送出並串流回覆 | `DialoguePage.tsx` → `api.sendTopicDialogue` | `POST /api/archives/:id/dialogue`（**SSE**） |
@@ -136,22 +141,27 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | 老師審核加入申請 | `PendingApplications` → `usePendingApplications`、`useReviewApplication` | `GET /api/classrooms/:id/applications?status=pending`、`POST /api/applications/:id/review` |
 | 學生用邀請碼找教室 | `JoinDialog` → `api.lookupJoinCode` | `GET /api/join-codes/:code` |
 | 學生加入教室或送出申請 | `JoinDialog` → `useJoinClassroom` | `POST /api/classrooms/:id/join` |
-| 學生的探索課程 | `ExplorePage` 的 `DiscoverClassrooms` → `useDiscoverClassrooms` | `GET /api/classrooms/discover?q=` |
+| 學生的探索課程 | 「教室」頁按下「探索教室」後取代清單的 `DiscoverClassrooms` → `useDiscoverClassrooms` | `GET /api/classrooms/discover?q=` |
 | 學生的申請列表、取消申請 | `MyApplications` → `useMyApplications`、`useCancelApplication` | `GET /api/me/applications`、`DELETE /api/applications/:id` |
 | 公告列表（學生只拿得到已發布的；每分鐘重抓一次） | `useAnnouncements`（`Announcements.tsx`） | `GET /api/classrooms/:id/announcements` |
 | 老師新增 / 編輯公告（含排程） | `AnnouncementFormDialog` → `useSaveAnnouncement` | `POST /api/classrooms/:id/announcements`、`PATCH /api/announcements/:id` |
 | 老師刪除公告 | `Announcements.tsx` 的 `DeleteDialog` → `useDeleteAnnouncement` | `DELETE /api/announcements/:id` |
 | 教室議題列表 | `useTopics`（`ClassroomPage.tsx`） | `GET /api/classrooms/:id/topics` |
 | 討論區（教室 / 辯論）發文、回覆、刪除 | `Discussion.tsx` → `usePosts`、`useCreatePost`、`useDeletePost` | `GET`、`POST /api/classrooms/:id/posts`、`DELETE /api/posts/:id` |
+| 多人討論列表（老師看完成人數、學生看自己的狀態） | `DiscussionTasks.tsx` → `useDiscussions` | `GET /api/classrooms/:id/discussions` |
+| 老師新增 / 編輯討論題目 | `DiscussionFormDialog` → `useSaveDiscussion` | `POST /api/classrooms/:id/discussions`、`PATCH /api/discussions/:id` |
+| 老師結束 / 重新開放、刪除討論 | `DiscussionTaskPage.tsx` → `useSetDiscussionStatus`、`useDeleteDiscussion` | `PUT /api/discussions/:id/status`、`DELETE /api/discussions/:id` |
+| 老師看全班的討論成果 | `TeacherResults` → `useDiscussionSessions` | `GET /api/discussions/:id/sessions` |
+| 點開某位同學的完整對話 | `SessionSheet` → `useDiscussionSession` | `GET /api/discussions/:id/sessions/:studentId` |
+| 學生在討論裡送出一句話 | `StudentChat` → `api.sendDiscussionMessage` | `POST /api/discussions/:id/sessions/me/messages`（**SSE**） |
+| 學生送出 / 收回結論 | `StudentInfo` → `useSubmitConclusion` | `PUT /api/discussions/:id/sessions/me/conclusion` |
 | 教室行事曆 | `CalendarCard.tsx` → `useCalendar` | `GET /api/classrooms/:id/calendar?from=&to=` |
 | 結論報告 | `DebateReports.tsx` → `useReports`、`useSubmitReport`、`useDeleteReport` | `GET`、`POST /api/topics/:id/reports`（multipart）、`DELETE /api/reports/:id` |
 | 辯論詳情 | `useTopic`（`ClassroomDebatePage.tsx`） | `GET /api/topics/:id` |
-| 老師新增 / 編輯辯論（團體辯論同時建立辯論活動） | `DebateFormDialog.tsx` → `useSaveTopic` | `POST /api/classrooms/:id/topics`、`PATCH /api/topics/:id` |
+| 老師新增 / 編輯辯論（同時建立辯論活動） | `DebateFormDialog.tsx` → `useSaveTopic` | `POST /api/classrooms/:id/topics`、`PATCH /api/topics/:id` |
 | 老師刪除辯論 | `ClassroomDebatePage.tsx` 的 `DeleteDialog` → `api.deleteTopic` | `DELETE /api/topics/:id` |
 | 老師加連結 / 上傳檔案 / 移除資料 | `ClassroomDebatePage.tsx` 的 `DebateInfo` | `POST /api/topics/:id/resources`、`POST …/resources/files`（multipart）、`DELETE …/resources/:id` |
-| 個人辯論的入口與完成人數 | `ClassroomDebatePage.tsx` 的 `StartPanel` → `useMembers` | `GET /api/activities/:id/members` |
-| 個人思辨完成 / 重新開啟 | `IndividualStage.tsx` → `useSetCompleted` | `PUT /api/activities/:id/completion` |
-| 團體辯論的辯論進度（卡片上的進度條） | `useActivities`、`useActivity` | `GET /api/classrooms/:id/activities`、`GET /api/activities/:id` |
+| 辯論進度（卡片上的進度條） | `useActivities`、`useActivity` | `GET /api/classrooms/:id/activities`、`GET /api/activities/:id` |
 | 辯論活動資料 | `ActivityPage.tsx` → `useActivity` | `GET /api/activities/:id` |
 | 老師推進階段 | `StageControls.tsx` 的 `StageStatus` → `useAdvanceActivity` | `POST /api/activities/:id/advance` |
 | 老師直接結束活動、設定階段限時 | `StageControls.tsx` 的 `TeacherMenu` → `useActivityControls` | `POST /api/activities/:id/finish`、`PUT /api/activities/:id/deadline` |
@@ -206,6 +216,9 @@ event: done
 data: {"message":{"id":"m1","role":"assistant","text":"完整回覆","at":"2026-01-01T00:00:00Z"}}
 ```
 
+AI（OpenRouter）中途出錯時，最後一個事件改成 `event: error` + `data: {"message":"給使用者看的說明","code":"llm_unavailable"}`。
+完整規格（錯誤碼、資料保存、後端怎麼呼叫 OpenRouter、API key 放哪裡）見 [`api-contract.md`〈對話 API〉](api-contract.md#對話-apiai-蘇格拉底llm-用-openrouter)。
+
 **2. 活動即時事件**（`GET /api/activities/:id/events`）：每個事件一行 `data: {…}`，`type` 為
 `stage_changed`、`group_message`、`argument_updated`、`turn_created`、`room_updated`（欄位見 `types.ts` 的 `ActivityEvent`）。
 
@@ -231,85 +244,57 @@ data: {"message":{"id":"m1","role":"assistant","text":"完整回覆","at":"2026-
 
 ---
 
+## 補充：多人討論、多語系、頭像、小雕像
+
+- **多語系（繁體中文 / English / Español）**：`frontend/src/i18n/`。畫面文字一律寫 `t("中文原文")`（元件內）或 `tr("中文原文")`（元件外），中文原文就是 key；翻譯放在 `i18n/messages/*.ts`（每個檔案 `export default { en: {...}, es: {...} }`，自動合併），缺翻譯時退回中文。新增文字時要同時補 en、es。同一個中文在不同語境要不同翻法時，key 後面加 `#說明`（例如 `"加入#add"`，顯示時會去掉）。開發模式下 `window.__i18nMissing` 會列出缺少翻譯的 key。切換語言會重新載入整個畫面（設定視窗會維持開啟）；語言存在瀏覽器 `localStorage.lang`，前端對後端的請求會帶 `Accept-Language`，語音辨識／朗讀語言也跟著介面語言。示範資料（教室名稱、公告、議題等）與使用者輸入的內容不翻譯。
+- **頭像**：設定視窗的 `AvatarEditor`；預設是黑底白字的姓名首字，可上傳圖片（置中裁成 256×256 JPEG data URL），API 為 `PATCH /api/me { name?, avatarUrl? }`（見 `docs/api-contract.md`）。
+- **多人討論**：老師（或助教）出一個統一的題目，教室裡每位同學各自跟 AI 蘇格拉底對話（彼此看不到），聊完寫下結論；老師在同一頁看全班的成果，點一位同學可以讀他的完整對話與四個面向的涵蓋情況。題目可以設截止時間與每人對話輪數上限，也可以「結束討論」讓同學只能回看。API 見 [`api-contract.md`〈多人討論〉](api-contract.md#多人討論老師出一題同學各自跟-ai-對話)；示範資料與模擬同學的對話在 `src/mock/discussion.ts`。
+- **小蘇格拉底雕像**：`components/SocratesBadge.tsx`，放在辯論活動各階段左欄資訊區上方，AI 回覆時會動嘴巴。為了省效能：程式碼分割＋閒置時才載入、低解析度 24fps、不說話時停止繪製、看不到時暫停、模型只下載一次。沒有 WebGL 時自動不顯示。
+
 ## 第三部分：Linux / macOS / Windows 開啟網站的方法
+
+本專案統一使用 **Bun**（`bun install`、`bun run dev`），不需要另外裝 Node.js 或 npm。
 
 ### 需要準備的東西
 
 | 東西 | 說明 |
 |---|---|
-| **Node.js 20.19 以上（建議 22 LTS）** | 一定要，用來安裝套件與啟動網站（安裝 Node 時會一併裝好 `npm`） |
+| **Bun 1.2 以上** | 一定要，用來安裝套件與啟動網站 |
 | **瀏覽器** | 建議 Chrome 或 Edge（語音辨識最完整）；需支援 WebGL（3D 畫面用，一般電腦都有） |
-| Git（選用） | 只有要從 GitHub 下載專案時才需要；直接下載壓縮檔則不用 |
-| 網路 | 第一次 `npm install` 需要；跑起來之後不需要（3D 引擎、動畫都已包在專案裡） |
+| Git（選用） | 只有要從 GitHub 下載專案時才需要 |
+| 網路 | 第一次 `bun install` 需要；跑起來之後不需要（3D 引擎、動畫都已包在專案裡） |
 
 **不需要**：資料庫、Docker、Python、後端（mock 模式下）。
 
-先檢查是否已安裝：打開終端機輸入 `node -v`，看到 `v20.19` 以上（例如 `v22.x.x`）就可以跳到「啟動網站」。
+先檢查是否已安裝：終端機輸入 `bun -v`，看到 `1.2` 以上就可以跳到「啟動網站」。
 
-### 🪟 Windows
+### 安裝 Bun
 
-1. **安裝 Node.js**：到 <https://nodejs.org> 下載 **LTS** 版安裝檔，一路按「下一步」。
-   或用命令列（Windows 10/11）：`winget install OpenJS.NodeJS.LTS`。
-2. **重新開啟** PowerShell（安裝完要關掉重開，才抓得到 `node`）。
-3. 確認：`node -v`、`npm -v`。
-4. 進入專案資料夾（解壓縮後含 `package.json` 的那一層）：
-   ```powershell
-   cd C:\Users\你的名字\Downloads\react-frontend
-   npm install
-   npm run dev
-   ```
-5. 終端機會顯示 `http://localhost:5173/`，用瀏覽器打開。
+- 🪟 **Windows**（PowerShell）：`powershell -c "irm bun.sh/install.ps1 | iex"`，裝完**關掉 PowerShell 重開**再輸入 `bun -v`。
+  若出現「已停用指令碼執行」：執行一次 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`，選 `Y`，再重來。
+- 🍎 **macOS / 🐧 Linux**：`curl -fsSL https://bun.sh/install | bash`，裝完重開終端機。macOS 也可以 `brew install oven-sh/bun/bun`。
 
-常見問題：
-- 出現「無法載入檔案 npm.ps1，因為這個系統上已停用指令碼執行」：執行一次
-  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`，選 `Y`，再重來。
-- 防火牆跳出視窗：選「允許」或直接關掉都可以，只在本機使用。
+### 啟動網站
 
-### 🍎 macOS
+在專案根目錄（有 `package.json`、`bun.lock` 的那一層）：
 
-1. **安裝 Node.js**，二選一：
-   - 有 Homebrew：`brew install node`（沒有 Homebrew 就到 <https://brew.sh> 看安裝方式）。
-   - 或到 <https://nodejs.org> 下載 **LTS** 的 `.pkg` 安裝檔。
-2. 開啟「終端機」，確認：`node -v`。
-3. 啟動：
-   ```bash
-   cd ~/Downloads/react-frontend
-   npm install
-   npm run dev
-   ```
-4. 瀏覽器打開終端機顯示的 `http://localhost:5173/`。
+```bash
+bun install
+bun run dev
+```
 
-### 🐧 Linux
+終端機會顯示 `http://localhost:5173/`，用瀏覽器打開。要停止網站：在終端機按 `Ctrl + C`。
 
-1. **安裝 Node.js**（**版本要 20.19 以上**；各發行版套件庫的版本常常太舊，建議用 nvm）：
-   - 通用做法（Ubuntu / Debian / Fedora / Arch 都適用）：依 nvm 官方說明（<https://github.com/nvm-sh/nvm>）安裝後執行
-     ```bash
-     nvm install 22
-     nvm use 22
-     ```
-   - 或用套件管理員（先確認版本夠新）：
-     Fedora `sudo dnf install nodejs npm`、Arch `sudo pacman -S nodejs npm`。
-     Ubuntu / Debian 的 `apt install nodejs` 版本可能過舊，不建議。
-2. 確認：`node -v`。
-3. 啟動：
-   ```bash
-   cd ~/Downloads/react-frontend
-   npm install
-   npm run dev
-   ```
-4. 瀏覽器打開 `http://localhost:5173/`。
+### 指令
 
-### 三個系統共通的指令
+在專案根目錄執行（會轉到 `frontend/`）：
 
 | 指令 | 作用 |
 |---|---|
-| `npm install` | 下載並安裝套件（只需做一次，或 `package.json` 有變動時） |
-| `npm run dev` | 啟動開發用網站（改程式會即時更新），預設網址 `http://localhost:5173/` |
-| `npm run build` | 型別檢查並打包成正式版，輸出在 `dist/` |
-| `npm run preview` | 在本機預覽 `dist/` 的打包結果 |
-| `npm run typecheck` | 只做 TypeScript 型別檢查 |
-
-要停止網站：在終端機按 `Ctrl + C`。
+| `bun install` | 下載並安裝套件（只需做一次，或 `package.json` 有變動時） |
+| `bun run dev` | 啟動開發用網站（改程式會即時更新），預設網址 `http://localhost:5173/` |
+| `bun run build` | 型別檢查並打包成正式版，輸出在 `frontend/dist/` |
+| `bun run typecheck` | 只做 TypeScript 型別檢查 |
 
 ### 使用網站
 
@@ -317,8 +302,8 @@ data: {"message":{"id":"m1","role":"assistant","text":"完整回覆","at":"2026-
 2. 選「學生」或「教師」，按「進入教室」。
 3. 想體驗辯論：選單「教室」→「高二哲學選修 A」→「辯論」→「正義是否只是強者的利益？」→「進入辯論」。
    - 學生：左邊進度下方有「示範：讓老師推進」，可以自己走完四個階段。
-   - 老師：可以新增個人或團體辯論、上傳資料、推進階段、看報告。
-4. 想體驗加入教室（學生）：在「教室」頁按「用邀請碼加入」輸入 `LOGIC3`，或在左側「探索」申請「倫理學讀書會」（需要填問卷）；
+   - 老師：可以新增辯論、上傳資料、推進階段、看報告。
+4. 想體驗加入教室（學生）：在「教室」頁按「用邀請碼加入」輸入 `LOGIC3`，或在「教室」頁按「探索教室」申請「倫理學讀書會」（需要填問卷）；
    再登出、改用教師登入，到「倫理學讀書會」→「成員」審核。示範資料存在記憶體裡，**要用選單的登出切換身分**，重新整理網頁會清空。
 5. 對話頁的語音功能需要瀏覽器允許麥克風；不支援時可直接打字。
 
@@ -326,8 +311,7 @@ data: {"message":{"id":"m1","role":"assistant","text":"完整回覆","at":"2026-
 
 | 狀況 | 處理 |
 |---|---|
-| `node` 不是內部或外部命令 / command not found | 沒裝好，或安裝後沒有重開終端機 |
-| 執行 `npm run dev` 出現版本錯誤（`engine` / `Unsupported`） | Node 太舊，升級到 20.19 以上 |
+| `bun` 不是內部或外部命令 / command not found | 沒裝好，或安裝後沒有重開終端機 |
 | 5173 已被占用 | Vite 會自動改用別的埠號，看終端機顯示的網址 |
 | 3D 畫面一片空白 | 瀏覽器或顯示卡驅動不支援 WebGL；換 Chrome / 更新驅動 |
 | 對話沒有聲音 | 瀏覽器內建語音要先與網頁互動過才會播放；也請確認系統音量 |

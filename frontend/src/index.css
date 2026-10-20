@@ -20,6 +20,8 @@
 }
 
 @theme inline {
+  /* 頂端標題列的高度：左側欄「訪客」下方的線與每一頁標題列的底線對齊（h-topbar / min-h-topbar） */
+  --spacing-topbar: 6rem;
   --color-bg: var(--bg); --color-bg-1: var(--bg-1); --color-bg-2: var(--bg-2); --color-bg-3: var(--bg-3);
   --color-line: var(--line); --color-line-strong: var(--line-strong);
   --color-ink: var(--ink); --color-ink-dim: var(--ink-dim); --color-ink-faint: var(--ink-faint);
@@ -43,3 +45,14 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font-sans); 
 /* 需要隱藏捲軸的地方（仍然可以捲動）：辯論頁左側資訊欄 */
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* 右側抽屜（設定）：打開時從右邊滑進來，關閉時滑回去；Radix 會等動畫結束才移除 */
+@keyframes sheet-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes sheet-out { from { transform: translateX(0); } to { transform: translateX(100%); } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+.sheet[data-state="open"] { animation: sheet-in 260ms cubic-bezier(.22, 1, .36, 1); }
+.sheet[data-state="closed"] { animation: sheet-out 200ms ease-in forwards; }
+.sheet-overlay[data-state="open"] { animation: fade-in 260ms ease-out; }
+.sheet-overlay[data-state="closed"] { animation: fade-out 200ms ease-in forwards; }
+@media (prefers-reduced-motion: reduce) { .sheet, .sheet-overlay { animation-duration: 1ms !important; } }

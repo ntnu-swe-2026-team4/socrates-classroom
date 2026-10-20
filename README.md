@@ -1,18 +1,19 @@
 # 詰問 · 蘇格拉底對話教室
 
-以蘇格拉底式詰問為核心的課堂辯論平台：與 AI 蘇格拉底單人對話、四階段課堂辯論（調查 → 提純 → 比賽 → 結果）、立場星圖視覺化。
+以蘇格拉底式詰問為核心的課堂辯論平台：與 AI 蘇格拉底單人對話、四階段課堂辯論（調查 → 提純 → 比賽 → 結果）、**多人討論**（老師出一題，同學各自跟 AI 對話，老師看全班討論成果）、立場星圖視覺化。
+
+> 前端組已經完成 **Dockerfile** 建置，也可以參考 [`./frontend/container.md`](./frontend/container.md)，用容器來執行網頁內容。
 
 ## Quickstart
-> 前端組已經完成 **Dockerfile** 建置，請直接參考 `./frontend/container.md` 之說明，使用容器來執行網頁內容。
 
-需要：**Bun** 1.2 以上（[安裝](https://bun.sh)）
+需要 **Bun** 1.2 以上（<https://bun.sh>）。前端與後端（`server/`，Bun + Hono）都用 Bun。
 
 ```bash
-bun install    # 安裝依賴（workspace 全部）
-bun run dev    # 前端開發伺服器 → http://localhost:5173（mock 模式，不需後端）
+bun install
+bun run dev     # → http://localhost:5173（mock 模式，不需後端）
 ```
 
-| 指令 | 作用 |
+| 指令（在專案根目錄） | 作用 |
 |---|---|
 | `bun run dev` | 前端開發伺服器 |
 | `bun run build` | 型別檢查 + 打包（`frontend/dist/`） |

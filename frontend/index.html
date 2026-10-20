@@ -1,9 +1,11 @@
 <!doctype html>
-<html lang="zh-Hant" class="dark">
+<html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>詰問 · 蘇格拉底對話教室</title>
+    <title>蘇格拉底對話教室</title>
+    <!-- 預設白色介面；使用者自己切成黑色過才在畫面出現前套用，避免閃一下（與 src/app/theme.tsx 的 THEME_KEY 相同） -->
+    <script>try { if (localStorage.getItem("theme-choice") === "dark") document.documentElement.classList.add("dark"); } catch {}</script>
   </head>
   <body>
     <div id="root"></div>

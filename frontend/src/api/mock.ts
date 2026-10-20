@@ -1,9 +1,13 @@
 import type { Api } from "./api";
 import type {
-  Announcement, Archive, CalendarEvent, Classroom, ClassroomMember, ClassroomPreview, ClassroomTopic, CreateActivityInput, DiscussionPost,
-  JoinApplication, JoinPolicy, ThinkingNote, TopicReport, TopicResource, User,
+  Announcement, Archive, CalendarEvent, Classroom, ClassroomMember, ClassroomPreview, ClassroomTopic,
+  DialogueMessage, DiscussionPost, DiscussionTaskInput, JoinApplication, JoinPolicy, ShareTarget,
+  ThinkingNote, TopicReport, TopicResource, User,
 } from "./types";
 import * as E from "@/mock/engine";
+import * as Q from "@/mock/discussion";
+import { currentLang, tr } from "@/i18n";
+import { ApiError, streamDialogue } from "./http";
 
 /**
  * 示範用的假後端（全部在記憶體，重整就消失）。
@@ -15,28 +19,39 @@ const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let user: User | null = null;
 
 const archives: Archive[] = [
-  { id: "a1", title: "正義是否只是強者的利益？", date: "今天 14:20", rounds: 12, bank: "public", inSummary: false,
+  { id: "a1", title: "正義是否只是強者的利益？", date: "今天 14:20", rounds: 12, bank: "public", inSummary: false, sharedWithIds: [], sharedBy: null,
     snippet: "我一開始認為強者說了算，但後來發現「強者也可能誤判自己的利益」這件事把我的論點推翻了一半。" },
-  { id: "a2", title: "我們該不該永遠說實話？", date: "9 月 10 日", rounds: 8, bank: null, inSummary: false,
+  { id: "a2", title: "我們該不該永遠說實話？", date: "9 月 10 日", rounds: 8, bank: "private", inSummary: false, sharedWithIds: [], sharedBy: null,
     snippet: "蘇格拉底一直追問「救人一命」跟「誠實」哪個才是更根本的原則，我後來也說不清楚了。" },
-  { id: "a3", title: "忒修斯之船：改變了多少才不是原來的你？", date: "9 月 3 日", rounds: 15, bank: null, inSummary: false,
+  { id: "a3", title: "忒修斯之船：改變了多少才不是原來的你？", date: "9 月 3 日", rounds: 15, bank: null, inSummary: false, sharedWithIds: [], sharedBy: null,
     snippet: "從一片木板到整艘船，我發現「同一性」比我想的更依賴我們怎麼定義它。" },
+  // 別人分享給你的題目：出現在私人題庫，但不能再轉分享
+  { id: "a4", title: "如果記憶可以複製，那個人還是原來的人嗎？", date: "9 月 1 日", rounds: 9, bank: "private", inSummary: false, sharedWithIds: [], sharedBy: "王○安",
+    snippet: "我們從「換掉一個零件」一路推到「全部換掉」，到後來我分不清問題是出在記憶還是身體。" },
+];
+
+/** 私人題庫可以分享給誰（假後端用固定名單；真後端會依教室成員產生） */
+const SHARE_TARGETS: ShareTarget[] = [
+  { id: "u-wang", name: "王○安", role: "同學" },
+  { id: "u-li", name: "李○恩", role: "同學" },
+  { id: "u-chen", name: "陳○宇", role: "助教" },
+  { id: "u-lin", name: "林老師", role: "老師" },
 ];
 
 /**
  * 假後端只有一位學生（名字固定為「你」）：joined = 已加入；invited = 老師邀請了、還沒回應；
  * 兩者都不是的教室，學生只能從「探索教室」或邀請碼找到。老師只看得到自己（同名）開的教室。
  */
-type StoredClassroom = Classroom & { students: string[]; invited?: boolean };
+type StoredClassroom = Omit<Classroom, "myRole"> & { students: string[]; assistants: string[]; invited?: boolean };
 const ME = "你";
 const classrooms: StoredClassroom[] = [
   { id: "c1", name: "高二哲學選修 A", description: "從柏拉圖《理想國》出發，練習用提問把自己的想法說清楚。", teacherName: "林老師",
-    studentCount: 5, debateCount: 1, joined: true, students: ["王○安", "李○恩", "陳○宇", "林○彤", "吳○哲"] },
-  { id: "c2", name: "高二哲學選修 B", description: "", teacherName: "陳老師", studentCount: 0, debateCount: 0, joined: false, invited: true, students: [] },
+    studentCount: 5, debateCount: 1, joined: true, students: ["王○安", "李○恩", "陳○宇", "林○彤", "吳○哲", ME], assistants: [] },
+  { id: "c2", name: "高二哲學選修 B", description: "", teacherName: "陳老師", studentCount: 0, debateCount: 0, joined: false, invited: true, students: [], assistants: [] },
   { id: "c3", name: "大學先修：邏輯與論證", description: "認識常見的謬誤，練習把一段論證拆成前提與結論。開放所有高中生加入。", teacherName: "張老師",
-    studentCount: 3, debateCount: 0, joined: false, students: ["周○妤", "鄭○翰", "許○晴"] },
+    studentCount: 3, debateCount: 0, joined: false, students: ["周○妤", "鄭○翰", "許○晴"], assistants: [] },
   { id: "c4", name: "倫理學讀書會", description: "每週讀一篇倫理學經典，名額有限，請簡單說明你想參加的原因。", teacherName: "林老師",
-    studentCount: 2, debateCount: 0, joined: false, students: ["蔡○彥", "郭○廷"] },
+    studentCount: 2, debateCount: 0, joined: false, students: ["蔡○彥", "郭○廷"], assistants: [] },
 ];
 
 /* 加入設定與申請 */
@@ -76,7 +91,7 @@ const applications: JoinApplication[] = [
 const MY_ID = "s1";
 const findApplication = (id: string) => {
   const a = applications.find((x) => x.id === id);
-  if (!a) throw new Error("找不到申請");
+  if (!a) throw new Error(tr("找不到申請"));
   return a;
 };
 const myLatestApplication = (cid: string) => applications.filter((a) => a.classroomId === cid && a.studentId === MY_ID).at(-1) ?? null;
@@ -91,14 +106,15 @@ const STATUS = [
   { on: true, last: "今天 14:32", pct: 82 }, { on: false, last: "昨天 09:10", pct: 56 }, { on: true, last: "今天 13:47", pct: 95 },
   { on: false, last: "9 月 8 日", pct: 31 }, { on: true, last: "今天 10:02", pct: 67 },
 ];
-const memberRows = (c: { id: string; students: string[] }): ClassroomMember[] =>
-  c.students.map((name, i) => ({ id: c.id + "-" + i + "-" + name, name, online: STATUS[i % 5].on, lastActive: STATUS[i % 5].last, progress: STATUS[i % 5].pct }));
+const memberRows = (c: { id: string; students: string[]; assistants: string[] }): ClassroomMember[] =>
+  c.students.map((name, i) => ({ id: c.id + "-" + i + "-" + name, name, role: c.assistants.includes(name) ? "assistant" as const : "student" as const, online: STATUS[i % 5].on, lastActive: STATUS[i % 5].last, progress: STATUS[i % 5].pct }));
 const findClassroom = (id: string) => {
   const c = classrooms.find((x) => x.id === id);
-  if (!c) throw new Error("找不到教室");
+  if (!c) throw new Error(tr("找不到教室"));
   return c;
 };
-const pub = ({ students: _s, invited: _i, ...c }: StoredClassroom): Classroom => ({ ...c, studentCount: _s.length, debateCount: E.acts.filter((a) => a.classroomId === c.id && a.kind === "debate").length });
+const roleIn = (c: { assistants: string[] }): Classroom["myRole"] => (user?.role === "teacher" ? "teacher" : c.assistants.includes(ME) ? "assistant" : "student");
+const pub = ({ students: _s, assistants: _a, invited: _i, ...c }: StoredClassroom): Classroom => ({ ...c, myRole: roleIn({ assistants: _a }), studentCount: _s.length, debateCount: E.acts.filter((a) => a.classroomId === c.id).length });
 
 const DEMO_AXES = [
   { name: "正義來源", left: "約定", right: "本性" },
@@ -107,22 +123,36 @@ const DEMO_AXES = [
 ];
 E.createActivity(classrooms[0], { title: "第 1 場辯論", statement: "正義是否只是強者的利益？", answerMode: "both", groupSize: 3, axes: DEMO_AXES }, "d1");
 
-/* 教室的辯論（API 上叫 topic）：每場對應 engine 裡的一個活動（團體 = 四階段辯論、個人 = 個人思辨） */
+/* 教室的辯論（API 上叫 topic）：每場對應 engine 裡的一個四階段辯論活動 */
 const iso = (daysFromNow: number) => new Date(Date.now() + daysFromNow * 864e5).toISOString();
 const topics: ClassroomTopic[] = [
-  { id: "t1", classroomId: "c1", type: "group", title: "正義是否只是強者的利益？", activityId: "d1", acceptsReports: false, postCount: 0,
+  { id: "t1", classroomId: "c1", title: "正義是否只是強者的利益？", activityId: "d1", acceptsReports: false, postCount: 0,
     description: "《理想國》第一卷，色拉敘馬霍斯主張「正義就是強者的利益」。先各自和蘇格拉底對話釐清立場，再分組辯論。",
     dueAt: iso(7), resources: [{ id: "r1", kind: "link", name: "《理想國》第一卷導讀", url: "https://zh.wikipedia.org/wiki/理想國", addedAt: iso(-3) }],
     createdAt: iso(-3), updatedAt: iso(-3) },
-  { id: "t2", classroomId: "c1", type: "individual", title: "我們該不該永遠說實話？", activityId: "d2", acceptsReports: true, postCount: 0,
+  { id: "t2", classroomId: "c1", title: "我們該不該永遠說實話？", activityId: "d2", acceptsReports: true, postCount: 0,
     description: "康德認為說謊在任何情況下都是錯的，即使門口的殺人犯問你朋友躲在哪裡。你同意嗎？和蘇格拉底聊聊你的理由。",
     dueAt: iso(14), resources: [], createdAt: iso(-1), updatedAt: iso(-1) },
 ];
 E.findAct("d1").topicId = "t1";
-E.createActivity(classrooms[0], { kind: "individual", title: topics[1].title, statement: topics[1].title, answerMode: "both", groupSize: 3, axes: [] }, "d2").topicId = "t2";
+E.createActivity(classrooms[0], { title: topics[1].title, statement: topics[1].title, answerMode: "both", groupSize: 3,
+  axes: [{ name: "道德判準", left: "後果", right: "義務" }, { name: "誠實的範圍", left: "有例外", right: "無例外" }] }, "d2").topicId = "t2";
+/* 多人討論的示範資料：老師出一題，模擬同學各自有一段對話與結論 */
+Q.createDiscussion("c1", {
+  title: "AI 可以替老師打成績嗎？",
+  prompt: "有人說 AI 評分更客觀、也更快；也有人說評分本來就包含老師對學生的理解。\n先自己跟蘇格拉底聊，把你的理由講清楚，再寫下你的結論。",
+  conclusionHint: "請在結論裡寫出：你的主張、最主要的一個理由，以及你想到最強的反對意見要怎麼回應。",
+  dueAt: iso(5), maxRounds: 12,
+}, classrooms[0].students, ME, MY_ID, "dq1");
+Q.createDiscussion("c1", {
+  title: "你願意為了公共安全交出多少隱私？",
+  prompt: "從校園監視器一路想到手機定位。試著找出一條你自己願意守住的界線，並說明為什麼是那一條。",
+  conclusionHint: "", dueAt: null, maxRounds: 10,
+}, classrooms[0].students, ME, MY_ID, "dq2");
+
 const findTopic = (id: string) => {
   const t = topics.find((x) => x.id === id);
-  if (!t) throw new Error("找不到辯論");
+  if (!t) throw new Error(tr("找不到辯論"));
   return t;
 };
 const touch = (t: ClassroomTopic) => { t.updatedAt = new Date().toISOString(); };
@@ -169,17 +199,30 @@ const notesOf = (aid: string) => {
 const toAnnouncement = (a: StoredAnnouncement): Announcement => ({ ...a, published: new Date(a.publishAt).getTime() <= Date.now() });
 const findAnnouncement = (id: string) => {
   const a = announcements.find((x) => x.id === id);
-  if (!a) throw new Error("找不到公告");
+  if (!a) throw new Error(tr("找不到公告"));
   return a;
 };
 
 const topicDialogues = new Map<string, import("./types").DialogueMessage[]>();
-const TOPIC_REPLIES = [
-  "有意思。但你剛才那句話裡，有沒有哪個詞，其實你自己也還沒完全想清楚是什麼意思？",
-  "換個角度想：如果反過來看，你剛剛的說法還會成立嗎？",
-  "你會怎麼跟一個完全不同意你的人，解釋你為什麼這樣想？",
-  "假設有一個例外情況，你的說法在那個情況下還站得住腳嗎？",
-  "你說的這件事，是你自己觀察到的，還是別人告訴你的？這兩者對你來說有差別嗎？",
+/**
+ * 開發時（bun run dev）單人對話改問 OpenRouter：由 Vite 的 dev-llm 轉接器代為呼叫，key 留在 server/.env（見 frontend/dev/llm-bridge.ts）。
+ * 回傳 null = 沒有設定 key 或不是開發伺服器，改用下面的示範回覆。
+ */
+async function llmReply(title: string, history: import("./types").DialogueMessage[], onDelta?: (c: string) => void, onEmotion?: (e: import("./types").Emotion) => void) {
+  if (!import.meta.env.DEV) return null;
+  try {
+    return await streamDialogue("/__llm/dialogue", { title, lang: currentLang(), messages: history.map(({ role, text }) => ({ role, text })) }, onDelta, onEmotion);
+  } catch (e) {
+    if (e instanceof ApiError && (e.code === "llm_not_configured" || e.status === 404)) return null;
+    throw e;
+  }
+}
+const topicReplies = () => [
+  tr("有意思。但你剛才那句話裡，有沒有哪個詞，其實你自己也還沒完全想清楚是什麼意思？"),
+  tr("換個角度想：如果反過來看，你剛剛的說法還會成立嗎？"),
+  tr("你會怎麼跟一個完全不同意你的人，解釋你為什麼這樣想？"),
+  tr("假設有一個例外情況，你的說法在那個情況下還站得住腳嗎？"),
+  tr("你說的這件事，是你自己觀察到的，還是別人告訴你的？這兩者對你來說有差別嗎？"),
 ];
 
 const isTeacher = () => user?.role === "teacher";
@@ -189,7 +232,7 @@ const visibleClassrooms = () => classrooms.filter((c) => (isTeacher() ? c.teache
 const toPost = (x: StoredPost): DiscussionPost => {
   const mine = x.authorId === myId();
   const reveal = !x.anonymous || isTeacher() || mine;
-  const label = !x.anonymous ? x.authorName : mine ? "你（匿名）" : isTeacher() ? `${x.authorName}（匿名）` : "匿名同學";
+  const label = !x.anonymous ? x.authorName : mine ? tr("你（匿名）") : isTeacher() ? tr("{name}（匿名）", { name: x.authorName }) : tr("匿名同學");
   return { id: x.id, classroomId: x.classroomId, topicId: x.topicId, parentId: x.parentId, body: x.deleted ? "" : x.body, anonymous: x.anonymous,
     authorLabel: label, authorId: reveal ? x.authorId : null, authorRole: x.authorRole, isMine: mine, createdAt: x.createdAt, deleted: x.deleted };
 };
@@ -197,15 +240,42 @@ const recountPosts = (topicId: string | null) => {
   const t = topicId ? topics.find((x) => x.id === topicId) : null;
   if (t) t.postCount = posts.filter((x) => x.topicId === topicId && !x.deleted).length;
 };
-const needStudent = () => { if (isTeacher()) throw new Error("只有學生可以這樣做"); };
+const needStudent = () => { if (isTeacher()) throw new Error(tr("只有學生可以這樣做")); };
 const join = (c: StoredClassroom) => {
   c.joined = true;
   c.invited = false;
   if (!c.students.includes(ME)) c.students.push(ME);
 };
 const MAX_UPLOAD = 50 * 1024 * 1024;
-const needTeacher = () => { if (!isTeacher()) throw new Error("只有老師可以這樣做"); };
+const needTeacher = () => { if (!isTeacher()) throw new Error(tr("只有老師可以這樣做")); };
+/** 老師或這間教室的助教 */
+const needStaff = (cid: string) => { if (!isTeacher() && !findClassroom(cid).assistants.includes(ME)) throw new Error(tr("只有老師或助教可以這樣做")); };
+const isStaff = (cid: string) => isTeacher() || findClassroom(cid).assistants.includes(ME);
+type StoredCalendarEvent = { id: string; classroomId: string; title: string; at: string; note?: string };
+const customEvents: StoredCalendarEvent[] = [];
+const findCustomEvent = (id: string) => {
+  const e = customEvents.find((x) => x.id === id);
+  if (!e) throw new Error(tr("找不到行事曆事件"));
+  return e;
+};
 const roomAct = (id: string) => E.findRoom(id);
+
+/** 多人討論的欄位檢查（新增與編輯共用）：只回傳有送來的欄位 */
+function cleanDiscussionInput(input: Partial<DiscussionTaskInput>): Partial<DiscussionTaskInput> {
+  const out: Partial<DiscussionTaskInput> = {};
+  if (input.title !== undefined) {
+    if (!input.title.trim()) throw new Error(tr("請填寫討論題目"));
+    out.title = input.title.trim();
+  }
+  if (input.prompt !== undefined) out.prompt = input.prompt.trim();
+  if (input.conclusionHint !== undefined) out.conclusionHint = input.conclusionHint.trim();
+  if (input.dueAt !== undefined) out.dueAt = input.dueAt;
+  if (input.maxRounds !== undefined) {
+    if (!Number.isInteger(input.maxRounds) || input.maxRounds < 2 || input.maxRounds > 40) throw new Error(tr("對話輪數上限要在 2 到 40 之間"));
+    out.maxRounds = input.maxRounds;
+  }
+  return out;
+}
 
 export const mockApi: Api = {
   async login({ role, name }) {
@@ -214,34 +284,61 @@ export const mockApi: Api = {
     return user;
   },
   async me() { await delay(30); return user; },
+  async updateMe({ name, avatarUrl }) {
+    await delay(40);
+    if (!user) throw new Error(tr("尚未登入"));
+    if (name !== undefined) {
+      if (!name.trim()) throw new Error(tr("名稱不能是空的"));
+      const old = user.name;
+      user = { ...user, name: name.trim() };
+      // 假後端用老師姓名認出自己的教室，改名時一起更新
+      if (user.role === "teacher") for (const c of classrooms) if (c.teacherName === old) c.teacherName = user.name;
+    }
+    if (avatarUrl !== undefined) user = { ...user, avatarUrl };
+    return user;
+  },
   async logout() { user = null; },
 
-  async listArchives() { await delay(); return archives.map((a) => ({ ...a })); },
+  async listArchives() { await delay(); return archives.map((a) => ({ ...a, sharedWithIds: [...a.sharedWithIds] })); },
   async updateArchive(id, patch) {
     await delay(60);
     const a = archives.find((x) => x.id === id);
-    if (!a) throw new Error("找不到辯論");
+    if (!a) throw new Error(tr("找不到辯論"));
     if (patch.bank !== undefined) a.bank = patch.bank;
     if (patch.inSummary !== undefined) a.inSummary = patch.inSummary;
-    return { ...a };
+    if (patch.sharedWithIds !== undefined) {
+      if (a.sharedBy) throw new Error(tr("別人分享給你的題目不能再轉分享"));
+      const unknown = patch.sharedWithIds.find((x) => !SHARE_TARGETS.some((s) => s.id === x));
+      if (unknown) throw new Error(tr("找不到要分享的對象"));
+      a.sharedWithIds = [...new Set(patch.sharedWithIds)];
+    }
+    return { ...a, sharedWithIds: [...a.sharedWithIds] };
   },
+  async listShareTargets() { await delay(40); return SHARE_TARGETS.map((s) => ({ ...s })); },
 
   async createArchive(title) {
     await delay(60);
-    const a: Archive = { id: "n" + (archives.length + 1), title, date: "剛剛", rounds: 0, bank: null, inSummary: false, snippet: "（剛開始的對話）" };
+    const a: Archive = { id: "n" + (archives.length + 1), title, date: tr("剛剛"), rounds: 0, bank: null, inSummary: false, snippet: tr("（剛開始的對話）"), sharedWithIds: [], sharedBy: null };
     archives.unshift(a);
     return { ...a };
   },
   async listTopicDialogue(id) { await delay(30); return [...(topicDialogues.get(id) ?? [])]; },
-  async sendTopicDialogue(id, text, onDelta) {
+  async sendTopicDialogue(id, text, onDelta, onEmotion) {
     const list = topicDialogues.get(id) ?? [];
     topicDialogues.set(id, list);
-    list.push({ id: "u" + list.length, role: "user", text, at: new Date().toISOString() });
-    const reply = TOPIC_REPLIES[list.filter((m) => m.role === "assistant").length % TOPIC_REPLIES.length];
-    for (let i = 0; i < reply.length; i += 4) { await delay(25); onDelta?.(reply.slice(i, i + 4)); }
-    const msg = { id: "a" + list.length, role: "assistant" as const, text: reply, at: new Date().toISOString() };
-    list.push(msg);
     const a = archives.find((x) => x.id === id);
+    const mine = { id: "u" + list.length, role: "user" as const, text, at: new Date().toISOString() };
+    // 跟契約一樣：回覆成功才把提問與回覆一起存，失敗就都不存（可以直接重送）
+    const ai = await llmReply(a?.title ?? "", [...list, mine], onDelta, onEmotion);
+    let reply = ai?.text;
+    const emotion = ai?.emotion;
+    if (reply === undefined) {
+      const rs = topicReplies();
+      reply = rs[list.filter((m) => m.role === "assistant").length % rs.length];
+      for (let i = 0; i < reply.length; i += 4) { await delay(25); onDelta?.(reply.slice(i, i + 4)); }
+    }
+    const msg = { id: "a" + (list.length + 1), role: "assistant" as const, text: reply, at: new Date().toISOString(), ...(emotion && { emotion }) };
+    list.push(mine, msg);
     if (a) a.rounds = list.filter((m) => m.role === "user").length;
     return msg;
   },
@@ -256,7 +353,7 @@ export const mockApi: Api = {
   },
   async createClassroom({ name, description }) {
     await delay(); needTeacher();
-    const c: StoredClassroom = { id: newId("c"), name, description, teacherName: user?.name ?? "老師", studentCount: 0, debateCount: 0, joined: true, students: [] };
+    const c: StoredClassroom = { id: newId("c"), name, description, teacherName: user?.name ?? tr("老師"), studentCount: 0, debateCount: 0, joined: true, students: [], assistants: [] };
     classrooms.push(c);
     return pub(c);
   },
@@ -264,7 +361,7 @@ export const mockApi: Api = {
     await delay(); needTeacher();
     const c = findClassroom(id);
     if (patch.name !== undefined) {
-      if (!patch.name.trim()) throw new Error("教室名稱不能是空的");
+      if (!patch.name.trim()) throw new Error(tr("教室名稱不能是空的"));
       c.name = patch.name.trim();
     }
     if (patch.description !== undefined) c.description = patch.description.trim();
@@ -284,20 +381,21 @@ export const mockApi: Api = {
     const c = findClassroom(id);
     const rows = memberRows(c);
     const i = rows.findIndex((r) => r.id === mid);
-    if (i >= 0) c.students.splice(i, 1);
+    if (i >= 0) { c.assistants = c.assistants.filter((n) => n !== rows[i].name); c.students.splice(i, 1); }
   },
-  async listActivities(cid) { await delay(); return E.acts.filter((a) => a.classroomId === cid && a.kind === "debate").map(E.toActivity); },
+  async setMemberRole(id, mid, role) {
+    await delay(); needTeacher();
+    const c = findClassroom(id);
+    const row = memberRows(c).find((r) => r.id === mid);
+    if (!row) throw new Error(tr("找不到成員"));
+    c.assistants = c.assistants.filter((n) => n !== row.name);
+    if (role === "assistant") c.assistants.push(row.name);
+    return { ...row, role };
+  },
+  async listActivities(cid) { await delay(); return E.acts.filter((a) => a.classroomId === cid).map(E.toActivity); },
   async getActivity(id) { await delay(40); return E.toActivity(E.findAct(id)); },
-  async createActivity(cid, input: CreateActivityInput) {
-    await delay();
-    needTeacher();
-    const c = classrooms.find((x) => x.id === cid);
-    if (!c) throw new Error("找不到教室");
-    return E.toActivity(E.createActivity(c, input));
-  },
   async advanceActivity(id) { await delay(); return E.toActivity(E.advance(E.findAct(id))); },
   async finishActivity(id) { await delay(); needTeacher(); return E.toActivity(E.finish(E.findAct(id))); },
-  async setCompleted(id, done) { await delay(); needStudent(); E.setCompleted(E.findAct(id), done); },
   async setStageDeadline(id, deadline) { await delay(60); needTeacher(); return E.toActivity(E.setDeadline(E.findAct(id), deadline)); },
 
   async listDialogue(id) { await delay(30); return [...E.findAct(id).dialogue]; },
@@ -311,7 +409,7 @@ export const mockApi: Api = {
   async createNote(id, input) {
     await delay(60); needStudent();
     const a = E.findAct(id);
-    if (!input.text.trim()) throw new Error("筆記不能是空的");
+    if (!input.text.trim()) throw new Error(tr("筆記不能是空的"));
     const at = new Date().toISOString();
     const n: ThinkingNote = { id: newId("nt"), activityId: id, stage: a.stage, kind: input.kind, sourceMessageId: input.sourceMessageId ?? null, text: input.text.trim(), createdAt: at, updatedAt: at };
     notesOf(id).push(n);
@@ -320,8 +418,8 @@ export const mockApi: Api = {
   async updateNote(nid, text) {
     await delay(60); needStudent();
     const n = [...notes.values()].flat().find((x) => x.id === nid);
-    if (!n) throw new Error("找不到筆記");
-    if (!text.trim()) throw new Error("筆記不能是空的");
+    if (!n) throw new Error(tr("找不到筆記"));
+    if (!text.trim()) throw new Error(tr("筆記不能是空的"));
     n.text = text.trim(); n.updatedAt = new Date().toISOString();
     return { ...n };
   },
@@ -342,7 +440,7 @@ export const mockApi: Api = {
   async listGroupMessages(gid) {
     await delay(30);
     const a = E.acts.find((x) => x.groups.some((g: any) => g.id === gid));
-    if (!a) throw new Error("找不到組別");
+    if (!a) throw new Error(tr("找不到組別"));
     return a.groupState[gid].messages.map((m: any) => E.toMessage(gid, m));
   },
   async postGroupMessage(gid, text) { const a = groupAct(gid); return E.postGroupMessage(a, gid, text); },
@@ -357,7 +455,7 @@ export const mockApi: Api = {
   async vote(aid, v) {
     await delay(40);
     const a = E.acts.find((x) => x.groups.some((g: any) => x.groupState[g.id].args.some((y: any) => y.id === aid)));
-    if (!a) throw new Error("找不到論點");
+    if (!a) throw new Error(tr("找不到論點"));
     return E.vote(a, aid, v);
   },
   async splitGroup(gid) { await delay(200); const a = groupAct(gid); E.splitGroup(a, gid); return a.groups.map((g: any) => E.toGroup(a, g, isTeacher())); },
@@ -377,7 +475,7 @@ export const mockApi: Api = {
   async getStarData(id) {
     await delay(60);
     const a = E.findAct(id);
-    if (!E.coordsVisible(a, isTeacher())) throw new Error("立場星圖在活動結束後才會公開");
+    if (!E.coordsVisible(a, isTeacher())) throw new Error(tr("立場星圖在活動結束後才會公開"));
     return E.starData(a);
   },
 
@@ -398,16 +496,14 @@ export const mockApi: Api = {
   async createTopic(cid, input) {
     await delay(); needTeacher();
     const c = findClassroom(cid);
-    if (!input.title.trim()) throw new Error("請填寫辯論主題");
-    if (input.type === "group" && !input.activity) throw new Error("團體辯論需要辯論設定");
+    if (!input.title.trim()) throw new Error(tr("請填寫辯論主題"));
+    if (!input.activity) throw new Error(tr("辯論需要辯論設定"));
     const at = new Date().toISOString();
     const t: ClassroomTopic = {
-      id: newId("t"), classroomId: cid, type: input.type, title: input.title.trim(), description: input.description.trim(),
+      id: newId("t"), classroomId: cid, title: input.title.trim(), description: input.description.trim(),
       dueAt: input.dueAt, acceptsReports: input.acceptsReports, activityId: null, resources: [], postCount: 0, createdAt: at, updatedAt: at,
     };
-    const a = input.type === "group" && input.activity
-      ? E.createActivity(c, { ...input.activity, title: t.title, statement: t.title })
-      : E.createActivity(c, { kind: "individual", title: t.title, statement: t.title, answerMode: "both", groupSize: 3, axes: [] });
+    const a = E.createActivity(c, { ...input.activity, title: t.title, statement: t.title });
     a.topicId = t.id;
     t.activityId = a.id;
     topics.push(t);
@@ -416,7 +512,7 @@ export const mockApi: Api = {
   async updateTopic(id, patch) {
     await delay(); needTeacher();
     const t = findTopic(id);
-    if (patch.title !== undefined && !patch.title.trim()) throw new Error("請填寫辯論主題");
+    if (patch.title !== undefined && !patch.title.trim()) throw new Error(tr("請填寫辯論主題"));
     if (patch.activity && t.activityId) E.updateSettings(E.findAct(t.activityId), patch.activity);
     if (patch.title !== undefined) {
       t.title = patch.title.trim();
@@ -436,16 +532,16 @@ export const mockApi: Api = {
     topics.splice(topics.indexOf(t), 1);
   },
   async addTopicLink(tid, { name, url }) {
-    await delay(); needTeacher();
-    if (!/^https?:\/\//.test(url.trim())) throw new Error("連結要以 http:// 或 https:// 開頭");
+    await delay(); needStaff(findTopic(tid).classroomId);
+    if (!/^https?:\/\//.test(url.trim())) throw new Error(tr("連結要以 http:// 或 https:// 開頭"));
     const t = findTopic(tid);
     const r: TopicResource = { id: newId("r"), kind: "link", name: name.trim() || url.trim(), url: url.trim(), addedAt: new Date().toISOString() };
     t.resources.push(r); touch(t);
     return { ...r };
   },
   async uploadTopicFile(tid, file) {
-    await delay(300); needTeacher();
-    if (file.size > MAX_UPLOAD) throw new Error("檔案太大（上限 50 MB）");
+    await delay(300); needStaff(findTopic(tid).classroomId);
+    if (file.size > MAX_UPLOAD) throw new Error(tr("檔案太大（上限 50 MB）"));
     const t = findTopic(tid);
     // 假後端：檔案只存在這個分頁的記憶體裡，重新整理就消失
     const r: TopicResource = { id: newId("r"), kind: "file", addedAt: new Date().toISOString(),
@@ -454,7 +550,7 @@ export const mockApi: Api = {
     return structuredClone(r);
   },
   async deleteTopicResource(tid, rid) {
-    await delay(); needTeacher();
+    await delay(); needStaff(findTopic(tid).classroomId);
     const t = findTopic(tid);
     const r = t.resources.find((x) => x.id === rid);
     if (r?.kind === "file") URL.revokeObjectURL(r.file.url);
@@ -464,24 +560,25 @@ export const mockApi: Api = {
   async listAnnouncements(cid) {
     await delay();
     return announcements.filter((a) => a.classroomId === cid).map(toAnnouncement)
-      .filter((a) => isTeacher() || a.published)
+      .filter((a) => isStaff(cid) || a.published)
       .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.publishAt.localeCompare(a.publishAt));
   },
   async createAnnouncement(cid, input) {
-    await delay(); needTeacher();
+    await delay(); needStaff(cid);
     findClassroom(cid);
-    if (!input.title.trim()) throw new Error("請填寫公告標題");
+    if (!input.title.trim()) throw new Error(tr("請填寫公告標題"));
     const at = new Date().toISOString();
     const a: StoredAnnouncement = { id: newId("an"), classroomId: cid, title: input.title.trim(), body: input.body.trim(), pinned: input.pinned,
-      publishAt: input.publishAt ?? at, authorName: user?.name ?? "老師", createdAt: at, updatedAt: at };
+      publishAt: input.publishAt ?? at, authorName: user?.name ?? tr("老師"), createdAt: at, updatedAt: at };
     announcements.push(a);
     return toAnnouncement(a);
   },
   async updateAnnouncement(id, patch) {
-    await delay(); needTeacher();
+    await delay();
     const a = findAnnouncement(id);
+    needStaff(a.classroomId);
     if (patch.title !== undefined) {
-      if (!patch.title.trim()) throw new Error("請填寫公告標題");
+      if (!patch.title.trim()) throw new Error(tr("請填寫公告標題"));
       a.title = patch.title.trim();
     }
     if (patch.body !== undefined) a.body = patch.body.trim();
@@ -491,8 +588,10 @@ export const mockApi: Api = {
     return toAnnouncement(a);
   },
   async deleteAnnouncement(id) {
-    await delay(); needTeacher();
-    announcements.splice(announcements.indexOf(findAnnouncement(id)), 1);
+    await delay();
+    const a = findAnnouncement(id);
+    needStaff(a.classroomId);
+    announcements.splice(announcements.indexOf(a), 1);
   },
   /* 加入教室與成員管理（P3） */
   async importClassroomMembers(cid, names) {
@@ -503,9 +602,9 @@ export const mockApi: Api = {
     for (const raw of names) {
       const name = raw.trim();
       if (!name) continue;
-      if (seen.has(name)) { result.skipped.push({ name, reason: "名單裡重複" }); continue; }
+      if (seen.has(name)) { result.skipped.push({ name, reason: tr("名單裡重複") }); continue; }
       seen.add(name);
-      if (c.students.includes(name)) { result.skipped.push({ name, reason: "已經在教室裡" }); continue; }
+      if (c.students.includes(name)) { result.skipped.push({ name, reason: tr("已經在教室裡") }); continue; }
       c.students.push(name);
       result.added.push(memberRows(c)[c.students.length - 1]);
     }
@@ -517,8 +616,8 @@ export const mockApi: Api = {
     const p = policyOf(cid);
     if (patch.questionnaire) {
       for (const q of patch.questionnaire) {
-        if (!q.prompt.trim()) throw new Error("每一題都要有題目");
-        if (q.kind === "choice" && (q.options?.filter((o) => o.trim()).length ?? 0) < 2) throw new Error(`「${q.prompt}」至少要有兩個選項`);
+        if (!q.prompt.trim()) throw new Error(tr("每一題都要有題目"));
+        if (q.kind === "choice" && (q.options?.filter((o) => o.trim()).length ?? 0) < 2) throw new Error(tr("「{prompt}」至少要有兩個選項",{ prompt: q.prompt }));
       }
       p.questionnaire = patch.questionnaire.map((q) => ({ ...q, prompt: q.prompt.trim(), options: q.kind === "choice" ? q.options?.map((o) => o.trim()).filter(Boolean) : undefined }));
     }
@@ -536,23 +635,23 @@ export const mockApi: Api = {
   async lookupJoinCode(code) {
     await delay(); needStudent();
     const c = classrooms.find((x) => { const p = policyOf(x.id); return p.codeEnabled && p.code === code.trim().toUpperCase(); });
-    if (!c) throw new Error("邀請碼無效或已停用，請向老師確認");
+    if (!c) throw new Error(tr("邀請碼無效或已停用，請向老師確認"));
     return preview(c);
   },
   async joinClassroom(cid, input) {
     await delay(); needStudent();
     const c = findClassroom(cid);
     const p = policyOf(cid);
-    if (c.joined) throw new Error("你已經是這個教室的成員");
+    if (c.joined) throw new Error(tr("你已經是這個教室的成員"));
     const codeOk = !!input.code && p.codeEnabled && p.code === input.code.trim().toUpperCase();
-    if (!p.discoverable && !codeOk && !c.invited) throw new Error("需要有效的邀請碼才能加入這個教室");
+    if (!p.discoverable && !codeOk && !c.invited) throw new Error(tr("需要有效的邀請碼才能加入這個教室"));
     if (!p.requireApproval) { join(c); return { status: "joined", classroom: pub(c) }; }
-    if (myLatestApplication(cid)?.status === "pending") throw new Error("你已經送出申請，請等老師審核");
+    if (myLatestApplication(cid)?.status === "pending") throw new Error(tr("你已經送出申請，請等老師審核"));
     const answers = p.questionnaire.map((q) => ({ questionId: q.id, prompt: q.prompt, answer: (input.answers?.[q.id] ?? "").trim() }));
     const missing = p.questionnaire.find((q, i) => q.required && !answers[i].answer);
-    if (missing) throw new Error(`請回答「${missing.prompt}」`);
+    if (missing) throw new Error(tr("請回答「{prompt}」", { prompt: missing.prompt }));
     const bad = p.questionnaire.find((q, i) => q.kind === "choice" && answers[i].answer && !q.options?.includes(answers[i].answer));
-    if (bad) throw new Error(`「${bad.prompt}」的選項不正確`);
+    if (bad) throw new Error(tr("「{prompt}」的選項不正確", { prompt: bad.prompt }));
     const app: JoinApplication = { id: newId("ap"), classroomId: cid, classroomName: c.name, studentId: MY_ID, studentName: ME, answers,
       status: "pending", createdAt: new Date().toISOString(), reviewedAt: null, note: null };
     applications.push(app);
@@ -565,7 +664,7 @@ export const mockApi: Api = {
   async cancelApplication(id) {
     await delay(); needStudent();
     const a = findApplication(id);
-    if (a.studentId !== MY_ID || a.status !== "pending") throw new Error("只能取消自己還在審核中的申請");
+    if (a.studentId !== MY_ID || a.status !== "pending") throw new Error(tr("只能取消自己還在審核中的申請"));
     applications.splice(applications.indexOf(a), 1);
   },
   async listApplications(cid, status) {
@@ -575,7 +674,7 @@ export const mockApi: Api = {
   async reviewApplication(id, decision, note) {
     await delay(); needTeacher();
     const a = findApplication(id);
-    if (a.status !== "pending") throw new Error("這筆申請已經審核過了");
+    if (a.status !== "pending") throw new Error(tr("這筆申請已經審核過了"));
     a.status = decision === "approve" ? "approved" : "rejected";
     a.reviewedAt = new Date().toISOString();
     a.note = note?.trim() || null;
@@ -595,8 +694,8 @@ export const mockApi: Api = {
   async submitReport(tid, file, comment) {
     await delay(300); needStudent();
     const t = findTopic(tid);
-    if (!t.acceptsReports) throw new Error("這場辯論沒有開放上傳報告");
-    if (file.size > MAX_UPLOAD) throw new Error("檔案太大（上限 50 MB）");
+    if (!t.acceptsReports) throw new Error(tr("這場辯論沒有開放上傳報告"));
+    if (file.size > MAX_UPLOAD) throw new Error(tr("檔案太大（上限 50 MB）"));
     const old = reports.findIndex((r) => r.topicId === tid && r.studentId === MY_ID);
     if (old >= 0) { if (reports[old].file.url.startsWith("blob:")) URL.revokeObjectURL(reports[old].file.url); reports.splice(old, 1); }
     const r: TopicReport = { id: newId("rp"), topicId: tid, studentId: MY_ID, studentName: ME, comment: comment?.trim() ?? "", submittedAt: new Date().toISOString(),
@@ -607,9 +706,107 @@ export const mockApi: Api = {
   async deleteReport(rid) {
     await delay(); needStudent();
     const i = reports.findIndex((r) => r.id === rid && r.studentId === MY_ID);
-    if (i < 0) throw new Error("找不到報告");
+    if (i < 0) throw new Error(tr("找不到報告"));
     if (reports[i].file.url.startsWith("blob:")) URL.revokeObjectURL(reports[i].file.url);
     reports.splice(i, 1);
+  },
+
+  /* 多人討論（P8）：老師出一題，同學各自跟 AI 對話，老師看全班的討論成果 */
+  async listDiscussions(cid) {
+    await delay();
+    findClassroom(cid);
+    return Q.discussions.filter((d) => d.classroomId === cid)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((d) => Q.toTask(d, isTeacher() ? null : MY_ID));
+  },
+  async getDiscussion(id) {
+    await delay(40);
+    return Q.toTask(Q.findDiscussion(id), isTeacher() ? null : MY_ID);
+  },
+  async createDiscussion(cid, input) {
+    await delay(); needStaff(cid);
+    const c = findClassroom(cid);
+    const clean = cleanDiscussionInput(input);
+    const d = Q.createDiscussion(cid, { ...clean, title: clean.title!, prompt: clean.prompt!, conclusionHint: clean.conclusionHint!, dueAt: clean.dueAt ?? null, maxRounds: clean.maxRounds! }, c.students, ME, MY_ID);
+    return Q.toTask(d, null);
+  },
+  async updateDiscussion(id, patch) {
+    await delay();
+    const d = Q.findDiscussion(id);
+    needStaff(d.classroomId);
+    Object.assign(d, cleanDiscussionInput(patch));
+    d.updatedAt = new Date().toISOString();
+    return Q.toTask(d, isTeacher() ? null : MY_ID);
+  },
+  async setDiscussionStatus(id, status) {
+    await delay(60);
+    const d = Q.findDiscussion(id);
+    needStaff(d.classroomId);
+    d.status = status;
+    d.updatedAt = new Date().toISOString();
+    return Q.toTask(d, isTeacher() ? null : MY_ID);
+  },
+  async deleteDiscussion(id) {
+    await delay();
+    const d = Q.findDiscussion(id);
+    needStaff(d.classroomId);
+    Q.removeDiscussion(id);
+  },
+  async listDiscussionSessions(id) {
+    await delay(60);
+    const d = Q.findDiscussion(id);
+    needStaff(d.classroomId);
+    return Q.listSessions(d, MY_ID);
+  },
+  async getDiscussionSession(id, studentId) {
+    await delay(40);
+    const d = Q.findDiscussion(id);
+    const target = studentId ?? MY_ID;
+    // 自己的那段對話隨時看得到；別人的（包含老師看學生模式的「你」）要老師或助教
+    if (target !== MY_ID || isTeacher()) {
+      needStaff(d.classroomId);
+      const s = d.sessions.get(target);
+      if (!s) throw new Error(tr("找不到這位同學的討論"));
+      return Q.toSessionDetail(d, s, MY_ID);
+    }
+    return Q.toSessionDetail(d, Q.mySession(d, MY_ID, ME), MY_ID);
+  },
+  async sendDiscussionMessage(id, text, onDelta, onEmotion) {
+    needStudent();
+    const d = Q.findDiscussion(id);
+    if (d.status === "closed") throw new Error(tr("這個討論已經結束了"));
+    const s = Q.mySession(d, MY_ID, ME);
+    if (Q.roundsOf(s) >= d.maxRounds) throw new Error(tr("已達這個討論的最多 {n} 輪", { n: d.maxRounds }));
+    const mine: DialogueMessage = { id: newId("u"), role: "user", text, at: new Date().toISOString() };
+    // 跟契約一樣：回覆成功才把提問與回覆一起存，失敗就都不存（可以直接重送）
+    const ai = await llmReply(`${d.title}\n${d.prompt}`, [...s.messages, mine], onDelta, onEmotion);
+    let reply = ai?.text;
+    if (reply === undefined) {
+      const rs = topicReplies();
+      reply = rs[s.messages.filter((m) => m.role === "assistant").length % rs.length];
+      for (let i = 0; i < reply.length; i += 4) { await delay(25); onDelta?.(reply.slice(i, i + 4)); }
+    }
+    const msg: DialogueMessage = { id: newId("a"), role: "assistant", text: reply, at: new Date().toISOString(), ...(ai?.emotion && { emotion: ai.emotion }) };
+    s.messages.push(mine, msg);
+    s.lastActiveAt = msg.at;
+    return msg;
+  },
+  async submitDiscussionConclusion(id, conclusion) {
+    await delay(80); needStudent();
+    const d = Q.findDiscussion(id);
+    if (d.status === "closed") throw new Error(tr("這個討論已經結束了"));
+    const s = Q.mySession(d, MY_ID, ME);
+    if (conclusion === null) {
+      s.conclusion = null;
+      s.submittedAt = null;
+    } else {
+      if (!conclusion.trim()) throw new Error(tr("結論不能是空的"));
+      if (!s.messages.length) throw new Error(tr("先跟蘇格拉底聊過，再送出結論"));
+      s.conclusion = conclusion.trim();
+      s.submittedAt = new Date().toISOString();
+      s.lastActiveAt = s.submittedAt;
+    }
+    return Q.toSessionDetail(d, s, MY_ID);
   },
 
   /* 討論區（P5） */
@@ -625,14 +822,14 @@ export const mockApi: Api = {
     await delay();
     findClassroom(cid);
     const body = input.body.trim();
-    if (!body) throw new Error("內容不能是空的");
-    if (body.length > 2000) throw new Error("內容最多 2000 字");
+    if (!body) throw new Error(tr("內容不能是空的"));
+    if (body.length > 2000) throw new Error(tr("內容最多 2000 字"));
     if (input.parentId) {
       const parent = posts.find((x) => x.id === input.parentId);
-      if (!parent || parent.parentId || parent.topicId !== input.topicId) throw new Error("只能回覆同一個討論區的主貼文");
+      if (!parent || parent.parentId || parent.topicId !== input.topicId) throw new Error(tr("只能回覆同一個討論區的主貼文"));
     }
     const x: StoredPost = { id: newId("p"), classroomId: cid, topicId: input.topicId, parentId: input.parentId ?? null, body,
-      anonymous: !isTeacher() && input.anonymous, authorId: myId(), authorName: isTeacher() ? user?.name ?? "老師" : ME,
+      anonymous: !isTeacher() && input.anonymous, authorId: myId(), authorName: isTeacher() ? user?.name ?? tr("老師") : ME,
       authorRole: isTeacher() ? "teacher" : "student", createdAt: new Date().toISOString(), deleted: false };
     posts.push(x);
     recountPosts(x.topicId);
@@ -641,23 +838,57 @@ export const mockApi: Api = {
   async deletePost(pid) {
     await delay();
     const x = posts.find((y) => y.id === pid);
-    if (!x) throw new Error("找不到貼文");
-    if (x.authorId !== myId() && !isTeacher()) throw new Error("只能刪除自己的貼文");
+    if (!x) throw new Error(tr("找不到貼文"));
+    if (x.authorId !== myId() && !isTeacher()) throw new Error(tr("只能刪除自己的貼文"));
     if (posts.some((y) => y.parentId === x.id && !y.deleted)) x.deleted = true;
     else posts.splice(posts.indexOf(x), 1);
     recountPosts(x.topicId);
   },
 
+  /* 行事曆：老師與助教的自訂事件 */
+  async createCalendarEvent(cid, input) {
+    await delay(); needStaff(cid);
+    const c = findClassroom(cid);
+    if (!input.title.trim()) throw new Error(tr("請填寫事件標題"));
+    if (Number.isNaN(new Date(input.at).getTime())) throw new Error(tr("請選擇日期與時間"));
+    const e: StoredCalendarEvent = { id: newId("ce"), classroomId: cid, title: input.title.trim(), at: new Date(input.at).toISOString(), note: input.note?.trim() || undefined };
+    customEvents.push(e);
+    return { classroomId: c.id, classroomName: c.name, id: e.id, kind: "custom", title: e.title, at: e.at, note: e.note };
+  },
+  async updateCalendarEvent(id, patch) {
+    await delay();
+    const e = findCustomEvent(id);
+    needStaff(e.classroomId);
+    if (patch.title !== undefined) {
+      if (!patch.title.trim()) throw new Error(tr("請填寫事件標題"));
+      e.title = patch.title.trim();
+    }
+    if (patch.at !== undefined) e.at = new Date(patch.at).toISOString();
+    if (patch.note !== undefined) e.note = patch.note.trim() || undefined;
+    return { classroomId: e.classroomId, classroomName: findClassroom(e.classroomId).name, id: e.id, kind: "custom", title: e.title, at: e.at, note: e.note };
+  },
+  async deleteCalendarEvent(id) {
+    await delay();
+    const e = findCustomEvent(id);
+    needStaff(e.classroomId);
+    customEvents.splice(customEvents.indexOf(e), 1);
+  },
+
   /* 行事曆（P6）：從辯論截止日、公告、活動階段截止時間整理出來 */
   async listCalendar({ from, to, classroomId }) {
     await delay();
-    const scope = visibleClassrooms().filter((c) => !classroomId || c.id === classroomId);
+    const scope = visibleClassrooms().filter((c) => c.id === classroomId);
     const events: CalendarEvent[] = [];
     for (const c of scope) {
       const base = { classroomId: c.id, classroomName: c.name };
       for (const t of topics) if (t.classroomId === c.id && t.dueAt) events.push({ ...base, id: "due-" + t.id, kind: "topic_due", title: t.title, at: t.dueAt, topicId: t.id, activityId: t.activityId ?? undefined });
-      for (const an of announcements.map(toAnnouncement)) if (an.classroomId === c.id && (isTeacher() || an.published)) events.push({ ...base, id: "an-" + an.id, kind: "announcement", title: an.title, at: an.publishAt, announcementId: an.id });
+      for (const an of announcements.map(toAnnouncement)) if (an.classroomId === c.id && (isStaff(c.id) || an.published)) events.push({ ...base, id: "an-" + an.id, kind: "announcement", title: an.title, at: an.publishAt, announcementId: an.id });
       for (const act of E.acts) if (act.classroomId === c.id && act.stageDeadline) events.push({ ...base, id: "dl-" + act.id, kind: "stage_deadline", title: act.title, at: act.stageDeadline, activityId: act.id, topicId: act.topicId });
+      for (const d of Q.discussions) if (d.classroomId === c.id && d.dueAt) events.push({ ...base, id: "dq-" + d.id, kind: "discussion_due", title: d.title, at: d.dueAt, discussionId: d.id });
+    }
+    for (const e of customEvents) {
+      const c = scope.find((x) => x.id === e.classroomId);
+      if (c) events.push({ classroomId: c.id, classroomName: c.name, id: e.id, kind: "custom", title: e.title, at: e.at, note: e.note });
     }
     return events.filter((e) => e.at >= from && e.at < to).sort((x, y) => x.at.localeCompare(y.at));
   },
@@ -665,6 +896,6 @@ export const mockApi: Api = {
 
 function groupAct(gid: string) {
   const a = E.acts.find((x) => x.groups.some((g: any) => g.id === gid));
-  if (!a) throw new Error("找不到組別");
+  if (!a) throw new Error(tr("找不到組別"));
   return a;
 }
