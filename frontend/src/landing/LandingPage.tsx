@@ -1,3 +1,4 @@
+import { LANGS, useLang, useT } from "@/i18n";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -147,6 +148,8 @@ const ICON_STUDENT = <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" stro
 const ICON_TEACHER = <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5.5C6 4.4 8.4 4 12 4.9V19c-3.6-.9-6-.5-8 .6z" /><path d="M20 5.5C18 4.4 15.6 4 12 4.9V19c3.6-.9 6-.5 8 .6z" /></svg>;
 
 export function LandingPage() {
+  const t = useT();
+  const { lang, setLang } = useLang();
   const scroller = useRef<HTMLDivElement>(null);
   const signInCard = useRef<HTMLDivElement>(null);
   const storyPlayer = useRef<HTMLDivElement>(null);
@@ -172,24 +175,6 @@ export function LandingPage() {
     return () => cancelAnimationFrame(frame);
   }, [tour?.session]);
 
-  function tiltSignInCard(e: React.MouseEvent<HTMLDivElement>) {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
-    const card = e.currentTarget;
-    const rect = card.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width - 0.5;
-    const y = (e.clientY - rect.top) / rect.height - 0.5;
-    card.dataset.tilting = "true";
-    card.style.setProperty("--signin-tilt-x", `${-y * 2.4}deg`);
-    card.style.setProperty("--signin-tilt-y", `${x * 2.4}deg`);
-  }
-
-  function resetSignInCardTilt(e: React.MouseEvent<HTMLDivElement>) {
-    const card = e.currentTarget;
-    card.dataset.tilting = "false";
-    card.style.setProperty("--signin-tilt-x", "0deg");
-    card.style.setProperty("--signin-tilt-y", "0deg");
-  }
-
   useEffect(() => {
     const card = signInCard.current;
     if (!card) return;
@@ -210,29 +195,32 @@ export function LandingPage() {
       qc.setQueryData(keys.me, user);
       navigate({ to: "/" });
     } catch {
-      setEntryError("暫時無法進入教室，請稍後再試。");
+      setEntryError(t("暫時無法進入教室，請稍後再試。"));
     } finally { setBusy(false); }
   }
 
   return (
     <div className="landing-root" id="site-scroll" ref={scroller} data-story-tour={Boolean(tour)} data-tour-phase={tour?.phase ?? "idle"}>
       <div id="top-nav">
-        <button className="top-nav-btn" title="回到頂端" onClick={goToTop}>
-          <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg><span>回到頂端</span>
+        <div className="lang-switch" role="radiogroup" aria-label={t("介面語言")}>
+          <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.6 2.7 3.9 5.7 3.9 9s-1.3 6.3-3.9 9c-2.6-2.7-3.9-5.7-3.9-9S9.400 5.700 12 3z" /></svg>
+          {LANGS.map((l) => <button key={l.code} type="button" role="radio" aria-checked={lang === l.code} lang={l.code} onClick={() => setLang(l.code)}>{l.label}</button>)}
+        </div>
+        <button className="top-nav-btn" title={t("回到頂端")} onClick={goToTop}>
+          <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg><span>{t("回到頂端")}</span>
         </button>
-        <button className="top-nav-btn" title="前往登入" onClick={goToLogin}>
-          <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><span>進入教室</span>
+        <button className="top-nav-btn" title={t("前往登入")} onClick={goToLogin}>
+          <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><span>{t("進入教室")}</span>
         </button>
       </div>
 
       <section className="land-hero" id="land-hero" inert={Boolean(tour)}>
         <BackgroundPaths variant="hero" />
         <div className="land-logo" ref={logo}>
-          <div className="logo-mark">Σ</div>
-          <p className="hero-eyebrow">詰問 · 蘇格拉底對話教室</p>
+          <p className="hero-eyebrow">{t("蘇格拉底對話教室")}</p>
           <LogoTitle text="Socratic Dialogue Classroom" />
           <p className="logo-sub">think out loud. never told the answer.</p>
-          <button className="pill-btn primary hero-enter" onClick={startTour}>開始一場對話 <span aria-hidden="true">↓</span></button>
+          <button className="hero-enter" onClick={startTour}>{t("開始一場對話")} <span aria-hidden="true">↓</span></button>
         </div>
       </section>
 
@@ -241,77 +229,76 @@ export function LandingPage() {
           aria-labelledby={`story-title-${index}`} data-tour-active={tour?.scene === index} inert={Boolean(tour && tour.scene !== index)}>
           <BackgroundPaths variant="story" mirrored={index % 2 === 1} />
           <div className="story-stage">
-            <header className="story-chapter"><span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span><h2 id={`story-title-${index}`}>{scene.title}</h2></header>
+            <header className="story-chapter"><span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span><h2 id={`story-title-${index}`}>{t(scene.title)}</h2></header>
             <div className="land-cluster">
               {scene.animations.map((n, part) => (
-                <LandAnimation key={n} n={n} label={scene.title} className={part === 0 ? `is-primary pos-p${index + 1}` : `is-secondary pos-s${index + 1}`}
+                <LandAnimation key={n} n={n} label={t(scene.title)} className={part === 0 ? `is-primary pos-p${index + 1}` : `is-secondary pos-s${index + 1}`}
                   reducedMotion={reducedMotion} tourMode={Boolean(tour)} active={tour?.scene === index}
                   playing={tour?.scene === index && tour.phase === "playing" && sceneReady}
                   preload={Boolean(tour && index >= tour.scene && index <= tour.scene + 1)} session={tour?.session ?? 0} onReady={recordAnimation} />
               ))}
-              <Word className={`pos-w${index + 1}`}>{scene.text}</Word>
+              <Word className={`pos-w${index + 1}`}>{t(scene.text)}</Word>
             </div>
-            {scene.aside && <Word standalone>{scene.aside}</Word>}
+            {scene.aside && <Word standalone>{t(scene.aside)}</Word>}
           </div>
         </section>
       ))}
 
-      {tour && <div className="story-player" ref={storyPlayer} tabIndex={-1} aria-label="故事播放控制">
+      {tour && <div className="story-player" ref={storyPlayer} tabIndex={-1} aria-label={t("故事播放控制")}>
         <span className="story-player-count" aria-hidden="true">{String(tour.scene + 1).padStart(2, "0")} / 04</span>
-        <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">第 {tour.scene + 1} 幕，共 4 幕。{STORY_SCENES[tour.scene].title}。{!sceneReady ? "載入故事" : tour.phase === "paused" ? "已暫停" : ""}</p>
+        <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{t("第 {n} 幕，共 4 幕。", { n: tour.scene + 1 })}{t(STORY_SCENES[tour.scene].title)}。{!sceneReady ? t("載入故事") : tour.phase === "paused" ? t("已暫停") : ""}</p>
         <div className="story-player-actions">
-          {reducedMotion ? <button className="story-next" onClick={nextScene} disabled={tour.phase === "moving" || tour.phase === "leaving"}>{tour.scene === 3 ? "進入教室" : "下一幕"}<ArrowRight size={16} aria-hidden="true" /></button>
-            : <button className="story-pause" onClick={togglePause} disabled={tour.phase === "moving" || tour.phase === "leaving"} aria-label={tour.phase === "paused" ? "繼續播放故事" : "暫停故事"} title={tour.phase === "paused" ? "繼續播放" : "暫停"}>{tour.phase === "paused" ? <Play size={18} aria-hidden="true" /> : <Pause size={18} aria-hidden="true" />}</button>}
-          <button className="story-skip" onClick={goToLogin} aria-label="跳過故事，前往登入">跳過<SkipForward size={16} aria-hidden="true" /></button>
+          {reducedMotion ? <button className="story-next" onClick={nextScene} disabled={tour.phase === "moving" || tour.phase === "leaving"}>{tour.scene === 3 ? t("進入教室") : t("下一幕")}<ArrowRight size={16} aria-hidden="true" /></button>
+            : <button className="story-pause" onClick={togglePause} disabled={tour.phase === "moving" || tour.phase === "leaving"} aria-label={tour.phase === "paused" ? t("繼續播放故事") : t("暫停故事")} title={tour.phase === "paused" ? t("繼續播放") : t("暫停")}>{tour.phase === "paused" ? <Play size={18} aria-hidden="true" /> : <Pause size={18} aria-hidden="true" />}</button>}
+          <button className="story-skip" onClick={goToLogin} aria-label={t("跳過故事，前往登入")}>{t("跳過")}<SkipForward size={16} aria-hidden="true" /></button>
         </div>
       </div>}
 
       <section id="login-screen" aria-labelledby="login-title">
         <BackgroundPaths />
         <div className="login-wrap">
-          <div ref={signInCard} className="login-card login-card-split" data-running="false" data-tilting="false" onMouseMove={tiltSignInCard} onMouseLeave={resetSignInCardTilt}>
+          <div ref={signInCard} className="login-card login-card-split" data-running="false">
             <div className="login-card-left">
-              <div className="mark">Σ</div>
-              <p className="login-eyebrow">詰問 · 蘇格拉底對話教室</p>
-              <h2 id="login-title" tabIndex={-1}>從一個好問題開始。</h2>
-              <p className="sub">選擇你的身分，展開提問與論證的練習。</p>
+              <p className="login-eyebrow">{t("蘇格拉底對話教室")}</p>
+              <h2 id="login-title" tabIndex={-1}>{t("從一個好問題開始。")}</h2>
+              <p className="sub">{t("選擇你的身分，展開提問與論證的練習。")}</p>
               <fieldset className="role-picker" disabled={busy}>
-                <legend>我想以這個身分體驗</legend>
+                <legend>{t("我想以這個身分體驗")}</legend>
                 <div className="role-options">
-                {([["student", "學生", "進入對話教室，練習提問與論證", ICON_STUDENT], ["teacher", "教師", "管理議題、教室與學生名單", ICON_TEACHER]] as const).map(([r, t, d, icon]) => (
+                {([["student", "學生", "進入對話教室，練習提問與論證", ICON_STUDENT], ["teacher", "教師", "管理議題、教室與學生名單", ICON_TEACHER]] as const).map(([r, title, d, icon]) => (
                   <label key={r} className={`role-card${role === r ? " selected" : ""}`}>
                     <input className="role-input" type="radio" name="entry-role" value={r} checked={role === r} onChange={() => { setRole(r); setEntryError(""); }} />
                     <span className="role-indicator" aria-hidden="true">{role === r ? "✓" : ""}</span>
-                    <span className="role-icon" aria-hidden="true">{icon}</span><span className="rc-title">{t}</span><span className="rc-desc">{d}</span>
+                    <span className="role-icon" aria-hidden="true">{icon}</span><span className="rc-title">{t(title)}</span><span className="rc-desc">{t(d)}</span>
                   </label>
                 ))}
                 </div>
               </fieldset>
               <button className="pill-btn primary" id="btn-enter" disabled={!role || busy} onClick={enter} aria-busy={busy}>
-                {busy ? "正在進入教室…" : role ? `以${role === "student" ? "學生" : "教師"}身分進入` : "選擇身分後進入"}<span aria-hidden="true">→</span>
+                {busy ? t("正在進入教室…") : role ? (role === "student" ? t("以學生身分進入") : t("以教師身分進入")) : t("選擇身分後進入")}<span aria-hidden="true">→</span>
               </button>
-              <p className="entry-note">免帳號體驗 · 重新整理後，示範資料會重置</p>
+              <p className="entry-note">{t("免帳號體驗 · 重新整理後，示範資料會重置")}</p>
               {entryError && <p className="entry-error" role="alert">{entryError}</p>}
             </div>
             <div className="login-card-divider" />
             <div className="login-card-right">
-              <div className="auth-heading"><h3>帳號服務</h3><span>即將開放</span></div>
-              <p className="auth-intro">目前可先選擇身分，免帳號進入示範教室。</p>
-              <div className="auth-tabs" role="group" aria-label="帳號服務預覽">
-                <button className={`auth-tab${tab === "login" ? " active" : ""}`} type="button" aria-pressed={tab === "login"} onClick={() => { setTab("login"); setShowPassword(false); }}>登入</button>
-                <button className={`auth-tab${tab === "signup" ? " active" : ""}`} type="button" aria-pressed={tab === "signup"} onClick={() => { setTab("signup"); setShowPassword(false); }}>註冊帳號</button>
+              <div className="auth-heading"><h3>{t("帳號服務")}</h3><span>{t("即將開放")}</span></div>
+              <p className="auth-intro">{t("目前可先選擇身分，免帳號進入示範教室。")}</p>
+              <div className="auth-tabs" role="group" aria-label={t("帳號服務預覽")}>
+                <button className={`auth-tab${tab === "login" ? " active" : ""}`} type="button" aria-pressed={tab === "login"} onClick={() => { setTab("login"); setShowPassword(false); }}>{t("登入")}</button>
+                <button className={`auth-tab${tab === "signup" ? " active" : ""}`} type="button" aria-pressed={tab === "signup"} onClick={() => { setTab("signup"); setShowPassword(false); }}>{t("註冊帳號")}</button>
               </div>
-              <form key={tab} className="auth-form" onSubmit={(e) => e.preventDefault()} aria-label={tab === "login" ? "登入表單預覽" : "註冊表單預覽"}>
-                {tab === "signup" && <div className="field"><label htmlFor="account-name">姓名</label><input id="account-name" autoComplete="name" type="text" placeholder="你的姓名" /></div>}
-                <div className="field"><label htmlFor="account-email">電子郵件</label><input id="account-email" autoComplete="email" type="email" placeholder="you@example.com" /></div>
-                <div className="field"><label htmlFor="account-password">密碼</label><div className="password-field">
-                  <input id="account-password" autoComplete={tab === "login" ? "current-password" : "new-password"} type={showPassword ? "text" : "password"} placeholder={tab === "login" ? "輸入密碼" : "設定一組密碼"} />
-                  <button type="button" className="password-toggle" aria-label={showPassword ? "隱藏密碼" : "顯示密碼"} aria-pressed={showPassword} onClick={() => setShowPassword((v) => !v)}>{showPassword ? "隱藏" : "顯示"}</button>
+              <form key={tab} className="auth-form" onSubmit={(e) => e.preventDefault()} aria-label={tab === "login" ? t("登入表單預覽") : t("註冊表單預覽")}>
+                {tab === "signup" && <div className="field"><label htmlFor="account-name">{t("姓名")}</label><input id="account-name" autoComplete="name" type="text" placeholder={t("你的姓名")} /></div>}
+                <div className="field"><label htmlFor="account-email">{t("電子郵件")}</label><input id="account-email" autoComplete="email" type="email" placeholder="you@example.com" /></div>
+                <div className="field"><label htmlFor="account-password">{t("密碼")}</label><div className="password-field">
+                  <input id="account-password" autoComplete={tab === "login" ? "current-password" : "new-password"} type={showPassword ? "text" : "password"} placeholder={tab === "login" ? t("輸入密碼") : t("設定一組密碼")} />
+                  <button type="button" className="password-toggle" aria-label={showPassword ? t("隱藏密碼") : t("顯示密碼")} aria-pressed={showPassword} onClick={() => setShowPassword((v) => !v)}>{showPassword ? t("隱藏") : t("顯示")}</button>
                 </div></div>
-                {tab === "login" && <button className="auth-forgot" type="button" disabled>忘記密碼？</button>}
-                <button className="pill-btn full account-submit" type="submit" disabled aria-describedby="account-availability">{tab === "login" ? "登入" : "建立帳號"}</button>
+                {tab === "login" && <button className="auth-forgot" type="button" disabled>{t("忘記密碼？")}</button>}
+                <button className="pill-btn full account-submit" type="submit" disabled aria-describedby="account-availability">{tab === "login" ? t("登入") : t("建立帳號")}</button>
               </form>
-              <p className="auth-note" id="account-availability">帳號登入、註冊與密碼重設尚未開放。</p>
+              <p className="auth-note" id="account-availability">{t("帳號登入、註冊與密碼重設尚未開放。")}</p>
             </div>
           </div>
         </div>
