@@ -3,9 +3,9 @@ import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { openDb } from "../src/db";
 
-test("沒有 OPENROUTER_API_KEY 時，對話端點回 503 且不開 SSE", async () => {
+test("沒有 GLM_API_KEY 時，對話端點回 503 且不開 SSE", async () => {
   const db = openDb(":memory:");
-  const config = loadConfig({ dbPath: ":memory:", llmProvider: "openrouter", openRouterKey: "", seedDemo: false });
+  const config = loadConfig({ dbPath: ":memory:", llmProvider: "glm", glmKey: "", seedDemo: false });
   const app = createApp(db, config);
   const login = await app.request("/api/auth/login", {
     method: "POST",

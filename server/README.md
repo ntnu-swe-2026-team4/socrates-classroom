@@ -11,7 +11,7 @@
 | #25 | 空間與活動骨架：classrooms / archives / activities + FSM + events SSE | 完成 |
 | — | 教室、加入流程、公告、議題（辯論）、討論區、多人討論、行事曆 | 完成 |
 | — | 四階段辯論（個人調查 → 團隊提純 → 辯論比賽 → 結果）、立場星圖、計分 | 完成 |
-| — | OpenRouter 蘇格拉底串流（SSE）、情緒標記、多語言 | 完成 |
+| — | GLM 蘇格拉底串流（SSE）、情緒標記、多語言 | 完成 |
 
 ## 快速開始
 
@@ -52,9 +52,9 @@ bun run dev
 | `COOKIE_SECURE` | `false` | HTTPS 部署時設 `true` |
 | `CORS_ORIGINS` | `http://localhost:5173,...` | 直接跨網域呼叫 API 時允許的來源（Vite 代理不需要） |
 | `PUBLIC_BASE_URL` | 空 | 檔案下載網址的前綴；留空時回相對路徑 `/api/files/:id` |
-| `OPENROUTER_API_KEY` | 空 | **只放在後端**；沒設定時對話端點回 503 |
-| `OPENROUTER_MODEL` | `anthropic/claude-sonnet-5.5` | OpenRouter 模型 id |
-| `OPENROUTER_HTTP_REFERER` | 空 | OpenRouter 後台統計用（選填） |
+| `GLM_API_KEY` | 空 | **只放在後端**；沒設定時對話端點回 503 |
+| `GLM_MODEL` | `glm-4.6` | GLM 模型 id（也可改 `llm/providers/models.json`） |
+| `GLM_BASE_URL` | `https://api.z.ai/api/coding/paas/v4` | GLM 的 OpenAI 相容端點；一般 API 是 `https://open.bigmodel.cn/api/paas/v4` |
 | `LLM_PROVIDER` | 空 | 沒有 key 時可設 `mock`，用規則式回覆做離線開發／測試 |
 | `SEED_DEMO` | `true` | 空資料庫第一次啟動時建立示範教室 |
 
@@ -101,8 +101,9 @@ server/
 - **辯論場次**：輪到誰、每回合順序、逾時都由後端決定（`tickExpired` 在讀取場次時補上逾時發言）；裁判分數為規則式保底，老師可覆寫。
 - **對話 SSE**：先向 LLM 要第一段內容，若一開始就失敗回一般 HTTP 錯誤（401/403/404/409/422/429/503）；開始串流後才出錯送 `event: error`。成功才把「使用者訊息 + AI 回覆」寫入同一個 transaction。
 - **情緒標記**：`[neutral|happy|confused|angry]` 由後端拆掉，第一個 `delta` 前送 `event: emotion`，不會出現在文字或資料庫。
-- **OpenRouter**：使用 OpenAI 相容的 `/api/v1/chat/completions` 串流；key 只在後端。沒有 key 時回 `503 llm_not_configured`，伺服器其他功能照常運作。`LLM_PROVIDER=mock` 只用於本機開發與測試。
-- **結構化 AI**：論點草稿會嘗試 OpenRouter JSON 輸出；沒有 key／失敗時退回規則式整理，不讓功能中斷。
+- **GLM**：使用 OpenAI 相容的 `{GLM_BASE_URL}/chat/completions` 串流；key 只在後端。沒有 key 時回 `503 llm_not_configured`，伺服器其他功能照常運作。`LLM_PROVIDER=mock` 只用於本機開發與測試。串流中的 `delta.reasoning_content`（思考過程）直接丟掉；對話與 JSON 請求都帶 `thinking: { type: "disabled" }`。
+- **GLM 錯誤碼**：`1111`–`1114`（額度不足）回 503、`1302` / `1303` / `1305`（限流）回 429；其他 4xx / 5xx 一律 503，不把原始錯誤訊息給使用者。
+- **結構化 AI**：論點草稿會嘗試 GLM 的 `response_format: json_object`；沒有 key／失敗時退回規則式整理，不讓功能中斷。
 
 ## 測試
 

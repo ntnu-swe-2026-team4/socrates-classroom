@@ -61,10 +61,35 @@ function systemPrompt(config: Config, input: { title: string; statement: string;
 }
 
 /**
- * 從 OpenRouter 的 OpenAI 相容串流讀文字。每段內容交給 onDelta；中途錯誤丟 LlmError(midStream)。
- * 這裡只負責傳遞原始文字（含開頭的情緒標記），拆標記由 EmotionSplitter 做。
+ * GLM（智譜／Z.ai）的錯誤碼分類：額度不足與限流要分開——額度用完重試也不會成功，
+ * 回 429 會讓使用者一直重送。1111–1114 是額度／資源包用完，1302–1305 是併發與限流。
  */
-async function* openRouterText(config: Config, system: string, history: HistoryMessage[], signal?: AbortSignal): AsyncGenerator<string> {
+const QUOTA_CODES = new Set(["1111", "1112", "1113", "1114"]);
+const RATE_CODES = new Set(["1302", "1303", "1305"]);
+
+function errorCodeOf(body: string): string {
+  try {
+    const code = (JSON.parse(body) as any)?.error?.code;
+    return code === undefined || code === null ? "" : String(code);
+  } catch {
+    return "";
+  }
+}
+
+/** 把 GLM 的 HTTP 錯誤轉成我們的 LlmError；額度不足算不可用（重試也不會成功），不算限流。 */
+function llmError(status: number, code: string, midStream = false): LlmError {
+  if (RATE_CODES.has(code) || (status === 429 && !QUOTA_CODES.has(code))) {
+    return new LlmError(429, "llm_rate_limited", "llm_rate_limited", midStream);
+  }
+  return new LlmError(503, "llm_unavailable", "llm_unavailable", midStream);
+}
+
+/**
+ * 從 GLM 的 OpenAI 相容串流讀文字。每段內容交給 onDelta；中途錯誤丟 LlmError(midStream)。
+ * 這裡只負責傳遞原始文字（含開頭的情緒標記），拆標記由 EmotionSplitter 做。
+ * `delta.reasoning_content`（思考過程）不是回覆內容，直接略過。
+ */
+async function* glmText(config: Config, system: string, history: HistoryMessage[], signal?: AbortSignal): AsyncGenerator<string> {
   const controller = new AbortController();
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -81,20 +106,21 @@ async function* openRouterText(config: Config, system: string, history: HistoryM
 
   let res: Response;
   try {
-    res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    res = await fetch(`${config.glmBaseUrl}/chat/completions`, {
       method: "POST",
       signal: controller.signal,
       headers: {
-        Authorization: `Bearer ${config.openRouterKey}`,
+        Authorization: `Bearer ${config.glmKey}`,
         "Content-Type": "application/json",
-        ...(config.openRouterReferer ? { "HTTP-Referer": config.openRouterReferer } : {}),
-        "X-Title": "詰問 · 蘇格拉底對話教室",
+        Accept: "text/event-stream",
       },
       body: JSON.stringify({
-        model: config.openRouterModel,
+        model: config.glmModel,
         stream: true,
         max_tokens: 600,
         temperature: 0.7,
+        // 蘇格拉底回覆很短，關掉思考可以讓第一個字早點出現（課堂上不要讓學生等）
+        thinking: { type: "disabled" },
         messages: [
           { role: "system", content: system },
           ...history.map((m) => ({ role: m.role, content: m.text })),
@@ -108,11 +134,11 @@ async function* openRouterText(config: Config, system: string, history: HistoryM
   }
 
   if (!res.ok || !res.body) {
+    const body = await res.text().catch(() => "");
     if (timer) clearTimeout(timer);
     signal?.removeEventListener("abort", onAbort);
-    console.error(`[llm] OpenRouter returned HTTP ${res.status}`);
-    if (res.status === 429) throw new LlmError(429, "llm_rate_limited", "llm_rate_limited");
-    throw new LlmError(503, "llm_unavailable", "llm_unavailable");
+    console.error(`[llm] GLM returned HTTP ${res.status}: ${body.slice(0, 300)}`);
+    throw llmError(res.status, errorCodeOf(body));
   }
 
   const reader = res.body.getReader();
@@ -140,8 +166,9 @@ async function* openRouterText(config: Config, system: string, history: HistoryM
           continue;
         }
         if (payload.error) {
-          const code = payload.error?.code === 429 ? "llm_rate_limited" : "llm_unavailable";
-          throw new LlmError(code === "llm_rate_limited" ? 429 : 503, code, code, true);
+          const code = String(payload.error?.code ?? "");
+          console.error(`[llm] GLM stream error (${code}): ${String(payload.error?.message ?? "").slice(0, 200)}`);
+          throw llmError(RATE_CODES.has(code) ? 429 : 503, code, true);
         }
         const choice = payload.choices?.[0];
         if (choice?.finish_reason === "error") {
@@ -254,8 +281,8 @@ export function socraticStream(
     extra: input.extra,
   });
   if (config.llmProvider === "mock") return mockText(input);
-  if (!config.openRouterKey) throw new LlmError(503, "llm_not_configured", "llm_not_configured");
-  return openRouterText(config, system, input.history, signal);
+  if (!config.glmKey) throw new LlmError(503, "llm_not_configured", "llm_not_configured");
+  return glmText(config, system, input.history, signal);
 }
 
 /**
@@ -263,23 +290,22 @@ export function socraticStream(
  * 呼叫端再退回規則式實作，不讓整個功能壞掉。
  */
 export async function completeJson<T>(config: Config, system: string, user: string): Promise<T | null> {
-  if (config.llmProvider !== "openrouter" || !config.openRouterKey) return null;
+  if (config.llmProvider !== "glm" || !config.glmKey) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20_000);
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const res = await fetch(`${config.glmBaseUrl}/chat/completions`, {
       method: "POST",
       signal: controller.signal,
       headers: {
-        Authorization: `Bearer ${config.openRouterKey}`,
+        Authorization: `Bearer ${config.glmKey}`,
         "Content-Type": "application/json",
-        ...(config.openRouterReferer ? { "HTTP-Referer": config.openRouterReferer } : {}),
-        "X-Title": "詰問 · 蘇格拉底對話教室",
       },
       body: JSON.stringify({
-        model: config.openRouterModel,
+        model: config.glmModel,
         max_tokens: 700,
         temperature: 0.2,
+        thinking: { type: "disabled" },
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: system },
@@ -287,7 +313,10 @@ export async function completeJson<T>(config: Config, system: string, user: stri
         ],
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[llm] GLM JSON call returned HTTP ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}`);
+      return null;
+    }
     const json = (await res.json()) as any;
     const text = json.choices?.[0]?.message?.content;
     if (typeof text !== "string") return null;

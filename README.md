@@ -24,8 +24,8 @@ VITE_API_MODE=http
 
 Vite 開發伺服器會把 `/api` 代理到 `http://localhost:8000`，不需要處理 CORS。
 
-沒有 OpenRouter key 時，在 `server/.env` 設 `LLM_PROVIDER=mock`，對話會用規則式回覆，其餘功能（教室、辯論、討論、計分）都可以完整操作。
-要接真的 AI，把 `OPENROUTER_API_KEY` 放進 `server/.env`（絕對不要放前端）。
+沒有 GLM key 時，在 `server/.env` 設 `LLM_PROVIDER=mock`，對話會用規則式回覆，其餘功能（教室、辯論、討論、計分）都可以完整操作。
+要接真的 AI（GLM），把 `GLM_API_KEY` 放進 `server/.env`（絕對不要放前端）。
 
 | 指令（在專案根目錄） | 作用 |
 |---|---|

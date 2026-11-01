@@ -5,7 +5,7 @@ import path from "node:path";
 import { devLlm } from "./dev/llm-bridge.ts";
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), devLlm()], // devLlm：開發時讓 mock 的對話接 OpenRouter（見 dev/llm-bridge.ts）
+  plugins: [react(), tailwindcss(), devLlm()], // devLlm：開發時讓 mock 的對話接 GLM（見 dev/llm-bridge.ts）
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
   build: { target: "es2022" },
   server: {

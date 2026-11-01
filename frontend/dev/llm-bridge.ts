@@ -1,8 +1,8 @@
 /**
  * 開發用的 LLM 轉接器（只在 `bun run dev` 時存在，打包後不會有）：
- * 在後端完成之前，讓 mock 模式的「單人 → 對話」也能拿到 OpenRouter 的真實回覆。
+ * 在後端完成之前，讓 mock 模式的「單人 → 對話」也能拿到 GLM 的真實回覆。
  *
- *   瀏覽器 ──POST /__llm/dialogue──▶ Vite 開發伺服器（這個檔案，讀 server/.env 的 key）──▶ OpenRouter
+ *   瀏覽器 ──POST /__llm/dialogue──▶ Vite 開發伺服器（這個檔案，讀 server/.env 的 key）──▶ GLM（Z.ai）
  *
  * API key 只在這個 Node 程序裡，不會送到瀏覽器。回應格式與 docs/api-contract.md〈對話 API〉相同
  * （SSE：delta / done / error），所以前端直接沿用 api/http.ts 的串流解析。
@@ -16,8 +16,9 @@ import { loadEnv, type Plugin } from "vite";
 const ROOT = path.resolve(import.meta.dirname, "..", "..");
 const SERVER_DIR = path.join(ROOT, "server");
 const PROMPT_FILE = path.join(ROOT, "llm", "prompts", "socrates.md");
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "anthropic/claude-sonnet-5.5";
+/** 預設值與 llm/providers/models.json 的 providers.glm 一致；可用 server/.env 覆寫 */
+const DEFAULT_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
+const DEFAULT_MODEL = "glm-4.6";
 const IDLE_TIMEOUT_MS = 60_000;
 const HISTORY_LIMIT = 40;
 
@@ -29,7 +30,7 @@ type Body = { title?: string; lang?: Lang; messages?: { role: "user" | "assistan
 
 const LANG_NAME: Record<Lang, string> = { "zh-TW": "繁體中文", en: "English", es: "Español" };
 const MSG: Record<string, Record<Lang, string>> = {
-  notConfigured: { "zh-TW": "還沒有設定 OpenRouter API key（server/.env 的 OPENROUTER_API_KEY）", en: "OpenRouter API key is not set (OPENROUTER_API_KEY in server/.env)", es: "Falta la clave de OpenRouter (OPENROUTER_API_KEY en server/.env)" },
+  notConfigured: { "zh-TW": "還沒有設定 GLM API key（server/.env 的 GLM_API_KEY）", en: "GLM API key is not set (GLM_API_KEY in server/.env)", es: "Falta la clave de GLM (GLM_API_KEY en server/.env)" },
   unavailable: { "zh-TW": "蘇格拉底暫時無法回應，請稍後再試", en: "Socrates can't answer right now. Please try again later.", es: "Sócrates no puede responder ahora. Inténtalo más tarde." },
   rateLimited: { "zh-TW": "說得太快了，請稍等一下再試", en: "Too many requests. Please wait a moment.", es: "Demasiadas solicitudes. Espera un momento." },
   timeout: { "zh-TW": "蘇格拉底想太久了，請再送一次", en: "Socrates took too long. Please send again.", es: "Sócrates tardó demasiado. Envíalo de nuevo." },
@@ -40,7 +41,12 @@ function config() {
   const env = loadEnv("development", SERVER_DIR, "");
   let prompt = "You are Socrates. Ask one short question at a time.";
   try { prompt = fs.readFileSync(PROMPT_FILE, "utf8"); } catch { /* 沒有提示詞檔就用預設 */ }
-  return { key: env.OPENROUTER_API_KEY?.trim(), model: env.OPENROUTER_MODEL?.trim() || DEFAULT_MODEL, prompt };
+  return {
+    key: env.GLM_API_KEY?.trim(),
+    model: env.GLM_MODEL?.trim() || DEFAULT_MODEL,
+    baseUrl: (env.GLM_BASE_URL?.trim() || DEFAULT_BASE_URL).replace(/\/+$/, ""),
+    prompt,
+  };
 }
 
 function readJson(req: IncomingMessage): Promise<Body> {
@@ -68,7 +74,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const history = (body.messages ?? []).filter((m) => m.text?.trim()).slice(-HISTORY_LIMIT);
   if (history.at(-1)?.role !== "user") return sendJson(res, 422, { message: "The last message must be from the user" });
 
-  const { key, model, prompt } = config();
+  const { key, model, baseUrl, prompt } = config();
   if (!key) return sendJson(res, 503, { message: MSG.notConfigured[lang], code: "llm_not_configured" });
 
   const system = `${prompt}\n\n本次討論的議題：「${body.title ?? ""}」\n請一律使用${LANG_NAME[lang]}回覆。`;
@@ -80,23 +86,24 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
 
   let upstream: Response;
   try {
-    upstream = await fetch(OPENROUTER_URL, {
+    upstream = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       signal: abort.signal,
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "Socrates Classroom (dev)" },
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", Accept: "text/event-stream" },
       body: JSON.stringify({
         model, stream: true, max_tokens: 600, temperature: 0.7,
+        thinking: { type: "disabled" }, // 回覆很短，關掉思考讓第一個字早點出現
         messages: [{ role: "system", content: system }, ...history.map((m) => ({ role: m.role, content: m.text }))],
       }),
     });
   } catch (e) {
     clearTimeout(idle);
-    console.error("[dev-llm] OpenRouter request failed:", e);
+    console.error("[dev-llm] GLM request failed:", e);
     return sendJson(res, abort.signal.aborted ? 504 : 503, { message: abort.signal.aborted ? MSG.timeout[lang] : MSG.unavailable[lang] });
   }
   if (!upstream.ok || !upstream.body) {
     clearTimeout(idle);
-    console.error(`[dev-llm] OpenRouter ${upstream.status}:`, await upstream.text().catch(() => ""));
+    console.error(`[dev-llm] GLM ${upstream.status}:`, await upstream.text().catch(() => ""));
     if (upstream.status === 429) return sendJson(res, 429, { message: MSG.rateLimited[lang] });
     return sendJson(res, 503, { message: MSG.unavailable[lang] });
   }
@@ -141,12 +148,12 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       while ((nl = buf.indexOf("\n")) >= 0) {
         const line = buf.slice(0, nl).replace(/\r$/, "");
         buf = buf.slice(nl + 1);
-        if (!line.startsWith("data:")) continue; // 空行、": OPENROUTER PROCESSING" 之類的註解
+        if (!line.startsWith("data:")) continue; // 空行與 ":" 開頭的註解
         const data = line.slice(5).trim();
         if (data === "[DONE]") continue;
         const chunk = JSON.parse(data) as { error?: { message?: string }; choices?: { delta?: { content?: string } }[] };
         if (chunk.error) {
-          console.error("[dev-llm] OpenRouter stream error:", chunk.error);
+          console.error("[dev-llm] GLM stream error:", chunk.error);
           return fail("llm_unavailable", MSG.unavailable[lang]);
         }
         const piece = chunk.choices?.[0]?.delta?.content;
@@ -175,7 +182,7 @@ export function devLlm(): Plugin {
     configureServer(server) {
       server.middlewares.use("/__llm/dialogue", (req, res) => { void handle(req, res); });
       const { key, model } = config();
-      server.config.logger.info(key ? `  [dev-llm] OpenRouter 已啟用（${model}）` : "  [dev-llm] 沒有 server/.env 的 OPENROUTER_API_KEY，對話會用示範回覆");
+      server.config.logger.info(key ? `  [dev-llm] GLM 已啟用（${model}）` : "  [dev-llm] 沒有 server/.env 的 GLM_API_KEY，對話會用示範回覆");
     },
   };
 }

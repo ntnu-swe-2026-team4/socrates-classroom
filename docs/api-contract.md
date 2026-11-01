@@ -27,7 +27,7 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 **私人題庫的協作：** `sharedWithIds` 是整份取代的名單，只有題目的擁有者可以改（別人分享給你的題目要擋下來，回 403）。
 被分享的人在自己的 `GET /api/archives` 裡看得到這道題目，`sharedBy` = 分享者的名字、`sharedWithIds` 為空陣列，且不能再轉分享。
 
-## 對話 API（AI 蘇格拉底，LLM 用 OpenRouter）
+## 對話 API（AI 蘇格拉底，LLM 用 GLM）
 
 適用兩個端點，格式完全相同：
 
@@ -41,12 +41,12 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 ### 架構與 API key
 
 ```
-瀏覽器 ──POST /api/…/dialogue──▶ 後端（Bun + Hono） ──POST /api/v1/chat/completions (stream)──▶ OpenRouter
-       ◀──SSE: delta… done─────             ◀──SSE: choices[0].delta.content…─────────
+瀏覽器 ──POST /api/…/dialogue──▶ 後端（Bun + Hono） ──POST {GLM_BASE_URL}/chat/completions (stream)──▶ GLM（智譜 Z.ai）
+       ◀──SSE: delta… done─────             ◀──SSE: choices[0].delta.content…──────────────────────────────
 ```
 
-- **OpenRouter API key 只放在後端**的環境變數 `OPENROUTER_API_KEY`（`.env`，不進 git）。**絕對不要**放進前端或任何 `VITE_` 開頭的變數：`VITE_` 變數會被打包進瀏覽器的 JS，任何人打開網頁都能看到。前端永遠只呼叫我們自己的 `/api/...`。
-- 模型 id 用環境變數 `OPENROUTER_MODEL`（或 LLM 組維護的 `llm/providers/models.json`，見 `llm/README.md`），換模型不用改程式。
+- **GLM API key 只放在後端**的環境變數 `GLM_API_KEY`（`.env`，不進 git）。**絕對不要**放進前端或任何 `VITE_` 開頭的變數：`VITE_` 變數會被打包進瀏覽器的 JS，任何人打開網頁都能看到。前端永遠只呼叫我們自己的 `/api/...`。
+- 端點用環境變數 `GLM_BASE_URL`（預設 `https://api.z.ai/api/coding/paas/v4`；一般 API 是 `https://open.bigmodel.cn/api/paas/v4`），模型 id 用 `GLM_MODEL`，兩者也可改 LLM 組維護的 `llm/providers/models.json`（見 `llm/README.md`），換模型不用改程式。
 - 後端沒有設定 key 時，對話端點回 `503 { message }`，不要讓伺服器啟動失敗（其他功能照常可用）。
 
 ### 請求
@@ -103,19 +103,19 @@ data: {"message":{"id":"m42","role":"assistant","text":"有意思。但你剛才
 | 404 | 議題或活動不存在 |
 | 409 | 同一段對話已經有一則回覆在產生中（同一時間只允許一個請求） |
 | 422 | `text` 空白或太長；階段 1 已經達到 `maxRounds`（20 輪） |
-| 429 | 這個使用者送得太頻繁，或 OpenRouter 回 429 |
-| 503 | 沒設定 `OPENROUTER_API_KEY`；OpenRouter 回 401 / 402（key 無效、額度用完）或 5xx |
+| 429 | 這個使用者送得太頻繁，或 GLM 回限流（錯誤碼 `1302` / `1303` / `1305`） |
+| 503 | 沒設定 `GLM_API_KEY`；GLM 回 401 / 403（key 無效）、`1111`–`1114`（額度不足）或 5xx |
 
-**已經開始串流**（OpenRouter 中途出錯、逾時）→ 送 `event: error`，`code` 用：
+**已經開始串流**（GLM 中途出錯、逾時）→ 送 `event: error`，`code` 用：
 
 | `code` | 情況 |
 |---|---|
-| `llm_unavailable` | OpenRouter 或模型供應商出錯 |
-| `llm_rate_limited` | 被 OpenRouter 限流 |
+| `llm_unavailable` | GLM 或模型供應商出錯 |
+| `llm_rate_limited` | 被 GLM 限流 |
 | `llm_timeout` | 超過 60 秒沒有收到新的文字 |
 | `llm_error` | 其他 |
 
-給使用者看的 `message` 不要包含 key、OpenRouter 的原始錯誤或模型名稱（例如統一寫「蘇格拉底暫時無法回應，請稍後再試」）；細節寫在伺服器 log。
+給使用者看的 `message` 不要包含 key、GLM 的原始錯誤或模型名稱（例如統一寫「蘇格拉底暫時無法回應，請稍後再試」）；細節寫在伺服器 log。
 
 ### 情緒（AI 控制 3D 模型的表情）
 
@@ -132,7 +132,7 @@ data: {"message":{"id":"m42","role":"assistant","text":"有意思。但你剛才
 
 做法：提示詞（`llm/prompts/socrates.md`）要求 AI 在回覆**最前面**寫一個標記，例如 `[confused] 你說的「善意」是指…`。後端要：
 
-1. 讀 OpenRouter 串流時，先把開頭的文字暫存起來，直到能判斷有沒有標記（符合 `^\s*\[(neutral|happy|confused|angry)\]\s*` 就取出情緒；開頭不是 `[` 或超過 24 字還沒對上，就當作 `neutral`，原文照送）。
+1. 讀 GLM 串流時，先把開頭的文字暫存起來，直到能判斷有沒有標記（符合 `^\s*\[(neutral|happy|confused|angry)\]\s*` 就取出情緒；開頭不是 `[` 或超過 24 字還沒對上，就當作 `neutral`，原文照送）。
 2. **標記不能出現在任何 `delta` 裡**，也不存進 `text`（不然會顯示在對話框、被朗讀出來）。
 3. 情緒一確定就送 `event: emotion`（在第一個 `delta` 之前），並存進資料庫，放在 `done.message.emotion`；`GET …/dialogue` 的歷史也帶這個欄位（使用者的訊息沒有）。
 
@@ -145,22 +145,21 @@ data: {"message":{"id":"m42","role":"assistant","text":"有意思。但你剛才
 - 使用者中途關掉頁面（連線斷開）：後端照樣把回覆產生完並保存，下次打開看得到完整對話。
 - 成功後更新議題：`rounds` = 使用者訊息數、`snippet` = 最新回覆的前 60 字左右、`date`。階段 1 另外更新 `Progress`（`rounds`、`coverage`、`readyToSummarize`）。
 
-### 後端呼叫 OpenRouter 的方式
+### 後端呼叫 GLM 的方式
 
-OpenRouter 是 OpenAI 相容的 API：
+GLM（智譜／Z.ai）提供 OpenAI 相容的 API：
 
 ```http
-POST https://openrouter.ai/api/v1/chat/completions
-Authorization: Bearer ${OPENROUTER_API_KEY}
+POST ${GLM_BASE_URL}/chat/completions      # 預設 https://api.z.ai/api/coding/paas/v4
+Authorization: Bearer ${GLM_API_KEY}
 Content-Type: application/json
-HTTP-Referer: <網站網址，可省略，用於 OpenRouter 後台統計>
-X-Title: 詰問 · 蘇格拉底對話教室
 
 {
-  "model": "${OPENROUTER_MODEL}",
+  "model": "${GLM_MODEL}",
   "stream": true,
   "max_tokens": 600,
   "temperature": 0.7,
+  "thinking": { "type": "disabled" },
   "messages": [
     { "role": "system", "content": "<llm/prompts 的蘇格拉底提示詞> + 議題標題 / 活動論題 + 「請用 繁體中文 / English / Español 回覆」" },
     { "role": "user", "content": "（歷史）…" },
@@ -172,9 +171,10 @@ X-Title: 詰問 · 蘇格拉底對話教室
 
 - **提示詞**：由 LLM 組放在 `llm/prompts/`（目前是 `socrates.md`：蘇格拉底的提問原則與情緒標記；之後加上階段 1 的收尾協議），後端讀檔注入 `system`。回覆語言依 `Accept-Language` 加在 `system` 最後。
 - **歷史**：資料庫裡這段對話的訊息依時間排列；階段 1 最多 20 輪，不用截斷；單人對話若很長，只帶最近 40 則。
-- **讀 OpenRouter 的串流**：每行 `data: {…}`，取 `choices[0].delta.content`（可能是空字串，略過），拆掉開頭的情緒標記後，每段轉成我們的 `event: delta`；`data: [DONE]` 表示結束；`:` 開頭的行（例如 `: OPENROUTER PROCESSING`）是註解，略過。
-- **OpenRouter 中途出錯**：串流中會出現帶 `error` 欄位的 chunk（`finish_reason: "error"`），收到就送我們的 `event: error`。
-- **還沒開始就失敗**：OpenRouter 直接回 HTTP 錯誤（400 請求錯誤、401 key 無效、402 額度不足、408 逾時、429 限流、502 / 503 模型供應商無法使用），依上面的錯誤表轉成我們的狀態碼。
+- **讀 GLM 的串流**：每行 `data: {…}`，取 `choices[0].delta.content`（可能是空字串，略過），拆掉開頭的情緒標記後，每段轉成我們的 `event: delta`；`data: [DONE]` 表示結束；`:` 開頭的行是註解，略過。
+- **思考內容不算回覆**：`delta.reasoning_content` 是模型的思考過程，一律丟掉，不能送給前端或存進資料庫。
+- **GLM 中途出錯**：串流中會出現帶 `error` 欄位的 chunk（`finish_reason: "error"`），收到就送我們的 `event: error`。
+- **還沒開始就失敗**：GLM 直接回 HTTP 錯誤（400 請求錯誤、401 / 403 key 無效、429 限流、500 / 503 模型供應商無法使用），依上面的錯誤表轉成我們的狀態碼。GLM 的錯誤格式是 `{"error":{"code":"1113","message":"…"}}`：`1111`–`1114` 是額度不足（回 `503`，重試也不會成功），`1302` / `1303` / `1305` 才是限流（回 `429`）。
 
 ### 用 curl 測試
 
@@ -308,7 +308,7 @@ curl -N -b jar.txt -H 'Content-Type: application/json' -H 'Accept: text/event-st
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/api/activities/:id/dialogue` | `DialogueMessage[]`（只有自己的） |
-| POST | `/api/activities/:id/dialogue` | `{ text }` → **SSE**（`delta` / `done` / `error`），格式、錯誤與 OpenRouter 呼叫方式見〈對話 API〉。最多 20 輪與收尾條件由後端控制 |
+| POST | `/api/activities/:id/dialogue` | `{ text }` → **SSE**（`delta` / `done` / `error`），格式、錯誤與 GLM 呼叫方式見〈對話 API〉。最多 20 輪與收尾條件由後端控制 |
 | GET | `/api/activities/:id/progress` | `Progress`（四個面向 `coverage`、`rounds`、`maxRounds`、`readyToSummarize`） |
 | POST | `/api/activities/:id/position/draft` | AI 依對話整理論點 → `PositionDraft` = `{ summary }`（**不含座標**） |
 | PUT | `/api/activities/:id/position` | `{ summary }`（學生確認或修改論點；階段 1 結束前可再改）→ `Position`。座標由後端依對話估算後保存，學生不送座標 |

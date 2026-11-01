@@ -216,8 +216,8 @@ event: done
 data: {"message":{"id":"m1","role":"assistant","text":"完整回覆","at":"2026-01-01T00:00:00Z"}}
 ```
 
-AI（OpenRouter）中途出錯時，最後一個事件改成 `event: error` + `data: {"message":"給使用者看的說明","code":"llm_unavailable"}`。
-完整規格（錯誤碼、資料保存、後端怎麼呼叫 OpenRouter、API key 放哪裡）見 [`api-contract.md`〈對話 API〉](api-contract.md#對話-apiai-蘇格拉底llm-用-openrouter)。
+AI（GLM）中途出錯時，最後一個事件改成 `event: error` + `data: {"message":"給使用者看的說明","code":"llm_unavailable"}`。
+完整規格（錯誤碼、資料保存、後端怎麼呼叫 GLM、API key 放哪裡）見 [`api-contract.md`〈對話 API〉](api-contract.md#對話-apiai-蘇格拉底llm-用-glm)。
 
 **2. 活動即時事件**（`GET /api/activities/:id/events`）：每個事件一行 `data: {…}`，`type` 為
 `stage_changed`、`group_message`、`argument_updated`、`turn_created`、`room_updated`（欄位見 `types.ts` 的 `ActivityEvent`）。
