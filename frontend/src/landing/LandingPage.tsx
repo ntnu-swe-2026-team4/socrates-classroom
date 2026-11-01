@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Pause, Play, SkipForward } from "lucide-react";
+// 補上了 Volume2 和 VolumeX
+import { ArrowRight, Pause, Play, SkipForward, Volume2, VolumeX } from "lucide-react";
 import { api, type Role } from "@/api";
 import { keys } from "@/api/queries";
 import { BackgroundPaths } from "@/components/BackgroundPaths";
@@ -9,6 +10,9 @@ import { LandAnimation } from "./LandAnimation";
 import { STORY_SCENES } from "./story";
 import { useStoryTour } from "./useStoryTour";
 import "./landing.css";
+// 同時引入了播放工具與靜音開關
+import { usePlaySound, useAudioSettings } from "../lib/AudioContext";
+
 
 function useReducedMotion() {
   const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -147,6 +151,9 @@ const ICON_STUDENT = <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" stro
 const ICON_TEACHER = <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5.5C6 4.4 8.4 4 12 4.9V19c-3.6-.9-6-.5-8 .6z" /><path d="M20 5.5C18 4.4 15.6 4 12 4.9V19c3.6-.9 6-.5 8 .6z" /></svg>;
 
 export function LandingPage() {
+  // 初始化全局音效播放 Hook
+  const playSound = usePlaySound();
+  const { isMuted, toggleMute } = useAudioSettings();
   const scroller = useRef<HTMLDivElement>(null);
   const signInCard = useRef<HTMLDivElement>(null);
   const storyPlayer = useRef<HTMLDivElement>(null);
@@ -171,6 +178,12 @@ export function LandingPage() {
     const frame = requestAnimationFrame(() => storyPlayer.current?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
   }, [tour?.session]);
+
+  // 建立身份按鈕的點擊處理函式
+  const handleIdentitySelect = (selectedRole: Role) => {
+    playSound("tap_01.mp3", { volume: 0.8 });
+    setRole(selectedRole);
+  };
 
   function tiltSignInCard(e: React.MouseEvent<HTMLDivElement>) {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
@@ -207,9 +220,12 @@ export function LandingPage() {
     setBusy(true);
     try {
       const user = await api.login({ role, name: "" });
+      playSound("tap_01.mp3", { volume: 0.8 }); // 暫時先用同一個，之後有成功音效再換掉  
       qc.setQueryData(keys.me, user);
       navigate({ to: "/" });
     } catch {
+      // 登入失敗：播放警告/錯誤短音效
+      // playSound("error_01.mp3", { volume: 0.5 });
       setEntryError("暫時無法進入教室，請稍後再試。");
     } finally { setBusy(false); }
   }
@@ -217,6 +233,16 @@ export function LandingPage() {
   return (
     <div className="landing-root" id="site-scroll" ref={scroller} data-story-tour={Boolean(tour)} data-tour-phase={tour?.phase ?? "idle"}>
       <div id="top-nav">
+        <button 
+          className="top-nav-btn" 
+          type="button"
+          title={isMuted ? "目前已靜音，點一下開啟音效" : "目前音效開啟，點一下靜音"} 
+          onClick={toggleMute}
+          style={{ color: isMuted ? 'var(--ink-faint)' : 'var(--bronze)' }} // 可依據專案 CSS 調整顏色
+        >
+          {isMuted ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
+          <span>{isMuted ? "音效關閉" : "音效開啟"}</span>
+        </button>
         <button className="top-nav-btn" title="回到頂端" onClick={goToTop}>
           <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg><span>回到頂端</span>
         </button>
@@ -280,14 +306,14 @@ export function LandingPage() {
                 <div className="role-options">
                 {([["student", "學生", "進入對話教室，練習提問與論證", ICON_STUDENT], ["teacher", "教師", "管理議題、教室與學生名單", ICON_TEACHER]] as const).map(([r, t, d, icon]) => (
                   <label key={r} className={`role-card${role === r ? " selected" : ""}`}>
-                    <input className="role-input" type="radio" name="entry-role" value={r} checked={role === r} onChange={() => { setRole(r); setEntryError(""); }} />
+                    <input className="role-input" type="radio" name="entry-role" value={r} checked={role === r} onChange={() => { handleIdentitySelect(r); setEntryError(""); }} />
                     <span className="role-indicator" aria-hidden="true">{role === r ? "✓" : ""}</span>
                     <span className="role-icon" aria-hidden="true">{icon}</span><span className="rc-title">{t}</span><span className="rc-desc">{d}</span>
                   </label>
                 ))}
                 </div>
               </fieldset>
-              <button className="pill-btn primary" id="btn-enter" disabled={!role || busy} onClick={enter} aria-busy={busy}>
+              <button className="pill-btn primary" id="btn-enter" disabled={!role || busy} onClick={() => {playSound("tap_01.mp3", { volume: 0.8 });enter();}} aria-busy={busy}>
                 {busy ? "正在進入教室…" : role ? `以${role === "student" ? "學生" : "教師"}身分進入` : "選擇身分後進入"}<span aria-hidden="true">→</span>
               </button>
               <p className="entry-note">免帳號體驗 · 重新整理後，示範資料會重置</p>
