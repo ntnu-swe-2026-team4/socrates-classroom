@@ -1,0 +1,16 @@
+{
+  "providers": {
+    "openrouter": {
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "defaultModel": "anthropic/claude-sonnet-5.5",
+      "models": [
+        "anthropic/claude-sonnet-5.5",
+        "openai/gpt-4.1-mini",
+        "google/gemini-2.5-flash"
+      ]
+    },
+    "mock": {
+      "description": "離線規則式回覆，只用於本機開發與測試（LLM_PROVIDER=mock）"
+    }
+  }
+}

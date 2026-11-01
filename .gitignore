@@ -7,3 +7,8 @@ dist/
 coverage/
 target/
 llm/sessions/
+
+# 後端 SQLite 資料庫與上傳檔案
+server/data/*.db
+server/data/*.db-*
+server/data/uploads/
