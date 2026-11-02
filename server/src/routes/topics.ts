@@ -257,10 +257,12 @@ export function topicRoutes(db: DB, config: Config) {
     const user = requireUser(c);
     const row = one<any>(db, "SELECT * FROM files WHERE id = $id", { id: c.req.param("id") });
     if (!row) fail(404, "file_not_found");
-    try {
-      accessTopic(db, row.scope_id, user);
-    } catch {
-      fail(403, "forbidden");
+    const { role } = accessTopic(db, row.scope_id, user);
+    if (row.scope_type === "topic_report") {
+      // 結論報告只有本人與老師/助教能下載；教材等其他檔案仍是議題教室成員皆可
+      const report = one<any>(db, "SELECT * FROM topic_reports WHERE file_id = $id", { id: row.id });
+      const staff = role === "teacher" || role === "assistant";
+      if (!report || (report.student_id !== user.id && !staff)) fail(403, "forbidden");
     }
     return fileDownloadResponse(row);
   });
