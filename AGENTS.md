@@ -27,7 +27,6 @@ pnpm lint && pnpm typecheck         # must be green before any PR
 - `apps/server` — Worker source (Hono API + `PiAgent` / `ActivityEvents` Durable Objects + provider pool) and the vitest setup (`wrangler.vitest.jsonc`); bundled by the build in `apps/web` via `entrypoint: ../server/src/index.ts`
 - `packages/shared` — API contract types (single source of truth; changing a type means syncing server and web)
 - `packages/llm` — prompts (`prompts/socrates.md` is injected at build time as the system prompt; edit → redeploy takes effect)
-- `.agents/skills/` — third-party Agent Skills (sources pinned in `skills-lock.json`; update with `npx skills update`, add with `npx skills add … -p`). Project-specific knowledge belongs in `docs/` and the AGENTS.md files — not new skills
 - Data: D1 (`apps/server/migrations/`), uploads in R2
 
 ## Code style
