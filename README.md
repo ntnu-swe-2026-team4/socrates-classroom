@@ -41,14 +41,14 @@ CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) 
 
 ## 開發
 
-| 指令（專案根目錄）   | 作用                                                          |
-| -------------------- | ------------------------------------------------------------- |
-| `npm run dev:web`    | 單一全栈 dev server（SPA HMR + Worker + 本地 D1/R2，:5173）   |
-| `npm test`           | vitest（Worker runtime：路由 + D1 + 對話 SSE，mock provider） |
-| `npm run typecheck`  | server 與 web 的 TypeScript 檢查                              |
-| `npm run build`      | 前端打包（`apps/web/dist`）                                   |
-| `npm run migrate`    | 本地 D1 migrations                                            |
-| `npm run cf:deploy`  | 部署到 Cloudflare                                             |
+| 指令（專案根目錄）  | 作用                                                          |
+| ------------------- | ------------------------------------------------------------- |
+| `npm run dev:web`   | 單一全栈 dev server（SPA HMR + Worker + 本地 D1/R2，:5173）   |
+| `npm test`          | vitest（Worker runtime：路由 + D1 + 對話 SSE，mock provider） |
+| `npm run typecheck` | server 與 web 的 TypeScript 檢查                              |
+| `npm run build`     | 前端打包（`apps/web/dist`）                                   |
+| `npm run migrate`   | 本地 D1 migrations                                            |
+| `npm run cf:deploy` | 部署到 Cloudflare                                             |
 
 ## 結構
 

@@ -5,7 +5,7 @@ import { all, one, run } from "../db/d1";
 import { requireUser } from "../auth";
 import { bodyOf, fail, newId, nowIso, str, type AppEnv } from "../http";
 import { accessClassroom, accessClassroomStaff, accessDiscussion, studentIdsOf } from "../services/access";
-import { checkRate, releaseLock } from "../services/rate-limit";
+import { checkRate } from "../services/rate-limit";
 import {
   discussionSessionDetailJson,
   discussionSessionJson,
@@ -247,24 +247,17 @@ export function discussionRoutes(db: Db, getLang: (c: any) => Lang) {
     const body = await bodyOf(c);
     const text = str(body.text, "text_required", { min: 1, max: 2000 });
     checkRate(user.id);
-    const lockKey = `discussion:${discussion.id}:${user.id}`;
     const stub = c.env.PiAgent.getByName(`discussion:${discussion.id}:${user.id}`);
-    let response: Response;
-    try {
-      response = await stub.dialogue({
-        scope: "discussion",
-        scopeId: discussion.id,
-        userId: user.id,
-        userText: text,
-        lang: getLang(c),
-        title: discussion.title,
-        statement: discussion.prompt,
-        extra: discussion.conclusion_hint ? `希望同學在結論裡回答：${discussion.conclusion_hint}` : undefined,
-      });
-    } catch (error) {
-      releaseLock(lockKey);
-      throw error;
-    }
+    const response = await stub.dialogue({
+      scope: "discussion",
+      scopeId: discussion.id,
+      userId: user.id,
+      userText: text,
+      lang: getLang(c),
+      title: discussion.title,
+      statement: discussion.prompt,
+      extra: discussion.conclusion_hint ? `希望同學在結論裡回答：${discussion.conclusion_hint}` : undefined,
+    });
     void session;
     return new Response(response.body, response);
   });

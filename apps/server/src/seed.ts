@@ -77,29 +77,29 @@ export async function seedDemo(db: Db): Promise<boolean> {
     },
   ];
 
-  user(db, "t_lin", "林老師", "teacher");
-  user(db, "t_zhang", "張老師", "teacher");
-  user(db, "t_chen", "陳老師", "teacher");
-  user(db, "s_guest", "訪客", "student");
-  user(db, "s_wang", "王○安", "student");
-  user(db, "s_li", "李○恩", "student");
-  user(db, "s_chen", "陳○宇", "student");
-  user(db, "s_lin", "林○彤", "student");
-  user(db, "s_wu", "吳○哲", "student");
-  user(db, "s_zhou", "周○妤", "student");
+  await user(db, "t_lin", "林老師", "teacher");
+  await user(db, "t_zhang", "張老師", "teacher");
+  await user(db, "t_chen", "陳老師", "teacher");
+  await user(db, "s_guest", "訪客", "student");
+  await user(db, "s_wang", "王○安", "student");
+  await user(db, "s_li", "李○恩", "student");
+  await user(db, "s_chen", "陳○宇", "student");
+  await user(db, "s_lin", "林○彤", "student");
+  await user(db, "s_wu", "吳○哲", "student");
+  await user(db, "s_zhou", "周○妤", "student");
 
-  classroom(db, "c1", "高二哲學選修 A", "從柏拉圖《理想國》出發，練習用提問把自己的想法說清楚。", "t_lin");
-  member(db, "c1", "s_guest");
-  member(db, "c1", "s_wang");
-  member(db, "c1", "s_li");
-  member(db, "c1", "s_chen", "assistant");
-  member(db, "c1", "s_lin");
-  member(db, "c1", "s_wu");
-  policy(db, "c1", "PLATO7");
+  await classroom(db, "c1", "高二哲學選修 A", "從柏拉圖《理想國》出發，練習用提問把自己的想法說清楚。", "t_lin");
+  await member(db, "c1", "s_guest");
+  await member(db, "c1", "s_wang");
+  await member(db, "c1", "s_li");
+  await member(db, "c1", "s_chen", "assistant");
+  await member(db, "c1", "s_lin");
+  await member(db, "c1", "s_wu");
+  await policy(db, "c1", "PLATO7");
 
-  classroom(db, "c2", "高二哲學選修 B", "", "t_chen");
-  member(db, "c2", "s_guest", "student", "invited");
-  policy(db, "c2", "PLATO8");
+  await classroom(db, "c2", "高二哲學選修 B", "", "t_chen");
+  await member(db, "c2", "s_guest", "student", "invited");
+  await policy(db, "c2", "PLATO8");
 
   classroom(
     db,
@@ -108,12 +108,12 @@ export async function seedDemo(db: Db): Promise<boolean> {
     "認識常見的謬誤，練習把一段論證拆成前提與結論。開放所有高中生加入。",
     "t_zhang",
   );
-  member(db, "c3", "s_zhou");
-  policy(db, "c3", "LOGIC3", { discoverable: true });
+  await member(db, "c3", "s_zhou");
+  await policy(db, "c3", "LOGIC3", { discoverable: true });
 
-  classroom(db, "c4", "倫理學讀書會", "每週讀一篇倫理學經典，名額有限，請簡單說明你想參加的原因。", "t_lin");
-  member(db, "c4", "s_wang");
-  policy(db, "c4", "ETHIC5", { discoverable: true, approval: true, questionnaire: questions });
+  await classroom(db, "c4", "倫理學讀書會", "每週讀一篇倫理學經典，名額有限，請簡單說明你想參加的原因。", "t_lin");
+  await member(db, "c4", "s_wang");
+  await policy(db, "c4", "ETHIC5", { discoverable: true, approval: true, questionnaire: questions });
 
   const t1 = uid("t");
   const a1 = uid("d");

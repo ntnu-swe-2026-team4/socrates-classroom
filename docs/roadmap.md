@@ -22,6 +22,7 @@
 
 ## 上線前（post-merge）
 
+- 示範登入改 passcode/join-code（現況：知道老師顯示名即可取得教師權限）
 - `cf deploy` + secrets 設定（`OPENCODE_API_KEY` / `OPENROUTER_API_KEY` / `BYOK_ENC_KEY`）+ D1 migrations（見 [`cf.md`](./cf.md)）
 - seed + 線上 smoke test（對話 SSE、上傳、四階段活動）
 - Workers AI / OpenRouter 額度監控與警示

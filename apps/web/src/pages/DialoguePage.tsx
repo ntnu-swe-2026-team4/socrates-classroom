@@ -45,7 +45,7 @@ export function DialoguePage() {
   const [rate, setRate] = useState(getSpeechRate);
   const [listening, setListening] = useState(false);
   const [status, setStatus] = useState("");
-  const rec = useRef(createRecognizer());
+  const [rec] = useState(() => createRecognizer());
   const stage = useRef<SocratesHandle>(null);
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -192,14 +192,18 @@ export function DialoguePage() {
                 variant="outline"
                 size="icon"
                 aria-label={t("按住說話")}
-                disabled={!rec.current}
+                disabled={!rec}
                 className={cn(listening && "border-bronze text-bronze")}
                 onPointerDown={(e) => {
                   e.currentTarget.setPointerCapture(e.pointerId);
                   clearTimeout(speakTimer.current);
                   stopSpeaking();
                   setListening(true);
-                  rec.current?.start();
+                  try {
+                    rec?.start();
+                  } catch {
+                    setListening(false);
+                  }
                   if (!isMuted) {
                     const a = new Audio("/sounds/button_001.mp3");
                     a.volume = 0.3;
@@ -213,7 +217,7 @@ export function DialoguePage() {
                     a.volume = 0.3;
                     a.play().catch(() => {});
                   }
-                  const heard = await rec.current!.stop();
+                  const heard = await rec!.stop();
                   if (heard) void send(heard);
                   else setStatus(t("沒聽清楚，請再說一次"));
                 }}

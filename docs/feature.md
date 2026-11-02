@@ -22,7 +22,7 @@
 
 | 功能       | 說明                                                                  | 主要路由 / 頁面                                                             |
 | ---------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| 示範登入   | 選身分（學生/老師）+ 姓名；同名自動登入既有帳號，cookie session 30 天 | `POST /api/auth/login`・`/login`                                            |
+| 示範登入   | 選身分（學生/老師）+ 姓名；同名自動登入既有帳號，cookie session 30 天。示範級驗證，正式版規劃見 [`roadmap.md`](./roadmap.md) | `POST /api/auth/login`・`/login`                                            |
 | 個人資料   | 改名（查重）、頭像 data URL（≤200KB）                                 | `PATCH /api/me`                                                             |
 | 建立教室   | 老師建立；自動產生邀請碼                                              | `POST /api/classrooms`・ClassroomFormDialog                                 |
 | 邀請碼加入 | 學生以邀請碼加入（可停用）                                            | `GET /api/join-codes/:code`・`POST /api/classrooms/:id/join`・JoinClassroom |

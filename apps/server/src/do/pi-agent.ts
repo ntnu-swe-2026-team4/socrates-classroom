@@ -58,8 +58,12 @@ export class PiAgent extends DurableObject<Env> {
     extra?: string;
   }): Promise<Response> {
     if (this.busy) throw new Error("already_streaming");
+    this.busy = true;
     const entry = this.pool.chain.find((e) => isHealthy(e.provider)) ?? this.pool.chain[0];
-    if (!entry) throw new Error("llm_not_configured");
+    if (!entry) {
+      this.busy = false;
+      throw new Error("llm_not_configured");
+    }
 
     const session = this.harness.session();
     try {
@@ -75,7 +79,6 @@ export class PiAgent extends DurableObject<Env> {
       }
     } catch {}
 
-    this.busy = true;
     try {
       const stream = await session.events();
       const encoder = new TextEncoder();

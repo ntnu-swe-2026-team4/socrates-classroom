@@ -20,11 +20,12 @@ import { DebateReports } from "./DebateReports";
 function ResourceRow({ r, onDelete }: { r: TopicResource; onDelete?: () => void }) {
   const t = useT();
   const file = r.kind === "file" ? r.file : null;
+  const linkUrl = r.kind === "link" && /^https?:\/\//i.test(r.url) ? r.url : undefined;
   return (
     <div className="flex items-center gap-3 border-t border-line px-1 py-2.5 first:border-t-0">
       {file ? <FileText className="size-4 shrink-0 text-bronze" /> : <Link2 className="size-4 shrink-0 text-bronze" />}
       <a
-        href={file ? file.url : r.kind === "link" ? r.url : undefined}
+        href={file ? file.url : linkUrl}
         target="_blank"
         rel="noreferrer"
         download={file?.name}

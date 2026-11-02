@@ -4,7 +4,7 @@ import type { Db } from "../db/d1";
 import { all, one, run } from "../db/d1";
 import { requireUser } from "../auth";
 import { bodyOf, fail, nowIso, newId, requireIdList, str, type AppEnv, type UserRow } from "../http";
-import { checkRate, releaseLock } from "../services/rate-limit";
+import { checkRate } from "../services/rate-limit";
 import { archiveJson, dialogueJson } from "../services/serialize";
 
 async function readAccess(db: Db, archiveId: string, user: UserRow): Promise<any> {
@@ -107,21 +107,15 @@ export function archiveRoutes(db: Db, getLang: (c: any) => Lang) {
     const text = str(body.text, "text_required", { min: 1, max: 2000 });
     checkRate(user.id);
     const stub = c.env.PiAgent.getByName(`archive:${archive.id}`);
-    let response: Response;
-    try {
-      response = await stub.dialogue({
-        scope: "archive",
-        scopeId: archive.id,
-        userId: user.id,
-        userText: text,
-        lang: getLang(c),
-        title: archive.title,
-        statement: archive.title,
-      });
-    } catch (error) {
-      releaseLock(`archive:${archive.id}`);
-      throw error;
-    }
+    const response = await stub.dialogue({
+      scope: "archive",
+      scopeId: archive.id,
+      userId: user.id,
+      userText: text,
+      lang: getLang(c),
+      title: archive.title,
+      statement: archive.title,
+    });
     return new Response(response.body, response);
   });
 

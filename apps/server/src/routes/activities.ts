@@ -192,23 +192,16 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     const body = await bodyOf(c);
     const text = str(body.text, "text_required", { min: 1, max: 2000 });
     checkRate(user.id);
-    const lockKey = `activity:${activity.id}:${user.id}`;
     const stub = c.env.PiAgent.getByName(`activity:${activity.id}:${user.id}`);
-    let response: Response;
-    try {
-      response = await stub.dialogue({
-        scope: "activity",
-        scopeId: activity.id,
-        userId: user.id,
-        userText: text,
-        lang: getLang(c),
-        title: activity.title,
-        statement: activity.statement,
-      });
-    } catch (error) {
-      releaseLock(lockKey);
-      throw error;
-    }
+    const response = await stub.dialogue({
+      scope: "activity",
+      scopeId: activity.id,
+      userId: user.id,
+      userText: text,
+      lang: getLang(c),
+      title: activity.title,
+      statement: activity.statement,
+    });
     return new Response(response.body, response);
   });
 

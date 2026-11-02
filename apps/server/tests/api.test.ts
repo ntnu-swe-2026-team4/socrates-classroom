@@ -140,8 +140,6 @@ describe("認證與教室", () => {
     const applications = await (
       await req("GET", "/api/classrooms/c4/applications?status=pending", { cookie: teacher })
     ).json();
-    if (!cookies.get("林老師")) throw new Error(`DEBUG cookies=${JSON.stringify([...cookies.entries()])}`);
-    console.log("APPS:", JSON.stringify(applications).slice(0, 200));
     const mine = (Array.isArray(applications) ? applications : []).find((a: any) => a.studentName === "新同學");
     expect(mine).toBeTruthy();
     const approved = await (
@@ -150,7 +148,6 @@ describe("認證與教室", () => {
         body: { decision: "approve", note: "歡迎" },
       })
     ).json();
-    console.log("REVIEW:", JSON.stringify(approved).slice(0, 200));
     expect(approved.status).toBe("approved");
     const my = await (await req("GET", "/api/me/applications", { cookie: student })).json();
     expect(my.find((a: any) => a.id === mine.id).status).toBe("approved");
@@ -380,7 +377,6 @@ describe("四階段辯論", () => {
       "SELECT id, student_id, role FROM activity_dialogue WHERE activity_id = $aid",
       { aid: activityId },
     );
-    console.log("DIALOGUE ROWS:", JSON.stringify(dialogueRows).slice(0, 300));
     const progress = await (await req("GET", `/api/activities/${activityId}/progress`, { cookie: guest })).json();
     expect(progress.rounds).toBe(1);
     expect(progress.coverage.claim).toBe(true);
