@@ -1,6 +1,13 @@
 packages:
   - apps/*
   - packages/*
+allowBuilds:
+  "@biomejs/biome": true
+  "@google/genai": true
+  core-js-pure: true
+  esbuild: true
+  protobufjs: true
+  workerd: true
 minimumReleaseAgeExclude:
   - "@cloudflare/build-output-utils@0.9.7"
   - "@cloudflare/config@0.29.1"
@@ -9,8 +16,3 @@ minimumReleaseAgeExclude:
   - miniflare@5.20261101.0-beta
   - wrangler@4.156.1
   - "@cloudflare/vitest-plugin@1.4.12"
-
-onlyBuiltDependencies:
-  - workerd
-  - esbuild
-  - "@biomejs/biome"
