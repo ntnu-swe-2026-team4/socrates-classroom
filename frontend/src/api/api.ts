@@ -1,32 +1,38 @@
 import type {
   Activity, ActivityEvent, Announcement, AnnouncementInput, ApplicationStatus, Archive, BankKind,
-  CalendarEvent, Classroom, ClassroomInput, ClassroomMember, ClassroomPreview, ClassroomTopic,
-  CreateActivityInput, DialogueMessage, DiscussionPost, Group, GroupArgument, GroupMessage,
+  CalendarEvent, CalendarEventInput, Classroom, ClassroomInput, ClassroomRole, ClassroomMember, ClassroomPreview, ClassroomTopic,
+  DialogueMessage, DiscussionPost, DiscussionSession, DiscussionSessionDetail, DiscussionStatus, DiscussionTask, DiscussionTaskInput,
+  Emotion, Group, GroupArgument, GroupMessage,
   ImportMembersResult, JoinApplication, JoinInput, JoinPolicy, JoinResult, Judgment, Member,
-  ArgumentSummary, NoteInput, Position, PositionDraft, PostInput, Progress, Room, ScoreRow, StarData,
+  ArgumentSummary, NoteInput, Position, PositionDraft, PostInput, Progress, Room, ScoreRow, ShareTarget, StarData,
   ThinkingNote, TopicInput, TopicReport, TopicResource, Turn, User, Role, Vote,
 } from "./types";
 
 /**
  * 前端只依賴這個介面。有兩個實作：
  *  - mockApi：前端內建的示範資料（沒有後端也能跑）
- *  - httpApi：呼叫 Rust 後端（路徑見 docs/api-contract.md）
+ *  - httpApi：呼叫後端（Bun + Hono）（路徑見 docs/api-contract.md）
  * 用 VITE_API_MODE 切換，畫面與頁面程式不用改。
  */
 export interface Api {
   /* 認證 */
   login(input: { role: Role; name: string }): Promise<User>;
   me(): Promise<User | null>;
+  /** 修改自己的顯示名稱與頭像（avatarUrl 是縮成 256×256 的圖片 data URL；null = 移除，回到預設的黑色頭像） */
+  updateMe(patch: { name?: string; avatarUrl?: string | null }): Promise<User>;
   logout(): Promise<void>;
 
   /* 議題與題庫 */
   listArchives(): Promise<Archive[]>;
-  updateArchive(id: string, patch: { bank?: BankKind | null; inSummary?: boolean }): Promise<Archive>;
+  /** sharedWithIds 是私人題庫的協作名單（整份取代）；只有題目的擁有者可以改 */
+  updateArchive(id: string, patch: { bank?: BankKind | null; inSummary?: boolean; sharedWithIds?: string[] }): Promise<Archive>;
+  /** 私人題庫可以分享給誰（同教室的同學、助教與老師） */
+  listShareTargets(): Promise<ShareTarget[]>;
   /** 開始一段新的自由對話（首頁提問框）；回傳新的議題 */
   createArchive(title: string): Promise<Archive>;
-  /** 議題的自由對話（單人 → 對話）；sendTopicDialogue 的回覆同樣用串流 */
+  /** 議題的自由對話（單人 → 對話）；sendTopicDialogue 的回覆同樣用串流，onEmotion 在 AI 決定情緒的當下（文字之前）呼叫 */
   listTopicDialogue(archiveId: string): Promise<DialogueMessage[]>;
-  sendTopicDialogue(archiveId: string, text: string, onDelta?: (chunk: string) => void): Promise<DialogueMessage>;
+  sendTopicDialogue(archiveId: string, text: string, onDelta?: (chunk: string) => void, onEmotion?: (emotion: Emotion) => void): Promise<DialogueMessage>;
 
   /* 教室與辯論活動 */
   listClassrooms(): Promise<Classroom[]>;
@@ -40,15 +46,14 @@ export interface Api {
   /** 批次匯入（每行一個帳號或姓名）；僅老師 */
   importClassroomMembers(classroomId: string, names: string[]): Promise<ImportMembersResult>;
   removeClassroomMember(classroomId: string, memberId: string): Promise<void>; // 僅老師
+  /** 老師把學生設為助教，或把助教改回學生 */
+  setMemberRole(classroomId: string, memberId: string, role: Exclude<ClassroomRole, "teacher">): Promise<ClassroomMember>; // 僅老師
   listActivities(classroomId: string): Promise<Activity[]>;
   getActivity(id: string): Promise<Activity>;
-  createActivity(classroomId: string, input: CreateActivityInput): Promise<Activity>;
   /** 老師推進階段；後端的活動狀態機（FSM）決定能不能推進 */
   advanceActivity(id: string): Promise<Activity>;
   /** 老師直接結束活動（從任何階段跳到結果） */
   finishActivity(id: string): Promise<Activity>;
-  /** 個人思辨活動：學生完成（進入結算）或重新開啟；完成前要先確認論點 */
-  setCompleted(id: string, done: boolean): Promise<void>;
   /** 老師設定目前階段的截止時間；null = 取消限時 */
   setStageDeadline(id: string, deadline: string | null): Promise<Activity>;
 
@@ -66,24 +71,44 @@ export interface Api {
 
   /* 公告（學生只拿得到已發布的） */
   listAnnouncements(classroomId: string): Promise<Announcement[]>;
-  createAnnouncement(classroomId: string, input: AnnouncementInput): Promise<Announcement>; // 僅老師
-  updateAnnouncement(id: string, patch: Partial<AnnouncementInput>): Promise<Announcement>; // 僅老師
-  deleteAnnouncement(id: string): Promise<void>; // 僅老師
+  createAnnouncement(classroomId: string, input: AnnouncementInput): Promise<Announcement>; // 老師或助教
+  updateAnnouncement(id: string, patch: Partial<AnnouncementInput>): Promise<Announcement>; // 老師或助教
+  deleteAnnouncement(id: string): Promise<void>; // 老師或助教
 
   /* 教室的辯論（API 名稱沿用 topic；畫面上稱為「辯論」） */
   listTopics(classroomId: string): Promise<ClassroomTopic[]>;
   getTopic(id: string): Promise<ClassroomTopic>;
-  createTopic(classroomId: string, input: TopicInput): Promise<ClassroomTopic>; // 僅老師；同時建立這場辯論的活動（團體 = 四階段辯論、個人 = 個人思辨）
-  updateTopic(id: string, patch: Partial<Omit<TopicInput, "type">>): Promise<ClassroomTopic>; // 僅老師
+  createTopic(classroomId: string, input: TopicInput): Promise<ClassroomTopic>; // 僅老師；同時建立這場辯論的活動（四階段辯論）
+  updateTopic(id: string, patch: Partial<TopicInput>): Promise<ClassroomTopic>; // 僅老師
   deleteTopic(id: string): Promise<void>; // 僅老師；連同這場辯論的活動一起刪除
-  addTopicLink(topicId: string, link: { name: string; url: string }): Promise<TopicResource>; // 僅老師
-  uploadTopicFile(topicId: string, file: File): Promise<TopicResource>; // 僅老師
-  deleteTopicResource(topicId: string, resourceId: string): Promise<void>; // 僅老師
+  addTopicLink(topicId: string, link: { name: string; url: string }): Promise<TopicResource>; // 老師或助教
+  uploadTopicFile(topicId: string, file: File): Promise<TopicResource>; // 老師或助教
+  deleteTopicResource(topicId: string, resourceId: string): Promise<void>; // 老師或助教
   /** 老師：全班；學生：只有自己 */
   listReports(topicId: string): Promise<TopicReport[]>;
   /** 學生上傳結論報告；重複上傳會取代舊的 */
   submitReport(topicId: string, file: File, comment?: string): Promise<TopicReport>;
   deleteReport(reportId: string): Promise<void>; // 作者本人
+
+  /* 多人討論（老師出一題，同學各自跟 AI 對話，老師看全班的討論成果） */
+  listDiscussions(classroomId: string): Promise<DiscussionTask[]>;
+  getDiscussion(id: string): Promise<DiscussionTask>;
+  createDiscussion(classroomId: string, input: DiscussionTaskInput): Promise<DiscussionTask>; // 老師或助教
+  updateDiscussion(id: string, patch: Partial<DiscussionTaskInput>): Promise<DiscussionTask>; // 老師或助教
+  /** 老師結束（closed）或重新開放（open）討論；結束後同學只能回看 */
+  setDiscussionStatus(id: string, status: DiscussionStatus): Promise<DiscussionTask>;
+  deleteDiscussion(id: string): Promise<void>; // 老師或助教；連同所有同學的對話一起刪除
+  /** 老師與助教：全班每位同學的討論成果（不含逐句對話） */
+  listDiscussionSessions(discussionId: string): Promise<DiscussionSession[]>;
+  /**
+   * 一位同學的完整討論內容（含逐句對話）。
+   * studentId 省略 = 自己；老師與助教可以指定任一位同學。
+   */
+  getDiscussionSession(discussionId: string, studentId?: string): Promise<DiscussionSessionDetail>;
+  /** 學生送出一句話；AI 的回覆用串流一段一段回來，最後回傳完整訊息 */
+  sendDiscussionMessage(discussionId: string, text: string, onDelta?: (chunk: string) => void, onEmotion?: (emotion: Emotion) => void): Promise<DialogueMessage>;
+  /** 學生送出結論（可以重複送，取代舊的）；null = 收回結論，回到「對話中」 */
+  submitDiscussionConclusion(discussionId: string, conclusion: string | null): Promise<DiscussionSessionDetail>;
 
   /* 討論區（topicId = null 為教室討論區） */
   listPosts(classroomId: string, topicId: string | null): Promise<DiscussionPost[]>;
@@ -91,7 +116,11 @@ export interface Api {
   deletePost(postId: string): Promise<void>; // 作者本人或老師
 
   /* 行事曆：classroomId 省略 = 自己所有教室 */
-  listCalendar(range: { from: string; to: string; classroomId?: string }): Promise<CalendarEvent[]>;
+  listCalendar(range: { from: string; to: string; classroomId: string }): Promise<CalendarEvent[]>;
+  /** 老師或助教新增 / 修改 / 刪除自己的行事曆事件（辯論截止、公告等系統事件不能直接改） */
+  createCalendarEvent(classroomId: string, input: CalendarEventInput): Promise<CalendarEvent>;
+  updateCalendarEvent(id: string, patch: Partial<CalendarEventInput>): Promise<CalendarEvent>;
+  deleteCalendarEvent(id: string): Promise<void>;
 
   /* 階段 1：個人調查 */
   listDialogue(activityId: string): Promise<DialogueMessage[]>;

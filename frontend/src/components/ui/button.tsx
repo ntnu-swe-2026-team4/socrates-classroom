@@ -12,6 +12,7 @@ const buttonVariants = cva(
         outline: "border border-line-strong bg-bg-2 text-ink-dim hover:text-ink hover:border-bronze-dim",
         ghost: "text-ink-dim hover:bg-bg-2 hover:text-ink",
         danger: "text-wine hover:bg-wine-soft",
+        link: "text-bronze underline-offset-4 hover:text-bronze-dim hover:underline",
       },
       size: { default: "h-9 px-4", sm: "h-8 px-3 text-xs", icon: "size-9" },
     },

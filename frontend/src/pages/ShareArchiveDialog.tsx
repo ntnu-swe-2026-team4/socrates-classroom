@@ -1,133 +1,77 @@
-import { useState, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { keys, useUpdateArchive } from "@/api/queries";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import type { Archive } from "@/api";
+import { useShareTargets, useUpdateArchive } from "@/api/queries";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
-interface ShareArchiveDialogProps {
-  archive: any | null; // 當前正在分享的對話物件，為 null 時關閉
-  onClose: () => void;
-}
+/**
+ * 私人題庫的協作：把一道私人題目分享給特定的同學、助教或老師，
+ * 對方就能看到這道題目的內容與推論脈絡。archive = null 時關閉。
+ */
+export function ShareArchiveDialog({ archive, onClose }: { archive: Archive | null; onClose: () => void }) {
+  const t = useT();
+  const update = useUpdateArchive();
+  const { data: targets = [] } = useShareTargets(!!archive);
+  const [selected, setSelected] = useState<string[]>([]);
 
-const MOCK_SHARE_RECIPIENTS = [
-  { id: "member-a", name: "組員 A（王小安）", role: "同學" },
-  { id: "member-b", name: "組員 B（李小恩）", role: "同學" },
-  { id: "member-c", name: "組員 C（陳大宇）", role: "同學" },
-  { id: "advisor-lin", name: "指導教授（林老師）", role: "指導教授" },
-];
-
-// 全域導出供其他頁面讀取狀態的輔助函式
-export const getSharedIdsFromStorage = (archiveId: string) => {
-  const savedMap = JSON.parse(localStorage.getItem("mock_shared_map") || "{}");
-  return savedMap[archiveId] || [];
-};
-
-export function ShareArchiveDialog({ archive, onClose }: ShareArchiveDialogProps) {
-  const updateArchive = useUpdateArchive();
-  const qc = useQueryClient();
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-
-  // 當開啟的對話改變時，同步載入舊有的分享紀錄
   useEffect(() => {
-    if (archive) {
-      if (Array.isArray(archive.sharedWithIds)) {
-        setSelectedIds(archive.sharedWithIds);
-      } else {
-        setSelectedIds(getSharedIdsFromStorage(archive.id));
-      }
-    }
+    if (archive) setSelected(archive.sharedWithIds);
+    update.reset();
+    // 換成另一道題目時重新帶入它目前的分享名單
   }, [archive]);
 
-  if (!archive) return null;
-
-  const handleToggleRecipient = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
-  };
-
-  const handleConfirmShare = () => {
-    // 1. 調用 API 更新後端狀態（保留擴充彈性）
-    updateArchive.mutate(
-      {
-        id: archive.id,
-        // @ts-ignore
-        sharedWithIds: selectedIds,
-      },
-      {
-        onSuccess: () => {
-          qc.invalidateQueries({ queryKey: keys.archives });
-        },
-      }
-    );
-
-    // 2. 純前端 Mock 測試保底：存入 localStorage
-    const savedMap = JSON.parse(localStorage.getItem("mock_shared_map") || "{}");
-    savedMap[archive.id] = selectedIds;
-    localStorage.setItem("mock_shared_map", JSON.stringify(savedMap));
-
-    onClose();
-  };
+  const toggle = (id: string) => setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   return (
-    <Dialog open={Boolean(archive)} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={!!archive} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md">
-        <div className="mb-1">
-          <p className="text-xs font-medium text-bronze">私人題庫協作</p>
-          <DialogTitle className="font-serif text-xl font-normal text-ink">分享題目</DialogTitle>
-        </div>
-        <DialogDescription className="text-sm text-ink-dim">
-          <span className="my-2 block border-l-2 border-bronze pl-2.5 font-serif text-[14px] font-medium text-ink">
-            {archive.title}
-          </span>
-          勾選要分享的特定人選。確認後，對方將能查閱這道私人題目的內容與推論脈絡。
-        </DialogDescription>
-        
-        <div className="my-4 space-y-2">
-          <div className="text-xs font-medium tracking-wider text-ink-faint">選擇分享人選（可多選）</div>
-          {MOCK_SHARE_RECIPIENTS.map((target) => {
-            const checked = selectedIds.includes(target.id);
-            return (
-              <label
-                key={target.id}
-                className={cn(
-                  "flex items-center justify-between rounded-2xl border p-3 transition-colors cursor-pointer select-none",
-                  checked ? "border-bronze bg-bronze-soft text-ink" : "border-line bg-bg-2/50 hover:bg-bg-2 hover:border-line-strong text-ink"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => handleToggleRecipient(target.id)}
-                    className="size-4 accent-bronze rounded cursor-pointer"
-                  />
-                  <div>
-                    <span className="font-serif text-[14px] font-medium">{target.name}</span>
-                    <span className="ml-2 text-xs text-ink-faint">({target.role})</span>
-                  </div>
-                </div>
-                {checked && <Badge tone="bronze">已勾選</Badge>}
-              </label>
-            );
-          })}
-        </div>
+        {archive && (
+          <>
+            <p className="mb-1 text-xs font-medium text-bronze">{t("私人題庫協作")}</p>
+            <DialogTitle className="font-serif text-xl font-normal">{t("分享題目")}</DialogTitle>
+            <DialogDescription>
+              <span className="my-2 block border-l-2 border-bronze pl-2.5 font-serif text-[14px] font-medium text-ink">{archive.title}</span>
+              {t("勾選要分享的對象。確認後，對方的私人題庫裡會出現這道題目，看得到內容與推論脈絡。")}
+            </DialogDescription>
 
-        <div className="mt-6 flex items-center justify-between border-t border-line pt-4">
-          <span className="text-xs text-ink-faint">
-            已選取 <b className="font-semibold text-bronze">{selectedIds.length}</b> 位對象
-          </span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onClose}>
-              取消
-            </Button>
-            <Button size="sm" onClick={handleConfirmShare} disabled={updateArchive.isPending}>
-              {updateArchive.isPending ? "儲存中..." : "確認分享"}
-            </Button>
-          </div>
-        </div>
+            <div className="my-4 space-y-2">
+              <div className="text-xs tracking-wider text-ink-faint">{t("選擇分享對象（可多選）")}</div>
+              {targets.map((target) => {
+                const checked = selected.includes(target.id);
+                return (
+                  <label key={target.id}
+                    className={cn("flex cursor-pointer items-center justify-between rounded-2xl border p-3 transition-colors select-none",
+                      checked ? "border-bronze bg-bronze-soft" : "border-line bg-bg-2/50 hover:border-line-strong hover:bg-bg-2")}>
+                    <span className="flex items-center gap-3">
+                      <input type="checkbox" checked={checked} onChange={() => toggle(target.id)} className="size-4 cursor-pointer rounded accent-bronze" />
+                      <span>
+                        <span className="font-serif text-[14px] font-medium">{target.name}</span>
+                        <span className="ml-2 text-xs text-ink-faint">（{t(target.role)}）</span>
+                      </span>
+                    </span>
+                    {checked && <Badge tone="bronze">{t("已勾選")}</Badge>}
+                  </label>
+                );
+              })}
+              {!targets.length && <p className="text-[12.5px] text-ink-faint">{t("目前沒有可以分享的對象。")}</p>}
+            </div>
+
+            {update.error && <p className="text-[12.5px] text-wine">{update.error.message}</p>}
+            <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4">
+              <span className="text-xs text-ink-faint">{t("已選取 {n} 位", { n: selected.length })}</span>
+              <span className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={onClose}>{t("取消")}</Button>
+                <Button size="sm" disabled={update.isPending}
+                  onClick={() => update.mutate({ id: archive.id, sharedWithIds: selected }, { onSuccess: onClose })}>
+                  {update.isPending ? t("儲存中…") : t("確認分享")}
+                </Button>
+              </span>
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

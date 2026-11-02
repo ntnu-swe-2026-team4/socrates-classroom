@@ -1,31 +1,38 @@
 import type { Api } from "./api";
-import type { ActivityEvent, DialogueMessage } from "./types";
+import { currentLang, tr } from "@/i18n";
+import type { ActivityEvent, DialogueMessage, Emotion } from "./types";
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  /** code：後端錯誤的代碼（例如對話的 llm_not_configured），沒有就是 undefined */
+  constructor(public status: number, message: string, public code?: string) {
     super(message);
   }
+}
+
+/** 後端的錯誤格式是 `{ message }`；不是 JSON 就用 fallback（預設 statusText） */
+async function errorOf(res: Response, fallback = res.statusText): Promise<ApiError> {
+  let detail = fallback;
+  let code: string | undefined;
+  try {
+    const j = (await res.json()) as { message?: string; detail?: string; code?: string };
+    detail = j.message ?? j.detail ?? detail;
+    code = j.code;
+  } catch {
+    /* 不是 JSON 就用預設說明 */
+  }
+  return new ApiError(res.status, detail, code);
 }
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
     credentials: "include",
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    headers: { "Accept-Language": currentLang(), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const j = (await res.json()) as { message?: string; detail?: string };
-      detail = j.message ?? j.detail ?? detail;
-    } catch {
-      /* 不是 JSON 就用 statusText */
-    }
-    throw new ApiError(res.status, detail);
-  }
+  if (!res.ok) throw await errorOf(res);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
@@ -45,50 +52,75 @@ async function upload<T>(path: string, file: File, fields: Record<string, string
   const form = new FormData();
   form.append("file", file);
   for (const [k, v] of Object.entries(fields)) form.append(k, v);
-  const res = await fetch(`${BASE}${path}`, { method: "POST", credentials: "include", body: form });
-  if (!res.ok) {
-    let detail = res.status === 413 ? "檔案太大" : res.statusText;
-    try {
-      detail = ((await res.json()) as { message?: string }).message ?? detail;
-    } catch {
-      /* 不是 JSON 就用預設說明 */
-    }
-    throw new ApiError(res.status, detail);
-  }
+  const res = await fetch(`${BASE}${path}`, { method: "POST", credentials: "include", headers: { "Accept-Language": currentLang() }, body: form });
+  if (!res.ok) throw await errorOf(res, res.status === 413 ? tr("檔案太大") : res.statusText);
   return (await res.json()) as T;
 }
 
-/** 送出對話並讀取 SSE：event: delta {text} … event: done {message} */
-async function streamDialogue(path: string, text: string, onDelta?: (c: string) => void): Promise<DialogueMessage> {
+/** 把一個 SSE 區塊拆成事件名稱與資料；`:` 開頭的是心跳註解，多行 data 用換行接起來 */
+function parseSseBlock(block: string): { event: string; data: string } | null {
+  let event = "message";
+  const data: string[] = [];
+  for (const line of block.split("\n")) {
+    if (line.startsWith(":")) continue;
+    const colon = line.indexOf(":");
+    const field = colon < 0 ? line : line.slice(0, colon);
+    const value = colon < 0 ? "" : line.slice(colon + 1).replace(/^ /, "");
+    if (field === "event") event = value;
+    else if (field === "data") data.push(value);
+  }
+  return data.length ? { event, data: data.join("\n") } : null;
+}
+
+/**
+ * 送出對話並讀取 SSE（格式見 docs/api-contract.md「對話 API」）：
+ * event: emotion {emotion}（AI 的當下反應，最先送）→ event: delta {text} 多次 → event: done {message}；
+ * 途中 AI 出錯時改送 event: error {message}。
+ * 開始串流之前的錯誤（未登入、超過輪數、AI 服務沒設定…）是一般的 HTTP 錯誤 + { message }。
+ */
+export async function streamDialogue(path: string, body: unknown, onDelta?: (c: string) => void, onEmotion?: (e: Emotion) => void): Promise<DialogueMessage> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ text }),
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream", "Accept-Language": currentLang() },
+    body: JSON.stringify(body),
   });
-  if (!res.ok || !res.body) throw new ApiError(res.status, res.statusText);
+  if (!res.ok) throw await errorOf(res);
+  if (!res.body) throw new ApiError(502, tr("串流結束但沒有收到完整訊息"));
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = "";
-  let final: DialogueMessage | null = null;
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let i: number;
-    while ((i = buf.indexOf("\n\n")) >= 0) {
-      const block = buf.slice(0, i);
-      buf = buf.slice(i + 2);
-      const ev = /^event: (.+)$/m.exec(block)?.[1];
-      const data = /^data: (.+)$/m.exec(block)?.[1];
-      if (!data) continue;
-      const payload = JSON.parse(data) as { text?: string; message?: DialogueMessage };
-      if (ev === "delta" && payload.text) onDelta?.(payload.text);
-      if (ev === "done" && payload.message) final = payload.message;
+  const handle = (block: string): DialogueMessage | null => {
+    const ev = parseSseBlock(block);
+    if (!ev) return null;
+    const payload = JSON.parse(ev.data) as { text?: string; message?: DialogueMessage | string; emotion?: Emotion };
+    if (ev.event === "emotion" && payload.emotion) onEmotion?.(payload.emotion);
+    if (ev.event === "delta" && payload.text) onDelta?.(payload.text);
+    if (ev.event === "done" && typeof payload.message === "object") return payload.message;
+    if (ev.event === "error") throw new ApiError(502, typeof payload.message === "string" ? payload.message : tr("串流結束但沒有收到完整訊息"));
+    return null;
+  };
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      buf += dec.decode(value, { stream: !done });
+      // 事件之間以空行分隔；換行可能是 \n 或 \r\n
+      let m: RegExpExecArray | null;
+      while ((m = /\r?\n\r?\n/.exec(buf))) {
+        const block = buf.slice(0, m.index).replace(/\r/g, "");
+        buf = buf.slice(m.index + m[0].length);
+        const final = handle(block);
+        if (final) return final;
+      }
+      if (done) break;
     }
+    // 最後一個事件後面沒有空行也接受
+    const final = handle(buf.replace(/\r/g, ""));
+    if (final) return final;
+  } finally {
+    reader.cancel().catch(() => { /* 已經關閉 */ });
   }
-  if (!final) throw new ApiError(502, "串流結束但沒有收到完整訊息");
-  return final;
+  throw new ApiError(502, tr("串流結束但沒有收到完整訊息"));
 }
 
 export const httpApi: Api = {
@@ -101,14 +133,16 @@ export const httpApi: Api = {
       throw e;
     }
   },
+  updateMe: (p) => patch("/api/me", p),
   logout: () => post("/api/auth/logout"),
 
   listArchives: () => get("/api/archives"),
   updateArchive: (id, p) => patch(`/api/archives/${id}`, p),
+  listShareTargets: () => get("/api/me/share-targets"),
 
   createArchive: (title) => post("/api/archives", { title }),
   listTopicDialogue: (id) => get(`/api/archives/${id}/dialogue`),
-  sendTopicDialogue: (id, text, onDelta) => streamDialogue(`/api/archives/${id}/dialogue`, text, onDelta),
+  sendTopicDialogue: (id, text, onDelta, onEmotion) => streamDialogue(`/api/archives/${id}/dialogue`, { text }, onDelta, onEmotion),
 
   listClassrooms: () => get("/api/classrooms"),
   getClassroom: (id) => get(`/api/classrooms/${id}`),
@@ -120,12 +154,11 @@ export const httpApi: Api = {
   addClassroomMember: (id, name) => post(`/api/classrooms/${id}/members`, { name }),
   importClassroomMembers: (id, names) => post(`/api/classrooms/${id}/members/import`, { names }),
   removeClassroomMember: (id, mid) => del(`/api/classrooms/${id}/members/${mid}`),
+  setMemberRole: (id, mid, role) => patch(`/api/classrooms/${id}/members/${mid}`, { role }),
   listActivities: (cid) => get(`/api/classrooms/${cid}/activities`),
   getActivity: (id) => get(`/api/activities/${id}`),
-  createActivity: (cid, i) => post(`/api/classrooms/${cid}/activities`, i),
   advanceActivity: (id) => post(`/api/activities/${id}/advance`),
   finishActivity: (id) => post(`/api/activities/${id}/finish`),
-  setCompleted: (id, done) => put(`/api/activities/${id}/completion`, { done }),
   setStageDeadline: (id, deadline) => put(`/api/activities/${id}/deadline`, { deadline }),
 
   getJoinPolicy: (cid) => get(`/api/classrooms/${cid}/join-policy`),
@@ -156,15 +189,29 @@ export const httpApi: Api = {
   submitReport: (tid, file, comment) => upload(`/api/topics/${tid}/reports`, file, { comment: comment ?? "" }),
   deleteReport: (rid) => del(`/api/reports/${rid}`),
 
+  listDiscussions: (cid) => get(`/api/classrooms/${cid}/discussions`),
+  getDiscussion: (id) => get(`/api/discussions/${id}`),
+  createDiscussion: (cid, i) => post(`/api/classrooms/${cid}/discussions`, i),
+  updateDiscussion: (id, p) => patch(`/api/discussions/${id}`, p),
+  setDiscussionStatus: (id, status) => put(`/api/discussions/${id}/status`, { status }),
+  deleteDiscussion: (id) => del(`/api/discussions/${id}`),
+  listDiscussionSessions: (id) => get(`/api/discussions/${id}/sessions`),
+  getDiscussionSession: (id, studentId) => get(`/api/discussions/${id}/sessions/${studentId ?? "me"}`),
+  sendDiscussionMessage: (id, text, onDelta, onEmotion) => streamDialogue(`/api/discussions/${id}/sessions/me/messages`, { text }, onDelta, onEmotion),
+  submitDiscussionConclusion: (id, conclusion) => put(`/api/discussions/${id}/sessions/me/conclusion`, { conclusion }),
+
   listPosts: (cid, topicId) => get(`/api/classrooms/${cid}/posts${qs({ topicId: topicId ?? undefined })}`),
   createPost: (cid, i) => post(`/api/classrooms/${cid}/posts`, i),
   deletePost: (pid) => del(`/api/posts/${pid}`),
 
+  createCalendarEvent: (cid, i) => post(`/api/classrooms/${cid}/calendar-events`, i),
+  updateCalendarEvent: (id, p) => patch(`/api/calendar-events/${id}`, p),
+  deleteCalendarEvent: (id) => del(`/api/calendar-events/${id}`),
   listCalendar: ({ from, to, classroomId }) =>
-    get(classroomId ? `/api/classrooms/${classroomId}/calendar${qs({ from, to })}` : `/api/calendar${qs({ from, to })}`),
+    get(`/api/classrooms/${classroomId}/calendar${qs({ from, to })}`),
 
   listDialogue: (id) => get(`/api/activities/${id}/dialogue`),
-  sendDialogue: (id, text, onDelta) => streamDialogue(`/api/activities/${id}/dialogue`, text, onDelta),
+  sendDialogue: (id, text, onDelta) => streamDialogue(`/api/activities/${id}/dialogue`, { text }, onDelta),
   getProgress: (id) => get(`/api/activities/${id}/progress`),
   draftPosition: (id) => post(`/api/activities/${id}/position/draft`),
   confirmPosition: (id, summary) => put(`/api/activities/${id}/position`, { summary }),

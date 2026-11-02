@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { createConstellation } from "@/lib/star/constellation";
 import { alignClusters, AXIS_COLORS, CLUSTER_PALETTE, kmeans, labelCluster } from "@/lib/star/data";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 const SLOTS = ["x", "y", "z"] as const;
@@ -14,6 +15,7 @@ type AxisMap = Record<Slot, string | null>;
 
 /** 立場星圖：compact = 只有 3D 畫面（放在左側資訊欄），可以按「放大」；完整版有量軸、時間軸、分群。 */
 export function StarMap({ data, compact = false, className }: { data: StarData; compact?: boolean; className?: string }) {
+  const t = useT();
   const { theme } = useTheme();
   const mountRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<any>(null);
@@ -39,7 +41,7 @@ export function StarMap({ data, compact = false, className }: { data: StarData; 
     [data],
   );
   const axisDefs = useMemo(
-    () => Object.fromEntries(data.axes.map((a, i) => [a.key, { name: a.name, left: a.left, right: a.right, color: AXIS_COLORS[i % AXIS_COLORS.length] }])),
+    () => Object.fromEntries(data.axes.map((a, i) => [a.key, { name: t(a.name), left: t(a.left), right: t(a.right), color: AXIS_COLORS[i % AXIS_COLORS.length] }])),
     [data],
   );
 
@@ -105,8 +107,8 @@ export function StarMap({ data, compact = false, className }: { data: StarData; 
   // 播放
   useEffect(() => {
     if (!playing) return;
-    const t = setInterval(() => setStep((s) => { if (s >= steps) { setPlaying(false); return s; } return s + 1; }), 900);
-    return () => clearInterval(t);
+    const id = setInterval(() => setStep((s) => { if (s >= steps) { setPlaying(false); return s; } return s + 1; }), 900);
+    return () => clearInterval(id);
   }, [playing, steps]);
 
   function toggleAxis(key: string) {
@@ -129,16 +131,16 @@ export function StarMap({ data, compact = false, className }: { data: StarData; 
   const meVals = me ? me.history[Math.min(step, me.history.length - 1)] : null;
   const clusterLabel = (c: number[]) => {
     const axes = activeSlots.map((s) => data.axes.find((a) => a.key === axisMap[s])!);
-    return labelCluster(c, axes, activeSlots.map((s) => SLOTS.indexOf(s)));
+    return labelCluster(c, axes, activeSlots.map((s) => SLOTS.indexOf(s)), t);
   };
 
   const canvas = (
     <div className={cn("relative overflow-hidden rounded-2xl border border-line bg-[radial-gradient(ellipse_60%_55%_at_50%_50%,var(--bronze-soft),transparent_75%)]", compact ? "h-72" : "h-[clamp(340px,54vh,560px)]")}>
       <div ref={mountRef} className="absolute inset-0 [&_canvas]:size-full [&_canvas]:cursor-grab" />
-      <span className="pointer-events-none absolute bottom-2 right-3 rounded-full bg-bg-1/80 px-3 py-1 text-[11px] text-ink-dim">拖曳旋轉 · 滾輪縮放</span>
+      <span className="pointer-events-none absolute bottom-2 right-3 rounded-full bg-bg-1/80 px-3 py-1 text-[11px] text-ink-dim">{t("拖曳旋轉 · 滾輪縮放")}</span>
       {compact && (
         <button type="button" onClick={() => setBig(true)} className="absolute right-2 top-2 flex cursor-pointer items-center gap-1 rounded-full border border-line-strong bg-bg-1 px-3 py-1 text-[11.5px] text-ink-dim hover:border-bronze hover:text-ink">
-          <Maximize2 className="size-3" />放大
+          <Maximize2 className="size-3" />{t("放大")}
         </button>
       )}
     </div>
@@ -150,7 +152,7 @@ export function StarMap({ data, compact = false, className }: { data: StarData; 
         {canvas}
         <Dialog open={big} onOpenChange={setBig}>
           <DialogContent className="max-w-6xl">
-            <DialogTitle>立場星圖</DialogTitle>
+            <DialogTitle>{t("立場星圖")}</DialogTitle>
             {big && <StarMap data={data} />}
           </DialogContent>
         </Dialog>
@@ -165,21 +167,21 @@ export function StarMap({ data, compact = false, className }: { data: StarData; 
         {data.hasTimeline && (
           <div className="mt-3 rounded-2xl border border-line bg-bg-2 p-4">
             <div className="flex items-center gap-3">
-              <Button size="icon" onClick={() => { if (step >= steps) setStep(0); setPlaying(!playing); }} aria-label={playing ? "暫停" : "播放"}>{playing ? <Pause className="size-4" /> : <Play className="size-4" />}</Button>
-              <div className="min-w-0 flex-1"><b className="block font-serif text-base font-medium">{data.stepLabels[step]}</b><span className="text-[11.5px] text-ink-faint">第 {step + 1} / {steps + 1} 步 · {data.stepNotes[step]}</span></div>
-              <Button variant="outline" size="icon" disabled={step <= 0} onClick={() => { setPlaying(false); setStep(step - 1); }} aria-label="上一步"><ChevronLeft className="size-4" /></Button>
-              <Button variant="outline" size="icon" disabled={step >= steps} onClick={() => { setPlaying(false); setStep(step + 1); }} aria-label="下一步"><ChevronRight className="size-4" /></Button>
-              <Button variant="outline" size="icon" onClick={() => { setPlaying(false); setStep(0); }} aria-label="回到第一步"><RotateCcw className="size-4" /></Button>
+              <Button size="icon" onClick={() => { if (step >= steps) setStep(0); setPlaying(!playing); }} aria-label={playing ? t("暫停") : t("播放")}>{playing ? <Pause className="size-4" /> : <Play className="size-4" />}</Button>
+              <div className="min-w-0 flex-1"><b className="block font-serif text-base font-medium">{t(data.stepLabels[step])}</b><span className="text-[11.5px] text-ink-faint">{t("第 {n} / {total} 步 · {note}", { n: step + 1, total: steps + 1, note: t(data.stepNotes[step]) })}</span></div>
+              <Button variant="outline" size="icon" disabled={step <= 0} onClick={() => { setPlaying(false); setStep(step - 1); }} aria-label={t("上一步")}><ChevronLeft className="size-4" /></Button>
+              <Button variant="outline" size="icon" disabled={step >= steps} onClick={() => { setPlaying(false); setStep(step + 1); }} aria-label={t("下一步")}><ChevronRight className="size-4" /></Button>
+              <Button variant="outline" size="icon" onClick={() => { setPlaying(false); setStep(0); }} aria-label={t("回到第一步")}><RotateCcw className="size-4" /></Button>
             </div>
             <div className="relative mx-2 mt-4 h-8" role="slider" aria-valuemin={0} aria-valuemax={steps} aria-valuenow={step}>
               <span className="absolute inset-x-0 top-2.5 h-[3px] rounded bg-bg-3"><i className="block h-full rounded bg-bronze transition-all" style={{ width: `${steps ? (step / steps) * 100 : 0}%` }} /></span>
               {Array.from({ length: steps + 1 }, (_, i) => (
-                <button key={i} type="button" aria-label={data.stepLabels[i]} onClick={() => { setPlaying(false); setStep(i); }}
+                <button key={i} type="button" aria-label={t(data.stepLabels[i])} onClick={() => { setPlaying(false); setStep(i); }}
                   style={{ left: `${steps ? (i / steps) * 100 : 0}%` }}
                   className={cn("absolute top-1 size-3 -translate-x-1/2 cursor-pointer rounded-full border-2", i < step ? "border-bronze bg-bronze" : i === step ? "size-5 -translate-y-1 border-[3px] border-bronze bg-bg-1 ring-4 ring-bronze-soft" : "border-bg-3 bg-bg-2")} />
               ))}
             </div>
-            <div className="mx-2 mt-1 flex justify-between text-[10.5px] text-ink-faint"><span>{data.stepLabels[0]}</span><span>{data.stepLabels[steps]}</span></div>
+            <div className="mx-2 mt-1 flex justify-between text-[10.5px] text-ink-faint"><span>{t(data.stepLabels[0])}</span><span>{t(data.stepLabels[steps])}</span></div>
           </div>
         )}
         {cur && (
@@ -190,10 +192,10 @@ export function StarMap({ data, compact = false, className }: { data: StarData; 
               const mine = me && cur.assignments[data.agents.indexOf(me)] === i;
               return (
                 <div key={i} className="rounded-xl border border-line bg-bg-1 p-3 text-[12.5px]" style={{ borderTop: `3px solid ${CLUSTER_PALETTE[i % CLUSTER_PALETTE.length]}` }}>
-                  <b className="font-serif text-sm">{data.groups ? data.groups.labels[i] : `第 ${["I", "II", "III", "IV", "V", "VI"][i]} 群`}</b>
-                  {mine && <em className="ml-2 rounded-full bg-bronze px-2 py-0.5 text-[10px] not-italic text-[#221a0c]">你在這{data.groups ? "組" : "群"}</em>}
-                  <div className="mt-1 text-ink-faint">{count} 人 · {Math.round((count / cur.assignments.length) * 100)}%</div>
-                  <div className="text-ink-dim">偏 {clusterLabel(c)}</div>
+                  <b className="font-serif text-sm">{data.groups ? data.groups.labels[i] : t("第 {n} 群", { n: ["I", "II", "III", "IV", "V", "VI"][i] })}</b>
+                  {mine && <em className="ml-2 rounded-full bg-bronze px-2 py-0.5 text-[10px] not-italic text-[#221a0c]">{data.groups ? t("你在這組") : t("你在這群")}</em>}
+                  <div className="mt-1 text-ink-faint">{t("{n} 人 · {pct}%", { n: count, pct: Math.round((count / cur.assignments.length) * 100) })}</div>
+                  <div className="text-ink-dim">{clusterLabel(c)}</div>
                 </div>
               );
             })}
@@ -202,7 +204,7 @@ export function StarMap({ data, compact = false, className }: { data: StarData; 
       </div>
       <aside className="space-y-3">
         <div className="rounded-2xl border border-line bg-bg-2 p-3">
-          <div className="mb-2 text-xs text-ink-faint">量軸（勾 1 條是量表、2 條是平面、3 條是立體）</div>
+          <div className="mb-2 text-xs text-ink-faint">{t("量軸（勾 1 條是量表、2 條是平面、3 條是立體）")}</div>
           {data.axes.map((ax, i) => {
             const on = checked.includes(ax.key);
             const color = AXIS_COLORS[i % AXIS_COLORS.length];
@@ -210,17 +212,17 @@ export function StarMap({ data, compact = false, className }: { data: StarData; 
             return (
               <button key={ax.key} type="button" onClick={() => toggleAxis(ax.key)} aria-pressed={on}
                 className={cn("mb-2 w-full cursor-pointer rounded-xl border p-2.5 text-left last:mb-0", on ? "bg-bg-1" : "border-line opacity-60")} style={on ? { borderColor: color } : undefined}>
-                <div className="flex items-center gap-2 text-[13px]"><span className="flex size-4 items-center justify-center rounded border text-[10px]" style={{ borderColor: color, background: on ? color : "transparent", color: "#1b1d22" }}>{on ? "✓" : ""}</span><b style={{ color }}>{ax.name}</b>{me && <span className="ml-auto text-[11px] text-ink-faint">你 {v >= 0 ? "+" : "−"}{Math.abs(v).toFixed(2)}</span>}</div>
-                <div className="mt-1 flex justify-between text-[11px] text-ink-faint"><span>{ax.left}</span><span>{ax.right}</span></div>
+                <div className="flex items-center gap-2 text-[13px]"><span className="flex size-4 items-center justify-center rounded border text-[10px]" style={{ borderColor: color, background: on ? color : "transparent", color: "#1b1d22" }}>{on ? "✓" : ""}</span><b style={{ color }}>{t(ax.name)}</b>{me && <span className="ml-auto text-[11px] text-ink-faint">{t("你")} {v >= 0 ? "+" : "−"}{Math.abs(v).toFixed(2)}</span>}</div>
+                <div className="mt-1 flex justify-between text-[11px] text-ink-faint"><span>{t(ax.left)}</span><span>{t(ax.right)}</span></div>
               </button>
             );
           })}
         </div>
         <div className="rounded-2xl border border-line bg-bg-2 p-3 text-[13px]">
-          <label className="flex cursor-pointer items-center justify-between py-1.5"><span>顯示軌跡</span><input type="checkbox" checked={showTraj} disabled={!data.hasTimeline} onChange={(e) => setShowTraj(e.target.checked)} /></label>
-          <label className="flex cursor-pointer items-center justify-between py-1.5"><span>{data.groups ? "依辯論分組著色" : "依立場分群"}</span><input type="checkbox" checked={clusterOn} onChange={(e) => setClusterOn(e.target.checked)} /></label>
+          <label className="flex cursor-pointer items-center justify-between py-1.5"><span>{t("顯示軌跡")}</span><input type="checkbox" checked={showTraj} disabled={!data.hasTimeline} onChange={(e) => setShowTraj(e.target.checked)} /></label>
+          <label className="flex cursor-pointer items-center justify-between py-1.5"><span>{data.groups ? t("依辯論分組著色") : t("依立場分群")}</span><input type="checkbox" checked={clusterOn} onChange={(e) => setClusterOn(e.target.checked)} /></label>
           {!data.groups && (
-            <div className="flex items-center justify-between py-1.5"><span className="text-ink-dim">分群數</span>
+            <div className="flex items-center justify-between py-1.5"><span className="text-ink-dim">{t("分群數")}</span>
               <div className="inline-flex gap-0.5 rounded-full bg-bg-3 p-0.5">{[2, 3, 4, 5, 6].map((n) => <button key={n} type="button" disabled={!clusterOn} onClick={() => setK(n)} className={cn("h-6 min-w-7 cursor-pointer rounded-full text-xs disabled:opacity-50", k === n ? "bg-bronze font-bold text-[#221a0c]" : "text-ink-dim")}>{n}</button>)}</div>
             </div>
           )}
