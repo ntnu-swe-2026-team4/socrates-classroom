@@ -11,6 +11,12 @@ const RATE_MAX = 20;
 
 export function checkRate(userId: string): void {
   const now = Date.now();
+  if (rates.size > 500) {
+    // 偶發清掃：視窗外已無紀錄的使用者就移除，避免長時間運行無限增長
+    for (const [k, hits] of rates) {
+      if (!hits.length || now - hits[hits.length - 1] >= RATE_WINDOW) rates.delete(k);
+    }
+  }
   const hits = (rates.get(userId) ?? []).filter((t) => now - t < RATE_WINDOW);
   if (hits.length >= RATE_MAX) fail(429, "rate_limited");
   hits.push(now);

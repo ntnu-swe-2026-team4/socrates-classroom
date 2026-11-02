@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { DB } from "./db";
-import { bind, one } from "./db";
+import { bind, one, run } from "./db";
 import { languageOf } from "./messages";
 import type { AppEnv, UserRow } from "./http";
 import { fail } from "./http";
@@ -41,6 +41,8 @@ export function requireUser(c: { get: (k: "user") => UserRow | undefined }): Use
 }
 
 export function startSession(db: DB, c: any, userId: string, secure: boolean): void {
+  // 順手清掉過期 session，避免資料表隨登入次數無限增長
+  run(db, "DELETE FROM sessions WHERE expires_at < $now", { now: new Date().toISOString() });
   const token = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
   const now = new Date();
   const expires = new Date(now.getTime() + SESSION_DAYS * 864e5);
