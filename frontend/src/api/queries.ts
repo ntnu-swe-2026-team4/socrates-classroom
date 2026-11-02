@@ -117,8 +117,17 @@ export function useSetDiscussionStatus(classroomId: string, discussionId: string
 }
 
 export function useDeleteDiscussion(classroomId: string) {
+  const qc = useQueryClient();
   const invalidate = useInvalidateDiscussion(classroomId);
-  return useMutation({ mutationFn: (id: string) => api.deleteDiscussion(id), onSuccess: () => invalidate() });
+  return useMutation({
+    mutationFn: (id: string) => api.deleteDiscussion(id),
+    onSuccess: (_data, id) => {
+      invalidate();
+      // 刪掉的題目快取直接移除，避免單頁與 session 快取殘留
+      qc.removeQueries({ queryKey: keys.discussion(id) });
+      qc.removeQueries({ queryKey: keys.discussionSessions(id) });
+    },
+  });
 }
 
 /** 學生送出或收回自己的結論 */
@@ -130,6 +139,7 @@ export function useSubmitConclusion(discussionId: string) {
       qc.setQueryData(keys.discussionSession(discussionId, "me"), s);
       qc.invalidateQueries({ queryKey: keys.discussion(discussionId) });
       qc.invalidateQueries({ queryKey: ["discussions"] });
+      qc.invalidateQueries({ queryKey: keys.discussionSessions(discussionId) }); // 老師端全班清單不用等 30 秒 refetch
     },
   });
 }
