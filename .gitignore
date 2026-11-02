@@ -1,14 +1,18 @@
+# Node / npm
 node_modules/
+package-lock.json.bak
+
+# Cloudflare
+.cloudflare/
+.dev.vars
+.wrangler/
+
+# 各套件產物
 dist/
+coverage/
+
+# 環境
 .env
 .env.local
 .env.*.local
 .DS_Store
-coverage/
-target/
-llm/sessions/
-
-# 後端 SQLite 資料庫與上傳檔案
-server/data/*.db
-server/data/*.db-*
-server/data/uploads/

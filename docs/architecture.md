@@ -1,6 +1,6 @@
 # 重構架構設計：socrates-classroom → Cloudflare + Pi Durable
 
-> 日期：2026-11 ｜ 分支：`explore/cf-pi-durable` ｜ 狀態：設計定案，待實作
+> 日期：2026-11 ｜ 分支：`explore/cf-pi-durable` ｜ 狀態：**已實作（R0–R6）**——測試全綠；剩 R3 實際部署（需 Cloudflare 帳號）與 R7 WebSocket（Phase 3）
 > 上游文件：[`cf-migration.md`](./cf-migration.md)（遷移調查）、[`providers.md`](./providers.md)（provider 查證）
 
 ## 0. 已定決策（本文的約束條件）

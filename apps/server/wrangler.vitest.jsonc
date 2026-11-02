@@ -1,0 +1,33 @@
+// 測試用 wrangler 設定：vitest-pool-workers 只吃 wrangler 格式。
+// 正式部署走 cloudflare.config.ts（cf CLI）；此檔僅供測試，綁定需與之一致。
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "socrates-server-test",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "rules": [
+    { "type": "Text", "globs": ["**/*.md", "**/*.sql"] }
+  ],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "socrates-test", "database_id": "local-test" }
+  ],
+  "r2_buckets": [
+    { "binding": "UPLOADS", "bucket_name": "socrates-test-uploads" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "PiAgent", "class_name": "PiAgent" },
+      { "name": "ActivityEvents", "class_name": "ActivityEvents" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["PiAgent", "ActivityEvents"] }
+  ],
+  "vars": {
+    "LLM_PROVIDER": "mock",
+    "PUBLIC_BASE_URL": "",
+    "COOKIE_SECURE": "false",
+    "CORS_ORIGINS": "http://localhost:5173"
+  }
+}

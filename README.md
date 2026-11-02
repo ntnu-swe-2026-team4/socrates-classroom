@@ -2,63 +2,81 @@
 
 以蘇格拉底式詰問為核心的課堂辯論平台：與 AI 蘇格拉底單人對話、四階段課堂辯論（調查 → 提純 → 比賽 → 結果）、**多人討論**（老師出一題，同學各自跟 AI 對話，老師看全班討論成果）、立場星圖視覺化。
 
-前端是 React + Vite，後端是 **Bun + Hono + SQLite**（`bun:sqlite`，不需要 Docker 或外部資料庫）。
-
-> 前端組另外提供選用的 **Dockerfile**（見 [`./frontend/container.md`](./frontend/container.md)），僅用來把前端打包成靜態網站的容器；後端不需要任何容器或外部資料庫。
+**執行在 Cloudflare Workers 上**：一個 Worker（Hono API + React 靜態資產）、D1（SQLite）、R2（上傳檔案）、Durable Object（**Pi Durable** 對話引擎）。對話模型走可切換的 provider pool（自架 GPU 端點 → OpenCode Go → OpenRouter → Workers AI，全 ZDR；詳見 [`docs/providers.md`](docs/providers.md)）。
 
 ## Quickstart
 
-需要 **Bun** 1.2 以上（<https://bun.sh>）。前端與後端（`server/`）都用 Bun。
+需要 **Node.js ≥ 22.23**（cf CLI 載入 `cloudflare.config.ts` 不支援 Bun）。
 
 ```bash
-bun install
-bun run dev:server   # 後端 → http://localhost:8000（第一次啟動自動建立 SQLite + 示範資料）
-bun run dev          # 前端 → http://localhost:5173
+npm install
+
+# 本機開發（Worker + 本地 D1/R2；AI binding 遠端打真實模型）
+cd apps/server && npx cf dev        # http://localhost:8787
+
+# 前端（另開一個終端；Vite 代理 /api → 8787）
+npm run dev                          # http://localhost:5173
 ```
 
-前端預設是 `VITE_API_MODE=mock`（內建示範資料，不需要後端）。要接真後端，把 `frontend/.env` 設成：
+第一次啟動：D1 是空的，灌示範資料（教室：高二哲學選修 A、倫理學讀書會）：
 
 ```bash
-VITE_API_MODE=http
+cd apps/server
+SEED_TOKEN=dev-token npm run seed    # 需在 .dev.vars 設 SEED_TOKEN=dev-token
 ```
 
-Vite 開發伺服器會把 `/api` 代理到 `http://localhost:8000`，不需要處理 CORS。
+示範帳號：老師 `林老師`、學生 `訪客`（示範登入：選身分 + 輸入姓名即可）。
 
-沒有 GLM key 時，在 `server/.env` 設 `LLM_PROVIDER=mock`，對話會用規則式回覆，其餘功能（教室、辯論、討論、計分）都可以完整操作。
-要接真的 AI（GLM），把 `GLM_API_KEY` 放進 `server/.env`（絕對不要放前端）。
+## 部署
 
-| 指令（在專案根目錄） | 作用 |
+```bash
+npm install -g cf        # 或使用專案 devDependency 的 npx cf
+cf auth login
+
+cd apps/server
+cf deploy                # Worker + assets + D1 + R2 + DO
+npx cf d1 migrations apply socrates --dir migrations   # 首次／schema 變更時
+```
+
+CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) PR 檢查 + dry-run、[`deploy.yml`](.github/workflows/deploy.yml) main 自動部署）。Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`；runtime keys（`OPENCODE_API_KEY`、`OPENROUTER_API_KEY`、`BYOK_ENC_KEY`）用 `cf deploy --secrets-file` 或 `wrangler secret put`。
+
+## 開發
+
+| 指令（專案根目錄） | 作用 |
 |---|---|
-| `bun run dev` | 前端開發伺服器 |
-| `bun run dev:server` | 後端開發伺服器（Bun + Hono，:8000） |
-| `bun run start` | 後端正式啟動（同 dev 但不帶 watch） |
-| `bun run build` | 前端型別檢查 + 打包（`frontend/dist/`） |
-| `bun run typecheck` | 前端與後端 TypeScript 型別檢查 |
-| `bun run test` | 後端 API 測試（`server/tests`） |
-| `bun run migrate` | 套用 SQLite migrations |
-| `bun run seed` | 建立示範資料（資料庫已有使用者時會跳過） |
+| `npm run dev` | 前端開發伺服器（Vite，:5173） |
+| `npm run dev:server` | 後端 `cf dev`（Worker + 本地 D1/R2，:8787） |
+| `npm test` | vitest（Worker runtime：路由 + D1 + 對話 SSE，mock provider） |
+| `npm run typecheck` | server 與 web 的 TypeScript 檢查 |
+| `npm run build` | 前端打包（`apps/web/dist`） |
+| `npm run migrate` | 本地 D1 migrations |
+| `npm run cf:deploy` | 部署到 Cloudflare |
 
-## 資料庫
+## 結構
 
-使用 **SQLite**，預設檔案 `server/data/socrates.db`（gitignored），上傳檔案在 `server/data/uploads/`。
-不需要 Docker 或外部資料庫服務；第一次啟動會自動跑 migration 並建立示範教室。
+```
+apps/
+├── web/        # React + Vite 前端（打包後掛在 Worker 的 Static Assets）
+└── server/     # Hono Worker：API + PiAgent Durable Object + provider pool
+    ├── src/do/         # PiAgent（PiHarness）、ActivityEvents（活動事件扇出）
+    ├── src/providers/  # provider pool、ZDR 白名單、學生 BYOK
+    ├── src/db/         # D1 adapter（$named → 位置參數自動轉換）
+    └── migrations/     # D1 migrations（cf d1 migrations apply）
+packages/
+├── shared/     # 前後端共用契約型別
+└── llm/        # 提示詞與 provider 設定（LLM 組改檔即部署生效）
+```
 
-備份：停止服務後複製 `server/data/socrates.db`（WAL 模式也可能有 `-wal` / `-shm` 檔）。
-
-## 示範帳號
-
-登入目前是契約指定的示範版（選學生／老師 + 姓名）：
-
-- 老師：`林老師`（高二哲學選修 A、倫理學讀書會）
-- 學生：`訪客`（已加入高二哲學選修 A）
-- 學生邀請碼：`LOGIC3`（可直接加入）、`ETHIC5`（需老師審核）
+- **對話引擎**：`PiHarness`（Agents SDK）跑在 Durable Object——transcript、排隊、重試、崩潰恢復由 pi 管理；前端對話 API 契約（SSE：`delta/emotion/done/error`）與 [`docs/api-contract.md`](docs/api-contract.md) 一致。
+- **LLM 設定層**：提示詞在 `packages/llm/prompts/`，模型路由在 `apps/server/src/providers/`；規則與查證詳見 [`docs/providers.md`](docs/providers.md)。
+- 沒有金鑰也能開發：`LLM_PROVIDER=mock`（測試預設）用離線 faux 模型。
 
 ## 文件
 
-- [`docs/frontend.md`](docs/frontend.md) — 前端導覽：檔案位置、功能 ↔ API 對照、詳細啟動教學
+- [`docs/architecture.md`](docs/architecture.md) — 重構架構設計（目標形狀、決策記錄、實作順序）
+- [`docs/frontend.md`](docs/frontend.md) — 前端導覽：檔案位置、功能 ↔ API 對照
 - [`docs/api-contract.md`](docs/api-contract.md) — 前後端 API 契約
-- [`docs/architecture.md`](docs/architecture.md) — 重構架構設計（Cloudflare + Pi Durable 目標形狀，explore branch）
 - [`docs/providers.md`](docs/providers.md) — LLM providers 總表（端點、用量、併發、ZDR）
 - [`docs/cf-migration.md`](docs/cf-migration.md) — Cloudflare 部署與 Pi Durable 調查報告
-- [`server/README.md`](server/README.md) — 後端架構、環境變數、目錄、測試與設計重點
-- [`llm/README.md`](llm/README.md) — 提示詞與 LLM 供應商設定
+- [`apps/server/README.md`](apps/server/README.md) — 後端細節（移植中，部分內容以 docs/ 為準）
+- [`packages/llm/README.md`](packages/llm/README.md) — 提示詞與 LLM 供應商設定

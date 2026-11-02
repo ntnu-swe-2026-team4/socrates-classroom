@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    env:
+      CF_SEND_TELEMETRY: "false"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: |
+          npx tsc --noEmit -p apps/server
+          npx tsc --noEmit -p apps/web
+      - name: Test（Worker runtime + 本地 D1/R2，LLM_PROVIDER=mock）
+        run: npm test
+      - name: Build web
+        run: npm run build -w apps/web
+      - name: cf build（驗證 Worker 可打包）
+        run: npx cf build
+        working-directory: apps/server
+      - name: cf deploy dry-run（免 credentials，fork PR 安全）
+        run: npx cf deploy --prebuilt --mode production --dry-run
+        working-directory: apps/server
