@@ -258,15 +258,16 @@ export function teamRoutes(db: DB, getLang: (c: any) => Lang) {
     if (activity.stage !== "debate") fail(409, "stage_not_debate");
     if (role !== "student") fail(403, "only_student");
     if (!roomMemberIds(db, room).includes(user.id)) fail(403, "not_your_group");
+    // 先讀完 body 再做輪序檢查與寫入：檢查到寫入之間沒有 await，同一學生連點也不會重複寫入同一輪
+    const body = await bodyOf(c);
+    const text = typeof body.text === "string" ? body.text.trim() : "";
+    if (!text) fail(422, "text_required");
+    if (text.length > 2000) fail(422, "text_too_long", { n: 2000 });
     const fresh = tickExpired(db, room, getLang(c));
     if (fresh.status !== "live") fail(409, "room_not_live");
     const spec = roomSpec(db, fresh);
     if (!spec) fail(409, "room_not_live");
     if (spec.memberId !== user.id) fail(409, "not_your_turn");
-    const body = await bodyOf(c);
-    const text = typeof body.text === "string" ? body.text.trim() : "";
-    if (!text) fail(422, "text_required");
-    if (text.length > 2000) fail(422, "text_too_long", { n: 2000 });
     const { turn } = commitTurn(db, fresh, text, getLang(c));
     return c.json(turnJson(turn));
   });
