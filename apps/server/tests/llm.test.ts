@@ -34,4 +34,20 @@ describe("情緒標記解析", () => {
     expect(out.emotion).toBe("happy");
     expect(out.text).toBe("讚");
   });
+
+  test("未閉合 tag 殘留（串流截斷）在 finish() 丟棄，不存入紀錄", () => {
+    for (const frag of ["[happ", "[", "[]", "[neutral"]) {
+      const s = new EmotionSplitter();
+      s.push(frag);
+      expect(s.finish().text).toBeUndefined();
+    }
+  });
+
+  test("非 tag 的 [ 開頭短文字在 finish() 原樣保留", () => {
+    const s = new EmotionSplitter();
+    s.push("[註]");
+    const out = s.finish();
+    expect(out.emotion).toBe("neutral");
+    expect(out.text).toBe("[註]");
+  });
 });

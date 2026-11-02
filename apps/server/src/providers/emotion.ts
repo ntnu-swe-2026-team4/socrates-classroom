@@ -36,7 +36,7 @@ export class EmotionSplitter {
       this.buffer = "";
       const partial = /^\[([a-z]*)\]?$/.exec(leading.toLowerCase());
       const isTagRemnant = partial !== null && TAGS.some((t) => t.startsWith(partial[1]));
-      const out = isTagRemnant ? "" : this.buffer;
+      const out = isTagRemnant ? "" : leading;
       return { emotion: "neutral", text: out || undefined };
     }
     return { emotion: this.emotion ?? "neutral" };
