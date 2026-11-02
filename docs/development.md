@@ -7,7 +7,7 @@
 ```bash
 pnpm install
 prek install                        # git pre-commit hooks
-pnpm dev:web                        # 單一全栈 dev server（SPA HMR + Worker + 本地 D1/R2）:5173
+pnpm dev                        # 單一全栈 dev server（SPA HMR + Worker + 本地 D1/R2）:5173
 pnpm migrate                        # 本地 D1 套 schema（首次必跑；見下方「本地資料庫」）
 pnpm seed                           # 灌示範資料（需 .dev.vars 設 SEED_TOKEN）
 ```
@@ -44,6 +44,6 @@ pnpm seed                           # 灌示範資料（需 .dev.vars 設 SEED_T
 
 ## 常見問題
 
-- **`pnpm dev:web` 要求 Cloudflare 授權** → 有人設了 `CF_REMOTE_AI=true` 或 shell 有殘留 env；unset 即可
+- **`pnpm dev` 要求 Cloudflare 授權** → 有人設了 `CF_REMOTE_AI=true` 或 shell 有殘留 env；unset 即可
 - **seed 失敗「請設定 SEED_TOKEN」** → `.dev.vars` 加 `SEED_TOKEN=dev-seed`（與腳本環境變數一致）
 - **改 config 後資料不見** → 見上「Persistence scope 陷阱」

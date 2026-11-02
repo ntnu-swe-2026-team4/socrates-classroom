@@ -171,7 +171,7 @@ curl -N -b jar.txt -H 'Content-Type: application/json' -H 'Accept: text/event-st
   -d '{"text":"我覺得說謊有時候是對的"}' localhost:5173/api/archives/n1/dialogue
 ```
 
-前端驗證：`pnpm dev:web` 後到「單人 → 對話」送一句話，應該看到回覆一段一段出現，結束後蘇格拉底開始朗讀（provider 見 SSE 的 `meta` event）。
+前端驗證：`pnpm dev` 後到「單人 → 對話」送一句話，應該看到回覆一段一段出現，結束後蘇格拉底開始朗讀（provider 見 SSE 的 `meta` event）。
 
 ## 教室與活動
 

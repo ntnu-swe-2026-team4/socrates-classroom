@@ -32,7 +32,7 @@ cf --version
 
 | 指令                                      | 作用                                                        |
 | ----------------------------------------- | ----------------------------------------------------------- |
-| `cf dev` ＝ `pnpm dev:web`                | 單一全栈 dev server：SPA HMR + Worker + 本地 D1/R2（:5173） |
+| `cf dev` ＝ `pnpm dev`                    | 單一全栈 dev server：SPA HMR + Worker + 本地 D1/R2（:5173） |
 | `cf build`                                | 建置一次，產出標準 Build Output（`.cloudflare/output/v0/`） |
 | `cf deploy --prebuilt`                    | 部署先前建置的產物（配合 build-once 流程）                  |
 | `cf deploy --dry-run`                     | 驗證建置，不上傳、不需要金鑰（fork PR 安全）                |

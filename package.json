@@ -8,6 +8,7 @@
     "pnpm": ">=12"
   },
   "scripts": {
+    "dev": "pnpm --filter @socrates/web dev",
     "dev:web": "pnpm --filter @socrates/web dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
