@@ -31,6 +31,8 @@ export function DiscussionFormDialog({ classroomId, discussion, open, onOpenChan
   const [due, setDue] = useState("");
   const [rounds, setRounds] = useState(12);
   const [err, setErr] = useState("");
+  // 編輯舊題目時輪數可能不在預設選項裡——補進清單才有選中狀態
+  const roundOptions = ROUND_CHOICES.includes(rounds) ? ROUND_CHOICES : [...ROUND_CHOICES, rounds].sort((a, b) => a - b);
 
   useEffect(() => {
     if (!open) return;
@@ -75,7 +77,7 @@ export function DiscussionFormDialog({ classroomId, discussion, open, onOpenChan
             <div>
               <span className="mb-1 block text-xs text-ink-dim">{t("每人對話輪數上限")}</span>
               <div className="inline-flex gap-0.5 rounded-full border border-line-strong bg-bg-2 p-0.5">
-                {ROUND_CHOICES.map((n) => (
+                {roundOptions.map((n) => (
                   <button key={n} type="button" onClick={() => setRounds(n)}
                     className={cn("cursor-pointer rounded-full px-4 py-1.5 text-[13px]", rounds === n ? "bg-bronze font-semibold text-[#221a0c]" : "text-ink-dim")}>{t("{n} 輪", { n })}</button>
                 ))}
