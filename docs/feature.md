@@ -112,13 +112,13 @@
 
 ## LLM Provider Pool 與 BYOK
 
-| 能力       | 說明                                                                                                       |
-| ---------- | ---------------------------------------------------------------------------------------------------------- |
-| 白名單路由 | 自架 DGX Spark（CF Tunnel，4 併發）→ OpenCode Go → OpenRouter（`zdr:true`）→ Workers AI；全 ZDR 0-day 模型 |
-| 健康降級   | 429/失敗自動 fallback 下一棒；provider 標記降級 60 秒                                                      |
-| 開發路由   | `LLM_PROVIDER=dev`：Z.AI Coding Plan 優先（不進學生流量）                                                  |
-| 學生 BYOK  | 自帶 provider key（pi 支援的 API-key provider 全部可掛），AES-GCM 加密存 D1                                |
-| Mock       | `LLM_PROVIDER=mock`：離線 faux 模型（測試預設）                                                            |
+| 能力       | 說明                                                                                                                                      |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 白名單路由 | 自架 DGX Spark（CF Tunnel，4 併發）→ OpenCode Go → OpenRouter（`zdr:true`）→ Workers AI；全 ZDR 0-day 模型                                |
+| 健康降級   | 429/失敗自動 fallback 下一棒；provider 標記降級 60 秒                                                                                     |
+| 開發路由   | `LLM_PROVIDER=dev`：Z.AI Coding Plan 優先（不進學生流量）                                                                                 |
+| 學生 BYOK  | 目錄 + provider 工廠已備（`byok.ts`，pi 支援的 API-key provider 全可掛）；設定頁/加密儲存/路由串接規劃中，見 [`roadmap.md`](./roadmap.md) |
+| Mock       | `LLM_PROVIDER=mock`：離線 faux 模型（測試預設）                                                                                           |
 
 詳細規則與查證：[`providers.md`](./providers.md)
 

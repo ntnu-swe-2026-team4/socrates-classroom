@@ -4,19 +4,22 @@
 
 ## SSOT 地圖
 
-| 領域                                | 唯一來源          | 更新時機                              |
-| ----------------------------------- | ----------------- | ------------------------------------- |
-| 功能清單（功能 ↔ 路由 ↔ 頁面）      | `feature.md`      | 新增/修改/移除任何功能時              |
-| API 請求/回覆格式                   | `api-contract.md` | 改任何 route 的輸入/輸出時            |
-| 系統架構與決策                      | `architecture.md` | 新增 bindings/DO/服務、架構決策變更時 |
-| LLM providers（端點/用量/併發/ZDR） | `providers.md`    | 新增/更換 provider、配額或條款查證後  |
-| Cloudflare CLI 使用                 | `cf.md`           | cf 工作流變更時                       |
-| Pi Durable / PiHarness 使用         | `pi.md`           | pi/agents 版本升級、pi 相關踩坑時     |
-| 快速開始（人類用）                  | `../README.md`    | 指令或前置需求變更時                  |
+| 領域                                 | 唯一來源          | 更新時機                              |
+| ------------------------------------ | ----------------- | ------------------------------------- |
+| 功能清單（現況：功能 ↔ 路由 ↔ 頁面） | `feature.md`      | 功能合併進主分支時（只寫已存在的）    |
+| 願景與規劃（未實作）                 | `roadmap.md`      | 新規劃確定時；實作完成後把條目移出    |
+| 變更紀錄（已完成）                   | `changelog.md`    | 功能合併進主分支後                    |
+| API 請求/回覆格式                    | `api-contract.md` | 改任何 route 的輸入/輸出時            |
+| 系統架構與決策                       | `architecture.md` | 新增 bindings/DO/服務、架構決策變更時 |
+| LLM providers（端點/用量/併發/ZDR）  | `providers.md`    | 新增/更換 provider、配額或條款查證後  |
+| Cloudflare CLI 使用                  | `cf.md`           | cf 工作流變更時                       |
+| Pi Durable / PiHarness 使用          | `pi.md`           | pi/agents 版本升級、pi 相關踩坑時     |
+| 快速開始（人類用）                   | `../README.md`    | 指令或前置需求變更時                  |
 
 ## 規則
 
 - **Never** 在兩份文件寫同一件事——寫其中一份，其他地方放連結（含錨點）
+- **現況與願景分離**：`feature.md` 只寫**已存在且可測**的功能（未接線的能力寫進去 = bug）；構想、規劃、設計待決歸 `roadmap.md`。實作完成時走三步：roadmap 條目移除 → changelog 加條目 → feature.md 加功能列
 - **Never** 保留過時內容：文件與程式碼/事實不符 = bug，當場修或刪
 - **Never** 新建文件而不指定它的領域（先更新上面的 SSOT 地圖）
 - 改 API 時：`api-contract.md` 與 `feature.md` 一起看——契約管格式、feature 管存在
