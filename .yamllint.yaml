@@ -3,6 +3,7 @@ extends: default
 
 ignore: |
   pnpm-lock.yaml
+  explore/
 
 rules:
   # GitHub Actions' `on:` key is flagged by the truthy rule
