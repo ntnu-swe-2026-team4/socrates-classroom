@@ -20,17 +20,17 @@
 
 ## 學生與老師：帳號與教室
 
-| 功能       | 說明                                                                  | 主要路由 / 頁面                                                             |
-| ---------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| 功能       | 說明                                                                                                                         | 主要路由 / 頁面                                                             |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | 示範登入   | 選身分（學生/老師）+ 姓名；同名自動登入既有帳號，cookie session 30 天。示範級驗證，正式版規劃見 [`roadmap.md`](./roadmap.md) | `POST /api/auth/login`・`/login`                                            |
-| 個人資料   | 改名（查重）、頭像 data URL（≤200KB）                                 | `PATCH /api/me`                                                             |
-| 建立教室   | 老師建立；自動產生邀請碼                                              | `POST /api/classrooms`・ClassroomFormDialog                                 |
-| 邀請碼加入 | 學生以邀請碼加入（可停用）                                            | `GET /api/join-codes/:code`・`POST /api/classrooms/:id/join`・JoinClassroom |
-| 加入審核   | 可要求申請+問卷；老師核准/駁回/附註                                   | `POST /api/applications/:id/review`・ClassroomAdmin                         |
-| 名單匯入   | 老師貼上多名稱批次建立學生（回報 added/skipped）                      | `POST /api/classrooms/:id/members/import`                                   |
-| 成員管理   | 助教指派、移除、線上狀態（5 分鐘內有活動）、學習進度                  | `/api/classrooms/:id/members*`                                              |
-| 教室探索   | 學生瀏覽開放探索的教室                                                | `GET /api/classrooms/discover`                                              |
-| 邀請處理   | 待處理邀請的接受 / 婉拒                                               | `POST …/invite/accept｜decline`                                             |
+| 個人資料   | 改名（查重）、頭像 data URL（≤200KB）                                                                                        | `PATCH /api/me`                                                             |
+| 建立教室   | 老師建立；自動產生邀請碼                                                                                                     | `POST /api/classrooms`・ClassroomFormDialog                                 |
+| 邀請碼加入 | 學生以邀請碼加入（可停用）                                                                                                   | `GET /api/join-codes/:code`・`POST /api/classrooms/:id/join`・JoinClassroom |
+| 加入審核   | 可要求申請+問卷；老師核准/駁回/附註                                                                                          | `POST /api/applications/:id/review`・ClassroomAdmin                         |
+| 名單匯入   | 老師貼上多名稱批次建立學生（回報 added/skipped）                                                                             | `POST /api/classrooms/:id/members/import`                                   |
+| 成員管理   | 助教指派、移除、線上狀態（5 分鐘內有活動）、學習進度                                                                         | `/api/classrooms/:id/members*`                                              |
+| 教室探索   | 學生瀏覽開放探索的教室                                                                                                       | `GET /api/classrooms/discover`                                              |
+| 邀請處理   | 待處理邀請的接受 / 婉拒                                                                                                      | `POST …/invite/accept｜decline`                                             |
 
 ## 單人：與蘇格拉底對話
 

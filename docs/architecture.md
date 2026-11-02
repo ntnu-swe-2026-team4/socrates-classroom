@@ -253,13 +253,13 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 12. 風險與對策
 
-| 風險                                                   | 對策                                                                             |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| D1 無互動式交易，tx→batch 語意差異                     | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                 |
-| cf beta 格式變動                                       | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋             |
-| 自架 Tunnel 延遲                                       | 爆發期實測 P95；不行就把自架降為「教室內網直連 + 雲端走 opencode-go/OpenRouter」 |
-| opencode-go 條款灰域                                   | 上線前 email 官方；未確認前它不是唯一依賴（有 OpenRouter/Workers AI 兜底）       |
-| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor） | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                 |
+| 風險                                                                                            | 對策                                                                                             |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| D1 無互動式交易，tx→batch 語意差異                                                              | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                 |
+| cf beta 格式變動                                                                                | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                             |
+| 自架 Tunnel 延遲                                                                                | 爆發期實測 P95；不行就把自架降為「教室內網直連 + 雲端走 opencode-go/OpenRouter」                 |
+| opencode-go 條款灰域                                                                            | 上線前 email 官方；未確認前它不是唯一依賴（有 OpenRouter/Workers AI 兜底）                       |
+| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）                                          | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                       |
 | module 級狀態（rate-limit 的 Map、pool 的 degraded/gate、acquireLock）隨 isolate 分散且重啟歸零 | 定位為 best-effort；跨請求一致的併發守衛在 PiAgent DO 的 busy flag。多 isolate 佈局後限流改走 DO |
 ```
 ```

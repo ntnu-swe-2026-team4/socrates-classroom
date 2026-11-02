@@ -372,11 +372,6 @@ describe("四階段辯論", () => {
       `/api/activities/${activityId}/dialogue`,
       "我認為誠實很重要，因為信任是社會的基礎。例如朋友之間如果常說謊就無法合作。",
     );
-    const dialogueRows = await all<any>(
-      db,
-      "SELECT id, student_id, role FROM activity_dialogue WHERE activity_id = $aid",
-      { aid: activityId },
-    );
     const progress = await (await req("GET", `/api/activities/${activityId}/progress`, { cookie: guest })).json();
     expect(progress.rounds).toBe(1);
     expect(progress.coverage.claim).toBe(true);
