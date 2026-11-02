@@ -54,6 +54,7 @@ function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
       const reply = await api.sendDialogue(a.id, msg, (c) => setPending((p) => (p ?? "") + c));
       speakAi(reply.text);
     } catch (e) {
+      setText(msg); // 送出失敗（限流／LLM 無法使用）時把輸入還給使用者，不用重打
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setPending(null); setMine(null);

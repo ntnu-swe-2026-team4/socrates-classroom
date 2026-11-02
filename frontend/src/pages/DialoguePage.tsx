@@ -41,8 +41,9 @@ export function DialoguePage() {
   // 沒有指定議題時，把網址補成第一個議題，之後重新整理也停在同一個
   useEffect(() => { if (!topic && archive) navigate({ to: "/dialogue", search: { topic: archive.id }, replace: true }); }, [topic, archive, navigate]);
 
-  async function send(input: string) {
-    if (!archive || !input.trim() || pending !== null) return;
+  /** 回傳是否真的送出（false = 沒送或失敗），讓輸入框能把清掉的字還原 */
+  async function send(input: string): Promise<boolean> {
+    if (!archive || !input.trim() || pending !== null) return false;
     setMine(input); setPending(""); setStatus(t("思考中…")); clearTimeout(speakTimer.current); stopSpeaking();
     stage.current?.setExpression(null);
     // AI 一決定情緒就先做表情（例如先笑），回覆文字接著出現；開口說話至少等表情做出來之後
@@ -55,9 +56,11 @@ export function DialoguePage() {
       react(emotion); // 後端沒有提早送情緒時，在這裡補做
       const wait = EMOTION_CLIP[emotion] ? Math.max(0, REACT_MS - (performance.now() - reactedAt)) : 0;
       speakTimer.current = setTimeout(() => speak(msg.text, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) }), wait);
+      return true;
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e)); // 錯誤留在畫面上，下次送出時才清掉
       stage.current?.setExpression(null);
+      return false;
     } finally {
       setPending(null); setMine(null);
       qc.invalidateQueries({ queryKey: ["topicDialogue", archive.id] });
@@ -120,8 +123,8 @@ export function DialoguePage() {
                 <Mic className="size-4" />
               </Button>
               <Textarea rows={1} value={text} placeholder={t("輸入你的想法…")} onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const v = text; setText(""); void send(v); } }} />
-              <Button size="icon" aria-label={t("送出")} disabled={pending !== null} onClick={() => { const v = text; setText(""); void send(v); }}><Send className="size-4" /></Button>
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const v = text; setText(""); void send(v).then((sent) => { if (!sent) setText((cur) => cur || v); }); } }} />
+              <Button size="icon" aria-label={t("送出")} disabled={pending !== null} onClick={() => { const v = text; setText(""); void send(v).then((sent) => { if (!sent) setText((cur) => cur || v); }); }}><Send className="size-4" /></Button>
             </div>
           </>
         )} />
