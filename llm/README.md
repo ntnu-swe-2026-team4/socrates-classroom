@@ -10,6 +10,8 @@
 | `prompts/` | 對話引擎提示詞契約（階段 1 蘇格拉底六原則、情緒標記、收尾協議） | #27 |
 | `providers/models.json` | GLM 的 baseUrl、預設模型與可選模型；`mock` 為離線開發用 provider | #26 |
 
+> 全部可用 provider（自架 DGX Spark、OpenCode Go、Coding Plan、Workers AI、OpenRouter、BYOK）的端點、用量、併發與 ZDR 查證，詳見 [`docs/providers.md`](../docs/providers.md)。
+
 ## 後端如何使用
 
 - `server/src/services/llm.ts` 讀 `prompts/socrates.md` 注入 `system`；檔案 mtime 改變時會自動重新載入，不用重啟。
