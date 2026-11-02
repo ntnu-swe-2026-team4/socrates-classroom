@@ -32,15 +32,21 @@ export async function saveUpload(
     path: fullPath,
     created_at: nowIso(),
   };
-  run(
-    db,
-    `INSERT INTO files (id, owner_id, scope_type, scope_id, name, mime_type, size, path, created_at)
-     VALUES ($id, $owner, $scopeType, $scopeId, $name, $mime, $size, $path, $at)`,
-    {
-      id, owner: ownerId, scopeType, scopeId, name: row.name,
-      mime: row.mime_type, size: row.size, path: row.path, at: row.created_at,
-    },
-  );
+  try {
+    run(
+      db,
+      `INSERT INTO files (id, owner_id, scope_type, scope_id, name, mime_type, size, path, created_at)
+       VALUES ($id, $owner, $scopeType, $scopeId, $name, $mime, $size, $path, $at)`,
+      {
+        id, owner: ownerId, scopeType, scopeId, name: row.name,
+        mime: row.mime_type, size: row.size, path: row.path, at: row.created_at,
+      },
+    );
+  } catch (error) {
+    // DB 寫入失敗時把已寫進磁碟的檔案刪掉，不留孤兒
+    try { unlinkSync(fullPath); } catch { /* 檔案已經不在 */ }
+    throw error;
+  }
   return row;
 }
 
