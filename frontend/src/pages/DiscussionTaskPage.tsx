@@ -211,7 +211,9 @@ function TeacherResults({ d, teacher }: { d: DiscussionTask; teacher: boolean })
   const t = useT();
   const { data: sessions = [] } = useDiscussionSessions(d.id);
   const [filter, setFilter] = useState<DiscussionSessionStatus | "all">("all");
-  const [open, setOpen] = useState<DiscussionSession | null>(null);
+  // 只記 studentId，彈窗開著時 refetch 進來的最新資料也能即時反映（存整列會變成過期快照）
+  const [openId, setOpenId] = useState<string | null>(null);
+  const openRow = openId ? sessions.find((s) => s.id === openId) ?? null : null;
   const shown = filter === "all" ? sessions : sessions.filter((s) => s.status === filter);
   const pct = (n: number) => (d.stats.total ? Math.round((n / d.stats.total) * 100) : 0);
   const chip = (on: boolean) => cn("cursor-pointer rounded-full border px-3 py-1 text-[12.5px]", on ? "border-bronze-dim text-bronze" : "border-line text-ink-dim hover:text-ink");
@@ -250,7 +252,7 @@ function TeacherResults({ d, teacher }: { d: DiscussionTask; teacher: boolean })
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-5">
         {shown.map((s) => (
-          <button key={s.id} type="button" onClick={() => setOpen(s)}
+          <button key={s.id} type="button" onClick={() => setOpenId(s.id)}
             className="grid w-full cursor-pointer grid-cols-[1.2fr_auto_3.2em_2fr] items-center gap-3 border-b border-line py-3 text-left text-[13px] hover:bg-bg-2 max-md:grid-cols-[1fr_auto]">
             <span className="flex min-w-0 items-center gap-2">
               <i className="flex size-6 shrink-0 items-center justify-center rounded-full bg-bronze-soft font-serif text-[11.5px] not-italic text-bronze">{s.studentName[0]}</i>
@@ -271,7 +273,7 @@ function TeacherResults({ d, teacher }: { d: DiscussionTask; teacher: boolean })
   return (
     <>
       <StageLayout leftLabel={t("題目與進度")} left={left} rightLabel={t("討論成果")} right={right} mascot={false} />
-      <SessionSheet d={d} row={open} onClose={() => setOpen(null)} />
+      <SessionSheet d={d} row={openRow} onClose={() => setOpenId(null)} />
     </>
   );
 }
