@@ -38,6 +38,17 @@
 | **B′. Pi Durable 直掛自家 GLM key（2026-11 修正新增）** | pi-ai **內建 `zai` provider**（`api: "openai-completions"`、`baseUrl: https://api.z.ai/api/coding/paas/v4`——跟我們 `llm/providers/models.json` 完全同源）與 `zai-coding-cn`（`open.bigmodel.cn/api/coding/paas/v4`）；`models.setProvider(zaiProvider())` + `ZAI_API_KEY` secret 即可 | **Pi 對話可以用既有 Coding Plan 額度**，不必綁 Workers AI；跟 A 可並存互為 fallback | pi 內建的兩個 zai provider 都標明是 Coding Plan 端點（需訂閱）；一般（非 plan）BigModel key 要用 models.json 自訂 endpoint 掛；`thinking` 等 GLM 專屬參數 pi 的 openai-completions 實作不一定會送，需實測 |
 | **C. AI Gateway** | 統一入口：快取、日誌、限流、Unified Billing | 觀測與省錢 | **provider-native 清單（Anthropic、OpenAI、DeepSeek、Groq…共 23 家）不含智譜/Z.AI**，自家 GLM key 無法 BYOK 上 gateway |
 
+### 課堂併發與官方用量（2026-11 查證）
+
+| Provider | 官方用量限制 | 官方併發 | 課堂角色 |
+|---|---|---|---|
+| GLM Coding Plan Global | 5 小時 + 每週雙窗口（credits 制：Lite 2,000/5h・10,000/週、Pro 12,000・60,000、Max 28,000・140,000；離峰五折、峰時〔週一～五 14:00–18:00 UTC+8〕GLM-5.3-Flash 為 0.4×/1.2×）| **不公布數字**：官方只說「Max > Pro > Lite、動態調整」，建議 Lite 單專案、Pro 1–2、Max 2+；社群實測 Lite/Pro ≈ **1 併發**（超過回 429 Too much concurrency）、Max 動態可到約 30，且 2026-01 有 5→2→1 收緊紀錄 | 開發／老師個人助理。**整班共用一把 key 違反「訂閱僅限訂閱者」政策**，有風控（限速/凍結）風險 |
+| OpenCode Go（`opencode-go`） | 每帳號 5h / 7d / 30d 三層預算；數字未公布 | 未公布；Go 端點為 agent 推理設計，`x-opencode-session` 可貼 prompt-cache 節點（對話延遲有利） | 溢位 / fallback；單一帳號單一預算 |
+| CF Workers AI | 文字生成預設 **300 req/min**；需付費方案的模型（如 GLM）標準計費 **20 req/min**、預付 AI Gateway credits **50 req/min**（每帳號每模型） | = RPM 上限（每個串流算一請求） | 免 key、零政策風險的底線；但 20/min 對整班爆發偏低，要吃預付 credits 才夠 |
+| 自架 DGX Spark ×2（GLM-5.3-Flash EXL3，1M ctx） | token 無上限、資料不出門 | **4 併發**（團隊實測） | 課堂主力：4 併發 + 佇列；爆發期學生排隊數秒，零邊際成本 |
+
+**建議的 provider pool**：自架（4 併發，全局併發閘 + 佇列）→ 溢位 `opencode-go` → 再溢位 Coding Plan（遵守 1–2 併發、離峰加強）→ Workers AI 壓底（RPM 上限）。pi-ai 的 fallback 鏈 + Pi Durable inbox 天然排隊（`whenBusy` follow-up）正好承接這個拓撲；應用層保留現有每人 20 req/min 限流。
+
 結論（2026-11 修正）：
 - **Pi 對話引擎首選 A**（`defaults: { model: ai("@cf/zai-org/glm-4.7-flash") }`）：免 key、計費透明；**但 B′ 同樣是一等公民**——pi-ai 內建 zai provider，想用既有 Coding Plan 額度就切 `zaiProvider()`，兩者甚至可以做 fallback 鏈。先前「Pi Durable 不吃自訂 OpenAI 相容端點」的說法僅適用於 `agents` 的 `createAI` wrapper 路由，不適用於 pi-ai 自己的 Models registry，特此修正。
 - **過渡期非對話功能**（`routes/activities.ts` 的 `completeJson` 結構化輸出）先用 B 直連，維持現有 GLM 額度。
