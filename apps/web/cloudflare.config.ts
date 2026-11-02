@@ -14,9 +14,9 @@ export default defineConfig({
     compatibilityFlags: ["nodejs_compat"],
     observability: { enabled: true },
     env: {
-      DB: bindings.d1({ name: "socrates" }),
+      DB: bindings.d1({ name: "socrates", id: "d1db0ca1-1111-4000-8000-000000000001" }),
       UPLOADS: bindings.r2({ name: "socrates-uploads" }),
-      AI: bindings.ai({ dev: { remote: true } }),
+      ...(process.env.CF_REMOTE_AI === "true" ? { AI: bindings.ai({ dev: { remote: true } }) } : {}),
       PiAgent: bindings.durableObject({ worker: "socrates-classroom", exportName: "PiAgent" }),
       ActivityEvents: bindings.durableObject({ worker: "socrates-classroom", exportName: "ActivityEvents" }),
       // vars

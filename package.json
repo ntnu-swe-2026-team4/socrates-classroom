@@ -14,7 +14,7 @@
     "test": "pnpm --filter @socrates/server test",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "migrate": "pnpm --filter @socrates/server migrate",
+    "migrate": "pnpm --filter @socrates/web migrate",
     "seed": "pnpm --filter @socrates/server seed",
     "deploy": "pnpm --filter @socrates/web deploy"
   },

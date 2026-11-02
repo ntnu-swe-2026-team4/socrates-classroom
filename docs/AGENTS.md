@@ -15,6 +15,7 @@
 | Cloudflare CLI 使用                  | `cf.md`           | cf 工作流變更時                       |
 | Pi Durable / PiHarness 使用          | `pi.md`           | pi/agents 版本升級、pi 相關踩坑時     |
 | 快速開始（人類用）                   | `../README.md`    | 指令或前置需求變更時                  |
+| 本地開發（zero-account、DB、對話）   | `development.md`  | dev 流程、本地模擬行為變更時          |
 
 ## 規則
 

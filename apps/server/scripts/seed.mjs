@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * 對本機 `cf dev`（預設 http://localhost:8787）灌示範資料。
+ * 對本機 dev server（pnpm dev:web，預設 http://localhost:5173）灌示範資料。
  * 需要 SEED_TOKEN（cloudflare.config.ts vars / .dev.vars 設定值一致）。
  *
  *   SEED_TOKEN=dev-token node scripts/seed.mjs
  */
-const BASE = process.env.SEED_BASE ?? "http://localhost:8787";
+const BASE = process.env.SEED_BASE ?? "http://localhost:5173";
 const TOKEN = process.env.SEED_TOKEN ?? "";
 
 if (!TOKEN) {

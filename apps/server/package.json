@@ -6,7 +6,6 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "migrate": "cf d1 migrations apply socrates --dir migrations --local",
     "seed": "node scripts/seed.mjs"
   },
   "dependencies": {
