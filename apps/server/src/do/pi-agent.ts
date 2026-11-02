@@ -11,11 +11,6 @@ import { EmotionSplitter } from "../providers/emotion";
 import { buildPool, isHealthy, markDegraded, type Pool } from "../providers/pool";
 import { loadHistory, saveTurn } from "../services/dialogue-save";
 
-/**
- * 一個對話執行緒 = 一個 PiAgent DO instance（idFromName(`${scope}:${id}`)）。
- * pi 擁有 transcript、inbox、重試與恢復（存在 DO 自己的 SQLite，pi_* 表）；
- * 本 DO 另負責：SSE 轉換（現有前端契約）、D1 寫回、provider 健康選擇。
- */
 export class PiAgent extends DurableObject<Env> {
   readonly pool: Pool = buildPool(this.env);
   readonly registry = createRegistry();
@@ -33,7 +28,6 @@ export class PiAgent extends DurableObject<Env> {
           registry: this.registry,
           onWake,
           settings: {
-            // 指數退避：1、2、4、8、16 秒
             retry: { enabled: true, maxRetries: 5, baseDelayMs: 1000 },
             afterFailedRun: "continue",
           },
@@ -47,17 +41,12 @@ export class PiAgent extends DurableObject<Env> {
 
   readonly lifecycle = Lifecycle.install(this).use(this.harness);
 
-  /** 同一執行緒一次只跑一個對話請求（前端契約：409 already_streaming）。 */
   private busy = false;
 
   private chainHead(): AnyModel | undefined {
     return this.pool.chain[0]?.model;
   }
 
-  /**
-   * 對話一輪：送出使用者輸入，把 pi events 轉成現有 SSE 契約。
-   * 回傳 SSE Response；一開始就失敗則丟錯（訊息 key），路由層轉成 HTTP 錯誤。
-   */
   async dialogue(input: {
     scope: "archive" | "activity" | "discussion";
     scopeId: string;
@@ -74,13 +63,9 @@ export class PiAgent extends DurableObject<Env> {
 
     const session = this.harness.session();
     try {
-      // 健康優先：每輪把 session 指到當前健康的 provider
       await session.setModel(entry.model as never);
-    } catch {
-      /* 舊 session 無法換模型時沿用 defaults */
-    }
+    } catch {}
 
-    // pi transcript 是空的（DO 剛建立）但 D1 已有歷史（舊對話遷移）→ 首輪注入上下文
     let userText = input.userText;
     try {
       const existing = await session.messages();
@@ -88,9 +73,7 @@ export class PiAgent extends DurableObject<Env> {
         const history = await loadHistory(d1(this.env.DB), input.scope, input.scopeId, input.userId);
         if (history.length) userText = `${digest(history)}\n\n【學生剛剛說】${input.userText}`;
       }
-    } catch {
-      /* 讀不到歷史就照常送出 */
-    }
+    } catch {}
 
     this.busy = true;
     try {
@@ -127,13 +110,10 @@ export class PiAgent extends DurableObject<Env> {
               if (closed) return;
               try {
                 controller.enqueue(encoder.encode(": ping\n\n"));
-              } catch {
-                /* 已關閉 */
-              }
+              } catch {}
             }, 15_000);
             try {
               send("meta", { provider: entry.provider });
-              // 先訂閱事件（snapshot + 每 commit 一批），再送出——順序顛倒會漏掉瞬時完成的 run
               const snap = (stream as { snapshot?: SnapshotEvent }).snapshot;
               if (snap?.generation?.message) handle(splitter.push(partialText(snap.generation.message)));
               const _consuming = stream.start(async (events) => {
@@ -151,7 +131,6 @@ export class PiAgent extends DurableObject<Env> {
                 | { error: unknown };
               if ("error" in result) throw result.error;
               if (result.status === "unanswered") throw new Error(`llm_unavailable:${result.reason ?? ""}`);
-              // 讓最後一批事件送達，再以 transcript 為準（delta 只是串流 UX）
               await new Promise((r) => setTimeout(r, 30));
               if (!acc.trim()) {
                 const lastText = lastAssistantText((await session.messages()) as never);
@@ -183,20 +162,15 @@ export class PiAgent extends DurableObject<Env> {
               closed = true;
               try {
                 await stream.stop();
-              } catch {
-                /* stream 已結束 */
-              }
+              } catch {}
               try {
                 controller.close();
-              } catch {
-                /* already closed */
-              }
+              } catch {}
             }
           };
           void pump();
         },
         cancel: () => {
-          // 客戶端斷線：pi 的工作照跑（durable），不浪費已產生的內容
           closed = true;
         },
       });
@@ -215,7 +189,6 @@ export class PiAgent extends DurableObject<Env> {
     }
   }
 
-  /** 管理端點：pool 健康。 */
   status() {
     return {
       busy: this.busy,
@@ -224,14 +197,12 @@ export class PiAgent extends DurableObject<Env> {
   }
 }
 
-/** 把 D1 歷史壓成緊湊上下文（只在新 pi session 接舊對話時用）。 */
 function digest(history: Array<{ role: "user" | "assistant"; text: string }>): string {
   const recent = history.slice(-12);
   const lines = recent.map((m) => `${m.role === "user" ? "學生" : "蘇格拉底"}：${m.text.slice(0, 160)}`);
   return `（這是延續先前的對話。到目前為止：\n${lines.join("\n")}\n）`;
 }
 
-/** 從 pi transcript 取最後一則助理訊息的文字（EntryRecord.kind/model 結構）。 */
 function lastAssistantText(
   entries: ReadonlyArray<{
     kind: string;

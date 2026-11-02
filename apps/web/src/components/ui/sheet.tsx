@@ -4,7 +4,6 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/i18n";
 
-/** 從右邊拉出的抽屜：沿用 Dialog 的開關與焦點處理，只是換成貼右邊的面板 */
 export const Sheet = DialogPrimitive.Root;
 
 export function SheetContent({ className, children, ...props }: React.ComponentProps<typeof DialogPrimitive.Content>) {

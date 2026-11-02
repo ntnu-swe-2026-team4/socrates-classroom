@@ -50,7 +50,6 @@ export function useStoryTour(
     setTour((current) => (current ? { ...current, phase: "leaving" } : null));
   }, []);
 
-  // Each move has its own completion boundary; playback starts after arriving.
   useEffect(() => {
     const root = scroller.current;
     if (!root || tour?.phase !== "moving") return;
@@ -79,7 +78,6 @@ export function useStoryTour(
     return () => cancelAnimationFrame(frame);
   }, [scroller, tour?.scene, tour?.phase, tour?.session, reducedMotion, tour]);
 
-  // Hold each loaded scene for five seconds; pausing preserves the remaining time.
   useEffect(() => {
     if (clock.current.key !== sceneKey) clock.current = { key: sceneKey, elapsed: 0 };
     if (tour?.phase !== "playing" || !ready || reducedMotion) return;
@@ -125,7 +123,6 @@ export function useStoryTour(
     const root = scroller.current;
     if (!root || !tour) return;
     const interrupt = (event: Event) => {
-      // Tapping the playback controls on a phone must not cancel the tour.
       if (event.type === "touchstart" && event.target instanceof Element && event.target.closest(".story-player"))
         return;
       setTour(null);

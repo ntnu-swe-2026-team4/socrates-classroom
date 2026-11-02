@@ -39,7 +39,6 @@ export function requireUser(c: { get: (k: "user") => UserRow | undefined }): Use
 }
 
 export async function startSession(db: Db, c: any, userId: string, secure: boolean): Promise<void> {
-  // 順手清掉過期 session，避免資料表隨登入次數無限增長
   await run(db, "DELETE FROM sessions WHERE expires_at < $now", { now: new Date().toISOString() });
   const token = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
   const now = new Date();

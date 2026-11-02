@@ -1,13 +1,6 @@
 // @ts-nocheck
 import * as THREE from "three";
 
-/* =========================================================
-   Ported from draft-main's web/src/avatar.ts (TypeScript ->
-   plain JS ES module). Drives the model's morph targets:
-   visemes (lip-sync), blinking, idle motion, and the model's
-   expression clips (Happy = laugh / Confused / Angry) layered on top.
-========================================================= */
-
 export const VISEMES = [
   "viseme_sil",
   "viseme_PP",
@@ -27,16 +20,10 @@ export const VISEMES = [
 ];
 
 const BLINK_KEYS = ["eyeBlinkLeft", "eyeBlinkRight"];
-// Slow, calm blink (seconds): lids ease down, rest briefly, then lift more slowly than they fell.
 const BLINK_TIMING = { close: 0.28, hold: 0.12, open: 0.45 };
 
 const easeInOut = (x) => x * x * (3 - 2 * x);
 
-/**
- * One expression clip from the model, sampled by hand (not AnimationMixer) so it can be layered
- * over lip-sync and blinking. `used` marks the morphs the clip actually moves: a layer only
- * overrides those, so e.g. "Angry" takes the brows while lip-sync keeps the mouth.
- */
 class ClipLayer {
   constructor(track, duration, fadeIn, fadeOut) {
     this.duration = duration;
@@ -78,14 +65,12 @@ class ClipLayer {
     this.values = this.interp.evaluate(Math.min(this.time, this.duration));
   }
 
-  /** Blends this layer over `base` for morph index i. */
   apply(i, base) {
     if (!this.weight || !this.used[i]) return base;
     return base + (this.values[i] - base) * this.weight;
   }
 }
 
-/** Drives the bust's morph targets: visemes (lip-sync), blinking, idle head motion and expression clips. */
 export class Avatar {
   constructor(model, clips = []) {
     this.root = new THREE.Group();
@@ -111,19 +96,17 @@ export class Avatar {
     }
 
     this.expressionLayers = new Map();
-    this.expression = null; // the expression layer currently playing (others may still be fading out)
+    this.expression = null;
     for (const clip of clips) {
       const track = clip.tracks.find((tr) => tr.name.endsWith(".morphTargetInfluences"));
       if (track) this.expressionLayers.set(clip.name, new ClipLayer(track, clip.duration, 0.35, 0.6));
     }
   }
 
-  /** Names of the expression clips the model ships with (e.g. "Happy", "Confused", "Angry"). */
   get expressions() {
     return [...this.expressionLayers.keys()];
   }
 
-  /** Plays an expression clip once (or looping); null fades back to neutral. */
   setExpression(name, { loop = false } = {}) {
     const next = name ? this.expressionLayers.get(name) : null;
     if (this.expression && this.expression !== next) this.expression.stop();
@@ -131,7 +114,6 @@ export class Avatar {
     next?.play({ loop });
   }
 
-  /** Sets the active viseme; all others relax towards zero. */
   setViseme(viseme, weight = 1) {
     for (const v of VISEMES) this.visemeTarget.set(v, v === viseme ? weight : 0);
   }
@@ -144,7 +126,6 @@ export class Avatar {
   update(dt) {
     this.time += dt;
 
-    // Frame-rate independent smoothing: attack faster than release so plosives still register.
     for (const v of VISEMES) {
       const cur = this.visemeCurrent.get(v);
       const tgt = this.visemeTarget.get(v);
@@ -161,14 +142,11 @@ export class Avatar {
       const inf = mesh.morphTargetInfluences;
       for (const [name, i] of Object.entries(dict)) {
         let v = this.visemeCurrent.get(name) ?? (BLINK_KEYS.includes(name) ? this.blink : 0);
-        // Expressions on top: each only touches the morphs its clip uses, so lip-sync keeps the mouth
-        // unless the expression itself moves it (the laugh opens the mouth wide).
         for (const layer of layers) v = layer.apply(i, v);
         inf[i] = v;
       }
     }
 
-    // Idle sway and breathing, plus a slight nod while speaking.
     const t = this.time;
     const talk = this.speaking * (Math.sin(t * 5.3) * 0.5 + Math.sin(t * 3.1) * 0.5);
     this.root.rotation.y = Math.sin(t * 0.37) * 0.05 + Math.sin(t * 0.83) * 0.015;

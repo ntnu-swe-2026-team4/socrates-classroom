@@ -60,7 +60,6 @@ function CoverageChips({ coverage }: { coverage?: Coverage }) {
   );
 }
 
-/** 右側：跟蘇格拉底的對話（回覆用串流一段一段出現；每句話可以標註成筆記） */
 function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
   const t = useT();
   const qc = useQueryClient();
@@ -75,7 +74,6 @@ function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
   }, []);
-  // 回覆完成後用語音念出來（跟單人對話一樣），資訊欄的蘇格拉底跟著動嘴巴
   useEffect(() => stopAiSpeech, []);
 
   async function send() {
@@ -89,7 +87,7 @@ function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
       const reply = await api.sendDialogue(a.id, msg, (c) => setPending((p) => (p ?? "") + c));
       speakAi(reply.text);
     } catch (e) {
-      setText(msg); // 送出失敗（限流／LLM 無法使用）時把輸入還給使用者，不用重打
+      setText(msg);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setPending(null);
@@ -99,7 +97,6 @@ function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
     }
   }
 
-  /** 已存的訊息可以標註成筆記，再按一次取消 */
   const toggleMark = (id: string, body: string) => {
     const note = notes.find((n) => n.sourceMessageId === id);
     if (note) remove.mutate(note.id);
@@ -175,7 +172,6 @@ function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
   );
 }
 
-/** 直接在欄位裡整理 / 修改論點（不另開視窗）；沒有確認過時，先帶入 AI 依對話整理的草稿 */
 function SummaryEditor({ a, initial, onDone }: { a: Activity; initial?: ArgumentSummary; onDone: () => void }) {
   const t = useT();
   const confirm = useConfirmPosition(a.id);
@@ -218,7 +214,6 @@ function SummaryEditor({ a, initial, onDone }: { a: Activity; initial?: Argument
   );
 }
 
-/** 左欄「個人調查」模式：進度、整理 / 修改論點 */
 function Investigation({ a, over }: { a: Activity; over: boolean }) {
   const t = useT();
   const { data: progress } = useProgress(a.id);

@@ -13,7 +13,6 @@ const SLOTS = ["x", "y", "z"] as const;
 type Slot = (typeof SLOTS)[number];
 type AxisMap = Record<Slot, string | null>;
 
-/** 立場星圖：compact = 只有 3D 畫面（放在左側資訊欄），可以按「放大」；完整版有量軸、時間軸、分群。 */
 export function StarMap({
   data,
   compact = false,
@@ -64,7 +63,6 @@ export function StarMap({
     [data, t],
   );
 
-  // 建立 / 銷毀 three.js 場景
   useEffect(() => {
     const engine = createConstellation(mountRef.current, { light: theme === "light" });
     engineRef.current = engine;
@@ -72,13 +70,11 @@ export function StarMap({
       engine.dispose();
       engineRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
   useEffect(() => {
     engineRef.current?.setTheme(theme === "light");
   }, [theme]);
 
-  // 換資料：重置量軸與時間軸
   useEffect(() => {
     const e = engineRef.current;
     if (!e) return;
@@ -97,7 +93,6 @@ export function StarMap({
       { instant: true },
     );
     e.setStep(data.initialStep);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, engineAgents, axisDefs]);
 
   useEffect(() => {
@@ -112,10 +107,8 @@ export function StarMap({
     e.setAxes(axisDefs, axisMap);
     e.setActive(activeSlots);
     prevCluster.current = null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [axisMap, activeSlots, axisDefs]);
 
-  // 分群：辯論分組直接用實際組別；否則跑 k-means
   useEffect(() => {
     const e = engineRef.current;
     if (!e) return;
@@ -140,10 +133,8 @@ export function StarMap({
     }
     e.setCluster(next);
     setCur(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clusterOn, k, step, data, dim]);
 
-  // 播放
   useEffect(() => {
     if (!playing) return;
     const id = setInterval(

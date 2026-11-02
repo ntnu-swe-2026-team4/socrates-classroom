@@ -1,6 +1,5 @@
 import type { Messages } from "../index";
 
-/** 活動頁（個人調查 / 團隊提純 / 辯論比賽 / 結果）、星圖、評分標準 */
 const m: Messages = {
   en: {
     回辯論: "Back to debate",

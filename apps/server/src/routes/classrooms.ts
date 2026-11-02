@@ -16,7 +16,6 @@ import { classroomJson } from "../services/serialize";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function newCode(): string {
-  // 用 crypto 級亂數：Math.random 可被回推狀態，邀請碼不能讓人預測
   const bytes = crypto.getRandomValues(new Uint32Array(6));
   return Array.from(bytes, (n) => CODE_CHARS[n % CODE_CHARS.length]).join("");
 }

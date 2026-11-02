@@ -13,7 +13,6 @@ const paths = [
 
 type Props = { variant?: "hero" | "story" | "login"; mirrored?: boolean };
 
-/** Shared atmosphere, with fewer and quieter paths behind the story. */
 export function BackgroundPaths({ variant = "login", mirrored = false }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const gradientId = useId();

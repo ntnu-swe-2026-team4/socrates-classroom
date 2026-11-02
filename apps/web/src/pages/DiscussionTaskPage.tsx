@@ -55,10 +55,6 @@ function CoverageChips({ coverage }: { coverage?: Coverage }) {
   );
 }
 
-/**
- * 一則訊息的泡泡（學生自己的對話與老師回看同學的對話共用）。
- * speaker = 說話的學生（老師回看時用同學的名字，學生看自己的對話時是「我」）
- */
 function Bubble({
   role = "assistant",
   text,
@@ -86,7 +82,6 @@ function Bubble({
   );
 }
 
-/* ---------------- 學生：跟蘇格拉底對話 ---------------- */
 function StudentChat({ d, readOnly }: { d: DiscussionTask; readOnly: boolean }) {
   const t = useT();
   const qc = useQueryClient();
@@ -116,7 +111,7 @@ function StudentChat({ d, readOnly }: { d: DiscussionTask; readOnly: boolean }) 
       const reply = await api.sendDiscussionMessage(d.id, msg, (c) => setPending((p) => (p ?? "") + c));
       speakAi(reply.text);
     } catch (e) {
-      setText(msg); // 送出失敗（限流／LLM 無法使用）時把輸入還給使用者，不用重打
+      setText(msg);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setPending(null);
@@ -169,7 +164,6 @@ function StudentChat({ d, readOnly }: { d: DiscussionTask; readOnly: boolean }) 
   );
 }
 
-/** 學生的左欄：題目說明、進度、自己的結論 */
 function StudentInfo({ d, readOnly }: { d: DiscussionTask; readOnly: boolean }) {
   const t = useT();
   const { data: session } = useDiscussionSession(d.id);
@@ -263,8 +257,6 @@ function StudentInfo({ d, readOnly }: { d: DiscussionTask; readOnly: boolean }) 
   );
 }
 
-/* ---------------- 老師：全班的討論成果 ---------------- */
-/** 點某位同學後，從右邊拉出他的完整對話 */
 function SessionSheet({ d, row, onClose }: { d: DiscussionTask; row: DiscussionSession | null; onClose: () => void }) {
   const t = useT();
   const { data: detail, error } = useDiscussionSession(d.id, row?.studentId ?? "me", !!row);
@@ -324,7 +316,6 @@ function TeacherResults({ d, teacher }: { d: DiscussionTask; teacher: boolean })
   const t = useT();
   const { data: sessions = [] } = useDiscussionSessions(d.id);
   const [filter, setFilter] = useState<DiscussionSessionStatus | "all">("all");
-  // 只記 studentId，彈窗開著時 refetch 進來的最新資料也能即時反映（存整列會變成過期快照）
   const [openId, setOpenId] = useState<string | null>(null);
   const openRow = openId ? (sessions.find((s) => s.id === openId) ?? null) : null;
   const shown = filter === "all" ? sessions : sessions.filter((s) => s.status === filter);
@@ -437,7 +428,6 @@ function TeacherResults({ d, teacher }: { d: DiscussionTask; teacher: boolean })
   );
 }
 
-/* ---------------- 頁面 ---------------- */
 function DeleteDialog({
   d,
   open,
@@ -485,10 +475,6 @@ function DeleteDialog({
   );
 }
 
-/**
- * 多人討論：老師出一個統一的題目，每位同學各自跟 AI 蘇格拉底對話並寫下結論；
- * 老師（與助教）在同一頁看全班的討論成果，點某位同學可以看他的完整對話。
- */
 export function DiscussionTaskPage() {
   const t = useT();
   const { classroomId, discussionId } = useParams({ from: "/_app/classrooms/$classroomId/discussions/$discussionId" });

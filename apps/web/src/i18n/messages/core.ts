@@ -1,6 +1,5 @@
 import type { Messages } from "../index";
 
-/** 語言切換、日期、頭像、小雕像等共用文字 */
 const m: Messages = {
   en: {
     語言: "Language",

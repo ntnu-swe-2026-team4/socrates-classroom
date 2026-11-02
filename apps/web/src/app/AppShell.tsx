@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-// 引入 Volume2 (有聲音) 和 VolumeX (靜音) 圖標
 import {
   BookOpen,
   ChevronDown,
@@ -23,10 +22,8 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { LANGS, useLang, useT } from "@/i18n";
 import { useTheme } from "./theme";
-// 引入音效狀態機制
 import { useAudioSettings } from "../lib/AudioContext";
 
-/** 標題列：[網址, 標題, 上方的小字（老師與學生可以不同）] */
 const TITLES: [RegExp, string, (role?: string) => string][] = [
   [/^\/$/, "首頁", () => "歡迎回來"],
   [/^\/dialogue/, "對話", () => "進行中的討論"],
@@ -55,10 +52,8 @@ function NavGroup({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const has = paths.some((p) => pathname.startsWith(p));
-  // 自己的展開狀態：目前頁面在群組裡時會自動展開，但之後可以再點一次收起來
   const [open, setOpen] = useState(has);
 
-  // 對接到 main.tsx 的 AudioProvider
   const { isMuted } = useAudioSettings();
 
   useEffect(() => {
@@ -99,14 +94,11 @@ function NavGroup({
 
 const sub = "w-[72px] rounded-md py-1.5 text-center text-xs text-ink-faint hover:bg-bg-2 hover:text-ink-dim";
 
-// 將內部 UI 抽成一個子組件，這樣才能在內部安全地調用 useAudioSettings()
 function AppShellContent() {
   const { theme, toggle } = useTheme();
-  // 取得靜音狀態與切換函式
   const { isMuted, toggleMute } = useAudioSettings();
   const { data: me } = useMe();
   const t = useT();
-  // 切換語言會重新載入整個畫面，這個旗標讓設定視窗在重新載入後維持開啟
   const [settings, setSettings] = useState(() => {
     try {
       return sessionStorage.getItem("reopen-settings") === "1";
@@ -117,12 +109,9 @@ function AppShellContent() {
   useEffect(() => {
     try {
       sessionStorage.removeItem("reopen-settings");
-    } catch {
-      /* 沒有就算了 */
-    }
+    } catch {}
   }, []);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  // 教室裡的頁面（教室、辯論、活動）自己有緊湊的標題列，不再重複顯示上方的大標題
   const inClassroom = /^\/classrooms\/[^/]+/.test(pathname) || pathname.startsWith("/dialogue");
   const hit = TITLES.find(([re]) => re.test(pathname));
   const title = hit ? t(hit[1]) : "";
@@ -250,7 +239,6 @@ function AppShellContent() {
   );
 }
 
-/** 設定裡的顯示名稱：改完按「儲存」，側邊欄與教室成員表會一起更新 */
 function NameEditor({ name }: { name: string }) {
   const t = useT();
   const update = useUpdateMe();
@@ -285,7 +273,6 @@ function NameEditor({ name }: { name: string }) {
   );
 }
 
-/** 設定裡的頭像：預設是黑色，可以上傳自己的圖片（會置中裁成正方形並縮小），也可以移除 */
 function AvatarEditor({ name, src }: { name: string; src?: string | null }) {
   const t = useT();
   const update = useUpdateMe();
@@ -345,7 +332,6 @@ function AvatarEditor({ name, src }: { name: string; src?: string | null }) {
   );
 }
 
-/** 設定裡的語言切換：繁體中文 / English / Español，選擇會記在這個瀏覽器 */
 function LanguageSwitcher() {
   const { lang, setLang } = useLang();
   const t = useT();
@@ -371,9 +357,7 @@ function LanguageSwitcher() {
               if (l.code === lang) return;
               try {
                 sessionStorage.setItem("reopen-settings", "1");
-              } catch {
-                /* 沒有就算了 */
-              }
+              } catch {}
               setLang(l.code);
             }}
             className={cn(
@@ -389,7 +373,6 @@ function LanguageSwitcher() {
   );
 }
 
-// 用 AudioProvider 將其包裹在最外層
 export function AppShell() {
   return <AppShellContent />;
 }

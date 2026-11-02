@@ -3,16 +3,8 @@ import { useAiSpeaking } from "@/lib/ai-speaking";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
-// 三維引擎很大：第一次真的要顯示時才下載，所以不影響首頁與其他頁面的載入速度
 const SocratesStage = lazy(() => import("./SocratesStage").then((m) => ({ default: m.SocratesStage })));
 
-/**
- * 資訊欄裡的小蘇格拉底雕像。省效能的做法：
- * 1. 程式碼分割 + 閒置時才開始載入（不跟頁面內容搶資源）；
- * 2. 小尺寸、限制 30 fps；
- * 3. 捲出畫面或分頁在背景時完全不畫；
- * 4. 模型檔只下載一次，換階段時 WebGL 內容會立刻釋放。
- */
 export function SocratesBadge({ className, fill = false }: { className?: string; fill?: boolean }) {
   const t = useT();
   const speaking = useAiSpeaking();

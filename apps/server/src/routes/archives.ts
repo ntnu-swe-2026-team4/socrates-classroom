@@ -106,7 +106,6 @@ export function archiveRoutes(db: Db, getLang: (c: any) => Lang) {
     const body = await bodyOf(c);
     const text = str(body.text, "text_required", { min: 1, max: 2000 });
     checkRate(user.id);
-    // 對話改走 PiAgent DO（每個 archive 一個 instance）
     const stub = c.env.PiAgent.getByName(`archive:${archive.id}`);
     let response: Response;
     try {

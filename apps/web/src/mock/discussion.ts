@@ -1,12 +1,3 @@
-/**
- * 多人討論的「假後端」：老師出一題，每位同學各自跟 AI 蘇格拉底對話，老師看全班的討論成果。
- *
- * 全部存在記憶體（重整就消失）。模擬同學的對話是由「題目 id + 同學名字」決定的種子產生的
- * 範本句子，不是真正的 LLM；真正登入的那位學生如果有設 GLM 的 key，會問真的 AI
- * （見 mock.ts 的 llmReply 與 frontend/dev/llm-bridge.ts）。
- *
- * 真後端上線後整個 src/mock 都可以刪掉。
- */
 import { mulberry32, hashSeed } from "@/lib/star/data";
 import { coverage } from "./debate-ai";
 import { tr } from "@/i18n";
@@ -43,7 +34,6 @@ export interface StoredDiscussion {
   status: DiscussionStatus;
   createdAt: string;
   updatedAt: string;
-  /** studentId → 那位同學的對話 */
   sessions: Map<string, StoredSession>;
 }
 
@@ -52,8 +42,6 @@ const now = () => new Date().toISOString();
 let seq = 0;
 const newId = (p: string) => `${p}${Date.now().toString(36)}${seq++}`;
 
-/* ---------------- 模擬同學的對話 ---------------- */
-/** 同學可能說的話：由種子挑選、串成一段看起來合理的對話 */
 const OPENERS = [
   "我第一個想法是：這要看我們在意的是結果，還是在意有沒有守住原則。",
   "直覺上我會說是，但我說不太出來為什麼，好像只是因為大家都這樣講。",
@@ -76,7 +64,6 @@ const CLOSERS = [
   "我還是維持原本的立場，不過理由換了一個我自己更站得住腳的。",
   "我發現我真正在意的是「決定過程有沒有讓人參與」，而不是最後選哪一邊。",
 ];
-/** AI 蘇格拉底的追問（跟其他階段用的是同一套範本） */
 const SOCRATIC = [
   "有意思。但你剛才那句話裡，有沒有哪個詞，其實你自己也還沒完全想清楚是什麼意思？",
   "換個角度想：如果反過來看，你剛剛的說法還會成立嗎？",
@@ -94,11 +81,9 @@ const CONCLUSIONS = [
 
 const pick = <T>(rng: () => number, xs: T[]) => xs[(rng() * xs.length) | 0];
 
-/** 依「題目 + 同學」產生一段固定的對話；rounds = 0 代表這位同學還沒開始 */
 function simulate(taskId: string, studentId: string, studentName: string, maxRounds: number): StoredSession {
   const rng = mulberry32(hashSeed(`${taskId}:${studentId}`));
   const roll = rng();
-  // 約 2 成還沒開始、3 成在對話中、5 成已經送出結論
   const rounds = roll < 0.2 ? 0 : Math.max(1, Math.min(maxRounds, 2 + ((rng() * 6) | 0)));
   const submitted = rounds > 0 && roll >= 0.5;
   const messages: DialogueMessage[] = [];
@@ -126,7 +111,6 @@ function simulate(taskId: string, studentId: string, studentName: string, maxRou
   };
 }
 
-/* ---------------- 讀取與統計 ---------------- */
 const statusOf = (s: StoredSession): DiscussionSessionStatus =>
   s.conclusion !== null ? "submitted" : s.messages.length ? "talking" : "todo";
 
@@ -167,7 +151,6 @@ function stats(d: StoredDiscussion): DiscussionStats {
   };
 }
 
-/** 傳給前端的題目；myId 有值（學生）時附上自己的進度 */
 export function toTask(d: StoredDiscussion, myId: string | null): DiscussionTask {
   const mine = myId ? d.sessions.get(myId) : undefined;
   return {
@@ -194,7 +177,6 @@ export const listSessions = (d: StoredDiscussion, meId: string) =>
     )
     .map((s) => toSession(d, s, meId));
 
-/* ---------------- 建立與修改 ---------------- */
 export function createDiscussion(
   classroomId: string,
   input: DiscussionTaskInput,
@@ -217,7 +199,6 @@ export function createDiscussion(
     updatedAt: at,
     sessions: new Map(),
   };
-  // 教室裡的每位同學各有一段對話：登入的那位從空的開始，其他人用模擬的
   for (const name of students) {
     if (name === meName) continue;
     const sid = `sim-${hashSeed(name).toString(36)}`;
@@ -242,7 +223,6 @@ export function findDiscussion(id: string): StoredDiscussion {
   return d;
 }
 
-/** 自己的那段對話（還沒有就開一段新的） */
 export function mySession(d: StoredDiscussion, meId: string, meName: string): StoredSession {
   let s = d.sessions.get(meId);
   if (!s) {

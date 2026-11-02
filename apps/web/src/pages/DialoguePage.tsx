@@ -60,12 +60,10 @@ export function DialoguePage() {
     [],
   );
 
-  // 沒有指定議題時，把網址補成第一個議題，之後重新整理也停在同一個
   useEffect(() => {
     if (!topic && archive) navigate({ to: "/dialogue", search: { topic: archive.id }, replace: true });
   }, [topic, archive, navigate]);
 
-  /** 回傳是否真的送出（false = 沒送或失敗），讓輸入框能把清掉的字還原 */
   async function send(input: string): Promise<boolean> {
     if (!archive || !input.trim() || pending !== null) return false;
     setMine(input);
@@ -73,14 +71,12 @@ export function DialoguePage() {
     setStatus(t("思考中…"));
     clearTimeout(speakTimer.current);
     stopSpeaking();
-    // 送出訊息時播放 DORA 音效（靜音時略過）
     if (!isMuted) {
       const audio = new Audio("/sounds/DORA.mp3");
-      audio.volume = 0.5; // 調節音量，1.0 為最大聲
+      audio.volume = 0.5;
       audio.play().catch((err) => console.warn("DORA 音效播放失敗:", err));
     }
     stage.current?.setExpression(null);
-    // AI 一決定情緒就先做表情（例如先笑），回覆文字接著出現；開口說話至少等表情做出來之後
     let reactedAt = 0;
     const react = (e: Emotion) => {
       if (reactedAt) return;
@@ -91,7 +87,7 @@ export function DialoguePage() {
       const msg = await api.sendTopicDialogue(archive.id, input, (c) => setPending((p) => (p ?? "") + c), react);
       setStatus("");
       const emotion = msg.emotion ?? "neutral";
-      react(emotion); // 後端沒有提早送情緒時，在這裡補做
+      react(emotion);
       const wait = EMOTION_CLIP[emotion] ? Math.max(0, REACT_MS - (performance.now() - reactedAt)) : 0;
       speakTimer.current = setTimeout(
         () => speak(msg.text, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) }),
@@ -99,7 +95,7 @@ export function DialoguePage() {
       );
       return true;
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e)); // 錯誤留在畫面上，下次送出時才清掉
+      setStatus(e instanceof Error ? e.message : String(e));
       stage.current?.setExpression(null);
       return false;
     } finally {
@@ -110,7 +106,6 @@ export function DialoguePage() {
     }
   }
 
-  // 這個議題在這次進來之前就已經有對話（例如從議題頁按「繼續對話」）
   const earlier = !!archive && archive.rounds - history.filter((m) => m.role === "user").length > 0;
   const lines: Line[] = [
     {
@@ -263,9 +258,7 @@ export function DialoguePage() {
   );
 }
 
-/** 表情開始後至少過這麼久才開口（先笑 / 先生氣，再說話） */
 const REACT_MS = 1200;
-/** AI 回覆的情緒 → 模型的表情動畫（neutral 不播） */
 const EMOTION_CLIP: Record<Emotion, SocratesExpression | null> = {
   neutral: null,
   happy: "Happy",

@@ -114,7 +114,6 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
   r.get("/activities/:id/events", async (c) => {
     const user = requireUser(c);
     const { activity } = await accessActivity(db, c.req.param("id"), user);
-    // 事件扇出改走 ActivityEvents DO（跨 isolate）
     const stub = c.env.ActivityEvents.getByName(activity.id);
     return stub.stream();
   });
@@ -165,7 +164,6 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     return c.body(null, 204);
   });
 
-  /* ---------------- 階段 1 ---------------- */
   r.get("/activities/:id/dialogue", async (c) => {
     const user = requireUser(c);
     const { activity } = await accessActivity(db, c.req.param("id"), user);
@@ -224,7 +222,6 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     const user = requireUser(c);
     const { activity, role } = await accessActivity(db, c.req.param("id"), user);
     if (role !== "student") fail(403, "only_student");
-    // 草稿會打真實 LLM：與串流對話共用同一把鎖和速率額度，避免連點或腳本灌爆 LLM 額度
     checkRate(user.id);
     const lockKey = `activity:${activity.id}:${user.id}`;
     acquireLock(lockKey);
@@ -314,7 +311,6 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     return c.json(rows.map((row) => positionJson(row, showCoords)));
   });
 
-  /* ---------------- 思路筆記 ---------------- */
   r.get("/activities/:id/notes", async (c) => {
     const user = requireUser(c);
     const { activity, role } = await accessActivity(db, c.req.param("id"), user);

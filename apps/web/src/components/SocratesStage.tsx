@@ -3,14 +3,11 @@ import { useTheme } from "@/app/theme";
 import { useT } from "@/i18n";
 import { createSocratesScene } from "@/lib/socrates/scene";
 
-/** 模型內建的表情動畫 */
 export type SocratesExpression = "Happy" | "Confused" | "Angry";
 export type SocratesHandle = {
-  /** 播放表情；loop 時一直播到換表情或傳 null 為止，null 會淡回平常的樣子 */
   setExpression: (name: SocratesExpression | null, options?: { loop?: boolean }) => void;
 };
 
-/** 3D 蘇格拉底：speaking 為 true 時嘴巴會動；ref 可以播表情；點模型可切換全息效果，左右拖曳旋轉 */
 export function SocratesStage({
   ref,
   speaking,
@@ -33,8 +30,6 @@ export function SocratesStage({
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
-    // 沒有 WebGL（被停用、無痕或太舊的裝置）時 three.js 會直接丟錯，這裡接住，只是不顯示雕像
-    // 每次都建立新的 canvas：dispose 會釋放 WebGL context，同一個 canvas 不能再拿來重建（開發模式的 StrictMode 會掛載兩次）
     const cv = document.createElement("canvas");
     cv.className = "block size-full";
     box.current?.prepend(cv);
@@ -60,7 +55,6 @@ export function SocratesStage({
       scene.current = null;
       cv.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme, onReady, mini]);
   useEffect(() => {
     scene.current?.setTheme(theme === "light");

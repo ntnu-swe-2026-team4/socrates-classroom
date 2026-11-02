@@ -3,10 +3,6 @@ import type { Lang } from "@socrates/shared";
 type Vars = Record<string, string | number>;
 type Entry = { zh: string; en: string; es: string };
 
-/**
- * 給使用者看的訊息（錯誤、系統訊息）。資料本身不翻譯。
- * 以 zh 為預設；en / es 缺漏時退回中文。
- */
 const M: Record<string, Entry> = {
   unauthorized: { zh: "請先登入。", en: "Please sign in first.", es: "Inicia sesión primero." },
   forbidden: {

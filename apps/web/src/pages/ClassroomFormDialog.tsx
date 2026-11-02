@@ -8,7 +8,6 @@ import { useT } from "@/i18n";
 
 const MAX_DESC = 300;
 
-/** 新增教室（不帶 classroom）與編輯教室名稱、簡介共用的視窗 */
 export function ClassroomFormDialog({
   classroom,
   open,
@@ -30,7 +29,6 @@ export function ClassroomFormDialog({
     setName(classroom?.name ?? "");
     setDescription(classroom?.description ?? "");
     save.reset();
-    // 只在開啟時帶入目前的值
   }, [open, save.reset, classroom?.name, classroom?.description]);
 
   const submit = () => {

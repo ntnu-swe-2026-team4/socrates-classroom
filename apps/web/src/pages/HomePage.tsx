@@ -45,7 +45,6 @@ export function HomePage() {
   const quote = QUOTES[new Date().getDate() % QUOTES.length];
   const chips = [...archives.slice(0, 2).map((a) => a.title), ...SUGGESTIONS.map((s) => t(s))].slice(0, 4);
 
-  // 老師：各教室的平均完成度；學生：已加入教室裡的辯論
   const memberQs = useQueries({
     queries: (teacher ? mine : []).map((c) => ({
       queryKey: keys.classroomMembers(c.id),

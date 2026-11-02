@@ -15,7 +15,6 @@ import { SESSION_NAME, SESSION_TONE } from "./discussion-shared";
 
 const ROUND_CHOICES = [8, 12, 20];
 
-/** 新增（不帶 discussion）或編輯多人討論的題目 */
 export function DiscussionFormDialog({
   classroomId,
   discussion,
@@ -37,7 +36,6 @@ export function DiscussionFormDialog({
   const [due, setDue] = useState("");
   const [rounds, setRounds] = useState(12);
   const [err, setErr] = useState("");
-  // 編輯舊題目時輪數可能不在預設選項裡——補進清單才有選中狀態
   const roundOptions = ROUND_CHOICES.includes(rounds)
     ? ROUND_CHOICES
     : [...ROUND_CHOICES, rounds].sort((a, b) => a - b);
@@ -51,7 +49,6 @@ export function DiscussionFormDialog({
     setRounds(discussion?.maxRounds ?? 12);
     setErr("");
     save.reset();
-    // 只在開啟時帶入目前的值
   }, [
     open,
     discussion?.title,
@@ -209,10 +206,6 @@ function DiscussionCard({ d, staff }: { d: DiscussionTask; staff: boolean }) {
   );
 }
 
-/**
- * 教室的「多人討論」分頁：老師出的題目都列在這裡。
- * 老師與助教看到全班的完成人數，學生看到自己的狀態。
- */
 export function DiscussionTasksTab({ classroomId, staff }: { classroomId: string; staff: boolean }) {
   const t = useT();
   const navigate = useNavigate();

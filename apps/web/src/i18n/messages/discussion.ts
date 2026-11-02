@@ -1,14 +1,11 @@
 import type { Messages } from "../index";
 
-/** 多人討論（老師出一題，同學各自跟 AI 對話）、私人題庫分享 */
 const m: Messages = {
   en: {
-    /* 分頁與行事曆 */
     多人討論: "Discussions",
     討論區: "Board",
     討論截止: "Discussion due",
 
-    /* 列表與表單 */
     "搜尋討論題目…": "Search discussion questions…",
     只看進行中: "Open only",
     新增討論: "New discussion",
@@ -33,7 +30,6 @@ const m: Messages = {
     "請填寫討論題目。": "Please fill in the discussion question.",
     "已送出結論 {n} / {total} 人": "{n} of {total} have submitted",
 
-    /* 學生：題目與結論 */
     題目與我的結論: "Question & my conclusion",
     "老師出的題目是「{title}」。先不用急著下結論——你現在怎麼想？":
       "Your teacher's question is “{title}”. No need to settle on an answer yet — what do you think right now?",
@@ -52,7 +48,6 @@ const m: Messages = {
       ". Once you've talked it through, come back and write your conclusion — your teacher sees both it and the whole dialogue.",
     已送出結論: "Conclusion submitted",
 
-    /* 老師：討論成果 */
     題目與進度: "Question & progress",
     討論成果: "Discussion results",
     "每位同學各自跟 AI 蘇格拉底對話（AI 只提問、不給答案），再寫下自己的結論。你看得到每個人的結論與整段對話。":
@@ -79,7 +74,6 @@ const m: Messages = {
     "「{title}」會被永久刪除，連同全班同學的對話與結論，無法復原。":
       "“{title}” will be permanently deleted, along with every student's dialogue and conclusion. This can't be undone.",
 
-    /* 私人題庫分享 */
     私人題庫協作: "Private bank sharing",
     分享題目: "Share this question",
     分享: "Share",
@@ -96,7 +90,6 @@ const m: Messages = {
     "已分享給：": "Shared with:",
     同學: "classmate",
 
-    /* 錯誤訊息（假後端） */
     找不到討論: "Discussion not found",
     找不到這位同學的討論: "No discussion found for this student",
     請填寫討論題目: "Please fill in the discussion question",
@@ -108,7 +101,6 @@ const m: Messages = {
     別人分享給你的題目不能再轉分享: "A question someone shared with you can't be shared on",
     找不到要分享的對象: "Couldn't find that person to share with",
 
-    /* 模擬同學的示範對話 */
     "如果把你剛剛的理由推到底，會得到什麼結論？你接受那個結論嗎？":
       "If you push that reason all the way, where does it end up? Do you accept that conclusion?",
     "我第一個想法是：這要看我們在意的是結果，還是在意有沒有守住原則。":
@@ -152,12 +144,10 @@ const m: Messages = {
       "My conclusion is against it. The main reason: it shifts the cost onto the people least able to refuse, who had no part in the decision.",
   },
   es: {
-    /* Pestañas y calendario */
     多人討論: "Debates guiados",
     討論區: "Foro",
     討論截止: "Cierre del debate",
 
-    /* Lista y formulario */
     "搜尋討論題目…": "Buscar preguntas de debate…",
     只看進行中: "Solo abiertos",
     新增討論: "Nuevo debate",
@@ -182,7 +172,6 @@ const m: Messages = {
     "請填寫討論題目。": "Escribe la pregunta del debate.",
     "已送出結論 {n} / {total} 人": "{n} de {total} han entregado",
 
-    /* Alumno */
     題目與我的結論: "Pregunta y mi conclusión",
     "老師出的題目是「{title}」。先不用急著下結論——你現在怎麼想？":
       "La pregunta del profesor es «{title}». No hace falta decidir aún: ¿qué piensas ahora mismo?",
@@ -202,7 +191,6 @@ const m: Messages = {
       ". Cuando lo hayas hablado, vuelve y escribe tu conclusión: tu profesor verá tanto la conclusión como el diálogo completo.",
     已送出結論: "Conclusión entregada",
 
-    /* Profesor */
     題目與進度: "Pregunta y progreso",
     討論成果: "Resultados del debate",
     "每位同學各自跟 AI 蘇格拉底對話（AI 只提問、不給答案），再寫下自己的結論。你看得到每個人的結論與整段對話。":
@@ -229,7 +217,6 @@ const m: Messages = {
     "「{title}」會被永久刪除，連同全班同學的對話與結論，無法復原。":
       "«{title}» se eliminará de forma permanente, junto con el diálogo y la conclusión de cada alumno. No se puede deshacer.",
 
-    /* Banco privado compartido */
     私人題庫協作: "Colaboración en el banco privado",
     分享題目: "Compartir esta pregunta",
     分享: "Compartir",
@@ -246,7 +233,6 @@ const m: Messages = {
     "已分享給：": "Compartido con:",
     同學: "compañero",
 
-    /* Errores (backend de demostración) */
     找不到討論: "No se encuentra el debate",
     找不到這位同學的討論: "No se encuentra el debate de este alumno",
     請填寫討論題目: "Escribe la pregunta del debate",
@@ -258,7 +244,6 @@ const m: Messages = {
     別人分享給你的題目不能再轉分享: "Una pregunta que alguien ha compartido contigo no se puede volver a compartir",
     找不到要分享的對象: "No se encuentra esa persona para compartir",
 
-    /* Diálogos de demostración de los compañeros simulados */
     "如果把你剛剛的理由推到底，會得到什麼結論？你接受那個結論嗎？":
       "Si llevas esa razón hasta el final, ¿a qué conclusión llegas? ¿La aceptas?",
     "我第一個想法是：這要看我們在意的是結果，還是在意有沒有守住原則。":

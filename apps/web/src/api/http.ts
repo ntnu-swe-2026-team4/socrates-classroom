@@ -5,7 +5,6 @@ import type { ActivityEvent, DialogueMessage, Emotion } from "./types";
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 
 export class ApiError extends Error {
-  /** code：後端錯誤的代碼（例如對話的 llm_not_configured），沒有就是 undefined */
   constructor(
     public status: number,
     message: string,
@@ -15,7 +14,6 @@ export class ApiError extends Error {
   }
 }
 
-/** 後端的錯誤格式是 `{ message }`；不是 JSON 就用 fallback（預設 statusText） */
 async function errorOf(res: Response, fallback = res.statusText): Promise<ApiError> {
   let detail = fallback;
   let code: string | undefined;
@@ -23,9 +21,7 @@ async function errorOf(res: Response, fallback = res.statusText): Promise<ApiErr
     const j = (await res.json()) as { message?: string; detail?: string; code?: string };
     detail = j.message ?? j.detail ?? detail;
     code = j.code;
-  } catch {
-    /* 不是 JSON 就用預設說明 */
-  }
+  } catch {}
   return new ApiError(res.status, detail, code);
 }
 
@@ -54,7 +50,6 @@ const qs = (o: Record<string, string | undefined>) => {
   return s ? `?${s}` : "";
 };
 
-/** 上傳檔案：multipart/form-data，檔案欄位名為 file，其餘欄位為字串 */
 async function upload<T>(path: string, file: File, fields: Record<string, string> = {}): Promise<T> {
   const form = new FormData();
   form.append("file", file);
@@ -69,7 +64,6 @@ async function upload<T>(path: string, file: File, fields: Record<string, string
   return (await res.json()) as T;
 }
 
-/** 把一個 SSE 區塊拆成事件名稱與資料；`:` 開頭的是心跳註解，多行 data 用換行接起來 */
 function parseSseBlock(block: string): { event: string; data: string } | null {
   let event = "message";
   const data: string[] = [];
@@ -84,12 +78,6 @@ function parseSseBlock(block: string): { event: string; data: string } | null {
   return data.length ? { event, data: data.join("\n") } : null;
 }
 
-/**
- * 送出對話並讀取 SSE（格式見 docs/api-contract.md「對話 API」）：
- * event: emotion {emotion}（AI 的當下反應，最先送）→ event: delta {text} 多次 → event: done {message}；
- * 途中 AI 出錯時改送 event: error {message}。
- * 開始串流之前的錯誤（未登入、超過輪數、AI 服務沒設定…）是一般的 HTTP 錯誤 + { message }。
- */
 export async function streamDialogue(
   path: string,
   body: unknown,
@@ -122,7 +110,6 @@ export async function streamDialogue(
     for (;;) {
       const { value, done } = await reader.read();
       buf += dec.decode(value, { stream: !done });
-      // 事件之間以空行分隔；換行可能是 \n 或 \r\n
       let m: RegExpExecArray | null = /\r?\n\r?\n/.exec(buf);
       while (m) {
         const block = buf.slice(0, m.index).replace(/\r/g, "");
@@ -133,13 +120,10 @@ export async function streamDialogue(
       }
       if (done) break;
     }
-    // 最後一個事件後面沒有空行也接受
     const final = handle(buf.replace(/\r/g, ""));
     if (final) return final;
   } finally {
-    reader.cancel().catch(() => {
-      /* 已經關閉 */
-    });
+    reader.cancel().catch(() => {});
   }
   throw new ApiError(502, tr("串流結束但沒有收到完整訊息"));
 }

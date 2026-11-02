@@ -29,7 +29,6 @@ import { DebateFormDialog } from "./DebateFormDialog";
 
 export const CLASSROOM_TABS = ["home", "announcements", "debates", "discussions", "discussion", "members"] as const;
 export type ClassroomTab = (typeof CLASSROOM_TABS)[number];
-/** discussions = 多人討論（跟 AI 對話的題目）；discussion = 教室的討論區（同學互相發文） */
 const TAB_NAME: Record<ClassroomTab, string> = {
   home: "首頁",
   announcements: "公告",
@@ -47,7 +46,6 @@ export const STAGE_NAME: Record<Stage, string> = {
 };
 const STAGE_ORDER: Stage[] = ["individual", "team", "debate", "done"];
 
-/** 截止時間；已過期顯示紅色 */
 export function DueLabel({ at }: { at: string | null }) {
   const t = useT();
   if (!at) return null;
@@ -60,7 +58,6 @@ export function DueLabel({ at }: { at: string | null }) {
   );
 }
 
-/** 團體辯論的進度條 */
 export function StageBar({ stage }: { stage: Stage }) {
   return (
     <div className="flex gap-1">
@@ -127,7 +124,6 @@ const STAGE_FILTERS: [Stage | "all", string][] = [
 ];
 const WEEK_MS = 7 * 864e5;
 
-/** 辯論列表：用標題搜尋、依階段篩選，還可以只看一週內截止的 */
 function DebatesTab({
   classroomId,
   canCreate,
@@ -332,7 +328,6 @@ function MembersTab({ classroomId, teacher }: { classroomId: string; teacher: bo
   );
 }
 
-/** 教室首頁：簡介與行事曆 */
 function HomeTab({
   classroom,
   teacher,

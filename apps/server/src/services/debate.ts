@@ -65,7 +65,6 @@ export function estimateCoords(axes: Axis[], texts: string[]): number[] {
   return axes.map((ax) => clamp((count(ax.right) - count(ax.left)) * 0.4, -1, 1));
 }
 
-/* ---------------- k-means 分組 ---------------- */
 function mulberry32(seed: number) {
   let a = seed >>> 0;
   return () => {
@@ -198,7 +197,6 @@ export function formGroups(
     });
   }
   groups.sort((a, b) => a.centroid[0] - b.centroid[0]);
-  // 座標完全相同（例如大家都還沒開始）時 k-means 會只產生一組；至少拆成兩組才能辯論。
   if (groups.length < 2 && members.length >= 2) {
     const order = members.map((m, i) => ({ id: m.id, v: normalized[i][0] ?? 0 })).sort((a, b) => a.v - b.v);
     const cut = Math.ceil(order.length / 2);
@@ -251,7 +249,6 @@ export function pairGroups(groups: { id: string; centroid: number[] }[]) {
   return { pairs, bye };
 }
 
-/* ---------------- 組內論點 ---------------- */
 export function tally(votes: Record<string, string>, memberIds: string[]) {
   const t = { endorse: 0, revise: 0, oppose: 0, total: memberIds.length, cast: 0 };
   for (const id of memberIds) {
@@ -428,7 +425,6 @@ export function counterexampleFor(activity: ActivityRow, arg: any, lang: Lang = 
   return cases[arg.id.length % cases.length];
 }
 
-/* ---------------- 裁判 ---------------- */
 const RE = {
   example:
     /例如|比如|舉例|例子|像是|假設|for example|for instance|such as|\b(suppose|imagine)\b|por ejemplo|\b(ejemplo|supongamos|imagina)\b/i,

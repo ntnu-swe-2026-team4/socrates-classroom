@@ -46,7 +46,7 @@ export function postRoutes(db: Db) {
   r.get("/classrooms/:id/posts", async (c) => {
     const user = requireUser(c);
     const { classroom, role } = await accessClassroom(db, c.req.param("id"), user);
-    const topicId = c.req.query("topicId") || null; // 空字串視同未指定，行為與省略參數一致
+    const topicId = c.req.query("topicId") || null;
     if (topicId) {
       const topic = await topicById(db, topicId);
       if (!topic || topic.classroom_id !== classroom.id) fail(404, "topic_not_found");

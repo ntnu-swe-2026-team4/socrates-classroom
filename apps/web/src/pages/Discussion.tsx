@@ -8,7 +8,6 @@ import { Textarea } from "@/components/ui/input";
 import { cn, formatDateTime } from "@/lib/utils";
 import { useT } from "@/i18n";
 
-/** 發文框：學生可以勾選匿名（同學看不到名字，老師看得到） */
 function Composer({
   classroomId,
   topicId,
@@ -108,7 +107,6 @@ function PostBody({ p, canDelete, onDelete }: { p: DiscussionPost; canDelete: bo
   );
 }
 
-/** 討論區：topicId = null 為教室討論區，否則為該場辯論的討論區。回覆只有一層 */
 export function DiscussionBoard({ classroomId, topicId }: { classroomId: string; topicId: string | null }) {
   const t = useT();
   const { data: me } = useMe();

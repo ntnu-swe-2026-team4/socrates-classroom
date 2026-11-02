@@ -5,7 +5,6 @@ import { fail, newId, nowIso } from "../http";
 
 export const MAX_UPLOAD = 50 * 1024 * 1024;
 
-/** 上傳存 R2（key = 檔案 id）；D1 記 metadata。 */
 export async function saveUpload(
   db: Db,
   env: Env,
@@ -28,7 +27,7 @@ export async function saveUpload(
     name: file.name.replace(/[\r\n]/g, "").slice(0, 255),
     mime_type: /^[\w.+-]+\/[\w.+-]+$/.test(file.type) ? file.type : "application/octet-stream",
     size: file.size,
-    path: id, // R2 key
+    path: id,
     created_at: nowIso(),
   };
   try {
@@ -49,12 +48,9 @@ export async function saveUpload(
       },
     );
   } catch (error) {
-    // DB 寫入失敗時把已上傳的物件刪掉，不留孤兒
     try {
       await env.UPLOADS.delete(id);
-    } catch {
-      /* 物件已經不在 */
-    }
+    } catch {}
     throw error;
   }
   return row;
@@ -66,14 +62,11 @@ export async function deleteFile(db: Db, env: Env, fileId: string | null | undef
   if (row) {
     try {
       await env.UPLOADS.delete(row.path);
-    } catch {
-      /* 檔案已經不在 */
-    }
+    } catch {}
     await run(db, "DELETE FROM files WHERE id = $id", { id: fileId });
   }
 }
 
-/** 下載：從 R2 串流（權限檢查在路由層）。 */
 export async function fileDownloadResponse(
   env: Env,
   row: { path: string; mime_type: string; size: number; name: string },

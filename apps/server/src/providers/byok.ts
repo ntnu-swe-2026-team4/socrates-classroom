@@ -8,15 +8,6 @@ import { createProvider, type Api, type Model, type Provider } from "@earendil-w
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import type { Env } from "../env";
 
-/**
- * BYOK：支援所有 pi 內建、以 API key 認證的 provider。
- * 機制：以 builtin 目錄（getBuiltinModels）+ 學生自己的 key 組出 per-request provider，
- * 註冊到獨立的 Models registry；key 是學生的，帳戶隔離，不碰班級 pool。
- * OAuth／ambient 類（github-copilot、openai-codex、bedrock、vertex、cloudflare-auth）
- * 無法用單一 API key 表達，不進 BYOK 目錄。
- */
-
-/** pi-ai 內建、可 BYOK 的 provider（id → 顯示名稱與預設模型）。 */
 export const BYOK_CATALOG: Record<string, { name: string; defaultModel: string; env?: string }> = {
   openrouter: { name: "OpenRouter", defaultModel: "z-ai/glm-5.3-flash", env: "OPENROUTER_API_KEY" },
   zai: { name: "Z.AI (GLM)", defaultModel: "glm-5.3-flash", env: "ZAI_API_KEY" },
@@ -46,7 +37,6 @@ export function byokSupported(providerId: string): boolean {
   return providerId in BYOK_CATALOG;
 }
 
-/** 混合 API：每個 provider 目錄裡的模型各有自己的 api，全部註冊、按 model.api 路由。 */
 function apiMap(): Partial<Record<Api, unknown>> {
   return {
     "openai-completions": openAICompletionsApi(),
@@ -56,7 +46,6 @@ function apiMap(): Partial<Record<Api, unknown>> {
   } as Partial<Record<Api, unknown>>;
 }
 
-/** 以學生的 key + pi 內建目錄組出 per-request provider（baseUrl 取自該目錄的模型）。 */
 export function byokProvider(providerId: string, apiKey: string, modelId?: string): Provider {
   const meta = BYOK_CATALOG[providerId];
   if (!meta) throw new Error(`byok_provider_unsupported:${providerId}`);
@@ -74,12 +63,10 @@ export function byokProvider(providerId: string, apiKey: string, modelId?: strin
     baseUrl,
     auth: { apiKey: { name: `${meta.name} API key`, resolve: async () => ({ auth: { apiKey }, source: "BYOK" }) } },
     models,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     api: apiMap() as any,
   });
 }
 
-/** 學生 key 的來源優先序：請求內指定 → D1 儲存值（由呼叫端解密後傳入）。 */
 export function resolveByokKey(_env: Env, _providerId: string, supplied?: string): string | undefined {
-  return supplied ?? undefined; // D1 的加密儲存由 routes/byok 讀取後傳入
+  return supplied ?? undefined;
 }

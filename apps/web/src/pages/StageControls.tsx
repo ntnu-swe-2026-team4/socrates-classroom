@@ -10,7 +10,6 @@ import { STAGE_NAME } from "./ClassroomPage";
 export const STAGE_ORDER: Stage[] = ["individual", "team", "debate", "done"];
 const MINUTES = [5, 10, 15, 20, 30];
 
-/** 階段倒數：到時間只提醒，由老師決定何時推進 */
 function Countdown({ deadline }: { deadline: string }) {
   const t = useT();
   const [now, setNow] = useState(() => Date.now());
@@ -35,7 +34,6 @@ function Countdown({ deadline }: { deadline: string }) {
   );
 }
 
-/** 老師的「⋯」選單：限時、取消限時、直接結束活動 */
 function TeacherMenu({ a }: { a: Activity }) {
   const t = useT();
   const { finish, deadline } = useActivityControls(a.id);
@@ -136,10 +134,6 @@ function TeacherMenu({ a }: { a: Activity }) {
   );
 }
 
-/**
- * 標題列右上角：目前階段（或正在回顧的階段）、倒數、準備狀態、推進。
- * 老師的限時與直接結束收在「⋯」選單裡。
- */
 export function StageStatus({
   a,
   teacher,
@@ -219,7 +213,6 @@ export function StageStatus({
   );
 }
 
-/** 資訊欄裡的進度色條：依階段往前填色；點已經過的那一段可以回顧 */
 export function ProgressStrip({ a, seeing, onSee }: { a: Activity; seeing: Stage; onSee: (s: Stage) => void }) {
   const t = useT();
   const cur = STAGE_ORDER.indexOf(a.stage);

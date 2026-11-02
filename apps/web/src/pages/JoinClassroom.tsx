@@ -68,10 +68,6 @@ function QuestionField({ q, value, onChange }: { q: JoinQuestion; value: string;
   );
 }
 
-/**
- * 加入教室：沒帶 classroom 時先輸入邀請碼；找到教室後顯示簡介，
- * 需要審核就填問卷送出申請，不需要就直接加入（留在原本的頁面，不會跳轉）。
- */
 export function JoinDialog({
   classroom,
   open,
@@ -98,7 +94,6 @@ export function JoinDialog({
     setSent(false);
     lookup.reset();
     join.reset();
-    // 只在開啟時重設
   }, [open, lookup.reset, join.reset, classroom]);
 
   const c = found;
@@ -112,7 +107,6 @@ export function JoinDialog({
     join.mutate(
       { classroomId: c.id, input: { code: usedCode, answers: c.requireApproval ? answers : undefined } },
       {
-        // 加入成功就關掉視窗，留在原本的頁面（例如探索教室）；需要審核的顯示「已送出申請」
         onSuccess: (r) => (r.status === "joined" ? onOpenChange(false) : setSent(true)),
       },
     );
@@ -204,7 +198,6 @@ export function JoinDialog({
   );
 }
 
-/** 學生的「探索教室」（在「教室」頁裡取代我的教室清單）：老師開放探索的教室，可以直接加入或申請 */
 export function DiscoverClassrooms({ q }: { q: string }) {
   const t = useT();
   const [query, setQuery] = useState("");
@@ -259,7 +252,6 @@ export function DiscoverClassrooms({ q }: { q: string }) {
   );
 }
 
-/** 學生的加入申請（審核中可取消；未通過時顯示老師的附註） */
 export function MyApplications() {
   const t = useT();
   const { data: list = [] } = useMyApplications();
@@ -293,7 +285,6 @@ export function MyApplications() {
   );
 }
 
-/** 學生的待處理邀請（從「教室」頁的按鈕打開） */
 export function InvitesDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const t = useT();
   const qc = useQueryClient();

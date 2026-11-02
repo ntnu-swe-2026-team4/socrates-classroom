@@ -47,7 +47,6 @@ function ResourceRow({ r, onDelete }: { r: TopicResource; onDelete?: () => void 
   );
 }
 
-/** 相關資料（老師與助教可加連結、上傳檔案、移除） */
 function DebateResources({ topic, canEdit }: { topic: ClassroomTopic; canEdit: boolean }) {
   const t = useT();
   const invalidate = useInvalidateTopic(topic.classroomId);
@@ -131,7 +130,6 @@ function DebateResources({ topic, canEdit }: { topic: ClassroomTopic; canEdit: b
   );
 }
 
-/** 進入辯論：目前階段、進度條與進入按鈕 */
 function StartPanel({ topic, teacher }: { topic: ClassroomTopic; teacher: boolean }) {
   const t = useT();
   const { data: activity } = useActivity(topic.activityId ?? "");

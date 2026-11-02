@@ -2,7 +2,6 @@ import { LANGS, useLang, useT } from "@/i18n";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-// 補上了 Volume2 和 VolumeX
 import { ArrowRight, Pause, Play, SkipForward, Volume2, VolumeX } from "lucide-react";
 import { api, type Role } from "@/api";
 import { keys } from "@/api/queries";
@@ -11,7 +10,6 @@ import { LandAnimation } from "./LandAnimation";
 import { STORY_SCENES } from "./story";
 import { useStoryTour } from "./useStoryTour";
 import "./landing.css";
-// 同時引入了播放工具與靜音開關
 import { usePlaySound, useAudioSettings } from "../lib/AudioContext";
 
 function useReducedMotion() {
@@ -25,7 +23,6 @@ function useReducedMotion() {
   return reduced;
 }
 
-/** 進場動畫：元素第一次捲進畫面時加上 is-visible（樣式在 landing.css） */
 function useReveal<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   useEffect(() => {
@@ -47,7 +44,6 @@ function useReveal<T extends HTMLElement>() {
   return ref;
 }
 
-/** Keep the currently focused story panel slightly behind the scroll position, then ease it into place. */
 function useStoryDamping(scroller: { current: HTMLDivElement | null }, reduced: boolean) {
   useEffect(() => {
     const root = scroller.current;
@@ -126,7 +122,6 @@ function useStoryDamping(scroller: { current: HTMLDivElement | null }, reduced: 
   }, [scroller, reduced]);
 }
 
-/** 標題拆成一個字一個字，滑鼠靠近時會微微跳起來 */
 function LogoTitle({ text }: { text: string }) {
   const reduced = useReducedMotion();
   const words = text.split(" ");
@@ -188,7 +183,6 @@ const ICON_TEACHER = (
 export function LandingPage() {
   const t = useT();
   const { lang, setLang } = useLang();
-  // 初始化全局音效播放 Hook
   const playSound = usePlaySound();
   const { isMuted, toggleMute } = useAudioSettings();
   const scroller = useRef<HTMLDivElement>(null);
@@ -224,7 +218,6 @@ export function LandingPage() {
     return () => cancelAnimationFrame(frame);
   }, [tour?.session, tour]);
 
-  // 建立身份按鈕的點擊處理函式
   const handleIdentitySelect = (selectedRole: Role) => {
     playSound("tap_01.mp3", { volume: 0.8 });
     setRole(selectedRole);
@@ -258,12 +251,10 @@ export function LandingPage() {
     setBusy(true);
     try {
       const user = await api.login({ role, name: "" });
-      playSound("tap_01.mp3", { volume: 0.8 }); // 暫時先用同一個，之後有成功音效再換掉
+      playSound("tap_01.mp3", { volume: 0.8 });
       qc.setQueryData(keys.me, user);
       navigate({ to: "/" });
     } catch {
-      // 登入失敗：播放警告/錯誤短音效
-      // playSound("error_01.mp3", { volume: 0.5 });
       setEntryError(t("暫時無法進入教室，請稍後再試。"));
     } finally {
       setBusy(false);
@@ -309,7 +300,7 @@ export function LandingPage() {
           type="button"
           title={isMuted ? t("目前已靜音，點一下開啟音效") : t("目前音效開啟，點一下靜音")}
           onClick={toggleMute}
-          style={{ color: isMuted ? "var(--ink-faint)" : "var(--bronze)" }} // 可依據專案 CSS 調整顏色
+          style={{ color: isMuted ? "var(--ink-faint)" : "var(--bronze)" }}
         >
           {isMuted ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
           <span>{isMuted ? t("音效關閉") : t("音效開啟")}</span>

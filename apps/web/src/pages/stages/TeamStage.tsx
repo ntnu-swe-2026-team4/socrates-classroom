@@ -132,7 +132,6 @@ export function TeamStage({ a, teacher, over }: { a: Activity; teacher: boolean;
     feedEnd.current?.scrollIntoView({ block: "end" });
   }, []);
 
-  // AI 整理論點、丟反例的訊息出現時念出來（進入頁面時已經存在的不念）
   const fresh = useCallback((at: string) => Date.now() - Date.parse(at) < 15000, []);
   const spoken = useRef<string | null | undefined>(undefined);
   useEffect(() => {
@@ -311,7 +310,6 @@ export function TeamStage({ a, teacher, over }: { a: Activity; teacher: boolean;
       )}
     </>
   );
-  // 學生：組別與筆記用最上方的切換按鈕切換
   const left = teacher || mode === "group" ? groupInfo : <NotesPanel a={a} readOnly={over} />;
 
   const right = (

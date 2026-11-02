@@ -56,7 +56,6 @@ function AnnouncementCard({ a, onEdit, onDelete }: { a: Announcement; onEdit?: (
   );
 }
 
-/** 新增（不帶 announcement）或編輯公告。已發布的公告編輯時不能再改發布時間 */
 function AnnouncementFormDialog({
   classroomId,
   announcement,
@@ -88,7 +87,6 @@ function AnnouncementFormDialog({
     setAt(scheduled ? toLocalInput(announcement.publishAt) : "");
     setErr("");
     save.reset();
-    // 只在開啟時帶入目前的值
   }, [open, save.reset, announcement?.pinned, announcement]);
 
   function submit() {
@@ -229,7 +227,6 @@ function DeleteDialog({
   );
 }
 
-/** 教室的「公告」分頁：老師可新增、編輯、刪除、排程 */
 export function AnnouncementsTab({ classroomId, staff }: { classroomId: string; staff: boolean }) {
   const t = useT();
   const { data: list = [] } = useAnnouncements(classroomId);

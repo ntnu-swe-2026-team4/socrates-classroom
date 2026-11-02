@@ -4,7 +4,6 @@ import type { UserRow } from "../http";
 import type { ActivityRow, ClassroomRow, ClassroomRole, DiscussionRow, TopicRow } from "./access";
 import { studentIdsOf } from "./access";
 
-/** PUBLIC_BASE_URL 由 app 初始化時注入（Workers 沒有 process.env bindings）。 */
 let PUBLIC_BASE = "";
 export function setPublicBase(url: string | undefined): void {
   PUBLIC_BASE = (url ?? "").replace(/\/$/, "");
@@ -254,7 +253,6 @@ export async function discussionSessionsExist(db: Db, discussionId: string): Pro
     id: discussionId,
   });
   const ids = await studentIdsOf(db, row?.classroom_id ?? "");
-  // 只補缺的 session
   const missing: Array<{ sql: string; params: Record<string, unknown> }> = [];
   for (const sid of ids) {
     const exists = await one(

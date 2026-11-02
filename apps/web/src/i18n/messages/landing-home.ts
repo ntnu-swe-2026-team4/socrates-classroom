@@ -1,9 +1,7 @@
 import type { Messages } from "../index";
 
-/** 首頁、議題、題庫/總結/教室列表、對話頁、Landing 頁 */
 const m: Messages = {
   en: {
-    // story
     喚醒一段對話: "Awakening a dialogue",
     "一群工程師，在漫長的開發之中，重新喚醒了一個活在兩千四百年前的靈魂。":
       "A team of engineers, through long months of development, brought back a soul who lived 2,400 years ago.",
@@ -16,11 +14,9 @@ const m: Messages = {
     找到自己的答案: "Find your own answer",
     "但他從不直接回答，只用一個又一個提問，領著你走向自己的答案。":
       "but he never answers directly. With one question after another, he leads you toward your own answer.",
-    // landing animation
     "重播「{label}」的插畫": "Replay the illustration for “{label}”",
     插畫暫時無法顯示: "Illustration unavailable right now",
     "插畫載入中…": "Loading illustration…",
-    // landing page
     "暫時無法進入教室，請稍後再試。": "Can't enter the classroom right now. Please try again later.",
     回到頂端: "Back to top",
     前往登入: "Go to sign-in",
@@ -71,7 +67,6 @@ const m: Messages = {
     "忘記密碼？": "Forgot password?",
     建立帳號: "Create account",
     "帳號登入、註冊與密碼重設尚未開放。": "Log-in, sign-up and password reset aren't available yet.",
-    // home
     夜深了: "It's late",
     早安: "Good morning",
     午安: "Good afternoon",
@@ -112,7 +107,6 @@ const m: Messages = {
     邀請: "Invite",
     辯論: "Debate",
     "老師發起辯論後，會出現在這裡。": "Debates your teacher starts will show up here.",
-    // topics
     "搜尋議題標題或內容…": "Search topic titles or content…",
     私: "Pri",
     公: "Pub",
@@ -126,7 +120,6 @@ const m: Messages = {
     "私人與公開題庫只能擇一；論點總結是另外獨立的，加入後會出現在「論點總結」頁。":
       "A topic can go in either the Private bank or the Public bank, not both. Argument summary is separate; added topics appear on the “Argument summary” page.",
     "從左邊選一個議題。": "Pick a topic from the left.",
-    // list pages
     "從「議題」加進來的對話": "Dialogues added from “Topics”",
     "整理你的核心主張、支持理由，以及過程中立場如何被檢驗與修正。":
       "Organize your core claims, supporting reasons, and how your position was tested and revised along the way.",
@@ -150,7 +143,6 @@ const m: Messages = {
     "還沒有建立任何教室，按上面「新增教室」開始吧。":
       "You haven't created any classrooms yet. Click “New classroom” above to start.",
     "目前還沒有加入任何教室。": "You haven't joined any classrooms yet.",
-    // dialogue
     "思考中…": "Thinking…",
     "我們上次談到「{title}」。你現在的想法有什麼不一樣嗎？":
       "Last time we talked about “{title}”. Has your thinking changed since then?",

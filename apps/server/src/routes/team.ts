@@ -289,7 +289,6 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     return c.json(rows.map((row) => groupJson(row, role, user.id)));
   });
 
-  /* ---------------- 階段 3 ---------------- */
   r.get("/activities/:id/rooms", async (c) => {
     const user = requireUser(c);
     const { activity } = await accessActivity(db, c.req.param("id"), user);
@@ -327,7 +326,6 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     if (activity.stage !== "debate") fail(409, "stage_not_debate");
     if (role !== "student") fail(403, "only_student");
     if (!(await roomMemberIds(db, room)).includes(user.id)) fail(403, "not_your_group");
-    // 先讀完 body 再做輪序檢查與寫入：檢查到寫入之間沒有 await，同一學生連點也不會重複寫入同一輪
     const body = await bodyOf(c);
     const text = typeof body.text === "string" ? body.text.trim() : "";
     if (!text) fail(422, "text_required");
@@ -362,7 +360,6 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     return c.json(judgmentJson(updated));
   });
 
-  /* ---------------- 結果與星圖 ---------------- */
   r.get("/activities/:id/scores", async (c) => {
     const user = requireUser(c);
     const { activity, role } = await accessActivity(db, c.req.param("id"), user);

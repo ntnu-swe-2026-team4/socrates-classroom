@@ -25,7 +25,6 @@ export interface Gate {
   release(): void;
 }
 
-/** 計數式信號：同時在途上限（自架 = 4）。 */
 export function countingGate(limit: number): Gate {
   let inFlight = 0;
   const waiters: Array<() => void> = [];
@@ -35,7 +34,6 @@ export function countingGate(limit: number): Gate {
         inFlight += 1;
         return Promise.resolve(true);
       }
-      // 佇列滿就回 false（上層換下一個 provider），不無限等
       return Promise.resolve(false);
     },
     release() {
@@ -46,7 +44,6 @@ export function countingGate(limit: number): Gate {
   };
 }
 
-/** RPM 滑動窗（Workers AI 預付 credits = 50/min）。 */
 export function rpmGate(perMinute: number): Gate {
   const hits: number[] = [];
   return {
@@ -80,9 +77,7 @@ function staticKeyProvider(
     name: name ?? id,
     baseUrl,
     auth: { apiKey: { name: `${id} API key`, resolve: async () => ({ auth: { apiKey: key }, source: id }) } },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     models: models as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     api: API_IMPLS as any,
   });
 }
@@ -91,7 +86,6 @@ export interface PoolChainEntry {
   provider: string;
   model: AnyModel;
   gate?: Gate;
-  /** 向 pi-ai 取 auth 時要用的 env key 名（僅 static-key provider 需要） */
   key?: string;
 }
 
@@ -100,7 +94,6 @@ export interface Pool {
   chain: PoolChainEntry[];
 }
 
-/** 健康標記：429/失敗的 provider 短時間內跳過（TTL 內視為降級）。 */
 const degraded = new Map<string, number>();
 const DEGRADE_MS = 60_000;
 
@@ -113,7 +106,6 @@ export function isHealthy(provider: string): boolean {
   return !until || until < Date.now();
 }
 
-/** 依白名單組出 Models registry 與 fallback 鏈。環境缺 key 的段落自動跳過。 */
 export function buildPool(env: Env): Pool {
   const mode = env.LLM_PROVIDER;
   const entries = poolForMode(mode);
@@ -130,7 +122,7 @@ export function buildPool(env: Env): Pool {
         if (model) chain.push({ provider: "mock", model: model as unknown as AnyModel });
       } else if (entry.provider === "dgx-spark") {
         const base = (env as Env & { DGX_BASE_URL?: string }).DGX_BASE_URL;
-        if (!base) continue; // 未設定 Tunnel 位址就跳過這一段
+        if (!base) continue;
         const provider = createProvider({
           id: "dgx-spark",
           name: "DGX Spark (self-hosted)",
@@ -159,7 +151,6 @@ export function buildPool(env: Env): Pool {
               compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
             },
           ],
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           api: API_IMPLS as any,
         });
         models.setProvider(provider);
@@ -176,7 +167,6 @@ export function buildPool(env: Env): Pool {
         const model = ai(entry.model);
         chain.push({ provider: "workers-ai", model: model as unknown as AnyModel, gate: rpmGate(50) });
       } else {
-        // builtin provider（opencode-go / openrouter / zai / …）：以班級 key 建 static-key provider
         const key = keyFor(env, entry.provider);
         if (!key) continue;
         const builtin = firstBuiltin(entry.provider, entry.model);
@@ -208,7 +198,6 @@ function keyFor(env: Env, provider: string): string | undefined {
   }
 }
 
-/** 從 pi-ai builtin 目錄取（baseUrl, model）——BYOK 與班級 static-key 段共用。 */
 export function firstBuiltin(provider: string, modelId: string): { baseUrl: string; model: AnyModel } | undefined {
   try {
     const lookup = getBuiltinModel as unknown as (p: string, m: string) => AnyModel & { baseUrl: string };
@@ -220,7 +209,6 @@ export function firstBuiltin(provider: string, modelId: string): { baseUrl: stri
   }
 }
 
-/** 走完整鏈取一次非對話補全（論點草稿／整理／裁判）。全部失敗回 null，呼叫端退回規則式。 */
 export async function completeText(
   env: Env,
   opts: { system: string; user: string; maxTokens?: number },
@@ -252,7 +240,6 @@ export async function completeText(
 }
 
 function extractText(message: unknown): string | null {
-  // pi-ai AssistantMessage.content: Array<{ type: "text", text } | …>
   const content = (message as { content?: Array<{ type: string; text?: string }> })?.content;
   if (!Array.isArray(content)) return null;
   return (
@@ -263,7 +250,6 @@ function extractText(message: unknown): string | null {
   );
 }
 
-/** 走完整鏈取一次 JSON 補全（舊 completeJson 契約：失敗回 null）。 */
 export async function completeJson<T>(env: Env, system: string, user: string): Promise<T | null> {
   const text = await completeText(env, { system, user, maxTokens: 700 });
   if (!text) return null;

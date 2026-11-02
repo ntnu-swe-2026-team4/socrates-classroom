@@ -7,10 +7,6 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
-/**
- * 私人題庫的協作：把一道私人題目分享給特定的同學、助教或老師，
- * 對方就能看到這道題目的內容與推論脈絡。archive = null 時關閉。
- */
 export function ShareArchiveDialog({ archive, onClose }: { archive: Archive | null; onClose: () => void }) {
   const t = useT();
   const update = useUpdateArchive();
@@ -20,7 +16,6 @@ export function ShareArchiveDialog({ archive, onClose }: { archive: Archive | nu
   useEffect(() => {
     if (archive) setSelected(archive.sharedWithIds);
     update.reset();
-    // 換成另一道題目時重新帶入它目前的分享名單
   }, [archive, update.reset]);
 
   const toggle = (id: string) =>

@@ -1,10 +1,4 @@
 // @ts-nocheck
-/**
- * 示範用的辯論「假後端」：把原型（純 JS 版）的流程引擎搬到這裡，讓前端沒有後端也能完整跑一遍。
- * 這一整個資料夾（src/mock）只在 VITE_API_MODE=mock 時才會被打包進來；
- * 真後端上線後整個刪掉即可，頁面程式完全不依賴它。
- * 所有「AI」都是規則式範本（見 debate-ai.ts 開頭說明），不是真正的 LLM。
- */
 import * as D from "./debate-ai";
 import { tr } from "@/i18n";
 
@@ -28,7 +22,6 @@ export const findAct = (id: string) => {
   return a;
 };
 
-/* ---------------- 活動 ---------------- */
 export function createActivity(classroom: { id: string; students: string[] }, input: any, id?: string) {
   const a: any = {
     id: id ?? uid("d"),
@@ -62,7 +55,6 @@ export function removeActivity(id: string) {
   if (i >= 0) acts.splice(i, 1);
 }
 
-/** 有人開始對話（或已過階段 1）後，辯論設定就不能再改 */
 export const hasStarted = (a: any) =>
   a.stage !== "individual" || a.dialogue.length > 0 || Object.keys(a.positions).length > 0;
 
@@ -88,7 +80,6 @@ export const toActivity = (a: any) => ({
   topicId: a.topicId,
 });
 
-/* ---------------- 階段 1 ---------------- */
 const replies = () => [
   tr("有意思。但你剛才那句話裡，有沒有哪個詞，其實你自己也還沒完全想清楚是什麼意思？"),
   tr("換個角度想：如果反過來看，你剛剛的說法還會成立嗎？"),
@@ -119,7 +110,6 @@ export function progress(a: any) {
   return { rounds: texts.length, maxRounds: 20, coverage: D.coverage(texts), readyToSummarize: texts.length >= 2 };
 }
 
-/** 學生只拿到 AI 整理的論點；座標在確認時由「後端」估算，不給學生 */
 export function draftPosition(a: any) {
   const d = D.draftPosition(a, userTexts(a));
   return { summary: { claim: d.claim, reason: d.reason, evidence: d.evidence } };
@@ -144,13 +134,12 @@ export function simulateIndividual(a: any) {
       rounds: 3 + (n % 5),
       sim: true,
     };
-    a.ready.add(m.id); // 模擬同學完成調查就算準備好了
+    a.ready.add(m.id);
     n++;
   }
   return n;
 }
 
-/** 活動結束前，學生拿到的座標是 null（老師一律看得到） */
 export const coordsVisible = (a: any, teacher: boolean) => teacher || a.stage === "done";
 
 export const toPosition = (a: any, id: string, teacher: boolean) => {
@@ -187,7 +176,6 @@ export function listMembers(a: any, teacher: boolean, isStudent: boolean) {
   });
 }
 
-/* ---------------- 推進階段 ---------------- */
 export function advance(a: any) {
   const i = D.STAGES.indexOf(a.stage);
   const next = D.STAGES[i + 1];
@@ -215,7 +203,6 @@ export function advance(a: any) {
   return a;
 }
 
-/** 換階段：截止時間與「準備好了」都重設 */
 function enterStage(a: any, stage: string) {
   a.stage = stage;
   a.stageDeadline = null;
@@ -223,7 +210,6 @@ function enterStage(a: any, stage: string) {
   emit(a.id, { type: "stage_changed", stage });
 }
 
-/** 老師直接結束活動：依序推進到結果；組別不足兩組時跳過辯論，直接結算 */
 export function finish(a: any) {
   if (a.stage === "done") throw new Error(tr("活動已經結束"));
   while (a.stage !== "done") {
@@ -250,7 +236,6 @@ export function setReady(a: any, ready: boolean) {
   emit(a.id, { type: "member_ready", memberId: "you", ready });
 }
 
-/* ---------------- 階段 2 ---------------- */
 const cmap = (a: any) => Object.fromEntries(Object.entries(a.positions).map(([id, p]: any) => [id, p.coords]));
 const memberById = (a: any, id: string) => a.members.find((m: any) => m.id === id);
 const groupOf = (a: any, id: string) => a.groups.find((g: any) => g.memberIds.includes(id));
@@ -476,7 +461,6 @@ export function splitGroup(a: any, gid: string) {
 export const finalArgs = (a: any, g: any) =>
   (a.groupState[g.id]?.args || []).filter((x: any) => x.status !== "dropped");
 
-/* ---------------- 階段 3 ---------------- */
 export function enterDebate(a: any) {
   for (const g of a.groups) ensureArgs(a, g);
   const { pairs, bye } = D.pairGroups(a.groups);
@@ -625,7 +609,6 @@ function pushTurnEvents(a: any, r: any, before: number) {
   emit(a.id, { type: "room_updated", room: toRoom(a, r) });
 }
 
-/** 輪到模擬同學就 1.5 秒後自動發言；輪到學生就開始倒數，逾時自動送出 */
 function drive(a: any, r: any) {
   clearTimeout(r._timer);
   if (r.status !== "live" || a.stage !== "debate") return;
@@ -723,7 +706,6 @@ export function overrideJudgment(jid: string, teacherScore: number | null) {
   throw new Error(tr("找不到評分"));
 }
 
-/* ---------------- 計分 ---------------- */
 export const effectiveJ = (j: any) => {
   if (j.teacher === null || j.teacher === undefined) return j;
   const sc: any = {};
@@ -775,7 +757,6 @@ export function adjustScore(a: any, memberId: string, adjust: number) {
   return listScores(a, true).find((r: any) => r.memberId === memberId);
 }
 
-/* ---------------- 立場星圖 ---------------- */
 export function starData(a: any) {
   const axes = a.axes.map((x: any) => ({ key: x.key, name: x.name, left: x.left, right: x.right }));
   if (!a.groups.length) {

@@ -6,7 +6,6 @@ import { useAiSpeaking } from "@/lib/ai-speaking";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
-/* ---------- 左右分割的版面（像 VS Code：拖中間的線調整占比，任一邊可以收成側欄） ---------- */
 type Collapsed = "left" | "right" | null;
 const RATIO_KEY = "stage-split-ratio";
 const COLLAPSED_KEY = "stage-split-collapsed";
@@ -15,7 +14,6 @@ const MIN = 0.2,
   MAX = 0.8,
   DEFAULT = 0.3;
 
-/** 只是個人的版面偏好，讀寫失敗（無痕模式等）就用預設值 */
 function readPref<T>(key: string, fallback: T): T {
   try {
     const v = localStorage.getItem(key);
@@ -27,12 +25,9 @@ function readPref<T>(key: string, fallback: T): T {
 function writePref(key: string, v: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(v));
-  } catch {
-    /* 存不了就算了 */
-  }
+  } catch {}
 }
 
-/** 活動進度條：由 ActivityPage 提供，StageLayout 把它放進資訊欄 */
 export const StageProgressCtx = createContext<ReactNode>(null);
 
 const iconBtn =
@@ -67,7 +62,6 @@ function PaneHeader({
   );
 }
 
-/** 收起後留下的側欄（窄螢幕上是一條橫列）：點一下展開 */
 function CollapsedBar({ side, label, onExpand }: { side: "left" | "right"; label: string; onExpand: () => void }) {
   const t = useT();
   const Icon = side === "left" ? PanelLeftOpen : PanelRightOpen;
@@ -89,11 +83,6 @@ function CollapsedBar({ side, label, onExpand }: { side: "left" | "right"; label
   );
 }
 
-/**
- * 辯論活動的兩欄：左邊資訊、右邊對話。
- * 寬螢幕可以拖中間的線調整占比（雙擊恢復預設）、也可以把任一邊收成側欄；窄螢幕上下排列。
- * 占比與收合狀態存在瀏覽器，所有階段共用。
- */
 export function StageLayout({
   left,
   right,
@@ -112,9 +101,7 @@ export function StageLayout({
   rightLabel: string;
   leftHeader?: ReactNode;
   rightHeader?: ReactNode;
-  /** 資訊欄最上方的小蘇格拉底雕像（AI 會說話的階段都放） */
   mascot?: boolean;
-  /** 左欄自己的分頁（例如「個人調查」「我的筆記」），會跟「蘇格拉底」排在同一排 */
   modes?: [string, string][];
   mode?: string;
   onMode?: (k: string) => void;
@@ -134,7 +121,6 @@ export function StageLayout({
     writePref(LEFT_VIEW_KEY, v);
   };
   const showModel = mascot && leftView === "model";
-  // 左欄最上面的分頁：各階段自己的內容（可以有好幾個）＋蘇格拉底，全部放在同一排
   const items: [string, string][] = [...(modes ?? [["info", leftLabel] as [string, string]]), ["model", t("蘇格拉底")]];
   const activeTab = leftView === "model" ? "model" : (mode ?? "info");
   const tabs = (
@@ -220,7 +206,6 @@ export function StageLayout({
         ? "minmax(0,1fr) 40px"
         : `minmax(0,${ratio}fr) 7px minmax(0,${1 - ratio}fr)`;
   return (
-    // 窄螢幕：上下排列（不能拖曳，但可以收起）；md 以上：照占比分成左右兩欄
     <div
       ref={box}
       className={cn(
@@ -269,12 +254,10 @@ export function StageLayout({
   );
 }
 
-/** 背板上的一個區塊（取代卡片）：區塊之間用細線分隔 */
 export const Section = ({ className, children }: { className?: string; children: ReactNode }) => (
   <section className={cn("border-b border-line px-5 py-4 last:border-b-0", className)}>{children}</section>
 );
 
-/** 欄位最上方的模式切換（例如：個人調查 / 我的筆記） */
 export function ModeTabs<T extends string>({
   items,
   value,
@@ -337,7 +320,6 @@ export function MemberChip({ m }: { m: Pick<Member, "name" | "isMe" | "simulated
   );
 }
 
-/** 右欄的對話區：直接放在背板上 */
 export const Panel = ({ className, children }: { className?: string; children: ReactNode }) => (
   <div className={cn("flex min-h-0 flex-1 flex-col", className)}>{children}</div>
 );

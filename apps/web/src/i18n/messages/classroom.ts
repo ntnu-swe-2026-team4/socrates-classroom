@@ -1,6 +1,5 @@
 import type { Messages } from "../index";
 
-/** 教室頁面（教室、公告、行事曆、討論、辯論、加入教室） */
 const m: Messages = {
   en: {
     已截止: "Overdue",

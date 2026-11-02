@@ -1,17 +1,4 @@
 // @ts-nocheck
-/* =========================================================
-   辯論系統 — 純邏輯層（沒有 DOM，可以直接在 Node 測試）
-
-   流程（對應設計圖）：
-     老師設定題目 → 階段 1 個人調查 → 階段 2 團隊提純 → 階段 3 辯論比賽 → 活動結束
-
-   ⚠ 這裡的「AI」全部是**離線示範用的規則式範本**，不是真正的 LLM：
-     - 模擬同學的立場、發言、投票：由議題與成員 id 決定的種子產生
-     - 整理論點 / 反例 / 主持人：句型範本
-     - 裁判：只看文字裡有沒有證據、推理、回應、表達的線索（規則式），
-       **完全不判斷立場對錯**
-   之後接後端時，把 AI.* 這幾個函式換成呼叫 API 即可，其餘流程不用動。
-   ========================================================= */
 import { kmeans, mulberry32, hashSeed } from "@/lib/star/data";
 import { tr } from "@/i18n";
 
@@ -28,22 +15,17 @@ export const CRITERIA = [
   { key: "clarity", name: "表達", hint: "論點是否清楚、長度適中" },
 ];
 
-/* 每回合的發言順序（質詢：A 問 B 答，再 B 問 A 答） */
 export const SPEAKING_ORDER = {
   opening: ["a", "b"],
   cross: ["a", "b", "b", "a"],
   rebuttal: ["b", "a"],
   closing: ["b", "a"],
 };
-export const DEFAULT_SECONDS = { opening: 60, cross: 45, rebuttal: 60, closing: 45 }; // 每則發言
-
-/* ---------------- 活動 / 價值軸 ---------------- */
+export const DEFAULT_SECONDS = { opening: 60, cross: 45, rebuttal: 60, closing: 45 };
 
 export function makeAxes(list) {
   return list.slice(0, 3).map((a, i) => ({ key: `ax${i}`, color: AXIS_COLORS[i], ...a }));
 }
-
-/* ---------------- 模擬同學 ---------------- */
 
 export function makeCohort(classroom, { minSims = 8 } = {}) {
   const names = classroom.students.filter((n) => n !== "你");
@@ -70,7 +52,6 @@ function gaussFrom(rng) {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
-/** 模擬同學藏在心裡的立場（階段 1 「確認」時才公開） */
 export function simPosition(activity, member) {
   const rng = mulberry32(hashSeed(`${activity.id}:${member.id}`));
   const k = activity.axes.length;
@@ -96,7 +77,6 @@ const EVIDENCES = [
 
 const pole = (ax, v) => (v >= 0 ? ax.right : ax.left);
 
-/** 一位同學的論點總結（主張 / 理由 / 證據） */
 export function simSummary(activity, member, coords) {
   const rng = mulberry32(hashSeed(`sum:${activity.id}${member.id}`));
   let best = 0;
@@ -110,8 +90,6 @@ export function simSummary(activity, member, coords) {
   return { claim, reason, evidence, axis: best, sign: coords[best] >= 0 ? 1 : -1 };
 }
 
-/* ---------------- 階段 1：對話 → 座標與論點草稿 ---------------- */
-
 const CUE = {
   claim:
     /我(覺得|認為|想|主張|相信)|應該|不應該|才是|就是|不是|\bI (think|believe|feel)\b|\bwe (think|believe)\b|\bshould(n't| not)?\b|\b(creo|pienso|opino|considero)\b|me parece|\bdeber[ií]a/i,
@@ -123,7 +101,6 @@ const CUE = {
     /但是|不過|然而|除非|可是|也許|可能|另一方面|反過來|\b(but|however|unless|although|maybe|perhaps|possibly)\b|on the other hand|\b(pero|aunque|quiz[aá]s?|tal vez|posiblemente)\b|sin embargo|a menos que|por otro lado/i,
 };
 
-/** 「AI 追問到哪了」：以使用者的發言粗略判斷四個面向有沒有出現 */
 export function coverage(userTexts) {
   const all = userTexts.join("\n");
   return {
@@ -136,7 +113,6 @@ export function coverage(userTexts) {
 
 const trim = (s, n = 90) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-/** 從使用者的發言整理出座標建議與論點草稿（離線示範：關鍵字估計，請學生自己調整） */
 export function draftPosition(activity, userTexts) {
   const pick = (re) => userTexts.find((t) => re.test(t)) || "";
   const claim = trim(pick(CUE.claim) || userTexts[0] || "");
@@ -149,9 +125,6 @@ export function draftPosition(activity, userTexts) {
   return { coords, claim, reason, evidence, hinted };
 }
 
-/* ---------------- 階段 2：分組 ---------------- */
-
-/** k-means 分組 + 人數上限平衡 + 併掉單人組。points 是每位成員的座標。 */
 export function formGroups(members, coordsById, targetSize = 3, seed = 42) {
   const pts = members.map((m) => coordsById[m.id]);
   const n = pts.length;
@@ -168,7 +141,6 @@ export function formGroups(members, coordsById, targetSize = 3, seed = 42) {
   const kk = res.centroids.length;
   const maxSize = targetSize + 1;
 
-  // 人數上限：把離中心最遠的人移到最近、還有空位的組
   for (let guard = 0; guard < n * kk; guard++) {
     const over = [...Array(kk).keys()].find((c) => size(c) > maxSize);
     if (over === undefined) break;
@@ -180,7 +152,6 @@ export function formGroups(members, coordsById, targetSize = 3, seed = 42) {
     targets.sort((a, b) => dist2(pts[mover], centroidOf(a)) - dist2(pts[mover], centroidOf(b)));
     assign[mover] = targets[0];
   }
-  // 單人組併入最近的組
   for (let c = 0; c < kk; c++) {
     if (size(c) === 1 && kk > 1) {
       const i = assign.indexOf(c);
@@ -210,7 +181,6 @@ export function recomputeCentroid(group, coordsById) {
   group.centroid = pts[0].map((_, d) => pts.reduce((s, p) => s + p[d], 0) / pts.length);
 }
 
-/** 辯論配對：中心相距最遠的兩組先對上；奇數組時剩一組輪空 */
 export function pairGroups(groups) {
   const d2 = (a, b) => a.reduce((s, v, i) => s + (v - b[i]) ** 2, 0);
   const edges = [];
@@ -230,12 +200,9 @@ export function pairGroups(groups) {
   return { pairs, bye: bye ? bye.id : null };
 }
 
-/* ---------------- 階段 2：組內論點 / 反例 / 投票 ---------------- */
-
 let argSeq = 1;
 export const newArgId = () => `arg${argSeq++}`;
 
-/** AI「整理組內論點」：把組員的論點總結，依價值軸合併成去重的論點樹 */
 export function summarizeGroup(activity, group, summaries, coordsById) {
   const out = [];
   const k = activity.axes.length;
@@ -245,7 +212,6 @@ export function summarizeGroup(activity, group, summaries, coordsById) {
     if (Math.abs(mean) < 0.2) continue;
     const ax = activity.axes[i];
     const sign = mean >= 0 ? 1 : -1;
-    // 找最支持這個方向的成員，借他的理由與證據
     const lead = group.memberIds.map((id) => ({ id, v: coordsById[id][i] * sign })).sort((a, b) => b.v - a.v)[0];
     const s = summaries[lead.id];
     const claim = {
@@ -301,7 +267,6 @@ export function summarizeGroup(activity, group, summaries, coordsById) {
   return out;
 }
 
-/** AI「丟反例」：針對一條主張，產生一個具體的反向情境 */
 export function counterexampleFor(activity, arg) {
   const ax = activity.axes[arg.axis] || activity.axes[0];
   const opp = pole(ax, -arg.sign);
@@ -319,7 +284,6 @@ export function counterexampleFor(activity, arg) {
   return cases[hashSeed(arg.id) % cases.length];
 }
 
-/** 模擬同學對某條論點的投票（依他自己的座標，反例之後會更保守） */
 export function simVote(_activity, member, coords, arg, { afterCounter = false } = {}) {
   const v = (coords[arg.axis] ?? 0) * arg.sign;
   const rng = mulberry32(hashSeed(`vote:${member.id}${arg.id}${afterCounter ? "c" : ""}`));
@@ -342,7 +306,6 @@ export function tally(arg, memberIds) {
   return t;
 }
 
-/** 依票數更新論點狀態；回傳有沒有出現「內部分裂」的核心分歧 */
 export function refreshStatuses(args, memberIds) {
   let split = null;
   for (const a of args) {
@@ -363,7 +326,6 @@ export function refreshStatuses(args, memberIds) {
   return split;
 }
 
-/** 模擬同學在組內聊天室說的話 */
 export function simChatLine(activity, _member, _coords, summary, i = 0) {
   const s = summary;
   const lines = [
@@ -375,8 +337,6 @@ export function simChatLine(activity, _member, _coords, summary, i = 0) {
   ];
   return lines[i % lines.length];
 }
-
-/* ---------------- 階段 3：辯論賽 ---------------- */
 
 const snippet = (t, n = 18) => (t.length > n ? `${t.slice(0, n)}…` : t);
 
@@ -402,7 +362,6 @@ export const MODERATOR = {
   end: () => tr("辯論結束。我會依證據、推理、回應、表達四項給分，只看論證品質，不評判立場。"),
 };
 
-/** 模擬選手的發言 */
 export function simTurnText({ phase, role, args, opponentArgs, opponentLast, seed }) {
   const rng = mulberry32(hashSeed(seed));
   const claims = args.filter((a) => a.kind === "claim" && a.status !== "dropped");
@@ -410,7 +369,7 @@ export function simTurnText({ phase, role, args, opponentArgs, opponentLast, see
   const reason = args.find((a) => a.kind === "reason")?.text || tr(REASONS[(rng() * REASONS.length) | 0]);
   const evidence = args.find((a) => a.kind === "evidence")?.text || tr(EVIDENCES[(rng() * EVIDENCES.length) | 0]);
   const theirs = opponentArgs.find((a) => a.kind === "claim")?.text || tr("對方的主張");
-  const quiet = rng() < 0.25; // 有時候只講立場、沒有證據，讓評分有高有低
+  const quiet = rng() < 0.25;
   if (phase === "opening")
     return quiet
       ? tr("我方的主張是：{mine}。我們認為這樣比較合理。", { mine })
@@ -444,14 +403,8 @@ const RE = {
   contrast: /但是|然而|不過|可是|反而|\b(but|however|yet|although)\b|\b(pero|aunque)\b|sin embargo|no obstante/i,
 };
 
-/**
- * 規則式裁判（示範）：只看文字裡有沒有證據、推理、回應、表達的線索。
- * 不判斷立場對錯；不宣稱事實真假，只標記「有沒有給出處/可查核」。
- * 回應項在開場與結辯不計分（null）。
- */
 export function judgeTurn({ text, phase, opponentText }) {
   const notes = {};
-  // 證據
   let ev = 1;
   const evHits = [];
   if (text.length > 40) ev += 1;
@@ -468,7 +421,6 @@ export function judgeTurn({ text, phase, opponentText }) {
     evHits.push(tr("出處用語"));
   }
   notes.evidence = evHits.length ? tr("提到了{items}", { items: evHits.join(tr("、")) }) : tr("沒有提出具體例子或出處");
-  // 推理
   let rs = 1;
   const rsHits = [];
   if (RE.because.test(text)) {
@@ -485,7 +437,6 @@ export function judgeTurn({ text, phase, opponentText }) {
     rsHits.push(tr("考慮了另一面"));
   }
   notes.reasoning = rsHits.length ? tr("使用了{items}", { items: rsHits.join(tr("、")) }) : tr("只有斷言，缺少理由");
-  // 回應
   let rb = null;
   if ((phase === "cross" || phase === "rebuttal") && opponentText) {
     const grams = new Set();
@@ -503,7 +454,6 @@ export function judgeTurn({ text, phase, opponentText }) {
       (RE.contrast.test(text) ? 1 : 0);
     notes.rebuttal = rb >= 3 ? tr("有引用並回應對方的說法") : tr("和對方的論點連結不多");
   }
-  // 表達
   let cl = 3;
   if (text.length >= 20 && text.length <= 220) cl += 1;
   if (/[，。,.]/.test(text)) cl += 1;
@@ -536,21 +486,16 @@ export function avgScores(judgments) {
   return out;
 }
 
-/* ---------------- 計分（看過程與論證品質，不看立場） ---------------- */
-
 export const DEFAULT_WEIGHTS = { individual: 30, team: 30, debate: 40 };
 
 export function computeScore({ position, chatCount, votesCast, groupHasActive, turnJudgments, sideAvg }) {
-  // 個人：完成調查、論點完整度
   let ind = 0;
   if (position?.confirmed) {
     ind += 60;
     const filled = ["claim", "reason", "evidence"].filter((k) => position.summary?.[k]).length;
     ind += filled * (40 / 3);
   }
-  // 團隊：參與（發言、投票）與組內論點被保留
   const team = clamp(Math.min(chatCount, 4) * 10 + Math.min(votesCast, 4) * 10 + (groupHasActive ? 20 : 0), 0, 100);
-  // 辯論：自己的發言平均；沒上場就用該方平均打八折
   let deb = 0;
   const mine = avgScores(turnJudgments).overall;
   if (mine !== null) deb = (mine / 5) * 100;

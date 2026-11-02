@@ -197,7 +197,6 @@ export function ResultsStage({ a, teacher }: { a: Activity; teacher: boolean }) 
     </Section>
   );
 
-  /* ---- 各分頁 ---- */
   const starTab = (
     <div>
       <Section>

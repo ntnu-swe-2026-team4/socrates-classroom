@@ -66,7 +66,6 @@ export function createApp(env: Env): Hono<AppEnv> {
 
   app.route("/api", api);
 
-  // 一次性示種資料（SEED_TOKEN 未設定時關閉）；本機：npm run seed
   app.post("/api/dev/seed", async (c) => {
     const token = c.req.header("x-seed-token") ?? "";
     if (!env.SEED_TOKEN || token !== env.SEED_TOKEN) fail(404, "not_found");

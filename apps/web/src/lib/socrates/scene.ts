@@ -1,12 +1,4 @@
 // @ts-nocheck
-/**
- * 3D 蘇格拉底半身像（three.js）。從原型的 scene.js 抽出「只管畫面」的部分：
- * 模型、燈光、拖曳旋轉、全息效果、嘴形動畫。語音辨識 / 合成與對話都改在 React 裡做。
- * opts.mini = true 是「小雕像」模式（放在各階段的資訊欄）：低解析度、不抗鋸齒、不能拖曳、限制幀率，
- *   而且只有在說話 / 載入 / 全息切換時才持續繪製，閒置時停止迴圈；看不到（捲出畫面、分頁隱藏）也不繪製。
- * 用法：const s = createSocratesScene(canvas, container, { light, mini, onReady, onError });
- *       s.setSpeaking(true) → 嘴巴會動；s.setExpression("Happy" | "Confused" | "Angry" | null)；s.setTheme(light)；s.dispose()
- */
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
@@ -14,7 +6,6 @@ import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Avatar } from "./avatar";
 
-/** 同一個模型網址只載入一次 */
 const modelCache = new Map();
 
 export function createSocratesScene(canvas, stage, opts = {}) {
@@ -33,18 +24,15 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   renderer.toneMappingExposure = 1.0;
 
   const scene = new THREE.Scene();
-  const _STAGE_DARK = new THREE.Color(0x2b2d33); // 原本 0x1a1714 太黑，調成偏灰的深色
-  const _STAGE_LIGHT = new THREE.Color(0xdcdad3); // matches the CSS light-mode gradient's base tone
+  const _STAGE_DARK = new THREE.Color(0x2b2d33);
+  const _STAGE_LIGHT = new THREE.Color(0xdcdad3);
   scene.background = null;
-  renderer.setClearColor(0x000000, 0); // 透明背景，直接融入頁面
-  const setTheme = (_light) => {
-    /* 背景透明，不隨主題變 */
-  };
+  renderer.setClearColor(0x000000, 0);
+  const setTheme = (_light) => {};
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.35;
 
-  // Gallery-style lighting for a marble bust: warm key from above-left, cool rim from behind.
   const key = new THREE.DirectionalLight(0xfff1dd, 2.4);
   key.position.set(-1.2, 2.0, 1.6);
   const fill = new THREE.DirectionalLight(0xdfe8ff, 0.5);
@@ -55,7 +43,6 @@ export function createSocratesScene(canvas, stage, opts = {}) {
 
   const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 20);
 
-  // ---- drag-to-rotate, horizontal only, pivoting on the model's own center ----
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
@@ -74,10 +61,8 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
 
-    // moderate, centered size: distance derived from the model's own
-    // height so it reads the same regardless of the model's raw scale
     const fovRad = (camera.fov * Math.PI) / 180;
-    const desiredScreenFrac = mini ? 1.15 : 1.65; // larger => smaller on screen
+    const desiredScreenFrac = mini ? 1.15 : 1.65;
     const distance = (modelHeight * desiredScreenFrac) / (2 * Math.tan(fovRad / 2));
 
     const angle = controls.getAzimuthalAngle();
@@ -95,13 +80,6 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   const ro = new ResizeObserver(() => resize());
   ro.observe(stage);
 
-  /* ---------------------------------------------------------
-     HOLOGRAM — one shared material per mesh that can render
-     both looks (normal / hologram) and blend between them
-     per-fragment based on distance from a click point, so the
-     switch spreads outward from wherever you clicked. Still
-     honours the model's real viseme morph targets.
-  --------------------------------------------------------- */
   function buildHybridMaterial(baseMap, fallbackColor) {
     const uniforms = {
       map: { value: baseMap || null },
@@ -159,8 +137,6 @@ export function createSocratesScene(canvas, stage, opts = {}) {
           vec3 viewDir = normalize(cameraPosition - vWorldPos);
 
           vec3 texColor = uHasMap > 0.5 ? texture2D(map, vUv).rgb : uFallback;
-          // approximate the scene's actual key/fill/rim lights so the model
-          // doesn't look flat/dark (this material bypasses normal PBR lighting)
           float lambert = 0.55;
           lambert += 0.32 * max(dot(n, normalize(vec3(-1.2, 2.0, 1.6))), 0.0);
           lambert += 0.14 * max(dot(n, normalize(vec3(1.5, 0.4, 1.2))), 0.0);
@@ -185,9 +161,6 @@ export function createSocratesScene(canvas, stage, opts = {}) {
 
           vec3 finalColor = mix(baseLit, hologramLook, amount);
 
-          // this custom material bypasses three.js's automatic output-colorspace
-          // pass, so encode back to sRGB ourselves — otherwise the (linear-space)
-          // texture sample renders far too dark on screen
           finalColor = pow(max(finalColor, vec3(0.0)), vec3(1.0/2.2));
 
           gl_FragColor = vec4(finalColor, 1.0);
@@ -235,7 +208,6 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     requestAnimationFrame(step);
   }
 
-  // click (not drag) on the model toggles the hologram, spreading from the click point
   const raycaster = new THREE.Raycaster();
   const pointerNdc = new THREE.Vector2();
   let downPos = null;
@@ -253,7 +225,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     const up = getPointer(e);
     const moved = Math.hypot(up.x - downPos.x, up.y - downPos.y);
     downPos = null;
-    if (moved > 6) return; // it was a drag/rotate, not a click
+    if (moved > 6) return;
     pointerNdc.x = (up.x / up.w) * 2 - 1;
     pointerNdc.y = -(up.y / up.h) * 2 + 1;
     raycaster.setFromCamera(pointerNdc, camera);
@@ -261,14 +233,13 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     if (hits.length > 0) startTransition(hits[0].point);
   });
 
-  // 模型只下載、解析一次；每個畫面各自複製一份（幾何與貼圖共用，不重複佔記憶體）；表情動畫只是資料，直接共用
   const loadModel = (url) =>
     (modelCache.get(url) ?? modelCache.set(url, new GLTFLoader().loadAsync(url)).get(url)).then((g) => ({
       model: cloneSkinned(g.scene),
       clips: g.animations,
     }));
 
-  let pendingExpression = null; // 模型還沒載入完就指定的表情，載入後再播
+  let pendingExpression = null;
   loadModel("/socrates.glb")
     .then(({ model, clips }) => {
       avatar = new Avatar(model, clips);
@@ -276,8 +247,6 @@ export function createSocratesScene(canvas, stage, opts = {}) {
       avatarRootRef = avatar.root;
       scene.add(avatar.root);
 
-      // apply the hologram-capable material to every mesh, keeping
-      // each mesh's own texture/color as its "normal" look
       model.traverse((o) => {
         if (o.isMesh) {
           const baseMap = o.material?.map || null;
@@ -288,7 +257,6 @@ export function createSocratesScene(canvas, stage, opts = {}) {
         }
       });
 
-      // size + center everything from the model's real bounding box
       const box = new THREE.Box3().setFromObject(avatar.root);
       const size = box.getSize(new THREE.Vector3());
       modelCenter = box.getCenter(new THREE.Vector3());
@@ -316,13 +284,12 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   let raf = 0;
   let _loaded = false;
   let visible = true;
-  const FRAME_MS = mini ? 1000 / 30 : 0; // 小尺寸版限制 30 fps，其餘功能（拖曳、全息、眨眼）跟大版一樣
+  const FRAME_MS = mini ? 1000 / 30 : 0;
   let last = 0;
-  /** 需要持續繪製嗎？大畫面一直畫（可拖曳 / 有全息動畫）；小雕像只在需要動的時候畫 */
-  const busy = () => true; // 眨眼與微動作需要持續繪製；看不到（捲出畫面、分頁隱藏）時 frame() 會自己停
+  const busy = () => true;
   function frame(now) {
     raf = 0;
-    if (!visible || document.hidden) return; // 看不到就完全不畫，等 kick() 再喚醒
+    if (!visible || document.hidden) return;
     if (FRAME_MS && now - last < FRAME_MS) {
       raf = requestAnimationFrame(frame);
       return;
@@ -366,7 +333,6 @@ export function createSocratesScene(canvas, stage, opts = {}) {
       if (!on && avatar) avatar.setViseme(null, 0);
       kick();
     },
-    /** 播放模型內建的表情（Happy / Confused / Angry）；loop 時一直播到換表情或傳 null 為止 */
     setExpression(name, options) {
       if (avatar) avatar.setExpression(name, options);
       else pendingExpression = [name, options];
@@ -385,7 +351,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
       controls.dispose();
       pmrem.dispose();
       renderer.dispose();
-      renderer.forceContextLoss(); // 馬上釋放 WebGL 內容，換階段時不會累積
+      renderer.forceContextLoss();
     },
   };
 }

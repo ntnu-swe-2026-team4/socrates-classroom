@@ -19,7 +19,6 @@ import type {
   TopicInput,
 } from "./index";
 
-/** 每個查詢的 key 集中在這裡，讓後端事件（SSE）進來時知道要讓哪些資料失效 */
 export const keys = {
   me: ["me"] as const,
   archives: ["archives"] as const,
@@ -64,7 +63,6 @@ export const useClassroom = (id: string) =>
   useQuery({ queryKey: keys.classroom(id), queryFn: () => api.getClassroom(id) });
 export const useActivities = (cid: string) =>
   useQuery({ queryKey: keys.activities(cid), queryFn: () => api.listActivities(cid) });
-/** 每分鐘重抓一次：排程的公告到時間後，學生不用重新整理就看得到 */
 export const useAnnouncements = (cid: string) =>
   useQuery({ queryKey: keys.announcements(cid), queryFn: () => api.listAnnouncements(cid), refetchInterval: 60_000 });
 export const useJoinPolicy = (cid: string) =>
@@ -81,7 +79,6 @@ export const useDiscoverClassrooms = (q: string) =>
   });
 export const usePosts = (cid: string, topicId: string | null) =>
   useQuery({ queryKey: keys.posts(cid, topicId), queryFn: () => api.listPosts(cid, topicId) });
-/** 教室在 [from, to) 之間的行事曆事件（通常是一個月） */
 export const useCalendar = (cid: string, from: Date, to: Date) =>
   useQuery({
     queryKey: keys.calendar(cid, from.toISOString()),
@@ -115,12 +112,10 @@ export function useUpdateArchive() {
   });
 }
 
-/* ---------- 多人討論 ---------- */
 export const useDiscussions = (cid: string) =>
   useQuery({ queryKey: keys.discussions(cid), queryFn: () => api.listDiscussions(cid) });
 export const useDiscussion = (id: string) =>
   useQuery({ queryKey: keys.discussion(id), queryFn: () => api.getDiscussion(id) });
-/** 老師與助教：全班的討論成果；每 30 秒重抓一次，同學送出結論後不用重新整理 */
 export const useDiscussionSessions = (id: string, enabled = true) =>
   useQuery({
     queryKey: keys.discussionSessions(id),
@@ -128,7 +123,6 @@ export const useDiscussionSessions = (id: string, enabled = true) =>
     enabled,
     refetchInterval: 30_000,
   });
-/** 某位同學的完整對話；studentId 省略（"me"）= 自己 */
 export const useDiscussionSession = (id: string, studentId = "me", enabled = true) =>
   useQuery({
     queryKey: keys.discussionSession(id, studentId),
@@ -136,7 +130,6 @@ export const useDiscussionSession = (id: string, studentId = "me", enabled = tru
     enabled,
   });
 
-/** 討論題目變動後要更新的資料：列表、單一題目與行事曆 */
 export function useInvalidateDiscussion(classroomId: string) {
   const qc = useQueryClient();
   return (id?: string) => {
@@ -146,7 +139,6 @@ export function useInvalidateDiscussion(classroomId: string) {
   };
 }
 
-/** 新增（不帶 discussionId）或編輯討論題目 */
 export function useSaveDiscussion(classroomId: string, discussionId?: string) {
   const invalidate = useInvalidateDiscussion(classroomId);
   return useMutation({
@@ -171,14 +163,12 @@ export function useDeleteDiscussion(classroomId: string) {
     mutationFn: (id: string) => api.deleteDiscussion(id),
     onSuccess: (_data, id) => {
       invalidate();
-      // 刪掉的題目快取直接移除，避免單頁與 session 快取殘留
       qc.removeQueries({ queryKey: keys.discussion(id) });
       qc.removeQueries({ queryKey: keys.discussionSessions(id) });
     },
   });
 }
 
-/** 學生送出或收回自己的結論 */
 export function useSubmitConclusion(discussionId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -187,7 +177,7 @@ export function useSubmitConclusion(discussionId: string) {
       qc.setQueryData(keys.discussionSession(discussionId, "me"), s);
       qc.invalidateQueries({ queryKey: keys.discussion(discussionId) });
       qc.invalidateQueries({ queryKey: ["discussions"] });
-      qc.invalidateQueries({ queryKey: keys.discussionSessions(discussionId) }); // 老師端全班清單不用等 30 秒 refetch
+      qc.invalidateQueries({ queryKey: keys.discussionSessions(discussionId) });
     },
   });
 }
@@ -204,7 +194,6 @@ export function useSaveClassroom(classroomId?: string) {
   });
 }
 
-/** 辯論（API 上的 topic）變動後要更新的資料：辯論列表、單一辯論，以及連動的活動與教室統計 */
 export function useInvalidateTopic(classroomId: string) {
   const qc = useQueryClient();
   return (topic?: Pick<ClassroomTopic, "id" | "activityId">) => {
@@ -217,7 +206,6 @@ export function useInvalidateTopic(classroomId: string) {
   };
 }
 
-/** 新增（不帶 topicId）或編輯辯論；編輯時不能改類型 */
 export function useSaveTopic(classroomId: string, topicId?: string) {
   const invalidate = useInvalidateTopic(classroomId);
   return useMutation({
@@ -227,7 +215,6 @@ export function useSaveTopic(classroomId: string, topicId?: string) {
   });
 }
 
-/** 新增（不帶 announcementId）或編輯公告 */
 export function useSaveAnnouncement(classroomId: string, announcementId?: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -245,7 +232,6 @@ export function useDeleteAnnouncement(classroomId: string) {
   });
 }
 
-/** 加入設定：開關與問卷用 PATCH；重新產生邀請碼另外一個動作 */
 export function useUpdateJoinPolicy(classroomId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -262,7 +248,6 @@ export function useRegenerateJoinCode(classroomId: string) {
   });
 }
 
-/** 老師審核申請；通過時成員名單與人數也要更新 */
 export function useReviewApplication(classroomId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -291,7 +276,6 @@ export function useImportMembers(classroomId: string) {
   });
 }
 
-/** 學生加入教室（直接加入或送出申請）後，教室列表、探索列表、我的申請都要更新 */
 export function useJoinClassroom() {
   const qc = useQueryClient();
   return useMutation({
@@ -312,7 +296,6 @@ export function useCancelApplication() {
   });
 }
 
-/** 發文或回覆；辯論討論區的則數也要更新 */
 export function useCreatePost(classroomId: string, topicId: string | null) {
   const qc = useQueryClient();
   return useMutation({
@@ -357,7 +340,6 @@ export function useDeleteReport(topicId: string) {
   });
 }
 
-/** 思路筆記的新增、修改、刪除共用一個 hook */
 export function useNoteActions(activityId: string) {
   const qc = useQueryClient();
   const onSuccess = () => qc.invalidateQueries({ queryKey: keys.notes(activityId) });
@@ -368,7 +350,6 @@ export function useNoteActions(activityId: string) {
   };
 }
 
-/** 老師的活動控制：直接結束、設定階段截止時間 */
 export function useActivityControls(id: string) {
   const qc = useQueryClient();
   const onSuccess = (a: Activity) => {
@@ -422,11 +403,9 @@ export const useTurns = (rid: string | undefined) =>
   useQuery({ queryKey: keys.turns(rid ?? ""), queryFn: () => api.listTurns(rid!), enabled: !!rid });
 export const useScores = (id: string, enabled = true) =>
   useQuery({ queryKey: keys.scores(id), queryFn: () => api.listScores(id), enabled });
-/** 立場星圖：活動結束前只有老師拿得到（學生呼叫會被拒絕），所以學生端要傳 enabled = false */
 export const useStar = (id: string, stage: string, enabled = true) =>
   useQuery({ queryKey: [...keys.star(id), stage], queryFn: () => api.getStarData(id), enabled });
 
-/** 訂閱活動的即時事件（SSE）：有事件就讓相關的查詢重新抓，畫面自然更新 */
 export function useActivityEvents(activityId: string) {
   const qc = useQueryClient();
   useEffect(() => {
@@ -472,7 +451,6 @@ export function useActivityEvents(activityId: string) {
 export const useClassroomMembers = (id: string) =>
   useQuery({ queryKey: keys.classroomMembers(id), queryFn: () => api.listClassroomMembers(id) });
 
-/** 修改自己的顯示名稱；教室成員表、側邊欄都會跟著更新 */
 export function useUpdateMe() {
   const qc = useQueryClient();
   return useMutation({
@@ -484,7 +462,6 @@ export function useUpdateMe() {
   });
 }
 
-/** 老師把學生設為助教（或改回學生） */
 export function useSetMemberRole(classroomId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -494,7 +471,6 @@ export function useSetMemberRole(classroomId: string) {
   });
 }
 
-/** 新增（不帶 eventId）或編輯行事曆的自訂事件 */
 export function useSaveCalendarEvent(classroomId: string, eventId?: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -512,7 +488,6 @@ export function useDeleteCalendarEvent() {
   });
 }
 
-/** 目前使用者在這間教室能不能管理內容（老師或助教：公告、行事曆、辯論資料） */
 export function useIsStaff(classroomId: string) {
   const { data: c } = useClassroom(classroomId);
   return c?.myRole === "teacher" || c?.myRole === "assistant";

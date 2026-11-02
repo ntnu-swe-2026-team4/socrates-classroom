@@ -23,11 +23,6 @@ import * as Q from "@/mock/discussion";
 import { currentLang, tr } from "@/i18n";
 import { ApiError, streamDialogue } from "./http";
 
-/**
- * 示範用的假後端（全部在記憶體，重整就消失）。
- * 認證、議題（單人對話）、教室在這裡；辯論的整套流程（對話、分組、比賽、計分、星圖）在 src/mock/engine.ts。
- * 真後端上線後，整個 src/mock 與這個檔案都可以刪掉。
- */
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 
 let user: User | null = null;
@@ -66,7 +61,6 @@ const archives: Archive[] = [
     sharedBy: null,
     snippet: "從一片木板到整艘船，我發現「同一性」比我想的更依賴我們怎麼定義它。",
   },
-  // 別人分享給你的題目：出現在私人題庫，但不能再轉分享
   {
     id: "a4",
     title: "如果記憶可以複製，那個人還是原來的人嗎？",
@@ -80,7 +74,6 @@ const archives: Archive[] = [
   },
 ];
 
-/** 私人題庫可以分享給誰（假後端用固定名單；真後端會依教室成員產生） */
 const SHARE_TARGETS: ShareTarget[] = [
   { id: "u-wang", name: "王○安", role: "同學" },
   { id: "u-li", name: "李○恩", role: "同學" },
@@ -88,10 +81,6 @@ const SHARE_TARGETS: ShareTarget[] = [
   { id: "u-lin", name: "林老師", role: "老師" },
 ];
 
-/**
- * 假後端只有一位學生（名字固定為「你」）：joined = 已加入；invited = 老師邀請了、還沒回應；
- * 兩者都不是的教室，學生只能從「探索教室」或邀請碼找到。老師只看得到自己（同名）開的教室。
- */
 type StoredClassroom = Omit<Classroom, "myRole"> & { students: string[]; assistants: string[]; invited?: boolean };
 const ME = "你";
 const classrooms: StoredClassroom[] = [
@@ -142,8 +131,7 @@ const classrooms: StoredClassroom[] = [
   },
 ];
 
-/* 加入設定與申請 */
-const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 去掉容易看錯的 0 / O / 1 / I
+const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const newCode = () =>
   Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
 const defaultPolicy = (): JoinPolicy => ({
@@ -277,7 +265,6 @@ E.createActivity(
   "d1",
 );
 
-/* 教室的辯論（API 上叫 topic）：每場對應 engine 裡的一個四階段辯論活動 */
 const iso = (daysFromNow: number) => new Date(Date.now() + daysFromNow * 864e5).toISOString();
 const topics: ClassroomTopic[] = [
   {
@@ -331,7 +318,6 @@ E.createActivity(
   },
   "d2",
 ).topicId = "t2";
-/* 多人討論的示範資料：老師出一題，模擬同學各自有一段對話與結論 */
 Q.createDiscussion(
   "c1",
   {
@@ -373,7 +359,6 @@ const touch = (t: ClassroomTopic) => {
 let seq = 0;
 const newId = (p: string) => `${p}${Date.now().toString(36)}${seq++}`;
 
-/* 公告：published 由讀取當下的時間計算，學生只拿得到已發布的 */
 type StoredAnnouncement = Omit<Announcement, "published">;
 const announcements: StoredAnnouncement[] = [
   {
@@ -410,7 +395,6 @@ const announcements: StoredAnnouncement[] = [
     body: "（排程中的公告：學生要到發布時間才看得到）",
   },
 ];
-/* 討論區：authorLabel / authorId 依讀取者身分決定（匿名對同學隱藏、對老師與本人顯示） */
 type StoredPost = Omit<DiscussionPost, "authorLabel" | "authorId" | "isMine"> & {
   authorId: string;
   authorName: string;
@@ -470,7 +454,6 @@ const posts: StoredPost[] = [
   },
 ];
 
-/* 結論報告：假後端的檔案用 data URL 或 object URL，重新整理就消失 */
 const reports: TopicReport[] = [
   {
     id: "rp1",
@@ -488,7 +471,6 @@ const reports: TopicReport[] = [
   },
 ];
 
-/* 思路筆記：activityId → 筆記（假後端只有一位學生） */
 const notes = new Map<string, ThinkingNote[]>();
 const notesOf = (aid: string) => {
   let list = notes.get(aid);
@@ -510,10 +492,6 @@ const findAnnouncement = (id: string) => {
 };
 
 const topicDialogues = new Map<string, import("./types").DialogueMessage[]>();
-/**
- * 開發時（bun run dev）單人對話改問 GLM：由 Vite 的 dev-llm 轉接器代為呼叫，key 留在 server/.env（見 frontend/dev/llm-bridge.ts）。
- * 回傳 null = 沒有設定 key 或不是開發伺服器，改用下面的示範回覆。
- */
 async function llmReply(
   title: string,
   history: import("./types").DialogueMessage[],
@@ -543,7 +521,6 @@ const topicReplies = () => [
 
 const isTeacher = () => user?.role === "teacher";
 const myId = () => (isTeacher() ? "t1" : MY_ID);
-/** 讀取者看得到的教室：老師是自己開的，學生是已加入的 */
 const visibleClassrooms = () => classrooms.filter((c) => (isTeacher() ? c.teacherName === user?.name : c.joined));
 const toPost = (x: StoredPost): DiscussionPost => {
   const mine = x.authorId === myId();
@@ -586,7 +563,6 @@ const MAX_UPLOAD = 50 * 1024 * 1024;
 const needTeacher = () => {
   if (!isTeacher()) throw new Error(tr("只有老師可以這樣做"));
 };
-/** 老師或這間教室的助教 */
 const needStaff = (cid: string) => {
   if (!isTeacher() && !findClassroom(cid).assistants.includes(ME)) throw new Error(tr("只有老師或助教可以這樣做"));
 };
@@ -600,7 +576,6 @@ const findCustomEvent = (id: string) => {
 };
 const roomAct = (id: string) => E.findRoom(id);
 
-/** 多人討論的欄位檢查（新增與編輯共用）：只回傳有送來的欄位 */
 function cleanDiscussionInput(input: Partial<DiscussionTaskInput>): Partial<DiscussionTaskInput> {
   const out: Partial<DiscussionTaskInput> = {};
   if (input.title !== undefined) {
@@ -635,7 +610,6 @@ export const mockApi: Api = {
       if (!name.trim()) throw new Error(tr("名稱不能是空的"));
       const old = user.name;
       user = { ...user, name: name.trim() };
-      // 假後端用老師姓名認出自己的教室，改名時一起更新
       if (user.role === "teacher") for (const c of classrooms) if (c.teacherName === old) c.teacherName = user.name;
     }
     if (avatarUrl !== undefined) user = { ...user, avatarUrl };
@@ -693,7 +667,6 @@ export const mockApi: Api = {
     topicDialogues.set(id, list);
     const a = archives.find((x) => x.id === id);
     const mine = { id: `u${list.length}`, role: "user" as const, text, at: new Date().toISOString() };
-    // 跟契約一樣：回覆成功才把提問與回覆一起存，失敗就都不存（可以直接重送）
     const ai = await llmReply(a?.title ?? "", [...list, mine], onDelta, onEmotion);
     let reply = ai?.text;
     const emotion = ai?.emotion;
@@ -1001,7 +974,6 @@ export const mockApi: Api = {
 
   subscribe: (id, cb) => E.subscribe(id, cb),
 
-  /* 教室的辯論（API 上叫 topic，P4） */
   async listTopics(cid) {
     await delay();
     return topics
@@ -1065,7 +1037,7 @@ export const mockApi: Api = {
   async addTopicLink(tid, { name, url }) {
     await delay();
     needStaff(findTopic(tid).classroomId);
-    if (!/^https?:\/\//.test(url.trim())) throw new Error(tr("連結要以 http:// 或 https:// 開頭"));
+    if (!/^https?:\/\//.test(url.trim())) throw new Error("連結要以 http:// 或 https:// 開頭");
     const t = findTopic(tid);
     const r: TopicResource = {
       id: newId("r"),
@@ -1083,7 +1055,6 @@ export const mockApi: Api = {
     needStaff(findTopic(tid).classroomId);
     if (file.size > MAX_UPLOAD) throw new Error(tr("檔案太大（上限 50 MB）"));
     const t = findTopic(tid);
-    // 假後端：檔案只存在這個分頁的記憶體裡，重新整理就消失
     const r: TopicResource = {
       id: newId("r"),
       kind: "file",
@@ -1108,7 +1079,6 @@ export const mockApi: Api = {
     t.resources = t.resources.filter((x) => x.id !== rid);
     touch(t);
   },
-  /* 公告（P2） */
   async listAnnouncements(cid) {
     await delay();
     return announcements
@@ -1157,7 +1127,6 @@ export const mockApi: Api = {
     needStaff(a.classroomId);
     announcements.splice(announcements.indexOf(a), 1);
   },
-  /* 加入教室與成員管理（P3） */
   async importClassroomMembers(cid, names) {
     await delay();
     needTeacher();
@@ -1315,7 +1284,6 @@ export const mockApi: Api = {
     }
     return structuredClone(a);
   },
-  /* 結論報告（P7） */
   async listReports(tid) {
     await delay();
     findTopic(tid);
@@ -1360,7 +1328,6 @@ export const mockApi: Api = {
     reports.splice(i, 1);
   },
 
-  /* 多人討論（P8）：老師出一題，同學各自跟 AI 對話，老師看全班的討論成果 */
   async listDiscussions(cid) {
     await delay();
     findClassroom(cid);
@@ -1426,7 +1393,6 @@ export const mockApi: Api = {
     await delay(40);
     const d = Q.findDiscussion(id);
     const target = studentId ?? MY_ID;
-    // 自己的那段對話隨時看得到；別人的（包含老師看學生模式的「你」）要老師或助教
     if (target !== MY_ID || isTeacher()) {
       needStaff(d.classroomId);
       const s = d.sessions.get(target);
@@ -1442,7 +1408,6 @@ export const mockApi: Api = {
     const s = Q.mySession(d, MY_ID, ME);
     if (Q.roundsOf(s) >= d.maxRounds) throw new Error(tr("已達這個討論的最多 {n} 輪", { n: d.maxRounds }));
     const mine: DialogueMessage = { id: newId("u"), role: "user", text, at: new Date().toISOString() };
-    // 跟契約一樣：回覆成功才把提問與回覆一起存，失敗就都不存（可以直接重送）
     const ai = await llmReply(`${d.title}\n${d.prompt}`, [...s.messages, mine], onDelta, onEmotion);
     let reply = ai?.text;
     if (reply === undefined) {
@@ -1483,17 +1448,13 @@ export const mockApi: Api = {
     return Q.toSessionDetail(d, s, MY_ID);
   },
 
-  /* 討論區（P5） */
   async listPosts(cid, topicId) {
     await delay();
     findClassroom(cid);
-    return (
-      posts
-        .filter((x) => x.classroomId === cid && x.topicId === topicId)
-        // 已刪除且沒有回覆的主貼文不用再顯示
-        .filter((x) => !x.deleted || posts.some((y) => y.parentId === x.id && !y.deleted))
-        .map(toPost)
-    );
+    return posts
+      .filter((x) => x.classroomId === cid && x.topicId === topicId)
+      .filter((x) => !x.deleted || posts.some((y) => y.parentId === x.id && !y.deleted))
+      .map(toPost);
   },
   async createPost(cid, input) {
     await delay();
@@ -1533,7 +1494,6 @@ export const mockApi: Api = {
     recountPosts(x.topicId);
   },
 
-  /* 行事曆：老師與助教的自訂事件 */
   async createCalendarEvent(cid, input) {
     await delay();
     needStaff(cid);
@@ -1585,7 +1545,6 @@ export const mockApi: Api = {
     customEvents.splice(customEvents.indexOf(e), 1);
   },
 
-  /* 行事曆（P6）：從辯論截止日、公告、活動階段截止時間整理出來 */
   async listCalendar({ from, to, classroomId }) {
     await delay();
     const scope = visibleClassrooms().filter((c) => c.id === classroomId);

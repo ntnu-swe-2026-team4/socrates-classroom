@@ -2,10 +2,6 @@ import type { Db } from "../db/d1";
 import { newId, nowIso } from "../http";
 import type { Emotion } from "@socrates/shared";
 
-/**
- * 對話成功的 D1 寫回——三個 scope 各自的 SQL，自原本 routes 的 save callback 移植。
- * 由 PiAgent DO 在串流完成時呼叫（DO 自己有 DB binding）。
- */
 export interface SaveTurnInput {
   scope: "archive" | "activity" | "discussion";
   scopeId: string;
@@ -87,7 +83,6 @@ function scopePrefix(scope: SaveTurnInput["scope"]): string {
   return scope === "archive" ? "u_" : "m_";
 }
 
-/** 對話歷史的讀取（移植自三個路由的前置查詢；供首次建立 pi session 時注入上下文）。 */
 export async function loadHistory(
   db: Db,
   scope: SaveTurnInput["scope"],

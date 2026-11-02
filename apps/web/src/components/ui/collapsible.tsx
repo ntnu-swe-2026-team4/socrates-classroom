@@ -2,7 +2,6 @@ import { useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** 可以收合的區塊：標題列點一下展開 / 收起；次要資訊放這裡，把版面留給主要內容 */
 export function Collapsible({
   title,
   hint,

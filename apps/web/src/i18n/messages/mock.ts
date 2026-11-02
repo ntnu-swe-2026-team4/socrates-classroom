@@ -1,6 +1,5 @@
 import type { Messages } from "../index";
 
-/** 示範用假後端（src/api/mock.ts、src/mock/*）產生的文字 */
 const m: Messages = {
   en: {
     找不到申請: "Application not found",

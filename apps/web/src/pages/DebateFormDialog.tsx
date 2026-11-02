@@ -45,7 +45,6 @@ function Segmented<T extends string>({
   );
 }
 
-/** 團體辯論的設定：回答方式、價值軸、組別人數 */
 function DebateSettingsFields({
   mode,
   setMode,
@@ -145,7 +144,6 @@ function DebateSettingsFields({
   );
 }
 
-/** 新增辯論（不帶 topic）或編輯辯論。團體辯論編輯時要帶 activity 才能顯示原本的辯論設定 */
 export function DebateFormDialog({
   classroomId,
   topic,
@@ -189,7 +187,6 @@ export function DebateFormDialog({
     setSize(original?.groupSize ?? 3);
     setErr("");
     save.reset();
-    // 只在開啟時帶入目前的值
   }, [
     open,
     topic?.description,
@@ -215,7 +212,6 @@ export function DebateFormDialog({
       .map((x) => ({ name: x.name.trim(), left: x.left.trim(), right: x.right.trim() }));
     if (!clean.length) return setErr(t("至少要有一條完整的價值軸（名稱與兩端都要填）。"));
     const settings: Settings = { answerMode: mode, groupSize: size, axes: clean };
-    // 編輯時只有設定真的改了才送出，避免活動已開始時連帶改標題也被拒絕
     if (!original || JSON.stringify(settings) !== JSON.stringify(original)) input.activity = settings;
     setErr("");
     save.mutate(input, {

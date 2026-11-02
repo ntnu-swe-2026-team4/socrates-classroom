@@ -21,7 +21,6 @@ export interface AppEnv {
 
 export type Ctx = Context<AppEnv>;
 
-/** 帶有給使用者看的訊息與錯誤碼；由 app.onError 轉成 { message, code }。 */
 export class HttpError extends Error {
   constructor(
     public status: number,

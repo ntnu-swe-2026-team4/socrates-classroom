@@ -1,19 +1,4 @@
 // @ts-nocheck
-/* =========================================================
-   立場星圖 — three.js 場景引擎（vanilla 版）
-
-   移植自 values-constellation-3d 的 Scene3D.jsx，改成不依賴 React 的
-   createConstellation(mount) → 控制物件。保留的行為：
-     - 0–3 維漸展：0 軸空白 → 1 軸量表 → 2 軸平面 → 3 軸立體，
-       鏡頭 / 軸生長 / 點位全部走同一條 900ms ease-in-out 曲線
-     - 逐輪漂移：點位以指數趨近新目標
-     - 軌跡、群心球、群色
-   新增／改動：
-     - 背景透明（讓卡片底色與深淺色主題自己決定），提供 setTheme()
-     - 圓形發光的星點（取代預設的方點）
-     - 「你」這一點有環形標記與文字標籤
-   座標一律 [-1, 1]，槽位 x / y / z 各對應一條軸。
-   ========================================================= */
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { tr } from "@/i18n";
@@ -25,13 +10,11 @@ const SLOT_DIRS = {
   y: new THREE.Vector3(0, 1, 0),
   z: new THREE.Vector3(0, 0, 1),
 };
-// 各平面組合的「正面」機位（第一軸水平、第二軸垂直）
 const PLANAR_VIEWS = {
   "x,y": { pos: [0, 0, 3.2], up: [0, 1, 0] },
   "x,z": { pos: [0, -3.2, 0], up: [0, 0, 1] },
   "y,z": { pos: [3.2, 0, 0], up: [0, 0, 1] },
 };
-// 單軸量表：讓該軸呈水平左右的機位
 const LINE_VIEWS = {
   x: { pos: [0, 0, 3.2], up: [0, 1, 0] },
   y: { pos: [3.2, 0, 0], up: [0, 0, 1] },
@@ -80,17 +63,16 @@ function makeTextSprite(text, color, shadow, blur, size = 34) {
   ctx.shadowBlur = blur;
   ctx.fillStyle = color;
   ctx.fillText(text, 128, 34);
-  ctx.shadowBlur = 0; // 第二次不再加光暈，只把字疊實
+  ctx.shadowBlur = 0;
   ctx.fillText(text, 128, 34);
   const texture = new THREE.CanvasTexture(canvas);
   texture.anisotropy = 4;
-  texture.colorSpace = THREE.SRGBColorSpace; // 不標的話文字顏色會被當成線性值再提亮一次，淺色背景上會很淡
+  texture.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
   sprite.scale.set(0.66, 0.165, 1);
   return sprite;
 }
 
-/** 淺色背景上，軸色（為深色背景挑的）要壓深一點才讀得到 */
 function toneFor(color, isLight) {
   return isLight ? new THREE.Color(color).lerp(new THREE.Color(0x000000), 0.45).getStyle() : color;
 }
@@ -148,9 +130,8 @@ function disposeObject(obj) {
 export function createConstellation(mount, { light = false } = {}) {
   let theme = THEMES[light ? "light" : "dark"];
 
-  // ---------- 資料狀態 ----------
-  let agents = []; // { id, me, history: [{axKey: v}] }
-  let axisDefs = {}; // key → { name, left, right, color }
+  let agents = [];
+  let axisDefs = {};
   let axisMap = { x: null, y: null, z: null };
   let activeSlots = [];
   let step = 0;
@@ -158,7 +139,6 @@ export function createConstellation(mount, { light = false } = {}) {
   let cluster = null;
   let meIndex = -1;
 
-  // ---------- 場景 ----------
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
   camera.position.set(...VIEW_3D.pos);
@@ -175,7 +155,6 @@ export function createConstellation(mount, { light = false } = {}) {
   controls.maxDistance = 10;
   controls.enabled = false;
 
-  // 外框 / 格線 / 2D 平面：換主題時整組重建
   let frames = null;
   const frameRoot = new THREE.Group();
   scene.add(frameRoot);
@@ -224,7 +203,6 @@ export function createConstellation(mount, { light = false } = {}) {
   const centroidGroup = new THREE.Group();
   scene.add(axisGroup, trajGroup, centroidGroup);
 
-  // 星點
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(0), 3));
   geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(0), 3));
@@ -242,7 +220,6 @@ export function createConstellation(mount, { light = false } = {}) {
   points.frustumCulled = false;
   scene.add(points);
 
-  // 「你」的標記
   let meRing = null;
   let meLabel = null;
   function buildMeMarker() {
@@ -264,7 +241,6 @@ export function createConstellation(mount, { light = false } = {}) {
     scene.add(meRing, meLabel);
   }
 
-  // ---------- 動畫狀態 ----------
   const S = {
     dim: 3,
     slotP: { x: 1, y: 1, z: 1 },
@@ -280,12 +256,10 @@ export function createConstellation(mount, { light = false } = {}) {
     disposed: false,
   };
 
-  // ---------- 資料 → 座標 ----------
   function coordOf(hist, slots) {
     return SLOTS.map((sl) => (slots.includes(sl) && axisMap[sl] ? (hist[axisMap[sl]] ?? 0) : 0));
   }
 
-  /** 目前這一輪、依「啟用中的軸」換算的座標（給分群用；未啟用的槽位為 0） */
   function coordsAt(s = step) {
     return agents.map((a) => coordOf(a.history[Math.min(s, a.history.length - 1)], activeSlots));
   }
@@ -330,7 +304,7 @@ export function createConstellation(mount, { light = false } = {}) {
       if (last < 1) return;
       const arr = new Float32Array((last + 1) * 3);
       for (let s = 0; s <= last; s++) {
-        const c = coordOf(a.history[s], SLOTS); // 軌跡維持完整 3D 形狀，收合交給 trajGroup 縮放
+        const c = coordOf(a.history[s], SLOTS);
         arr[s * 3] = c[0];
         arr[s * 3 + 1] = c[1];
         arr[s * 3 + 2] = c[2];
@@ -393,9 +367,7 @@ export function createConstellation(mount, { light = false } = {}) {
     S.axisVisuals = visuals;
   }
 
-  // ---------- 對外 API ----------
   const api = {
-    /** 換一批資料（切換議題時）。位置直接跳到新位置，不做補間。 */
     setAgents(list) {
       agents = list;
       meIndex = list.findIndex((a) => a.me);
@@ -410,17 +382,15 @@ export function createConstellation(mount, { light = false } = {}) {
       buildMeMarker();
     },
 
-    /** 設定各軸定義與槽位對應（axisDefs: {key: {name,left,right,color}}, map: {x,y,z}） */
     setAxes(defs, map) {
       axisDefs = defs;
       axisMap = { ...map };
       rebuildAxes();
       refreshTargets();
       refreshTrajectories();
-      S.pendingPosAnim = true; // 換軸時點位平滑移過去
+      S.pendingPosAnim = true;
     },
 
-    /** 啟用中的槽位（長度 0–3 = 維度）。instant 為 true 時不做動畫（初始化用）。 */
     setActive(slots, { instant = false } = {}) {
       activeSlots = slots.slice();
       const dim = activeSlots.length;
@@ -489,7 +459,6 @@ export function createConstellation(mount, { light = false } = {}) {
       };
     },
 
-    /** 對話輪次（時間軸）。點位以指數趨近新目標，看起來是連續漂移。 */
     setStep(s) {
       step = s;
       refreshTargets();
@@ -497,7 +466,6 @@ export function createConstellation(mount, { light = false } = {}) {
     },
 
     setCluster(c) {
-      // c: { assignments, centroids, palette } | null
       cluster = c;
       refreshColors();
       refreshTrajectories();
@@ -537,7 +505,6 @@ export function createConstellation(mount, { light = false } = {}) {
     },
   };
 
-  // ---------- 1D / 2D 的滾輪縮放（OrbitControls 停用時） ----------
   function onWheel(e) {
     if (S.dim === 3 || S.camAnim) return;
     e.preventDefault();
@@ -548,11 +515,10 @@ export function createConstellation(mount, { light = false } = {}) {
   }
   renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
 
-  // ---------- 渲染迴圈 ----------
   function animate() {
     if (S.disposed) return;
     requestAnimationFrame(animate);
-    if (mount.clientWidth === 0 || mount.clientHeight === 0) return; // 頁面被隱藏時不畫
+    if (mount.clientWidth === 0 || mount.clientHeight === 0) return;
 
     const now = performance.now();
 
@@ -581,7 +547,6 @@ export function createConstellation(mount, { light = false } = {}) {
       if (t >= 1) S.tween = null;
     }
 
-    // 軸線從中心生長，標籤隨之滑出
     for (const sl of SLOTS) {
       const v = S.axisVisuals[sl];
       if (!v) continue;
@@ -611,11 +576,9 @@ export function createConstellation(mount, { light = false } = {}) {
     grid.material.opacity = S.cubeP;
     frame.visible = grid.visible = S.cubeP > 0.005;
 
-    // 低維時星點放大
     const sizeTarget = S.dim === 1 ? 0.15 : S.dim === 2 ? 0.115 : 0.1;
     material.size += (sizeTarget - material.size) * 0.12;
 
-    // 點位：維度切換時以 ease-in-out 補間；平時指數趨近（逐輪漂移）
     const pos = geometry.attributes.position.array;
     const tgt = S.targets;
     if (pos.length === tgt.length) {
@@ -627,7 +590,7 @@ export function createConstellation(mount, { light = false } = {}) {
         const a = S.posAnim;
         const t = Math.min(1, (now - a.start) / a.dur);
         const e = easeInOutCubic(t);
-        for (let i = 0; i < pos.length; i++) pos[i] = a.from[i] + (tgt[i] - a.from[i]) * e; // 目標若中途改變也會追上
+        for (let i = 0; i < pos.length; i++) pos[i] = a.from[i] + (tgt[i] - a.from[i]) * e;
         if (t >= 1) S.posAnim = null;
       } else {
         for (let i = 0; i < pos.length; i++) pos[i] += (tgt[i] - pos[i]) * 0.1;

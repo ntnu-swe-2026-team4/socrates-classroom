@@ -1,10 +1,5 @@
 import type { Emotion } from "@socrates/shared";
 
-/**
- * 把開頭的情緒標記拆掉。標記不能出現在任何 delta 或存進資料庫的文字裡。
- * 開頭不是 `[`（或超過 24 字還沒對上）就當作 neutral，原文照送。
- * （自 server/src/services/llm.ts 原樣移植）
- */
 export class EmotionSplitter {
   private buffer = "";
   private resolved = false;

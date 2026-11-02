@@ -1,7 +1,6 @@
 import { tr } from "@/i18n";
 import { cn } from "@/lib/utils";
 
-/** 使用者頭像：有圖片就顯示圖片，沒有就是黑底白字的姓名首字 */
 export function Avatar({ name, src, className }: { name?: string; src?: string | null; className?: string }) {
   return (
     <span
@@ -16,7 +15,6 @@ export function Avatar({ name, src, className }: { name?: string; src?: string |
   );
 }
 
-/** 把使用者選的圖片置中裁成正方形、縮成 256×256，回傳 data URL（頭像不需要更大，也避免上傳過大的檔案） */
 export async function imageToAvatar(file: File, size = 256): Promise<string> {
   if (!file.type.startsWith("image/")) throw new Error(tr("請選擇圖片檔（JPG、PNG、WebP…）"));
   if (file.size > 10 * 1024 * 1024) throw new Error(tr("圖片太大（上限 10 MB）"));

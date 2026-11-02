@@ -63,7 +63,6 @@ function Switch({
   );
 }
 
-/* ---------- 加入設定（邀請碼、探索、審核） ---------- */
 export function JoinSettingsCard({ classroomId }: { classroomId: string }) {
   const t = useT();
   const { data: p } = useJoinPolicy(classroomId);
@@ -161,7 +160,6 @@ export function JoinSettingsCard({ classroomId }: { classroomId: string }) {
   );
 }
 
-/* ---------- 申請問卷編輯 ---------- */
 const KIND_NAME: Record<JoinQuestion["kind"], string> = { text: "單行文字", paragraph: "多行文字", choice: "單選" };
 let draftSeq = 0;
 const blankQuestion = (): JoinQuestion => ({
@@ -189,7 +187,6 @@ function QuestionnaireDialog({
     if (!open) return;
     setQs(structuredClone(questions));
     update.reset();
-    // 只在開啟時帶入目前的值
   }, [open, update.reset, questions]);
 
   const edit = (i: number, patch: Partial<JoinQuestion>) => setQs(qs.map((q, j) => (j === i ? { ...q, ...patch } : q)));
@@ -326,7 +323,6 @@ function QuestionnaireDialog({
   );
 }
 
-/* ---------- 待審核申請 ---------- */
 function ApplicationRow({ a, classroomId }: { a: JoinApplication; classroomId: string }) {
   const t = useT();
   const review = useReviewApplication(classroomId);
@@ -395,8 +391,6 @@ export function PendingApplications({ classroomId }: { classroomId: string }) {
   );
 }
 
-/* ---------- 批次匯入成員 ---------- */
-/** 每行一個；也接受逗號、頓號或 Tab 分隔（從試算表貼上） */
 const parseNames = (text: string) =>
   text
     .split(/[\n,，、\t]+/)

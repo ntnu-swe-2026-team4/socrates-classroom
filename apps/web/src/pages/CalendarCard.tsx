@@ -17,7 +17,6 @@ const KIND: Record<CalendarEvent["kind"], { name: string; dot: string }> = {
   discussion_due: { name: "討論截止", dot: "bg-bronze-dim" },
   custom: { name: "行程", dot: "bg-ink-dim" },
 };
-/** 星期標題（日～六）；非中文時用該語言的縮寫 */
 function weekdayLabels(): string[] {
   const lang = currentLang();
   if (lang === "zh-TW") return ["日", "一", "二", "三", "四", "五", "六"];
@@ -33,7 +32,6 @@ function monthTitle(d: Date): string {
 const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 const pad = (n: number) => String(n).padStart(2, "0");
 
-/** 新增 / 編輯自訂行程（老師與助教） */
 function EventDialog({
   classroomId,
   event,
@@ -60,7 +58,6 @@ function EventDialog({
     setNote(event?.note ?? "");
     setErr("");
     save.reset();
-    // 只在開啟時帶入目前的值
   }, [open, event?.at, save.reset, event?.title, event?.note, defaultAt]);
   function submit() {
     if (!title.trim()) return setErr(t("請填寫行程名稱。"));
@@ -107,7 +104,6 @@ function EventDialog({
   );
 }
 
-/** 教室的月曆：辯論截止日、公告、辯論階段截止時間（由後端整理），加上老師 / 助教自己加的行程 */
 export function CalendarCard({ classroomId, editable = false }: { classroomId: string; editable?: boolean }) {
   const t = useT();
   const navigate = useNavigate();
@@ -136,7 +132,6 @@ export function CalendarCard({ classroomId, editable = false }: { classroomId: s
   ];
   const list = picked ? (byDay.get(picked) ?? []) : events;
 
-  /** 新增時的預設時間：選了某一天就用那天 09:00，否則用今天（或該月 1 號）的下一個整點 */
   const defaultAt = () => {
     const [y, m, d] = picked
       ? picked.split("-").map(Number)

@@ -77,8 +77,6 @@ export async function seedDemo(db: Db): Promise<boolean> {
     },
   ];
 
-  // D1：直接依序寫入（示種資料不需單一交易；呼叫端以空庫判斷冪等）
-  /* 使用者 */
   user(db, "t_lin", "林老師", "teacher");
   user(db, "t_zhang", "張老師", "teacher");
   user(db, "t_chen", "陳老師", "teacher");
@@ -90,7 +88,6 @@ export async function seedDemo(db: Db): Promise<boolean> {
   user(db, "s_wu", "吳○哲", "student");
   user(db, "s_zhou", "周○妤", "student");
 
-  /* 教室 */
   classroom(db, "c1", "高二哲學選修 A", "從柏拉圖《理想國》出發，練習用提問把自己的想法說清楚。", "t_lin");
   member(db, "c1", "s_guest");
   member(db, "c1", "s_wang");
@@ -118,7 +115,6 @@ export async function seedDemo(db: Db): Promise<boolean> {
   member(db, "c4", "s_wang");
   policy(db, "c4", "ETHIC5", { discoverable: true, approval: true, questionnaire: questions });
 
-  /* 教室議題 + 四階段活動 */
   const t1 = uid("t");
   const a1 = uid("d");
   await run(
@@ -180,7 +176,6 @@ export async function seedDemo(db: Db): Promise<boolean> {
   );
   await run(db, "UPDATE topics SET activity_id = $aid WHERE id = $id", { aid: a2, id: t2 });
 
-  /* 公告 */
   await run(
     db,
     `INSERT INTO announcements (id, classroom_id, title, body, pinned, publish_at, author_id, created_at, updated_at)
@@ -221,7 +216,6 @@ export async function seedDemo(db: Db): Promise<boolean> {
     },
   );
 
-  /* 討論區 */
   const p1 = uid("p");
   const p2 = uid("p");
   await run(
@@ -249,7 +243,6 @@ export async function seedDemo(db: Db): Promise<boolean> {
     { id: uid("p"), tid: t1, body: "色拉敘馬霍斯說的「強者」，是指統治者，還是任何有力量的人？", at: iso(-1) },
   );
 
-  /* 多人討論 */
   const dq = uid("dq");
   await run(
     db,
@@ -328,7 +321,6 @@ export async function seedDemo(db: Db): Promise<boolean> {
     },
   );
 
-  /* 私人題庫分享 */
   for (const [id, title, bank, snippet] of [
     [
       "a_demo1",
@@ -382,7 +374,6 @@ export async function seedDemo(db: Db): Promise<boolean> {
     },
   );
 
-  /* 行事曆自訂事件 */
   await run(
     db,
     "INSERT INTO calendar_events (id, classroom_id, title, at, note, created_by, created_at) VALUES ($id, 'c1', $title, $at, $note, 't_lin', $now)",

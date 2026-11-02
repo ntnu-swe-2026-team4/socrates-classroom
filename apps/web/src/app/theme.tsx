@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 type Theme = "dark" | "light";
-/** 只在使用者自己切換時才記下來；沒切換過一律用白色介面。（舊的 "theme" 每次載入都會被寫入，所以換一個名字） */
 export const THEME_KEY = "theme-choice";
 const saved = (): Theme => {
   try {
@@ -24,9 +23,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       const next = t === "dark" ? "light" : "dark";
       try {
         localStorage.setItem(THEME_KEY, next);
-      } catch {
-        /* 沒有就算了 */
-      }
+      } catch {}
       return next;
     });
   }

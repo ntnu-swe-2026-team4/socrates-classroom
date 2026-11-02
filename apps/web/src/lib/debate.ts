@@ -1,6 +1,5 @@
 import type { ArgumentStatus, CriterionKey, GroupArgument, Phase, Vote } from "@/api";
 
-/** 組別顏色（星圖與各處共用，順序 = 組別順序） */
 export const GROUP_COLORS = ["#d9855a", "#5fae8e", "#7a8fd6", "#c9a15a", "#b27ac0", "#5ab1c2", "#c96f8f", "#9aa66a"];
 export const groupColor = (i: number) => GROUP_COLORS[i % GROUP_COLORS.length];
 
@@ -39,7 +38,6 @@ export function tally(arg: GroupArgument, memberIds: string[]) {
 
 export const fmt = (v: number | null | undefined, d = 1) => (v === null || v === undefined ? "—" : v.toFixed(d));
 
-/** 一組評分的各項平均（null 的不計）；老師覆寫的整體分會取代原本的分數 */
 export function avgScores(js: { scores: Record<CriterionKey, number | null>; teacherScore: number | null }[]) {
   const out: Record<string, number | null> = {};
   const vals: number[] = [];

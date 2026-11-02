@@ -25,7 +25,6 @@ export const STORY_SCENES = [
   },
 ] as const;
 
-// Match the compositions in public/landing; reserve their shape before lazy loading.
 export const ANIMATION_ASPECT_RATIOS: Record<number, string> = {
   1: "720 / 416",
   2: "720 / 383",

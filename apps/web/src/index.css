@@ -1,7 +1,6 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* 顏色沿用原型（純 HTML 版）的兩套主題 */
 :root {
   --bg: #ffffff;
   --bg-1: #f7f7f5;
@@ -40,7 +39,6 @@
 }
 
 @theme inline {
-  /* 頂端標題列的高度：左側欄「訪客」下方的線與每一頁標題列的底線對齊（h-topbar / min-h-topbar） */
   --spacing-topbar: 6rem;
   --color-bg: var(--bg);
   --color-bg-1: var(--bg-1);
@@ -77,7 +75,6 @@ body {
   border-color: var(--line);
 }
 
-/* 捲軸：細、跟著主題換色，不要用瀏覽器預設的粗灰條 */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--bg-3) transparent;
@@ -96,7 +93,7 @@ body {
 *::-webkit-scrollbar-track {
   background: transparent;
 }
-/* 需要隱藏捲軸的地方（仍然可以捲動）：辯論頁左側資訊欄 */
+
 .no-scrollbar {
   scrollbar-width: none;
 }
@@ -104,7 +101,6 @@ body {
   display: none;
 }
 
-/* 右側抽屜（設定）：打開時從右邊滑進來，關閉時滑回去；Radix 會等動畫結束才移除 */
 @keyframes sheet-in {
   from {
     transform: translateX(100%);

@@ -146,11 +146,9 @@ export function DebateStage({ a, teacher, over }: { a: Activity; teacher: boolea
   useEffect(() => {
     feedEnd.current?.scrollIntoView({ block: "end" });
   }, []);
-  // 有新的發言（AI 主持人、AI 辯手或裁判）時，小蘇格拉底動一下嘴巴
   const lastTurn = turns.at(-1);
   const spokenTurn = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    // 新的 AI 發言（主持人或模擬同學）用語音念出來；進入頁面時已經存在的不念，自己的發言也不念
     const ai =
       lastTurn && (lastTurn.side === "moderator" || members.find((m) => m.id === lastTurn.memberId)?.simulated);
     if (
@@ -163,7 +161,7 @@ export function DebateStage({ a, teacher, over }: { a: Activity; teacher: boolea
     )
       speakAi(lastTurn?.text ?? "");
     spokenTurn.current = lastTurn?.id ?? null;
-  }, [lastTurn?.id, lastTurn?.text, lastTurn?.at, members.find, lastTurn, over]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lastTurn?.id, lastTurn?.text, lastTurn?.at, members.find, lastTurn, over]);
   useEffect(() => stopAiSpeech, []);
 
   const myTurn = !!room?.turn && !!me && room.turn.memberId === me.id && !teacher && !over;

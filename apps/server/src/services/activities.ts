@@ -61,7 +61,6 @@ export async function enterStage(db: Db, activityId: string, stage: ActivityRow[
   return (await one<ActivityRow>(db, "SELECT * FROM activities WHERE id = $id", { id: activityId }))!;
 }
 
-/** 依目前對話幫沒有確認論點的學生補上 AI 建議（confirmed = 0、aiSuggested = 1）。 */
 export async function autoFillPositions(db: Db, activity: ActivityRow): Promise<void> {
   const axes = parseJson<Axis[]>(activity.axes, []);
   const ids = await studentIdsOf(db, activity.classroom_id);
@@ -177,7 +176,6 @@ export async function prepareDebate(db: Db, activity: ActivityRow, lang: Lang = 
   return await all(db, "SELECT * FROM rooms WHERE activity_id = $aid ORDER BY seq", { aid: activity.id });
 }
 
-/* ---------------- 場次（後端是時間與輪次的唯一裁定者） ---------------- */
 export interface RoomSpec {
   phase: Phase;
   side: "a" | "b";
@@ -319,7 +317,6 @@ async function advancePhase(db: Db, room: any, lang: Lang, phase: Phase, judgedT
   }
 }
 
-/** 送出目前輪次的發言（或逾時空白），寫入裁判分數並推進。 */
 export async function commitTurn(db: Db, room: any, text: string, lang: Lang): Promise<{ turn: any; judgment: any }> {
   const spec = await roomSpec(db, room);
   if (!spec) throw new Error("room_not_live");
@@ -432,7 +429,6 @@ export async function startRoom(db: Db, room: any, lang: Lang): Promise<any> {
   return room;
 }
 
-/** 逾時自動送出（伺服器時間為準）。每次讀取場次前呼叫。 */
 export async function tickExpired(db: Db, room: any, lang: Lang): Promise<any> {
   let guard = 0;
   while (room.status === "live" && room.deadline && room.deadline <= nowIso() && guard++ < 30) {
@@ -453,7 +449,6 @@ export async function tickExpired(db: Db, room: any, lang: Lang): Promise<any> {
   return room;
 }
 
-/* ---------------- 計分 ---------------- */
 export async function computeScores(db: Db, activity: ActivityRow): Promise<void> {
   const ids = await studentIdsOf(db, activity.classroom_id);
   const groups = await all<any>(db, "SELECT * FROM groups WHERE activity_id = $aid", { aid: activity.id });
@@ -553,7 +548,6 @@ export async function scoreRows(db: Db, activity: ActivityRow, onlyMemberId?: st
   });
 }
 
-/* ---------------- 立場星圖 ---------------- */
 const STEP_TEXT: Record<
   Lang,
   { individual: string; team: string; onlyIndividual: string; onlyTeam: string; teamAligned: string }

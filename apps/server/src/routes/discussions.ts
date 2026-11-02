@@ -14,7 +14,6 @@ import {
 } from "../services/serialize";
 import type { UserRow } from "../http";
 
-// 這個路由同時服務老師與學生；accessClassroom 已經處理權限，這裡只是取角色。
 async function accessClassroomStaffOrMember(db: Db, id: string, user: UserRow) {
   return accessClassroom(db, id, user);
 }
