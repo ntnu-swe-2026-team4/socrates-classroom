@@ -12,11 +12,13 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { SPEECH_RATES, createRecognizer, getSpeechRate, setSpeechRate, speak, speechInputSupported, stopSpeaking } from "@/lib/speech";
 import { cn } from "@/lib/utils";
+import { useAudioSettings } from "@/lib/AudioContext";
 
 type Line = { id: string; role: "user" | "assistant"; text: string };
 
 export function DialoguePage() {
   const t = useT();
+  const { isMuted } = useAudioSettings();
   const { topic } = useSearch({ from: "/_app/dialogue" });
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -45,6 +47,12 @@ export function DialoguePage() {
   async function send(input: string): Promise<boolean> {
     if (!archive || !input.trim() || pending !== null) return false;
     setMine(input); setPending(""); setStatus(t("思考中…")); clearTimeout(speakTimer.current); stopSpeaking();
+    // 送出訊息時播放 DORA 音效（靜音時略過）
+    if (!isMuted) {
+      const audio = new Audio("/sounds/DORA.mp3");
+      audio.volume = 0.5; // 調節音量，1.0 為最大聲
+      audio.play().catch((err) => console.warn("DORA 音效播放失敗:", err));
+    }
     stage.current?.setExpression(null);
     // AI 一決定情緒就先做表情（例如先笑），回覆文字接著出現；開口說話至少等表情做出來之後
     let reactedAt = 0;
@@ -118,8 +126,8 @@ export function DialoguePage() {
             <div className="flex shrink-0 items-end gap-2 border-t border-line p-3">
               <Button variant="outline" size="icon" aria-label={t("按住說話")} disabled={!rec.current}
                 className={cn(listening && "border-bronze text-bronze")}
-                onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); clearTimeout(speakTimer.current); stopSpeaking(); setListening(true); rec.current?.start(); }}
-                onPointerUp={async () => { setListening(false); const heard = await rec.current!.stop(); if (heard) void send(heard); else setStatus(t("沒聽清楚，請再說一次")); }}>
+                onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); clearTimeout(speakTimer.current); stopSpeaking(); setListening(true); rec.current?.start(); if (!isMuted) { const a = new Audio("/sounds/button_001.mp3"); a.volume = 0.3; a.play().catch(() => {}); } }}
+                onPointerUp={async () => { setListening(false); if (!isMuted) { const a = new Audio("/sounds/button_003.mp3"); a.volume = 0.3; a.play().catch(() => {}); } const heard = await rec.current!.stop(); if (heard) void send(heard); else setStatus(t("沒聽清楚，請再說一次")); }}>
                 <Mic className="size-4" />
               </Button>
               <Textarea rows={1} value={text} placeholder={t("輸入你的想法…")} onChange={(e) => setText(e.target.value)}

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { BookOpen, ChevronDown, GraduationCap, Home, Moon, Settings, Sun, User as UserIcon } from "lucide-react";
+// 引入 Volume2 (有聲音) 和 VolumeX (靜音) 圖標
+import { BookOpen, ChevronDown, GraduationCap, Home, Moon, Settings, Sun, User as UserIcon, Volume2, VolumeX } from "lucide-react";
 import { api } from "@/api";
 import { keys, useMe, useUpdateMe } from "@/api/queries";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { LANGS, useLang, useT } from "@/i18n";
 import { useTheme } from "./theme";
+// 引入音效狀態機制
+import { useAudioSettings } from '../lib/AudioContext';
 
 /** 標題列：[網址, 標題, 上方的小字（老師與學生可以不同）] */
 const TITLES: [RegExp, string, (role?: string) => string][] = [
@@ -33,11 +36,33 @@ function NavGroup({ label, icon, children, paths }: { label: string; icon: React
   const has = paths.some((p) => pathname.startsWith(p));
   // 自己的展開狀態：目前頁面在群組裡時會自動展開，但之後可以再點一次收起來
   const [open, setOpen] = useState(has);
+  
+  // 對接到 main.tsx 的 AudioProvider
+  const { isMuted } = useAudioSettings();
+
   useEffect(() => { if (has) setOpen(true); }, [has]);
   const shown = open;
+
+  const handleToggle = () => {
+    setOpen((prevOpen) => {
+      const nextOpen = !prevOpen;
+      
+      if (!isMuted) {
+        const audioSrc = nextOpen ? "/sounds/toggle_on.mp3" : "/sounds/toggle_off.mp3";
+        const audio = new Audio(audioSrc);
+        audio.volume = 0.6; 
+        audio.play().catch((err) => {
+          console.warn("瀏覽器阻擋自動播放，需使用者先點擊網頁:", err);
+        });
+      }
+      
+      return nextOpen;
+    });
+  };
+
   return (
     <div className="flex w-full flex-col items-center gap-0.5">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={shown} className={cn(navBtn, has && "text-bronze")}>
+      <button type="button" onClick={handleToggle} aria-expanded={shown} className={cn(navBtn, has && "text-bronze")}>
         {icon}
         <span className="flex items-center gap-0.5">{label}<ChevronDown className={cn("size-3 transition-transform", shown && "rotate-180")} /></span>
       </button>
@@ -48,8 +73,11 @@ function NavGroup({ label, icon, children, paths }: { label: string; icon: React
 
 const sub = "w-[72px] rounded-md py-1.5 text-center text-xs text-ink-faint hover:bg-bg-2 hover:text-ink-dim";
 
-export function AppShell() {
+// 將內部 UI 抽成一個子組件，這樣才能在內部安全地調用 useAudioSettings()
+function AppShellContent() {
   const { theme, toggle } = useTheme();
+  // 取得靜音狀態與切換函式
+  const { isMuted, toggleMute } = useAudioSettings();
   const { data: me } = useMe();
   const t = useT();
   // 切換語言會重新載入整個畫面，這個旗標讓設定視窗在重新載入後維持開啟
@@ -92,6 +120,8 @@ export function AppShell() {
         <Link to="/classrooms" className={navBtn} activeProps={navActive}><GraduationCap className="size-5" /><span>{t("教室")}</span></Link>
 
         <div className="flex-1" />
+        
+        {/* 黑色/白色介面切換按鈕 */}
         <button
           type="button" onClick={toggle} aria-label={tip}
           title={tip}
@@ -99,6 +129,21 @@ export function AppShell() {
         >
           {theme === "dark" ? <Moon className="size-[19px]" /> : <Sun className="size-[19px]" />}
         </button>
+        {/*新增的全站靜音/音效切換按鈕（外觀樣式完全同步上方的圓形主題切換鈕） */}
+        <button
+          type="button" 
+          onClick={toggleMute} 
+          aria-label={isMuted ? "目前已靜音，點一下開啟音效" : "目前音效開啟，點一下靜音"}
+          title={isMuted ? "目前已靜音，點一下開啟音效" : "目前音效開啟，點一下靜音"}
+          className={cn(
+            "mb-2 flex size-10 cursor-pointer items-center justify-center rounded-full border bg-bg-2 transition-colors hover:border-bronze hover:text-bronze",
+            isMuted ? "border-line-strong text-ink-faint" : "border-bronze text-bronze"
+          )}
+        >
+          {isMuted ? <VolumeX className="size-[19px]" /> : <Volume2 className="size-[19px]" />}
+        </button>
+
+        {/* 設定按鈕 */}
         <button type="button" onClick={() => setSettings(true)} className="flex w-[72px] cursor-pointer flex-col items-center gap-1 rounded-md border border-line-strong py-2 text-[10.5px] text-ink-faint hover:text-ink-dim">
           <Settings className="size-[15px]" /><span>{t("設定")}</span>
         </button>
@@ -195,5 +240,12 @@ function LanguageSwitcher() {
         ))}
       </div>
     </div>
+  );
+}
+
+// 用 AudioProvider 將其包裹在最外層
+export function AppShell() {
+  return (
+    <AppShellContent />
   );
 }

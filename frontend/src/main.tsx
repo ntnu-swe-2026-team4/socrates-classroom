@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/app/theme";
 import { LangProvider } from "@/i18n";
 import { router } from "./router";
 import "./index.css";
+import { AudioProvider } from './lib/AudioContext';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
 
@@ -14,7 +15,10 @@ createRoot(document.getElementById("root")!).render(
     <LangProvider>
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
-          <RouterProvider router={router} context={{ queryClient }} />
+          {/* 🌟 用 AudioProvider 把路由套件包起來 */}
+          <AudioProvider>
+            <RouterProvider router={router} context={{ queryClient }} />
+          </AudioProvider>
         </QueryClientProvider>
       </ThemeProvider>
     </LangProvider>
