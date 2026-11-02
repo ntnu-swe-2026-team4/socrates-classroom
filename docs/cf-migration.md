@@ -29,16 +29,17 @@
 
 `auth.ts` 用的是 Web Crypto（`crypto.randomUUID()`）+ Hono cookie helper，**可直接上 Workers**，不用改演算法。
 
-## 二、GLM 在 Cloudflare 的三條路（2026-10 查證）
+## 二、GLM 在 Cloudflare 的四條路（2026-11 修訂）
 
 | 路線 | 內容 | 優點 | 限制 |
 |---|---|---|---|
 | **A. Workers AI GLM（建議為 Pi 預設）** | `env.AI.run("@cf/zai-org/glm-4.7-flash")`；經 `agents/models/pi-ai` 的 `createAI` 變成 Pi 的 Model | 免 GLM API key；AI binding 一等公民；Pi Durable 官方範例同款；有日誌與計費 | glm-4.7-flash 約 $0.0605/M input、$0.40/M output；`glm-5.3`（1M context）需 Workers **付費方案** |
-| **B. 自家 GLM key（Coding Plan / BigModel）** | Worker `fetch` 直連 `api.z.ai` 或 `open.bigmodel.cn`，請求體跟現在完全一樣 | 現有 key／額度照用；`thinking: { type: "disabled" }` 等 GLM 專屬參數照送 | key 放 secret；拿不到 gateway 的快取／日誌；Pi Durable 不吃這種自訂 OpenAI 相容端點（pi-ai 的路由會把 model object 導去 gateway 的 provider-native endpoint，而 provider 清單裡沒有智譜） |
+| **B. 自家 GLM key（Coding Plan / BigModel）** | Worker `fetch` 直連 `api.z.ai` 或 `open.bigmodel.cn`，請求體跟現在完全一樣 | 現有 key／額度照用；`thinking: { type: "disabled" }` 等 GLM 專屬參數照送 | key 放 secret；拿不到 gateway 的快取／日誌 |
+| **B′. Pi Durable 直掛自家 GLM key（2026-11 修正新增）** | pi-ai **內建 `zai` provider**（`api: "openai-completions"`、`baseUrl: https://api.z.ai/api/coding/paas/v4`——跟我們 `llm/providers/models.json` 完全同源）與 `zai-coding-cn`（`open.bigmodel.cn/api/coding/paas/v4`）；`models.setProvider(zaiProvider())` + `ZAI_API_KEY` secret 即可 | **Pi 對話可以用既有 Coding Plan 額度**，不必綁 Workers AI；跟 A 可並存互為 fallback | pi 內建的兩個 zai provider 都標明是 Coding Plan 端點（需訂閱）；一般（非 plan）BigModel key 要用 models.json 自訂 endpoint 掛；`thinking` 等 GLM 專屬參數 pi 的 openai-completions 實作不一定會送，需實測 |
 | **C. AI Gateway** | 統一入口：快取、日誌、限流、Unified Billing | 觀測與省錢 | **provider-native 清單（Anthropic、OpenAI、DeepSeek、Groq…共 23 家）不含智譜/Z.AI**，自家 GLM key 無法 BYOK 上 gateway |
 
-結論：
-- **Pi 對話引擎用 A**（`defaults: { model: ai("@cf/zai-org/glm-4.7-flash") }`），之後想升級情境換 model id 即可。
+結論（2026-11 修正）：
+- **Pi 對話引擎首選 A**（`defaults: { model: ai("@cf/zai-org/glm-4.7-flash") }`）：免 key、計費透明；**但 B′ 同樣是一等公民**——pi-ai 內建 zai provider，想用既有 Coding Plan 額度就切 `zaiProvider()`，兩者甚至可以做 fallback 鏈。先前「Pi Durable 不吃自訂 OpenAI 相容端點」的說法僅適用於 `agents` 的 `createAI` wrapper 路由，不適用於 pi-ai 自己的 Models registry，特此修正。
 - **過渡期非對話功能**（`routes/activities.ts` 的 `completeJson` 結構化輸出）先用 B 直連，維持現有 GLM 額度。
 - 若想統一觀測：Workers AI 也可走 AI Gateway REST 的 **`/ai/v1/chat/completions`（OpenAI 相容端點）**——現有 `glmText` 的 SSE 解析幾乎只要換 baseUrl 與 token 就能接上。
 
@@ -194,6 +195,9 @@ socrates-classroom/
 
 ## 八、原始出處
 
+- Pi AI providers（CLI 層，含 ZAI Coding Plan Global/China）：https://pi.dev/docs/latest/providers
+- pi.dev 自訂 provider / models.json：https://pi.dev/docs/latest/custom-provider
+- pi-ai library 層內建 zai / zai-coding-cn provider：以 `explore/pi-agent/node_modules/@earendil-works/pi-ai/dist/providers/zai.js` 原始碼查證
 - Pi harness（Agents SDK）：https://developers.cloudflare.com/agents/harnesses/pi/
 - 官方完整範例（WebSocket + workspace）：https://github.com/cloudflare/agents/tree/main/examples/next/harnesses/pi
 - Pi extensions（tools / system prompt）：https://developers.cloudflare.com/agents/harnesses/pi/extensions/
