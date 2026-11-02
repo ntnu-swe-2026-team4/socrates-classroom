@@ -89,7 +89,13 @@ function llmError(status: number, code: string, midStream = false): LlmError {
  * 這裡只負責傳遞原始文字（含開頭的情緒標記），拆標記由 EmotionSplitter 做。
  * `delta.reasoning_content`（思考過程）不是回覆內容，直接略過。
  */
-async function* glmText(config: Config, system: string, history: HistoryMessage[], signal?: AbortSignal): AsyncGenerator<string> {
+export async function* glmText(
+  config: Config,
+  system: string,
+  history: HistoryMessage[],
+  signal?: AbortSignal,
+  opts: { maxTokens?: number; temperature?: number } = {},
+): AsyncGenerator<string> {
   const controller = new AbortController();
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -117,8 +123,8 @@ async function* glmText(config: Config, system: string, history: HistoryMessage[
       body: JSON.stringify({
         model: config.glmModel,
         stream: true,
-        max_tokens: 600,
-        temperature: 0.7,
+        max_tokens: opts.maxTokens ?? 600,
+        temperature: opts.temperature ?? 0.7,
         // 蘇格拉底回覆很短，關掉思考可以讓第一個字早點出現（課堂上不要讓學生等）
         thinking: { type: "disabled" },
         messages: [

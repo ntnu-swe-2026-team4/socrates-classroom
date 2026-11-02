@@ -8,6 +8,7 @@ import * as E from "@/mock/engine";
 import * as Q from "@/mock/discussion";
 import { currentLang, tr } from "@/i18n";
 import { ApiError, streamDialogue } from "./http";
+import * as L from "@/mock/lookup";
 
 /**
  * 示範用的假後端（全部在記憶體，重整就消失）。
@@ -472,6 +473,9 @@ export const mockApi: Api = {
 
   async listScores(id) { await delay(40); return E.listScores(E.findAct(id), isTeacher()); },
   async adjustScore(id, memberId, adjust) { needTeacher(); return E.adjustScore(E.findAct(id), memberId, adjust); },
+
+  lookupTerm: (term, onEvent, signal) => L.lookup(term, onEvent, signal),
+
   async getStarData(id) {
     await delay(60);
     const a = E.findAct(id);

@@ -88,6 +88,7 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `components/ui/*` | 按鈕、輸入框、卡片、標籤、對話視窗（shadcn 風格） | 全站 |
 | `components/star/StarMap.tsx` | 立場星圖：3D 畫面、量軸勾選、時間軸、分群、放大 | 階段 2 左側、結果頁 |
 | `components/SocratesStage.tsx` | 3D 蘇格拉底的 React 包裝（載入模型、嘴形、主題色） | 對話頁 |
+| `components/TermLookup.tsx` | 名詞查詢：在對話中選取 1–30 字的文字 → 浮出「查詢」按鈕 → 右下角顯示解釋、[n] 引用連結與來源（`Esc` 關閉） | 對話頁、階段 1 / 個人思辨的對話 |
 | **`lib/`** | | |
 | `lib/star/constellation.ts` | 立場星圖的 three.js 引擎（0–3 維切換、軌跡、群心） | 立場星圖 |
 | `lib/star/data.ts` | k-means 分群、群組對齊、群標籤 | 立場星圖 |
@@ -106,6 +107,7 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | `mock/engine.ts` | 假的辯論引擎：階段推進、分組、討論、比賽、計時、計分 | mock 模式的辯論 |
 | `mock/debate-ai.ts` | 規則式的模擬同學 / 主持人 / 裁判 / k-means 分組 / 計分公式 | mock 模式的辯論 |
 | `mock/discussion.ts` | 假的多人討論：題目、每位同學各自的對話與結論、全班統計；模擬同學的對話由種子產生 | mock 模式的多人討論 |
+| `mock/lookup.ts` | 假的名詞查詢：驗證規則與後端相同，回傳示範解釋（名詞含「不存在」「飛天」→ 找不到來源） | mock 模式的名詞查詢 |
 | `landing/lottie.d.ts` | Lottie 的型別宣告 | 開發用 |
 
 > 後端上線後，`src/mock/` 與 `src/api/mock.ts` 可以整個刪除；`http` 模式打包時本來就不會包含它們。
@@ -191,6 +193,7 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 | **結果** 計分表 | `ResultsStage.tsx` → `useScores` | `GET /api/activities/:id/scores` |
 | 老師調整分數 | `api.adjustScore` | `PATCH /api/activities/:id/scores/:memberId` |
 | **立場星圖**資料（階段 1、2 只有老師；結果頁所有人） | `useStar`（`StarMap.tsx` 使用） | `GET /api/activities/:id/star` |
+| **名詞查詢**（對話中選取文字） | `components/TermLookup.tsx` 的 `SelectionLookup` → `api.lookupTerm` | `POST /api/lookup`（**SSE**） |
 
 ### 不需要 API 的部分（純前端）
 
@@ -219,7 +222,9 @@ data: {"message":{"id":"m1","role":"assistant","text":"完整回覆","at":"2026-
 AI（GLM）中途出錯時，最後一個事件改成 `event: error` + `data: {"message":"給使用者看的說明","code":"llm_unavailable"}`。
 完整規格（錯誤碼、資料保存、後端怎麼呼叫 GLM、API key 放哪裡）見 [`api-contract.md`〈對話 API〉](api-contract.md#對話-apiai-蘇格拉底llm-用-glm)。
 
-**2. 活動即時事件**（`GET /api/activities/:id/events`）：每個事件一行 `data: {…}`，`type` 為
+**2. 名詞查詢**（`POST /api/lookup`）：同樣用 `event:` + `data:`，依序是 `sources` `{term, sources}`、`delta` `{text}`…、`done` `{result}`（欄位見 `types.ts` 的 `LookupResult`）。查詢失敗也放在 `done` 的 `result.status` 裡。
+
+**3. 活動即時事件**（`GET /api/activities/:id/events`）：每個事件一行 `data: {…}`，`type` 為
 `stage_changed`、`group_message`、`argument_updated`、`turn_created`、`room_updated`（欄位見 `types.ts` 的 `ActivityEvent`）。
 
 ### 原本在前端「模擬」、上線後要由後端負責的事
@@ -233,6 +238,7 @@ AI（GLM）中途出錯時，最後一個事件改成 `event: error` + `data: {"
 | 「示範：讓老師推進」、「模擬同學完成調查」、「模擬全部」 | 不需要；這些只有 `mock` 才有（`api.dev`），`http` 模式不會出現 |
 | 計分公式（個人 / 團隊 / 辯論加權，預設 30/30/40） | 計分服務；權重由後端設定 |
 | 最多 20 輪對話與收尾條件 | 由後端的 LLM 流程控制，前端只顯示 `Progress` |
+| 名詞查詢的驗證、白名單搜尋、LLM 整理（`mock/lookup.ts` 只回示範文字） | 後端流程，見 `api-contract.md`「名詞查詢」；prompt 與白名單在 `llm/` |
 
 ### 接上後端的步驟
 

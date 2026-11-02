@@ -581,3 +581,33 @@ export interface StarData {
   /** 只有一個時間點時為 false（例如階段 1），畫面就不顯示時間軸 */
   hasTimeline: boolean;
 }
+
+/* ---------- 名詞查詢（POST /api/lookup，SSE） ---------- */
+/** 白名單網站上的一則來源；摘要裡的 [n] 對應第 n 個來源 */
+export interface LookupSource {
+  title: string;
+  url: string;
+  domain: string;
+}
+
+/**
+ * ok = 有解釋；insufficient = 有來源但不足以解釋（LLM 回「資料不足」）；not_found = 白名單內沒有來源；
+ * invalid = 空白、超過 30 字，或看起來是句子 / 指令而不是名詞；search_error / llm_error = 搜尋或整理時出錯
+ */
+export type LookupStatus = "ok" | "insufficient" | "not_found" | "invalid" | "search_error" | "llm_error";
+
+export interface LookupResult {
+  /** 正規化後的名詞（全形轉半形、去掉多餘空白） */
+  term: string;
+  status: LookupStatus;
+  /** 150 字內的解釋，句尾以 [n] 標註來源；沒有解釋時是空字串 */
+  summary: string;
+  sources: LookupSource[];
+  /** status 不是 ok / insufficient 時，給使用者看的原因 */
+  error: { title: string; reason: string; hint?: string } | null;
+}
+
+/** 查詢過程中的串流事件：先送出找到的來源，再一段一段送出解釋 */
+export type LookupEvent =
+  | { type: "sources"; term: string; sources: LookupSource[] }
+  | { type: "delta"; text: string };

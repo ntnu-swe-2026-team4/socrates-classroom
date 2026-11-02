@@ -11,6 +11,7 @@ import { authRoutes } from "./routes/auth";
 import { calendarRoutes } from "./routes/calendar";
 import { classroomRoutes } from "./routes/classrooms";
 import { discussionRoutes } from "./routes/discussions";
+import { lookupRoutes } from "./routes/lookup";
 import { postRoutes } from "./routes/posts";
 import { teamRoutes } from "./routes/team";
 import { topicRoutes } from "./routes/topics";
@@ -53,6 +54,7 @@ export function createApp(db: DB, config: Config): Hono<AppEnv> {
   api.route("/", calendarRoutes(db));
   api.route("/", activityRoutes(db, config, lang));
   api.route("/", teamRoutes(db, lang));
+  api.route("/", lookupRoutes(config));
 
   app.route("/api", api);
 

@@ -1,0 +1,19 @@
+{
+  "provider": ["exa", "keenable", "duckduckgo"],
+  "queryTemplate": "什麼是{term}",
+  "maxResults": 5,
+  "snippetMaxChars": 800,
+  "timeoutMs": 30000,
+  "domains": {
+    "zh": [
+      "zh.wikipedia.org",
+      "terms.naer.edu.tw"
+    ],
+    "en": [
+      "plato.stanford.edu",
+      "iep.utm.edu",
+      "en.wikipedia.org",
+      "britannica.com"
+    ]
+  }
+}

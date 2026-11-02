@@ -5,6 +5,7 @@ import type {
   Emotion, Group, GroupArgument, GroupMessage,
   ImportMembersResult, JoinApplication, JoinInput, JoinPolicy, JoinResult, Judgment, Member,
   ArgumentSummary, NoteInput, Position, PositionDraft, PostInput, Progress, Room, ScoreRow, ShareTarget, StarData,
+  LookupEvent, LookupResult,
   ThinkingNote, TopicInput, TopicReport, TopicResource, Turn, User, Role, Vote,
 } from "./types";
 
@@ -161,6 +162,12 @@ export interface Api {
   /* 結果 */
   listScores(activityId: string): Promise<ScoreRow[]>;
   adjustScore(activityId: string, memberId: string, adjust: number): Promise<ScoreRow>;
+
+  /**
+   * 名詞查詢：對話中選取看不懂的名詞，只在網域白名單內搜尋，再由 LLM 整理成附來源的簡短解釋。
+   * 每次都是獨立的查詢，只送出名詞本身，不帶任何對話內容；過程用串流回來，最後回傳完整結果。
+   */
+  lookupTerm(term: string, onEvent?: (e: LookupEvent) => void, signal?: AbortSignal): Promise<LookupResult>;
 
   /** 立場星圖的資料：階段 1 只有已確認的人、沒有分組；階段 2 之後有分組；結束後多一步「團隊提純後」 */
   getStarData(activityId: string): Promise<StarData>;

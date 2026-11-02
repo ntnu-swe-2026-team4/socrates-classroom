@@ -4,6 +4,7 @@ import { Bookmark, BookmarkCheck, Send } from "lucide-react";
 import { api, type Activity, type ArgumentSummary, type Coverage } from "@/api";
 import { keys, useConfirmPosition, useDialogue, useMembers, useNoteActions, useNotes, usePositions, useProgress, useStar } from "@/api/queries";
 import { StarMap } from "@/components/star/StarMap";
+import { SelectionLookup } from "@/components/TermLookup";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
@@ -30,7 +31,7 @@ function CoverageChips({ coverage }: { coverage?: Coverage }) {
   );
 }
 
-/** 右側：跟蘇格拉底的對話（回覆用串流一段一段出現；每句話可以標註成筆記） */
+/** 右側：跟蘇格拉底的對話（回覆用串流一段一段出現；每句話可以標註成筆記；選取名詞可以查詢） */
 function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
   const t = useT();
   const qc = useQueryClient();
@@ -86,14 +87,14 @@ function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
   };
   return (
     <Panel>
-      <div className="flex-1 space-y-4 overflow-y-auto p-5">
+      <SelectionLookup className="flex-1 space-y-4 overflow-y-auto p-5">
         {bubble("assistant", t("這場辯論的主題是「{statement}」。先不用急著下結論——你現在怎麼想？", { statement: a.statement }), "opener")}
         {messages.map((m) => bubble(m.role, m.text, m.id, m.id))}
         {mine && bubble("user", mine, "mine")}
         {pending !== null && bubble("assistant", pending || "…", "pending")}
         {error && <p className="text-[12.5px] text-wine">{error}</p>}
         <div ref={end} />
-      </div>
+      </SelectionLookup>
       {!readOnly && (
         <div className="flex items-end gap-2 border-t border-line p-3">
           <Textarea rows={1} value={text} placeholder={t("輸入你的想法…")} onChange={(e) => setText(e.target.value)}

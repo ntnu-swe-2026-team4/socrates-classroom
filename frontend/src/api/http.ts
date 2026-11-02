@@ -1,6 +1,6 @@
 import type { Api } from "./api";
 import { currentLang, tr } from "@/i18n";
-import type { ActivityEvent, DialogueMessage, Emotion } from "./types";
+import type { ActivityEvent, DialogueMessage, Emotion, LookupEvent, LookupResult } from "./types";
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 
@@ -123,6 +123,51 @@ export async function streamDialogue(path: string, body: unknown, onDelta?: (c: 
   throw new ApiError(502, tr("串流結束但沒有收到完整訊息"));
 }
 
+/** 名詞查詢的 SSE：event: sources {term, sources} → event: delta {text} … → event: done {result} */
+async function streamLookup(term: string, onEvent?: (event: LookupEvent) => void, signal?: AbortSignal): Promise<LookupResult> {
+  const res = await fetch(`${BASE}/api/lookup`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream", "Accept-Language": currentLang() },
+    body: JSON.stringify({ term }),
+    signal,
+  });
+  if (!res.ok) throw await errorOf(res);
+  if (!res.body) throw new ApiError(502, tr("串流結束但沒有收到完整訊息"));
+
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  let result: LookupResult | null = null;
+  const handle = (block: string) => {
+    const ev = parseSseBlock(block);
+    if (!ev) return;
+    const payload = JSON.parse(ev.data) as { term?: string; sources?: LookupResult["sources"]; text?: string; result?: LookupResult };
+    if (ev.event === "sources" && payload.term && payload.sources) {
+      onEvent?.({ type: "sources", term: payload.term, sources: payload.sources });
+    }
+    if (ev.event === "delta" && payload.text) onEvent?.({ type: "delta", text: payload.text });
+    if (ev.event === "done" && payload.result) result = payload.result;
+  };
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      buf += dec.decode(value, { stream: !done });
+      let match: RegExpExecArray | null;
+      while ((match = /\r?\n\r?\n/.exec(buf))) {
+        handle(buf.slice(0, match.index).replace(/\r/g, ""));
+        buf = buf.slice(match.index + match[0].length);
+      }
+      if (done) break;
+    }
+    if (buf.trim()) handle(buf.replace(/\r/g, ""));
+  } finally {
+    reader.cancel().catch(() => { /* 已經關閉 */ });
+  }
+  if (!result) throw new ApiError(502, tr("串流結束但沒有收到完整訊息"));
+  return result;
+}
+
 export const httpApi: Api = {
   login: (i) => post("/api/auth/login", i),
   me: async () => {
@@ -243,6 +288,7 @@ export const httpApi: Api = {
   adjustScore: (id, memberId, adjust) => patch(`/api/activities/${id}/scores/${memberId}`, { adjust }),
 
   getStarData: (id) => get(`/api/activities/${id}/star`),
+  lookupTerm: (term, onEvent, signal) => streamLookup(term, onEvent, signal),
 
   subscribe(id, onEvent) {
     const es = new EventSource(`${BASE}/api/activities/${id}/events`, { withCredentials: true });

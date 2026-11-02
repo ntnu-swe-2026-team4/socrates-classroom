@@ -149,15 +149,15 @@ export async function dialogueSse(c: Ctx, config: Config, opts: StreamOptions, t
     },
   });
 
-  return new Response(body, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
-  });
+  return new Response(body, { headers: SSE_HEADERS });
 }
+
+export const SSE_HEADERS = {
+  "Content-Type": "text/event-stream; charset=utf-8",
+  "Cache-Control": "no-cache, no-transform",
+  Connection: "keep-alive",
+  "X-Accel-Buffering": "no",
+};
 
 export function messageJson(id: string, role: "user" | "assistant", text: string, at: string, emotion?: Emotion) {
   return { id, role, text, at, ...(emotion ? { emotion } : {}) };

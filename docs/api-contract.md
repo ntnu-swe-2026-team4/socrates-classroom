@@ -350,6 +350,25 @@ curl -N -b jar.txt -H 'Content-Type: application/json' -H 'Accept: text/event-st
 | GET | `/api/activities/:id/scores` | `ScoreRow[]`（老師：全班；學生：自己） |
 | PATCH | `/api/activities/:id/scores/:memberId` | `{ adjust }`（僅老師） |
 
+## 名詞查詢
+學生在對話中選取看不懂的名詞（1–30 字、不跨行）後查詢。**每次查詢都是獨立的一次 LLM 呼叫**：只送出名詞本身，不帶對話內容，也不寫進對話紀錄。
+| 方法 | 路徑 | 說明 |
+|---|---|---|
+| POST | `/api/lookup` | `{ term }`（需登入），回應 **SSE**：`event: sources` `{ term, sources: LookupSource[] }` → `event: delta` `{ text }`（解釋，一段一段）… → `event: done` `{ result: LookupResult }`。查詢本身的失敗（不是名詞、找不到、搜尋或 LLM 出錯）一律放在 `done` 的 `result.status` 與 `result.error`，HTTP 仍回 200；只有未登入（401）、太頻繁（429）這類請求層級的錯誤才用 HTTP 狀態碼。用戶端斷線時中止查詢 |
+
+後端流程（移植自 socratic-lab 的名詞查詢；**模型、搜尋服務、白名單都由後端設定，前端不能選**）：
+
+| 步驟 | 內容 | 不符合時的 `status` |
+|---|---|---|
+| 1. 驗證 | 全形英數轉半形、合併空白，長度 1–30 字 | `invalid`，不搜尋、不呼叫 LLM |
+| 2. 擋指令 | 含 `，！？；。` 或「忽略以上指示」「幫我寫…」「扮演…」這類句型（提示注入）視為不是名詞；規則同 `frontend/src/mock/lookup.ts` 的 `looksLikeInstruction` | `invalid`，不搜尋、不呼叫 LLM |
+| 3. 搜尋 | **由程式**搜尋（LLM 沒有任何上網工具）：依 `search.json` 的 `provider`（字串或陣列）依序嘗試，前一個失敗或被限流就換下一個：`exa`、`keenable`、`duckduckgo` 免 key，`tavily` 需要 `TAVILY_API_KEY`（只放後端）；預設 `["exa", "keenable", "duckduckgo"]`，限定 `llm/lookup/search.json` 的 `domains.zh` 白名單，查詢字串為 `queryTemplate`（「什麼是{term}」） | 搜尋服務出錯 → `search_error` |
+| 4. 過濾 | 程式再比對一次網域（允許子網域）；排除維基百科的討論、分類、模板等非條目頁；同一篇文章的不同網址（`/zh-tw/`、繁簡、別名）只留一筆 | 一筆都不剩 → `not_found`，**不呼叫 LLM**，避免編造 |
+| 5. 取內容 | 有網頁片段就用片段，太短或沒有就抓該白名單網頁全文；**搜尋服務自己產生的 AI 回答一律不採用**。去掉側欄、表格、圖片、連結網址與維基百科註腳 `[1]`，截到 `snippetMaxChars` 字 | — |
+| 6. 整理 | system prompt = `llm/prompts/lookup.md`；user = `<term>名詞</term>` + `<sources>[n] 標題 (網域)\n內容…</sources>`。串流輸出，句尾以 `[n]` 標註第 n 個來源 | LLM 出錯 → `llm_error`（已找到的 `sources` 仍回傳）；回覆只有「資料不足」→ `insufficient`（`summary` 回空字串） |
+
+`result.error` = `{ title, reason, hint? }`，直接顯示給學生，不要放 key、內部錯誤堆疊等資訊。
+
 ## 原型裡「模擬」的部分，對應到後端要做的事
 | 原型（`debate-ai.js`） | 後端 |
 |---|---|

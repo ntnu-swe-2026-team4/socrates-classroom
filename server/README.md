@@ -12,6 +12,7 @@
 | — | 教室、加入流程、公告、議題（辯論）、討論區、多人討論、行事曆 | 完成 |
 | — | 四階段辯論（個人調查 → 團隊提純 → 辯論比賽 → 結果）、立場星圖、計分 | 完成 |
 | — | GLM 蘇格拉底串流（SSE）、情緒標記、多語言 | 完成 |
+| — | 名詞查詢（`POST /api/lookup`，Exa / Keenable / DuckDuckGo（免 key）白名單搜尋 + GLM 整理，SSE） | 完成 |
 
 ## 快速開始
 
@@ -55,7 +56,8 @@ bun run dev
 | `GLM_API_KEY` | 空 | **只放在後端**；沒設定時對話端點回 503 |
 | `GLM_MODEL` | `glm-4.6` | GLM 模型 id（也可改 `llm/providers/models.json`） |
 | `GLM_BASE_URL` | `https://api.z.ai/api/coding/paas/v4` | GLM 的 OpenAI 相容端點；一般 API 是 `https://open.bigmodel.cn/api/paas/v4` |
-| `LLM_PROVIDER` | 空 | 沒有 key 時可設 `mock`，用規則式回覆做離線開發／測試 |
+| `TAVILY_API_KEY` | 空 | 只有 `llm/lookup/search.json` 的 `provider` 含 `tavily` 時才需要（預設的 Exa / Keenable / DuckDuckGo 都免 key）；**只放在後端** |
+| `LLM_PROVIDER` | 空 | 沒有 key 時可設 `mock`，用規則式回覆做離線開發／測試（名詞查詢也改用假的搜尋與解釋） |
 | `SEED_DEMO` | `true` | 空資料庫第一次啟動時建立示範教室 |
 
 ### 示範帳號
@@ -87,10 +89,12 @@ server/
 │  ├─ seed.ts                示範資料
 │  ├─ routes/                auth / archives / classrooms / announcements /
 │  │                         topics / posts / discussions / calendar /
-│  │                         activities / team（辯論與結果）
+│  │                         activities / team（辯論與結果）/ lookup（名詞查詢）
 │  └─ services/              access（權限）、serialize、dialogue（SSE）、llm、
-│                            debate（分組／裁判／計分）、activities（FSM／場次）、files
+│                            debate（分組／裁判／計分）、activities（FSM／場次）、files、
+│                            lookup（名詞查詢：驗證、Exa / Keenable / DuckDuckGo / Tavily 搜尋、白名單過濾、GLM 整理）
 └─ tests/api.test.ts         端到端 API 測試
+└─ tests/lookup.test.ts      名詞查詢（mock 與攔截搜尋服務與 GLM 的 fetch）
 ```
 
 ## 設計重點
@@ -103,6 +107,7 @@ server/
 - **情緒標記**：`[neutral|happy|confused|angry]` 由後端拆掉，第一個 `delta` 前送 `event: emotion`，不會出現在文字或資料庫。
 - **GLM**：使用 OpenAI 相容的 `{GLM_BASE_URL}/chat/completions` 串流；key 只在後端。沒有 key 時回 `503 llm_not_configured`，伺服器其他功能照常運作。`LLM_PROVIDER=mock` 只用於本機開發與測試。串流中的 `delta.reasoning_content`（思考過程）直接丟掉；對話與 JSON 請求都帶 `thinking: { type: "disabled" }`。
 - **GLM 錯誤碼**：`1111`–`1114`（額度不足）回 503、`1302` / `1303` / `1305`（限流）回 429；其他 4xx / 5xx 一律 503，不把原始錯誤訊息給使用者。
+- **名詞查詢**：只送出名詞本身，不帶對話、不寫資料庫。搜尋服務依 `llm/lookup/search.json` 的 `provider` 依序嘗試（預設 Exa → Keenable → DuckDuckGo，前一個失敗或被限流就換下一個），都限定白名單網域：Exa 用公開 MCP 端點（`web_search_advanced_exa`，片段用 highlights、有全文）；Keenable 用公開 API（`/v1/search/public`，只有 snippet）；DuckDuckGo 讀 `html.duckduckgo.com` 結果頁（只有 snippet），請求太密集會對整個 IP 顯示機器人驗證，所以一次一個、間隔 2 秒，遇到驗證就停用 10 分鐘；也可加入 Tavily（`include_answer: false`，不採用搜尋服務的 AI 回答），程式再過濾一次網域；片段太短就用同一次搜尋回傳的網頁全文。白名單內沒有來源時不呼叫 LLM。回覆若是「資料不足」先不串流給前端，結果標為 `insufficient`。查詢失敗一律放在 `done` 的 `result.status`，HTTP 仍是 200；頻率限制與對話分開計算（每人每分鐘 20 次）。
 - **結構化 AI**：論點草稿會嘗試 GLM 的 `response_format: json_object`；沒有 key／失敗時退回規則式整理，不讓功能中斷。
 
 ## 測試

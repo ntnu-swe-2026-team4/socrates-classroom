@@ -15,6 +15,10 @@ export interface Config {
   glmBaseUrl: string;
   llmProvider: LlmProvider;
   promptPath: string;
+  /** 名詞查詢的搜尋服務含 tavily（search.json 的 provider）時才需要；只放後端 */
+  tavilyKey: string;
+  lookupPromptPath: string;
+  lookupSearchPath: string;
   seedDemo: boolean;
 }
 
@@ -64,6 +68,9 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       .replace(/\/+$/, ""),
     llmProvider,
     promptPath: path.resolve(serverRoot, "../llm/prompts/socrates.md"),
+    tavilyKey: process.env.TAVILY_API_KEY?.trim() ?? "",
+    lookupPromptPath: path.resolve(serverRoot, "../llm/prompts/lookup.md"),
+    lookupSearchPath: path.resolve(serverRoot, "../llm/lookup/search.json"),
     seedDemo: bool(process.env.SEED_DEMO, true),
     ...overrides,
   };

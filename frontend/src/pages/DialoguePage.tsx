@@ -8,6 +8,7 @@ import { keys, useArchives } from "@/api/queries";
 import { SocratesStage, type SocratesExpression, type SocratesHandle } from "@/components/SocratesStage";
 import type { Emotion } from "@/api";
 import { StageLayout } from "@/pages/stages/shared";
+import { SelectionLookup } from "@/components/TermLookup";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { SPEECH_RATES, createRecognizer, getSpeechRate, setSpeechRate, speak, speechInputSupported, stopSpeaking } from "@/lib/speech";
@@ -117,12 +118,12 @@ export function DialoguePage() {
         )}
         right={(
           <>
-            <div className="flex-1 space-y-4 overflow-y-auto p-5">
+            <SelectionLookup className="flex-1 space-y-4 overflow-y-auto p-5">
               {lines.map((m) => <Bubble key={m.id} role={m.role} text={m.text} />)}
               {mine && <Bubble role="user" text={mine} />}
               {pending !== null && <Bubble role="assistant" text={pending || "…"} />}
               <div ref={end} />
-            </div>
+            </SelectionLookup>
             <div className="flex shrink-0 items-end gap-2 border-t border-line p-3">
               <Button variant="outline" size="icon" aria-label={t("按住說話")} disabled={!rec.current}
                 className={cn(listening && "border-bronze text-bronze")}
