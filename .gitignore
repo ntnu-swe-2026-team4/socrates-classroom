@@ -7,12 +7,15 @@ package-lock.json.bak
 .dev.vars
 .wrangler/
 
-# 各套件產物
+# packages
 dist/
 coverage/
 
-# 環境
+# env
 .env
 .env.local
 .env.*.local
 .DS_Store
+
+# agents
+.pi/
