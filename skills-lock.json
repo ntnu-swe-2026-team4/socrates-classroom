@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "skills": {
+    "cf-cli": {
+      "source": "cloudflare/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cf-cli/SKILL.md",
+      "computedHash": "439ebbec66d43c5bf28dea7468625c118c136cb810e09a8ef8dcc33184a990b3"
+    },
+    "cloudflare": {
+      "source": "cloudflare/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloudflare/SKILL.md",
+      "computedHash": "e7c26bb690042060d60fcccf3e5807d000c9c064f732b6fcfccb8bbcdc5dc04a"
+    },
+    "durable-objects": {
+      "source": "cloudflare/skills",
+      "sourceType": "github",
+      "skillPath": "skills/durable-objects/SKILL.md",
+      "computedHash": "55897720109876d5755ced452e069c5b6ef1010736642c937d5db49a6ddbf587"
+    },
+    "staying-current": {
+      "source": "houseofmvps/ultraship",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "skills/staying-current/SKILL.md",
+      "computedHash": "976dfac4032e31789af4923c8f38f59d50e2f0815bad1501d13b71445785ee68"
+    },
+    "verification-before-completion": {
+      "source": "obra/superpowers",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "skills/verification-before-completion/SKILL.md",
+      "computedHash": "b529822bdac4b197b180fe12225cff86b930b65910435103c10622df7f041651"
+    },
+    "workers-best-practices": {
+      "source": "cloudflare/skills",
+      "sourceType": "github",
+      "skillPath": "skills/workers-best-practices/SKILL.md",
+      "computedHash": "b6252e1aa7c41d1fbec7f064684deb9bd79866c2b6f3e18deee6d7a0c673f3f3"
+    }
+  }
+}

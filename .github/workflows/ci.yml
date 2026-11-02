@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    env:
+      CF_SEND_TELEMETRY: "false"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint (Biome)
+        run: pnpm lint
+      - name: YAML lint (yamllint)
+        run: |
+          pip install yamllint
+          yamllint .
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test (Worker runtime + local D1/R2, LLM_PROVIDER=mock)
+        run: pnpm test
+      - name: cf build (client + worker into Build Output)
+        run: pnpm exec cf build
+        working-directory: apps/web
+      - name: cf deploy dry-run (no credentials needed, fork-PR safe)
+        run: pnpm exec cf deploy --prebuilt --mode production --dry-run
+        working-directory: apps/web
