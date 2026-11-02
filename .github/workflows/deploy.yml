@@ -17,9 +17,9 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Test（部署前最後一道閘）
+      - name: Test (final gate before deploy)
         run: pnpm test
-      - name: cf build（只建一次）
+      - name: cf build (build once)
         run: pnpm exec cf build
         working-directory: apps/server
       - name: D1 migrations
@@ -28,11 +28,11 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: cf deploy（同一個建置產物）
+      - name: cf deploy (same build artifact)
         run: pnpm exec cf deploy --prebuilt --mode production
         working-directory: apps/server
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      # Secrets 僅首次需要：cf deploy --secrets-file 或 wrangler secret put
-      # （OPENCODE_API_KEY / OPENROUTER_API_KEY / BYOK_ENC_KEY；ZAI_API_KEY 僅 dev）
+      # Secrets are needed only on first setup: cf deploy --secrets-file or wrangler secret put
+      # (OPENCODE_API_KEY / OPENROUTER_API_KEY / BYOK_ENC_KEY; ZAI_API_KEY is dev-only)
