@@ -175,7 +175,7 @@ export function buildPool(env: Env): Pool {
               contextWindow: 1_048_576,
               maxTokens: 16_384,
               cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
+              compat: { supportsDeveloperRole: false, supportsReasoningEffort: false, maxTokensField: "max_tokens" },
             },
           ],
           api: API_IMPLS as any,

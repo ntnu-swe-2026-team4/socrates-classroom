@@ -19,18 +19,19 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Test (final gate before deploy)
         run: pnpm test
-      - name: cf build (build once)
+      - name: cf build (client + worker, built once)
         run: pnpm exec cf build
-        working-directory: apps/server
+        working-directory: apps/web
       - name: D1 migrations
-        run: pnpm exec cf d1 migrations apply socrates --dir migrations
-        working-directory: apps/server
+        run: pnpm exec cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations
+        working-directory: apps/web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
       - name: cf deploy (same build artifact)
         run: pnpm exec cf deploy --prebuilt --mode production
-        working-directory: apps/server
+        working-directory: apps/web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

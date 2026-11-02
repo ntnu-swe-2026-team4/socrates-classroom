@@ -12,10 +12,9 @@
 npm install
 
 # 本機開發（Worker + 本地 D1/R2；AI binding 遠端打真實模型）
-cd apps/server && npx cf dev        # http://localhost:8787
+npx cf dev                          # apps/web；單一全栈 dev server :5173
 
-# 前端（另開一個終端；Vite 代理 /api → 8787）
-npm run dev                          # http://localhost:5173
+
 ```
 
 第一次啟動：D1 是空的，灌示範資料（教室：高二哲學選修 A、倫理學讀書會）：
@@ -44,8 +43,7 @@ CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) 
 
 | 指令（專案根目錄）   | 作用                                                          |
 | -------------------- | ------------------------------------------------------------- |
-| `npm run dev`        | 前端開發伺服器（Vite，:5173）                                 |
-| `npm run dev:server` | 後端 `cf dev`（Worker + 本地 D1/R2，:8787）                   |
+| `npm run dev:web`    | 單一全栈 dev server（SPA HMR + Worker + 本地 D1/R2，:5173）   |
 | `npm test`           | vitest（Worker runtime：路由 + D1 + 對話 SSE，mock provider） |
 | `npm run typecheck`  | server 與 web 的 TypeScript 檢查                              |
 | `npm run build`      | 前端打包（`apps/web/dist`）                                   |

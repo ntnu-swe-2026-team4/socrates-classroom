@@ -17,7 +17,7 @@
     "format": "biome format --write .",
     "migrate": "pnpm --filter @socrates/server migrate",
     "seed": "pnpm --filter @socrates/server seed",
-    "deploy": "pnpm --filter @socrates/server deploy"
+    "deploy": "pnpm --filter @socrates/web deploy"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4"

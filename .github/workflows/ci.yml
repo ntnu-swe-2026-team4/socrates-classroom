@@ -12,7 +12,6 @@ jobs:
       CF_SEND_TELEMETRY: "false"
     steps:
       - uses: actions/checkout@v6
-      # version is read from the packageManager field in the root package.json
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
@@ -25,11 +24,9 @@ jobs:
         run: pnpm typecheck
       - name: Test (Worker runtime + local D1/R2, LLM_PROVIDER=mock)
         run: pnpm test
-      - name: Build web
-        run: pnpm --filter @socrates/web build
-      - name: cf build (verify the Worker bundles)
+      - name: cf build (client + worker into Build Output)
         run: pnpm exec cf build
-        working-directory: apps/server
+        working-directory: apps/web
       - name: cf deploy dry-run (no credentials needed, fork-PR safe)
         run: pnpm exec cf deploy --prebuilt --mode production --dry-run
-        working-directory: apps/server
+        working-directory: apps/web

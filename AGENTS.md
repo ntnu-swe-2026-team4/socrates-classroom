@@ -13,16 +13,17 @@ A classroom debate platform: Socratic one-on-one dialogue, four-stage classroom 
 
 ```bash
 pnpm install                        # pnpm ≥ 12, Node ≥ 26.12 (the cf CLI does not support Bun)
-pnpm --filter @socrates/server dev  # backend cf dev → http://localhost:8787
-pnpm dev:web                        # frontend Vite → http://localhost:5173 (proxies /api)
+pnpm dev:web                        # full-stack dev (vite + workerd + local D1/R2) → http://localhost:5173
 pnpm test                           # vitest-pool-workers (real Worker runtime, mock LLM)
 pnpm lint && pnpm typecheck         # must be green before any PR
 ```
 
+`pnpm dev:web` is the **single dev server**: React SPA (HMR) + Worker API + Durable Objects all on :5173 — no separate backend process or /api proxy.
+
 ## Structure & data flow
 
-- `apps/server` — the only Worker: Hono API + `PiAgent` / `ActivityEvents` Durable Objects + provider pool
-- `apps/web` — React SPA (built output is served as the same Worker's Static Assets)
+- `apps/web` — **the deployable full-stack project**: React SPA + `cloudflare.config.ts` + Vite config; `cf dev/build/deploy` run from here (dev secrets in `apps/web/.dev.vars`)
+- `apps/server` — Worker source (Hono API + `PiAgent` / `ActivityEvents` Durable Objects + provider pool) and the vitest setup (`wrangler.vitest.jsonc`); bundled by the build in `apps/web` via `entrypoint: ../server/src/index.ts`
 - `packages/shared` — API contract types (single source of truth; changing a type means syncing server and web)
 - `packages/llm` — prompts (`prompts/socrates.md` is injected at build time as the system prompt; edit → redeploy takes effect)
 - Data: D1 (`apps/server/migrations/`), uploads in R2
@@ -49,6 +50,6 @@ pnpm lint && pnpm typecheck         # must be green before any PR
 
 ## Deploy & CLI
 
-- Use the **cf CLI** (`cloudflare.config.ts` lives in `apps/server/`); do not create wrangler config files
-- cf commands need **Node ≥ 26.12** and **do not support Bun**; run them inside `apps/server/`
+- Use the **cf CLI** (`cloudflare.config.ts` lives in `apps/web`); do not create wrangler config files
+- cf commands need **Node ≥ 26.12** and **do not support Bun**; run them inside `apps/web` (the full-stack Vite project where `.cloudflare/` output lives)
 - `wrangler` exists only as cf's build backend and for `wrangler tail`

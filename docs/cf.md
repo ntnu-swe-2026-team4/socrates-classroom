@@ -1,7 +1,7 @@
 # Cloudflare CLI（cf）參考
 
 > cf 是 Cloudflare 的新一代 CLI（beta，2026-09 起），取代 wrangler：設定檔為 `cloudflare.config.ts`（TypeScript），指令輸出以 JSON 為主。
-> 本專案唯一的 Worker 專案在 `apps/server/`——所有 cf 專案指令都在該目錄執行。
+> 全栈專案（vite root + `cloudflare.config.ts`）在 `apps/web/`——所有 cf 專案指令都在該目錄執行；Worker 原始碼在 `apps/server/`（由 entrypoint 指回）。
 
 ## 目錄
 
@@ -32,7 +32,7 @@ cf --version
 
 | 指令                                      | 作用                                                        |
 | ----------------------------------------- | ----------------------------------------------------------- |
-| `cf dev`                                  | 本機開發：Worker + 本地 D1/R2 + 遠端 AI binding（:8787）    |
+| `cf dev` ＝ `pnpm dev:web`                | 單一全栈 dev server：SPA HMR + Worker + 本地 D1/R2（:5173） |
 | `cf build`                                | 建置一次，產出標準 Build Output（`.cloudflare/output/v0/`） |
 | `cf deploy --prebuilt`                    | 部署先前建置的產物（配合 build-once 流程）                  |
 | `cf deploy --dry-run`                     | 驗證建置，不上傳、不需要金鑰（fork PR 安全）                |
@@ -45,7 +45,7 @@ cf --version
 
 ## cloudflare.config.ts
 
-`apps/server/cloudflare.config.ts`——TypeScript 設定，取代 `wrangler.jsonc`。本專案使用的鍵：
+`apps/web/cloudflare.config.ts`——TypeScript 設定，取代 `wrangler.jsonc`。本專案使用的鍵：
 
 | 鍵                                    | 本專案值                                                                        |
 | ------------------------------------- | ------------------------------------------------------------------------------- |
@@ -60,14 +60,14 @@ cf --version
 
 注意：
 
-- `cf` 搜尋「目前目錄往根目錄」**最近的** `cloudflare.config.ts`——在 `apps/server/` 下執行就會找到它
+- `cf` 搜尋「目前目錄往根目錄」**最近的** `cloudflare.config.ts`——在 `apps/web/` 下執行就會找到它
 - 檔案內容可用 imports／函式／`switch (ctx.mode)` 做環境差異（staging/production）
 
 ## 開發（cf dev）
 
 `cf dev` = Vite（`@cloudflare/vite-plugin`）+ 本地 workerd：D1/R2 是本地模擬、`AI` binding 以 `dev.remote` 打真實 Workers AI。
 
-- Worker：`http://localhost:8787`（前端 Vite 代理 `/api` 過去）
+- 單一 server：`http://localhost:5173`（SPA 與 `/api` 同源，workerd 跑在 vite 內）
 - 首次啟動 D1 是空的：`pnpm seed`（走 `POST /api/dev/seed`，需 `SEED_TOKEN`）
 - `cf dev` 會偵測 `cloudflare.config.ts` 的變更
 
@@ -108,7 +108,7 @@ npx cf deploy --prebuilt --mode production --secrets-file .dev.vars
 
 cf（beta）在 **npm/pnpm workspace 子目錄**的依賴解析有限：「Worker package 自己的 `node_modules`」才算數，**hoisted 到 workspace root 不算**。
 
-- 本專案的解法：**pnpm workspaces**——pnpm 的 per-package node_modules（symlink 隔離）讓 `apps/server/node_modules` 自然擁有全部依賴，cf 的偵測自然通過
+- 本專案的解法：**pnpm workspaces**——pnpm 的 per-package node_modules（symlink 隔離）讓各 package 自然擁有自己的依賴；worker 打包時 vite 沿著原始碼位置（`apps/server`）解析模組
 - 這也是 Cloudflare 官方 monorepo 文件以 pnpm workspaces 為首的原因
 - 附帶症狀：cf 會警告「No lock file has been detected in the current working directory」——可忽略（lockfile 在 repo 根）
 

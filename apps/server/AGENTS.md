@@ -1,20 +1,16 @@
 # AGENTS.md — apps/server (Hono Worker + Pi Durable)
 
-The only Worker: Hono API + `PiAgent` / `ActivityEvents` Durable Objects + provider pool.
-All rules from the root `AGENTS.md` apply; below are the deltas and deep water.
+Worker source (Hono API + `PiAgent` / `ActivityEvents` Durable Objects + provider pool) and the vitest setup. The deployable full-stack project lives in `apps/web` (which holds `cloudflare.config.ts` and bundles this package via `entrypoint: ../server/src/index.ts`) — all rules from the root `AGENTS.md` apply; below are the deltas and deep water.
 
 ## Commands
 
 ```bash
-pnpm dev               # cf dev (Worker + local D1/R2; AI binding is remote) → :8787
 pnpm test              # canonical check: vitest-pool-workers (real runtime + local D1/R2/DO)
 pnpm typecheck         # TS 7 strict + @cloudflare/workers-types
-pnpm exec cf build     # verify the Worker bundles (produces .cloudflare/output/)
-node scripts/seed.mjs  # seed demo data (requires SEED_TOKEN)
 ```
 
-- Run `cf` commands from **this directory** (it resolves `cloudflare.config.ts` and needs this package's own `node_modules` — the workspace-root copy does not count).
-- Tests cannot run from the repo root without `--root apps/server`; the pool config is `wrangler.vitest.jsonc` (not `cloudflare.config.ts`), and its compatibility date is 2026-08-06 (the vitest plugin's workerd ceiling).
+- `cf dev/build/deploy` do **not** run here — they run from `apps/web` (the vite root where the plugin finds `cloudflare.config.ts`)
+- Tests cannot run from the repo root without `--root apps/server`; the pool config is `wrangler.vitest.jsonc` (not `cloudflare.config.ts`), and its compatibility date is 2026-08-06 (the vitest plugin's workerd ceiling)
 
 ## Vocabulary (get this right)
 
