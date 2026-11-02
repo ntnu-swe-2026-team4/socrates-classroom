@@ -1,0 +1,16 @@
+# YAML lint (GitHub Actions workflows and the pnpm workspace)
+extends: default
+
+rules:
+  # GitHub Actions' `on:` key is flagged by the truthy rule
+  truthy:
+    check-keys: false
+  document-start: disable
+  line-length:
+    max: 160
+  comments:
+    min-spaces-from-content: 1
+  indentation:
+    spaces: consistent
+  new-line-at-end-of-file: enable
+  trailing-spaces: enable

@@ -12,8 +12,8 @@ jobs:
       CF_SEND_TELEMETRY: "false"
     steps:
       - uses: actions/checkout@v6
+      # version is read from the packageManager field in the root package.json
       - uses: pnpm/action-setup@v4
-        # version is read from the packageManager field in the root package.json
       - uses: actions/setup-node@v6
         with:
           node-version: 26

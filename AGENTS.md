@@ -4,7 +4,8 @@ A classroom debate platform: Socratic one-on-one dialogue, four-stage classroom 
 
 ## Language
 
-- The project's docs, code comments, UI copy, and commit messages are in **Traditional Chinese (zh-TW)**. Match that when writing comments, docs, and commit messages.
+- The project's docs, UI copy, and commit messages are in **Traditional Chinese (zh-TW)**. Match that when writing docs and commit messages.
+- **No comments in code or config files.** Code must be self-describing; knowledge that doesn't fit the code belongs in `docs/` or the AGENTS.md files. When a comment is unavoidable (config/YAML), it must be **English only**.
 - UI copy is i18n'd (`apps/web/src/i18n/messages/`): zh-TW / en / es. New user-facing strings need all three.
 - This file (and other AGENTS.md files) are in English for agent legibility; everything else is zh-TW.
 
@@ -29,6 +30,7 @@ pnpm lint && pnpm typecheck         # must be green before any PR
 ## Code style
 
 - Biome owns formatting and linting: `pnpm lint` must pass before PRs; `pnpm format` auto-fixes
+- YAML (workflows / `pnpm-workspace.yaml`) is linted by **yamllint** (config: `.yamllint.yaml`)
 - TypeScript strict; all D1 access goes through `src/db/d1.ts` (`one/all/run/batch`) — `$named` params are auto-converted to positional binds
 
 ## Testing
