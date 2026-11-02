@@ -257,6 +257,10 @@ export function activityRoutes(db: DB, config: Config, getLang: (c: any) => Lang
     const user = requireUser(c);
     const { activity, role } = accessActivity(db, c.req.param("id"), user);
     if (role !== "student") fail(403, "only_student");
+    // 草稿會打真實 LLM：與串流對話共用同一把鎖和速率額度，避免連點或腳本灌爆 LLM 額度
+    checkRate(user.id);
+    const lockKey = `activity:${activity.id}:${user.id}`;
+    acquireLock(lockKey);
     const texts = all<any>(
       db,
       "SELECT text FROM activity_dialogue WHERE activity_id = $aid AND student_id = $sid AND role = 'user' ORDER BY created_at",
@@ -265,17 +269,21 @@ export function activityRoutes(db: DB, config: Config, getLang: (c: any) => Lang
     const axes = parseJson<Axis[]>(activity.axes, []);
     let summary = draftSummary(axes, texts);
     const langName = getLang(c) === "en" ? "English" : getLang(c) === "es" ? "Español" : "繁體中文";
-    const generated = await completeJson<{ claim?: string; reason?: string; evidence?: string }>(
-      config,
-      `你是哲學課的助教。請從學生與蘇格拉底的對話，整理出學生的主張、理由與證據。只輸出 JSON：{"claim":"...","reason":"...","evidence":"..."}。不要加入學生沒說過的想法。請用${langName}輸出。`,
-      texts.join("\n") || "（學生還沒有說話）",
-    );
-    if (generated && typeof generated.claim === "string") {
-      summary = {
-        claim: generated.claim.slice(0, 500),
-        reason: typeof generated.reason === "string" ? generated.reason.slice(0, 1000) : "",
-        evidence: typeof generated.evidence === "string" ? generated.evidence.slice(0, 1000) : "",
-      };
+    try {
+      const generated = await completeJson<{ claim?: string; reason?: string; evidence?: string }>(
+        config,
+        `你是哲學課的助教。請從學生與蘇格拉底的對話，整理出學生的主張、理由與證據。只輸出 JSON：{"claim":"...","reason":"...","evidence":"..."}。不要加入學生沒說過的想法。請用${langName}輸出。`,
+        texts.join("\n") || "（學生還沒有說話）",
+      );
+      if (generated && typeof generated.claim === "string") {
+        summary = {
+          claim: generated.claim.slice(0, 500),
+          reason: typeof generated.reason === "string" ? generated.reason.slice(0, 1000) : "",
+          evidence: typeof generated.evidence === "string" ? generated.evidence.slice(0, 1000) : "",
+        };
+      }
+    } finally {
+      releaseLock(lockKey);
     }
     return c.json({ summary });
   });
