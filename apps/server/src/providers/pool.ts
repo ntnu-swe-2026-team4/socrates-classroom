@@ -104,7 +104,14 @@ let poolCache: { key: string; pool: Pool } | undefined;
 
 function poolKey(env: Env): string {
   const e = env as Env & { DGX_BASE_URL?: string; DGX_API_KEY?: string };
-  return [env.LLM_PROVIDER, e.DGX_BASE_URL, e.DGX_API_KEY, env.OPENCODE_API_KEY, env.OPENROUTER_API_KEY, env.ZAI_API_KEY].join("\u0000");
+  return [
+    env.LLM_PROVIDER,
+    e.DGX_BASE_URL,
+    e.DGX_API_KEY,
+    env.OPENCODE_API_KEY,
+    env.OPENROUTER_API_KEY,
+    env.ZAI_API_KEY,
+  ].join("\u0000");
 }
 
 export interface Pool {
@@ -185,7 +192,11 @@ export function buildPool(env: Env): Pool {
         const ai = createAI({ binding: env.AI });
         models.setProvider(ai.provider);
         const model = ai(entry.model);
-        chain.push({ provider: "workers-ai", model: model as unknown as AnyModel, gate: persistentGate("workers-ai", () => rpmGate(50)) });
+        chain.push({
+          provider: "workers-ai",
+          model: model as unknown as AnyModel,
+          gate: persistentGate("workers-ai", () => rpmGate(50)),
+        });
       } else {
         const key = keyFor(env, entry.provider);
         if (!key) continue;
