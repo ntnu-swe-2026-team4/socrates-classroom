@@ -48,7 +48,7 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 - **用量**：5 小時 + 每週雙窗口。credits 制：Lite 2,000/5h・10,000/週、Pro 12,000・60,000、Max 28,000・140,000；離峰五折，峰時（週一～五 14:00–18:00 UTC+8）Flash 0.4×／5.3 為 1.2×／3×。對話用量用不完
 - **併發**：官方不公布數字（只說 Max > Pro > Lite、動態調整）；社群實測 Lite/Pro ≈ **1**、Max 動態約 30，且有 5→2→1 收緊前例（zai-org/GLM-4 #802）
 - **條款**：⚠️ 「限官方支援工具與產品環境」（ZCode／Claude Code／Cline／Roo Code／Kilo／Goose／OpenCode…）＋「禁止帳號共享／多用戶」→ **不可當課堂產品後端**，僅開發與老師個人助理
-- 錯誤碼對照（沿用 `server/src/services/llm.ts` 分類）：1302/1305 限流過載、1308/1310/1316/1317 窗口用盡、1313 公平使用限速、1309 訂閱過期
+- 錯誤碼對照（分類見 `apps/server/src/providers/pool.ts`）：1302/1305 限流過載、1308/1310/1316/1317 窗口用盡、1313 公平使用限速、1309 訂閱過期
 
 ## 4. CF Workers AI（壓底）
 
@@ -87,7 +87,7 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 - [ ] Cloudflare Tunnel 設定（團隊自建）——記得套 Access policy 限制僅自家 Worker 可呼叫
 - [ ] opencode-go 的實際併發實測（官方無數字）
 - [ ] 產品級 BYOK：學生 key 的加密儲存（D1）與 `zdr` 強制路由設計
-- [ ] `llm/providers/models.json` 是否把 dgx-spark-x2 / opencode-go / openrouter 收進 runtime 設定層（目前 server 只讀 `providers.glm`）
+- [ ] `CLASS_POOL`（`apps/server/src/providers/whitelist.ts`）之外是否需要更多 runtime 設定層（模型/併發目前寫死在 pool.ts）
 
 ## 來源
 

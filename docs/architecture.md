@@ -94,7 +94,7 @@ socrates-classroom/
 
 ## 3. Worker 分層（apps/server）
 
-**組裝（相依注入）**：`createApp(bindings)` 取代 `createApp(db, config)`。bindings = D1、R2、AI、PiAgent namespace、vars/secrets。`config.ts` 的 fs 讀檔全部轉 build-time import（`llm/prompts/socrates.md?raw`、providers 常數），env 值走 `bindings.vars`。
+**組裝（相依注入）**：`createApp(bindings)` 取代 `createApp(db, config)`。bindings = D1、R2、AI、PiAgent namespace、vars/secrets。舊 `config.ts` 的 fs 讀檔全部轉 build-time import（`packages/llm/prompts/socrates.md?raw`、providers 常數），env 值走 `bindings.vars`。
 
 **Db 介面（db/d1.ts）**：
 
@@ -150,7 +150,7 @@ export class PiAgent extends DurableObject<Env> {
 
 - **學生追問**：對話進行中再 submit → pi inbox 排隊（follow-up）；Phase 3 改 `steer()` 插話
 - **歷史**：Pi transcript 是 agent 的工作記憶；D1 仍是產品資料（對話存檔、討論區瀏覽、計分）。重置對話 = `session.reset(handoff)` + D1 開新 archive
-- **prompt**：`registry.install({ sections: [{ render: () => PREAMBLE }] })`，PREAMBLE 來自 `llm/prompts/socrates.md` 的 build-time import——LLM 組改檔 → 重新部署即生效
+- **prompt**：`registry.install({ sections: [{ render: () => PREAMBLE }] })`，PREAMBLE 來自 `packages/llm/prompts/socrates.md` 的 build-time import——LLM 組改檔 → 重新部署即生效
 - **鎖與限流**：`dialogue.ts` 的 in-memory lock/rate Map 退役——DO 單執行緒即鎖；每人 20 req/min 移到 Hono 層（D1 或 DO 計數）；併發閘在 pool（§5）
 
 ## 5. Provider Pool（providers/pool.ts）

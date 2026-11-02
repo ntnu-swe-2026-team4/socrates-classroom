@@ -135,7 +135,7 @@ data: {"message":{"id":"m42","role":"assistant","text":"有意思。但你剛才
 
 學生要求「演示某種情緒」時，AI 直接用那個情緒（例如「你能演示生氣嗎」→ `angry`，回覆「這就是我生氣的樣子！好啦，不開玩笑了…」）。
 
-做法：提示詞（`llm/prompts/socrates.md`）要求 AI 在回覆**最前面**寫一個標記，例如 `[confused] 你說的「善意」是指…`。後端要：
+做法：提示詞（`packages/llm/prompts/socrates.md`）要求 AI 在回覆**最前面**寫一個標記，例如 `[confused] 你說的「善意」是指…`。後端要：
 
 1. 讀上游串流時，先把開頭的文字暫存起來，直到能判斷有沒有標記（符合 `^\s*\[(neutral|happy|confused|angry)\]\s*` 就取出情緒；開頭不是 `[` 或超過 24 字還沒對上，就當作 `neutral`，原文照送）。
 2. **標記不能出現在任何 `delta` 裡**，也不存進 `text`（不然會顯示在對話框、被朗讀出來）。

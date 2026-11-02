@@ -17,7 +17,7 @@ pnpm dev                        # 單一全栈 dev server（SPA HMR + Worker + �
 第一次啟動：D1 是空的，灌示範資料（教室：高二哲學選修 A、倫理學讀書會）：
 
 ```bash
-cp apps/web/.env.example apps/web/.dev.vars   # 設 SEED_TOKEN=dev-token
+cp apps/web/.env.example apps/web/.dev.vars   # 已含 SEED_TOKEN=dev-seed
 pnpm seed
 ```
 
