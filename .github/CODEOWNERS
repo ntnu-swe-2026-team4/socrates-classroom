@@ -1,7 +1,23 @@
-# 預設（根層共用：CI、compose、workspace、docs）→ 組長 + PM
+# 預設（根層共用：CI、workspace 設定、docs/AGENTS.md）→ 組長 + PM
 * @ccohongrui @G36maid @minstrike520 @shiraga1094 @alifestone
 
-# 各目錄：team 全員 review + 組長必定入列
-/frontend/       @ntnu-swe-2026-team4/frontend @ccohongrui
-/server/         @ntnu-swe-2026-team4/backend  @minstrike520
-/llm/            @ntnu-swe-2026-team4/llm      @shiraga1094 @alifestone
+# ── apps/web：前端（React SPA）──
+/apps/web/ @ntnu-swe-2026-team4/frontend @ccohongrui
+
+# ── apps/server：後端（Hono Worker、D1、routes）──
+/apps/server/ @ntnu-swe-2026-team4/backend @minstrike520
+
+# ── 對話引擎與 provider pool：LLM × 後端共同守護 ──
+/apps/server/src/do/            @ntnu-swe-2026-team4/llm @ntnu-swe-2026-team4/backend @shiraga1094 @alifestone @minstrike520
+/apps/server/src/providers/     @ntnu-swe-2026-team4/llm @ntnu-swe-2026-team4/backend @shiraga1094 @alifestone @minstrike520
+/apps/server/cloudflare.config.ts @ntnu-swe-2026-team4/backend @minstrike520 @ccohongrui
+/apps/server/migrations/        @ntnu-swe-2026-team4/backend @minstrike520
+
+# ── packages ──
+# 契約型別：前後端共同（任何改動雙邊都要 review）
+/packages/shared/ @ntnu-swe-2026-team4/backend @ntnu-swe-2026-team4/frontend @minstrike520 @ccohongrui
+# 提示詞與 provider 設定層（LLM 組的 zero-code 介面）
+/packages/llm/    @ntnu-swe-2026-team4/llm @shiraga1094 @alifestone
+
+# ── 文件 SSOT：改動需 PM + 組長知情 ──
+/docs/ @G36maid @minstrike520 @ccohongrui
