@@ -6,22 +6,19 @@
 
 ## Quickstart
 
-需要 **Node.js ≥ 26.12**（2026-10 安全版；cf CLI 不支援 Bun）。
+需要 **Node.js ≥ 26.12**（2026-10 安全版；cf CLI 不支援 Bun）與 **pnpm ≥ 12**。
 
 ```bash
-npm install
-
-# 本機開發（Worker + 本地 D1/R2；AI binding 遠端打真實模型）
-npx cf dev                          # apps/web；單一全栈 dev server :5173
-
-
+pnpm install
+prek install                        # git pre-commit hooks（biome / yamllint / whitespace）
+pnpm dev:web                        # 單一全栈 dev server（SPA HMR + Worker + 本地 D1/R2）:5173
 ```
 
 第一次啟動：D1 是空的，灌示範資料（教室：高二哲學選修 A、倫理學讀書會）：
 
 ```bash
-cd apps/server
-SEED_TOKEN=dev-token npm run seed    # 需在 .dev.vars 設 SEED_TOKEN=dev-token
+cp apps/web/.env.example apps/web/.dev.vars   # 設 SEED_TOKEN=dev-token
+pnpm seed
 ```
 
 示範帳號：老師 `林老師`、學生 `訪客`（示範登入：選身分 + 輸入姓名即可）。
@@ -29,26 +26,26 @@ SEED_TOKEN=dev-token npm run seed    # 需在 .dev.vars 設 SEED_TOKEN=dev-token
 ## 部署
 
 ```bash
-npm install -g cf        # 或使用專案 devDependency 的 npx cf
+cd apps/web
 cf auth login
-
-cd apps/server
-cf deploy                # Worker + assets + D1 + R2 + DO
-npx cf d1 migrations apply socrates --dir migrations   # 首次／schema 變更時
+cf build                            # 一次建置 client + worker（.cloudflare/output）
+cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations
+cf deploy --prebuilt                # 用同一份建置產物部署
 ```
 
-CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) PR 檢查 + dry-run、[`deploy.yml`](.github/workflows/deploy.yml) main 自動部署）。Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`；runtime keys（`OPENCODE_API_KEY`、`OPENROUTER_API_KEY`、`BYOK_ENC_KEY`）用 `cf deploy --secrets-file` 或 `wrangler secret put`。
+CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) PR 檢查 + dry-run、[`deploy.yml`](.github/workflows/deploy.yml) main 自動部署）。Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`；runtime keys（`OPENCODE_API_KEY`、`OPENROUTER_API_KEY`、`BYOK_ENC_KEY`）用 `cf deploy --secrets-file` 或 `wrangler secret put`。
 
 ## 開發
 
-| 指令（專案根目錄）  | 作用                                                          |
-| ------------------- | ------------------------------------------------------------- |
-| `npm run dev:web`   | 單一全栈 dev server（SPA HMR + Worker + 本地 D1/R2，:5173）   |
-| `npm test`          | vitest（Worker runtime：路由 + D1 + 對話 SSE，mock provider） |
-| `npm run typecheck` | server 與 web 的 TypeScript 檢查                              |
-| `npm run build`     | 前端打包（`apps/web/dist`）                                   |
-| `npm run migrate`   | 本地 D1 migrations                                            |
-| `npm run cf:deploy` | 部署到 Cloudflare                                             |
+| 指令（專案根目錄） | 作用                                                          |
+| ------------------ | ------------------------------------------------------------- |
+| `pnpm dev:web`     | 單一全栈 dev server（SPA HMR + Worker + 本地 D1/R2，:5173）   |
+| `pnpm test`        | vitest（Worker runtime：路由 + D1 + 對話 SSE，mock provider） |
+| `pnpm typecheck`   | server 與 web 的 TypeScript 檢查                              |
+| `pnpm lint`        | Biome 檢查（`pnpm format` 自動修）                            |
+| `pnpm migrate`     | 本地 D1 migrations                                            |
+| `pnpm seed`        | 灌示範資料                                                    |
+| `pnpm deploy`      | 部署到 Cloudflare（apps/web）                                 |
 
 ## 結構
 

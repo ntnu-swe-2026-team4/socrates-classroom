@@ -1,6 +1,9 @@
 # YAML lint (GitHub Actions workflows and the pnpm workspace)
 extends: default
 
+ignore: |
+  pnpm-lock.yaml
+
 rules:
   # GitHub Actions' `on:` key is flagged by the truthy rule
   truthy:

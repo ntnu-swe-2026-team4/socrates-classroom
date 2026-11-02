@@ -20,6 +20,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Lint (Biome)
         run: pnpm lint
+      - name: YAML lint (yamllint)
+        run: |
+          pip install yamllint
+          yamllint .
       - name: Typecheck
         run: pnpm typecheck
       - name: Test (Worker runtime + local D1/R2, LLM_PROVIDER=mock)

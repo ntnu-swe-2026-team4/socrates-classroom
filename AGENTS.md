@@ -13,6 +13,7 @@ A classroom debate platform: Socratic one-on-one dialogue, four-stage classroom 
 
 ```bash
 pnpm install                        # pnpm ≥ 12, Node ≥ 26.12 (the cf CLI does not support Bun)
+prek install                        # git pre-commit hooks (biome / yamllint / whitespace); needs prek
 pnpm dev:web                        # full-stack dev (vite + workerd + local D1/R2) → http://localhost:5173
 pnpm test                           # vitest-pool-workers (real Worker runtime, mock LLM)
 pnpm lint && pnpm typecheck         # must be green before any PR

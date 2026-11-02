@@ -1,0 +1,16 @@
+# prek (https://prek.j178.dev) — git hook manager; run `prek install` once after clone
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "check-yaml", exclude = '(^|/)pnpm-lock\.yaml$' },
+  { id = "check-added-large-files", args = ["--maxkb=4096"] },
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+]
+
+[[repos]]
+repo = "local"
+hooks = [
+  { id = "biome", name = "biome check (write)", language = "system", entry = "pnpm exec biome check --write --staged --files-ignore-unknown=true --no-errors-on-unmatched", pass_filenames = false },
+  { id = "yamllint", name = "yamllint", language = "python", entry = "yamllint", additional_dependencies = ["yamllint==1.37.1"], types = ["yaml"] },
+]

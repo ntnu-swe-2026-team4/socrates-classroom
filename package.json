@@ -9,7 +9,6 @@
   },
   "scripts": {
     "dev:web": "pnpm --filter @socrates/web dev",
-    "dev:server": "pnpm --filter @socrates/server dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter @socrates/server test",
