@@ -1,34 +1,35 @@
-# AGENTS.md — apps/server（Hono Worker + Pi Durable）
+# AGENTS.md — apps/server (Hono Worker + Pi Durable)
 
-本目錄是唯一 Worker：Hono API + `PiAgent`/`ActivityEvents` Durable Objects + provider pool。
-Root 的規則全部適用；以下是本目錄的差異與深水區。
+The only Worker: Hono API + `PiAgent` / `ActivityEvents` Durable Objects + provider pool.
+All rules from the root `AGENTS.md` apply; below are the deltas and deep water.
 
-## 指令
+## Commands
 
 ```bash
-pnpm dev        # cf dev（Worker + 本地 D1/R2；AI binding remote）
-pnpm test       # vitest-pool-workers：真 runtime + 本地 D1/R2/DO
-pnpm typecheck  # TS7 strict + @cloudflare/workers-types
-pnpm exec cf build   # 驗證可打包（產出 .cloudflare/output/）
-node scripts/seed.mjs  # 灌示範資料（需 SEED_TOKEN）
+pnpm dev               # cf dev (Worker + local D1/R2; AI binding is remote)
+pnpm test              # vitest-pool-workers: real runtime + local D1/R2/DO
+pnpm typecheck         # TS7 strict + @cloudflare/workers-types
+pnpm exec cf build     # verify the bundle (.cloudflare/output/)
+node scripts/seed.mjs  # seed demo data (requires SEED_TOKEN)
 ```
 
-## 架構界線
+## Architecture boundaries
 
-- `src/do/pi-agent.ts`（PiHarness）**不直接認識 HTTP**：對話由 routes 轉 RPC 進來，SSE 是它輸出的契約
-- `src/providers/whitelist.ts` 是模型白名單的唯一真相——新增 provider 前先讀 `docs/providers.md` 的 ZDR 規則
-- `src/db/d1.ts` 的 `prepare()` 會把 `$named` 轉位置參數：SQL 維持 `$named` 寫法即可
-- 交易語意：`db.batch()` 是唯一原子性來源（D1 沒有互動式交易）
+- `src/do/pi-agent.ts` (PiHarness) **knows nothing about HTTP**: routes call in over RPC; SSE is its output contract
+- `src/providers/whitelist.ts` is the single source of truth for model routing — read the ZDR rules in `docs/providers.md` before adding any provider
+- `prepare()` in `src/db/d1.ts` converts `$named` params to positional binds: keep writing SQL with `$named`
+- Transactions: `db.batch()` is the only source of atomicity (D1 has no interactive transactions)
+- pnpm's per-package `node_modules` is **required**: the cf CLI only resolves cf/wrangler/vite-plugin from the Worker package's own node_modules (workspace-root hoisting does not count)
 
 ## Boundaries
 
-- **Never** 修改 SSE 事件形狀（`delta/emotion/done/error`）——`docs/api-contract.md` 契約凍結，前端零改動是設計目標
-- **Never** 讓 `saveTurn`（D1 寫回）失敗時吞掉錯誤——對話有寫進 pi transcript 但沒寫 D1 = 資料不一致
-- **Always** 對 pi 的 `submit` 先掛 `session.events()` 再 submit（順序顛倒會漏掉瞬時完成的 run——已經踩過）
-- **Ask first**：改 `PiHarness` settings（retry/afterFailedRun）、新增 DO、換 `@earendil-works/pi-*` 版本（agents↔pi 有版本配對鎖：agents@0.32 ↔ pi@1.4）
+- **Never** change the SSE event shapes (`delta/emotion/done/error`) — the contract in `docs/api-contract.md` is frozen by design; the frontend must keep working with zero changes
+- **Never** swallow a failed `saveTurn` — a turn saved to the pi transcript but missing from D1 is a data inconsistency
+- **Always** attach `session.events()` **before** `session.submit()` — inverted order misses runs that finish instantly (this bug already happened)
+- **Ask first**: changing `PiHarness` settings (retry / afterFailedRun), adding Durable Objects, bumping `@earendil-works/pi-*` (version-locked to `agents`: 0.32 ↔ 1.4)
 
-## 測試慣例
+## Testing conventions
 
-- 整合測試在 `tests/api.test.ts`：循序耦合（前面測試建資料、後面沿用），`isolatedStorage: false` 是刻意的
-- 測試用 `wrangler.vitest.jsonc`（不是 cloudflare.config.ts）＋ mock provider；compat date 是 2026-08-06（pool-workers 的 workerd 上限）
-- LLM 相關斷言只驗「有 done、有 emotion、文字非空」，不驗內容
+- Integration tests live in `tests/api.test.ts` and are **sequentially coupled** (earlier tests seed data later tests use); `isolatedStorage: false` is intentional
+- Tests use `wrangler.vitest.jsonc` (not `cloudflare.config.ts`) + the mock provider; compatibility date is 2026-08-06 (the workerd ceiling of the vitest plugin)
+- LLM assertions only check shape (a `done` event, an `emotion`, non-empty text) — never content

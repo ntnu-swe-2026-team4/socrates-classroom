@@ -1,20 +1,20 @@
-# AGENTS.md — apps/web（React SPA）
+# AGENTS.md — apps/web (React SPA)
 
-Vite + React 19 + TanStack Router/Query + Tailwind v4。打包後掛在 Worker 的 Static Assets。
+Vite + React 19 + TanStack Router/Query + Tailwind v4. The build output is served as the Worker's Static Assets.
 
-## 指令
+## Commands
 
 ```bash
-pnpm dev      # Vite dev（/api 代理到 localhost:8787，需後端先啟動）
+pnpm dev      # Vite dev (/api proxies to localhost:8787 — start the backend first)
 pnpm build    # tsc + vite build
 pnpm typecheck
 ```
 
-## 差異與界線
+## Deltas & boundaries
 
-- API 層只有 `src/api/`：`VITE_API_MODE=mock`（內建示範資料，離線可跑）| `http`（真後端）。兩種模式的行為必須一致
-- 對話串流解析在 `src/api/http.ts`（SSE：`delta/emotion/done/error`）——伺服器契約改了這裡一定跟著改
-- 樣式用 Tailwind v4 utilities；主題色是 CSS 變數（`src/index.css` 的 `@theme`），不要寫死色碼
-- `src/landing/` 是原型移植區：Biome linter 對此目錄關閉，改動時自己保持整潔
-- **Never** 把任何 key 寫進 `VITE_*` 變數（會被打包進瀏覽器）
-- **Ask first**：升級 React/TanStack 大版本、改路由結構（`src/router.tsx`）
+- The API layer is only `src/api/`: `VITE_API_MODE=mock` (built-in demo data, works offline) | `http` (real backend). Both modes must behave identically
+- SSE dialogue parsing lives in `src/api/http.ts` (`delta/emotion/done/error`) — any server contract change lands here too
+- Styling is Tailwind v4 utilities; theme colors are CSS variables (`@theme` in `src/index.css`) — never hardcode color values
+- `src/landing/` is a prototype-port zone: the Biome linter is off for this directory, keep it tidy yourself
+- **Never** put any key into a `VITE_*` variable (bundled into the browser)
+- **Ask first**: major upgrades of React/TanStack, changes to the route structure (`src/router.tsx`)
