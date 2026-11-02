@@ -7,8 +7,8 @@
 ```bash
 pnpm install
 prek install                        # git pre-commit hooks
-pnpm dev                           # 單一全栈 dev server（SPA HMR + Worker + 本地 D1/R2）:5173
-pnpm migrate                       # 本地 D1 套 schema（首次必跑；見下方「本地資料庫」）
+pnpm dev                           # 單一全栈 dev server（啟動時自動套 D1 migrations；SPA HMR + Worker + 本地 D1/R2）:5173
+pnpm migrate                       # 手動套 schema（dev 啟動時已自動執行；見下方「本地資料庫」）
 pnpm seed                          # 灌示範資料（需 .dev.vars 設 SEED_TOKEN）
 ```
 
@@ -28,7 +28,7 @@ pnpm seed                          # 灌示範資料（需 .dev.vars 設 SEED_TO
 - Schema 的 SSOT 是 `apps/server/migrations/*.sql`——production 由 CI 套同一批檔案
 - `pnpm migrate` = `cf d1 migrations apply <DB_ID> --local --persist-to .cloudflare/state`——`--persist-to` 必須對準 dev server 的 state 目錄（否則會寫到 `~/.config/cloudflare/state`，dev server 看不到）
 - `<DB_ID>` 是 `cloudflare.config.ts` 裡 `bindings.d1({ id })` 宣告的固定 UUID，與指令保持一致
-- **Persistence scope 陷阱**：改 `cloudflare.config.ts`（bindings、compat date、flags）會讓本地資料「消失」——這是 scope 隨 config hash 變化的正常行為，重跑 `pnpm migrate` 即可
+- **Persistence scope 陷阱**：改 `cloudflare.config.ts`（bindings、compat date、flags）會讓本地資料「消失」——這是 scope 隨 config hash 變化的正常行為，重啟 dev（自動 migrate）或手動 `pnpm migrate` 即可
 
 ## 對話功能（LLM）在本地
 
