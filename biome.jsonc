@@ -13,7 +13,10 @@
       "!**/public",
       "!**/node_modules",
       "!**/*.sql",
-      "!**/package-lock.json"
+      "!**/package-lock.json",
+      "!/skills-lock.json",
+      "!.agents",
+      "!.claude"
     ]
   },
   "formatter": {
