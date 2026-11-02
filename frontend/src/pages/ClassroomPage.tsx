@@ -110,6 +110,7 @@ function MembersTab({ classroomId, teacher }: { classroomId: string; teacher: bo
   const { data: members = [] } = useClassroomMembers(classroomId);
   const [name, setName] = useState("");
   const refresh = () => { qc.invalidateQueries({ queryKey: keys.classroomMembers(classroomId) }); qc.invalidateQueries({ queryKey: keys.classrooms }); qc.invalidateQueries({ queryKey: keys.classroom(classroomId) }); };
+  const removeMember = useMutation({ mutationFn: (memberId: string) => api.removeClassroomMember(classroomId, memberId), onSuccess: refresh });
   const add = useMutation({ mutationFn: () => api.addClassroomMember(classroomId, name.trim()), onSuccess: () => { setName(""); refresh(); } });
   return (
     <div className="space-y-4">
@@ -138,12 +139,12 @@ function MembersTab({ classroomId, teacher }: { classroomId: string; teacher: bo
               <span className="flex items-center justify-end gap-2">
                 <Button variant="outline" size="sm" disabled={setRole.isPending} title={m.role === "assistant" ? t("取消助教，改回一般學生") : t("設為助教：可以發公告、編輯行事曆、上傳資料")}
                   onClick={() => setRole.mutate({ memberId: m.id, role: m.role === "assistant" ? "student" : "assistant" })}>{m.role === "assistant" ? t("改回學生") : t("設為助教")}</Button>
-                <button type="button" aria-label={t("移除 {name}", { name: m.name })} onClick={() => api.removeClassroomMember(classroomId, m.id).then(refresh)} className="cursor-pointer text-ink-faint hover:text-wine"><X className="size-4" /></button>
+                <button type="button" aria-label={t("移除 {name}", { name: m.name })} disabled={removeMember.isPending} onClick={() => removeMember.mutate(m.id)} className="cursor-pointer text-ink-faint hover:text-wine"><X className="size-4" /></button>
               </span>
             ) : <span />}
           </div>
         ))}
-        {setRole.error && <p className="px-3 pb-2 text-[12.5px] text-wine">{setRole.error.message}</p>}
+        {(setRole.error || removeMember.error) && <p className="px-3 pb-2 text-[12.5px] text-wine">{(setRole.error ?? removeMember.error)!.message}</p>}
         {!members.length && <p className="px-3 py-4 text-sm text-ink-faint">{t("還沒有任何成員。")}</p>}
       </Card>
     </div>
