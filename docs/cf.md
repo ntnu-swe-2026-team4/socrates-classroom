@@ -1,7 +1,7 @@
 # Cloudflare CLI（cf）參考
 
 > cf 是 Cloudflare 的新一代 CLI（beta，2026-09 起），取代 wrangler：設定檔為 `cloudflare.config.ts`（TypeScript），指令輸出以 JSON 為主。
-> 全栈專案（vite root + `cloudflare.config.ts`）在 `apps/web/`——所有 cf 專案指令都在該目錄執行；Worker 原始碼在 `apps/server/`（由 entrypoint 指回）。
+> 全端專案（vite root + `cloudflare.config.ts`）在 `apps/web/`——所有 cf 專案指令都在該目錄執行；Worker 原始碼在 `apps/server/`（由 entrypoint 指回）。
 
 ## 目錄
 
@@ -32,7 +32,7 @@ cf --version
 
 | 指令                                      | 作用                                                        |
 | ----------------------------------------- | ----------------------------------------------------------- |
-| `cf dev` ＝ `pnpm dev`                    | 單一全栈 dev server：SPA HMR + Worker + 本地 D1/R2（:5173） |
+| `cf dev` ＝ `pnpm dev`                    | 單一全端 dev server：SPA HMR + Worker + 本地 D1/R2（:5173） |
 | `cf build`                                | 建置一次，產出標準 Build Output（`.cloudflare/output/v0/`） |
 | `cf deploy --prebuilt`                    | 部署先前建置的產物（配合 build-once 流程）                  |
 | `cf deploy --dry-run`                     | 驗證建置，不上傳、不需要金鑰（fork PR 安全）                |

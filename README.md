@@ -11,7 +11,7 @@
 ```bash
 pnpm install
 prek install                        # git pre-commit hooks（biome / yamllint / whitespace）
-pnpm dev                        # 單一全栈 dev server（SPA HMR + Worker + 本地 D1/R2）:5173
+pnpm dev                        # 單一全端 dev server（SPA HMR + Worker + 本地 D1/R2）:5173
 ```
 
 第一次啟動：D1 是空的，灌示範資料（教室：高二哲學選修 A、倫理學讀書會）：
@@ -39,7 +39,7 @@ CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) 
 
 | 指令（專案根目錄） | 作用                                                          |
 | ------------------ | ------------------------------------------------------------- |
-| `pnpm dev`         | 單一全栈 dev server（SPA HMR + Worker + 本地 D1/R2，:5173）   |
+| `pnpm dev`         | 單一全端 dev server（SPA HMR + Worker + 本地 D1/R2，:5173）   |
 | `pnpm test`        | vitest（Worker runtime：路由 + D1 + 對話 SSE，mock provider） |
 | `pnpm typecheck`   | server 與 web 的 TypeScript 檢查                              |
 | `pnpm lint`        | Biome 檢查（`pnpm format` 自動修）                            |

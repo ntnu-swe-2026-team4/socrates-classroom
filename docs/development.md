@@ -7,7 +7,7 @@
 ```bash
 pnpm install
 prek install                        # git pre-commit hooks
-pnpm dev                           # 單一全栈 dev server（啟動時自動套 D1 migrations；SPA HMR + Worker + 本地 D1/R2）:5173
+pnpm dev                           # 單一全端 dev server（啟動時自動套 D1 migrations；SPA HMR + Worker + 本地 D1/R2）:5173
 pnpm migrate                       # 手動套 schema（dev 啟動時已自動執行；見下方「本地資料庫」）
 pnpm seed                          # 灌示範資料（需 .dev.vars 設 SEED_TOKEN）
 ```
