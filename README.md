@@ -31,6 +31,7 @@ Vite 開發伺服器會把 `/api` 代理到 `http://localhost:8000`，不需要�
 |---|---|
 | `bun run dev` | 前端開發伺服器 |
 | `bun run dev:server` | 後端開發伺服器（Bun + Hono，:8000） |
+| `bun run start` | 後端正式啟動（同 dev 但不帶 watch） |
 | `bun run build` | 前端型別檢查 + 打包（`frontend/dist/`） |
 | `bun run typecheck` | 前端與後端 TypeScript 型別檢查 |
 | `bun run test` | 後端 API 測試（`server/tests`） |

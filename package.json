@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "cd frontend && bun run dev",
     "dev:server": "cd server && bun run dev",
+    "start": "cd server && bun run start",
     "build": "cd frontend && bun run build",
     "typecheck": "cd frontend && bun run typecheck && cd ../server && bun run typecheck",
     "test": "cd server && bun test",
