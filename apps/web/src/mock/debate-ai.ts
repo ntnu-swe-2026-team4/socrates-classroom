@@ -540,7 +540,7 @@ export function avgScores(judgments) {
 
 export const DEFAULT_WEIGHTS = { individual: 30, team: 30, debate: 40 };
 
-export function computeScore({ member, position, chatCount, votesCast, groupHasActive, turnJudgments, sideAvg }) {
+export function computeScore({ position, chatCount, votesCast, groupHasActive, turnJudgments, sideAvg }) {
   // 個人：完成調查、論點完整度
   let ind = 0;
   if (position?.confirmed) {

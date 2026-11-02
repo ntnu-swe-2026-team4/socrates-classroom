@@ -6,7 +6,7 @@
 
 ## Quickstart
 
-需要 **Node.js ≥ 22.23**（cf CLI 載入 `cloudflare.config.ts` 不支援 Bun）。
+需要 **Node.js ≥ 26.12**（2026-10 安全版；cf CLI 不支援 Bun）。
 
 ```bash
 npm install

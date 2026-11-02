@@ -8,8 +8,8 @@ minimumReleaseAgeExclude:
   - "@cloudflare/vite-plugin@2.0.0-beta.v.9"
   - miniflare@5.20261101.0-beta
   - wrangler@4.156.1
+  - "@cloudflare/vitest-plugin@1.4.12"
 
-# 允許這些套件跑建置腳本（workerd 二進位、esbuild、biome 原生二進位）
 onlyBuiltDependencies:
   - workerd
   - esbuild

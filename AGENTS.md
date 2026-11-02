@@ -42,5 +42,5 @@ pnpm lint && pnpm typecheck         # 送 PR 前必須全綠
 ## 部署與 CLI
 
 - 用 **cf CLI**（`cloudflare.config.ts` 在 `apps/server/`），不用 wrangler 設定檔
-- cf 指令需要 **Node ≥ 22.23 且不支援 Bun**；在 `apps/server/` 目錄下執行
+- cf 指令需要 **Node ≥ 26.12 且不支援 Bun**；在 `apps/server/` 目錄下執行
 - `wrangler` 只作為 cf 的建置後端與 `wrangler tail` 存在

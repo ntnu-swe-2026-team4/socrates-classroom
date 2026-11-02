@@ -742,7 +742,6 @@ export function finalizeScores(a: any) {
     const mine = room ? room.judgments.filter((j: any) => j.speakerId === m.id).map(effectiveJ) : [];
     const sideJ = room ? room.judgments.filter((j: any) => j.side === side).map(effectiveJ) : [];
     const s = D.computeScore({
-      member: m,
       position: a.positions[m.id],
       chatCount: st ? (m.isYou ? st.chatCount : 2 + (m.id.length % 3)) : 0,
       votesCast: st ? (m.isYou ? st.votesCast : 3) : 0,
