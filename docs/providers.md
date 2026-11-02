@@ -1,7 +1,7 @@
 # LLM Providers 紀錄
 
 > 查證日期：2026-11 ｜ 狀態：供 LLM 組與後端共用的 provider 參考
-> 配套調查：[`docs/cf-migration.md`](./cf-migration.md)（Cloudflare 部署與 Pi Durable）
+> 配套文件：[`cf.md`](./cf.md)（Cloudflare CLI）、[`pi.md`](./pi.md)（Pi Durable）
 
 ## Pool 定位
 

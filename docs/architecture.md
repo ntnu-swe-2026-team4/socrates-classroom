@@ -1,7 +1,7 @@
 # 重構架構設計：socrates-classroom → Cloudflare + Pi Durable
 
 > 日期：2026-11 ｜ 分支：`explore/cf-pi-durable` ｜ 狀態：**已實作（R0–R6）**——測試全綠；剩 R3 實際部署（需 Cloudflare 帳號）與 R7 WebSocket（Phase 3）
-> 上游文件：[`cf-migration.md`](./cf-migration.md)（遷移調查）、[`providers.md`](./providers.md)（provider 查證）
+> 相關文件：[`cf.md`](./cf.md)（Cloudflare CLI）、[`pi.md`](./pi.md)（Pi Durable）、[`providers.md`](./providers.md)（provider 查證）、[`feature.md`](./feature.md)（功能總覽）
 
 ## 0. 已定決策（本文的約束條件）
 
@@ -89,7 +89,7 @@ socrates-classroom/
 │       └── providers/models.json   # 決策來源；pool.ts 編譯期 import 此檔的鏡像常數
 ├── .github/workflows/{ci,deploy}.yml
 ├── package.json                    # npm workspaces: apps/* packages/*
-└── docs/                           # cf-migration / providers / architecture（本文）
+└── docs/                           # architecture（本文）/ providers / feature / cf / pi
 ```
 
 ## 3. Worker 分層（apps/server）

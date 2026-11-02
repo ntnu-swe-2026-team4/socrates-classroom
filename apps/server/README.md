@@ -1,6 +1,6 @@
 # apps/server — Hono Worker + Pi Durable 對話引擎
 
-架構設計、決策記錄與移植細節請看 [`../../docs/architecture.md`](../../docs/architecture.md)；provider 路由與查證看 [`../../docs/providers.md`](../../docs/providers.md)；API 契約看 [`../../docs/api-contract.md`](../../docs/api-contract.md)。
+架構設計與決策記錄請看 [`../../docs/architecture.md`](../../docs/architecture.md)；provider 路由與查證看 [`../../docs/providers.md`](../../docs/providers.md)；API 契約看 [`../../docs/api-contract.md`](../../docs/api-contract.md)。
 
 ## 重點
 

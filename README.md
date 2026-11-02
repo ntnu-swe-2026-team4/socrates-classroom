@@ -71,12 +71,12 @@ packages/
 - **LLM 設定層**：提示詞在 `packages/llm/prompts/`，模型路由在 `apps/server/src/providers/`；規則與查證詳見 [`docs/providers.md`](docs/providers.md)。
 - 沒有金鑰也能開發：`LLM_PROVIDER=mock`（測試預設）用離線 faux 模型。
 
-## 文件
+## 文件（每份 = 一個領域的 SSOT）
 
-- [`docs/architecture.md`](docs/architecture.md) — 重構架構設計（目標形狀、決策記錄、實作順序）
-- [`docs/frontend.md`](docs/frontend.md) — 前端導覽：檔案位置、功能 ↔ API 對照
-- [`docs/api-contract.md`](docs/api-contract.md) — 前後端 API 契約
-- [`docs/providers.md`](docs/providers.md) — LLM providers 總表（端點、用量、併發、ZDR）
-- [`docs/cf-migration.md`](docs/cf-migration.md) — Cloudflare 部署與 Pi Durable 調查報告
-- [`apps/server/README.md`](apps/server/README.md) — 後端細節（移植中，部分內容以 docs/ 為準）
-- [`packages/llm/README.md`](packages/llm/README.md) — 提示詞與 LLM 供應商設定
+- [`docs/feature.md`](docs/feature.md) — 功能總覽：功能 ↔ 路由 ↔ 頁面
+- [`docs/api-contract.md`](docs/api-contract.md) — API 契約：請求/回覆格式
+- [`docs/architecture.md`](docs/architecture.md) — 架構：系統設計與決策
+- [`docs/providers.md`](docs/providers.md) — LLM providers：端點、用量、併發、ZDR
+- [`docs/cf.md`](docs/cf.md) — Cloudflare CLI 使用
+- [`docs/pi.md`](docs/pi.md) — Pi Durable（PiHarness）使用
+- 維護文件的規則見 [`docs/AGENTS.md`](docs/AGENTS.md)

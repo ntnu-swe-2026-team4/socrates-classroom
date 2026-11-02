@@ -1,11 +1,11 @@
 # 前後端 API 契約（給後端）
 
-型別定義在 `src/api/types.ts`，介面在 `src/api/api.ts`，HTTP 實作在 `src/api/http.ts`。
+型別定義在 `apps/web/src/api/types.ts`，介面在 `apps/web/src/api/api.ts`，HTTP 實作在 `apps/web/src/api/http.ts`。
 後端只要照下表提供路徑與 JSON，把 `.env` 設成 `VITE_API_MODE=http`，前端不用改頁面程式。
 JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie（`credentials: include`）。
 語言：前端每個請求都帶 `Accept-Language: zh-TW | en | es`（使用者在設定選的介面語言）。後端用這個語言產生給使用者看的文字——錯誤訊息的 `message`、AI 蘇格拉底的追問與辯論主持 / 裁判的發言、系統訊息；資料本身（教室名稱、公告、使用者輸入）原樣保存，不翻譯。
 錯誤格式：HTTP 狀態碼 + `{ "message": "給使用者看的說明" }`；未登入回 401。
-健康檢查：`GET /health`（不在 `/api` 下、不需要登入）→ `{ ok: true, db: "sqlite" }`。
+健康檢查：`GET /health`（不在 `/api` 下、不需要登入）→ `{ ok: true, db: "d1" }`。
 
 ## 認證
 
@@ -18,13 +18,15 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 
 ## 議題與題庫
 
-| GET   | `/api/archives`              | `Archive[]`                                                                                                                        |
-| ----- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| POST  | `/api/archives`              | `{ title }` → `Archive`（首頁提問框開始一段新對話）                                                                                |
-| GET   | `/api/archives/:id/dialogue` | `DialogueMessage[]`（議題的自由對話）                                                                                              |
-| POST  | `/api/archives/:id/dialogue` | `{ text }` → **SSE**（`delta` / `done` / `error`），詳見下方〈對話 API〉                                                           |
-| PATCH | `/api/archives/:id`          | `{ bank?: "private"\|"public"\|null, inSummary?: boolean, sharedWithIds?: string[] }` → `Archive`（私人 / 公開只能擇一由後端保證） |
-| GET   | `/api/me/share-targets`      | `ShareTarget[]` = `{ id, name, role }`（私人題庫可以分享給誰：同教室的同學、助教與老師）                                           |
+| GET | `/api/classrooms/discover` | 學生探索開放加入的教室（`discovering[]`） |
+| GET   | `/api/archives`                    | `Archive[]`                                                                                                                        |
+| ----- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| POST  | `/api/archives`                    | `{ title }` → `Archive`（首頁提問框開始一段新對話）                                                                                |
+| GET   | `/api/archives/:id/dialogue`       | `DialogueMessage[]`（議題的自由對話）                                                                                              |
+| POST  | `/api/archives/:id/dialogue`       | `{ text }` → **SSE**（`delta` / `done` / `error`），詳見下方〈對話 API〉                                                           |
+| PATCH | `/api/archives/:id`                | `{ bank?: "private"\|"public"\|null, inSummary?: boolean, sharedWithIds?: string[] }` → `Archive`（私人 / 公開只能擇一由後端保證） |
+| GET   | `/api/me/share-targets`            | `ShareTarget[]` = `{ id, name, role }`（私人題庫可以分享給誰：同教室的同學、助教與老師）                                           |
+| GET   | `/api/classrooms/:id/applications` | `Application[]`（`?status=pending` 過濾；老師/助教限定）                                                                           |
 
 **私人題庫的協作：** `sharedWithIds` 是整份取代的名單，只有題目的擁有者可以改（別人分享給你的題目要擋下來，回 403）。
 被分享的人在自己的 `GET /api/archives` 裡看得到這道題目，`sharedBy` = 分享者的名字、`sharedWithIds` 為空陣列，且不能再轉分享。
