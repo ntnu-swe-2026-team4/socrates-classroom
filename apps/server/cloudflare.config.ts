@@ -7,7 +7,7 @@ import { bindings, defineConfig, exports } from "cf/config";
 export default defineConfig({
   worker: {
     name: "socrates-classroom",
-    entrypoint: "./apps/server/src/index.ts",
+    entrypoint: "./src/index.ts",
     compatibilityDate: "2026-11-01",
     compatibilityFlags: ["nodejs_compat"],
     observability: { enabled: true },

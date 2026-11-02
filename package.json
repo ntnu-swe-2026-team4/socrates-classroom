@@ -2,42 +2,33 @@
   "name": "socrates-classroom",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@12.14.0",
   "engines": {
-    "node": ">=22.23"
+    "node": ">=22.23",
+    "pnpm": ">=12"
   },
   "scripts": {
-    "dev": "npm run dev -w apps/web --prefix apps/web",
-    "dev:server": "cf dev",
-    "build": "vite build",
-    "typecheck": "tsc --noEmit -p apps/server && tsc --noEmit -p apps/web",
-    "test": "vitest run --root apps/server",
-    "migrate": "cf d1 migrations apply socrates --dir apps/server/migrations --local",
-    "seed": "node apps/server/scripts/seed.mjs",
-    "deploy": "cf deploy",
+    "dev:web": "pnpm --filter @socrates/web dev",
+    "dev:server": "pnpm --filter @socrates/server dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @socrates/server test",
     "lint": "biome check .",
-    "format": "biome format --write ."
-  },
-  "allowScripts": {
-    "workerd@1.20260730.1": true,
-    "workerd@1.20261023.1": true,
-    "workerd@1.20261101.1": true
-  },
-  "dependencies": {
-    "@earendil-works/chord": "~1.4.0",
-    "@earendil-works/pi-ai": "~1.4.0",
-    "@earendil-works/pi-durable": "~1.4.0",
-    "agents": "^0.32.0",
-    "hono": "^4.10.7"
+    "format": "biome format --write .",
+    "migrate": "pnpm --filter @socrates/server migrate",
+    "seed": "pnpm --filter @socrates/server seed",
+    "deploy": "pnpm --filter @socrates/server deploy"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.4",
-    "@cloudflare/vite-plugin": "^2.0.0-beta.v.9",
-    "@cloudflare/vitest-pool-workers": "^0.23.0",
-    "@cloudflare/workers-types": "^5.20261101.1",
-    "cf": "1.0.0-beta.26",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.5",
-    "vitest": "^4.1.12",
-    "wrangler": "^4.156.1"
+    "@biomejs/biome": "2.6.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "workerd",
+      "esbuild",
+      "@biomejs/biome",
+      "sharp",
+      "esbuild@0.28.1"
+    ]
   }
 }

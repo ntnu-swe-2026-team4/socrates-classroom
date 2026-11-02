@@ -1,0 +1,16 @@
+packages:
+  - apps/*
+  - packages/*
+minimumReleaseAgeExclude:
+  - "@cloudflare/build-output-utils@0.9.7"
+  - "@cloudflare/config@0.29.1"
+  - "@cloudflare/runtime-types@0.1.20"
+  - "@cloudflare/vite-plugin@2.0.0-beta.v.9"
+  - miniflare@5.20261101.0-beta
+  - wrangler@4.156.1
+
+# 允許這些套件跑建置腳本（workerd 二進位、esbuild、biome 原生二進位）
+onlyBuiltDependencies:
+  - workerd
+  - esbuild
+  - "@biomejs/biome"
