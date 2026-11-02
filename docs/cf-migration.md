@@ -135,8 +135,8 @@ CI 用 `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`（`cf` 與 `wrangler` �
 - `cf` 裝成 devDependency 鎖版本（`npx cf` 會跑專案內的 copy），CI 與本機同版
 - runner 用 Node 22（cf 載 `cloudflare.config.ts` 不支援 Bun）；裝依賴、跑測試仍用 bun，兩個 setup 並存
 - staging / production：`--mode` + `cloudflare.config.ts` 的 `switch (ctx.mode)`，D1／R2／DO 各環境一組資源
-- PR 可以加 `--mode preview` 出預覽網址（`ctx.isPreview` 分支）；不想每個 PR 都花部署額度的話，只 dry-run 也可
-- 不採 Workers Builds（CF 的 git 整合）當主線：monorepo 的 path filter 與測試閘門自管 Actions 比較清楚
+- PR 可以加 `--mode preview` 出預覽網址（`ctx.isPreview` 分支）；不想每個 PR 都花部署額度的話，只 dry-run 也可。另一條官方路是 `cf previews deploy`——在 GitHub Actions 會自動拿 branch 名稱當 preview 名，部署到隔離的 Worker Preview URL
+- 不採 Workers Builds（CF 的 git 整合）當主線：**它目前不支援 cf 專案**——文件明確說 Worker name 要匹配 wrangler 設定檔的 `name`，完全沒提 `cloudflare.config.ts`；cf 官方的 CI/CD 配合方式就是自管 GitHub Actions 純 steps（見下方「官方 action 現況」）
 
 #### 官方 action 現況（2026-11 查證）
 
