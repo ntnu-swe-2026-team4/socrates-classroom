@@ -38,7 +38,7 @@ export function postRoutes(db: DB) {
   r.get("/classrooms/:id/posts", (c) => {
     const user = requireUser(c);
     const { classroom, role } = accessClassroom(db, c.req.param("id"), user);
-    const topicId = c.req.query("topicId") ?? null;
+    const topicId = c.req.query("topicId") || null; // 空字串視同未指定，行為與省略參數一致
     if (topicId) {
       const topic = topicById(db, topicId);
       if (!topic || topic.classroom_id !== classroom.id) fail(404, "topic_not_found");
