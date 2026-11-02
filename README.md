@@ -2,7 +2,7 @@
 
 以蘇格拉底式詰問為核心的課堂辯論平台：與 AI 蘇格拉底單人對話、四階段課堂辯論（調查 → 提純 → 比賽 → 結果）、**多人討論**（老師出一題，同學各自跟 AI 對話，老師看全班討論成果）、立場星圖視覺化。
 
-> 前端組已經完成 **Dockerfile** 建置，也可以參考 [`./frontend/container.md`](./frontend/container.md)，用容器來執行網頁內容。
+> 前端組另外提供選用的 **Dockerfile**（見 [`./frontend/container.md`](./frontend/container.md)），僅用來把前端打包成靜態網站的容器；後端不需要任何容器或外部資料庫。
 
 ## Quickstart
 

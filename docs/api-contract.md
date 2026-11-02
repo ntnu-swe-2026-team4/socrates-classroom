@@ -5,6 +5,7 @@
 JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie（`credentials: include`）。
 語言：前端每個請求都帶 `Accept-Language: zh-TW | en | es`（使用者在設定選的介面語言）。後端用這個語言產生給使用者看的文字——錯誤訊息的 `message`、AI 蘇格拉底的追問與辯論主持 / 裁判的發言、系統訊息；資料本身（教室名稱、公告、使用者輸入）原樣保存，不翻譯。
 錯誤格式：HTTP 狀態碼 + `{ "message": "給使用者看的說明" }`；未登入回 401。
+健康檢查：`GET /health`（不在 `/api` 下、不需要登入）→ `{ ok: true, db: "sqlite" }`。
 
 ## 認證
 | 方法 | 路徑 | 說明 |
@@ -254,7 +255,7 @@ curl -N -b jar.txt -H 'Content-Type: application/json' -H 'Accept: text/event-st
 | POST | `/api/topics/:id/reports` | **multipart/form-data**，欄位 `file`、`comment`（學生；`acceptsReports = false` 時回 403）→ `TopicReport`。再次上傳取代舊檔 |
 | DELETE | `/api/reports/:id` | 作者本人，204 |
 
-`FileRef.url` 是後端提供的下載網址，需要登入（cookie）才能下載；權限與議題相同。
+`FileRef.url` 指向 `GET /api/files/:id`，需要登入（cookie）且使用者要對該議題有存取權；**結論報告（`topic_report`）只有報告作者本人與老師／助教能下載**，教材（`topic_resource`）則是議題教室成員皆可。
 
 ## 討論區
 每個教室有一個教室討論區（`topicId = null`），每個議題各有一個議題討論區。回覆只有一層（`parentId` 指向主貼文）。
