@@ -14,7 +14,7 @@ export function authRoutes(db: DB, cookieSecure: boolean) {
     if (!role) fail(422, "invalid_role");
     const rawName = typeof body.name === "string" ? body.name.trim() : "";
     const name = rawName || (role === "teacher" ? "林老師" : "訪客");
-    if (name.length > 80) fail(422, "name_required");
+    if (name.length > 80) fail(422, "text_too_long", { n: 80 });
     let user = one<UserRow>(db, "SELECT * FROM users WHERE role = $role AND name = $name", { role, name });
     if (!user) {
       const id = crypto.randomUUID().replaceAll("-", "");
