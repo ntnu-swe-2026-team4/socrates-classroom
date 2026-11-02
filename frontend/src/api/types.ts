@@ -187,8 +187,8 @@ export interface ClassroomTopic {
   resources: TopicResource[];
   /** 是否讓學生上傳結論報告 */
   acceptsReports: boolean;
-  /** 對應的辯論活動（四階段辯論） */
-  activityId: string | null;
+  /** 對應的辯論活動（四階段辯論）；無活動時後端省略此欄位 */
+  activityId?: string;
   postCount: number;
   createdAt: string;
   updatedAt: string;

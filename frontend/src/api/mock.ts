@@ -501,7 +501,7 @@ export const mockApi: Api = {
     const at = new Date().toISOString();
     const t: ClassroomTopic = {
       id: newId("t"), classroomId: cid, title: input.title.trim(), description: input.description.trim(),
-      dueAt: input.dueAt, acceptsReports: input.acceptsReports, activityId: null, resources: [], postCount: 0, createdAt: at, updatedAt: at,
+      dueAt: input.dueAt, acceptsReports: input.acceptsReports, resources: [], postCount: 0, createdAt: at, updatedAt: at,
     };
     const a = E.createActivity(c, { ...input.activity, title: t.title, statement: t.title });
     a.topicId = t.id;
