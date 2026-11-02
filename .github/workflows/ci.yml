@@ -12,24 +12,24 @@ jobs:
       CF_SEND_TELEMETRY: "false"
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        # 版本讀 root package.json 的 packageManager 欄位
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Lint（Biome）
-        run: npx biome check .
+        run: pnpm lint
       - name: Typecheck
-        run: |
-          npx tsc --noEmit -p apps/server
-          npx tsc --noEmit -p apps/web
+        run: pnpm typecheck
       - name: Test（Worker runtime + 本地 D1/R2，LLM_PROVIDER=mock）
-        run: npm test
+        run: pnpm test
       - name: Build web
-        run: npm run build -w apps/web
+        run: pnpm --filter @socrates/web build
       - name: cf build（驗證 Worker 可打包）
-        run: npx cf build
+        run: pnpm exec cf build
         working-directory: apps/server
       - name: cf deploy dry-run（免 credentials，fork PR 安全）
-        run: npx cf deploy --prebuilt --mode production --dry-run
+        run: pnpm exec cf deploy --prebuilt --mode production --dry-run
         working-directory: apps/server
