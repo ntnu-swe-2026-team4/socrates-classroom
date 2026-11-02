@@ -18,11 +18,10 @@ import { speakAi, stopAiSpeech } from "@/lib/ai-speaking";
 import { cn, formatDateTime } from "@/lib/utils";
 import { DueLabel } from "./ClassroomPage";
 import { DiscussionFormDialog } from "./DiscussionTasks";
+import { SESSION_NAME, SESSION_TONE } from "./discussion-shared";
 import { Panel, Section, StageLayout } from "./stages/shared";
 
 const COV: [keyof Coverage, string][] = [["claim", "主張"], ["reason", "理由"], ["evidence", "證據或例子"], ["counter", "反例的回應"]];
-export const SESSION_NAME: Record<DiscussionSessionStatus, string> = { submitted: "已送出結論", talking: "對話中", todo: "未開始" };
-export const SESSION_TONE: Record<DiscussionSessionStatus, "olive" | "bronze" | "neutral"> = { submitted: "olive", talking: "bronze", todo: "neutral" };
 
 function CoverageChips({ coverage }: { coverage?: Coverage }) {
   const t = useT();

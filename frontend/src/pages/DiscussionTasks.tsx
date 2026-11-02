@@ -11,7 +11,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { cn, fromLocalInput, toLocalInput } from "@/lib/utils";
 import { useT } from "@/i18n";
 import { DueLabel } from "./ClassroomPage";
-import { SESSION_NAME, SESSION_TONE } from "./DiscussionTaskPage";
+import { SESSION_NAME, SESSION_TONE } from "./discussion-shared";
 
 const ROUND_CHOICES = [8, 12, 20];
 
