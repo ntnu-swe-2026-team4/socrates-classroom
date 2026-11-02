@@ -272,7 +272,6 @@ export class EmotionSplitter {
 export function socraticStream(
   config: Config,
   input: { title: string; statement: string; history: HistoryMessage[]; lang: Lang; extra?: string },
-  signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const system = systemPrompt(config, {
     title: input.title,
@@ -282,7 +281,7 @@ export function socraticStream(
   });
   if (config.llmProvider === "mock") return mockText(input);
   if (!config.glmKey) throw new LlmError(503, "llm_not_configured", "llm_not_configured");
-  return glmText(config, system, input.history, signal);
+  return glmText(config, system, input.history);
 }
 
 /**

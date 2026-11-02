@@ -8,7 +8,7 @@ export function publish(activityId: string, event: Record<string, unknown>): voi
     try {
       listener(payload);
     } catch {
-      /* 斷線的訂閱者会在 close 時移除 */
+      /* 斷線的訂閱者會在 close 時移除 */
     }
   }
 }

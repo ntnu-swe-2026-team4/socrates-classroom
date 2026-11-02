@@ -4,11 +4,17 @@ import type { DB } from "../db";
 import { all, one, run, tx } from "../db";
 import { requireUser } from "../auth";
 import { bodyOf, fail, newId, nowIso, str, type AppEnv } from "../http";
-import { accessClassroomStaff, accessDiscussion, studentIdsOf } from "../services/access";
+import { accessClassroom, accessClassroomStaff, accessDiscussion, studentIdsOf } from "../services/access";
 import { acquireLock, checkRate, dialogueSse, messageJson, releaseLock } from "../services/dialogue";
 import {
   discussionSessionDetailJson, discussionSessionJson, discussionTaskJson, discussionSessionsExist,
 } from "../services/serialize";
+import type { UserRow } from "../http";
+
+// 這個路由同時服務老師與學生；accessClassroom 已經處理權限，這裡只是取角色。
+function accessClassroomStaffOrMember(db: DB, id: string, user: UserRow) {
+  return accessClassroom(db, id, user);
+}
 
 function mySession(db: DB, discussionId: string, studentId: string) {
   let row = one<any>(db, "SELECT * FROM discussion_sessions WHERE discussion_id = $did AND student_id = $sid", { did: discussionId, sid: studentId });
@@ -249,11 +255,4 @@ export function discussionRoutes(db: DB, config: Config, getLang: (c: any) => La
   });
 
   return r;
-}
-
-// 這個路由同時服務老師與學生；accessClassroom 已經處理權限，這裡只是取角色。
-import { accessClassroom } from "../services/access";
-import type { UserRow } from "../http";
-function accessClassroomStaffOrMember(db: DB, id: string, user: UserRow) {
-  return accessClassroom(db, id, user);
 }
