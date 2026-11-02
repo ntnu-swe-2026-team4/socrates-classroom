@@ -17,6 +17,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Lint（Biome）
+        run: npx biome check .
       - name: Typecheck
         run: |
           npx tsc --noEmit -p apps/server

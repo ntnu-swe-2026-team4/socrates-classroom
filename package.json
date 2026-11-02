@@ -13,7 +13,9 @@
     "test": "vitest run --root apps/server",
     "migrate": "cf d1 migrations apply socrates --dir apps/server/migrations --local",
     "seed": "node apps/server/scripts/seed.mjs",
-    "deploy": "cf deploy"
+    "deploy": "cf deploy",
+    "lint": "biome check .",
+    "format": "biome format --write ."
   },
   "allowScripts": {
     "workerd@1.20260730.1": true,
@@ -28,12 +30,13 @@
     "hono": "^4.10.7"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
     "@cloudflare/vite-plugin": "^2.0.0-beta.v.9",
-    "@cloudflare/vitest-pool-workers": "^0.19.1",
+    "@cloudflare/vitest-pool-workers": "^0.23.0",
     "@cloudflare/workers-types": "^5.20261101.1",
     "cf": "1.0.0-beta.26",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.4",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
     "vitest": "^4.1.12",
     "wrangler": "^4.156.1"
   }

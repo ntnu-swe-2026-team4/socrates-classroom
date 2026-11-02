@@ -1,0 +1,86 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  // 以 Git 為準：.gitignore 以外的路徑都會被處理
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/.cloudflare",
+      "!**/public",
+      "!**/node_modules",
+      "!**/*.sql",
+      "!**/package-lock.json"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "css": {
+    "parser": {
+      // Tailwind v4 語法（@theme / @custom-variant / @apply）
+      "tailwindDirectives": true
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        // import 排序不強制，避免與既有匯入順序產生大量差異
+        "organizeImports": "off"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "correctness": {
+        "noUnusedVariables": "warn",
+        "noUnusedImports": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "off"
+      },
+      "complexity": {
+        "noVoid": "off"
+      },
+      "a11y": {
+        // 課堂內部工具：這幾條先降級，不擋 CI
+        "useKeyWithClickEvents": "off",
+        "noStaticElementInteractions": "off",
+        "useAnchorContent": "off",
+        // role="group"/"separator" 的結構性改寫留待重構
+        "useSemanticElements": "warn",
+        // 表單用自訂元件（<Input>/<Textarea>）包在 <label> 內＝隱含關聯，規則無法辨識
+        "noLabelWithoutControl": "off"
+      },
+      "suspicious": {
+        // 移植期大量 any；型別收斂後再收回
+        "noExplicitAny": "off",
+        // 靜態清單（星期標籤、選項、跳過名單）用索引 key 是合理模式
+        "noArrayIndexKey": "warn"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // landing 頁由純 HTML 原型移植：linter 整體關閉（格式保留），逐步整治後再開
+      "includes": ["apps/web/src/landing/**"],
+      "linter": {
+        "enabled": false
+      }
+    }
+  ],
+  "json": {
+    "formatter": {
+      "enabled": true
+    }
+  }
+}
