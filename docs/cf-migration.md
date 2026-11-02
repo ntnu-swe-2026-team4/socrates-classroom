@@ -47,6 +47,12 @@
 | CF Workers AI | 文字生成預設 **300 req/min**；需付費方案的模型（如 GLM）標準計費 **20 req/min**、預付 AI Gateway credits **50 req/min**（每帳號每模型） | = RPM 上限（每個串流算一請求） | 免 key、零政策風險的底線；但 20/min 對整班爆發偏低，要吃預付 credits 才夠 |
 | 自架 DGX Spark ×2（GLM-5.3-Flash EXL3，1M ctx） | token 無上限、資料不出門 | **4 併發**（團隊實測） | 課堂主力：4 併發 + 佇列；爆發期學生排隊數秒，零邊際成本 |
 
+**條款：能不能用在自家產品後端？**
+
+- **GLM Coding Plan：明確不行**。官方工具整合頁原文：「The GLM Coding Plan is limited to use within the following officially supported tools and product environments; users may not use their subscription benefits for tools or scenarios outside of this scope」——清單是 ZCode／Claude Code／Cline／Roo Code／Kilo／Goose／OpenCode 等 coding agents（另有 best-effort 一般代理工具，高載時可能限流）；再加 usage policy 禁止帳號共享／多用戶。課堂產品後端兩條都踩：只能用於開發與老師個人助理。
+- **OpenCode Go：沒有「僅限產品內」的硬規定**。原文：「designed for OpenCode and other coding agents that produce similar types of requests. Traffic is monitored for abuse」；官方 Harnesses 文件直接教第三方客戶端（Pi、Claude Code、Codex、Hermes、Raycast）接入，客戶端要求是自報 user-agent（例 `my-coding-agent/1.0`）+ 每對話固定 `x-opencode-session`——我們做得到（`socrates-classroom/1.0` + 每對話執行緒一個 session id）。灰色地帶是「我們不是 coding agent」，上線前寄信問官方最穩。
+- **自架／Workers AI：無此類條款限制**。
+
 **建議的 provider pool**：自架（4 併發，全局併發閘 + 佇列）→ 溢位 `opencode-go` → 再溢位 Coding Plan（遵守 1–2 併發、離峰加強）→ Workers AI 壓底（RPM 上限）。pi-ai 的 fallback 鏈 + Pi Durable inbox 天然排隊（`whenBusy` follow-up）正好承接這個拓撲；應用層保留現有每人 20 req/min 限流。
 
 結論（2026-11 修正）：
