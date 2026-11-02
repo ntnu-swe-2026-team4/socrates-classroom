@@ -53,6 +53,17 @@
 - **OpenCode Go：沒有「僅限產品內」的硬規定**。原文：「designed for OpenCode and other coding agents that produce similar types of requests. Traffic is monitored for abuse」；官方 Harnesses 文件直接教第三方客戶端（Pi、Claude Code、Codex、Hermes、Raycast）接入，客戶端要求是自報 user-agent（例 `my-coding-agent/1.0`）+ 每對話固定 `x-opencode-session`——我們做得到（`socrates-classroom/1.0` + 每對話執行緒一個 session id）。灰色地帶是「我們不是 coding agent」，上線前寄信問官方最穩。
 - **自架／Workers AI：無此類條款限制**。
 
+**ZDR（零資料保留）查證**：
+
+| Provider | ZDR 證據 |
+|---|---|
+| 自架 DGX Spark | 本質成立：資料不出門 |
+| Workers AI | 官方明文：「**Zero data retention**」（標準推論請求處理完即不保留輸入輸出）+「**No training**」（不用 Customer Content 訓練模型）。例外：AI Gateway 開 logging/caching 會存內容——學生對話路由**不要開** AI Gateway 的 log/cache |
+| OpenCode Go | 官方**每模型 Privacy 表**：`GLM-5.3-Flash`／`GLM-5.3`／`GLM-5.2` 均「training: Not used、retention: **0 days**」✅。但注意：Grok/GPT/Claude Haiku 是 30 天、Muse Spark/Iceman **會拿資料訓練**——fallback 鏈必須**鎖模型**（只準 GLM/Kimi/Qwen 等 0 天模型），不能只鎖 provider；DeepSeek 的 ZDR 是按月續約（現至 2026-11-30） |
+| GLM Coding Plan | 無 ZDR 承諾（且本就禁止產品後端使用）→ 開發專用 |
+
+生產鏈（學生流量）因此確立：**自架 → opencode-go（鎖 GLM-5.3-Flash）→ Workers AI**，三段都 ZDR；Coding Plan 完全不碰學生資料。
+
 **建議的 provider pool**：自架（4 併發，全局併發閘 + 佇列）→ 溢位 `opencode-go` → 再溢位 Coding Plan（遵守 1–2 併發、離峰加強）→ Workers AI 壓底（RPM 上限）。pi-ai 的 fallback 鏈 + Pi Durable inbox 天然排隊（`whenBusy` follow-up）正好承接這個拓撲；應用層保留現有每人 20 req/min 限流。
 
 結論（2026-11 修正）：
