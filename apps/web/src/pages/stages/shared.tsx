@@ -203,7 +203,7 @@ export function StageLayout({
         )}
       </div>
     );
-  const _rightPane =
+  const rightPane =
     collapsed === "right" ? (
       <CollapsedBar side="right" label={rightLabel} onExpand={() => collapse(null)} />
     ) : (
@@ -231,7 +231,6 @@ export function StageLayout({
     >
       {leftPane}
       {!collapsed && (
-        {/* biome-ignore lint/a11y/useSemanticElements: 分欄拖曳把手，非語意分隔線 */}
         <div
           role="separator"
           aria-orientation="vertical"

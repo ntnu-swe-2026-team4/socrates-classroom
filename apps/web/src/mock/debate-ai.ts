@@ -45,7 +45,7 @@ export function makeAxes(list) {
 
 /* ---------------- 模擬同學 ---------------- */
 
-export function makeCohort(classroom, { activityId, minSims = 8 } = {}) {
+export function makeCohort(classroom, { minSims = 8 } = {}) {
   const names = classroom.students.filter((n) => n !== "你");
   const members = names.map((name, i) => ({ id: `m${i}`, name, sim: true }));
   for (let i = members.length; i < minSims; i++) {
@@ -403,7 +403,7 @@ export const MODERATOR = {
 };
 
 /** 模擬選手的發言 */
-export function simTurnText({ phase, role, group, args, opponentArgs, opponentLast, seed }) {
+export function simTurnText({ phase, role, args, opponentArgs, opponentLast, seed }) {
   const rng = mulberry32(hashSeed(seed));
   const claims = args.filter((a) => a.kind === "claim" && a.status !== "dropped");
   const mine = claims[0]?.text || tr("我們還在整理自己的主張");

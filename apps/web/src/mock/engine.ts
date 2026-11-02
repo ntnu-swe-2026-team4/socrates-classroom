@@ -11,7 +11,10 @@ import { tr } from "@/i18n";
 const uid = (p: string) => p + Math.random().toString(36).slice(2, 8);
 const now = () => new Date().toISOString();
 const listeners = new Map<string, Set<(e: any) => void>>();
-export const emit = (id: string, e: any) => listeners.get(id)?.forEach((cb) => cb(e));
+export const emit = (id: string, e: any) =>
+  listeners.get(id)?.forEach((cb) => {
+    cb(e);
+  });
 export function subscribe(id: string, cb: (e: any) => void) {
   if (!listeners.has(id)) listeners.set(id, new Set());
   listeners.get(id)!.add(cb);

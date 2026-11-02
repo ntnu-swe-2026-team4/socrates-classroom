@@ -279,7 +279,7 @@ const EXPRESSIONS: [SocratesExpression, string][] = [
   ["Angry", "生氣"],
 ];
 
-function Bubble({ role, text }: { role: "user" | "assistant"; text: string }) {
+function Bubble({ role = "assistant", text }: { role?: "user" | "assistant"; text: string }) {
   const t = useT();
   return (
     <div className={cn("flex gap-3", role === "user" && "flex-row-reverse")}>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Activity, type Group, type GroupArgument, type Vote } from "@/api";
 import { keys, useArguments, useGroupMessages, useGroups, useMembers, useStar } from "@/api/queries";
@@ -133,7 +133,7 @@ export function TeamStage({ a, teacher, over }: { a: Activity; teacher: boolean;
   }, []);
 
   // AI 整理論點、丟反例的訊息出現時念出來（進入頁面時已經存在的不念）
-  const fresh = (at: string) => Date.now() - Date.parse(at) < 15000;
+  const fresh = useCallback((at: string) => Date.now() - Date.parse(at) < 15000, []);
   const spoken = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     const ai = [...messages].reverse().find((m) => m.kind === "ai_summary" || m.kind === "ai_counterexample");

@@ -285,7 +285,7 @@ export function StarMap({
                 <RotateCcw className="size-4" />
               </Button>
             </div>
-            {/* biome-ignore lint/a11y/useSemanticElements: 時間軸滑桿為自製互動元件 */}
+            {/* biome-ignore lint/a11y/useFocusableInteractive: 時間軸為唯讀進度顯示，鍵盤由步驟按鈕處理 */}
             <div
               className="relative mx-2 mt-4 h-8"
               role="slider"

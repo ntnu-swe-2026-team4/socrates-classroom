@@ -6,24 +6,16 @@
   "main": "./src/index.ts",
   "compatibility_date": "2026-08-06",
   "compatibility_flags": ["nodejs_compat"],
-  "rules": [
-    { "type": "Text", "globs": ["**/*.md", "**/*.sql"] }
-  ],
-  "d1_databases": [
-    { "binding": "DB", "database_name": "socrates-test", "database_id": "local-test" }
-  ],
-  "r2_buckets": [
-    { "binding": "UPLOADS", "bucket_name": "socrates-test-uploads" }
-  ],
+  "rules": [{ "type": "Text", "globs": ["**/*.md", "**/*.sql"] }],
+  "d1_databases": [{ "binding": "DB", "database_name": "socrates-test", "database_id": "local-test" }],
+  "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "socrates-test-uploads" }],
   "durable_objects": {
     "bindings": [
       { "name": "PiAgent", "class_name": "PiAgent" },
       { "name": "ActivityEvents", "class_name": "ActivityEvents" }
     ]
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["PiAgent", "ActivityEvents"] }
-  ],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PiAgent", "ActivityEvents"] }],
   "vars": {
     "LLM_PROVIDER": "mock",
     "PUBLIC_BASE_URL": "",

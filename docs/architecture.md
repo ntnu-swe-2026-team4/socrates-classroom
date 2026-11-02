@@ -5,16 +5,16 @@
 
 ## 0. 已定決策（本文的約束條件）
 
-| # | 決策 | 理由 |
-|---|---|---|
-| D1 | 單一 Worker：Hono API + 前端 assets + PiAgent DO 同包 | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS |
-| D2 | App 資料放 **D1**；Pi transcript 留在 DO 自己的 SQLite（`pi_*` 表） | 共享關聯資料 vs agent 私有狀態，各放各的 |
-| D3 | 對話執行緒 = 一個 DO instance（`idFromName(scope:id)`） | 天然序列化、互不干擾、Pi inbox 排隊 |
-| D4 | 前端契約不變：DO 內把 `session.events()` 轉回現有 SSE（`delta/emotion/done/error`） | 前端零改動上線；WebSocket + steer 列 Phase 3 |
-| D5 | 全 Node 化（npm workspaces + vitest）；cf 指令走 Node ≥22.23 | `cf` 載 `cloudflare.config.ts` 不支援 Bun；server 已無 Bun API |
-| D6 | Provider pool：自架(CF Tunnel) → opencode-go → OpenRouter → Workers AI，**全 ZDR、鎖模型白名單** | 學生資料不落地；Coding Plan 只開發用 |
-| D7 | 產品級 BYOK：學生可填自己的 OpenRouter key（加密存 D1，強制 `zdr`） | 一人一帳號，共享條款問題消失 |
-| D8 | CI/CD：GitHub Actions 官方 cf 範本（build once → dry-run → `--prebuilt` deploy） | cf 無官方 action，純 steps 是欽定方式 |
+| #   | 決策                                                                                             | 理由                                                           |
+| --- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| D1  | 單一 Worker：Hono API + 前端 assets + PiAgent DO 同包                                            | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS               |
+| D2  | App 資料放 **D1**；Pi transcript 留在 DO 自己的 SQLite（`pi_*` 表）                              | 共享關聯資料 vs agent 私有狀態，各放各的                       |
+| D3  | 對話執行緒 = 一個 DO instance（`idFromName(scope:id)`）                                          | 天然序列化、互不干擾、Pi inbox 排隊                            |
+| D4  | 前端契約不變：DO 內把 `session.events()` 轉回現有 SSE（`delta/emotion/done/error`）              | 前端零改動上線；WebSocket + steer 列 Phase 3                   |
+| D5  | 全 Node 化（npm workspaces + vitest）；cf 指令走 Node ≥22.23                                     | `cf` 載 `cloudflare.config.ts` 不支援 Bun；server 已無 Bun API |
+| D6  | Provider pool：自架(CF Tunnel) → opencode-go → OpenRouter → Workers AI，**全 ZDR、鎖模型白名單** | 學生資料不落地；Coding Plan 只開發用                           |
+| D7  | 產品級 BYOK：學生可填自己的 OpenRouter key（加密存 D1，強制 `zdr`）                              | 一人一帳號，共享條款問題消失                                   |
+| D8  | CI/CD：GitHub Actions 官方 cf 範本（build once → dry-run → `--prebuilt` deploy）                 | cf 無官方 action，純 steps 是欽定方式                          |
 
 ## 1. 系統拓撲
 
@@ -157,12 +157,12 @@ export class PiAgent extends DurableObject<Env> {
 
 **白名單（唯一可路由集，全 ZDR 0-day）**：
 
-| 順位 | provider | model id | gate | 備註 |
-|---|---|---|---|---|
-| 1 | dgx-spark（CF Tunnel） | `GLM-5.3-Flash-EXL3` | 併發 4 | compat：`maxTokensField:max_tokens`、無 developer role |
-| 2 | opencode-go | `glm-5.3-flash` | 429 驅動 | UA `socrates-classroom/1.0` + `x-opencode-session:{threadId}` |
-| 3 | openrouter | `z-ai/glm-5.3-flash` | `zdr:true` 強制 | 班級 key；$0.0285/$0.0923 |
-| 4 | workers-ai | `@cf/zai-org/glm-4.7-flash` | 50 req/min（預付 credits） | `AI` binding，免 key |
+| 順位 | provider               | model id                    | gate                       | 備註                                                          |
+| ---- | ---------------------- | --------------------------- | -------------------------- | ------------------------------------------------------------- |
+| 1    | dgx-spark（CF Tunnel） | `GLM-5.3-Flash-EXL3`        | 併發 4                     | compat：`maxTokensField:max_tokens`、無 developer role        |
+| 2    | opencode-go            | `glm-5.3-flash`             | 429 驅動                   | UA `socrates-classroom/1.0` + `x-opencode-session:{threadId}` |
+| 3    | openrouter             | `z-ai/glm-5.3-flash`        | `zdr:true` 強制            | 班級 key；$0.0285/$0.0923                                     |
+| 4    | workers-ai             | `@cf/zai-org/glm-4.7-flash` | 50 req/min（預付 credits） | `AI` binding，免 key                                          |
 
 **實作**：pi-ai 的 Models registry 支援 fallback 陣列（首選失敗自動下一個）——pool = 白名單依序組成的 fallback list + 每 provider 的 Model 代理（`acquire gate → 委派 → release`；gate 滿或 429 → 直接丟上游錯誤讓 pi fallback 接手）。全部包在 `pool.ts`，DO 只看到「一個 models registry」。
 
@@ -203,8 +203,8 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 # ci.yml（PR）：build 一次 + 全部閘門，不需要 secrets
 - uses: actions/setup-node@v6 (node 22, cache npm)
 - run: npm ci
-- run: npm run typecheck        # tsc -b（web/server/shared）
-- run: npm test                 # vitest（單元 + pool 邏輯）
+- run: npm run typecheck # tsc -b（web/server/shared）
+- run: npm test # vitest（單元 + pool 邏輯）
 - run: npm run build -w apps/web
 - run: npx cf build && npx cf deploy --prebuilt --mode production --dry-run
 # （可選）npx cf previews deploy → PR 預覽網址
@@ -212,7 +212,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 # deploy.yml（push main）：同一產物部署
 - run: npx cf build
 - run: npx cf d1 migrations apply <DB_ID> --dir apps/server/migrations
-- run: npx cf deploy --prebuilt --mode production   # 唯一拿 secrets 的 step
+- run: npx cf deploy --prebuilt --mode production # 唯一拿 secrets 的 step
 ```
 
 - staging：`--mode staging` + `cloudflare.config.ts` 的 `switch (ctx.mode)`（獨立 D1/R2/DO 與網域）；手動 `workflow_dispatch` 觸發
@@ -221,27 +221,27 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 9. 測試策略（全 vitest）
 
-| 層 | 工具 | 內容 |
-|---|---|---|
-| 純邏輯 | vitest + node | `EmotionSplitter`、pool gate 排程、whitelist、byok 加解密 |
-| Worker 整合 | `@cloudflare/vitest-pool-workers` | 真 runtime：路由 + D1(本地) + R2(本地) + DO；SSE 契約快照測試 |
-| Harness | 同上 + remote AI | PiHarness：submit/done、events snapshot、crash-recovery（對齊官方 conformance suite） |
-| E2E smoke | deploy 後 curl | `/api/ask` 全鏈 + 對話 SSE 一輪 |
+| 層          | 工具                              | 內容                                                                                  |
+| ----------- | --------------------------------- | ------------------------------------------------------------------------------------- |
+| 純邏輯      | vitest + node                     | `EmotionSplitter`、pool gate 排程、whitelist、byok 加解密                             |
+| Worker 整合 | `@cloudflare/vitest-pool-workers` | 真 runtime：路由 + D1(本地) + R2(本地) + DO；SSE 契約快照測試                         |
+| Harness     | 同上 + remote AI                  | PiHarness：submit/done、events snapshot、crash-recovery（對齊官方 conformance suite） |
+| E2E smoke   | deploy 後 curl                    | `/api/ask` 全鏈 + 對話 SSE 一輪                                                       |
 
 `bun test` 退役；`server/tests/llm.test.ts`（EmotionSplitter）平移。
 
 ## 10. 實作順序（refactor ↔ Phase 對應）
 
-| 步驟 | 內容 | 對應 | 產出驗收 |
-|---|---|---|---|
-| R0 | npm workspaces、vitest、Node 22 工具鏈 | — | CI 綠，行為不變 |
-| R1 | `db/d1.ts` 介面 + async 化 + tx→batch + D1 migrations | Phase 0 | 本地 miniflare 全路由綠 |
-| R2 | R2 上傳、fs 設定→build-time import、`index.ts`→Worker export | Phase 0 | `cf dev` 全功能 |
-| R3 | 上線：assets + Worker + D1 + R2；LLM 仍直呼 | **Phase 0 完成點** | 正式網域可用 |
-| R4 | PiAgent DO（先搬現有 llm.ts 邏輯）+ Hono 轉發 | Phase 1 | 對話有 DO 鎖/佇列 |
-| R5 | PiHarness 替換 + provider pool + 白名單 + BYOK | Phase 2 | SSE 契約快照不變、fallback 實測 |
-| R6 | Hono RPC + shared 型別 + web api/ 改寫 | — | types.ts 退役 |
-| R7 | WebSocket + outbox + steer；AI Gateway 觀測（無 log/cache） | Phase 3 | mid-turn reload 續傳 |
+| 步驟 | 內容                                                         | 對應               | 產出驗收                        |
+| ---- | ------------------------------------------------------------ | ------------------ | ------------------------------- |
+| R0   | npm workspaces、vitest、Node 22 工具鏈                       | —                  | CI 綠，行為不變                 |
+| R1   | `db/d1.ts` 介面 + async 化 + tx→batch + D1 migrations        | Phase 0            | 本地 miniflare 全路由綠         |
+| R2   | R2 上傳、fs 設定→build-time import、`index.ts`→Worker export | Phase 0            | `cf dev` 全功能                 |
+| R3   | 上線：assets + Worker + D1 + R2；LLM 仍直呼                  | **Phase 0 完成點** | 正式網域可用                    |
+| R4   | PiAgent DO（先搬現有 llm.ts 邏輯）+ Hono 轉發                | Phase 1            | 對話有 DO 鎖/佇列               |
+| R5   | PiHarness 替換 + provider pool + 白名單 + BYOK               | Phase 2            | SSE 契約快照不變、fallback 實測 |
+| R6   | Hono RPC + shared 型別 + web api/ 改寫                       | —                  | types.ts 退役                   |
+| R7   | WebSocket + outbox + steer；AI Gateway 觀測（無 log/cache）  | Phase 3            | mid-turn reload 續傳            |
 
 ## 11. ADR 摘要
 
@@ -253,11 +253,12 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 12. 風險與對策
 
-| 風險 | 對策 |
-|---|---|
-| D1 無互動式交易，tx→batch 語意差異 | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite |
-| cf beta 格式變動 | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋 |
-| 自架 Tunnel 延遲 | 爆發期實測 P95；不行就把自架降為「教室內網直連 + 雲端走 opencode-go/OpenRouter」 |
-| opencode-go 條款灰域 | 上線前 email 官方；未確認前它不是唯一依賴（有 OpenRouter/Workers AI 兜底） |
-| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor） | 回覆 ≤3 句不受影響；工具白名單先不開寫入類 |
+| 風險                                                   | 對策                                                                             |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| D1 無互動式交易，tx→batch 語意差異                     | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                 |
+| cf beta 格式變動                                       | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋             |
+| 自架 Tunnel 延遲                                       | 爆發期實測 P95；不行就把自架降為「教室內網直連 + 雲端走 opencode-go/OpenRouter」 |
+| opencode-go 條款灰域                                   | 上線前 email 官方；未確認前它不是唯一依賴（有 OpenRouter/Workers AI 兜底）       |
+| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor） | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                       |
+```
 ```

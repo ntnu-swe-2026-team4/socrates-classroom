@@ -5,13 +5,13 @@
 
 ## Pool 定位
 
-| 角色 | Provider | 模型 | ZDR |
-|---|---|---|---|
-| 開發專用 | GLM Coding Plan Global（`zai`） | GLM-5.3 / GLM-5.3-Flash | ✗（且條款禁產品後端） |
-| 生產主力 | 自架 DGX Spark ×2 | GLM-5.3-Flash EXL3（1M ctx） | ✓（資料不出門） |
-| 第一溢位 | OpenCode Go（`opencode-go`） | **鎖 GLM-5.3-Flash** | ✓（官方每模型表：0 days） |
-| 壓底 | CF Workers AI（`AI` binding） | `@cf/zai-org/glm-4.7-flash` | ✓（官方明文 Zero retention + No training） |
-| 雲端 fallback／學生 BYOK 通道 | OpenRouter（`openrouter`） | `z-ai/glm-5.3-flash`（$0.0285/M in・$0.0923/M out） | ✓（帳戶強制 `zdr` + 官方不留資料） |
+| 角色                          | Provider                        | 模型                                                | ZDR                                        |
+| ----------------------------- | ------------------------------- | --------------------------------------------------- | ------------------------------------------ |
+| 開發專用                      | GLM Coding Plan Global（`zai`） | GLM-5.3 / GLM-5.3-Flash                             | ✗（且條款禁產品後端）                      |
+| 生產主力                      | 自架 DGX Spark ×2               | GLM-5.3-Flash EXL3（1M ctx）                        | ✓（資料不出門）                            |
+| 第一溢位                      | OpenCode Go（`opencode-go`）    | **鎖 GLM-5.3-Flash**                                | ✓（官方每模型表：0 days）                  |
+| 壓底                          | CF Workers AI（`AI` binding）   | `@cf/zai-org/glm-4.7-flash`                         | ✓（官方明文 Zero retention + No training） |
+| 雲端 fallback／學生 BYOK 通道 | OpenRouter（`openrouter`）      | `z-ai/glm-5.3-flash`（$0.0285/M in・$0.0923/M out） | ✓（帳戶強制 `zdr` + 官方不留資料）         |
 
 **學生流量（生產鏈）只走後三段（全 ZDR）；Coding Plan 不碰學生資料。**
 fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），不能只鎖 provider。
@@ -67,19 +67,19 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 
 ## 6. BYOK 模式（三種層次）
 
-| 層次 | 機制 | 適用 |
-|---|---|---|
-| AI Gateway BYOK | key 存 CF gateway，Worker 完全不碰 key；僅限 provider-native 清單（**無智譜**） | 想統一觀測/計費且只用清單內 provider 時 |
-| OpenRouter BYOK | 60+ providers、統一 API 與分析；$25k/月內免費、之後 5% | 用自己的 Z.AI/其他 key 但要 OpenRouter 的路由與 failover |
+| 層次                            | 機制                                                                                                | 適用                                                                                    |
+| ------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| AI Gateway BYOK                 | key 存 CF gateway，Worker 完全不碰 key；僅限 provider-native 清單（**無智譜**）                     | 想統一觀測/計費且只用清單內 provider 時                                                 |
+| OpenRouter BYOK                 | 60+ providers、統一 API 與分析；$25k/月內免費、之後 5%                                              | 用自己的 Z.AI/其他 key 但要 OpenRouter 的路由與 failover                                |
 | **產品級 BYOK（學生自帶 key）** | 學生填自己的 OpenRouter key（加密存 D1），每請求帶自己的 key + 強制 `zdr`；沒 key 的學生走班級 pool | **課堂最乾淨的合規解**：一人一帳號，共享條款與額度問題消失；班級 pool 只當公用 fallback |
 
 ---
 
 1. **學生流量鏈**：自架（4 併發 + CF Tunnel + 佇列）→ opencode-go（鎖 `glm-5.3-flash`）→ OpenRouter（強制 `zdr:true`、鎖 `z-ai/glm-5.3-flash`）→ Workers AI。四段全 ZDR。
 2. **學生 BYOK**：有 key 的學生優先走自己的 OpenRouter key（帳戶隔離、無共享條款問題）；班級 pool 只當公用 fallback。
-2. **模型白名單**（可進 fallback 的）：GLM-5.3-Flash、GLM-5.3、GLM-5.2、Kimi／Qwen／MiniMax／MiMo 等 0-day retention 模型。禁入：Muse Spark、Iceman（會訓練）、Grok／GPT Luna／Claude Haiku（30 天）。
-3. **開發流量**：Coding Plan 優先（額度大、離峰五折），任何 provider 皆可。
-4. **應用層限流**：保留每人 20 req/min（`server/src/services/dialogue.ts`）；併發閘對自架 = 4、對未公布併發的雲端 provider 以 429 為準自動 fallback。
+3. **模型白名單**（可進 fallback 的）：GLM-5.3-Flash、GLM-5.3、GLM-5.2、Kimi／Qwen／MiniMax／MiMo 等 0-day retention 模型。禁入：Muse Spark、Iceman（會訓練）、Grok／GPT Luna／Claude Haiku（30 天）。
+4. **開發流量**：Coding Plan 優先（額度大、離峰五折），任何 provider 皆可。
+5. **應用層限流**：保留每人 20 req/min（`server/src/services/dialogue.ts`）；併發閘對自架 = 4、對未公布併發的雲端 provider 以 429 為準自動 fallback。
 
 ## 待辦 / 未定
 

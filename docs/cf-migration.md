@@ -15,38 +15,38 @@
 
 ## 一、現況盤點 → Cloudflare 對應
 
-| 模組 | 現況 | Cloudflare 對應 | 改動量 |
-|---|---|---|---|
-| 前端 React + Vite SPA | `frontend/dist`（`frontend/container.md` 的 Docker 只是打包靜態站） | 同一個 Worker 的 **Static Assets**（`notFoundHandling: "single-page-application"`、`/api/*` 先走 Worker 程式） | 幾乎零：build 產物直接掛，Dockerfile 可淘汰 |
-| API（Hono） | `Bun.serve`（`server/src/index.ts`） | Workers **原生支援 Hono**：`export default { fetch: app.fetch }`；SSE 的 `ReadableStream` 串流同樣可用 | 小：改啟動方式、config 注入改 bindings |
-| SQLite | `bun:sqlite`（`db.ts` + `migrations/*.sql`） | **D1**。SQL 本身不動（D1 就是 SQLite）；`db.query().run()` → `env.DB.prepare().bind().run()`、`tx()` → `env.DB.batch()`；migration 改 `cf d1` 指令 | **中（最大單一改動）**：改寫 `db.ts` helpers，路由層多半不動 |
-| 上傳檔案 | `Bun.write` 寫磁碟（`services/files.ts`，上限 50MB） | **R2** bucket binding（`put/get/delete`，走 `file.stream()`）；50MB 在 Worker request body 上限內（免費 100MB／付費 500MB） | 小 |
-| `llm/` 設定層 | `node:fs` 讀檔 + mtime 熱重載（`config.ts`、`services/llm.ts`） | build-time `?raw` import（改檔後重新部署）；之後可改存 KV/R2 + admin API 恢復熱更新 | 小（行為微降級，見風險一節） |
-| 環境變數 | `process.env` | `vars`（公開值）+ secrets（`GLM_API_KEY` 等，用 `cf deploy --secrets-file` 或 `wrangler secret put`） | 小 |
-| SSE 對話 | `services/dialogue.ts` 手寫 ReadableStream SSE | Workers 支援 SSE；Phase 2 起搬進 Durable Object（見第三節） | 小 → 中 |
-| in-memory 限流/鎖 | `dialogue.ts` 的 `Map`/`Set` | isolate 會隨時重置 → 搬進對話 DO（天然單點序列化）或用 Rate Limiting binding | 小 |
-| seed / migrate 腳本 | `bun src/scripts/*.ts` | `cf d1 execute <DB> --file seed.sql`（或 D1 migrations 指令） | 小 |
-| 測試 | `bun test` | 純邏輯測試（如 `EmotionSplitter`）留 bun/vitest；需要 Worker runtime 的整合測試用 `@cloudflare/vitest-pool-workers` | 中 |
+| 模組                  | 現況                                                                | Cloudflare 對應                                                                                                                                    | 改動量                                                       |
+| --------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 前端 React + Vite SPA | `frontend/dist`（`frontend/container.md` 的 Docker 只是打包靜態站） | 同一個 Worker 的 **Static Assets**（`notFoundHandling: "single-page-application"`、`/api/*` 先走 Worker 程式）                                     | 幾乎零：build 產物直接掛，Dockerfile 可淘汰                  |
+| API（Hono）           | `Bun.serve`（`server/src/index.ts`）                                | Workers **原生支援 Hono**：`export default { fetch: app.fetch }`；SSE 的 `ReadableStream` 串流同樣可用                                             | 小：改啟動方式、config 注入改 bindings                       |
+| SQLite                | `bun:sqlite`（`db.ts` + `migrations/*.sql`）                        | **D1**。SQL 本身不動（D1 就是 SQLite）；`db.query().run()` → `env.DB.prepare().bind().run()`、`tx()` → `env.DB.batch()`；migration 改 `cf d1` 指令 | **中（最大單一改動）**：改寫 `db.ts` helpers，路由層多半不動 |
+| 上傳檔案              | `Bun.write` 寫磁碟（`services/files.ts`，上限 50MB）                | **R2** bucket binding（`put/get/delete`，走 `file.stream()`）；50MB 在 Worker request body 上限內（免費 100MB／付費 500MB）                        | 小                                                           |
+| `llm/` 設定層         | `node:fs` 讀檔 + mtime 熱重載（`config.ts`、`services/llm.ts`）     | build-time `?raw` import（改檔後重新部署）；之後可改存 KV/R2 + admin API 恢復熱更新                                                                | 小（行為微降級，見風險一節）                                 |
+| 環境變數              | `process.env`                                                       | `vars`（公開值）+ secrets（`GLM_API_KEY` 等，用 `cf deploy --secrets-file` 或 `wrangler secret put`）                                              | 小                                                           |
+| SSE 對話              | `services/dialogue.ts` 手寫 ReadableStream SSE                      | Workers 支援 SSE；Phase 2 起搬進 Durable Object（見第三節）                                                                                        | 小 → 中                                                      |
+| in-memory 限流/鎖     | `dialogue.ts` 的 `Map`/`Set`                                        | isolate 會隨時重置 → 搬進對話 DO（天然單點序列化）或用 Rate Limiting binding                                                                       | 小                                                           |
+| seed / migrate 腳本   | `bun src/scripts/*.ts`                                              | `cf d1 execute <DB> --file seed.sql`（或 D1 migrations 指令）                                                                                      | 小                                                           |
+| 測試                  | `bun test`                                                          | 純邏輯測試（如 `EmotionSplitter`）留 bun/vitest；需要 Worker runtime 的整合測試用 `@cloudflare/vitest-pool-workers`                                | 中                                                           |
 
 `auth.ts` 用的是 Web Crypto（`crypto.randomUUID()`）+ Hono cookie helper，**可直接上 Workers**，不用改演算法。
 
 ## 二、GLM 在 Cloudflare 的四條路（2026-11 修訂）
 
-| 路線 | 內容 | 優點 | 限制 |
-|---|---|---|---|
-| **A. Workers AI GLM（建議為 Pi 預設）** | `env.AI.run("@cf/zai-org/glm-4.7-flash")`；經 `agents/models/pi-ai` 的 `createAI` 變成 Pi 的 Model | 免 GLM API key；AI binding 一等公民；Pi Durable 官方範例同款；有日誌與計費 | glm-4.7-flash 約 $0.0605/M input、$0.40/M output；`glm-5.3`（1M context）需 Workers **付費方案** |
-| **B. 自家 GLM key（Coding Plan / BigModel）** | Worker `fetch` 直連 `api.z.ai` 或 `open.bigmodel.cn`，請求體跟現在完全一樣 | 現有 key／額度照用；`thinking: { type: "disabled" }` 等 GLM 專屬參數照送 | key 放 secret；拿不到 gateway 的快取／日誌 |
+| 路線                                                    | 內容                                                                                                                                                                                                                                                                                  | 優點                                                                                | 限制                                                                                                                                                                                                      |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A. Workers AI GLM（建議為 Pi 預設）**                 | `env.AI.run("@cf/zai-org/glm-4.7-flash")`；經 `agents/models/pi-ai` 的 `createAI` 變成 Pi 的 Model                                                                                                                                                                                    | 免 GLM API key；AI binding 一等公民；Pi Durable 官方範例同款；有日誌與計費          | glm-4.7-flash 約 $0.0605/M input、$0.40/M output；`glm-5.3`（1M context）需 Workers **付費方案**                                                                                                          |
+| **B. 自家 GLM key（Coding Plan / BigModel）**           | Worker `fetch` 直連 `api.z.ai` 或 `open.bigmodel.cn`，請求體跟現在完全一樣                                                                                                                                                                                                            | 現有 key／額度照用；`thinking: { type: "disabled" }` 等 GLM 專屬參數照送            | key 放 secret；拿不到 gateway 的快取／日誌                                                                                                                                                                |
 | **B′. Pi Durable 直掛自家 GLM key（2026-11 修正新增）** | pi-ai **內建 `zai` provider**（`api: "openai-completions"`、`baseUrl: https://api.z.ai/api/coding/paas/v4`——跟我們 `llm/providers/models.json` 完全同源）與 `zai-coding-cn`（`open.bigmodel.cn/api/coding/paas/v4`）；`models.setProvider(zaiProvider())` + `ZAI_API_KEY` secret 即可 | **Pi 對話可以用既有 Coding Plan 額度**，不必綁 Workers AI；跟 A 可並存互為 fallback | pi 內建的兩個 zai provider 都標明是 Coding Plan 端點（需訂閱）；一般（非 plan）BigModel key 要用 models.json 自訂 endpoint 掛；`thinking` 等 GLM 專屬參數 pi 的 openai-completions 實作不一定會送，需實測 |
-| **C. AI Gateway** | 統一入口：快取、日誌、限流、Unified Billing | 觀測與省錢 | **provider-native 清單（Anthropic、OpenAI、DeepSeek、Groq…共 23 家）不含智譜/Z.AI**，自家 GLM key 無法 BYOK 上 gateway |
+| **C. AI Gateway**                                       | 統一入口：快取、日誌、限流、Unified Billing                                                                                                                                                                                                                                           | 觀測與省錢                                                                          | **provider-native 清單（Anthropic、OpenAI、DeepSeek、Groq…共 23 家）不含智譜/Z.AI**，自家 GLM key 無法 BYOK 上 gateway                                                                                    |
 
 ### 課堂併發與官方用量（2026-11 查證）
 
-| Provider | 官方用量限制 | 官方併發 | 課堂角色 |
-|---|---|---|---|
-| GLM Coding Plan Global | 5 小時 + 每週雙窗口（credits 制：Lite 2,000/5h・10,000/週、Pro 12,000・60,000、Max 28,000・140,000；離峰五折、峰時〔週一～五 14:00–18:00 UTC+8〕GLM-5.3-Flash 為 0.4×/1.2×）| **不公布數字**：官方只說「Max > Pro > Lite、動態調整」，建議 Lite 單專案、Pro 1–2、Max 2+；社群實測 Lite/Pro ≈ **1 併發**（超過回 429 Too much concurrency）、Max 動態可到約 30，且 2026-01 有 5→2→1 收緊紀錄 | 開發／老師個人助理。**整班共用一把 key 違反「訂閱僅限訂閱者」政策**，有風控（限速/凍結）風險 |
-| OpenCode Go（`opencode-go`） | 官方有公布**每模型請求量估算**（依典型用量換算）：Go $10/月 — GLM-5.3-Flash **6,320 req/5h**・15,790/週・31,580/月、GLM-5.3 220/5h；Go Plus $40/月 — Flash **18,960/5h**、GLM-5.3 1,760/5h；Go Teams $20/人/月（每人獨立額度）。有峰離峰倍率（如 DeepSeek 峰時 01:00–04:00・06:00–10:00 UTC） | 未公布數字；官方要求自報 user-agent + 每對話固定 `x-opencode-session`（cache 親和），設計上就是多工作階段；濫用會被監控 | 溢位 / fallback；額度對蘇格拉底對話非常充足 |
-| CF Workers AI | 文字生成預設 **300 req/min**；需付費方案的模型（如 GLM）標準計費 **20 req/min**、預付 AI Gateway credits **50 req/min**（每帳號每模型） | = RPM 上限（每個串流算一請求） | 免 key、零政策風險的底線；但 20/min 對整班爆發偏低，要吃預付 credits 才夠 |
-| 自架 DGX Spark ×2（GLM-5.3-Flash EXL3，1M ctx） | token 無上限、資料不出門 | **4 併發**（團隊實測） | 課堂主力：4 併發 + 佇列；爆發期學生排隊數秒，零邊際成本 |
+| Provider                                        | 官方用量限制                                                                                                                                                                                                                                                                                  | 官方併發                                                                                                                                                                                                      | 課堂角色                                                                                     |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| GLM Coding Plan Global                          | 5 小時 + 每週雙窗口（credits 制：Lite 2,000/5h・10,000/週、Pro 12,000・60,000、Max 28,000・140,000；離峰五折、峰時〔週一～五 14:00–18:00 UTC+8〕GLM-5.3-Flash 為 0.4×/1.2×）                                                                                                                  | **不公布數字**：官方只說「Max > Pro > Lite、動態調整」，建議 Lite 單專案、Pro 1–2、Max 2+；社群實測 Lite/Pro ≈ **1 併發**（超過回 429 Too much concurrency）、Max 動態可到約 30，且 2026-01 有 5→2→1 收緊紀錄 | 開發／老師個人助理。**整班共用一把 key 違反「訂閱僅限訂閱者」政策**，有風控（限速/凍結）風險 |
+| OpenCode Go（`opencode-go`）                    | 官方有公布**每模型請求量估算**（依典型用量換算）：Go $10/月 — GLM-5.3-Flash **6,320 req/5h**・15,790/週・31,580/月、GLM-5.3 220/5h；Go Plus $40/月 — Flash **18,960/5h**、GLM-5.3 1,760/5h；Go Teams $20/人/月（每人獨立額度）。有峰離峰倍率（如 DeepSeek 峰時 01:00–04:00・06:00–10:00 UTC） | 未公布數字；官方要求自報 user-agent + 每對話固定 `x-opencode-session`（cache 親和），設計上就是多工作階段；濫用會被監控                                                                                       | 溢位 / fallback；額度對蘇格拉底對話非常充足                                                  |
+| CF Workers AI                                   | 文字生成預設 **300 req/min**；需付費方案的模型（如 GLM）標準計費 **20 req/min**、預付 AI Gateway credits **50 req/min**（每帳號每模型）                                                                                                                                                       | = RPM 上限（每個串流算一請求）                                                                                                                                                                                | 免 key、零政策風險的底線；但 20/min 對整班爆發偏低，要吃預付 credits 才夠                    |
+| 自架 DGX Spark ×2（GLM-5.3-Flash EXL3，1M ctx） | token 無上限、資料不出門                                                                                                                                                                                                                                                                      | **4 併發**（團隊實測）                                                                                                                                                                                        | 課堂主力：4 併發 + 佇列；爆發期學生排隊數秒，零邊際成本                                      |
 
 **條款：能不能用在自家產品後端？**
 
@@ -56,12 +56,12 @@
 
 **ZDR（零資料保留）查證**：
 
-| Provider | ZDR 證據 |
-|---|---|
-| 自架 DGX Spark | 本質成立：資料不出門 |
-| Workers AI | 官方明文：「**Zero data retention**」（標準推論請求處理完即不保留輸入輸出）+「**No training**」（不用 Customer Content 訓練模型）。例外：AI Gateway 開 logging/caching 會存內容——學生對話路由**不要開** AI Gateway 的 log/cache |
-| OpenCode Go | 官方**每模型 Privacy 表**：`GLM-5.3-Flash`／`GLM-5.3`／`GLM-5.2` 均「training: Not used、retention: **0 days**」✅。但注意：Grok/GPT/Claude Haiku 是 30 天、Muse Spark/Iceman **會拿資料訓練**——fallback 鏈必須**鎖模型**（只準 GLM/Kimi/Qwen 等 0 天模型），不能只鎖 provider；DeepSeek 的 ZDR 是按月續約（現至 2026-11-30） |
-| GLM Coding Plan | 無 ZDR 承諾（且本就禁止產品後端使用）→ 開發專用 |
+| Provider        | ZDR 證據                                                                                                                                                                                                                                                                                                                      |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 自架 DGX Spark  | 本質成立：資料不出門                                                                                                                                                                                                                                                                                                          |
+| Workers AI      | 官方明文：「**Zero data retention**」（標準推論請求處理完即不保留輸入輸出）+「**No training**」（不用 Customer Content 訓練模型）。例外：AI Gateway 開 logging/caching 會存內容——學生對話路由**不要開** AI Gateway 的 log/cache                                                                                               |
+| OpenCode Go     | 官方**每模型 Privacy 表**：`GLM-5.3-Flash`／`GLM-5.3`／`GLM-5.2` 均「training: Not used、retention: **0 days**」✅。但注意：Grok/GPT/Claude Haiku 是 30 天、Muse Spark/Iceman **會拿資料訓練**——fallback 鏈必須**鎖模型**（只準 GLM/Kimi/Qwen 等 0 天模型），不能只鎖 provider；DeepSeek 的 ZDR 是按月續約（現至 2026-11-30） |
+| GLM Coding Plan | 無 ZDR 承諾（且本就禁止產品後端使用）→ 開發專用                                                                                                                                                                                                                                                                               |
 
 生產鏈（學生流量）因此確立：**自架 → opencode-go（鎖 GLM-5.3-Flash）→ Workers AI**，三段都 ZDR；Coding Plan 完全不碰學生資料。
 
@@ -78,15 +78,15 @@
 
 Pi 接管後的對應：
 
-| 現有實作 | Pi Durable 對應 |
-|---|---|
-| `glmText` 手寫 SSE 解析、timeout | Pi 的 model task：stream resume、每回合 checkpoint |
-| 重試與錯誤分類（`llm_rate_limited`/`llm_unavailable`） | `settings.retry`（指數退避，如 `maxRetries: 5, baseDelayMs: 1000`）+ `settings.afterFailedRun` |
-| `dialogue.ts` 的 lock / rate Map | DO 本身單執行緒 + Pi inbox 排隊：學生追問可用 follow-up（排隊）或 `steer`（插進正在跑的回合） |
-| 對話歷史存在 D1 | Pi transcript 存在 DO 自己的 SQLite（`pi_` 開頭的表）；**最終回覆仍寫回 D1**（`save` callback），`docs/api-contract.md` 契約不變 |
-| `llm/prompts/socrates.md` | registry extension 的 `sections`（LLM 組改檔 → 重新部署即生效） |
-| `EmotionSplitter` | 原樣保留，放在應用層 view／SSE adapter |
-| `LLM_PROVIDER=mock` | 保留為離線開發與測試；雲上走 Workers AI |
+| 現有實作                                               | Pi Durable 對應                                                                                                                  |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `glmText` 手寫 SSE 解析、timeout                       | Pi 的 model task：stream resume、每回合 checkpoint                                                                               |
+| 重試與錯誤分類（`llm_rate_limited`/`llm_unavailable`） | `settings.retry`（指數退避，如 `maxRetries: 5, baseDelayMs: 1000`）+ `settings.afterFailedRun`                                   |
+| `dialogue.ts` 的 lock / rate Map                       | DO 本身單執行緒 + Pi inbox 排隊：學生追問可用 follow-up（排隊）或 `steer`（插進正在跑的回合）                                    |
+| 對話歷史存在 D1                                        | Pi transcript 存在 DO 自己的 SQLite（`pi_` 開頭的表）；**最終回覆仍寫回 D1**（`save` callback），`docs/api-contract.md` 契約不變 |
+| `llm/prompts/socrates.md`                              | registry extension 的 `sections`（LLM 組改檔 → 重新部署即生效）                                                                  |
+| `EmotionSplitter`                                      | 原樣保留，放在應用層 view／SSE adapter                                                                                           |
+| `LLM_PROVIDER=mock`                                    | 保留為離線開發與測試；雲上走 Workers AI                                                                                          |
 
 **DO 拓撲**：一個對話執行緒（archive 對話 / activity 對話 / discussion 訊息串）= 一個 DO instance（`env.PiAgent.idFromName(threadId)`），用 root session `"1"`。每個學生各自的對話各自一個 DO instance，互不干擾；單一教室規模完全在 D1／DO 額度內。
 
@@ -135,12 +135,12 @@ CI 用 `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`（`cf` 與 `wrangler` �
 
 ## 五、分階段部署計畫
 
-| 階段 | 內容 | 產出 |
-|---|---|---|
-| **Phase 0：整套先上線**（1–2 天） | `bun:sqlite` → D1、`Bun.write` → R2、`llm/` 檔改 build-time import、`index.ts` 改 Workers export、前端掛 assets。LLM 仍直連 GLM（B 路線） | 現有功能全部在 CF 跑，域名上線，前端 Dockerfile 淘汰 |
-| **Phase 1：對話 DO 化** | 新增 `PiAgent` DO，把 `dialogueSse` 搬進 DO；Hono 端點轉發。llm.ts 原樣搬 | 對話有 durable 鎖與序列化，限流/併發問題消失 |
-| **Phase 2：PiHarness 接管** | DO 內換 `PiHarness` + Workers AI GLM；`session.events()` → SSE adapter。prompt 進 extension section | 手寫 SSE/重試碼退役；對話可恢復、可排隊、可重試 |
-| **Phase 3：加值** | WebSocket + outbox（前端改吃 snapshot）、follow-up/steer、tools（題庫查詢、班級上下文）、AI Gateway 快取與日誌、Workers Builds（push 自動部署） | 完整 agent 化的課堂對話 |
+| 階段                              | 內容                                                                                                                                            | 產出                                                 |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| **Phase 0：整套先上線**（1–2 天） | `bun:sqlite` → D1、`Bun.write` → R2、`llm/` 檔改 build-time import、`index.ts` 改 Workers export、前端掛 assets。LLM 仍直連 GLM（B 路線）       | 現有功能全部在 CF 跑，域名上線，前端 Dockerfile 淘汰 |
+| **Phase 1：對話 DO 化**           | 新增 `PiAgent` DO，把 `dialogueSse` 搬進 DO；Hono 端點轉發。llm.ts 原樣搬                                                                       | 對話有 durable 鎖與序列化，限流/併發問題消失         |
+| **Phase 2：PiHarness 接管**       | DO 內換 `PiHarness` + Workers AI GLM；`session.events()` → SSE adapter。prompt 進 extension section                                             | 手寫 SSE/重試碼退役；對話可恢復、可排隊、可重試      |
+| **Phase 3：加值**                 | WebSocket + outbox（前端改吃 snapshot）、follow-up/steer、tools（題庫查詢、班級上下文）、AI Gateway 快取與日誌、Workers Builds（push 自動部署） | 完整 agent 化的課堂對話                              |
 
 ## 六、風險與注意事項
 
@@ -157,9 +157,9 @@ CI 用 `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`（`cf` 與 `wrangler` �
 
 目前 repo 沒有任何 workflow（`.github/` 只有 CODEOWNERS），等於從零建，直接採 cf 官方 CI 模式（「build 一次、dry-run 驗證、同一個產物部署」）：
 
-| Workflow | 觸發 | 步驟 |
-|---|---|---|
-| `ci.yml` | PR | bun install → typecheck → test → frontend build → `npx cf build` → `npx cf deploy --prebuilt --mode production --dry-run`（部署驗證不需 secrets，fork PR 安全） |
+| Workflow     | 觸發        | 步驟                                                                                                                                                                                    |
+| ------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ci.yml`     | PR          | bun install → typecheck → test → frontend build → `npx cf build` → `npx cf deploy --prebuilt --mode production --dry-run`（部署驗證不需 secrets，fork PR 安全）                         |
 | `deploy.yml` | push `main` | `npx cf build` → `cf d1 migrations apply <DB_ID> --dir server/migrations` → `npx cf deploy --prebuilt --mode production`（只有這步拿 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`） |
 
 - `cf` 裝成 devDependency 鎖版本（`npx cf` 會跑專案內的 copy），CI 與本機同版
@@ -205,14 +205,14 @@ socrates-classroom/
 
 ### 工時估算
 
-| 項目 | 估算 |
-|---|---|
-| Phase 0：D1/R2 移植 + assets 上線 | 1–2 天 |
-| CI/CD 兩條 workflow + staging 資源 | 1 天 |
+| 項目                                    | 估算   |
+| --------------------------------------- | ------ |
+| Phase 0：D1/R2 移植 + assets 上線       | 1–2 天 |
+| CI/CD 兩條 workflow + staging 資源      | 1 天   |
 | db.ts adapter + 對話 DO 化（Phase 1–2） | 3–4 天 |
-| Hono RPC + shared types 重構 | 2–3 天 |
-| 測試遷移與補整合測試 | 1–2 天 |
-| 緩衝（cf beta 變動、D1 行為差異） | 1–2 天 |
+| Hono RPC + shared types 重構            | 2–3 天 |
+| 測試遷移與補整合測試                    | 1–2 天 |
+| 緩衝（cf beta 變動、D1 行為差異）       | 1–2 天 |
 
 總計約 **1.5–2 週全隊工時**。順序：先 Phase 0 + CI 上線（系統已在 CF 跑），再從容做 refactor——兩者解耦，不會「大爆炸重寫」。
 

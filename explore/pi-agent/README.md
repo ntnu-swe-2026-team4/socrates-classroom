@@ -44,13 +44,13 @@ cf cli search "durable object"             # 找 cf 指令
 
 ## 對照主系統（這個 scaffold 在驗證什麼）
 
-| scaffold | 主系統對應 | Phase |
-|---|---|---|
-| `PiAgent` DO + `PiHarness` | `server/src/services/llm.ts` 手寫 SSE/重試的替代 | 2 |
-| `PREAMBLE` 寫死在 `src/server.ts` | 讀 `llm/prompts/socrates.md`（build-time `?raw` import） | 2 |
-| `defaults.model` Workers AI GLM | `llm/providers/models.json` 的 provider 設定層 | 2 |
-| `/api/ask` 等完整回覆 | `dialogueSse` SSE 串流（DO 內用 `session.events()` 轉回 delta/emotion/done） | 1→2 |
-| 無資料庫 | D1（對話記錄照 API 契約寫回） | 0 |
+| scaffold                          | 主系統對應                                                                   | Phase |
+| --------------------------------- | ---------------------------------------------------------------------------- | ----- |
+| `PiAgent` DO + `PiHarness`        | `server/src/services/llm.ts` 手寫 SSE/重試的替代                             | 2     |
+| `PREAMBLE` 寫死在 `src/server.ts` | 讀 `llm/prompts/socrates.md`（build-time `?raw` import）                     | 2     |
+| `defaults.model` Workers AI GLM   | `llm/providers/models.json` 的 provider 設定層                               | 2     |
+| `/api/ask` 等完整回覆             | `dialogueSse` SSE 串流（DO 內用 `session.events()` 轉回 delta/emotion/done） | 1→2   |
+| 無資料庫                          | D1（對話記錄照 API 契約寫回）                                                | 0     |
 
 ## 已知限制
 

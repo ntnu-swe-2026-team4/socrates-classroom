@@ -257,7 +257,6 @@ export function mySession(d: StoredDiscussion, meId: string, meName: string): St
     };
     d.sessions.set(meId, s);
   }
-  d.sessions.set(meId, session);
   return s;
 }
 

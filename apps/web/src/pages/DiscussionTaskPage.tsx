@@ -59,7 +59,15 @@ function CoverageChips({ coverage }: { coverage?: Coverage }) {
  * 一則訊息的泡泡（學生自己的對話與老師回看同學的對話共用）。
  * speaker = 說話的學生（老師回看時用同學的名字，學生看自己的對話時是「我」）
  */
-function Bubble({ role, text, speaker }: { role: "user" | "assistant"; text: string; speaker?: string }) {
+function Bubble({
+  role = "assistant",
+  text,
+  speaker,
+}: {
+  role?: "user" | "assistant";
+  text: string;
+  speaker?: string;
+}) {
   const t = useT();
   return (
     <div className={cn("flex items-start gap-3", role === "user" && "flex-row-reverse")}>

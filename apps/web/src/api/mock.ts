@@ -169,7 +169,10 @@ const policies = new Map<string, JoinPolicy>([
 ]);
 const policyOf = (cid: string) => {
   let p = policies.get(cid);
-  if (!p) policies.set(cid, (p = defaultPolicy()));
+  if (!p) {
+    p = defaultPolicy();
+    policies.set(cid, p);
+  }
   return p;
 };
 const applications: JoinApplication[] = [
@@ -489,7 +492,10 @@ const reports: TopicReport[] = [
 const notes = new Map<string, ThinkingNote[]>();
 const notesOf = (aid: string) => {
   let list = notes.get(aid);
-  if (!list) notes.set(aid, (list = []));
+  if (!list) {
+    list = [];
+    notes.set(aid, list);
+  }
   return list;
 };
 

@@ -18,95 +18,95 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 
 ### 網站有哪些頁面（路由）
 
-| 網址 | 頁面 | 畫面位置 |
-|---|---|---|
-| `/login` | 登入前的 Logo 動畫頁 + 登入 | 整個網站的入口，白色主題 |
-| `/` | 首頁 | 左側選單「首頁」 |
-| `/dialogue?topic=…` | 對話（3D 蘇格拉底 + 聊天） | 選單「單人 → 對話」 |
-| `/topics` | 議題（左列表、右詳情） | 選單「單人 → 議題」 |
-| `/summary` | 論點總結 | 選單「單人 → 論點總結」 |
-| `/bank/private`、`/bank/public` | 私人 / 公開題庫 | 選單「題庫」 |
-| `/classrooms` | 已加入的教室（學生另有「待處理邀請」「用邀請碼加入」兩個按鈕） | 選單「教室」 |
-| `/classrooms/:id?tab=home\|announcements\|debates\|discussions\|discussion\|members` | 教室：首頁（簡介、行事曆）、公告、辯論列表（老師可新增）、多人討論列表、教室討論區、成員 | 點進某個教室 |
-| `/classrooms/:id/debates/:id` | 教室辯論：說明、相關資料（連結 / 檔案）、開始討論或進入辯論、結論報告、辯論討論區 | 點進某個辯論 |
-| `/classrooms/:id/activities/:id` | 辯論活動（四個階段 + 結果） | 點進某場辯論 |
-| `/classrooms/:id/discussions/:id` | 多人討論：學生是「題目與我的結論 + 與蘇格拉底對話」兩欄；老師是「題目與進度 + 全班討論成果」 | 點進某個多人討論 |
+| 網址                                                                                 | 頁面                                                                                         | 畫面位置                 |
+| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------ |
+| `/login`                                                                             | 登入前的 Logo 動畫頁 + 登入                                                                  | 整個網站的入口，白色主題 |
+| `/`                                                                                  | 首頁                                                                                         | 左側選單「首頁」         |
+| `/dialogue?topic=…`                                                                  | 對話（3D 蘇格拉底 + 聊天）                                                                   | 選單「單人 → 對話」      |
+| `/topics`                                                                            | 議題（左列表、右詳情）                                                                       | 選單「單人 → 議題」      |
+| `/summary`                                                                           | 論點總結                                                                                     | 選單「單人 → 論點總結」  |
+| `/bank/private`、`/bank/public`                                                      | 私人 / 公開題庫                                                                              | 選單「題庫」             |
+| `/classrooms`                                                                        | 已加入的教室（學生另有「待處理邀請」「用邀請碼加入」兩個按鈕）                               | 選單「教室」             |
+| `/classrooms/:id?tab=home\|announcements\|debates\|discussions\|discussion\|members` | 教室：首頁（簡介、行事曆）、公告、辯論列表（老師可新增）、多人討論列表、教室討論區、成員     | 點進某個教室             |
+| `/classrooms/:id/debates/:id`                                                        | 教室辯論：說明、相關資料（連結 / 檔案）、開始討論或進入辯論、結論報告、辯論討論區            | 點進某個辯論             |
+| `/classrooms/:id/activities/:id`                                                     | 辯論活動（四個階段 + 結果）                                                                  | 點進某場辯論             |
+| `/classrooms/:id/discussions/:id`                                                    | 多人討論：學生是「題目與我的結論 + 與蘇格拉底對話」兩欄；老師是「題目與進度 + 全班討論成果」 | 點進某個多人討論         |
 
 ### 專案根目錄
 
-| 檔案 | 作用 |
-|---|---|
-| `index.html` | 網頁的唯一 HTML，只有一個 `<div id="root">`，React 從這裡長出整個網站 |
-| `package.json` | 套件清單與指令（`bun run dev`、`bun run build`） |
-| `vite.config.ts` | 開發伺服器與打包設定；把 `/api` 代理到後端 `localhost:8000` |
-| `tsconfig.json` | TypeScript 設定（`@/` 代表 `src/`） |
-| `.env.example` | 環境變數範本：`VITE_API_MODE=mock` 或 `http` |
-| `public/socrates.glb` | 3D 蘇格拉底半身像模型（對話頁使用） |
-| `public/landing/landing-1~8.json` | 登入前 Logo 頁的 Lottie 動畫（約 21 MB，捲到才載入） |
-| `docs/api-contract.md` | 給後端的完整介面說明（每個路徑的資料格式） |
+| 檔案                              | 作用                                                                  |
+| --------------------------------- | --------------------------------------------------------------------- |
+| `index.html`                      | 網頁的唯一 HTML，只有一個 `<div id="root">`，React 從這裡長出整個網站 |
+| `package.json`                    | 套件清單與指令（`bun run dev`、`bun run build`）                      |
+| `vite.config.ts`                  | 開發伺服器與打包設定；把 `/api` 代理到後端 `localhost:8000`           |
+| `tsconfig.json`                   | TypeScript 設定（`@/` 代表 `src/`）                                   |
+| `.env.example`                    | 環境變數範本：`VITE_API_MODE=mock` 或 `http`                          |
+| `public/socrates.glb`             | 3D 蘇格拉底半身像模型（對話頁使用）                                   |
+| `public/landing/landing-1~8.json` | 登入前 Logo 頁的 Lottie 動畫（約 21 MB，捲到才載入）                  |
+| `docs/api-contract.md`            | 給後端的完整介面說明（每個路徑的資料格式）                            |
 
 ### `src/` 各資料夾
 
-| 路徑 | 作用 | 出現在網站的哪裡 |
-|---|---|---|
-| `main.tsx` | 程式進入點：掛上主題、TanStack Query、路由 | 整個網站 |
-| `router.tsx` | 所有網址與頁面的對應、登入守衛（沒登入導向 `/login`） | 整個網站 |
-| `index.css` | 全站顏色（黑 / 白兩套主題變數）與 Tailwind | 整個網站 |
-| **`app/`** | | |
-| `app/AppShell.tsx` | 左側選單（首頁 / 單人 / 題庫 / 教室）、標題列、黑白切換按鈕、設定視窗（登入身分、登出） | 登入後每一頁的外框 |
-| `app/theme.tsx` | 黑白主題狀態（存在瀏覽器） | 選單底部的月亮 / 太陽按鈕 |
-| **`landing/`** | | |
-| `landing/LandingPage.tsx` | Logo 頁：標題動畫、8 個 Lottie 動畫、身分選擇與登入表單 | `/login` |
-| `landing/landing.css` | 這一頁的樣式（從原型搬來，永遠白色主題） | `/login` |
-| **`pages/`** | | |
-| `pages/HomePage.tsx` | 首頁：提問框、名言、接續上次對話、三個統計卡（對話數 / 論點總結數 / 教室數）、最近議題、教室概況 | `/` |
-| `pages/DialoguePage.tsx` | 3D 蘇格拉底 + 聊天面板 + 按住說話 | `/dialogue` |
-| `pages/TopicsPage.tsx` | 議題列表與詳情、私人 / 公開 / 論點總結 三個按鈕、繼續對話 | `/topics` |
-| `pages/ListPages.tsx` | 論點總結頁、題庫頁（私人題庫可以把題目分享給特定的人，也會收到別人分享過來的題目）、教室列表頁（老師：新增教室；學生：已加入的教室，待處理邀請與邀請碼加入各是一個按鈕） | `/summary`、`/bank/*`、`/classrooms` |
-| `pages/JoinClassroom.tsx` | 學生加入教室：「探索教室」視窗（搜尋、我的申請）、邀請碼查詢與申請問卷、待處理邀請視窗 | `/classrooms` |
-| `pages/ClassroomAdmin.tsx` | 老師的成員管理：加入方式（邀請碼、探索、審核開關）、申請問卷編輯、待審核申請、批次匯入 | 教室的「成員」分頁 |
-| `pages/ClassroomPage.tsx` | 教室內的「首頁」「公告」「辯論」「多人討論」「討論區」「成員」六個分頁：簡介與行事曆、辯論卡片（可依個人 / 團體篩選）、成員表、老師的「新增辯論」與「編輯教室」 | `/classrooms/:id` |
-| `pages/CalendarCard.tsx` | 教室首頁的月曆：辯論截止、公告、辯論階段截止、多人討論截止，點了跳到對應頁面 | 教室首頁 |
-| `pages/Discussion.tsx` | 討論區（教室或辯論）：發文、匿名、一層回覆、刪除 | 教室「討論」分頁、辯論頁 |
-| `pages/Announcements.tsx` | 公告分頁（老師新增、編輯、刪除、置頂、排程發布） | `/classrooms/:id` |
-| `pages/ClassroomFormDialog.tsx` | 新增 / 編輯教室共用的視窗（名稱、簡介） | 教室列表、教室頁 |
-| `pages/ClassroomDebatePage.tsx` | 辯論詳情：緊湊標題列（返回、標題、截止時間、編輯 / 刪除）；主要區域是進入辯論、說明與討論區；相關資料、結論報告收在可展開的側欄（老師與助教可加資料） | `/classrooms/:id/debates/:id` |
-| `pages/DebateReports.tsx` | 結論報告：學生繳交 / 重新上傳 / 刪除；老師看全班繳交狀況（標示逾期） | 辯論頁 |
-| `pages/DebateFormDialog.tsx` | 新增 / 編輯辯論的視窗：主題、說明、截止時間、是否收報告、辯論設定（回答方式、價值軸、組別人數） | 教室頁、辯論頁 |
-| `pages/DiscussionTasks.tsx` | 教室的「多人討論」分頁：題目卡片（老師看全班完成人數，學生看自己的狀態）、搜尋與「只看進行中」、老師的新增 / 編輯視窗 | 教室「多人討論」分頁 |
-| `pages/DiscussionTaskPage.tsx` | 多人討論的內頁：學生左欄是題目說明、四個面向與自己的結論，右欄跟蘇格拉底對話；老師左欄是題目與全班進度，右欄是每位同學的成果，點一位同學從右邊拉出他的完整對話 | `/classrooms/:id/discussions/:id` |
-| `pages/ShareArchiveDialog.tsx` | 私人題庫的分享視窗：勾選要分享的同學、助教或老師 | 私人題庫頁 |
-| `pages/ActivityPage.tsx` | 辯論活動的外框：標題列（右上角是目前階段與控制）、依階段切換的左右兩欄、最下方的進度色條。辯論是四階段 | `/classrooms/:id/activities/:id` |
-| `pages/StageControls.tsx` | 標題列右上角：目前階段、倒數、準備人數 / 「我準備好了」、推進；老師的「⋯」選單（限時、直接結束）；最下方的進度色條（點已過的段落可回顧） | 辯論活動裡 |
-| `pages/stages/IndividualStage.tsx` | 辯論的階段 1：左欄用切換按鈕在「個人調查」（進度、直接在欄內整理 / 修改論點，不顯示座標）與「我的筆記」之間切換；右欄與蘇格拉底對話（可標註成筆記）。老師視角是成員進度表與星圖 | 辯論活動裡 |
-| `pages/stages/NotesPanel.tsx` | 學生的思路筆記：標註的重點與自己寫的想法，只有本人看得到 | 階段 1、2 左欄的「我的筆記」 |
-| `pages/stages/TeamStage.tsx` | 階段 2：分組、組內討論、AI 整理論點 / 丟反例、投票、分裂、重新分組；學生左欄可切換「我的組別 / 我的筆記」；星圖只有老師看得到 | 辯論活動裡 |
-| `pages/stages/DebateStage.tsx` | 階段 3：場次、主持人、發言與計時、AI 裁判分數 | 辯論活動裡 |
-| `pages/stages/ResultsStage.tsx` | 結果：立場星圖、班級報告、學生報告、計分、儀表板 | 辯論活動結束後 |
-| `pages/stages/shared.tsx` | 四個階段共用：可拖曳調整占比、可收成側欄的兩欄版面（`StageLayout`，占比與收合存在瀏覽器）、區塊、模式切換、成員標籤、分數條 | 辯論活動裡 |
-| **`components/`** | | |
-| `components/ui/*` | 按鈕、輸入框、卡片、標籤、對話視窗（shadcn 風格） | 全站 |
-| `components/star/StarMap.tsx` | 立場星圖：3D 畫面、量軸勾選、時間軸、分群、放大 | 階段 2 左側、結果頁 |
-| `components/SocratesStage.tsx` | 3D 蘇格拉底的 React 包裝（載入模型、嘴形、主題色） | 對話頁 |
-| **`lib/`** | | |
-| `lib/star/constellation.ts` | 立場星圖的 three.js 引擎（0–3 維切換、軌跡、群心） | 立場星圖 |
-| `lib/star/data.ts` | k-means 分群、群組對齊、群標籤 | 立場星圖 |
-| `lib/socrates/scene.ts`、`avatar.ts` | 3D 蘇格拉底的場景、燈光、全息效果、嘴形動畫 | 對話頁 |
-| `lib/speech.ts` | 瀏覽器內建的語音辨識與語音合成 | 對話頁的麥克風與朗讀 |
-| `lib/debate.ts` | 辯論的常數與小工具（階段名稱、評分項目、組別顏色、票數計算） | 辯論活動 |
-| `lib/utils.ts` | `cn()`：合併 CSS class | 全站 |
-| **`api/`（前後端的界線，最重要）** | | |
-| `api/types.ts` | 所有資料型別（使用者、活動、組別、發言、評分…） | 前後端共同遵守 |
-| `api/api.ts` | 前端能呼叫的所有後端功能（一個 `Api` 介面） | 前後端共同遵守 |
-| `api/http.ts` | **真後端的實作**：把 `Api` 的每個函式對應成 HTTP 請求與 SSE | `VITE_API_MODE=http` |
-| `api/mock.ts` | 假後端：認證、議題、教室；辯論交給 `mock/engine.ts`、多人討論交給 `mock/discussion.ts` | `VITE_API_MODE=mock`（預設） |
-| `api/queries.ts` | TanStack Query 的資料查詢與更新（頁面都從這裡拿資料）、SSE 事件訂閱 | 全站 |
-| `api/index.ts` | 依環境變數決定用 `mock` 還是 `http` | 全站 |
-| **`mock/`（只在 mock 模式使用）** | | |
-| `mock/engine.ts` | 假的辯論引擎：階段推進、分組、討論、比賽、計時、計分 | mock 模式的辯論 |
-| `mock/debate-ai.ts` | 規則式的模擬同學 / 主持人 / 裁判 / k-means 分組 / 計分公式 | mock 模式的辯論 |
-| `mock/discussion.ts` | 假的多人討論：題目、每位同學各自的對話與結論、全班統計；模擬同學的對話由種子產生 | mock 模式的多人討論 |
-| `landing/lottie.d.ts` | Lottie 的型別宣告 | 開發用 |
+| 路徑                                 | 作用                                                                                                                                                                            | 出現在網站的哪裡                     |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `main.tsx`                           | 程式進入點：掛上主題、TanStack Query、路由                                                                                                                                      | 整個網站                             |
+| `router.tsx`                         | 所有網址與頁面的對應、登入守衛（沒登入導向 `/login`）                                                                                                                           | 整個網站                             |
+| `index.css`                          | 全站顏色（黑 / 白兩套主題變數）與 Tailwind                                                                                                                                      | 整個網站                             |
+| **`app/`**                           |                                                                                                                                                                                 |                                      |
+| `app/AppShell.tsx`                   | 左側選單（首頁 / 單人 / 題庫 / 教室）、標題列、黑白切換按鈕、設定視窗（登入身分、登出）                                                                                         | 登入後每一頁的外框                   |
+| `app/theme.tsx`                      | 黑白主題狀態（存在瀏覽器）                                                                                                                                                      | 選單底部的月亮 / 太陽按鈕            |
+| **`landing/`**                       |                                                                                                                                                                                 |                                      |
+| `landing/LandingPage.tsx`            | Logo 頁：標題動畫、8 個 Lottie 動畫、身分選擇與登入表單                                                                                                                         | `/login`                             |
+| `landing/landing.css`                | 這一頁的樣式（從原型搬來，永遠白色主題）                                                                                                                                        | `/login`                             |
+| **`pages/`**                         |                                                                                                                                                                                 |                                      |
+| `pages/HomePage.tsx`                 | 首頁：提問框、名言、接續上次對話、三個統計卡（對話數 / 論點總結數 / 教室數）、最近議題、教室概況                                                                                | `/`                                  |
+| `pages/DialoguePage.tsx`             | 3D 蘇格拉底 + 聊天面板 + 按住說話                                                                                                                                               | `/dialogue`                          |
+| `pages/TopicsPage.tsx`               | 議題列表與詳情、私人 / 公開 / 論點總結 三個按鈕、繼續對話                                                                                                                       | `/topics`                            |
+| `pages/ListPages.tsx`                | 論點總結頁、題庫頁（私人題庫可以把題目分享給特定的人，也會收到別人分享過來的題目）、教室列表頁（老師：新增教室；學生：已加入的教室，待處理邀請與邀請碼加入各是一個按鈕）        | `/summary`、`/bank/*`、`/classrooms` |
+| `pages/JoinClassroom.tsx`            | 學生加入教室：「探索教室」視窗（搜尋、我的申請）、邀請碼查詢與申請問卷、待處理邀請視窗                                                                                          | `/classrooms`                        |
+| `pages/ClassroomAdmin.tsx`           | 老師的成員管理：加入方式（邀請碼、探索、審核開關）、申請問卷編輯、待審核申請、批次匯入                                                                                          | 教室的「成員」分頁                   |
+| `pages/ClassroomPage.tsx`            | 教室內的「首頁」「公告」「辯論」「多人討論」「討論區」「成員」六個分頁：簡介與行事曆、辯論卡片（可依個人 / 團體篩選）、成員表、老師的「新增辯論」與「編輯教室」                 | `/classrooms/:id`                    |
+| `pages/CalendarCard.tsx`             | 教室首頁的月曆：辯論截止、公告、辯論階段截止、多人討論截止，點了跳到對應頁面                                                                                                    | 教室首頁                             |
+| `pages/Discussion.tsx`               | 討論區（教室或辯論）：發文、匿名、一層回覆、刪除                                                                                                                                | 教室「討論」分頁、辯論頁             |
+| `pages/Announcements.tsx`            | 公告分頁（老師新增、編輯、刪除、置頂、排程發布）                                                                                                                                | `/classrooms/:id`                    |
+| `pages/ClassroomFormDialog.tsx`      | 新增 / 編輯教室共用的視窗（名稱、簡介）                                                                                                                                         | 教室列表、教室頁                     |
+| `pages/ClassroomDebatePage.tsx`      | 辯論詳情：緊湊標題列（返回、標題、截止時間、編輯 / 刪除）；主要區域是進入辯論、說明與討論區；相關資料、結論報告收在可展開的側欄（老師與助教可加資料）                           | `/classrooms/:id/debates/:id`        |
+| `pages/DebateReports.tsx`            | 結論報告：學生繳交 / 重新上傳 / 刪除；老師看全班繳交狀況（標示逾期）                                                                                                            | 辯論頁                               |
+| `pages/DebateFormDialog.tsx`         | 新增 / 編輯辯論的視窗：主題、說明、截止時間、是否收報告、辯論設定（回答方式、價值軸、組別人數）                                                                                 | 教室頁、辯論頁                       |
+| `pages/DiscussionTasks.tsx`          | 教室的「多人討論」分頁：題目卡片（老師看全班完成人數，學生看自己的狀態）、搜尋與「只看進行中」、老師的新增 / 編輯視窗                                                           | 教室「多人討論」分頁                 |
+| `pages/DiscussionTaskPage.tsx`       | 多人討論的內頁：學生左欄是題目說明、四個面向與自己的結論，右欄跟蘇格拉底對話；老師左欄是題目與全班進度，右欄是每位同學的成果，點一位同學從右邊拉出他的完整對話                  | `/classrooms/:id/discussions/:id`    |
+| `pages/ShareArchiveDialog.tsx`       | 私人題庫的分享視窗：勾選要分享的同學、助教或老師                                                                                                                                | 私人題庫頁                           |
+| `pages/ActivityPage.tsx`             | 辯論活動的外框：標題列（右上角是目前階段與控制）、依階段切換的左右兩欄、最下方的進度色條。辯論是四階段                                                                          | `/classrooms/:id/activities/:id`     |
+| `pages/StageControls.tsx`            | 標題列右上角：目前階段、倒數、準備人數 / 「我準備好了」、推進；老師的「⋯」選單（限時、直接結束）；最下方的進度色條（點已過的段落可回顧）                                        | 辯論活動裡                           |
+| `pages/stages/IndividualStage.tsx`   | 辯論的階段 1：左欄用切換按鈕在「個人調查」（進度、直接在欄內整理 / 修改論點，不顯示座標）與「我的筆記」之間切換；右欄與蘇格拉底對話（可標註成筆記）。老師視角是成員進度表與星圖 | 辯論活動裡                           |
+| `pages/stages/NotesPanel.tsx`        | 學生的思路筆記：標註的重點與自己寫的想法，只有本人看得到                                                                                                                        | 階段 1、2 左欄的「我的筆記」         |
+| `pages/stages/TeamStage.tsx`         | 階段 2：分組、組內討論、AI 整理論點 / 丟反例、投票、分裂、重新分組；學生左欄可切換「我的組別 / 我的筆記」；星圖只有老師看得到                                                   | 辯論活動裡                           |
+| `pages/stages/DebateStage.tsx`       | 階段 3：場次、主持人、發言與計時、AI 裁判分數                                                                                                                                   | 辯論活動裡                           |
+| `pages/stages/ResultsStage.tsx`      | 結果：立場星圖、班級報告、學生報告、計分、儀表板                                                                                                                                | 辯論活動結束後                       |
+| `pages/stages/shared.tsx`            | 四個階段共用：可拖曳調整占比、可收成側欄的兩欄版面（`StageLayout`，占比與收合存在瀏覽器）、區塊、模式切換、成員標籤、分數條                                                     | 辯論活動裡                           |
+| **`components/`**                    |                                                                                                                                                                                 |                                      |
+| `components/ui/*`                    | 按鈕、輸入框、卡片、標籤、對話視窗（shadcn 風格）                                                                                                                               | 全站                                 |
+| `components/star/StarMap.tsx`        | 立場星圖：3D 畫面、量軸勾選、時間軸、分群、放大                                                                                                                                 | 階段 2 左側、結果頁                  |
+| `components/SocratesStage.tsx`       | 3D 蘇格拉底的 React 包裝（載入模型、嘴形、主題色）                                                                                                                              | 對話頁                               |
+| **`lib/`**                           |                                                                                                                                                                                 |                                      |
+| `lib/star/constellation.ts`          | 立場星圖的 three.js 引擎（0–3 維切換、軌跡、群心）                                                                                                                              | 立場星圖                             |
+| `lib/star/data.ts`                   | k-means 分群、群組對齊、群標籤                                                                                                                                                  | 立場星圖                             |
+| `lib/socrates/scene.ts`、`avatar.ts` | 3D 蘇格拉底的場景、燈光、全息效果、嘴形動畫                                                                                                                                     | 對話頁                               |
+| `lib/speech.ts`                      | 瀏覽器內建的語音辨識與語音合成                                                                                                                                                  | 對話頁的麥克風與朗讀                 |
+| `lib/debate.ts`                      | 辯論的常數與小工具（階段名稱、評分項目、組別顏色、票數計算）                                                                                                                    | 辯論活動                             |
+| `lib/utils.ts`                       | `cn()`：合併 CSS class                                                                                                                                                          | 全站                                 |
+| **`api/`（前後端的界線，最重要）**   |                                                                                                                                                                                 |                                      |
+| `api/types.ts`                       | 所有資料型別（使用者、活動、組別、發言、評分…）                                                                                                                                 | 前後端共同遵守                       |
+| `api/api.ts`                         | 前端能呼叫的所有後端功能（一個 `Api` 介面）                                                                                                                                     | 前後端共同遵守                       |
+| `api/http.ts`                        | **真後端的實作**：把 `Api` 的每個函式對應成 HTTP 請求與 SSE                                                                                                                     | `VITE_API_MODE=http`                 |
+| `api/mock.ts`                        | 假後端：認證、議題、教室；辯論交給 `mock/engine.ts`、多人討論交給 `mock/discussion.ts`                                                                                          | `VITE_API_MODE=mock`（預設）         |
+| `api/queries.ts`                     | TanStack Query 的資料查詢與更新（頁面都從這裡拿資料）、SSE 事件訂閱                                                                                                             | 全站                                 |
+| `api/index.ts`                       | 依環境變數決定用 `mock` 還是 `http`                                                                                                                                             | 全站                                 |
+| **`mock/`（只在 mock 模式使用）**    |                                                                                                                                                                                 |                                      |
+| `mock/engine.ts`                     | 假的辯論引擎：階段推進、分組、討論、比賽、計時、計分                                                                                                                            | mock 模式的辯論                      |
+| `mock/debate-ai.ts`                  | 規則式的模擬同學 / 主持人 / 裁判 / k-means 分組 / 計分公式                                                                                                                      | mock 模式的辯論                      |
+| `mock/discussion.ts`                 | 假的多人討論：題目、每位同學各自的對話與結論、全班統計；模擬同學的對話由種子產生                                                                                                | mock 模式的多人討論                  |
+| `landing/lottie.d.ts`                | Lottie 的型別宣告                                                                                                                                                               | 開發用                               |
 
 > 後端上線後，`src/mock/` 與 `src/api/mock.ts` 可以整個刪除；`http` 模式打包時本來就不會包含它們。
 
@@ -119,87 +119,87 @@ React 19 + Vite + TypeScript + TanStack（Router / Query）+ Tailwind CSS 4 + sh
 
 ### 對照表（功能 → 程式碼 → API）
 
-| 功能 | 使用的程式碼 | API |
-|---|---|---|
-| 登入（選身分按「進入教室」） | `LandingPage.tsx` → `api.login` | `POST /api/auth/login` |
-| 登入守衛、取得目前使用者 | `router.tsx`、`queries.ts` 的 `useMe` | `GET /api/me`（未登入回 401） |
-| 登出 | `AppShell.tsx` → `api.logout` | `POST /api/auth/logout` |
-| 議題列表、論點總結、題庫 | `useArchives`（`TopicsPage`、`ListPages`、`HomePage`） | `GET /api/archives` |
-| 加入私人 / 公開 / 論點總結 | `TopicsPage.tsx` → `useUpdateArchive` | `PATCH /api/archives/:id` |
-| 私人題庫把題目分享給特定的人 | `ListPages.tsx` 的 `BankPage` → `ShareArchiveDialog` → `useShareTargets`、`useUpdateArchive` | `GET /api/me/share-targets`、`PATCH /api/archives/:id`（`sharedWithIds`） |
-| 首頁提問框開始新對話 | `HomePage.tsx` → `api.createArchive` | `POST /api/archives` |
-| 對話頁：載入歷史 | `DialoguePage.tsx` → `api.listTopicDialogue` | `GET /api/archives/:id/dialogue` |
-| 對話頁：送出並串流回覆 | `DialoguePage.tsx` → `api.sendTopicDialogue` | `POST /api/archives/:id/dialogue`（**SSE**） |
-| 教室列表 / 教室資訊（含首頁的教室數） | `useClassrooms`、`useClassroom` | `GET /api/classrooms`、`GET /api/classrooms/:id` |
-| 老師新增教室 | `ClassroomFormDialog.tsx` → `useSaveClassroom` → `api.createClassroom` | `POST /api/classrooms` |
-| 老師編輯教室名稱、簡介 | `ClassroomPage.tsx` → `ClassroomFormDialog` → `api.updateClassroom` | `PATCH /api/classrooms/:id` |
-| 學生接受 / 拒絕邀請 | `InvitesDialog` → `api.acceptInvite`、`api.declineInvite` | `POST /api/classrooms/:id/invite/accept`、`…/decline` |
-| 教室成員表（成員分頁） | `ClassroomPage.tsx` 的 `MembersTab` → `useClassroomMembers` | `GET /api/classrooms/:id/members` |
-| 老師新增 / 移除成員 | `MembersTab` → `api.addClassroomMember`、`api.removeClassroomMember` | `POST /api/classrooms/:id/members`、`DELETE …/members/:memberId` |
-| 老師批次匯入成員 | `ImportMembersButton` → `useImportMembers` | `POST /api/classrooms/:id/members/import` |
-| 老師的加入設定（邀請碼、探索、審核、問卷） | `JoinSettingsCard`、`QuestionnaireDialog` → `useJoinPolicy`、`useUpdateJoinPolicy`、`useRegenerateJoinCode` | `GET`、`PATCH /api/classrooms/:id/join-policy`、`POST …/join-policy/code` |
-| 老師審核加入申請 | `PendingApplications` → `usePendingApplications`、`useReviewApplication` | `GET /api/classrooms/:id/applications?status=pending`、`POST /api/applications/:id/review` |
-| 學生用邀請碼找教室 | `JoinDialog` → `api.lookupJoinCode` | `GET /api/join-codes/:code` |
-| 學生加入教室或送出申請 | `JoinDialog` → `useJoinClassroom` | `POST /api/classrooms/:id/join` |
-| 學生的探索課程 | 「教室」頁按下「探索教室」後取代清單的 `DiscoverClassrooms` → `useDiscoverClassrooms` | `GET /api/classrooms/discover?q=` |
-| 學生的申請列表、取消申請 | `MyApplications` → `useMyApplications`、`useCancelApplication` | `GET /api/me/applications`、`DELETE /api/applications/:id` |
-| 公告列表（學生只拿得到已發布的；每分鐘重抓一次） | `useAnnouncements`（`Announcements.tsx`） | `GET /api/classrooms/:id/announcements` |
-| 老師新增 / 編輯公告（含排程） | `AnnouncementFormDialog` → `useSaveAnnouncement` | `POST /api/classrooms/:id/announcements`、`PATCH /api/announcements/:id` |
-| 老師刪除公告 | `Announcements.tsx` 的 `DeleteDialog` → `useDeleteAnnouncement` | `DELETE /api/announcements/:id` |
-| 教室議題列表 | `useTopics`（`ClassroomPage.tsx`） | `GET /api/classrooms/:id/topics` |
-| 討論區（教室 / 辯論）發文、回覆、刪除 | `Discussion.tsx` → `usePosts`、`useCreatePost`、`useDeletePost` | `GET`、`POST /api/classrooms/:id/posts`、`DELETE /api/posts/:id` |
-| 多人討論列表（老師看完成人數、學生看自己的狀態） | `DiscussionTasks.tsx` → `useDiscussions` | `GET /api/classrooms/:id/discussions` |
-| 老師新增 / 編輯討論題目 | `DiscussionFormDialog` → `useSaveDiscussion` | `POST /api/classrooms/:id/discussions`、`PATCH /api/discussions/:id` |
-| 老師結束 / 重新開放、刪除討論 | `DiscussionTaskPage.tsx` → `useSetDiscussionStatus`、`useDeleteDiscussion` | `PUT /api/discussions/:id/status`、`DELETE /api/discussions/:id` |
-| 老師看全班的討論成果 | `TeacherResults` → `useDiscussionSessions` | `GET /api/discussions/:id/sessions` |
-| 點開某位同學的完整對話 | `SessionSheet` → `useDiscussionSession` | `GET /api/discussions/:id/sessions/:studentId` |
-| 學生在討論裡送出一句話 | `StudentChat` → `api.sendDiscussionMessage` | `POST /api/discussions/:id/sessions/me/messages`（**SSE**） |
-| 學生送出 / 收回結論 | `StudentInfo` → `useSubmitConclusion` | `PUT /api/discussions/:id/sessions/me/conclusion` |
-| 教室行事曆 | `CalendarCard.tsx` → `useCalendar` | `GET /api/classrooms/:id/calendar?from=&to=` |
-| 結論報告 | `DebateReports.tsx` → `useReports`、`useSubmitReport`、`useDeleteReport` | `GET`、`POST /api/topics/:id/reports`（multipart）、`DELETE /api/reports/:id` |
-| 辯論詳情 | `useTopic`（`ClassroomDebatePage.tsx`） | `GET /api/topics/:id` |
-| 老師新增 / 編輯辯論（同時建立辯論活動） | `DebateFormDialog.tsx` → `useSaveTopic` | `POST /api/classrooms/:id/topics`、`PATCH /api/topics/:id` |
-| 老師刪除辯論 | `ClassroomDebatePage.tsx` 的 `DeleteDialog` → `api.deleteTopic` | `DELETE /api/topics/:id` |
-| 老師加連結 / 上傳檔案 / 移除資料 | `ClassroomDebatePage.tsx` 的 `DebateInfo` | `POST /api/topics/:id/resources`、`POST …/resources/files`（multipart）、`DELETE …/resources/:id` |
-| 辯論進度（卡片上的進度條） | `useActivities`、`useActivity` | `GET /api/classrooms/:id/activities`、`GET /api/activities/:id` |
-| 辯論活動資料 | `ActivityPage.tsx` → `useActivity` | `GET /api/activities/:id` |
-| 老師推進階段 | `StageControls.tsx` 的 `StageStatus` → `useAdvanceActivity` | `POST /api/activities/:id/advance` |
-| 老師直接結束活動、設定階段限時 | `StageControls.tsx` 的 `TeacherMenu` → `useActivityControls` | `POST /api/activities/:id/finish`、`PUT /api/activities/:id/deadline` |
-| 即時更新（階段切換、新訊息、輪到誰） | `queries.ts` 的 `useActivityEvents` → `api.subscribe` | `GET /api/activities/:id/events`（**SSE**） |
-| **階段 1** 載入對話 | `IndividualStage.tsx` → `useDialogue` | `GET /api/activities/:id/dialogue` |
-| 階段 1 送出並串流回覆 | `IndividualStage.tsx` 的 `ChatPanel` → `api.sendDialogue` | `POST /api/activities/:id/dialogue`（**SSE**） |
-| 階段 1 調查進度（四面向、輪數） | `useProgress` | `GET /api/activities/:id/progress` |
-| 階段 1 AI 整理論點 | `PositionDialog` → `api.draftPosition` | `POST /api/activities/:id/position/draft` |
-| 階段 1 確認論點（座標由後端估算） | `PositionDialog` → `useConfirmPosition` | `PUT /api/activities/:id/position` |
-| 階段 1 讀取座標（學生在活動結束前拿到 `null`） | `usePositions` | `GET /api/activities/:id/positions` |
-| 思路筆記 | `NotesPanel`、`IndividualStage` 的標註 → `useNotes`、`useNoteActions` | `GET`、`POST /api/activities/:id/notes`、`PATCH`、`DELETE /api/notes/:id` |
-| 學生回報準備好了 | `StageControls.tsx` 的 `StageStatus` → `useSetReady` | `PUT /api/activities/:id/ready` |
-| 老師：成員進度表 | `TeacherIndividual` → `useMembers` | `GET /api/activities/:id/members` |
-| **階段 2** 組別列表 | `TeamStage.tsx` → `useGroups` | `GET /api/activities/:id/groups` |
-| 階段 2 重新分組（老師） | `RegroupRow` → `api.regroup` | `POST /api/activities/:id/groups/regroup` |
-| 階段 2 組內訊息 | `useGroupMessages`、`useMutation(postGroupMessage)` | `GET`、`POST /api/groups/:gid/messages` |
-| 階段 2 AI 整理論點 | `api.summarizeGroup` | `POST /api/groups/:gid/ai/summarize` |
-| 階段 2 AI 丟反例 | `api.counterexample` | `POST /api/groups/:gid/ai/counterexample` |
-| 階段 2 論點列表 | `useArguments` | `GET /api/groups/:gid/arguments` |
-| 階段 2 投票 | `api.vote` | `POST /api/arguments/:id/vote` |
-| 階段 2 分裂成兩組 | `api.splitGroup` | `POST /api/groups/:gid/split` |
-| **階段 3** 場次列表 | `DebateStage.tsx` → `useRooms` | `GET /api/activities/:id/rooms` |
-| 階段 3 開始比賽 | `api.startRoom` | `POST /api/rooms/:id/start` |
-| 階段 3 發言與評分紀錄 | `useTurns` | `GET /api/rooms/:id/turns` |
-| 階段 3 送出發言 | `useMutation(postTurn)` | `POST /api/rooms/:id/turns` |
-| 老師覆寫 AI 評分 | `DebateStage`、`ResultsStage` → `api.overrideJudgment` | `PATCH /api/judgments/:id` |
-| **結果** 計分表 | `ResultsStage.tsx` → `useScores` | `GET /api/activities/:id/scores` |
-| 老師調整分數 | `api.adjustScore` | `PATCH /api/activities/:id/scores/:memberId` |
-| **立場星圖**資料（階段 1、2 只有老師；結果頁所有人） | `useStar`（`StarMap.tsx` 使用） | `GET /api/activities/:id/star` |
+| 功能                                                 | 使用的程式碼                                                                                                | API                                                                                               |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 登入（選身分按「進入教室」）                         | `LandingPage.tsx` → `api.login`                                                                             | `POST /api/auth/login`                                                                            |
+| 登入守衛、取得目前使用者                             | `router.tsx`、`queries.ts` 的 `useMe`                                                                       | `GET /api/me`（未登入回 401）                                                                     |
+| 登出                                                 | `AppShell.tsx` → `api.logout`                                                                               | `POST /api/auth/logout`                                                                           |
+| 議題列表、論點總結、題庫                             | `useArchives`（`TopicsPage`、`ListPages`、`HomePage`）                                                      | `GET /api/archives`                                                                               |
+| 加入私人 / 公開 / 論點總結                           | `TopicsPage.tsx` → `useUpdateArchive`                                                                       | `PATCH /api/archives/:id`                                                                         |
+| 私人題庫把題目分享給特定的人                         | `ListPages.tsx` 的 `BankPage` → `ShareArchiveDialog` → `useShareTargets`、`useUpdateArchive`                | `GET /api/me/share-targets`、`PATCH /api/archives/:id`（`sharedWithIds`）                         |
+| 首頁提問框開始新對話                                 | `HomePage.tsx` → `api.createArchive`                                                                        | `POST /api/archives`                                                                              |
+| 對話頁：載入歷史                                     | `DialoguePage.tsx` → `api.listTopicDialogue`                                                                | `GET /api/archives/:id/dialogue`                                                                  |
+| 對話頁：送出並串流回覆                               | `DialoguePage.tsx` → `api.sendTopicDialogue`                                                                | `POST /api/archives/:id/dialogue`（**SSE**）                                                      |
+| 教室列表 / 教室資訊（含首頁的教室數）                | `useClassrooms`、`useClassroom`                                                                             | `GET /api/classrooms`、`GET /api/classrooms/:id`                                                  |
+| 老師新增教室                                         | `ClassroomFormDialog.tsx` → `useSaveClassroom` → `api.createClassroom`                                      | `POST /api/classrooms`                                                                            |
+| 老師編輯教室名稱、簡介                               | `ClassroomPage.tsx` → `ClassroomFormDialog` → `api.updateClassroom`                                         | `PATCH /api/classrooms/:id`                                                                       |
+| 學生接受 / 拒絕邀請                                  | `InvitesDialog` → `api.acceptInvite`、`api.declineInvite`                                                   | `POST /api/classrooms/:id/invite/accept`、`…/decline`                                             |
+| 教室成員表（成員分頁）                               | `ClassroomPage.tsx` 的 `MembersTab` → `useClassroomMembers`                                                 | `GET /api/classrooms/:id/members`                                                                 |
+| 老師新增 / 移除成員                                  | `MembersTab` → `api.addClassroomMember`、`api.removeClassroomMember`                                        | `POST /api/classrooms/:id/members`、`DELETE …/members/:memberId`                                  |
+| 老師批次匯入成員                                     | `ImportMembersButton` → `useImportMembers`                                                                  | `POST /api/classrooms/:id/members/import`                                                         |
+| 老師的加入設定（邀請碼、探索、審核、問卷）           | `JoinSettingsCard`、`QuestionnaireDialog` → `useJoinPolicy`、`useUpdateJoinPolicy`、`useRegenerateJoinCode` | `GET`、`PATCH /api/classrooms/:id/join-policy`、`POST …/join-policy/code`                         |
+| 老師審核加入申請                                     | `PendingApplications` → `usePendingApplications`、`useReviewApplication`                                    | `GET /api/classrooms/:id/applications?status=pending`、`POST /api/applications/:id/review`        |
+| 學生用邀請碼找教室                                   | `JoinDialog` → `api.lookupJoinCode`                                                                         | `GET /api/join-codes/:code`                                                                       |
+| 學生加入教室或送出申請                               | `JoinDialog` → `useJoinClassroom`                                                                           | `POST /api/classrooms/:id/join`                                                                   |
+| 學生的探索課程                                       | 「教室」頁按下「探索教室」後取代清單的 `DiscoverClassrooms` → `useDiscoverClassrooms`                       | `GET /api/classrooms/discover?q=`                                                                 |
+| 學生的申請列表、取消申請                             | `MyApplications` → `useMyApplications`、`useCancelApplication`                                              | `GET /api/me/applications`、`DELETE /api/applications/:id`                                        |
+| 公告列表（學生只拿得到已發布的；每分鐘重抓一次）     | `useAnnouncements`（`Announcements.tsx`）                                                                   | `GET /api/classrooms/:id/announcements`                                                           |
+| 老師新增 / 編輯公告（含排程）                        | `AnnouncementFormDialog` → `useSaveAnnouncement`                                                            | `POST /api/classrooms/:id/announcements`、`PATCH /api/announcements/:id`                          |
+| 老師刪除公告                                         | `Announcements.tsx` 的 `DeleteDialog` → `useDeleteAnnouncement`                                             | `DELETE /api/announcements/:id`                                                                   |
+| 教室議題列表                                         | `useTopics`（`ClassroomPage.tsx`）                                                                          | `GET /api/classrooms/:id/topics`                                                                  |
+| 討論區（教室 / 辯論）發文、回覆、刪除                | `Discussion.tsx` → `usePosts`、`useCreatePost`、`useDeletePost`                                             | `GET`、`POST /api/classrooms/:id/posts`、`DELETE /api/posts/:id`                                  |
+| 多人討論列表（老師看完成人數、學生看自己的狀態）     | `DiscussionTasks.tsx` → `useDiscussions`                                                                    | `GET /api/classrooms/:id/discussions`                                                             |
+| 老師新增 / 編輯討論題目                              | `DiscussionFormDialog` → `useSaveDiscussion`                                                                | `POST /api/classrooms/:id/discussions`、`PATCH /api/discussions/:id`                              |
+| 老師結束 / 重新開放、刪除討論                        | `DiscussionTaskPage.tsx` → `useSetDiscussionStatus`、`useDeleteDiscussion`                                  | `PUT /api/discussions/:id/status`、`DELETE /api/discussions/:id`                                  |
+| 老師看全班的討論成果                                 | `TeacherResults` → `useDiscussionSessions`                                                                  | `GET /api/discussions/:id/sessions`                                                               |
+| 點開某位同學的完整對話                               | `SessionSheet` → `useDiscussionSession`                                                                     | `GET /api/discussions/:id/sessions/:studentId`                                                    |
+| 學生在討論裡送出一句話                               | `StudentChat` → `api.sendDiscussionMessage`                                                                 | `POST /api/discussions/:id/sessions/me/messages`（**SSE**）                                       |
+| 學生送出 / 收回結論                                  | `StudentInfo` → `useSubmitConclusion`                                                                       | `PUT /api/discussions/:id/sessions/me/conclusion`                                                 |
+| 教室行事曆                                           | `CalendarCard.tsx` → `useCalendar`                                                                          | `GET /api/classrooms/:id/calendar?from=&to=`                                                      |
+| 結論報告                                             | `DebateReports.tsx` → `useReports`、`useSubmitReport`、`useDeleteReport`                                    | `GET`、`POST /api/topics/:id/reports`（multipart）、`DELETE /api/reports/:id`                     |
+| 辯論詳情                                             | `useTopic`（`ClassroomDebatePage.tsx`）                                                                     | `GET /api/topics/:id`                                                                             |
+| 老師新增 / 編輯辯論（同時建立辯論活動）              | `DebateFormDialog.tsx` → `useSaveTopic`                                                                     | `POST /api/classrooms/:id/topics`、`PATCH /api/topics/:id`                                        |
+| 老師刪除辯論                                         | `ClassroomDebatePage.tsx` 的 `DeleteDialog` → `api.deleteTopic`                                             | `DELETE /api/topics/:id`                                                                          |
+| 老師加連結 / 上傳檔案 / 移除資料                     | `ClassroomDebatePage.tsx` 的 `DebateInfo`                                                                   | `POST /api/topics/:id/resources`、`POST …/resources/files`（multipart）、`DELETE …/resources/:id` |
+| 辯論進度（卡片上的進度條）                           | `useActivities`、`useActivity`                                                                              | `GET /api/classrooms/:id/activities`、`GET /api/activities/:id`                                   |
+| 辯論活動資料                                         | `ActivityPage.tsx` → `useActivity`                                                                          | `GET /api/activities/:id`                                                                         |
+| 老師推進階段                                         | `StageControls.tsx` 的 `StageStatus` → `useAdvanceActivity`                                                 | `POST /api/activities/:id/advance`                                                                |
+| 老師直接結束活動、設定階段限時                       | `StageControls.tsx` 的 `TeacherMenu` → `useActivityControls`                                                | `POST /api/activities/:id/finish`、`PUT /api/activities/:id/deadline`                             |
+| 即時更新（階段切換、新訊息、輪到誰）                 | `queries.ts` 的 `useActivityEvents` → `api.subscribe`                                                       | `GET /api/activities/:id/events`（**SSE**）                                                       |
+| **階段 1** 載入對話                                  | `IndividualStage.tsx` → `useDialogue`                                                                       | `GET /api/activities/:id/dialogue`                                                                |
+| 階段 1 送出並串流回覆                                | `IndividualStage.tsx` 的 `ChatPanel` → `api.sendDialogue`                                                   | `POST /api/activities/:id/dialogue`（**SSE**）                                                    |
+| 階段 1 調查進度（四面向、輪數）                      | `useProgress`                                                                                               | `GET /api/activities/:id/progress`                                                                |
+| 階段 1 AI 整理論點                                   | `PositionDialog` → `api.draftPosition`                                                                      | `POST /api/activities/:id/position/draft`                                                         |
+| 階段 1 確認論點（座標由後端估算）                    | `PositionDialog` → `useConfirmPosition`                                                                     | `PUT /api/activities/:id/position`                                                                |
+| 階段 1 讀取座標（學生在活動結束前拿到 `null`）       | `usePositions`                                                                                              | `GET /api/activities/:id/positions`                                                               |
+| 思路筆記                                             | `NotesPanel`、`IndividualStage` 的標註 → `useNotes`、`useNoteActions`                                       | `GET`、`POST /api/activities/:id/notes`、`PATCH`、`DELETE /api/notes/:id`                         |
+| 學生回報準備好了                                     | `StageControls.tsx` 的 `StageStatus` → `useSetReady`                                                        | `PUT /api/activities/:id/ready`                                                                   |
+| 老師：成員進度表                                     | `TeacherIndividual` → `useMembers`                                                                          | `GET /api/activities/:id/members`                                                                 |
+| **階段 2** 組別列表                                  | `TeamStage.tsx` → `useGroups`                                                                               | `GET /api/activities/:id/groups`                                                                  |
+| 階段 2 重新分組（老師）                              | `RegroupRow` → `api.regroup`                                                                                | `POST /api/activities/:id/groups/regroup`                                                         |
+| 階段 2 組內訊息                                      | `useGroupMessages`、`useMutation(postGroupMessage)`                                                         | `GET`、`POST /api/groups/:gid/messages`                                                           |
+| 階段 2 AI 整理論點                                   | `api.summarizeGroup`                                                                                        | `POST /api/groups/:gid/ai/summarize`                                                              |
+| 階段 2 AI 丟反例                                     | `api.counterexample`                                                                                        | `POST /api/groups/:gid/ai/counterexample`                                                         |
+| 階段 2 論點列表                                      | `useArguments`                                                                                              | `GET /api/groups/:gid/arguments`                                                                  |
+| 階段 2 投票                                          | `api.vote`                                                                                                  | `POST /api/arguments/:id/vote`                                                                    |
+| 階段 2 分裂成兩組                                    | `api.splitGroup`                                                                                            | `POST /api/groups/:gid/split`                                                                     |
+| **階段 3** 場次列表                                  | `DebateStage.tsx` → `useRooms`                                                                              | `GET /api/activities/:id/rooms`                                                                   |
+| 階段 3 開始比賽                                      | `api.startRoom`                                                                                             | `POST /api/rooms/:id/start`                                                                       |
+| 階段 3 發言與評分紀錄                                | `useTurns`                                                                                                  | `GET /api/rooms/:id/turns`                                                                        |
+| 階段 3 送出發言                                      | `useMutation(postTurn)`                                                                                     | `POST /api/rooms/:id/turns`                                                                       |
+| 老師覆寫 AI 評分                                     | `DebateStage`、`ResultsStage` → `api.overrideJudgment`                                                      | `PATCH /api/judgments/:id`                                                                        |
+| **結果** 計分表                                      | `ResultsStage.tsx` → `useScores`                                                                            | `GET /api/activities/:id/scores`                                                                  |
+| 老師調整分數                                         | `api.adjustScore`                                                                                           | `PATCH /api/activities/:id/scores/:memberId`                                                      |
+| **立場星圖**資料（階段 1、2 只有老師；結果頁所有人） | `useStar`（`StarMap.tsx` 使用）                                                                             | `GET /api/activities/:id/star`                                                                    |
 
 ### 不需要 API 的部分（純前端）
 
-| 功能 | 程式碼 |
-|---|---|
-| 黑白主題切換 | `app/theme.tsx`（存在瀏覽器） |
-| 語音辨識 / 朗讀 | `lib/speech.ts`（瀏覽器內建 Web Speech API；Chrome 上實際是 Google 的服務，之後想統一品質要改接後端語音服務） |
-| 3D 蘇格拉底、立場星圖的畫面 | `lib/socrates/`、`lib/star/`（three.js） |
-| 登入前的動畫 | `landing/LandingPage.tsx`（Lottie） |
+| 功能                        | 程式碼                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 黑白主題切換                | `app/theme.tsx`（存在瀏覽器）                                                                                 |
+| 語音辨識 / 朗讀             | `lib/speech.ts`（瀏覽器內建 Web Speech API；Chrome 上實際是 Google 的服務，之後想統一品質要改接後端語音服務） |
+| 3D 蘇格拉底、立場星圖的畫面 | `lib/socrates/`、`lib/star/`（three.js）                                                                      |
+| 登入前的動畫                | `landing/LandingPage.tsx`（Lottie）                                                                           |
 
 ### 兩種 SSE 的格式（後端需要照做）
 
@@ -224,15 +224,15 @@ AI（GLM）中途出錯時，最後一個事件改成 `event: error` + `data: {"
 
 ### 原本在前端「模擬」、上線後要由後端負責的事
 
-| 原型 / mock 裡的做法（`src/mock/`） | 後端要做什麼 |
-|---|---|
-| 模擬同學的立場、發言、投票 | 不需要（真人）；測試時另做「機器人成員」 |
-| 座標估計、論點整理、反例、主持人、裁判 | LLM 流程（結構化輸出）；`mock/debate-ai.ts` 的規則式裁判可留作保底與測試基準 |
-| k-means 分組、人數平衡、配對（立場最遠的先對辯） | 分群服務；可用 `mock/debate-ai.ts` 的 `formGroups`、`pairGroups` 當對照 |
-| 階段推進、計時、逾時自動送出、輪到誰發言 | 活動狀態機（FSM）；**一律以伺服器為準** |
-| 「示範：讓老師推進」、「模擬同學完成調查」、「模擬全部」 | 不需要；這些只有 `mock` 才有（`api.dev`），`http` 模式不會出現 |
-| 計分公式（個人 / 團隊 / 辯論加權，預設 30/30/40） | 計分服務；權重由後端設定 |
-| 最多 20 輪對話與收尾條件 | 由後端的 LLM 流程控制，前端只顯示 `Progress` |
+| 原型 / mock 裡的做法（`src/mock/`）                      | 後端要做什麼                                                                 |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| 模擬同學的立場、發言、投票                               | 不需要（真人）；測試時另做「機器人成員」                                     |
+| 座標估計、論點整理、反例、主持人、裁判                   | LLM 流程（結構化輸出）；`mock/debate-ai.ts` 的規則式裁判可留作保底與測試基準 |
+| k-means 分組、人數平衡、配對（立場最遠的先對辯）         | 分群服務；可用 `mock/debate-ai.ts` 的 `formGroups`、`pairGroups` 當對照      |
+| 階段推進、計時、逾時自動送出、輪到誰發言                 | 活動狀態機（FSM）；**一律以伺服器為準**                                      |
+| 「示範：讓老師推進」、「模擬同學完成調查」、「模擬全部」 | 不需要；這些只有 `mock` 才有（`api.dev`），`http` 模式不會出現               |
+| 計分公式（個人 / 團隊 / 辯論加權，預設 30/30/40）        | 計分服務；權重由後端設定                                                     |
+| 最多 20 輪對話與收尾條件                                 | 由後端的 LLM 流程控制，前端只顯示 `Progress`                                 |
 
 ### 接上後端的步驟
 
@@ -257,12 +257,12 @@ AI（GLM）中途出錯時，最後一個事件改成 `event: error` + `data: {"
 
 ### 需要準備的東西
 
-| 東西 | 說明 |
-|---|---|
-| **Bun 1.2 以上** | 一定要，用來安裝套件與啟動網站 |
-| **瀏覽器** | 建議 Chrome 或 Edge（語音辨識最完整）；需支援 WebGL（3D 畫面用，一般電腦都有） |
-| Git（選用） | 只有要從 GitHub 下載專案時才需要 |
-| 網路 | 第一次 `bun install` 需要；跑起來之後不需要（3D 引擎、動畫都已包在專案裡） |
+| 東西             | 說明                                                                           |
+| ---------------- | ------------------------------------------------------------------------------ |
+| **Bun 1.2 以上** | 一定要，用來安裝套件與啟動網站                                                 |
+| **瀏覽器**       | 建議 Chrome 或 Edge（語音辨識最完整）；需支援 WebGL（3D 畫面用，一般電腦都有） |
+| Git（選用）      | 只有要從 GitHub 下載專案時才需要                                               |
+| 網路             | 第一次 `bun install` 需要；跑起來之後不需要（3D 引擎、動畫都已包在專案裡）     |
 
 **不需要**：資料庫、Docker、Python、後端（mock 模式下）。
 
@@ -289,12 +289,12 @@ bun run dev
 
 在專案根目錄執行（會轉到 `frontend/`）：
 
-| 指令 | 作用 |
-|---|---|
-| `bun install` | 下載並安裝套件（只需做一次，或 `package.json` 有變動時） |
-| `bun run dev` | 啟動開發用網站（改程式會即時更新），預設網址 `http://localhost:5173/` |
-| `bun run build` | 型別檢查並打包成正式版，輸出在 `frontend/dist/` |
-| `bun run typecheck` | 只做 TypeScript 型別檢查 |
+| 指令                | 作用                                                                  |
+| ------------------- | --------------------------------------------------------------------- |
+| `bun install`       | 下載並安裝套件（只需做一次，或 `package.json` 有變動時）              |
+| `bun run dev`       | 啟動開發用網站（改程式會即時更新），預設網址 `http://localhost:5173/` |
+| `bun run build`     | 型別檢查並打包成正式版，輸出在 `frontend/dist/`                       |
+| `bun run typecheck` | 只做 TypeScript 型別檢查                                              |
 
 ### 使用網站
 
@@ -309,10 +309,10 @@ bun run dev
 
 ### 常見問題
 
-| 狀況 | 處理 |
-|---|---|
-| `bun` 不是內部或外部命令 / command not found | 沒裝好，或安裝後沒有重開終端機 |
-| 5173 已被占用 | Vite 會自動改用別的埠號，看終端機顯示的網址 |
-| 3D 畫面一片空白 | 瀏覽器或顯示卡驅動不支援 WebGL；換 Chrome / 更新驅動 |
-| 對話沒有聲音 | 瀏覽器內建語音要先與網頁互動過才會播放；也請確認系統音量 |
-| 網站能開但資料是假的 | 正常，`mock` 模式就是示範資料；要接後端見第二部分最後的步驟 |
+| 狀況                                         | 處理                                                        |
+| -------------------------------------------- | ----------------------------------------------------------- |
+| `bun` 不是內部或外部命令 / command not found | 沒裝好，或安裝後沒有重開終端機                              |
+| 5173 已被占用                                | Vite 會自動改用別的埠號，看終端機顯示的網址                 |
+| 3D 畫面一片空白                              | 瀏覽器或顯示卡驅動不支援 WebGL；換 Chrome / 更新驅動        |
+| 對話沒有聲音                                 | 瀏覽器內建語音要先與網頁互動過才會播放；也請確認系統音量    |
+| 網站能開但資料是假的                         | 正常，`mock` 模式就是示範資料；要接後端見第二部分最後的步驟 |

@@ -159,11 +159,11 @@ export function DebateStage({ a, teacher, over }: { a: Activity; teacher: boolea
       lastTurn.id !== spokenTurn.current &&
       ai &&
       !over &&
-      Date.now() - Date.parse(lastTurn.at) < 15000
+      Date.now() - Date.parse(lastTurn?.at ?? "") < 15000
     )
-      speakAi(lastTurn.text);
+      speakAi(lastTurn?.text ?? "");
     spokenTurn.current = lastTurn?.id ?? null;
-  }, [lastTurn?.id, lastTurn.text, lastTurn.at, members.find, lastTurn, over]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lastTurn?.id, lastTurn?.text, lastTurn?.at, members.find, lastTurn, over]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => stopAiSpeech, []);
 
   const myTurn = !!room?.turn && !!me && room.turn.memberId === me.id && !teacher && !over;
