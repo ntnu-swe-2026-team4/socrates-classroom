@@ -205,7 +205,7 @@ const findAnnouncement = (id: string) => {
 
 const topicDialogues = new Map<string, import("./types").DialogueMessage[]>();
 /**
- * 開發時（bun run dev）單人對話改問 OpenRouter：由 Vite 的 dev-llm 轉接器代為呼叫，key 留在 server/.env（見 frontend/dev/llm-bridge.ts）。
+ * 開發時（bun run dev）單人對話改問 GLM：由 Vite 的 dev-llm 轉接器代為呼叫，key 留在 server/.env（見 frontend/dev/llm-bridge.ts）。
  * 回傳 null = 沒有設定 key 或不是開發伺服器，改用下面的示範回覆。
  */
 async function llmReply(title: string, history: import("./types").DialogueMessage[], onDelta?: (c: string) => void, onEmotion?: (e: import("./types").Emotion) => void) {
