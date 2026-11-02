@@ -5,10 +5,10 @@
 本目錄不放置應用程式碼。後端（`server/`，Bun + Hono）直接呼叫 GLM（智譜 Z.ai）的 OpenAI 相容 API
 （ADR-0001），提示詞與模型清單由這個目錄提供；LLM 組改檔案即可調整行為，不用改後端程式碼。
 
-| 路徑 | 內容 | 議題 |
-|---|---|---|
-| `prompts/` | 對話引擎提示詞契約（階段 1 蘇格拉底六原則、情緒標記、收尾協議） | #27 |
-| `providers/models.json` | GLM 的 baseUrl、預設模型與可選模型；`mock` 為離線開發用 provider | #26 |
+| 路徑                    | 內容                                                             | 議題 |
+| ----------------------- | ---------------------------------------------------------------- | ---- |
+| `prompts/`              | 對話引擎提示詞契約（階段 1 蘇格拉底六原則、情緒標記、收尾協議）  | #27  |
+| `providers/models.json` | GLM 的 baseUrl、預設模型與可選模型；`mock` 為離線開發用 provider | #26  |
 
 > 全部可用 provider（自架 DGX Spark、OpenCode Go、Coding Plan、Workers AI、OpenRouter、BYOK）的端點、用量、併發與 ZDR 查證，詳見 [`docs/providers.md`](../docs/providers.md)。
 

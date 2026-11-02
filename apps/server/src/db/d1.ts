@@ -31,16 +31,27 @@ export function d1(db: D1Database): Db {
   return {
     async one<T>(sql: string, params?: Record<string, unknown>) {
       const q = prepare(sql, params);
-      return ((await db.prepare(q.sql).bind(...q.values).first()) as T | null) ?? null;
+      return (
+        ((await db
+          .prepare(q.sql)
+          .bind(...q.values)
+          .first()) as T | null) ?? null
+      );
     },
     async all<T>(sql: string, params?: Record<string, unknown>) {
       const q = prepare(sql, params);
-      const res = await db.prepare(q.sql).bind(...q.values).all<T>();
+      const res = await db
+        .prepare(q.sql)
+        .bind(...q.values)
+        .all<T>();
       return res.results ?? [];
     },
     async run(sql: string, params?: Record<string, unknown>) {
       const q = prepare(sql, params);
-      await db.prepare(q.sql).bind(...q.values).run();
+      await db
+        .prepare(q.sql)
+        .bind(...q.values)
+        .run();
     },
     async batch(entries) {
       const stmts = entries.map(({ sql, params }) => {
@@ -54,7 +65,11 @@ export function d1(db: D1Database): Db {
 
 // ---- 相容 helper：移植期讓 routes/services 用同一組函式名（多加 await 即可）----
 
-export function one<T = Record<string, unknown>>(db: Db, sql: string, params?: Record<string, unknown>): Promise<T | null> {
+export function one<T = Record<string, unknown>>(
+  db: Db,
+  sql: string,
+  params?: Record<string, unknown>,
+): Promise<T | null> {
   return db.one<T>(sql, params);
 }
 

@@ -18,9 +18,16 @@ export function authRoutes(db: Db, cookieSecure: boolean) {
     let user = await one<UserRow>(db, "SELECT * FROM users WHERE role = $role AND name = $name", { role, name });
     if (!user) {
       const id = crypto.randomUUID().replaceAll("-", "");
-      await run(db, "INSERT INTO users (id, name, role, avatar_url, created_at) VALUES ($id, $name, $role, NULL, $at)", {
-        id, name, role, at: new Date().toISOString(),
-      });
+      await run(
+        db,
+        "INSERT INTO users (id, name, role, avatar_url, created_at) VALUES ($id, $name, $role, NULL, $at)",
+        {
+          id,
+          name,
+          role,
+          at: new Date().toISOString(),
+        },
+      );
       user = (await one<UserRow>(db, "SELECT * FROM users WHERE id = $id", { id }))!;
     }
     await startSession(db, c, user.id, cookieSecure);
@@ -39,7 +46,11 @@ export function authRoutes(db: Db, cookieSecure: boolean) {
       if (typeof body.name !== "string" || !body.name.trim()) fail(422, "name_required");
       const name = body.name.trim();
       if (name.length > 80) fail(422, "text_too_long", { n: 80 });
-      const clash = await one(db, "SELECT id FROM users WHERE role = $role AND name = $name AND id <> $id", { role: user.role, name, id: user.id });
+      const clash = await one(db, "SELECT id FROM users WHERE role = $role AND name = $name AND id <> $id", {
+        role: user.role,
+        name,
+        id: user.id,
+      });
       if (clash) fail(409, "conflict");
       await run(db, "UPDATE users SET name = $name WHERE id = $id", { name, id: user.id });
     }
@@ -47,7 +58,8 @@ export function authRoutes(db: Db, cookieSecure: boolean) {
       if (body.avatarUrl === null) {
         await run(db, "UPDATE users SET avatar_url = NULL WHERE id = $id", { id: user.id });
       } else {
-        if (typeof body.avatarUrl !== "string" || !/^data:image\/[a-z0-9.+-]+;base64,/i.test(body.avatarUrl)) fail(422, "avatar_invalid");
+        if (typeof body.avatarUrl !== "string" || !/^data:image\/[a-z0-9.+-]+;base64,/i.test(body.avatarUrl))
+          fail(422, "avatar_invalid");
         if (body.avatarUrl.length > 200 * 1024) fail(413, "avatar_too_large");
         await run(db, "UPDATE users SET avatar_url = $avatar WHERE id = $id", { avatar: body.avatarUrl, id: user.id });
       }

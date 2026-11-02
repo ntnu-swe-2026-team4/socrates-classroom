@@ -5,7 +5,7 @@ import {
   openAIResponsesApi,
 } from "@earendil-works/pi-ai/compat";
 import { createProvider, type Api, type Model, type Provider } from "@earendil-works/pi-ai";
-import { getBuiltinModel, getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
+import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import type { Env } from "../env";
 
 /**
@@ -80,6 +80,6 @@ export function byokProvider(providerId: string, apiKey: string, modelId?: strin
 }
 
 /** 學生 key 的來源優先序：請求內指定 → D1 儲存值（由呼叫端解密後傳入）。 */
-export function resolveByokKey(env: Env, providerId: string, supplied?: string): string | undefined {
+export function resolveByokKey(_env: Env, _providerId: string, supplied?: string): string | undefined {
   return supplied ?? undefined; // D1 的加密儲存由 routes/byok 讀取後傳入
 }

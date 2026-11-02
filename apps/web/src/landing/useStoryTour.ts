@@ -47,7 +47,7 @@ export function useStoryTour(
   }, []);
 
   const nextScene = useCallback(() => {
-    setTour((current) => current ? { ...current, phase: "leaving" } : null);
+    setTour((current) => (current ? { ...current, phase: "leaving" } : null));
   }, []);
 
   // Each move has its own completion boundary; playback starts after arriving.
@@ -68,56 +68,81 @@ export function useStoryTour(
       const destination = root.scrollTop + panel.getBoundingClientRect().top - root.getBoundingClientRect().top;
       root.scrollTo({ top: from + (destination - from) * eased, behavior: "instant" });
       if (progress < 1) frame = requestAnimationFrame(move);
-      else setTour((current) => current?.session === currentTour.session && current.scene === currentTour.scene && current.phase === "moving"
-        ? { ...current, phase: "playing" } : current);
+      else
+        setTour((current) =>
+          current?.session === currentTour.session && current.scene === currentTour.scene && current.phase === "moving"
+            ? { ...current, phase: "playing" }
+            : current,
+        );
     };
     frame = requestAnimationFrame(move);
     return () => cancelAnimationFrame(frame);
-  }, [scroller, tour?.scene, tour?.phase, tour?.session, reducedMotion]);
+  }, [scroller, tour?.scene, tour?.phase, tour?.session, reducedMotion, tour]);
 
   // Hold each loaded scene for five seconds; pausing preserves the remaining time.
   useEffect(() => {
     if (clock.current.key !== sceneKey) clock.current = { key: sceneKey, elapsed: 0 };
-    if (!tour || tour.phase !== "playing" || !ready || reducedMotion) return;
+    if (tour?.phase !== "playing" || !ready || reducedMotion) return;
     const currentTour = tour;
     const started = performance.now();
-    const timer = window.setTimeout(() => {
-      setTour((current) => current?.session === currentTour.session && current.scene === currentTour.scene && current.phase === "playing"
-        ? { ...current, phase: "leaving" } : current);
-    }, Math.max(0, 5000 - clock.current.elapsed));
+    const timer = window.setTimeout(
+      () => {
+        setTour((current) =>
+          current?.session === currentTour.session && current.scene === currentTour.scene && current.phase === "playing"
+            ? { ...current, phase: "leaving" }
+            : current,
+        );
+      },
+      Math.max(0, 5000 - clock.current.elapsed),
+    );
     return () => {
       window.clearTimeout(timer);
       if (clock.current.key === sceneKey) clock.current.elapsed += performance.now() - started;
     };
-  }, [sceneKey, tour?.phase, ready, reducedMotion]);
+  }, [sceneKey, tour?.phase, ready, reducedMotion, tour]);
 
   useEffect(() => {
     if (tour?.phase !== "leaving") return;
     const currentTour = tour;
-    const timer = window.setTimeout(() => {
-      if (currentTour.scene === STORY_SCENES.length - 1) goToLogin();
-      else setTour((current) => current?.session === currentTour.session && current.scene === currentTour.scene && current.phase === "leaving"
-        ? { ...current, scene: current.scene + 1, phase: "moving" } : current);
-    }, reducedMotion ? 0 : 260);
+    const timer = window.setTimeout(
+      () => {
+        if (currentTour.scene === STORY_SCENES.length - 1) goToLogin();
+        else
+          setTour((current) =>
+            current?.session === currentTour.session &&
+            current.scene === currentTour.scene &&
+            current.phase === "leaving"
+              ? { ...current, scene: current.scene + 1, phase: "moving" }
+              : current,
+          );
+      },
+      reducedMotion ? 0 : 260,
+    );
     return () => window.clearTimeout(timer);
-  }, [tour?.scene, tour?.phase, tour?.session, goToLogin, reducedMotion]);
+  }, [tour?.scene, tour?.phase, tour?.session, goToLogin, reducedMotion, tour]);
 
   useEffect(() => {
     const root = scroller.current;
     if (!root || !tour) return;
     const interrupt = (event: Event) => {
       // Tapping the playback controls on a phone must not cancel the tour.
-      if (event.type === "touchstart" && event.target instanceof Element && event.target.closest(".story-player")) return;
+      if (event.type === "touchstart" && event.target instanceof Element && event.target.closest(".story-player"))
+        return;
       setTour(null);
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setTour(null);
-      else if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)
-        && !(event.target instanceof Element && event.target.closest("button, input, textarea, select, a"))) setTour(null);
+      else if (
+        ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key) &&
+        !(event.target instanceof Element && event.target.closest("button, input, textarea, select, a"))
+      )
+        setTour(null);
     };
     const onVisibility = () => {
-      if (document.hidden) setTour((current) => current?.phase === "playing"
-        ? { ...current, phase: "paused" } : current?.phase === "paused" ? current : null);
+      if (document.hidden)
+        setTour((current) =>
+          current?.phase === "playing" ? { ...current, phase: "paused" } : current?.phase === "paused" ? current : null,
+        );
     };
     root.addEventListener("wheel", interrupt, { passive: true });
     root.addEventListener("touchstart", interrupt, { passive: true });
@@ -129,7 +154,7 @@ export function useStoryTour(
       root.removeEventListener("keydown", onKey);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [scroller, Boolean(tour)]);
+  }, [scroller, tour]);
 
   return { tour, ready, startTour, goToLogin, goToTop, togglePause, nextScene };
 }

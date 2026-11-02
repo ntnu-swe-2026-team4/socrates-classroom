@@ -39,18 +39,32 @@ const LINE_VIEWS = {
 };
 const VIEW_3D = { pos: [2.1, 1.7, 2.7], up: [0, 1, 0] };
 const DUR = 900;
-const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
 const THEMES = {
   dark: {
-    frame: "#666b78", grid1: "#464a55", grid2: "#353840",
-    planeLine: "#c9a15a", planeGrid1: "#575c69", planeGrid2: "#3d414b",
-    neutral: "#a3a6b1", labelShadow: "rgba(24,26,32,0.95)", labelBlur: 7, me: "#f3efe6",
+    frame: "#666b78",
+    grid1: "#464a55",
+    grid2: "#353840",
+    planeLine: "#c9a15a",
+    planeGrid1: "#575c69",
+    planeGrid2: "#3d414b",
+    neutral: "#a3a6b1",
+    labelShadow: "rgba(24,26,32,0.95)",
+    labelBlur: 7,
+    me: "#f3efe6",
   },
   light: {
-    frame: "#a9a79f", grid1: "#c7c5bd", grid2: "#dad8d0",
-    planeLine: "#b3813a", planeGrid1: "#b9b7af", planeGrid2: "#d3d1c9",
-    neutral: "#6c6e78", labelShadow: "rgba(255,255,255,0.85)", labelBlur: 3, me: "#17181c",
+    frame: "#a9a79f",
+    grid1: "#c7c5bd",
+    grid2: "#dad8d0",
+    planeLine: "#b3813a",
+    planeGrid1: "#b9b7af",
+    planeGrid2: "#d3d1c9",
+    neutral: "#6c6e78",
+    labelShadow: "rgba(255,255,255,0.85)",
+    labelBlur: 3,
+    me: "#17181c",
   },
 };
 
@@ -71,9 +85,7 @@ function makeTextSprite(text, color, shadow, blur, size = 34) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.anisotropy = 4;
   texture.colorSpace = THREE.SRGBColorSpace; // 不標的話文字顏色會被當成線性值再提亮一次，淺色背景上會很淡
-  const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }),
-  );
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
   sprite.scale.set(0.66, 0.165, 1);
   return sprite;
 }
@@ -117,9 +129,7 @@ function makeRingSprite(color) {
   g.beginPath();
   g.arc(64, 64, 58, 0, Math.PI * 2);
   g.stroke();
-  const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: srgbTex(c), transparent: true, depthTest: false }),
-  );
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: srgbTex(c), transparent: true, depthTest: false }));
   sprite.scale.set(0.24, 0.24, 1);
   sprite.renderOrder = 10;
   return sprite;
@@ -236,8 +246,16 @@ export function createConstellation(mount, { light = false } = {}) {
   let meRing = null;
   let meLabel = null;
   function buildMeMarker() {
-    if (meRing) { scene.remove(meRing); disposeObject(meRing); meRing = null; }
-    if (meLabel) { scene.remove(meLabel); disposeObject(meLabel); meLabel = null; }
+    if (meRing) {
+      scene.remove(meRing);
+      disposeObject(meRing);
+      meRing = null;
+    }
+    if (meLabel) {
+      scene.remove(meLabel);
+      disposeObject(meLabel);
+      meLabel = null;
+    }
     if (meIndex < 0) return;
     meRing = makeRingSprite(theme.me);
     meLabel = makeTextSprite(tr("你"), theme.me, theme.labelShadow, theme.labelBlur, 40);
@@ -264,7 +282,7 @@ export function createConstellation(mount, { light = false } = {}) {
 
   // ---------- 資料 → 座標 ----------
   function coordOf(hist, slots) {
-    return SLOTS.map((sl) => (slots.includes(sl) && axisMap[sl] ? hist[axisMap[sl]] ?? 0 : 0));
+    return SLOTS.map((sl) => (slots.includes(sl) && axisMap[sl] ? (hist[axisMap[sl]] ?? 0) : 0));
   }
 
   /** 目前這一輪、依「啟用中的軸」換算的座標（給分群用；未啟用的槽位為 0） */
@@ -276,10 +294,12 @@ export function createConstellation(mount, { light = false } = {}) {
     const c = new Float32Array(agents.length * 3);
     const neutral = new THREE.Color(theme.neutral);
     const tmp = new THREE.Color();
-    agents.forEach((a, i) => {
+    agents.forEach((_a, i) => {
       if (cluster) tmp.set(cluster.palette[cluster.assignments[i] % cluster.palette.length]);
       else tmp.copy(neutral);
-      c[i * 3] = tmp.r; c[i * 3 + 1] = tmp.g; c[i * 3 + 2] = tmp.b;
+      c[i * 3] = tmp.r;
+      c[i * 3 + 1] = tmp.g;
+      c[i * 3 + 2] = tmp.b;
     });
     return c;
   }
@@ -288,7 +308,9 @@ export function createConstellation(mount, { light = false } = {}) {
     const t = new Float32Array(agents.length * 3);
     agents.forEach((a, i) => {
       const c = coordOf(a.history[Math.min(step, a.history.length - 1)], activeSlots);
-      t[i * 3] = c[0]; t[i * 3 + 1] = c[1]; t[i * 3 + 2] = c[2];
+      t[i * 3] = c[0];
+      t[i * 3 + 1] = c[1];
+      t[i * 3 + 2] = c[2];
     });
     S.targets = t;
   }
@@ -298,7 +320,10 @@ export function createConstellation(mount, { light = false } = {}) {
   }
 
   function refreshTrajectories() {
-    trajGroup.children.slice().forEach((o) => { trajGroup.remove(o); disposeObject(o); });
+    trajGroup.children.slice().forEach((o) => {
+      trajGroup.remove(o);
+      disposeObject(o);
+    });
     if (!showTraj) return;
     agents.forEach((a, i) => {
       const last = Math.min(step, a.history.length - 1);
@@ -306,7 +331,9 @@ export function createConstellation(mount, { light = false } = {}) {
       const arr = new Float32Array((last + 1) * 3);
       for (let s = 0; s <= last; s++) {
         const c = coordOf(a.history[s], SLOTS); // 軌跡維持完整 3D 形狀，收合交給 trajGroup 縮放
-        arr[s * 3] = c[0]; arr[s * 3 + 1] = c[1]; arr[s * 3 + 2] = c[2];
+        arr[s * 3] = c[0];
+        arr[s * 3 + 1] = c[1];
+        arr[s * 3 + 2] = c[2];
       }
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.BufferAttribute(arr, 3));
@@ -318,7 +345,10 @@ export function createConstellation(mount, { light = false } = {}) {
   }
 
   function refreshCentroids() {
-    centroidGroup.children.slice().forEach((o) => { centroidGroup.remove(o); disposeObject(o); });
+    centroidGroup.children.slice().forEach((o) => {
+      centroidGroup.remove(o);
+      disposeObject(o);
+    });
     if (!cluster) return;
     cluster.centroids.forEach((c, i) => {
       const mesh = new THREE.Mesh(
@@ -335,7 +365,10 @@ export function createConstellation(mount, { light = false } = {}) {
   }
 
   function rebuildAxes() {
-    axisGroup.children.slice().forEach((o) => { axisGroup.remove(o); disposeObject(o); });
+    axisGroup.children.slice().forEach((o) => {
+      axisGroup.remove(o);
+      disposeObject(o);
+    });
     const visuals = {};
     for (const slot of SLOTS) {
       const axis = axisDefs[axisMap[slot]];
@@ -400,12 +433,19 @@ export function createConstellation(mount, { light = false } = {}) {
 
       if (dim === 2) {
         const [a, b] = activeSlots;
-        if (a === "x" && b === "y") { frames.plane.rotation.set(0, 0, 0); S.planeScaleMap = { mx: "x", my: "y" }; }
-        else if (a === "x" && b === "z") { frames.plane.rotation.set(Math.PI / 2, 0, 0); S.planeScaleMap = { mx: "x", my: "z" }; }
-        else { frames.plane.rotation.set(0, Math.PI / 2, 0); S.planeScaleMap = { mx: "z", my: "y" }; }
+        if (a === "x" && b === "y") {
+          frames.plane.rotation.set(0, 0, 0);
+          S.planeScaleMap = { mx: "x", my: "y" };
+        } else if (a === "x" && b === "z") {
+          frames.plane.rotation.set(Math.PI / 2, 0, 0);
+          S.planeScaleMap = { mx: "x", my: "z" };
+        } else {
+          frames.plane.rotation.set(0, Math.PI / 2, 0);
+          S.planeScaleMap = { mx: "z", my: "y" };
+        }
       }
 
-      let view;
+      let view: string;
       if (dim === 3) view = VIEW_3D;
       else if (dim === 2) view = PLANAR_VIEWS[activeSlots.join(",")] || PLANAR_VIEWS["x,y"];
       else if (dim === 1) view = LINE_VIEWS[activeSlots[0]];
@@ -427,16 +467,25 @@ export function createConstellation(mount, { light = false } = {}) {
       controls.enabled = false;
       S.pendingPosAnim = true;
       S.tween = {
-        start: performance.now(), dur: DUR,
-        fromS: { ...S.slotP }, toS,
-        fromPlane: S.planeP, toPlane: dim === 2 ? 1 : 0,
-        fromCube: S.cubeP, toCube: dim === 3 ? 1 : 0,
+        start: performance.now(),
+        dur: DUR,
+        fromS: { ...S.slotP },
+        toS,
+        fromPlane: S.planeP,
+        toPlane: dim === 2 ? 1 : 0,
+        fromCube: S.cubeP,
+        toCube: dim === 3 ? 1 : 0,
       };
       S.camAnim = {
-        start: performance.now(), dur: DUR,
-        fromPos: camera.position.clone(), toPos: new THREE.Vector3(...view.pos),
-        fromUp: camera.up.clone(), toUp: new THREE.Vector3(...view.up),
-        cb: () => { controls.enabled = dim === 3; },
+        start: performance.now(),
+        dur: DUR,
+        fromPos: camera.position.clone(),
+        toPos: new THREE.Vector3(...view.pos),
+        fromUp: camera.up.clone(),
+        toUp: new THREE.Vector3(...view.up),
+        cb: () => {
+          controls.enabled = dim === 3;
+        },
       };
     },
 
@@ -470,13 +519,17 @@ export function createConstellation(mount, { light = false } = {}) {
     },
 
     coordsAt,
-    resize() { onResize(); },
+    resize() {
+      onResize();
+    },
     dispose() {
       S.disposed = true;
       ro.disconnect();
       controls.dispose();
       renderer.domElement.removeEventListener("wheel", onWheel);
-      trajGroup.children.slice().forEach((o) => disposeObject(o));
+      trajGroup.children.slice().forEach((o) => {
+        disposeObject(o);
+      });
       disposeObject(scene);
       dotTex.dispose();
       renderer.dispose();
@@ -510,7 +563,10 @@ export function createConstellation(mount, { light = false } = {}) {
       camera.position.lerpVectors(a.fromPos, a.toPos, e);
       camera.up.lerpVectors(a.fromUp, a.toUp, e).normalize();
       camera.lookAt(0, 0, 0);
-      if (t >= 1) { S.camAnim = null; a.cb && a.cb(); }
+      if (t >= 1) {
+        S.camAnim = null;
+        a.cb?.();
+      }
     } else if (controls.enabled) {
       controls.update();
     }
@@ -546,12 +602,10 @@ export function createConstellation(mount, { light = false } = {}) {
     const { plane, frame, grid } = frames;
     plane.visible = S.planeP > 0.005;
     if (plane.visible) {
-      plane.traverse((o) => { if (o.material) o.material.opacity = (o.userData.base ?? 1) * S.planeP; });
-      plane.scale.set(
-        Math.max(0.001, S.slotP[S.planeScaleMap.mx]),
-        Math.max(0.001, S.slotP[S.planeScaleMap.my]),
-        1,
-      );
+      plane.traverse((o) => {
+        if (o.material) o.material.opacity = (o.userData.base ?? 1) * S.planeP;
+      });
+      plane.scale.set(Math.max(0.001, S.slotP[S.planeScaleMap.mx]), Math.max(0.001, S.slotP[S.planeScaleMap.my]), 1);
     }
     frame.material.opacity = 0.9 * S.cubeP;
     grid.material.opacity = S.cubeP;
@@ -582,7 +636,9 @@ export function createConstellation(mount, { light = false } = {}) {
     }
 
     if (meRing && meIndex >= 0 && pos.length >= (meIndex + 1) * 3) {
-      const x = pos[meIndex * 3], y = pos[meIndex * 3 + 1], z = pos[meIndex * 3 + 2];
+      const x = pos[meIndex * 3],
+        y = pos[meIndex * 3 + 1],
+        z = pos[meIndex * 3 + 2];
       meRing.position.set(x, y, z);
       meLabel.position.set(x, y + 0.17, z);
     }

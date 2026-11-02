@@ -6,14 +6,22 @@ import { bodyOf, fail, newId, nowIso, type AppEnv, type UserRow } from "../http"
 import { accessClassroom, topicById, type ClassroomRole } from "../services/access";
 
 async function postJson(db: Db, row: any, user: UserRow, role: ClassroomRole, lang: string) {
-  const author = await one<UserRow>(db, "SELECT id, name, role, avatar_url, created_at FROM users WHERE id = $id", { id: row.author_id });
+  const author = await one<UserRow>(db, "SELECT id, name, role, avatar_url, created_at FROM users WHERE id = $id", {
+    id: row.author_id,
+  });
   const mine = row.author_id === user.id;
   const teacher = role === "teacher";
   const reveal = !row.anonymous || teacher || mine;
   let authorLabel = author?.name ?? "";
   if (row.anonymous) {
     if (mine) authorLabel = lang === "en" ? "You (anonymous)" : lang === "es" ? "Tú (anónimo)" : "你（匿名）";
-    else if (teacher) authorLabel = lang === "en" ? `${author?.name ?? ""} (anonymous)` : lang === "es" ? `${author?.name ?? ""} (anónimo)` : `${author?.name ?? ""}（匿名）`;
+    else if (teacher)
+      authorLabel =
+        lang === "en"
+          ? `${author?.name ?? ""} (anonymous)`
+          : lang === "es"
+            ? `${author?.name ?? ""} (anónimo)`
+            : `${author?.name ?? ""}（匿名）`;
     else authorLabel = lang === "en" ? "Anonymous classmate" : lang === "es" ? "Compañero anónimo" : "匿名同學";
   }
   return {
@@ -43,7 +51,8 @@ export function postRoutes(db: Db) {
       const topic = await topicById(db, topicId);
       if (!topic || topic.classroom_id !== classroom.id) fail(404, "topic_not_found");
     }
-    const rows = await all<any>(db,
+    const rows = await all<any>(
+      db,
       `SELECT p.* FROM posts p
        WHERE p.classroom_id = $cid AND (p.topic_id IS $tid)
          AND (p.deleted = 0 OR EXISTS (SELECT 1 FROM posts r WHERE r.parent_id = p.id AND r.deleted = 0))
@@ -69,20 +78,31 @@ export function postRoutes(db: Db) {
     const parentId = body.parentId === null || body.parentId === undefined ? null : String(body.parentId);
     if (parentId) {
       const parent = await one<any>(db, "SELECT * FROM posts WHERE id = $id", { id: parentId });
-      if (!parent || parent.parent_id !== null || parent.topic_id !== topicId || parent.classroom_id !== classroom.id) fail(422, "reply_scope");
+      if (!parent || parent.parent_id !== null || parent.topic_id !== topicId || parent.classroom_id !== classroom.id)
+        fail(422, "reply_scope");
     }
     const teacher = role === "teacher";
     const anonymous = !teacher && body.anonymous === true;
     const id = newId("p_");
-    await run(db,
+    await run(
+      db,
       `INSERT INTO posts (id, classroom_id, topic_id, parent_id, author_id, body, anonymous, author_role, deleted, created_at)
        VALUES ($id, $cid, $tid, $pid, $author, $body, $anonymous, $role, 0, $at)`,
       {
-        id, cid: classroom.id, tid: topicId, pid: parentId, author: user.id, body: text,
-        anonymous: anonymous ? 1 : 0, role: teacher ? "teacher" : "student", at: nowIso(),
+        id,
+        cid: classroom.id,
+        tid: topicId,
+        pid: parentId,
+        author: user.id,
+        body: text,
+        anonymous: anonymous ? 1 : 0,
+        role: teacher ? "teacher" : "student",
+        at: nowIso(),
       },
     );
-    return c.json(await postJson(db, await one<any>(db, "SELECT * FROM posts WHERE id = $id", { id }), user, role, c.get("lang")));
+    return c.json(
+      await postJson(db, await one<any>(db, "SELECT * FROM posts WHERE id = $id", { id }), user, role, c.get("lang")),
+    );
   });
 
   r.delete("/posts/:id", async (c) => {
@@ -91,7 +111,11 @@ export function postRoutes(db: Db) {
     if (!row) fail(404, "post_not_found");
     const { role } = await accessClassroom(db, row.classroom_id, user);
     if (row.author_id !== user.id && role !== "teacher") fail(403, "forbidden");
-    const replies = await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM posts WHERE parent_id = $id AND deleted = 0", { id: row.id });
+    const replies = await one<{ n: number }>(
+      db,
+      "SELECT COUNT(*) AS n FROM posts WHERE parent_id = $id AND deleted = 0",
+      { id: row.id },
+    );
     if ((replies?.n ?? 0) > 0) await run(db, "UPDATE posts SET deleted = 1 WHERE id = $id", { id: row.id });
     else await run(db, "DELETE FROM posts WHERE id = $id", { id: row.id });
     return c.body(null, 204);

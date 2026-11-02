@@ -6,14 +6,20 @@ import { requireUser } from "../auth";
 import { bodyOf, fail, newId, nowIso, type AppEnv } from "../http";
 import { accessActivity, accessGroup, accessRoom } from "../services/access";
 import {
-  buildGroups, commitTurn, computeScores, recalcArgumentStatuses, roomJson, roomSpec, scoreRows,
-  starData, startRoom, tickExpired,
+  buildGroups,
+  commitTurn,
+  computeScores,
+  recalcArgumentStatuses,
+  roomJson,
+  roomSpec,
+  scoreRows,
+  starData,
+  startRoom,
+  tickExpired,
 } from "../services/activities";
 import { counterexampleFor, ensureGroupArguments as ensureArgs, groupLabel, tally } from "../services/debate";
 import { publish } from "../do/events";
-import {
-  argumentJson, groupJson, groupMessageJson, judgmentJson, turnJson,
-} from "../services/serialize";
+import { argumentJson, groupJson, groupMessageJson, judgmentJson, turnJson } from "../services/serialize";
 
 function membershipOfGroup(group: any, userId: string): boolean {
   return parseJson<string[]>(group.member_ids, []).includes(userId);
@@ -38,7 +44,11 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     const size = Number(body.groupSize);
     if (!Number.isInteger(size) || size < 2 || size > 8) fail(422, "invalid_group_size");
     await buildGroups(db, activity, size, 42 + Math.floor(Math.random() * 1000), getLang(c));
-    await run(db, "UPDATE activities SET group_size = $size, updated_at = $at WHERE id = $id", { size, at: nowIso(), id: activity.id });
+    await run(db, "UPDATE activities SET group_size = $size, updated_at = $at WHERE id = $id", {
+      size,
+      at: nowIso(),
+      id: activity.id,
+    });
     publish(activity.id, { type: "stage_changed", stage: activity.stage });
     const rows = await all<any>(db, "SELECT * FROM groups WHERE activity_id = $aid ORDER BY seq", { aid: activity.id });
     return c.json(rows.map((row) => groupJson(row, role, user.id)));
@@ -48,7 +58,9 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     const user = requireUser(c);
     const { group, role } = await accessGroup(db, c.req.param("gid"), user);
     if (role === "student" && !membershipOfGroup(group, user.id)) fail(403, "not_your_group");
-    const rows = await all<any>(db, "SELECT * FROM group_messages WHERE group_id = $gid ORDER BY created_at, rowid", { gid: group.id });
+    const rows = await all<any>(db, "SELECT * FROM group_messages WHERE group_id = $gid ORDER BY created_at, rowid", {
+      gid: group.id,
+    });
     return c.json(rows.map(groupMessageJson));
   });
 
@@ -62,7 +74,8 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     if (!text) fail(422, "text_required");
     if (text.length > 2000) fail(422, "text_too_long", { n: 2000 });
     const id = newId("gm_");
-    await run(db,
+    await run(
+      db,
       "INSERT INTO group_messages (id, group_id, kind, author_id, text, created_at) VALUES ($id, $gid, 'chat', $author, $text, $at)",
       { id, gid: group.id, author: user.id, text, at: nowIso() },
     );
@@ -79,17 +92,30 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     const args = await ensureArgs(db, activity, group, getLang(c));
     const claims = args.filter((a) => a.kind === "claim");
     const lang = getLang(c);
-    const head = lang === "en"
-      ? `I merged your discussion and summaries into ${claims.length} claims:`
-      : lang === "es"
-        ? `He combinado la discusión en ${claims.length} afirmaciones:`
-        : `我把你們的討論與每個人的論點總結合併，整理出 ${claims.length} 條主張：`;
-    const tail = lang === "en" ? "Please vote on each: endorse, revise, or oppose." : lang === "es" ? "Vota cada una: a favor, revisar o en contra." : "請針對每一條投票：贊成、需要修改，或反對。";
-    const text = head + "\n" + claims.map((cl, i) => `${i + 1}. ${cl.text}`).join("\n") + "\n" + tail;
+    const head =
+      lang === "en"
+        ? `I merged your discussion and summaries into ${claims.length} claims:`
+        : lang === "es"
+          ? `He combinado la discusión en ${claims.length} afirmaciones:`
+          : `我把你們的討論與每個人的論點總結合併，整理出 ${claims.length} 條主張：`;
+    const tail =
+      lang === "en"
+        ? "Please vote on each: endorse, revise, or oppose."
+        : lang === "es"
+          ? "Vota cada una: a favor, revisar o en contra."
+          : "請針對每一條投票：贊成、需要修改，或反對。";
+    const text = `${head}\n${claims.map((cl, i) => `${i + 1}. ${cl.text}`).join("\n")}\n${tail}`;
     const id = newId("gm_");
-    await run(db, "INSERT INTO group_messages (id, group_id, kind, author_id, text, created_at) VALUES ($id, $gid, 'ai_summary', NULL, $text, $at)", {
-      id, gid: group.id, text, at: nowIso(),
-    });
+    await run(
+      db,
+      "INSERT INTO group_messages (id, group_id, kind, author_id, text, created_at) VALUES ($id, $gid, 'ai_summary', NULL, $text, $at)",
+      {
+        id,
+        gid: group.id,
+        text,
+        at: nowIso(),
+      },
+    );
     const row = await one<any>(db, "SELECT * FROM group_messages WHERE id = $id", { id });
     publish(activity.id, { type: "group_message", message: groupMessageJson(row) });
     for (const arg of args) publish(activity.id, { type: "argument_updated", argument: argumentJson(arg) });
@@ -105,18 +131,33 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     const memberIds = parseJson<string[]>(group.member_ids, []);
     const candidates = args
       .filter((a) => a.kind === "claim" && a.status !== "dropped" && !a.countered)
-      .sort((a, b) => tally(parseJson(b.votes, {}), memberIds).endorse - tally(parseJson(a.votes, {}), memberIds).endorse);
+      .sort(
+        (a, b) => tally(parseJson(b.votes, {}), memberIds).endorse - tally(parseJson(a.votes, {}), memberIds).endorse,
+      );
     if (!candidates.length) fail(409, args.length ? "all_countered" : "no_arguments");
     const target = candidates[0];
     await run(db, "UPDATE group_arguments SET countered = 1 WHERE id = $id", { id: target.id });
     const lang = getLang(c);
-    const prefix = lang === "en" ? `On "${target.text}":` : lang === "es" ? `Sobre "${target.text}":` : `針對「${target.text}」：`;
-    const tail = lang === "en" ? "Think it over, then vote again." : lang === "es" ? "Piénsalo y vuelve a votar." : "想過之後，請重新投票。";
+    const prefix =
+      lang === "en" ? `On "${target.text}":` : lang === "es" ? `Sobre "${target.text}":` : `針對「${target.text}」：`;
+    const tail =
+      lang === "en"
+        ? "Think it over, then vote again."
+        : lang === "es"
+          ? "Piénsalo y vuelve a votar."
+          : "想過之後，請重新投票。";
     const text = `${prefix}\n${counterexampleFor(activity, target, getLang(c))}\n${tail}`;
     const id = newId("gm_");
-    await run(db, "INSERT INTO group_messages (id, group_id, kind, author_id, text, created_at) VALUES ($id, $gid, 'ai_counterexample', NULL, $text, $at)", {
-      id, gid: group.id, text, at: nowIso(),
-    });
+    await run(
+      db,
+      "INSERT INTO group_messages (id, group_id, kind, author_id, text, created_at) VALUES ($id, $gid, 'ai_counterexample', NULL, $text, $at)",
+      {
+        id,
+        gid: group.id,
+        text,
+        at: nowIso(),
+      },
+    );
     const row = await one<any>(db, "SELECT * FROM group_messages WHERE id = $id", { id });
     publish(activity.id, { type: "group_message", message: groupMessageJson(row) });
     const updated = await one<any>(db, "SELECT * FROM group_arguments WHERE id = $id", { id: target.id });
@@ -128,7 +169,9 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     const user = requireUser(c);
     const { group, role } = await accessGroup(db, c.req.param("gid"), user);
     if (role === "student" && !membershipOfGroup(group, user.id)) fail(403, "not_your_group");
-    const rows = await all<any>(db, "SELECT * FROM group_arguments WHERE group_id = $gid ORDER BY seq", { gid: group.id });
+    const rows = await all<any>(db, "SELECT * FROM group_arguments WHERE group_id = $gid ORDER BY seq", {
+      gid: group.id,
+    });
     return c.json(rows.map(argumentJson));
   });
 
@@ -143,7 +186,10 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     if (body.vote !== "endorse" && body.vote !== "revise" && body.vote !== "oppose") fail(422, "validation");
     const votes = parseJson<Record<string, string>>(arg.votes, {});
     votes[user.id] = body.vote;
-    await run(db, "UPDATE group_arguments SET votes = $votes WHERE id = $id", { votes: JSON.stringify(votes), id: arg.id });
+    await run(db, "UPDATE group_arguments SET votes = $votes WHERE id = $id", {
+      votes: JSON.stringify(votes),
+      id: arg.id,
+    });
     await recalcArgumentStatuses(db, group);
     const updated = await one<any>(db, "SELECT * FROM group_arguments WHERE id = $id", { id: arg.id });
     publish(activity.id, { type: "argument_updated", argument: argumentJson(updated) });
@@ -157,7 +203,9 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     if (role !== "student" && role !== "teacher" && role !== "assistant") fail(403, "forbidden");
     const memberIds = parseJson<string[]>(group.member_ids, []);
     if (role === "student" && !memberIds.includes(user.id)) fail(403, "not_your_group");
-    const args = await all<any>(db, "SELECT * FROM group_arguments WHERE group_id = $gid ORDER BY seq", { gid: group.id });
+    const args = await all<any>(db, "SELECT * FROM group_arguments WHERE group_id = $gid ORDER BY seq", {
+      gid: group.id,
+    });
     const contested = args.find((a) => a.kind === "claim" && a.status === "contested");
     if (!contested) fail(409, "no_split");
     const votes = parseJson<Record<string, string>>(contested.votes, {});
@@ -165,9 +213,13 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     const remain = memberIds.filter((id) => !dissent.includes(id));
     if (dissent.length < 2 || remain.length < 2) fail(409, "no_split");
 
-    const groups = await all<any>(db, "SELECT * FROM groups WHERE activity_id = $aid ORDER BY seq", { aid: activity.id });
+    const groups = await all<any>(db, "SELECT * FROM groups WHERE activity_id = $aid ORDER BY seq", {
+      aid: activity.id,
+    });
     const coords: Record<string, number[]> = {};
-    for (const p of await all<any>(db, "SELECT student_id, coords FROM positions WHERE activity_id = $aid", { aid: activity.id })) {
+    for (const p of await all<any>(db, "SELECT student_id, coords FROM positions WHERE activity_id = $aid", {
+      aid: activity.id,
+    })) {
       coords[p.student_id] = parseJson<number[]>(p.coords, []);
     }
     const centroid = (ids: string[]) => {
@@ -178,34 +230,55 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     const newIdGroup = newId("g_");
     const lang = getLang(c);
     const label = groupLabel(lang, groups.length + 1);
-    const splitNewText = lang === "en"
-      ? `You split off from "${group.label}" because you disagree about "${contested.text}".`
-      : lang === "es"
-        ? `Se separaron de "${group.label}" porque discrepan sobre "${contested.text}".`
-        : `你們從「${group.label}」分裂出來，因為對「${contested.text}」有不同的看法。`;
-    const splitOldText = lang === "en"
-      ? `${dissent.length} member(s) split off as "${label}" because of a disagreement.`
-      : lang === "es"
-        ? `${dissent.length} miembro(s) se separaron como "${label}" por un desacuerdo.`
-        : `有 ${dissent.length} 位組員因為分歧，分出去成為「${label}」。`;
+    const splitNewText =
+      lang === "en"
+        ? `You split off from "${group.label}" because you disagree about "${contested.text}".`
+        : lang === "es"
+          ? `Se separaron de "${group.label}" porque discrepan sobre "${contested.text}".`
+          : `你們從「${group.label}」分裂出來，因為對「${contested.text}」有不同的看法。`;
+    const splitOldText =
+      lang === "en"
+        ? `${dissent.length} member(s) split off as "${label}" because of a disagreement.`
+        : lang === "es"
+          ? `${dissent.length} miembro(s) se separaron como "${label}" por un desacuerdo.`
+          : `有 ${dissent.length} 位組員因為分歧，分出去成為「${label}」。`;
     const voteEntries: Array<{ sql: string; params: Record<string, unknown> }> = [];
     for (const id of dissent) {
       for (const arg of args) {
         const v = parseJson<Record<string, string>>(arg.votes, {});
         if (v[id]) {
           delete v[id];
-          voteEntries.push({ sql: "UPDATE group_arguments SET votes = $votes WHERE id = $id", params: { votes: JSON.stringify(v), id: arg.id } });
+          voteEntries.push({
+            sql: "UPDATE group_arguments SET votes = $votes WHERE id = $id",
+            params: { votes: JSON.stringify(v), id: arg.id },
+          });
         }
       }
     }
     await db.batch([
-      { sql: "UPDATE groups SET member_ids = $ids, centroid = $centroid WHERE id = $id", params: { ids: JSON.stringify(remain), centroid: JSON.stringify(centroid(remain)), id: group.id } },
-      { sql: "INSERT INTO groups (id, activity_id, label, member_ids, centroid, formed_by, seq) VALUES ($id, $aid, $label, $ids, $centroid, 'split', $seq)",
-        params: { id: newIdGroup, aid: activity.id, label, ids: JSON.stringify(dissent), centroid: JSON.stringify(centroid(dissent)), seq: groups.length } },
-      { sql: "INSERT INTO group_messages (id, group_id, kind, author_id, text, created_at) VALUES ($id, $gid, 'system', NULL, $text, $at)",
-        params: { id: newId("gm_"), gid: newIdGroup, text: splitNewText, at: nowIso() } },
-      { sql: "INSERT INTO group_messages (id, group_id, kind, author_id, text, created_at) VALUES ($id, $gid, 'system', NULL, $text, $at)",
-        params: { id: newId("gm_"), gid: group.id, text: splitOldText, at: nowIso() } },
+      {
+        sql: "UPDATE groups SET member_ids = $ids, centroid = $centroid WHERE id = $id",
+        params: { ids: JSON.stringify(remain), centroid: JSON.stringify(centroid(remain)), id: group.id },
+      },
+      {
+        sql: "INSERT INTO groups (id, activity_id, label, member_ids, centroid, formed_by, seq) VALUES ($id, $aid, $label, $ids, $centroid, 'split', $seq)",
+        params: {
+          id: newIdGroup,
+          aid: activity.id,
+          label,
+          ids: JSON.stringify(dissent),
+          centroid: JSON.stringify(centroid(dissent)),
+          seq: groups.length,
+        },
+      },
+      {
+        sql: "INSERT INTO group_messages (id, group_id, kind, author_id, text, created_at) VALUES ($id, $gid, 'system', NULL, $text, $at)",
+        params: { id: newId("gm_"), gid: newIdGroup, text: splitNewText, at: nowIso() },
+      },
+      {
+        sql: "INSERT INTO group_messages (id, group_id, kind, author_id, text, created_at) VALUES ($id, $gid, 'system', NULL, $text, $at)",
+        params: { id: newId("gm_"), gid: group.id, text: splitOldText, at: nowIso() },
+      },
       ...voteEntries,
     ]);
     await recalcArgumentStatuses(db, await one<any>(db, "SELECT * FROM groups WHERE id = $id", { id: group.id })!);
@@ -221,7 +294,7 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     const user = requireUser(c);
     const { activity } = await accessActivity(db, c.req.param("id"), user);
     const lang = getLang(c);
-    let rows = await all<any>(db, "SELECT * FROM rooms WHERE activity_id = $aid ORDER BY seq", { aid: activity.id });
+    const rows = await all<any>(db, "SELECT * FROM rooms WHERE activity_id = $aid ORDER BY seq", { aid: activity.id });
     if (activity.stage === "debate") {
       for (let i = 0; i < rows.length; i++) rows[i] = await tickExpired(db, rows[i], lang);
     }
@@ -303,12 +376,19 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
     const { activity, role } = await accessActivity(db, c.req.param("id"), user);
     if (role !== "teacher") fail(403, "only_teacher");
     const memberId = c.req.param("memberId");
-    const existing = await one<any>(db, "SELECT * FROM scores WHERE activity_id = $aid AND member_id = $mid", { aid: activity.id, mid: memberId });
+    const existing = await one<any>(db, "SELECT * FROM scores WHERE activity_id = $aid AND member_id = $mid", {
+      aid: activity.id,
+      mid: memberId,
+    });
     if (!existing) fail(409, "score_not_found");
     const body = await bodyOf(c);
     const adjust = Number(body.adjust);
     if (!Number.isFinite(adjust) || adjust < -100 || adjust > 100) fail(422, "validation");
-    await run(db, "UPDATE scores SET adjust = $adjust WHERE activity_id = $aid AND member_id = $mid", { adjust, aid: activity.id, mid: memberId });
+    await run(db, "UPDATE scores SET adjust = $adjust WHERE activity_id = $aid AND member_id = $mid", {
+      adjust,
+      aid: activity.id,
+      mid: memberId,
+    });
     return c.json((await scoreRows(db, activity, memberId))[0] ?? null);
   });
 

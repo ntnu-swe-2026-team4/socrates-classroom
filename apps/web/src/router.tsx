@@ -16,16 +16,25 @@ import { DialoguePage } from "@/pages/DialoguePage";
 const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: Outlet });
 
 const login = createRoute({
-  getParentRoute: () => root, path: "/login", component: LandingPage,
+  getParentRoute: () => root,
+  path: "/login",
+  component: LandingPage,
   beforeLoad: async ({ context }) => {
-    if (await context.queryClient.ensureQueryData({ queryKey: keys.me, queryFn: () => api.me(), staleTime: Infinity })) throw redirect({ to: "/" });
+    if (await context.queryClient.ensureQueryData({ queryKey: keys.me, queryFn: () => api.me(), staleTime: Infinity }))
+      throw redirect({ to: "/" });
   },
 });
 
 const app = createRoute({
-  getParentRoute: () => root, id: "_app", component: AppShell,
+  getParentRoute: () => root,
+  id: "_app",
+  component: AppShell,
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.ensureQueryData({ queryKey: keys.me, queryFn: () => api.me(), staleTime: Infinity });
+    const me = await context.queryClient.ensureQueryData({
+      queryKey: keys.me,
+      queryFn: () => api.me(),
+      staleTime: Infinity,
+    });
     if (!me) throw redirect({ to: "/login" });
   },
 });
@@ -34,20 +43,48 @@ const routeTree = root.addChildren([
   login,
   app.addChildren([
     createRoute({ getParentRoute: () => app, path: "/", component: HomePage }),
-    createRoute({ getParentRoute: () => app, path: "/dialogue", component: DialoguePage, validateSearch: (s: Record<string, unknown>): { topic?: string } => ({ topic: typeof s.topic === "string" ? s.topic : undefined }) }),
+    createRoute({
+      getParentRoute: () => app,
+      path: "/dialogue",
+      component: DialoguePage,
+      validateSearch: (s: Record<string, unknown>): { topic?: string } => ({
+        topic: typeof s.topic === "string" ? s.topic : undefined,
+      }),
+    }),
     createRoute({ getParentRoute: () => app, path: "/topics", component: TopicsPage }),
     createRoute({ getParentRoute: () => app, path: "/summary", component: SummaryPage }),
     createRoute({ getParentRoute: () => app, path: "/bank/$kind", component: BankPage }),
     createRoute({ getParentRoute: () => app, path: "/classrooms", component: ClassroomsPage }),
-    createRoute({ getParentRoute: () => app, path: "/classrooms/$classroomId", component: ClassroomPage, validateSearch: (s: Record<string, unknown>): { tab?: ClassroomTab } => ({ tab: s.tab === "debate" || s.tab === "topics" ? "debates" : CLASSROOM_TABS.find((t) => t === s.tab) }) }),
-    createRoute({ getParentRoute: () => app, path: "/classrooms/$classroomId/debates/$debateId", component: ClassroomDebatePage }),
-    createRoute({ getParentRoute: () => app, path: "/classrooms/$classroomId/activities/$activityId", component: ActivityPage }),
-    createRoute({ getParentRoute: () => app, path: "/classrooms/$classroomId/discussions/$discussionId", component: DiscussionTaskPage }),
+    createRoute({
+      getParentRoute: () => app,
+      path: "/classrooms/$classroomId",
+      component: ClassroomPage,
+      validateSearch: (s: Record<string, unknown>): { tab?: ClassroomTab } => ({
+        tab: s.tab === "debate" || s.tab === "topics" ? "debates" : CLASSROOM_TABS.find((t) => t === s.tab),
+      }),
+    }),
+    createRoute({
+      getParentRoute: () => app,
+      path: "/classrooms/$classroomId/debates/$debateId",
+      component: ClassroomDebatePage,
+    }),
+    createRoute({
+      getParentRoute: () => app,
+      path: "/classrooms/$classroomId/activities/$activityId",
+      component: ActivityPage,
+    }),
+    createRoute({
+      getParentRoute: () => app,
+      path: "/classrooms/$classroomId/discussions/$discussionId",
+      component: DiscussionTaskPage,
+    }),
   ]),
 ]);
 
 export const router = createRouter({ routeTree, context: { queryClient: undefined! } });
 
 declare module "@tanstack/react-router" {
-  interface Register { router: typeof router }
+  interface Register {
+    router: typeof router;
+  }
 }

@@ -13,10 +13,7 @@ export const CLASS_POOL: PoolEntry[] = [
 ];
 
 /** 開發路由：Coding Plan 優先（額度大、離峰五折），之後同生產鏈。 */
-export const DEV_POOL: PoolEntry[] = [
-  { provider: "zai", model: "glm-5.3-flash" },
-  ...CLASS_POOL,
-];
+export const DEV_POOL: PoolEntry[] = [{ provider: "zai", model: "glm-5.3-flash" }, ...CLASS_POOL];
 
 /** 測試／離線：pi-ai faux provider。 */
 export const MOCK_POOL: PoolEntry[] = [{ provider: "mock", model: "faux-1" }];

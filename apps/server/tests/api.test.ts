@@ -21,11 +21,15 @@ function baseHeaders(cookie?: string, json = true): Record<string, string> {
 }
 
 async function req(method: string, url: string, options: { cookie?: string; body?: unknown } = {}): Promise<any> {
-  return app.request(url, {
-    method,
-    headers: baseHeaders(options.cookie, options.body !== undefined),
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  }, env);
+  return app.request(
+    url,
+    {
+      method,
+      headers: baseHeaders(options.cookie, options.body !== undefined),
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    },
+    env,
+  );
 }
 
 async function login(role: "student" | "teacher", name: string): Promise<string> {
@@ -37,8 +41,6 @@ async function login(role: "student" | "teacher", name: string): Promise<string>
   cookies.set(name, cookie);
   return cookie;
 }
-
-
 
 beforeAll(async () => {
   // 去掉 PRAGMA（D1 不支援，foreign_keys 恆開）與註解行，切成單句後 batch
@@ -77,11 +79,15 @@ function parseSse(text: string) {
 }
 
 async function sendDialogue(cookie: string, url: string, text: string) {
-  const res = await app.request(url, {
-    method: "POST",
-    headers: { ...baseHeaders(cookie), Accept: "text/event-stream" },
-    body: JSON.stringify({ text }),
-  }, env);
+  const res = await app.request(
+    url,
+    {
+      method: "POST",
+      headers: { ...baseHeaders(cookie), Accept: "text/event-stream" },
+      body: JSON.stringify({ text }),
+    },
+    env,
+  );
   expect(res.status).toBe(200);
   const textBody = await res.text();
   const events = parseSse(textBody);
@@ -131,13 +137,20 @@ describe("認證與教室", () => {
     expect(pending.status).toBe("pending");
 
     const teacher = cookies.get("林老師")!;
-    const applications = await (await req("GET", "/api/classrooms/c4/applications?status=pending", { cookie: teacher })).json();
+    const applications = await (
+      await req("GET", "/api/classrooms/c4/applications?status=pending", { cookie: teacher })
+    ).json();
     if (!cookies.get("林老師")) throw new Error(`DEBUG cookies=${JSON.stringify([...cookies.entries()])}`);
     console.log("APPS:", JSON.stringify(applications).slice(0, 200));
     const mine = (Array.isArray(applications) ? applications : []).find((a: any) => a.studentName === "新同學");
     expect(mine).toBeTruthy();
-    const approved = await (await req("POST", `/api/applications/${mine.id}/review`, { cookie: teacher, body: { decision: "approve", note: "歡迎" } })).json();
-    console.log("REVIEW:", JSON.stringify(approved).slice(0,200));
+    const approved = await (
+      await req("POST", `/api/applications/${mine.id}/review`, {
+        cookie: teacher,
+        body: { decision: "approve", note: "歡迎" },
+      })
+    ).json();
+    console.log("REVIEW:", JSON.stringify(approved).slice(0, 200));
     expect(approved.status).toBe("approved");
     const my = await (await req("GET", "/api/me/applications", { cookie: student })).json();
     expect(my.find((a: any) => a.id === mine.id).status).toBe("approved");
@@ -150,10 +163,19 @@ describe("議題、題庫與對話", () => {
   test("建立議題、串流對話、歷史與分享", async () => {
     const guest = await login("student", "訪客");
     const created = await (await req("POST", "/api/archives", { cookie: guest, body: { title: "測試：誠實" } })).json();
-    const { message, events } = await sendDialogue(guest, `/api/archives/${created.id}/dialogue`, "我覺得說謊有時候是對的");
+    const { message, events } = await sendDialogue(
+      guest,
+      `/api/archives/${created.id}/dialogue`,
+      "我覺得說謊有時候是對的",
+    );
     expect(message.text.length).toBeGreaterThan(0);
     expect(events.filter((e) => e.event === "delta").length).toBeGreaterThan(0);
-    expect(events.filter((e) => e.event === "delta").map((e) => e.data.text).join("")).toBe(message.text);
+    expect(
+      events
+        .filter((e) => e.event === "delta")
+        .map((e) => e.data.text)
+        .join(""),
+    ).toBe(message.text);
 
     const history = await (await req("GET", `/api/archives/${created.id}/dialogue`, { cookie: guest })).json();
     expect(history.length).toBe(2);
@@ -161,7 +183,12 @@ describe("議題、題庫與對話", () => {
 
     const targets = await (await req("GET", "/api/me/share-targets", { cookie: guest })).json();
     const wang = targets.find((t: any) => t.name === "王○安");
-    const patched = await (await req("PATCH", `/api/archives/${created.id}`, { cookie: guest, body: { bank: "private", sharedWithIds: [wang.id] } })).json();
+    const patched = await (
+      await req("PATCH", `/api/archives/${created.id}`, {
+        cookie: guest,
+        body: { bank: "private", sharedWithIds: [wang.id] },
+      })
+    ).json();
     expect(patched.sharedWithIds).toEqual([wang.id]);
 
     const wangCookie = await login("student", "王○安");
@@ -169,15 +196,24 @@ describe("議題、題庫與對話", () => {
     const received = shared.find((a: any) => a.id === created.id);
     expect(received.sharedBy).toBe("訪客");
     expect(received.sharedWithIds).toEqual([]);
-    expect((await req("PATCH", `/api/archives/${created.id}`, { cookie: wangCookie, body: { inSummary: true } })).status).toBe(403);
-    expect((await req("POST", `/api/archives/${created.id}/dialogue`, { cookie: wangCookie, body: { text: "hi" } })).status).toBe(403);
+    expect(
+      (await req("PATCH", `/api/archives/${created.id}`, { cookie: wangCookie, body: { inSummary: true } })).status,
+    ).toBe(403);
+    expect(
+      (await req("POST", `/api/archives/${created.id}/dialogue`, { cookie: wangCookie, body: { text: "hi" } })).status,
+    ).toBe(403);
   });
 
   test("空白訊息回 422，非同步鎖與長度限制", async () => {
     const guest = await login("student", "訪客");
     const created = await (await req("POST", "/api/archives", { cookie: guest, body: { title: "格式檢查" } })).json();
-    expect((await req("POST", `/api/archives/${created.id}/dialogue`, { cookie: guest, body: { text: "   " } })).status).toBe(422);
-    expect((await req("POST", `/api/archives/${created.id}/dialogue`, { cookie: guest, body: { text: "x".repeat(2001) } })).status).toBe(422);
+    expect(
+      (await req("POST", `/api/archives/${created.id}/dialogue`, { cookie: guest, body: { text: "   " } })).status,
+    ).toBe(422);
+    expect(
+      (await req("POST", `/api/archives/${created.id}/dialogue`, { cookie: guest, body: { text: "x".repeat(2001) } }))
+        .status,
+    ).toBe(422);
   });
 });
 
@@ -194,9 +230,12 @@ describe("公告、討論區與行事曆", () => {
   test("匿名貼文對同學隱藏身分，對老師顯示", async () => {
     const guest = cookies.get("訪客")!;
     const teacher = cookies.get("林老師")!;
-    const created = await (await req("POST", "/api/classrooms/c1/posts", {
-      cookie: guest, body: { topicId: null, body: "匿名發問", anonymous: true },
-    })).json();
+    const created = await (
+      await req("POST", "/api/classrooms/c1/posts", {
+        cookie: guest,
+        body: { topicId: null, body: "匿名發問", anonymous: true },
+      })
+    ).json();
     expect(created.authorId).toBe("s_guest");
     const asOther = await (await req("GET", "/api/classrooms/c1/posts", { cookie: teacher })).json();
     const row = asOther.find((p: any) => p.id === created.id);
@@ -209,7 +248,11 @@ describe("公告、討論區與行事曆", () => {
 
   test("行事曆包含四種系統事件與自訂事件", async () => {
     const teacher = cookies.get("林老師")!;
-    const events = await (await req("GET", "/api/classrooms/c1/calendar?from=2000-01-01T00:00:00.000Z&to=2100-01-01T00:00:00.000Z", { cookie: teacher })).json();
+    const events = await (
+      await req("GET", "/api/classrooms/c1/calendar?from=2000-01-01T00:00:00.000Z&to=2100-01-01T00:00:00.000Z", {
+        cookie: teacher,
+      })
+    ).json();
     const kinds = new Set(events.map((e: any) => e.kind));
     expect(kinds.has("topic_due")).toBe(true);
     expect(kinds.has("announcement")).toBe(true);
@@ -218,7 +261,6 @@ describe("公告、討論區與行事曆", () => {
   });
 });
 
-
 describe("教材與結論報告", () => {
   test("老師上傳教材、學生下載；學生上傳報告", async () => {
     const teacher = cookies.get("林老師")!;
@@ -226,13 +268,17 @@ describe("教材與結論報告", () => {
     const topic = (await one<any>(db, "SELECT id FROM topics WHERE title LIKE '正義是否%'"))!;
     const form = new FormData();
     form.append("file", new File(["課堂講義內容"], "講義.txt", { type: "text/plain" }));
-    const uploaded = await app.request(`/api/topics/${topic.id}/resources/files`, {
-      method: "POST",
-      headers: { Cookie: teacher, Accept: "application/json", "Accept-Language": "zh-TW" },
-      body: form,
-    }, env);
+    const uploaded = await app.request(
+      `/api/topics/${topic.id}/resources/files`,
+      {
+        method: "POST",
+        headers: { Cookie: teacher, Accept: "application/json", "Accept-Language": "zh-TW" },
+        body: form,
+      },
+      env,
+    );
     expect(uploaded.status).toBe(200);
-    const resource = await uploaded.json() as any;
+    const resource = (await uploaded.json()) as any;
     expect(resource.kind).toBe("file");
     const download = await app.request(resource.file.url, { headers: { Cookie: guest } }, env);
     expect(download.status).toBe(200);
@@ -242,13 +288,17 @@ describe("教材與結論報告", () => {
     const reportForm = new FormData();
     reportForm.append("file", new File(["我的結論"], "結論.txt", { type: "text/plain" }));
     reportForm.append("comment", "這是我的結論");
-    const submitted = await app.request(`/api/topics/${reportTopic.id}/reports`, {
-      method: "POST",
-      headers: { Cookie: guest, Accept: "application/json", "Accept-Language": "zh-TW" },
-      body: reportForm,
-    }, env);
+    const submitted = await app.request(
+      `/api/topics/${reportTopic.id}/reports`,
+      {
+        method: "POST",
+        headers: { Cookie: guest, Accept: "application/json", "Accept-Language": "zh-TW" },
+        body: reportForm,
+      },
+      env,
+    );
     expect(submitted.status).toBe(200);
-    const report = await submitted.json() as any;
+    const report = (await submitted.json()) as any;
     expect(report.comment).toBe("這是我的結論");
     const list = await (await req("GET", `/api/topics/${reportTopic.id}/reports`, { cookie: teacher })).json();
     expect(list.some((r: any) => r.id === report.id)).toBe(true);
@@ -274,17 +324,40 @@ describe("多人討論", () => {
     const guest = cookies.get("訪客")!;
     const teacher = cookies.get("林老師")!;
     const task = (await (await req("GET", "/api/classrooms/c1/discussions", { cookie: guest })).json())[0];
-    const { message } = await sendDialogue(guest, `/api/discussions/${task.id}/sessions/me/messages`, "我認為 AI 可以協助評分，因為它可以檢查遺漏，例如一致性。");
+    const { message } = await sendDialogue(
+      guest,
+      `/api/discussions/${task.id}/sessions/me/messages`,
+      "我認為 AI 可以協助評分，因為它可以檢查遺漏，例如一致性。",
+    );
     expect(message.text.length).toBeGreaterThan(0);
-    const detail = await (await req("PUT", `/api/discussions/${task.id}/sessions/me/conclusion`, { cookie: guest, body: { conclusion: "我的結論是：輔助可以，取代不行。" } })).json();
+    const detail = await (
+      await req("PUT", `/api/discussions/${task.id}/sessions/me/conclusion`, {
+        cookie: guest,
+        body: { conclusion: "我的結論是：輔助可以，取代不行。" },
+      })
+    ).json();
     expect(detail.status).toBe("submitted");
     const updatedTask = await (await req("GET", `/api/discussions/${task.id}`, { cookie: guest })).json();
     expect(updatedTask.myStatus).toBe("submitted");
     expect(updatedTask.stats.submitted).toBeGreaterThan(0);
 
     await req("PUT", `/api/discussions/${task.id}/status`, { cookie: teacher, body: { status: "closed" } });
-    expect((await req("POST", `/api/discussions/${task.id}/sessions/me/messages`, { cookie: guest, body: { text: "還能說嗎" } })).status).toBe(409);
-    expect((await req("PUT", `/api/discussions/${task.id}/sessions/me/conclusion`, { cookie: guest, body: { conclusion: null } })).status).toBe(409);
+    expect(
+      (
+        await req("POST", `/api/discussions/${task.id}/sessions/me/messages`, {
+          cookie: guest,
+          body: { text: "還能說嗎" },
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await req("PUT", `/api/discussions/${task.id}/sessions/me/conclusion`, {
+          cookie: guest,
+          body: { conclusion: null },
+        })
+      ).status,
+    ).toBe(409);
     await req("PUT", `/api/discussions/${task.id}/status`, { cookie: teacher, body: { status: "open" } });
   });
 });
@@ -297,17 +370,28 @@ describe("四階段辯論", () => {
   test("學生對話、草稿與確認論點", async () => {
     const guest = cookies.get("訪客")!;
     activityId = (await one<{ id: string }>(db, "SELECT id FROM activities WHERE title LIKE '我們該不該%'"))!.id;
-    await sendDialogue(guest, `/api/activities/${activityId}/dialogue`, "我認為誠實很重要，因為信任是社會的基礎。例如朋友之間如果常說謊就無法合作。");
-    const dialogueRows = await all<any>(db, "SELECT id, student_id, role FROM activity_dialogue WHERE activity_id = $aid", { aid: activityId });
+    await sendDialogue(
+      guest,
+      `/api/activities/${activityId}/dialogue`,
+      "我認為誠實很重要，因為信任是社會的基礎。例如朋友之間如果常說謊就無法合作。",
+    );
+    const dialogueRows = await all<any>(
+      db,
+      "SELECT id, student_id, role FROM activity_dialogue WHERE activity_id = $aid",
+      { aid: activityId },
+    );
     console.log("DIALOGUE ROWS:", JSON.stringify(dialogueRows).slice(0, 300));
     const progress = await (await req("GET", `/api/activities/${activityId}/progress`, { cookie: guest })).json();
     expect(progress.rounds).toBe(1);
     expect(progress.coverage.claim).toBe(true);
     const draft = await (await req("POST", `/api/activities/${activityId}/position/draft`, { cookie: guest })).json();
     expect(draft.summary.claim.length).toBeGreaterThan(0);
-    const position = await (await req("PUT", `/api/activities/${activityId}/position`, {
-      cookie: guest, body: { summary: { claim: "誠實很重要", reason: "信任是基礎", evidence: "朋友之間要合作" } },
-    })).json();
+    const position = await (
+      await req("PUT", `/api/activities/${activityId}/position`, {
+        cookie: guest,
+        body: { summary: { claim: "誠實很重要", reason: "信任是基礎", evidence: "朋友之間要合作" } },
+      })
+    ).json();
     expect(position.confirmed).toBe(true);
     expect(position.coords).toBeNull();
   });
@@ -320,12 +404,16 @@ describe("四階段辯論", () => {
     const groups = await (await req("GET", `/api/activities/${activityId}/groups`, { cookie: teacher })).json();
     expect(groups.length).toBeGreaterThanOrEqual(2);
     groupId = groups.find((g: any) => g.memberIds.includes("s_guest")).id;
-    const message = await (await req("POST", `/api/groups/${groupId}/messages`, { cookie: guest, body: { text: "我們可以先確認共同點。" } })).json();
+    const message = await (
+      await req("POST", `/api/groups/${groupId}/messages`, { cookie: guest, body: { text: "我們可以先確認共同點。" } })
+    ).json();
     expect(message.kind).toBe("chat");
     const args = await (await req("POST", `/api/groups/${groupId}/ai/summarize`, { cookie: guest })).json();
     expect(args.length).toBeGreaterThan(0);
     const claim = args.find((a: any) => a.kind === "claim");
-    const voted = await (await req("POST", `/api/arguments/${claim.id}/vote`, { cookie: guest, body: { vote: "endorse" } })).json();
+    const voted = await (
+      await req("POST", `/api/arguments/${claim.id}/vote`, { cookie: guest, body: { vote: "endorse" } })
+    ).json();
     expect(voted.votes.s_guest).toBe("endorse");
     const counter = await (await req("POST", `/api/groups/${groupId}/ai/counterexample`, { cookie: guest })).json();
     expect(counter.kind).toBe("ai_counterexample");
@@ -344,21 +432,29 @@ describe("四階段辯論", () => {
     expect(started.status).toBe("live");
     let speaker = guest;
     if (started.turn.memberId !== "s_guest") {
-      const name = (await one<{ name: string }>(db, "SELECT name FROM users WHERE id = $id", { id: started.turn.memberId }))!.name;
+      const name = (await one<{ name: string }>(db, "SELECT name FROM users WHERE id = $id", {
+        id: started.turn.memberId,
+      }))!.name;
       speaker = await login("student", name);
     }
-    const turn = await (await req("POST", `/api/rooms/${roomId}/turns`, {
-      cookie: speaker, body: { text: "我方主張誠實是原則，因為信任需要可預期。例如合作需要彼此相信。" },
-    })).json();
+    const turn = await (
+      await req("POST", `/api/rooms/${roomId}/turns`, {
+        cookie: speaker,
+        body: { text: "我方主張誠實是原則，因為信任需要可預期。例如合作需要彼此相信。" },
+      })
+    ).json();
     expect(turn.side).toBe("a");
     const record = await (await req("GET", `/api/rooms/${roomId}/turns`, { cookie: guest })).json();
     const judgment = record.judgments.find((j: any) => j.turnId === turn.id);
     expect(judgment).toBeTruthy();
-    const overridden = await (await req("PATCH", `/api/judgments/${judgment.id}`, { cookie: teacher, body: { teacherScore: 5 } })).json();
+    const overridden = await (
+      await req("PATCH", `/api/judgments/${judgment.id}`, { cookie: teacher, body: { teacherScore: 5 } })
+    ).json();
     expect(overridden.teacherScore).toBe(5);
-    expect((await req("PATCH", `/api/judgments/${judgment.id}`, { cookie: guest, body: { teacherScore: 3 } })).status).toBe(403);
+    expect(
+      (await req("PATCH", `/api/judgments/${judgment.id}`, { cookie: guest, body: { teacherScore: 3 } })).status,
+    ).toBe(403);
   });
-
 
   test("組內出現分歧時可以分裂成兩組", async () => {
     const activity = (await one<any>(db, "SELECT * FROM activities WHERE title LIKE '正義是否%'"))!;
@@ -367,14 +463,21 @@ describe("四階段辯論", () => {
     const groupId = "g_split_old";
     void gid;
     await db.batch([
-      { sql: "INSERT INTO groups (id, activity_id, label, member_ids, centroid, formed_by, seq) VALUES ($id, $aid, '第 1 組', $members, '[0,0]', 'auto', 0)",
-        params: { id: groupId, aid: activity.id, members: JSON.stringify(["s_guest", "s_wang", "s_li", "s_lin"]) } },
-      { sql: "INSERT INTO group_arguments (id, group_id, kind, text, parent_id, axis_index, sign, status, votes, countered, seq) VALUES ('arg_split', $gid, 'claim', '測試主張', NULL, 0, 1, 'contested', $votes, 0, 0)",
-        params: { gid: groupId, votes: JSON.stringify({ s_guest: "oppose", s_wang: "oppose", s_li: "endorse", s_lin: "endorse" }) } },
+      {
+        sql: "INSERT INTO groups (id, activity_id, label, member_ids, centroid, formed_by, seq) VALUES ($id, $aid, '第 1 組', $members, '[0,0]', 'auto', 0)",
+        params: { id: groupId, aid: activity.id, members: JSON.stringify(["s_guest", "s_wang", "s_li", "s_lin"]) },
+      },
+      {
+        sql: "INSERT INTO group_arguments (id, group_id, kind, text, parent_id, axis_index, sign, status, votes, countered, seq) VALUES ('arg_split', $gid, 'claim', '測試主張', NULL, 0, 1, 'contested', $votes, 0, 0)",
+        params: {
+          gid: groupId,
+          votes: JSON.stringify({ s_guest: "oppose", s_wang: "oppose", s_li: "endorse", s_lin: "endorse" }),
+        },
+      },
     ]);
     const res = await req("POST", `/api/groups/${groupId}/split`, { cookie: cookies.get("林老師")! });
     expect(res.status).toBe(200);
-    const groups = await res.json() as any[];
+    const groups = (await res.json()) as any[];
     expect(groups.length).toBe(2);
     expect(groups.find((g) => g.id === groupId).memberIds.length).toBe(2);
     expect(groups.find((g) => g.id === groupId).memberIds).toEqual(["s_li", "s_lin"]);

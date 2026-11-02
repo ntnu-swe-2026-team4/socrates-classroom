@@ -5,9 +5,7 @@ import { all, one, parseJson, run } from "../db/d1";
 import { requireUser } from "../auth";
 import { bodyOf, fail, newId, nowIso, str, type AppEnv } from "../http";
 import { accessActivity, accessClassroom, activityById, studentIdsOf, usersByIds } from "../services/access";
-import {
-  autoFillPositions, buildGroups, computeScores, enterStage, prepareDebate,
-} from "../services/activities";
+import { autoFillPositions, buildGroups, computeScores, enterStage, prepareDebate } from "../services/activities";
 import { acquireLock, checkRate, releaseLock } from "../services/rate-limit";
 import { completeJson } from "../providers/pool";
 import { draftSummary, estimateCoords, type Axis } from "../services/debate";
@@ -15,7 +13,8 @@ import { publish } from "../do/events";
 import { activityJson, coverageOf, dialogueJson, memberJson, noteJson, positionJson } from "../services/serialize";
 
 async function activityProgress(db: Db, activityId: string, studentId: string) {
-  const rows = await all<{ text: string }>(db,
+  const rows = await all<{ text: string }>(
+    db,
     "SELECT text FROM activity_dialogue WHERE activity_id = $aid AND student_id = $sid AND role = 'user' ORDER BY created_at",
     { aid: activityId, sid: studentId },
   );
@@ -34,7 +33,9 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
   r.get("/classrooms/:id/activities", async (c) => {
     const user = requireUser(c);
     const { classroom } = await accessClassroom(db, c.req.param("id"), user);
-    const rows = await all<any>(db, "SELECT * FROM activities WHERE classroom_id = $cid ORDER BY created_at DESC", { cid: classroom.id });
+    const rows = await all<any>(db, "SELECT * FROM activities WHERE classroom_id = $cid ORDER BY created_at DESC", {
+      cid: classroom.id,
+    });
     return c.json(await Promise.all(rows.map((row) => activityJson(db, row))));
   });
 
@@ -79,7 +80,9 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
       await autoFillPositions(db, activity);
     }
     const groups = await all<any>(db, "SELECT * FROM groups WHERE activity_id = $aid", { aid: activity.id });
-    const rooms = (await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM rooms WHERE activity_id = $aid", { aid: activity.id }))?.n ?? 0;
+    const rooms =
+      (await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM rooms WHERE activity_id = $aid", { aid: activity.id }))
+        ?.n ?? 0;
     if (!rooms && groups.length >= 2) await prepareDebate(db, activity, getLang(c));
     await computeScores(db, activity);
     await enterStage(db, activity.id, "done");
@@ -99,7 +102,11 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
       if (d.getTime() <= Date.now()) fail(422, "deadline_in_past");
       deadline = d.toISOString();
     }
-    await run(db, "UPDATE activities SET stage_deadline = $deadline, updated_at = $at WHERE id = $id", { deadline, at: nowIso(), id: activity.id });
+    await run(db, "UPDATE activities SET stage_deadline = $deadline, updated_at = $at WHERE id = $id", {
+      deadline,
+      at: nowIso(),
+      id: activity.id,
+    });
     publishDeadline(activity.id, deadline);
     return c.json(await activityJson(db, (await activityById(db, activity.id))!));
   });
@@ -118,18 +125,27 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     const ids = await studentIdsOf(db, activity.classroom_id);
     const users = await usersByIds(db, ids);
     const readyRows = new Map(
-      (await all<any>(db, "SELECT student_id, ready FROM activity_ready WHERE activity_id = $aid", { aid: activity.id }))
-        .map((row) => [row.student_id as string, !!row.ready]),
+      (
+        await all<any>(db, "SELECT student_id, ready FROM activity_ready WHERE activity_id = $aid", {
+          aid: activity.id,
+        })
+      ).map((row) => [row.student_id as string, !!row.ready]),
     );
-    return c.json((await Promise.all(ids.map(async (id) => {
-      const u = users.get(id);
-      if (!u) return null;
-      return memberJson(db, u, user.id, {
-        ready: readyRows.get(id) ?? false,
-        showIndividual: role !== "student" || id === user.id,
-        activityId: activity.id,
-      });
-    }))).filter(Boolean));
+    return c.json(
+      (
+        await Promise.all(
+          ids.map(async (id) => {
+            const u = users.get(id);
+            if (!u) return null;
+            return memberJson(db, u, user.id, {
+              ready: readyRows.get(id) ?? false,
+              showIndividual: role !== "student" || id === user.id,
+              activityId: activity.id,
+            });
+          }),
+        )
+      ).filter(Boolean),
+    );
   });
 
   r.put("/activities/:id/ready", async (c) => {
@@ -139,7 +155,8 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     if (activity.stage === "done" || activity.stage === "debate") fail(409, "not_ready_stage");
     const body = await bodyOf(c);
     if (typeof body.ready !== "boolean") fail(422, "validation");
-    await run(db,
+    await run(
+      db,
       `INSERT INTO activity_ready (activity_id, student_id, ready, updated_at) VALUES ($aid, $sid, $ready, $at)
        ON CONFLICT(activity_id, student_id) DO UPDATE SET ready = excluded.ready, updated_at = excluded.updated_at`,
       { aid: activity.id, sid: user.id, ready: body.ready ? 1 : 0, at: nowIso() },
@@ -152,7 +169,8 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
   r.get("/activities/:id/dialogue", async (c) => {
     const user = requireUser(c);
     const { activity } = await accessActivity(db, c.req.param("id"), user);
-    const rows = await all<any>(db,
+    const rows = await all<any>(
+      db,
       "SELECT * FROM activity_dialogue WHERE activity_id = $aid AND student_id = $sid ORDER BY created_at, rowid",
       { aid: activity.id, sid: user.id },
     );
@@ -164,10 +182,14 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     const { activity, role } = await accessActivity(db, c.req.param("id"), user);
     if (role !== "student") fail(403, "only_student");
     if (activity.stage !== "individual") fail(403, "stage_not_individual");
-    const rounds = (await one<{ n: number }>(db,
-      "SELECT COUNT(*) AS n FROM activity_dialogue WHERE activity_id = $aid AND student_id = $sid AND role = 'user'",
-      { aid: activity.id, sid: user.id },
-    ))?.n ?? 0;
+    const rounds =
+      (
+        await one<{ n: number }>(
+          db,
+          "SELECT COUNT(*) AS n FROM activity_dialogue WHERE activity_id = $aid AND student_id = $sid AND role = 'user'",
+          { aid: activity.id, sid: user.id },
+        )
+      )?.n ?? 0;
     if (rounds >= 20) fail(422, "max_rounds_reached", { n: 20 });
     const body = await bodyOf(c);
     const text = str(body.text, "text_required", { min: 1, max: 2000 });
@@ -206,10 +228,13 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     checkRate(user.id);
     const lockKey = `activity:${activity.id}:${user.id}`;
     acquireLock(lockKey);
-    const texts = (await all<{ text: string }>(db,
-      "SELECT text FROM activity_dialogue WHERE activity_id = $aid AND student_id = $sid AND role = 'user' ORDER BY created_at",
-      { aid: activity.id, sid: user.id },
-    )).map((row) => row.text as string);
+    const texts = (
+      await all<{ text: string }>(
+        db,
+        "SELECT text FROM activity_dialogue WHERE activity_id = $aid AND student_id = $sid AND role = 'user' ORDER BY created_at",
+        { aid: activity.id, sid: user.id },
+      )
+    ).map((row) => row.text as string);
     const axes = parseJson<Axis[]>(activity.axes, []);
     let summary = draftSummary(axes, texts);
     const langName = getLang(c) === "en" ? "English" : getLang(c) === "es" ? "Español" : "繁體中文";
@@ -244,21 +269,34 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     if (!claim) fail(422, "validation");
     const reason = typeof summary.reason === "string" ? summary.reason.trim().slice(0, 1000) : "";
     const evidence = typeof summary.evidence === "string" ? summary.evidence.trim().slice(0, 1000) : "";
-    const textRows = await all<{ text: string }>(db,
+    const textRows = await all<{ text: string }>(
+      db,
       "SELECT text FROM activity_dialogue WHERE activity_id = $aid AND student_id = $sid AND role = 'user' ORDER BY created_at",
       { aid: activity.id, sid: user.id },
     );
     const texts = textRows.map((row) => row.text as string);
     const coords = estimateCoords(parseJson<Axis[]>(activity.axes, []), texts);
-    await run(db,
+    await run(
+      db,
       `INSERT INTO positions (activity_id, student_id, claim, reason, evidence, coords, confirmed, ai_suggested, updated_at)
        VALUES ($aid, $sid, $claim, $reason, $evidence, $coords, 1, 0, $at)
        ON CONFLICT(activity_id, student_id) DO UPDATE SET
          claim = excluded.claim, reason = excluded.reason, evidence = excluded.evidence,
          coords = excluded.coords, confirmed = 1, ai_suggested = 0, updated_at = excluded.updated_at`,
-      { aid: activity.id, sid: user.id, claim: claim.slice(0, 500), reason, evidence, coords: JSON.stringify(coords), at: nowIso() },
+      {
+        aid: activity.id,
+        sid: user.id,
+        claim: claim.slice(0, 500),
+        reason,
+        evidence,
+        coords: JSON.stringify(coords),
+        at: nowIso(),
+      },
     );
-    const row = await one<any>(db, "SELECT * FROM positions WHERE activity_id = $aid AND student_id = $sid", { aid: activity.id, sid: user.id })!;
+    const row = await one<any>(db, "SELECT * FROM positions WHERE activity_id = $aid AND student_id = $sid", {
+      aid: activity.id,
+      sid: user.id,
+    })!;
     return c.json(positionJson(row, false));
   });
 
@@ -266,9 +304,13 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     const user = requireUser(c);
     const { activity, role } = await accessActivity(db, c.req.param("id"), user);
     const showCoords = role !== "student" || activity.stage === "done";
-    const rows = role !== "student"
-      ? await all<any>(db, "SELECT * FROM positions WHERE activity_id = $aid", { aid: activity.id })
-      : await all<any>(db, "SELECT * FROM positions WHERE activity_id = $aid AND student_id = $sid", { aid: activity.id, sid: user.id });
+    const rows =
+      role !== "student"
+        ? await all<any>(db, "SELECT * FROM positions WHERE activity_id = $aid", { aid: activity.id })
+        : await all<any>(db, "SELECT * FROM positions WHERE activity_id = $aid AND student_id = $sid", {
+            aid: activity.id,
+            sid: user.id,
+          });
     return c.json(rows.map((row) => positionJson(row, showCoords)));
   });
 
@@ -277,7 +319,11 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     const user = requireUser(c);
     const { activity, role } = await accessActivity(db, c.req.param("id"), user);
     if (role !== "student") fail(403, "only_student");
-    const rows = await all<any>(db, "SELECT * FROM notes WHERE activity_id = $aid AND student_id = $sid ORDER BY created_at", { aid: activity.id, sid: user.id });
+    const rows = await all<any>(
+      db,
+      "SELECT * FROM notes WHERE activity_id = $aid AND student_id = $sid ORDER BY created_at",
+      { aid: activity.id, sid: user.id },
+    );
     return c.json(rows.map(noteJson));
   });
 
@@ -292,18 +338,34 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     let sourceMessageId: string | null = null;
     if (body.sourceMessageId !== undefined && body.sourceMessageId !== null) {
       if (typeof body.sourceMessageId !== "string") fail(422, "validation");
-      const source = await one<any>(db, "SELECT * FROM activity_dialogue WHERE id = $id AND activity_id = $aid AND student_id = $sid", {
-        id: body.sourceMessageId, aid: activity.id, sid: user.id,
-      });
+      const source = await one<any>(
+        db,
+        "SELECT * FROM activity_dialogue WHERE id = $id AND activity_id = $aid AND student_id = $sid",
+        {
+          id: body.sourceMessageId,
+          aid: activity.id,
+          sid: user.id,
+        },
+      );
       if (!source) fail(404, "not_found");
       sourceMessageId = source.id;
     }
     const id = newId("nt_");
     const at = nowIso();
-    await run(db,
+    await run(
+      db,
       `INSERT INTO notes (id, activity_id, student_id, stage, kind, source_message_id, text, created_at, updated_at)
        VALUES ($id, $aid, $sid, $stage, $kind, $source, $text, $at, $at)`,
-      { id, aid: activity.id, sid: user.id, stage: activity.stage, kind: body.kind, source: sourceMessageId, text: text.slice(0, 5000), at },
+      {
+        id,
+        aid: activity.id,
+        sid: user.id,
+        stage: activity.stage,
+        kind: body.kind,
+        source: sourceMessageId,
+        text: text.slice(0, 5000),
+        at,
+      },
     );
     return c.json(noteJson(await one<any>(db, "SELECT * FROM notes WHERE id = $id", { id })!));
   });
@@ -316,7 +378,11 @@ export function activityRoutes(db: Db, getLang: (c: any) => Lang) {
     const body = await bodyOf(c);
     const text = typeof body.text === "string" ? body.text.trim() : "";
     if (!text) fail(422, "note_empty");
-    await run(db, "UPDATE notes SET text = $text, updated_at = $at WHERE id = $id", { text: text.slice(0, 5000), at: nowIso(), id: row.id });
+    await run(db, "UPDATE notes SET text = $text, updated_at = $at WHERE id = $id", {
+      text: text.slice(0, 5000),
+      at: nowIso(),
+      id: row.id,
+    });
     return c.json(noteJson(await one<any>(db, "SELECT * FROM notes WHERE id = $id", { id: row.id })!));
   });
 

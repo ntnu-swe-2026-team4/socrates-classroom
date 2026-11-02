@@ -78,7 +78,11 @@ export function str(value: unknown, key: string, opts: { trim?: boolean; min?: n
   return out;
 }
 
-export function optionalStr(value: unknown, key: string, opts: { trim?: boolean; max?: number } = {}): string | undefined {
+export function optionalStr(
+  value: unknown,
+  key: string,
+  opts: { trim?: boolean; max?: number } = {},
+): string | undefined {
   if (value === undefined) return undefined;
   return str(value, key, opts);
 }

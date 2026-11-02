@@ -6,7 +6,11 @@ const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 
 export class ApiError extends Error {
   /** code：後端錯誤的代碼（例如對話的 llm_not_configured），沒有就是 undefined */
-  constructor(public status: number, message: string, public code?: string) {
+  constructor(
+    public status: number,
+    message: string,
+    public code?: string,
+  ) {
     super(message);
   }
 }
@@ -29,7 +33,10 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   const res = await fetch(`${BASE}${path}`, {
     method,
     credentials: "include",
-    headers: { "Accept-Language": currentLang(), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    headers: {
+      "Accept-Language": currentLang(),
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) throw await errorOf(res);
@@ -52,7 +59,12 @@ async function upload<T>(path: string, file: File, fields: Record<string, string
   const form = new FormData();
   form.append("file", file);
   for (const [k, v] of Object.entries(fields)) form.append(k, v);
-  const res = await fetch(`${BASE}${path}`, { method: "POST", credentials: "include", headers: { "Accept-Language": currentLang() }, body: form });
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Accept-Language": currentLang() },
+    body: form,
+  });
   if (!res.ok) throw await errorOf(res, res.status === 413 ? tr("檔案太大") : res.statusText);
   return (await res.json()) as T;
 }
@@ -78,7 +90,12 @@ function parseSseBlock(block: string): { event: string; data: string } | null {
  * 途中 AI 出錯時改送 event: error {message}。
  * 開始串流之前的錯誤（未登入、超過輪數、AI 服務沒設定…）是一般的 HTTP 錯誤 + { message }。
  */
-export async function streamDialogue(path: string, body: unknown, onDelta?: (c: string) => void, onEmotion?: (e: Emotion) => void): Promise<DialogueMessage> {
+export async function streamDialogue(
+  path: string,
+  body: unknown,
+  onDelta?: (c: string) => void,
+  onEmotion?: (e: Emotion) => void,
+): Promise<DialogueMessage> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     credentials: "include",
@@ -97,7 +114,8 @@ export async function streamDialogue(path: string, body: unknown, onDelta?: (c: 
     if (ev.event === "emotion" && payload.emotion) onEmotion?.(payload.emotion);
     if (ev.event === "delta" && payload.text) onDelta?.(payload.text);
     if (ev.event === "done" && typeof payload.message === "object") return payload.message;
-    if (ev.event === "error") throw new ApiError(502, typeof payload.message === "string" ? payload.message : tr("串流結束但沒有收到完整訊息"));
+    if (ev.event === "error")
+      throw new ApiError(502, typeof payload.message === "string" ? payload.message : tr("串流結束但沒有收到完整訊息"));
     return null;
   };
   try {
@@ -105,10 +123,11 @@ export async function streamDialogue(path: string, body: unknown, onDelta?: (c: 
       const { value, done } = await reader.read();
       buf += dec.decode(value, { stream: !done });
       // 事件之間以空行分隔；換行可能是 \n 或 \r\n
-      let m: RegExpExecArray | null;
-      while ((m = /\r?\n\r?\n/.exec(buf))) {
+      let m: RegExpExecArray | null = /\r?\n\r?\n/.exec(buf);
+      while (m) {
         const block = buf.slice(0, m.index).replace(/\r/g, "");
         buf = buf.slice(m.index + m[0].length);
+        m = /\r?\n\r?\n/.exec(buf);
         const final = handle(block);
         if (final) return final;
       }
@@ -118,7 +137,9 @@ export async function streamDialogue(path: string, body: unknown, onDelta?: (c: 
     const final = handle(buf.replace(/\r/g, ""));
     if (final) return final;
   } finally {
-    reader.cancel().catch(() => { /* 已經關閉 */ });
+    reader.cancel().catch(() => {
+      /* 已經關閉 */
+    });
   }
   throw new ApiError(502, tr("串流結束但沒有收到完整訊息"));
 }
@@ -142,7 +163,8 @@ export const httpApi: Api = {
 
   createArchive: (title) => post("/api/archives", { title }),
   listTopicDialogue: (id) => get(`/api/archives/${id}/dialogue`),
-  sendTopicDialogue: (id, text, onDelta, onEmotion) => streamDialogue(`/api/archives/${id}/dialogue`, { text }, onDelta, onEmotion),
+  sendTopicDialogue: (id, text, onDelta, onEmotion) =>
+    streamDialogue(`/api/archives/${id}/dialogue`, { text }, onDelta, onEmotion),
 
   listClassrooms: () => get("/api/classrooms"),
   getClassroom: (id) => get(`/api/classrooms/${id}`),
@@ -197,7 +219,8 @@ export const httpApi: Api = {
   deleteDiscussion: (id) => del(`/api/discussions/${id}`),
   listDiscussionSessions: (id) => get(`/api/discussions/${id}/sessions`),
   getDiscussionSession: (id, studentId) => get(`/api/discussions/${id}/sessions/${studentId ?? "me"}`),
-  sendDiscussionMessage: (id, text, onDelta, onEmotion) => streamDialogue(`/api/discussions/${id}/sessions/me/messages`, { text }, onDelta, onEmotion),
+  sendDiscussionMessage: (id, text, onDelta, onEmotion) =>
+    streamDialogue(`/api/discussions/${id}/sessions/me/messages`, { text }, onDelta, onEmotion),
   submitDiscussionConclusion: (id, conclusion) => put(`/api/discussions/${id}/sessions/me/conclusion`, { conclusion }),
 
   listPosts: (cid, topicId) => get(`/api/classrooms/${cid}/posts${qs({ topicId: topicId ?? undefined })}`),
@@ -207,8 +230,7 @@ export const httpApi: Api = {
   createCalendarEvent: (cid, i) => post(`/api/classrooms/${cid}/calendar-events`, i),
   updateCalendarEvent: (id, p) => patch(`/api/calendar-events/${id}`, p),
   deleteCalendarEvent: (id) => del(`/api/calendar-events/${id}`),
-  listCalendar: ({ from, to, classroomId }) =>
-    get(`/api/classrooms/${classroomId}/calendar${qs({ from, to })}`),
+  listCalendar: ({ from, to, classroomId }) => get(`/api/classrooms/${classroomId}/calendar${qs({ from, to })}`),
 
   listDialogue: (id) => get(`/api/activities/${id}/dialogue`),
   sendDialogue: (id, text, onDelta) => streamDialogue(`/api/activities/${id}/dialogue`, { text }, onDelta),

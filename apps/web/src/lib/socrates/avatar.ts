@@ -72,7 +72,9 @@ class ClipLayer {
     this.time += dt;
     if (this.loop) this.time %= this.duration;
     if (!this.loop && this.time > this.duration - this.fadeOut) this.playing = false;
-    this.weight = this.playing ? Math.min(1, this.weight + dt / this.fadeIn) : Math.max(0, this.weight - dt / this.fadeOut);
+    this.weight = this.playing
+      ? Math.min(1, this.weight + dt / this.fadeIn)
+      : Math.max(0, this.weight - dt / this.fadeOut);
     this.values = this.interp.evaluate(Math.min(this.time, this.duration));
   }
 

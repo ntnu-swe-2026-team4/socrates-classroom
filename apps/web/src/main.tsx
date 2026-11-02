@@ -6,7 +6,7 @@ import { ThemeProvider } from "@/app/theme";
 import { LangProvider } from "@/i18n";
 import { router } from "./router";
 import "./index.css";
-import { AudioProvider } from './lib/AudioContext';
+import { AudioProvider } from "./lib/AudioContext";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
 

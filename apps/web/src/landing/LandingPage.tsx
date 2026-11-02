@@ -14,7 +14,6 @@ import "./landing.css";
 // 同時引入了播放工具與靜音開關
 import { usePlaySound, useAudioSettings } from "../lib/AudioContext";
 
-
 function useReducedMotion() {
   const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   useEffect(() => {
@@ -32,7 +31,16 @@ function useReveal<T extends HTMLElement>() {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const io = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("is-visible"); io.unobserve(e.target); } }), { threshold: 0.25 });
+    const io = new IntersectionObserver(
+      (entries) =>
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("is-visible");
+            io.unobserve(e.target);
+          }
+        }),
+      { threshold: 0.25 },
+    );
     io.observe(el);
     return () => io.disconnect();
   }, []);
@@ -51,12 +59,13 @@ function useStoryDamping(scroller: { current: HTMLDivElement | null }, reduced: 
     let frame = 0;
     let previousTime = 0;
 
-    const clearMotion = () => panels.forEach((panel) => {
-      panel.dataset.scrollActive = "false";
-      panel.dataset.storyCurrent = "true";
-      panel.style.removeProperty("--story-offset-y");
-      panel.style.removeProperty("--story-scale");
-    });
+    const clearMotion = () =>
+      panels.forEach((panel) => {
+        panel.dataset.scrollActive = "false";
+        panel.dataset.storyCurrent = "true";
+        panel.style.removeProperty("--story-offset-y");
+        panel.style.removeProperty("--story-scale");
+      });
     if (reduced) {
       clearMotion();
       return;
@@ -131,12 +140,23 @@ function LogoTitle({ text }: { text: string }) {
       span.style.transform = k > 0 ? `translateY(${-k * 10}px) scale(${1 + k * 0.18})` : "";
     });
   };
-  const leave = () => ref.current?.querySelectorAll<HTMLElement>(".char").forEach((s) => { s.style.transform = ""; });
+  const leave = () =>
+    ref.current?.querySelectorAll<HTMLElement>(".char").forEach((s) => {
+      s.style.transform = "";
+    });
   return (
     <h1 className="logo-title" ref={ref} onMouseMove={move} onMouseLeave={leave} aria-label={text}>
       {words.map((word, wordIndex) => (
         <span className="logo-title-word" key={wordIndex} aria-hidden="true">
-          {Array.from(word).map((ch, i) => <span key={i} className="char" style={{ ["--i" as string]: words.slice(0, wordIndex).join(" ").length + i }}>{ch}</span>)}
+          {Array.from(word).map((ch, i) => (
+            <span
+              key={i}
+              className="char"
+              style={{ ["--i" as string]: words.slice(0, wordIndex).join(" ").length + i }}
+            >
+              {ch}
+            </span>
+          ))}
         </span>
       ))}
     </h1>
@@ -145,11 +165,25 @@ function LogoTitle({ text }: { text: string }) {
 
 function Word({ className, children, standalone }: { className?: string; children: ReactNode; standalone?: boolean }) {
   const ref = useReveal<HTMLDivElement>();
-  return <div ref={ref} className={`land-word ${standalone ? "land-word-standalone" : ""} ${className ?? ""}`}>{children}</div>;
+  return (
+    <div ref={ref} className={`land-word ${standalone ? "land-word-standalone" : ""} ${className ?? ""}`}>
+      {children}
+    </div>
+  );
 }
 
-const ICON_STUDENT = <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4L3 8.5 12 13l9-4.5L12 4Z" /><path d="M6.5 10.6V15c0 1.4 2.5 3 5.5 3s5.5-1.6 5.5-3v-4.4" /></svg>;
-const ICON_TEACHER = <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5.5C6 4.4 8.4 4 12 4.9V19c-3.6-.9-6-.5-8 .6z" /><path d="M20 5.5C18 4.4 15.6 4 12 4.9V19c3.6-.9 6-.5 8 .6z" /></svg>;
+const ICON_STUDENT = (
+  <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 4L3 8.5 12 13l9-4.5L12 4Z" />
+    <path d="M6.5 10.6V15c0 1.4 2.5 3 5.5 3s5.5-1.6 5.5-3v-4.4" />
+  </svg>
+);
+const ICON_TEACHER = (
+  <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 5.5C6 4.4 8.4 4 12 4.9V19c-3.6-.9-6-.5-8 .6z" />
+    <path d="M20 5.5C18 4.4 15.6 4 12 4.9V19c3.6-.9 6-.5 8 .6z" />
+  </svg>
+);
 
 export function LandingPage() {
   const t = useT();
@@ -170,9 +204,17 @@ export function LandingPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [animationDurations, setAnimationDurations] = useState<Record<number, number>>({});
   const recordAnimation = useCallback((n: number, duration: number) => {
-    setAnimationDurations((current) => current[n] === duration ? current : { ...current, [n]: duration });
+    setAnimationDurations((current) => (current[n] === duration ? current : { ...current, [n]: duration }));
   }, []);
-  const { tour, ready: sceneReady, startTour, goToLogin, goToTop, togglePause, nextScene } = useStoryTour(scroller, reducedMotion, animationDurations);
+  const {
+    tour,
+    ready: sceneReady,
+    startTour,
+    goToLogin,
+    goToTop,
+    togglePause,
+    nextScene,
+  } = useStoryTour(scroller, reducedMotion, animationDurations);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -180,7 +222,7 @@ export function LandingPage() {
     if (!tour) return;
     const frame = requestAnimationFrame(() => storyPlayer.current?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
-  }, [tour?.session]);
+  }, [tour?.session, tour]);
 
   // 建立身份按鈕的點擊處理函式
   const handleIdentitySelect = (selectedRole: Role) => {
@@ -192,11 +234,22 @@ export function LandingPage() {
     const card = signInCard.current;
     if (!card) return;
     let inView = false;
-    const sync = () => { card.dataset.running = String(inView && !document.hidden); };
-    const observer = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; sync(); }, { threshold: .15 });
+    const sync = () => {
+      card.dataset.running = String(inView && !document.hidden);
+    };
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        inView = entry.isIntersecting;
+        sync();
+      },
+      { threshold: 0.15 },
+    );
     observer.observe(card);
     document.addEventListener("visibilitychange", sync);
-    return () => { observer.disconnect(); document.removeEventListener("visibilitychange", sync); };
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", sync);
+    };
   }, []);
 
   async function enter() {
@@ -205,38 +258,88 @@ export function LandingPage() {
     setBusy(true);
     try {
       const user = await api.login({ role, name: "" });
-      playSound("tap_01.mp3", { volume: 0.8 }); // 暫時先用同一個，之後有成功音效再換掉  
+      playSound("tap_01.mp3", { volume: 0.8 }); // 暫時先用同一個，之後有成功音效再換掉
       qc.setQueryData(keys.me, user);
       navigate({ to: "/" });
     } catch {
       // 登入失敗：播放警告/錯誤短音效
       // playSound("error_01.mp3", { volume: 0.5 });
       setEntryError(t("暫時無法進入教室，請稍後再試。"));
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <div className="landing-root" id="site-scroll" ref={scroller} data-story-tour={Boolean(tour)} data-tour-phase={tour?.phase ?? "idle"}>
+    <div
+      className="landing-root"
+      id="site-scroll"
+      ref={scroller}
+      data-story-tour={Boolean(tour)}
+      data-tour-phase={tour?.phase ?? "idle"}
+    >
       <div id="top-nav">
         <div className="lang-switch" role="radiogroup" aria-label={t("介面語言")}>
-          <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.6 2.7 3.9 5.7 3.9 9s-1.3 6.3-3.9 9c-2.6-2.7-3.9-5.7-3.9-9S9.400 5.700 12 3z" /></svg>
-          {LANGS.map((l) => <button key={l.code} type="button" role="radio" aria-checked={lang === l.code} lang={l.code} onClick={() => setLang(l.code)}>{l.label}</button>)}
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18M12 3c2.6 2.7 3.9 5.7 3.9 9s-1.3 6.3-3.9 9c-2.6-2.7-3.9-5.7-3.9-9S9.400 5.700 12 3z" />
+          </svg>
+          {LANGS.map((l) => (
+            <button
+              key={l.code}
+              type="button"
+              role="radio"
+              aria-checked={lang === l.code}
+              lang={l.code}
+              onClick={() => setLang(l.code)}
+            >
+              {l.label}
+            </button>
+          ))}
         </div>
         <button
           className="top-nav-btn"
           type="button"
           title={isMuted ? t("目前已靜音，點一下開啟音效") : t("目前音效開啟，點一下靜音")}
           onClick={toggleMute}
-          style={{ color: isMuted ? 'var(--ink-faint)' : 'var(--bronze)' }} // 可依據專案 CSS 調整顏色
+          style={{ color: isMuted ? "var(--ink-faint)" : "var(--bronze)" }} // 可依據專案 CSS 調整顏色
         >
           {isMuted ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
           <span>{isMuted ? t("音效關閉") : t("音效開啟")}</span>
         </button>
         <button className="top-nav-btn" title={t("回到頂端")} onClick={goToTop}>
-          <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg><span>{t("回到頂端")}</span>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+          <span>{t("回到頂端")}</span>
         </button>
         <button className="top-nav-btn" title={t("前往登入")} onClick={goToLogin}>
-          <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><span>{t("進入教室")}</span>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="4" y="10" width="16" height="10" rx="2" />
+            <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+          </svg>
+          <span>{t("進入教室")}</span>
         </button>
       </div>
 
@@ -246,22 +349,42 @@ export function LandingPage() {
           <p className="hero-eyebrow">{t("蘇格拉底對話教室")}</p>
           <LogoTitle text="Socratic Dialogue Classroom" />
           <p className="logo-sub">think out loud. never told the answer.</p>
-          <button className="hero-enter" onClick={startTour}>{t("開始一場對話")} <span aria-hidden="true">↓</span></button>
+          <button className="hero-enter" onClick={startTour}>
+            {t("開始一場對話")} <span aria-hidden="true">↓</span>
+          </button>
         </div>
       </section>
 
       {STORY_SCENES.map((scene, index) => (
-        <section className="land-group" id={`land-group-${index + 1}`} key={scene.title}
-          aria-labelledby={`story-title-${index}`} data-tour-active={tour?.scene === index} inert={Boolean(tour && tour.scene !== index)}>
+        <section
+          className="land-group"
+          id={`land-group-${index + 1}`}
+          key={scene.title}
+          aria-labelledby={`story-title-${index}`}
+          data-tour-active={tour?.scene === index}
+          inert={Boolean(tour && tour.scene !== index)}
+        >
           <BackgroundPaths variant="story" mirrored={index % 2 === 1} />
           <div className="story-stage">
-            <header className="story-chapter"><span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span><h2 id={`story-title-${index}`}>{t(scene.title)}</h2></header>
+            <header className="story-chapter">
+              <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+              <h2 id={`story-title-${index}`}>{t(scene.title)}</h2>
+            </header>
             <div className="land-cluster">
               {scene.animations.map((n, part) => (
-                <LandAnimation key={n} n={n} label={t(scene.title)} className={part === 0 ? `is-primary pos-p${index + 1}` : `is-secondary pos-s${index + 1}`}
-                  reducedMotion={reducedMotion} tourMode={Boolean(tour)} active={tour?.scene === index}
+                <LandAnimation
+                  key={n}
+                  n={n}
+                  label={t(scene.title)}
+                  className={part === 0 ? `is-primary pos-p${index + 1}` : `is-secondary pos-s${index + 1}`}
+                  reducedMotion={reducedMotion}
+                  tourMode={Boolean(tour)}
+                  active={tour?.scene === index}
                   playing={tour?.scene === index && tour.phase === "playing" && sceneReady}
-                  preload={Boolean(tour && index >= tour.scene && index <= tour.scene + 1)} session={tour?.session ?? 0} onReady={recordAnimation} />
+                  preload={Boolean(tour && index >= tour.scene && index <= tour.scene + 1)}
+                  session={tour?.session ?? 0}
+                  onReady={recordAnimation}
+                />
               ))}
               <Word className={`pos-w${index + 1}`}>{t(scene.text)}</Word>
             </div>
@@ -270,15 +393,48 @@ export function LandingPage() {
         </section>
       ))}
 
-      {tour && <div className="story-player" ref={storyPlayer} tabIndex={-1} aria-label={t("故事播放控制")}>
-        <span className="story-player-count" aria-hidden="true">{String(tour.scene + 1).padStart(2, "0")} / 04</span>
-        <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{t("第 {n} 幕，共 4 幕。", { n: tour.scene + 1 })}{t(STORY_SCENES[tour.scene].title)}。{!sceneReady ? t("載入故事") : tour.phase === "paused" ? t("已暫停") : ""}</p>
-        <div className="story-player-actions">
-          {reducedMotion ? <button className="story-next" onClick={nextScene} disabled={tour.phase === "moving" || tour.phase === "leaving"}>{tour.scene === 3 ? t("進入教室") : t("下一幕")}<ArrowRight size={16} aria-hidden="true" /></button>
-            : <button className="story-pause" onClick={togglePause} disabled={tour.phase === "moving" || tour.phase === "leaving"} aria-label={tour.phase === "paused" ? t("繼續播放故事") : t("暫停故事")} title={tour.phase === "paused" ? t("繼續播放") : t("暫停")}>{tour.phase === "paused" ? <Play size={18} aria-hidden="true" /> : <Pause size={18} aria-hidden="true" />}</button>}
-          <button className="story-skip" onClick={goToLogin} aria-label={t("跳過故事，前往登入")}>{t("跳過")}<SkipForward size={16} aria-hidden="true" /></button>
+      {tour && (
+        <div className="story-player" ref={storyPlayer} tabIndex={-1} aria-label={t("故事播放控制")}>
+          <span className="story-player-count" aria-hidden="true">
+            {String(tour.scene + 1).padStart(2, "0")} / 04
+          </span>
+          <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+            {t("第 {n} 幕，共 4 幕。", { n: tour.scene + 1 })}
+            {t(STORY_SCENES[tour.scene].title)}。
+            {!sceneReady ? t("載入故事") : tour.phase === "paused" ? t("已暫停") : ""}
+          </p>
+          <div className="story-player-actions">
+            {reducedMotion ? (
+              <button
+                className="story-next"
+                onClick={nextScene}
+                disabled={tour.phase === "moving" || tour.phase === "leaving"}
+              >
+                {tour.scene === 3 ? t("進入教室") : t("下一幕")}
+                <ArrowRight size={16} aria-hidden="true" />
+              </button>
+            ) : (
+              <button
+                className="story-pause"
+                onClick={togglePause}
+                disabled={tour.phase === "moving" || tour.phase === "leaving"}
+                aria-label={tour.phase === "paused" ? t("繼續播放故事") : t("暫停故事")}
+                title={tour.phase === "paused" ? t("繼續播放") : t("暫停")}
+              >
+                {tour.phase === "paused" ? (
+                  <Play size={18} aria-hidden="true" />
+                ) : (
+                  <Pause size={18} aria-hidden="true" />
+                )}
+              </button>
+            )}
+            <button className="story-skip" onClick={goToLogin} aria-label={t("跳過故事，前往登入")}>
+              {t("跳過")}
+              <SkipForward size={16} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-      </div>}
+      )}
 
       <section id="login-screen" aria-labelledby="login-title">
         <BackgroundPaths />
@@ -286,45 +442,153 @@ export function LandingPage() {
           <div ref={signInCard} className="login-card login-card-split" data-running="false">
             <div className="login-card-left">
               <p className="login-eyebrow">{t("蘇格拉底對話教室")}</p>
-              <h2 id="login-title" tabIndex={-1}>{t("從一個好問題開始。")}</h2>
+              <h2 id="login-title" tabIndex={-1}>
+                {t("從一個好問題開始。")}
+              </h2>
               <p className="sub">{t("選擇你的身分，展開提問與論證的練習。")}</p>
               <fieldset className="role-picker" disabled={busy}>
                 <legend>{t("我想以這個身分體驗")}</legend>
                 <div className="role-options">
-                {([["student", "學生", "進入對話教室，練習提問與論證", ICON_STUDENT], ["teacher", "教師", "管理議題、教室與學生名單", ICON_TEACHER]] as const).map(([r, title, d, icon]) => (
-                  <label key={r} className={`role-card${role === r ? " selected" : ""}`}>
-                    <input className="role-input" type="radio" name="entry-role" value={r} checked={role === r} onChange={() => { handleIdentitySelect(r); setEntryError(""); }} />
-                    <span className="role-indicator" aria-hidden="true">{role === r ? "✓" : ""}</span>
-                    <span className="role-icon" aria-hidden="true">{icon}</span><span className="rc-title">{t(title)}</span><span className="rc-desc">{t(d)}</span>
-                  </label>
-                ))}
+                  {(
+                    [
+                      ["student", "學生", "進入對話教室，練習提問與論證", ICON_STUDENT],
+                      ["teacher", "教師", "管理議題、教室與學生名單", ICON_TEACHER],
+                    ] as const
+                  ).map(([r, title, d, icon]) => (
+                    <label key={r} className={`role-card${role === r ? " selected" : ""}`}>
+                      <input
+                        className="role-input"
+                        type="radio"
+                        name="entry-role"
+                        value={r}
+                        checked={role === r}
+                        onChange={() => {
+                          handleIdentitySelect(r);
+                          setEntryError("");
+                        }}
+                      />
+                      <span className="role-indicator" aria-hidden="true">
+                        {role === r ? "✓" : ""}
+                      </span>
+                      <span className="role-icon" aria-hidden="true">
+                        {icon}
+                      </span>
+                      <span className="rc-title">{t(title)}</span>
+                      <span className="rc-desc">{t(d)}</span>
+                    </label>
+                  ))}
                 </div>
               </fieldset>
-              <button className="pill-btn primary" id="btn-enter" disabled={!role || busy} onClick={() => { playSound("tap_01.mp3", { volume: 0.8 }); enter(); }} aria-busy={busy}>
-                {busy ? t("正在進入教室…") : role ? (role === "student" ? t("以學生身分進入") : t("以教師身分進入")) : t("選擇身分後進入")}<span aria-hidden="true">→</span>
+              <button
+                className="pill-btn primary"
+                id="btn-enter"
+                disabled={!role || busy}
+                onClick={() => {
+                  playSound("tap_01.mp3", { volume: 0.8 });
+                  enter();
+                }}
+                aria-busy={busy}
+              >
+                {busy
+                  ? t("正在進入教室…")
+                  : role
+                    ? role === "student"
+                      ? t("以學生身分進入")
+                      : t("以教師身分進入")
+                    : t("選擇身分後進入")}
+                <span aria-hidden="true">→</span>
               </button>
               <p className="entry-note">{t("免帳號體驗 · 重新整理後，示範資料會重置")}</p>
-              {entryError && <p className="entry-error" role="alert">{entryError}</p>}
+              {entryError && (
+                <p className="entry-error" role="alert">
+                  {entryError}
+                </p>
+              )}
             </div>
             <div className="login-card-divider" />
             <div className="login-card-right">
-              <div className="auth-heading"><h3>{t("帳號服務")}</h3><span>{t("即將開放")}</span></div>
+              <div className="auth-heading">
+                <h3>{t("帳號服務")}</h3>
+                <span>{t("即將開放")}</span>
+              </div>
               <p className="auth-intro">{t("目前可先選擇身分，免帳號進入示範教室。")}</p>
               <div className="auth-tabs" role="group" aria-label={t("帳號服務預覽")}>
-                <button className={`auth-tab${tab === "login" ? " active" : ""}`} type="button" aria-pressed={tab === "login"} onClick={() => { setTab("login"); setShowPassword(false); }}>{t("登入")}</button>
-                <button className={`auth-tab${tab === "signup" ? " active" : ""}`} type="button" aria-pressed={tab === "signup"} onClick={() => { setTab("signup"); setShowPassword(false); }}>{t("註冊帳號")}</button>
+                <button
+                  className={`auth-tab${tab === "login" ? " active" : ""}`}
+                  type="button"
+                  aria-pressed={tab === "login"}
+                  onClick={() => {
+                    setTab("login");
+                    setShowPassword(false);
+                  }}
+                >
+                  {t("登入")}
+                </button>
+                <button
+                  className={`auth-tab${tab === "signup" ? " active" : ""}`}
+                  type="button"
+                  aria-pressed={tab === "signup"}
+                  onClick={() => {
+                    setTab("signup");
+                    setShowPassword(false);
+                  }}
+                >
+                  {t("註冊帳號")}
+                </button>
               </div>
-              <form key={tab} className="auth-form" onSubmit={(e) => e.preventDefault()} aria-label={tab === "login" ? t("登入表單預覽") : t("註冊表單預覽")}>
-                {tab === "signup" && <div className="field"><label htmlFor="account-name">{t("姓名")}</label><input id="account-name" autoComplete="name" type="text" placeholder={t("你的姓名")} /></div>}
-                <div className="field"><label htmlFor="account-email">{t("電子郵件")}</label><input id="account-email" autoComplete="email" type="email" placeholder="you@example.com" /></div>
-                <div className="field"><label htmlFor="account-password">{t("密碼")}</label><div className="password-field">
-                  <input id="account-password" autoComplete={tab === "login" ? "current-password" : "new-password"} type={showPassword ? "text" : "password"} placeholder={tab === "login" ? t("輸入密碼") : t("設定一組密碼")} />
-                  <button type="button" className="password-toggle" aria-label={showPassword ? t("隱藏密碼") : t("顯示密碼")} aria-pressed={showPassword} onClick={() => setShowPassword((v) => !v)}>{showPassword ? t("隱藏") : t("顯示")}</button>
-                </div></div>
-                {tab === "login" && <button className="auth-forgot" type="button" disabled>{t("忘記密碼？")}</button>}
-                <button className="pill-btn full account-submit" type="submit" disabled aria-describedby="account-availability">{tab === "login" ? t("登入") : t("建立帳號")}</button>
+              <form
+                key={tab}
+                className="auth-form"
+                onSubmit={(e) => e.preventDefault()}
+                aria-label={tab === "login" ? t("登入表單預覽") : t("註冊表單預覽")}
+              >
+                {tab === "signup" && (
+                  <div className="field">
+                    <label htmlFor="account-name">{t("姓名")}</label>
+                    <input id="account-name" autoComplete="name" type="text" placeholder={t("你的姓名")} />
+                  </div>
+                )}
+                <div className="field">
+                  <label htmlFor="account-email">{t("電子郵件")}</label>
+                  <input id="account-email" autoComplete="email" type="email" placeholder="you@example.com" />
+                </div>
+                <div className="field">
+                  <label htmlFor="account-password">{t("密碼")}</label>
+                  <div className="password-field">
+                    <input
+                      id="account-password"
+                      autoComplete={tab === "login" ? "current-password" : "new-password"}
+                      type={showPassword ? "text" : "password"}
+                      placeholder={tab === "login" ? t("輸入密碼") : t("設定一組密碼")}
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle"
+                      aria-label={showPassword ? t("隱藏密碼") : t("顯示密碼")}
+                      aria-pressed={showPassword}
+                      onClick={() => setShowPassword((v) => !v)}
+                    >
+                      {showPassword ? t("隱藏") : t("顯示")}
+                    </button>
+                  </div>
+                </div>
+                {tab === "login" && (
+                  <button className="auth-forgot" type="button" disabled>
+                    {t("忘記密碼？")}
+                  </button>
+                )}
+                <button
+                  className="pill-btn full account-submit"
+                  type="submit"
+                  disabled
+                  aria-describedby="account-availability"
+                >
+                  {tab === "login" ? t("登入") : t("建立帳號")}
+                </button>
               </form>
-              <p className="auth-note" id="account-availability">{t("帳號登入、註冊與密碼重設尚未開放。")}</p>
+              <p className="auth-note" id="account-availability">
+                {t("帳號登入、註冊與密碼重設尚未開放。")}
+              </p>
             </div>
           </div>
         </div>

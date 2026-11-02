@@ -12,7 +12,14 @@ export function formatDateTime(iso: string) {
   const lang = currentLang();
   const sameYear = d.getFullYear() === new Date().getFullYear();
   if (lang !== "zh-TW") {
-    return new Intl.DateTimeFormat(lang, { year: sameYear ? undefined : "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: lang === "en" }).format(d);
+    return new Intl.DateTimeFormat(lang, {
+      year: sameYear ? undefined : "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: lang === "en",
+    }).format(d);
   }
   const year = sameYear ? "" : `${d.getFullYear()} 年 `;
   return `${year}${d.getMonth() + 1} 月 ${d.getDate()} 日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;

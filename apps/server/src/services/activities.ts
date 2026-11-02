@@ -5,9 +5,22 @@ import { newId, nowIso } from "../http";
 import type { ActivityRow } from "./access";
 import { studentIdsOf } from "./access";
 import {
-  averageScores, clamp, computeScore, DEFAULT_SECONDS, draftSummary, ensureGroupArguments,
-  estimateCoords, formGroups, judgeTurn, pairGroups, PHASES, phaseOf, refreshStatuses, SPEAKING_ORDER,
-  weightedTotal, type Axis, type Phase,
+  averageScores,
+  clamp,
+  computeScore,
+  DEFAULT_SECONDS,
+  draftSummary,
+  ensureGroupArguments,
+  estimateCoords,
+  judgeTurn,
+  pairGroups,
+  PHASES,
+  phaseOf,
+  refreshStatuses,
+  SPEAKING_ORDER,
+  weightedTotal,
+  type Axis,
+  type Phase,
 } from "./debate";
 import { publish } from "../do/events";
 import { judgmentJson, turnJson } from "./serialize";
@@ -16,19 +29,32 @@ export async function hasStarted(db: Db, activityId: string): Promise<boolean> {
   const a = await one<any>(db, "SELECT stage FROM activities WHERE id = $id", { id: activityId });
   if (!a) return true;
   if (a.stage !== "individual") return true;
-  const dialogue = await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM activity_dialogue WHERE activity_id = $id", { id: activityId });
-  const positions = await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM positions WHERE activity_id = $id", { id: activityId });
+  const dialogue = await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM activity_dialogue WHERE activity_id = $id", {
+    id: activityId,
+  });
+  const positions = await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM positions WHERE activity_id = $id", {
+    id: activityId,
+  });
   return (dialogue?.n ?? 0) > 0 || (positions?.n ?? 0) > 0;
 }
 
 export async function enterStage(db: Db, activityId: string, stage: ActivityRow["stage"]): Promise<ActivityRow> {
   const at = nowIso();
   const entries: Array<{ sql: string; params?: Record<string, unknown> }> = [
-    { sql: "UPDATE activities SET stage = $stage, stage_deadline = NULL, updated_at = $at WHERE id = $id", params: { stage, at, id: activityId } },
-    { sql: "UPDATE activity_ready SET ready = 0, updated_at = $at WHERE activity_id = $id", params: { at, id: activityId } },
+    {
+      sql: "UPDATE activities SET stage = $stage, stage_deadline = NULL, updated_at = $at WHERE id = $id",
+      params: { stage, at, id: activityId },
+    },
+    {
+      sql: "UPDATE activity_ready SET ready = 0, updated_at = $at WHERE activity_id = $id",
+      params: { at, id: activityId },
+    },
   ];
   if (stage === "done") {
-    entries.push({ sql: "UPDATE rooms SET status = 'finished', deadline = NULL WHERE activity_id = $id", params: { id: activityId } });
+    entries.push({
+      sql: "UPDATE rooms SET status = 'finished', deadline = NULL WHERE activity_id = $id",
+      params: { id: activityId },
+    });
   }
   await db.batch(entries);
   publish(activityId, { type: "stage_changed", stage });
@@ -41,7 +67,10 @@ export async function autoFillPositions(db: Db, activity: ActivityRow): Promise<
   const ids = await studentIdsOf(db, activity.classroom_id);
   const entries: Array<{ sql: string; params: Record<string, unknown> }> = [];
   for (const studentId of ids) {
-    const existing = await one<any>(db, "SELECT * FROM positions WHERE activity_id = $aid AND student_id = $sid", { aid: activity.id, sid: studentId });
+    const existing = await one<any>(db, "SELECT * FROM positions WHERE activity_id = $aid AND student_id = $sid", {
+      aid: activity.id,
+      sid: studentId,
+    });
     if (existing?.confirmed) continue;
     const rows = await all<{ text: string }>(
       db,
@@ -58,8 +87,13 @@ export async function autoFillPositions(db: Db, activity: ActivityRow): Promise<
          claim = excluded.claim, reason = excluded.reason, evidence = excluded.evidence,
          coords = excluded.coords, ai_suggested = 1, updated_at = excluded.updated_at`,
       params: {
-        aid: activity.id, sid: studentId, claim: summary.claim, reason: summary.reason,
-        evidence: summary.evidence, coords: JSON.stringify(coords), at: nowIso(),
+        aid: activity.id,
+        sid: studentId,
+        claim: summary.claim,
+        reason: summary.reason,
+        evidence: summary.evidence,
+        coords: JSON.stringify(coords),
+        at: nowIso(),
       },
     });
   }
@@ -72,16 +106,31 @@ const SYSTEM_GROUP_READY: Record<Lang, string> = {
   es: "Los grupos se formaron por posición. Comenten sus ideas y luego pidan a la IA que resuma argumentos o propongan un contraejemplo.",
 };
 
-export async function buildGroups(db: Db, activity: ActivityRow, groupSize: number, seed = 42, lang: Lang = "zh"): Promise<any[]> {
+export async function buildGroups(
+  db: Db,
+  activity: ActivityRow,
+  groupSize: number,
+  seed = 42,
+  lang: Lang = "zh",
+): Promise<any[]> {
   const ids = await studentIdsOf(db, activity.classroom_id);
   const coords: Record<string, number[]> = {};
   const axes = parseJson<Axis[]>(activity.axes, []);
   for (const id of ids) {
-    const p = await one<any>(db, "SELECT coords FROM positions WHERE activity_id = $aid AND student_id = $sid", { aid: activity.id, sid: id });
+    const p = await one<any>(db, "SELECT coords FROM positions WHERE activity_id = $aid AND student_id = $sid", {
+      aid: activity.id,
+      sid: id,
+    });
     coords[id] = p ? parseJson<number[]>(p.coords, []) : new Array(axes.length).fill(0);
   }
   const { formGroups } = await import("./debate");
-  const formed = formGroups(ids.map((id) => ({ id })), coords, clamp(Math.round(groupSize), 2, 8), seed, lang);
+  const formed = formGroups(
+    ids.map((id) => ({ id })),
+    coords,
+    clamp(Math.round(groupSize), 2, 8),
+    seed,
+    lang,
+  );
   const entries: Array<{ sql: string; params: Record<string, unknown> }> = [
     { sql: "DELETE FROM groups WHERE activity_id = $aid", params: { aid: activity.id } },
   ];
@@ -90,7 +139,14 @@ export async function buildGroups(db: Db, activity: ActivityRow, groupSize: numb
     entries.push({
       sql: `INSERT INTO groups (id, activity_id, label, member_ids, centroid, formed_by, seq)
          VALUES ($id, $aid, $label, $members, $centroid, 'auto', $seq)`,
-      params: { id, aid: activity.id, label: g.label, members: JSON.stringify(g.memberIds), centroid: JSON.stringify(g.centroid), seq: i },
+      params: {
+        id,
+        aid: activity.id,
+        label: g.label,
+        members: JSON.stringify(g.memberIds),
+        centroid: JSON.stringify(g.centroid),
+        seq: i,
+      },
     });
     const msg = newId("gm_");
     entries.push({
@@ -149,7 +205,8 @@ export async function roomSpec(db: Db, room: any): Promise<RoomSpec | null> {
 
 const MOD: Record<Lang, Record<string, string>> = {
   zh: {
-    intro: "各位好，我是這場辯論的主持人。{a}（A 方）對上{b}（B 方），共四個回合：開場、質詢、反駁、結辯。我只管流程與時間，也只看論證的證據與推理，不評判誰的立場才對。",
+    intro:
+      "各位好，我是這場辯論的主持人。{a}（A 方）對上{b}（B 方），共四個回合：開場、質詢、反駁、結辯。我只管流程與時間，也只看論證的證據與推理，不評判誰的立場才對。",
     opening: "第一回合：開場。請 A 方先說明核心主張與證據，接著換 B 方。",
     cross: "第二回合：質詢。A 方先提問、B 方回答，接著交換。提問請針對對方論點，回答請正面回應。",
     rebuttal: "第三回合：反駁。請回應對方最強的論點，而不是重述自己的立場。",
@@ -159,22 +216,26 @@ const MOD: Record<Lang, Record<string, string>> = {
     end: "辯論結束。我會依證據、推理、回應、表達四項給分，只看論證品質，不評判立場。",
   },
   en: {
-    intro: "Welcome. I am the moderator. {a} (side A) faces {b} (side B) over four rounds: opening, cross-examination, rebuttal, closing. I keep time and judge only the quality of reasoning and evidence, not which side is right.",
+    intro:
+      "Welcome. I am the moderator. {a} (side A) faces {b} (side B) over four rounds: opening, cross-examination, rebuttal, closing. I keep time and judge only the quality of reasoning and evidence, not which side is right.",
     opening: "Round one: opening. Side A starts with its core claim and evidence, then side B.",
-    cross: "Round two: cross-examination. A asks, B answers, then they switch. Questions should target the other side's argument and answers should respond directly.",
+    cross:
+      "Round two: cross-examination. A asks, B answers, then they switch. Questions should target the other side's argument and answers should respond directly.",
     rebuttal: "Round three: rebuttal. Respond to the strongest opposing argument rather than restating your own.",
     closing: "Final round: closing. Summarize your strongest arguments and evidence.",
-    recap: "Recap: side A mentioned \"{a}\"; side B mentioned \"{b}\". Both are on record.",
+    recap: 'Recap: side A mentioned "{a}"; side B mentioned "{b}". Both are on record.',
     askSource: "What is the source or a concrete example for that claim? Could you add one?",
     end: "The debate is over. I score evidence, reasoning, rebuttal, and clarity, judging only argument quality, not positions.",
   },
   es: {
-    intro: "Bienvenidos. Soy el moderador. {a} (lado A) se enfrenta a {b} (lado B) en cuatro rondas: apertura, interrogatorio, refutación y cierre. Solo cuido el tiempo y juzgo la calidad del razonamiento y la evidencia, no qué lado tiene razón.",
+    intro:
+      "Bienvenidos. Soy el moderador. {a} (lado A) se enfrenta a {b} (lado B) en cuatro rondas: apertura, interrogatorio, refutación y cierre. Solo cuido el tiempo y juzgo la calidad del razonamiento y la evidencia, no qué lado tiene razón.",
     opening: "Primera ronda: apertura. El lado A empieza con su tesis y evidencia, luego el lado B.",
-    cross: "Segunda ronda: interrogatorio. A pregunta, B responde y luego cambian. Las preguntas deben apuntar al argumento contrario.",
+    cross:
+      "Segunda ronda: interrogatorio. A pregunta, B responde y luego cambian. Las preguntas deben apuntar al argumento contrario.",
     rebuttal: "Tercera ronda: refutación. Responde al argumento más fuerte del otro lado en lugar de repetir el tuyo.",
     closing: "Ronda final: cierre. Resume tus argumentos y evidencia más fuertes.",
-    recap: "Resumen: el lado A mencionó \"{a}\"; el lado B mencionó \"{b}\". Ambos quedan registrados.",
+    recap: 'Resumen: el lado A mencionó "{a}"; el lado B mencionó "{b}". Ambos quedan registrados.',
     askSource: "¿Cuál es la fuente o un ejemplo concreto de esa afirmación?",
     end: "El debate terminó. Puntúo evidencia, razonamiento, refutación y claridad; solo la calidad del argumento.",
   },
@@ -185,12 +246,13 @@ function mod(lang: Lang, key: string, vars: Record<string, string> = {}): string
 }
 
 function snippet(text: string, n = 22): string {
-  return text.length > n ? text.slice(0, n) + "…" : text;
+  return text.length > n ? `${text.slice(0, n)}…` : text;
 }
 
 export async function addModeratorTurn(db: Db, room: any, text: string): Promise<any> {
   const id = newId("t_");
-  const seq = (await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM turns WHERE room_id = $rid", { rid: room.id }))?.n ?? 0;
+  const seq =
+    (await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM turns WHERE room_id = $rid", { rid: room.id }))?.n ?? 0;
   const at = nowIso();
   await db.batch([
     {
@@ -212,11 +274,11 @@ export async function roomJson(db: Db, room: any) {
     phase: room.status === "finished" ? "ended" : phaseOf(room.phase_idx),
     turn: spec
       ? {
-        side: spec.side,
-        memberId: spec.memberId,
-        role: spec.role,
-        deadline: room.deadline ?? new Date(Date.now() + 1000).toISOString(),
-      }
+          side: spec.side,
+          memberId: spec.memberId,
+          role: spec.role,
+          deadline: room.deadline ?? new Date(Date.now() + 1000).toISOString(),
+        }
       : null,
   };
 }
@@ -234,7 +296,10 @@ async function setNextDeadline(db: Db, room: any): Promise<void> {
 async function advancePhase(db: Db, room: any, lang: Lang, phase: Phase, judgedText: string): Promise<void> {
   const order = SPEAKING_ORDER[phase];
   if (room.turn_idx < order.length) return;
-  const inPhase = await all<any>(db, "SELECT * FROM turns WHERE room_id = $rid AND phase = $phase ORDER BY seq", { rid: room.id, phase });
+  const inPhase = await all<any>(db, "SELECT * FROM turns WHERE room_id = $rid AND phase = $phase ORDER BY seq", {
+    rid: room.id,
+    phase,
+  });
   const aText = [...inPhase].reverse().find((t) => t.side === "a")?.text ?? "";
   const bText = [...inPhase].reverse().find((t) => t.side === "b")?.text ?? "";
   await addModeratorTurn(db, room, mod(lang, "recap", { a: snippet(aText || judgedText), b: snippet(bText) }));
@@ -244,7 +309,10 @@ async function advancePhase(db: Db, room: any, lang: Lang, phase: Phase, judgedT
     room.status = "finished";
     room.phase_idx = PHASES.length - 1;
     await addModeratorTurn(db, room, mod(lang, "end"));
-    await db.run("UPDATE rooms SET status = 'finished', phase_idx = $p, turn_idx = 0, deadline = NULL WHERE id = $id", { p: room.phase_idx, id: room.id });
+    await db.run("UPDATE rooms SET status = 'finished', phase_idx = $p, turn_idx = 0, deadline = NULL WHERE id = $id", {
+      p: room.phase_idx,
+      id: room.id,
+    });
   } else {
     await addModeratorTurn(db, room, mod(lang, PHASES[room.phase_idx]));
     await db.run("UPDATE rooms SET phase_idx = $p, turn_idx = 0 WHERE id = $id", { p: room.phase_idx, id: room.id });
@@ -257,11 +325,22 @@ export async function commitTurn(db: Db, room: any, text: string, lang: Lang): P
   if (!spec) throw new Error("room_not_live");
   const at = nowIso();
   const turnId = newId("t_");
-  const seq = (await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM turns WHERE room_id = $rid", { rid: room.id }))?.n ?? 0;
+  const seq =
+    (await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM turns WHERE room_id = $rid", { rid: room.id }))?.n ?? 0;
   await db.run(
     `INSERT INTO turns (id, room_id, seq, side, member_id, phase, role, text, created_at)
      VALUES ($id, $rid, $seq, $side, $memberId, $phase, $role, $text, $at)`,
-    { id: turnId, rid: room.id, seq, side: spec.side, memberId: spec.memberId, phase: spec.phase, role: spec.role, text, at },
+    {
+      id: turnId,
+      rid: room.id,
+      seq,
+      side: spec.side,
+      memberId: spec.memberId,
+      phase: spec.phase,
+      role: spec.role,
+      text,
+      at,
+    },
   );
 
   const opponentSide = spec.side === "a" ? "b" : "a";
@@ -277,8 +356,15 @@ export async function commitTurn(db: Db, room: any, text: string, lang: Lang): P
     `INSERT INTO judgments (id, turn_id, room_id, side, member_id, phase, scores, notes, verifiability, teacher_score)
      VALUES ($id, $turnId, $rid, $side, $memberId, $phase, $scores, $notes, $verifiability, NULL)`,
     {
-      id: judgmentId, turnId, rid: room.id, side: spec.side, memberId: spec.memberId, phase: spec.phase,
-      scores: JSON.stringify(judged.scores), notes: JSON.stringify(judged.notes), verifiability: judged.verifiability,
+      id: judgmentId,
+      turnId,
+      rid: room.id,
+      side: spec.side,
+      memberId: spec.memberId,
+      phase: spec.phase,
+      scores: JSON.stringify(judged.scores),
+      notes: JSON.stringify(judged.notes),
+      verifiability: judged.verifiability,
     },
   );
 
@@ -286,15 +372,33 @@ export async function commitTurn(db: Db, room: any, text: string, lang: Lang): P
   counts[spec.side] = (counts[spec.side] ?? 0) + 1;
   const asked = parseJson<Record<string, boolean>>(room.asked, {});
   let askedLine: string | null = null;
-  if ((judged.scores.evidence ?? 5) <= 2 && (spec.phase === "opening" || spec.phase === "rebuttal") && !asked[spec.side]) {
+  if (
+    (judged.scores.evidence ?? 5) <= 2 &&
+    (spec.phase === "opening" || spec.phase === "rebuttal") &&
+    !asked[spec.side]
+  ) {
     asked[spec.side] = true;
-    askedLine = (lang === "en" ? (spec.side === "a" ? "Side A, " : "Side B, ") : lang === "es" ? (spec.side === "a" ? "Lado A, " : "Lado B, ") : (spec.side === "a" ? "A 方，" : "B 方，")) + mod(lang, "askSource");
+    askedLine =
+      (lang === "en"
+        ? spec.side === "a"
+          ? "Side A, "
+          : "Side B, "
+        : lang === "es"
+          ? spec.side === "a"
+            ? "Lado A, "
+            : "Lado B, "
+          : spec.side === "a"
+            ? "A 方，"
+            : "B 方，") + mod(lang, "askSource");
   }
   room.turn_idx += 1;
   room.side_count = JSON.stringify(counts);
   room.asked = JSON.stringify(asked);
   await db.run("UPDATE rooms SET side_count = $counts, asked = $asked, turn_idx = $turnIdx WHERE id = $id", {
-    counts: room.side_count, asked: room.asked, turnIdx: room.turn_idx, id: room.id,
+    counts: room.side_count,
+    asked: room.asked,
+    turnIdx: room.turn_idx,
+    id: room.id,
   });
 
   if (askedLine) await addModeratorTurn(db, room, askedLine);
@@ -337,7 +441,12 @@ export async function tickExpired(db: Db, room: any, lang: Lang): Promise<any> {
       await db.run("UPDATE rooms SET status = 'finished', deadline = NULL WHERE id = $id", { id: room.id });
       break;
     }
-    const timeoutText = lang === "en" ? "(Time is up; no statement was made.)" : lang === "es" ? "(Se acabó el tiempo; no hubo intervención.)" : "（逾時，這一則沒有發言）";
+    const timeoutText =
+      lang === "en"
+        ? "(Time is up; no statement was made.)"
+        : lang === "es"
+          ? "(Se acabó el tiempo; no hubo intervención.)"
+          : "（逾時，這一則沒有發言）";
     await commitTurn(db, room, timeoutText, lang);
     room = (await one<any>(db, "SELECT * FROM rooms WHERE id = $id", { id: room.id }))!;
   }
@@ -349,17 +458,30 @@ export async function computeScores(db: Db, activity: ActivityRow): Promise<void
   const ids = await studentIdsOf(db, activity.classroom_id);
   const groups = await all<any>(db, "SELECT * FROM groups WHERE activity_id = $aid", { aid: activity.id });
   const rooms = await all<any>(db, "SELECT * FROM rooms WHERE activity_id = $aid", { aid: activity.id });
-  const adjustRows = await all<any>(db, "SELECT member_id, adjust FROM scores WHERE activity_id = $aid", { aid: activity.id });
+  const adjustRows = await all<any>(db, "SELECT member_id, adjust FROM scores WHERE activity_id = $aid", {
+    aid: activity.id,
+  });
   const previous = new Map(adjustRows.map((r) => [r.member_id as string, r.adjust as number]));
   const entries: Array<{ sql: string; params: Record<string, unknown> }> = [
     { sql: "DELETE FROM scores WHERE activity_id = $aid", params: { aid: activity.id } },
   ];
   for (const memberId of ids) {
-    const position = await one<any>(db, "SELECT * FROM positions WHERE activity_id = $aid AND student_id = $sid", { aid: activity.id, sid: memberId });
+    const position = await one<any>(db, "SELECT * FROM positions WHERE activity_id = $aid AND student_id = $sid", {
+      aid: activity.id,
+      sid: memberId,
+    });
     const group = groups.find((g) => parseJson<string[]>(g.member_ids, []).includes(memberId));
-    const args = group ? await all<any>(db, "SELECT * FROM group_arguments WHERE group_id = $gid", { gid: group.id }) : [];
+    const args = group
+      ? await all<any>(db, "SELECT * FROM group_arguments WHERE group_id = $gid", { gid: group.id })
+      : [];
     const chatCount = group
-      ? (await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM group_messages WHERE group_id = $gid AND kind = 'chat' AND author_id = $sid", { gid: group.id, sid: memberId }))?.n ?? 0
+      ? ((
+          await one<{ n: number }>(
+            db,
+            "SELECT COUNT(*) AS n FROM group_messages WHERE group_id = $gid AND kind = 'chat' AND author_id = $sid",
+            { gid: group.id, sid: memberId },
+          )
+        )?.n ?? 0)
       : 0;
     const votesCast = args.filter((a) => parseJson<Record<string, string>>(a.votes, {})[memberId]).length;
     const groupHasActive = args.some((a) => a.status === "active" || a.status === "revised");
@@ -372,8 +494,20 @@ export async function computeScores(db: Db, activity: ActivityRow): Promise<void
       for (const k of Object.keys(scores)) out[k] = scores[k] === null ? null : j.teacher_score;
       return { ...j, scores: out };
     };
-    const mine = room ? (await all<any>(db, "SELECT * FROM judgments WHERE room_id = $rid AND member_id = $sid", { rid: room.id, sid: memberId })).map(effective) : [];
-    const sideJ = room && side ? (await all<any>(db, "SELECT * FROM judgments WHERE room_id = $rid AND side = $side", { rid: room.id, side })).map(effective) : [];
+    const mine = room
+      ? (
+          await all<any>(db, "SELECT * FROM judgments WHERE room_id = $rid AND member_id = $sid", {
+            rid: room.id,
+            sid: memberId,
+          })
+        ).map(effective)
+      : [];
+    const sideJ =
+      room && side
+        ? (
+            await all<any>(db, "SELECT * FROM judgments WHERE room_id = $rid AND side = $side", { rid: room.id, side })
+          ).map(effective)
+        : [];
     const s = computeScore({
       position,
       chatCount,
@@ -384,7 +518,14 @@ export async function computeScores(db: Db, activity: ActivityRow): Promise<void
     });
     entries.push({
       sql: "INSERT INTO scores (activity_id, member_id, individual, team, debate, adjust) VALUES ($aid, $mid, $i, $t, $d, $adj)",
-      params: { aid: activity.id, mid: memberId, i: s.individual, t: s.team, d: s.debate, adj: previous.get(memberId) ?? 0 },
+      params: {
+        aid: activity.id,
+        mid: memberId,
+        i: s.individual,
+        t: s.team,
+        d: s.debate,
+        adj: previous.get(memberId) ?? 0,
+      },
     });
   }
   await db.batch(entries);
@@ -413,10 +554,31 @@ export async function scoreRows(db: Db, activity: ActivityRow, onlyMemberId?: st
 }
 
 /* ---------------- 立場星圖 ---------------- */
-const STEP_TEXT: Record<Lang, { individual: string; team: string; onlyIndividual: string; onlyTeam: string; teamAligned: string }> = {
-  zh: { individual: "個人調查後", team: "團隊提純後", onlyIndividual: "個人調查", onlyTeam: "每個人自己確認的座標", teamAligned: "向組內共識靠近的座標" },
-  en: { individual: "After individual inquiry", team: "After team refinement", onlyIndividual: "Individual inquiry", onlyTeam: "Coordinates each student confirmed", teamAligned: "Positions aligned with the group consensus" },
-  es: { individual: "Tras la investigación individual", team: "Tras el refinamiento en equipo", onlyIndividual: "Investigación individual", onlyTeam: "Coordenadas confirmadas por cada estudiante", teamAligned: "Coordenadas alineadas con el consenso del grupo" },
+const STEP_TEXT: Record<
+  Lang,
+  { individual: string; team: string; onlyIndividual: string; onlyTeam: string; teamAligned: string }
+> = {
+  zh: {
+    individual: "個人調查後",
+    team: "團隊提純後",
+    onlyIndividual: "個人調查",
+    onlyTeam: "每個人自己確認的座標",
+    teamAligned: "向組內共識靠近的座標",
+  },
+  en: {
+    individual: "After individual inquiry",
+    team: "After team refinement",
+    onlyIndividual: "Individual inquiry",
+    onlyTeam: "Coordinates each student confirmed",
+    teamAligned: "Positions aligned with the group consensus",
+  },
+  es: {
+    individual: "Tras la investigación individual",
+    team: "Tras el refinamiento en equipo",
+    onlyIndividual: "Investigación individual",
+    onlyTeam: "Coordenadas confirmadas por cada estudiante",
+    teamAligned: "Coordenadas alineadas con el consenso del grupo",
+  },
 };
 
 export async function starData(db: Db, activity: ActivityRow, lang: Lang, meId?: string) {
@@ -453,7 +615,9 @@ export async function starData(db: Db, activity: ActivityRow, lang: Lang, meId?:
     const group = groups[gIndex];
     let lam = 0.15;
     if (group) {
-      const args = await all<any>(db, "SELECT * FROM group_arguments WHERE group_id = $gid AND kind = 'claim'", { gid: group.id });
+      const args = await all<any>(db, "SELECT * FROM group_arguments WHERE group_id = $gid AND kind = 'claim'", {
+        gid: group.id,
+      });
       const votes = args.map((a) => parseJson<Record<string, string>>(a.votes, {})[id]).filter(Boolean);
       lam = 0.15 + 0.35 * (votes.length ? votes.filter((v) => v === "endorse").length / votes.length : 0.5);
     }
@@ -475,7 +639,9 @@ export async function starData(db: Db, activity: ActivityRow, lang: Lang, meId?:
 
 export async function recalcArgumentStatuses(db: Db, group: any): Promise<void> {
   const members = parseJson<string[]>(group.member_ids, []);
-  const args = await all<any>(db, "SELECT * FROM group_arguments WHERE group_id = $gid ORDER BY seq", { gid: group.id });
+  const args = await all<any>(db, "SELECT * FROM group_arguments WHERE group_id = $gid ORDER BY seq", {
+    gid: group.id,
+  });
   refreshStatuses(args, members);
   await db.batch(
     args.map((arg) => ({

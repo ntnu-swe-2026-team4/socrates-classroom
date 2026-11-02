@@ -136,7 +136,7 @@ export class PiAgent extends DurableObject<Env> {
               // 先訂閱事件（snapshot + 每 commit 一批），再送出——順序顛倒會漏掉瞬時完成的 run
               const snap = (stream as { snapshot?: SnapshotEvent }).snapshot;
               if (snap?.generation?.message) handle(splitter.push(partialText(snap.generation.message)));
-              const consuming = stream.start(async (events) => {
+              const _consuming = stream.start(async (events) => {
                 for (const event of events) {
                   if (event.type === "message_update") {
                     for (const change of event.changes) {
@@ -164,8 +164,12 @@ export class PiAgent extends DurableObject<Env> {
               if (!acc.trim()) throw new Error("llm_unavailable");
 
               const saved = await saveTurn(d1(this.env.DB), {
-                scope: input.scope, scopeId: input.scopeId, userId: input.userId,
-                userText: input.userText, assistantText: acc, emotion,
+                scope: input.scope,
+                scopeId: input.scopeId,
+                userId: input.userId,
+                userText: input.userText,
+                assistantText: acc,
+                emotion,
               });
               send("done", { message: { id: saved.id, role: "assistant", text: acc, at: saved.at, emotion } });
             } catch (error) {
@@ -228,13 +232,21 @@ function digest(history: Array<{ role: "user" | "assistant"; text: string }>): s
 }
 
 /** 從 pi transcript 取最後一則助理訊息的文字（EntryRecord.kind/model 結構）。 */
-function lastAssistantText(entries: ReadonlyArray<{ kind: string; model?: ReadonlyArray<{ role: string; content?: ReadonlyArray<{ type: string; text?: string }> }> }>): string {
+function lastAssistantText(
+  entries: ReadonlyArray<{
+    kind: string;
+    model?: ReadonlyArray<{ role: string; content?: ReadonlyArray<{ type: string; text?: string }> }>;
+  }>,
+): string {
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i]!;
     if (!entry.kind.startsWith("pi.assistant")) continue;
     const message = entry.model?.find((m) => m.role === "assistant");
     if (!message?.content) continue;
-    const text = message.content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
+    const text = message.content
+      .filter((b) => b.type === "text")
+      .map((b) => b.text ?? "")
+      .join("");
     if (text.trim()) return text;
   }
   return "";
@@ -243,5 +255,8 @@ function lastAssistantText(entries: ReadonlyArray<{ kind: string; model?: Readon
 function partialText(message: unknown): string {
   const content = (message as { content?: Array<{ type: string; text?: string }> })?.content;
   if (!Array.isArray(content)) return "";
-  return content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
+  return content
+    .filter((c) => c.type === "text")
+    .map((c) => c.text ?? "")
+    .join("");
 }

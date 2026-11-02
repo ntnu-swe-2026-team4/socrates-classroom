@@ -1,4 +1,4 @@
-import * as React from "react";
+import type * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,7 +19,10 @@ export function SheetContent({ className, children, ...props }: React.ComponentP
         )}
         {...props}
       >
-        <DialogPrimitive.Close aria-label={t("關閉")} className="absolute right-4 top-4 flex size-8 cursor-pointer items-center justify-center rounded-full text-ink-faint hover:bg-bg-2 hover:text-ink">
+        <DialogPrimitive.Close
+          aria-label={t("關閉")}
+          className="absolute right-4 top-4 flex size-8 cursor-pointer items-center justify-center rounded-full text-ink-faint hover:bg-bg-2 hover:text-ink"
+        >
           <X className="size-4" />
         </DialogPrimitive.Close>
         {children}

@@ -37,8 +37,15 @@ export async function saveUpload(
       `INSERT INTO files (id, owner_id, scope_type, scope_id, name, mime_type, size, path, created_at)
        VALUES ($id, $owner, $scopeType, $scopeId, $name, $mime, $size, $path, $at)`,
       {
-        id, owner: ownerId, scopeType, scopeId, name: row.name,
-        mime: row.mime_type, size: row.size, path: row.path, at: row.created_at,
+        id,
+        owner: ownerId,
+        scopeType,
+        scopeId,
+        name: row.name,
+        mime: row.mime_type,
+        size: row.size,
+        path: row.path,
+        at: row.created_at,
       },
     );
   } catch (error) {
@@ -67,7 +74,10 @@ export async function deleteFile(db: Db, env: Env, fileId: string | null | undef
 }
 
 /** 下載：從 R2 串流（權限檢查在路由層）。 */
-export async function fileDownloadResponse(env: Env, row: { path: string; mime_type: string; size: number; name: string }): Promise<Response> {
+export async function fileDownloadResponse(
+  env: Env,
+  row: { path: string; mime_type: string; size: number; name: string },
+): Promise<Response> {
   const object = await env.UPLOADS.get(row.path);
   if (!object) fail(404, "file_not_found");
   return new Response(object.body, {

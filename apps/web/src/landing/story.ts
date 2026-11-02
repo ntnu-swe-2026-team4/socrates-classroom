@@ -27,6 +27,12 @@ export const STORY_SCENES = [
 
 // Match the compositions in public/landing; reserve their shape before lazy loading.
 export const ANIMATION_ASPECT_RATIOS: Record<number, string> = {
-  1: "720 / 416", 2: "720 / 383", 3: "720 / 331", 4: "720 / 248",
-  5: "720 / 353", 6: "720 / 257", 7: "720 / 325", 8: "720 / 353",
+  1: "720 / 416",
+  2: "720 / 383",
+  3: "720 / 331",
+  4: "720 / 248",
+  5: "720 / 353",
+  6: "720 / 257",
+  7: "720 / 325",
+  8: "720 / 353",
 };

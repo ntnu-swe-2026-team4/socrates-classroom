@@ -17,7 +17,18 @@ type Props = {
   onReady: (n: number, duration: number) => void;
 };
 
-export function LandAnimation({ n, className, label, reducedMotion, tourMode, active, playing, preload, session, onReady }: Props) {
+export function LandAnimation({
+  n,
+  className,
+  label,
+  reducedMotion,
+  tourMode,
+  active,
+  playing,
+  preload,
+  session,
+  onReady,
+}: Props) {
   const t = useT();
   const box = useRef<HTMLButtonElement>(null);
   const inner = useRef<HTMLSpanElement>(null);
@@ -33,31 +44,47 @@ export function LandAnimation({ n, className, label, reducedMotion, tourMode, ac
     const el = box.current;
     if (!el) return;
     const root = el.closest("#site-scroll");
-    const loader = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) { setRequested(true); loader.disconnect(); }
-    }, { root, rootMargin: "200px 0px" });
-    const visibility = new IntersectionObserver(([entry]) => {
-      setInView(entry.isIntersecting);
-      if (entry.isIntersecting) el.classList.add("is-visible");
-    }, { root, threshold: 0.15 });
+    const loader = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setRequested(true);
+          loader.disconnect();
+        }
+      },
+      { root, rootMargin: "200px 0px" },
+    );
+    const visibility = new IntersectionObserver(
+      ([entry]) => {
+        setInView(entry.isIntersecting);
+        if (entry.isIntersecting) el.classList.add("is-visible");
+      },
+      { root, threshold: 0.15 },
+    );
     const onVisibility = () => setPageVisible(!document.hidden);
     loader.observe(el);
     visibility.observe(el);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      loader.disconnect(); visibility.disconnect();
+      loader.disconnect();
+      visibility.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
-  useEffect(() => { if (preload) setRequested(true); }, [preload]);
+  useEffect(() => {
+    if (preload) setRequested(true);
+  }, [preload]);
 
   useEffect(() => {
     const container = inner.current;
     if (!requested || !container) return;
     const animation = lottie.loadAnimation({
-      container, renderer: "canvas", loop: false, autoplay: false,
-      path: `/landing/landing-${n}.json`, rendererSettings: { preserveAspectRatio: "xMidYMid slice" },
+      container,
+      renderer: "canvas",
+      loop: false,
+      autoplay: false,
+      path: `/landing/landing-${n}.json`,
+      rendererSettings: { preserveAspectRatio: "xMidYMid slice" },
     });
     anim.current = animation;
     const loaded = () => {
@@ -65,10 +92,15 @@ export function LandAnimation({ n, className, label, reducedMotion, tourMode, ac
       setReady(true);
       onReady(n, animation.getDuration(false) * 1000);
     };
-    const loadFailed = () => { setFailed(true); onReady(n, 0); };
+    const loadFailed = () => {
+      setFailed(true);
+      onReady(n, 0);
+    };
     animation.addEventListener("DOMLoaded", loaded);
     animation.addEventListener("data_failed", loadFailed);
-    const resize = new ResizeObserver(() => { if (animation.isLoaded) animation.resize(); });
+    const resize = new ResizeObserver(() => {
+      if (animation.isLoaded) animation.resize();
+    });
     resize.observe(container);
     return () => {
       resize.disconnect();
@@ -87,7 +119,10 @@ export function LandAnimation({ n, className, label, reducedMotion, tourMode, ac
       return;
     }
     animation.loop = true;
-    if (!pageVisible) { animation.pause(); return; }
+    if (!pageVisible) {
+      animation.pause();
+      return;
+    }
     if (tourMode) {
       if (!active) {
         animation.goToAndStop(0, true);
@@ -114,11 +149,21 @@ export function LandAnimation({ n, className, label, reducedMotion, tourMode, ac
 
   return (
     <button
-      type="button" ref={box} className={`land-json ${className}`} disabled={tourMode || reducedMotion}
+      type="button"
+      ref={box}
+      className={`land-json ${className}`}
+      disabled={tourMode || reducedMotion}
       style={{ "--animation-ratio": ANIMATION_ASPECT_RATIOS[n] } as CSSProperties}
-      data-loaded={ready} data-animation={n} aria-label={t("重播「{label}」的插畫", { label })}
-      onClick={() => { if (ready) anim.current?.goToAndPlay(0, true); }}
-      onMouseMove={onMove} onMouseLeave={() => { if (box.current) box.current.style.transform = ""; }}
+      data-loaded={ready}
+      data-animation={n}
+      aria-label={t("重播「{label}」的插畫", { label })}
+      onClick={() => {
+        if (ready) anim.current?.goToAndPlay(0, true);
+      }}
+      onMouseMove={onMove}
+      onMouseLeave={() => {
+        if (box.current) box.current.style.transform = "";
+      }}
     >
       <span ref={inner} className="land-json-inner" aria-hidden="true" />
       {!ready && <span className="animation-loading">{failed ? t("插畫暫時無法顯示") : t("插畫載入中…")}</span>}

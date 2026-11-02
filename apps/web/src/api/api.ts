@@ -1,11 +1,55 @@
 import type {
-  Activity, ActivityEvent, Announcement, AnnouncementInput, ApplicationStatus, Archive, BankKind,
-  CalendarEvent, CalendarEventInput, Classroom, ClassroomInput, ClassroomRole, ClassroomMember, ClassroomPreview, ClassroomTopic,
-  DialogueMessage, DiscussionPost, DiscussionSession, DiscussionSessionDetail, DiscussionStatus, DiscussionTask, DiscussionTaskInput,
-  Emotion, Group, GroupArgument, GroupMessage,
-  ImportMembersResult, JoinApplication, JoinInput, JoinPolicy, JoinResult, Judgment, Member,
-  ArgumentSummary, NoteInput, Position, PositionDraft, PostInput, Progress, Room, ScoreRow, ShareTarget, StarData,
-  ThinkingNote, TopicInput, TopicReport, TopicResource, Turn, User, Role, Vote,
+  Activity,
+  ActivityEvent,
+  Announcement,
+  AnnouncementInput,
+  ApplicationStatus,
+  Archive,
+  BankKind,
+  CalendarEvent,
+  CalendarEventInput,
+  Classroom,
+  ClassroomInput,
+  ClassroomRole,
+  ClassroomMember,
+  ClassroomPreview,
+  ClassroomTopic,
+  DialogueMessage,
+  DiscussionPost,
+  DiscussionSession,
+  DiscussionSessionDetail,
+  DiscussionStatus,
+  DiscussionTask,
+  DiscussionTaskInput,
+  Emotion,
+  Group,
+  GroupArgument,
+  GroupMessage,
+  ImportMembersResult,
+  JoinApplication,
+  JoinInput,
+  JoinPolicy,
+  JoinResult,
+  Judgment,
+  Member,
+  ArgumentSummary,
+  NoteInput,
+  Position,
+  PositionDraft,
+  PostInput,
+  Progress,
+  Room,
+  ScoreRow,
+  ShareTarget,
+  StarData,
+  ThinkingNote,
+  TopicInput,
+  TopicReport,
+  TopicResource,
+  Turn,
+  User,
+  Role,
+  Vote,
 } from "./types";
 
 /**
@@ -25,14 +69,22 @@ export interface Api {
   /* 議題與題庫 */
   listArchives(): Promise<Archive[]>;
   /** sharedWithIds 是私人題庫的協作名單（整份取代）；只有題目的擁有者可以改 */
-  updateArchive(id: string, patch: { bank?: BankKind | null; inSummary?: boolean; sharedWithIds?: string[] }): Promise<Archive>;
+  updateArchive(
+    id: string,
+    patch: { bank?: BankKind | null; inSummary?: boolean; sharedWithIds?: string[] },
+  ): Promise<Archive>;
   /** 私人題庫可以分享給誰（同教室的同學、助教與老師） */
   listShareTargets(): Promise<ShareTarget[]>;
   /** 開始一段新的自由對話（首頁提問框）；回傳新的議題 */
   createArchive(title: string): Promise<Archive>;
   /** 議題的自由對話（單人 → 對話）；sendTopicDialogue 的回覆同樣用串流，onEmotion 在 AI 決定情緒的當下（文字之前）呼叫 */
   listTopicDialogue(archiveId: string): Promise<DialogueMessage[]>;
-  sendTopicDialogue(archiveId: string, text: string, onDelta?: (chunk: string) => void, onEmotion?: (emotion: Emotion) => void): Promise<DialogueMessage>;
+  sendTopicDialogue(
+    archiveId: string,
+    text: string,
+    onDelta?: (chunk: string) => void,
+    onEmotion?: (emotion: Emotion) => void,
+  ): Promise<DialogueMessage>;
 
   /* 教室與辯論活動 */
   listClassrooms(): Promise<Classroom[]>;
@@ -47,7 +99,11 @@ export interface Api {
   importClassroomMembers(classroomId: string, names: string[]): Promise<ImportMembersResult>;
   removeClassroomMember(classroomId: string, memberId: string): Promise<void>; // 僅老師
   /** 老師把學生設為助教，或把助教改回學生 */
-  setMemberRole(classroomId: string, memberId: string, role: Exclude<ClassroomRole, "teacher">): Promise<ClassroomMember>; // 僅老師
+  setMemberRole(
+    classroomId: string,
+    memberId: string,
+    role: Exclude<ClassroomRole, "teacher">,
+  ): Promise<ClassroomMember>; // 僅老師
   listActivities(classroomId: string): Promise<Activity[]>;
   getActivity(id: string): Promise<Activity>;
   /** 老師推進階段；後端的活動狀態機（FSM）決定能不能推進 */
@@ -106,7 +162,12 @@ export interface Api {
    */
   getDiscussionSession(discussionId: string, studentId?: string): Promise<DiscussionSessionDetail>;
   /** 學生送出一句話；AI 的回覆用串流一段一段回來，最後回傳完整訊息 */
-  sendDiscussionMessage(discussionId: string, text: string, onDelta?: (chunk: string) => void, onEmotion?: (emotion: Emotion) => void): Promise<DialogueMessage>;
+  sendDiscussionMessage(
+    discussionId: string,
+    text: string,
+    onDelta?: (chunk: string) => void,
+    onEmotion?: (emotion: Emotion) => void,
+  ): Promise<DialogueMessage>;
   /** 學生送出結論（可以重複送，取代舊的）；null = 收回結論，回到「對話中」 */
   submitDiscussionConclusion(discussionId: string, conclusion: string | null): Promise<DiscussionSessionDetail>;
 

@@ -2,8 +2,21 @@ import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./index";
 import type {
-  Activity, AnnouncementInput, ArgumentSummary, BankKind, CalendarEventInput, ClassroomInput, ClassroomRole, ClassroomTopic,
-  DiscussionStatus, DiscussionTaskInput, JoinInput, JoinPolicy, NoteInput, PostInput, TopicInput,
+  Activity,
+  AnnouncementInput,
+  ArgumentSummary,
+  BankKind,
+  CalendarEventInput,
+  ClassroomInput,
+  ClassroomRole,
+  ClassroomTopic,
+  DiscussionStatus,
+  DiscussionTaskInput,
+  JoinInput,
+  JoinPolicy,
+  NoteInput,
+  PostInput,
+  TopicInput,
 } from "./index";
 
 /** 每個查詢的 key 集中在這裡，讓後端事件（SSE）進來時知道要讓哪些資料失效 */
@@ -47,28 +60,51 @@ export const keys = {
 export const useMe = () => useQuery({ queryKey: keys.me, queryFn: () => api.me(), staleTime: Infinity });
 export const useArchives = () => useQuery({ queryKey: keys.archives, queryFn: () => api.listArchives() });
 export const useClassrooms = () => useQuery({ queryKey: keys.classrooms, queryFn: () => api.listClassrooms() });
-export const useClassroom = (id: string) => useQuery({ queryKey: keys.classroom(id), queryFn: () => api.getClassroom(id) });
-export const useActivities = (cid: string) => useQuery({ queryKey: keys.activities(cid), queryFn: () => api.listActivities(cid) });
+export const useClassroom = (id: string) =>
+  useQuery({ queryKey: keys.classroom(id), queryFn: () => api.getClassroom(id) });
+export const useActivities = (cid: string) =>
+  useQuery({ queryKey: keys.activities(cid), queryFn: () => api.listActivities(cid) });
 /** 每分鐘重抓一次：排程的公告到時間後，學生不用重新整理就看得到 */
-export const useAnnouncements = (cid: string) => useQuery({ queryKey: keys.announcements(cid), queryFn: () => api.listAnnouncements(cid), refetchInterval: 60_000 });
-export const useJoinPolicy = (cid: string) => useQuery({ queryKey: keys.joinPolicy(cid), queryFn: () => api.getJoinPolicy(cid) });
-export const usePendingApplications = (cid: string) => useQuery({ queryKey: keys.applications(cid), queryFn: () => api.listApplications(cid, "pending") });
-export const useMyApplications = () => useQuery({ queryKey: keys.myApplications, queryFn: () => api.listMyApplications() });
-export const useDiscoverClassrooms = (q: string) => useQuery({ queryKey: keys.discover(q), queryFn: () => api.discoverClassrooms(q || undefined), placeholderData: (prev) => prev });
-export const usePosts = (cid: string, topicId: string | null) => useQuery({ queryKey: keys.posts(cid, topicId), queryFn: () => api.listPosts(cid, topicId) });
+export const useAnnouncements = (cid: string) =>
+  useQuery({ queryKey: keys.announcements(cid), queryFn: () => api.listAnnouncements(cid), refetchInterval: 60_000 });
+export const useJoinPolicy = (cid: string) =>
+  useQuery({ queryKey: keys.joinPolicy(cid), queryFn: () => api.getJoinPolicy(cid) });
+export const usePendingApplications = (cid: string) =>
+  useQuery({ queryKey: keys.applications(cid), queryFn: () => api.listApplications(cid, "pending") });
+export const useMyApplications = () =>
+  useQuery({ queryKey: keys.myApplications, queryFn: () => api.listMyApplications() });
+export const useDiscoverClassrooms = (q: string) =>
+  useQuery({
+    queryKey: keys.discover(q),
+    queryFn: () => api.discoverClassrooms(q || undefined),
+    placeholderData: (prev) => prev,
+  });
+export const usePosts = (cid: string, topicId: string | null) =>
+  useQuery({ queryKey: keys.posts(cid, topicId), queryFn: () => api.listPosts(cid, topicId) });
 /** 教室在 [from, to) 之間的行事曆事件（通常是一個月） */
 export const useCalendar = (cid: string, from: Date, to: Date) =>
-  useQuery({ queryKey: keys.calendar(cid, from.toISOString()), queryFn: () => api.listCalendar({ classroomId: cid, from: from.toISOString(), to: to.toISOString() }), placeholderData: (prev) => prev });
-export const useReports = (tid: string, enabled = true) => useQuery({ queryKey: keys.reports(tid), queryFn: () => api.listReports(tid), enabled });
-export const useNotes = (aid: string, enabled = true) => useQuery({ queryKey: keys.notes(aid), queryFn: () => api.listNotes(aid), enabled });
+  useQuery({
+    queryKey: keys.calendar(cid, from.toISOString()),
+    queryFn: () => api.listCalendar({ classroomId: cid, from: from.toISOString(), to: to.toISOString() }),
+    placeholderData: (prev) => prev,
+  });
+export const useReports = (tid: string, enabled = true) =>
+  useQuery({ queryKey: keys.reports(tid), queryFn: () => api.listReports(tid), enabled });
+export const useNotes = (aid: string, enabled = true) =>
+  useQuery({ queryKey: keys.notes(aid), queryFn: () => api.listNotes(aid), enabled });
 export const useTopics = (cid: string) => useQuery({ queryKey: keys.topics(cid), queryFn: () => api.listTopics(cid) });
 export const useTopic = (id: string) => useQuery({ queryKey: keys.topic(id), queryFn: () => api.getTopic(id) });
-export const useActivity = (id: string) => useQuery({ queryKey: keys.activity(id), queryFn: () => api.getActivity(id), enabled: !!id });
-export const useDialogue = (id: string) => useQuery({ queryKey: keys.dialogue(id), queryFn: () => api.listDialogue(id) });
-export const useProgress = (id: string) => useQuery({ queryKey: keys.progress(id), queryFn: () => api.getProgress(id) });
-export const usePositions = (id: string) => useQuery({ queryKey: keys.positions(id), queryFn: () => api.listPositions(id) });
+export const useActivity = (id: string) =>
+  useQuery({ queryKey: keys.activity(id), queryFn: () => api.getActivity(id), enabled: !!id });
+export const useDialogue = (id: string) =>
+  useQuery({ queryKey: keys.dialogue(id), queryFn: () => api.listDialogue(id) });
+export const useProgress = (id: string) =>
+  useQuery({ queryKey: keys.progress(id), queryFn: () => api.getProgress(id) });
+export const usePositions = (id: string) =>
+  useQuery({ queryKey: keys.positions(id), queryFn: () => api.listPositions(id) });
 
-export const useShareTargets = (enabled = true) => useQuery({ queryKey: keys.shareTargets, queryFn: () => api.listShareTargets(), enabled, staleTime: 5 * 60_000 });
+export const useShareTargets = (enabled = true) =>
+  useQuery({ queryKey: keys.shareTargets, queryFn: () => api.listShareTargets(), enabled, staleTime: 5 * 60_000 });
 
 export function useUpdateArchive() {
   const qc = useQueryClient();
@@ -80,14 +116,25 @@ export function useUpdateArchive() {
 }
 
 /* ---------- 多人討論 ---------- */
-export const useDiscussions = (cid: string) => useQuery({ queryKey: keys.discussions(cid), queryFn: () => api.listDiscussions(cid) });
-export const useDiscussion = (id: string) => useQuery({ queryKey: keys.discussion(id), queryFn: () => api.getDiscussion(id) });
+export const useDiscussions = (cid: string) =>
+  useQuery({ queryKey: keys.discussions(cid), queryFn: () => api.listDiscussions(cid) });
+export const useDiscussion = (id: string) =>
+  useQuery({ queryKey: keys.discussion(id), queryFn: () => api.getDiscussion(id) });
 /** 老師與助教：全班的討論成果；每 30 秒重抓一次，同學送出結論後不用重新整理 */
 export const useDiscussionSessions = (id: string, enabled = true) =>
-  useQuery({ queryKey: keys.discussionSessions(id), queryFn: () => api.listDiscussionSessions(id), enabled, refetchInterval: 30_000 });
+  useQuery({
+    queryKey: keys.discussionSessions(id),
+    queryFn: () => api.listDiscussionSessions(id),
+    enabled,
+    refetchInterval: 30_000,
+  });
 /** 某位同學的完整對話；studentId 省略（"me"）= 自己 */
 export const useDiscussionSession = (id: string, studentId = "me", enabled = true) =>
-  useQuery({ queryKey: keys.discussionSession(id, studentId), queryFn: () => api.getDiscussionSession(id, studentId === "me" ? undefined : studentId), enabled });
+  useQuery({
+    queryKey: keys.discussionSession(id, studentId),
+    queryFn: () => api.getDiscussionSession(id, studentId === "me" ? undefined : studentId),
+    enabled,
+  });
 
 /** 討論題目變動後要更新的資料：列表、單一題目與行事曆 */
 export function useInvalidateDiscussion(classroomId: string) {
@@ -103,7 +150,8 @@ export function useInvalidateDiscussion(classroomId: string) {
 export function useSaveDiscussion(classroomId: string, discussionId?: string) {
   const invalidate = useInvalidateDiscussion(classroomId);
   return useMutation({
-    mutationFn: (input: DiscussionTaskInput) => (discussionId ? api.updateDiscussion(discussionId, input) : api.createDiscussion(classroomId, input)),
+    mutationFn: (input: DiscussionTaskInput) =>
+      discussionId ? api.updateDiscussion(discussionId, input) : api.createDiscussion(classroomId, input),
     onSuccess: (d) => invalidate(d.id),
   });
 }
@@ -147,7 +195,8 @@ export function useSubmitConclusion(discussionId: string) {
 export function useSaveClassroom(classroomId?: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: ClassroomInput) => (classroomId ? api.updateClassroom(classroomId, input) : api.createClassroom(input)),
+    mutationFn: (input: ClassroomInput) =>
+      classroomId ? api.updateClassroom(classroomId, input) : api.createClassroom(input),
     onSuccess: (c) => {
       qc.setQueryData(keys.classroom(c.id), c);
       qc.invalidateQueries({ queryKey: keys.classrooms });
@@ -172,7 +221,8 @@ export function useInvalidateTopic(classroomId: string) {
 export function useSaveTopic(classroomId: string, topicId?: string) {
   const invalidate = useInvalidateTopic(classroomId);
   return useMutation({
-    mutationFn: (input: TopicInput) => (topicId ? api.updateTopic(topicId, input) : api.createTopic(classroomId, input)),
+    mutationFn: (input: TopicInput) =>
+      topicId ? api.updateTopic(topicId, input) : api.createTopic(classroomId, input),
     onSuccess: (t) => invalidate(t),
   });
 }
@@ -181,7 +231,8 @@ export function useSaveTopic(classroomId: string, topicId?: string) {
 export function useSaveAnnouncement(classroomId: string, announcementId?: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: AnnouncementInput) => (announcementId ? api.updateAnnouncement(announcementId, input) : api.createAnnouncement(classroomId, input)),
+    mutationFn: (input: AnnouncementInput) =>
+      announcementId ? api.updateAnnouncement(announcementId, input) : api.createAnnouncement(classroomId, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.announcements(classroomId) }),
   });
 }
@@ -215,9 +266,16 @@ export function useRegenerateJoinCode(classroomId: string) {
 export function useReviewApplication(classroomId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; decision: "approve" | "reject"; note?: string }) => api.reviewApplication(v.id, v.decision, v.note),
+    mutationFn: (v: { id: string; decision: "approve" | "reject"; note?: string }) =>
+      api.reviewApplication(v.id, v.decision, v.note),
     onSuccess: () => {
-      for (const k of [keys.applications(classroomId), keys.classroomMembers(classroomId), keys.classroom(classroomId), keys.classrooms]) qc.invalidateQueries({ queryKey: k });
+      for (const k of [
+        keys.applications(classroomId),
+        keys.classroomMembers(classroomId),
+        keys.classroom(classroomId),
+        keys.classrooms,
+      ])
+        qc.invalidateQueries({ queryKey: k });
     },
   });
 }
@@ -227,7 +285,8 @@ export function useImportMembers(classroomId: string) {
   return useMutation({
     mutationFn: (names: string[]) => api.importClassroomMembers(classroomId, names),
     onSuccess: () => {
-      for (const k of [keys.classroomMembers(classroomId), keys.classroom(classroomId), keys.classrooms]) qc.invalidateQueries({ queryKey: k });
+      for (const k of [keys.classroomMembers(classroomId), keys.classroom(classroomId), keys.classrooms])
+        qc.invalidateQueries({ queryKey: k });
     },
   });
 }
@@ -260,7 +319,10 @@ export function useCreatePost(classroomId: string, topicId: string | null) {
     mutationFn: (input: Omit<PostInput, "topicId">) => api.createPost(classroomId, { ...input, topicId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.posts(classroomId, topicId) });
-      if (topicId) { qc.invalidateQueries({ queryKey: keys.topic(topicId) }); qc.invalidateQueries({ queryKey: keys.topics(classroomId) }); }
+      if (topicId) {
+        qc.invalidateQueries({ queryKey: keys.topic(topicId) });
+        qc.invalidateQueries({ queryKey: keys.topics(classroomId) });
+      }
     },
   });
 }
@@ -271,7 +333,10 @@ export function useDeletePost(classroomId: string, topicId: string | null) {
     mutationFn: (id: string) => api.deletePost(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.posts(classroomId, topicId) });
-      if (topicId) { qc.invalidateQueries({ queryKey: keys.topic(topicId) }); qc.invalidateQueries({ queryKey: keys.topics(classroomId) }); }
+      if (topicId) {
+        qc.invalidateQueries({ queryKey: keys.topic(topicId) });
+        qc.invalidateQueries({ queryKey: keys.topics(classroomId) });
+      }
     },
   });
 }
@@ -306,7 +371,10 @@ export function useNoteActions(activityId: string) {
 /** 老師的活動控制：直接結束、設定階段截止時間 */
 export function useActivityControls(id: string) {
   const qc = useQueryClient();
-  const onSuccess = (a: Activity) => { qc.setQueryData(keys.activity(id), a); qc.invalidateQueries({ queryKey: keys.activities(a.classroomId) }); };
+  const onSuccess = (a: Activity) => {
+    qc.setQueryData(keys.activity(id), a);
+    qc.invalidateQueries({ queryKey: keys.activities(a.classroomId) });
+  };
   return {
     finish: useMutation({ mutationFn: () => api.finishActivity(id), onSuccess }),
     deadline: useMutation({ mutationFn: (deadline: string | null) => api.setStageDeadline(id, deadline), onSuccess }),
@@ -315,7 +383,10 @@ export function useActivityControls(id: string) {
 
 export function useSetReady(id: string) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (ready: boolean) => api.setReady(id, ready), onSuccess: () => qc.invalidateQueries({ queryKey: keys.members(id) }) });
+  return useMutation({
+    mutationFn: (ready: boolean) => api.setReady(id, ready),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.members(id) }),
+  });
 }
 
 export function useAdvanceActivity(id: string) {
@@ -337,15 +408,23 @@ export function useConfirmPosition(id: string) {
   });
 }
 
-export const useMembers = (id: string, enabled = true) => useQuery({ queryKey: keys.members(id), queryFn: () => api.listMembers(id), enabled: enabled && !!id });
-export const useGroups = (id: string, enabled = true) => useQuery({ queryKey: keys.groups(id), queryFn: () => api.listGroups(id), enabled });
-export const useGroupMessages = (gid: string | undefined) => useQuery({ queryKey: keys.groupMessages(gid ?? ""), queryFn: () => api.listGroupMessages(gid!), enabled: !!gid });
-export const useArguments = (gid: string | undefined) => useQuery({ queryKey: keys.arguments(gid ?? ""), queryFn: () => api.listArguments(gid!), enabled: !!gid });
-export const useRooms = (id: string, enabled = true) => useQuery({ queryKey: keys.rooms(id), queryFn: () => api.listRooms(id), enabled });
-export const useTurns = (rid: string | undefined) => useQuery({ queryKey: keys.turns(rid ?? ""), queryFn: () => api.listTurns(rid!), enabled: !!rid });
-export const useScores = (id: string, enabled = true) => useQuery({ queryKey: keys.scores(id), queryFn: () => api.listScores(id), enabled });
+export const useMembers = (id: string, enabled = true) =>
+  useQuery({ queryKey: keys.members(id), queryFn: () => api.listMembers(id), enabled: enabled && !!id });
+export const useGroups = (id: string, enabled = true) =>
+  useQuery({ queryKey: keys.groups(id), queryFn: () => api.listGroups(id), enabled });
+export const useGroupMessages = (gid: string | undefined) =>
+  useQuery({ queryKey: keys.groupMessages(gid ?? ""), queryFn: () => api.listGroupMessages(gid!), enabled: !!gid });
+export const useArguments = (gid: string | undefined) =>
+  useQuery({ queryKey: keys.arguments(gid ?? ""), queryFn: () => api.listArguments(gid!), enabled: !!gid });
+export const useRooms = (id: string, enabled = true) =>
+  useQuery({ queryKey: keys.rooms(id), queryFn: () => api.listRooms(id), enabled });
+export const useTurns = (rid: string | undefined) =>
+  useQuery({ queryKey: keys.turns(rid ?? ""), queryFn: () => api.listTurns(rid!), enabled: !!rid });
+export const useScores = (id: string, enabled = true) =>
+  useQuery({ queryKey: keys.scores(id), queryFn: () => api.listScores(id), enabled });
 /** 立場星圖：活動結束前只有老師拿得到（學生呼叫會被拒絕），所以學生端要傳 enabled = false */
-export const useStar = (id: string, stage: string, enabled = true) => useQuery({ queryKey: [...keys.star(id), stage], queryFn: () => api.getStarData(id), enabled });
+export const useStar = (id: string, stage: string, enabled = true) =>
+  useQuery({ queryKey: [...keys.star(id), stage], queryFn: () => api.getStarData(id), enabled });
 
 /** 訂閱活動的即時事件（SSE）：有事件就讓相關的查詢重新抓，畫面自然更新 */
 export function useActivityEvents(activityId: string) {
@@ -354,7 +433,15 @@ export function useActivityEvents(activityId: string) {
     return api.subscribe(activityId, (e) => {
       switch (e.type) {
         case "stage_changed":
-          for (const k of [keys.activity(activityId), keys.groups(activityId), keys.rooms(activityId), keys.star(activityId), keys.scores(activityId), keys.members(activityId)]) qc.invalidateQueries({ queryKey: k });
+          for (const k of [
+            keys.activity(activityId),
+            keys.groups(activityId),
+            keys.rooms(activityId),
+            keys.star(activityId),
+            keys.scores(activityId),
+            keys.members(activityId),
+          ])
+            qc.invalidateQueries({ queryKey: k });
           break;
         case "group_message":
           qc.invalidateQueries({ queryKey: keys.groupMessages(e.message.groupId) });
@@ -382,7 +469,8 @@ export function useActivityEvents(activityId: string) {
   }, [activityId, qc]);
 }
 
-export const useClassroomMembers = (id: string) => useQuery({ queryKey: keys.classroomMembers(id), queryFn: () => api.listClassroomMembers(id) });
+export const useClassroomMembers = (id: string) =>
+  useQuery({ queryKey: keys.classroomMembers(id), queryFn: () => api.listClassroomMembers(id) });
 
 /** 修改自己的顯示名稱；教室成員表、側邊欄都會跟著更新 */
 export function useUpdateMe() {
@@ -400,7 +488,8 @@ export function useUpdateMe() {
 export function useSetMemberRole(classroomId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ memberId, role }: { memberId: string; role: Exclude<ClassroomRole, "teacher"> }) => api.setMemberRole(classroomId, memberId, role),
+    mutationFn: ({ memberId, role }: { memberId: string; role: Exclude<ClassroomRole, "teacher"> }) =>
+      api.setMemberRole(classroomId, memberId, role),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.classroomMembers(classroomId) }),
   });
 }
@@ -409,7 +498,8 @@ export function useSetMemberRole(classroomId: string) {
 export function useSaveCalendarEvent(classroomId: string, eventId?: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CalendarEventInput) => (eventId ? api.updateCalendarEvent(eventId, input) : api.createCalendarEvent(classroomId, input)),
+    mutationFn: (input: CalendarEventInput) =>
+      eventId ? api.updateCalendarEvent(eventId, input) : api.createCalendarEvent(classroomId, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }),
   });
 }

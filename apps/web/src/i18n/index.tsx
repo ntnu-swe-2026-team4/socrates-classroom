@@ -31,7 +31,9 @@ function initialLang(): Lang {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (isLang(saved)) return saved;
-  } catch { /* 讀不到就用預設 */ }
+  } catch {
+    /* 讀不到就用預設 */
+  }
   return "zh-TW";
 }
 
@@ -42,7 +44,10 @@ if (import.meta.env.DEV) (window as unknown as { __i18nMissing: Set<string> })._
 
 /** key 可以加「#說明」來區分同一個中文在不同語境的翻譯（例如 "加入#add"）；顯示時會去掉 */
 const bare = (s: string) => s.replace(/#[a-z]+$/, "");
-const fill = (s0: string, vars?: Record<string, string | number>) => { const s = bare(s0); return (vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s); };
+const fill = (s0: string, vars?: Record<string, string | number>) => {
+  const s = bare(s0);
+  return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s;
+};
 
 /** 不在元件裡用的翻譯函式；讀的是目前選擇的語言 */
 export function tr(key: string, vars?: Record<string, string | number>): string {
@@ -59,14 +64,24 @@ export function LangProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(current);
   const setLang = useCallback((l: Lang) => {
     current = l;
-    try { localStorage.setItem(STORAGE_KEY, l); } catch { /* 存不了就算了 */ }
+    try {
+      localStorage.setItem(STORAGE_KEY, l);
+    } catch {
+      /* 存不了就算了 */
+    }
     setLangState(l);
   }, []);
-  useEffect(() => { document.documentElement.lang = lang === "zh-TW" ? "zh-Hant" : lang; }, [lang]);
+  useEffect(() => {
+    document.documentElement.lang = lang === "zh-TW" ? "zh-Hant" : lang;
+  }, [lang]);
   const value = useMemo(() => ({ lang, setLang }), [lang, setLang]);
   // 換語言時整個畫面重新掛載（key = lang）：保證每一段文字（包含模組層級的常數、沒用 useT 的小元件）都用新語言重畫。
   // 資料快取（QueryClient）與網址都在外面，不會因此遺失。
-  return <Ctx.Provider value={value}><Fragment key={lang}>{children}</Fragment></Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      <Fragment key={lang}>{children}</Fragment>
+    </Ctx.Provider>
+  );
 }
 
 export const useLang = () => useContext(Ctx);
@@ -75,5 +90,11 @@ export const useLang = () => useContext(Ctx);
 export function useT() {
   const { lang } = useLang();
   // lang 變了才換新函式，讓依賴 t 的 useMemo / useEffect 跟著更新
-  return useCallback((key: string, vars?: Record<string, string | number>) => { void lang; return tr(key, vars); }, [lang]);
+  return useCallback(
+    (key: string, vars?: Record<string, string | number>) => {
+      void lang;
+      return tr(key, vars);
+    },
+    [lang],
+  );
 }

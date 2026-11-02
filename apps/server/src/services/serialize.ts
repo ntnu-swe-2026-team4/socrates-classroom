@@ -21,7 +21,9 @@ export async function classroomJson(db: Db, c: ClassroomRow, _user: UserRow, rol
     "SELECT COUNT(*) AS n FROM classroom_members WHERE classroom_id = $cid AND role = 'student' AND status = 'active'",
     { cid: c.id },
   );
-  const debates = await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM topics WHERE classroom_id = $cid", { cid: c.id });
+  const debates = await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM topics WHERE classroom_id = $cid", {
+    cid: c.id,
+  });
   return {
     id: c.id,
     name: c.name,
@@ -74,13 +76,13 @@ export async function resourceJsonWithDb(db: Db, row: any) {
 }
 
 export async function topicJson(db: Db, t: TopicRow) {
-  const resourceRows = await all(db, "SELECT * FROM topic_resources WHERE topic_id = $id ORDER BY seq, added_at", { id: t.id });
+  const resourceRows = await all(db, "SELECT * FROM topic_resources WHERE topic_id = $id ORDER BY seq, added_at", {
+    id: t.id,
+  });
   const resources = await Promise.all(resourceRows.map((r: any) => resourceJsonWithDb(db, r)));
-  const posts = await one<{ n: number }>(
-    db,
-    "SELECT COUNT(*) AS n FROM posts WHERE topic_id = $id AND deleted = 0",
-    { id: t.id },
-  );
+  const posts = await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM posts WHERE topic_id = $id AND deleted = 0", {
+    id: t.id,
+  });
   return {
     id: t.id,
     classroomId: t.classroom_id,
@@ -129,11 +131,16 @@ export function dialogueJson(row: any) {
 }
 
 export async function archiveJson(db: Db, row: any, user: UserRow) {
-  const sharedRows = (await all(db, "SELECT user_id FROM archive_shares WHERE archive_id = $id ORDER BY user_id", { id: row.id })) as { user_id: string }[];
+  const sharedRows = (await all(db, "SELECT user_id FROM archive_shares WHERE archive_id = $id ORDER BY user_id", {
+    id: row.id,
+  })) as { user_id: string }[];
   const sharedWithIds = sharedRows.map((r) => r.user_id);
   const owner = await one<{ name: string }>(db, "SELECT name FROM users WHERE id = $id", { id: row.owner_id });
-  const sharedWithMe = await one(db, "SELECT 1 AS x FROM archive_shares WHERE archive_id = $aid AND user_id = $uid", { aid: row.id, uid: user.id });
-  const sharedBy = row.owner_id === user.id || !sharedWithMe ? null : owner?.name ?? null;
+  const sharedWithMe = await one(db, "SELECT 1 AS x FROM archive_shares WHERE archive_id = $aid AND user_id = $uid", {
+    aid: row.id,
+    uid: user.id,
+  });
+  const sharedBy = row.owner_id === user.id || !sharedWithMe ? null : (owner?.name ?? null);
   return {
     id: row.id,
     title: row.title,
@@ -148,12 +155,16 @@ export async function archiveJson(db: Db, row: any, user: UserRow) {
   };
 }
 
-export async function memberJson(db: Db, user: UserRow, meId: string, opts: { ready: boolean; showIndividual: boolean; activityId: string }) {
-  const position = await one<any>(
-    db,
-    "SELECT * FROM positions WHERE activity_id = $aid AND student_id = $sid",
-    { aid: opts.activityId, sid: user.id },
-  );
+export async function memberJson(
+  db: Db,
+  user: UserRow,
+  meId: string,
+  opts: { ready: boolean; showIndividual: boolean; activityId: string },
+) {
+  const position = await one<any>(db, "SELECT * FROM positions WHERE activity_id = $aid AND student_id = $sid", {
+    aid: opts.activityId,
+    sid: user.id,
+  });
   const rounds = await one<{ n: number }>(
     db,
     "SELECT COUNT(*) AS n FROM activity_dialogue WHERE activity_id = $aid AND student_id = $sid AND role = 'user'",
@@ -239,14 +250,21 @@ export function judgmentJson(row: any) {
 }
 
 export async function discussionSessionsExist(db: Db, discussionId: string): Promise<void> {
-  const row = await one<{ classroom_id: string }>(db, "SELECT classroom_id FROM discussions WHERE id = $id", { id: discussionId });
+  const row = await one<{ classroom_id: string }>(db, "SELECT classroom_id FROM discussions WHERE id = $id", {
+    id: discussionId,
+  });
   const ids = await studentIdsOf(db, row?.classroom_id ?? "");
   // 只補缺的 session
   const missing: Array<{ sql: string; params: Record<string, unknown> }> = [];
   for (const sid of ids) {
-    const exists = await one(db, "SELECT 1 AS x FROM discussion_sessions WHERE discussion_id = $did AND student_id = $sid", {
-      did: discussionId, sid,
-    });
+    const exists = await one(
+      db,
+      "SELECT 1 AS x FROM discussion_sessions WHERE discussion_id = $did AND student_id = $sid",
+      {
+        did: discussionId,
+        sid,
+      },
+    );
     if (!exists) {
       missing.push({
         sql: "INSERT INTO discussion_sessions (id, discussion_id, student_id, conclusion, submitted_at, last_active_at) VALUES ($id, $did, $sid, NULL, NULL, NULL)",
@@ -259,36 +277,48 @@ export async function discussionSessionsExist(db: Db, discussionId: string): Pro
 
 export async function discussionCounts(db: Db, d: DiscussionRow) {
   await discussionSessionsExist(db, d.id);
-  const total = (await one<{ n: number }>(
-    db,
-    "SELECT COUNT(*) AS n FROM classroom_members WHERE classroom_id = $cid AND role = 'student' AND status = 'active'",
-    { cid: d.classroom_id },
-  ))?.n ?? 0;
-  const started = (await one<{ n: number }>(
-    db,
-    `SELECT COUNT(DISTINCT m.student_id) AS n FROM discussion_messages m
+  const total =
+    (
+      await one<{ n: number }>(
+        db,
+        "SELECT COUNT(*) AS n FROM classroom_members WHERE classroom_id = $cid AND role = 'student' AND status = 'active'",
+        { cid: d.classroom_id },
+      )
+    )?.n ?? 0;
+  const started =
+    (
+      await one<{ n: number }>(
+        db,
+        `SELECT COUNT(DISTINCT m.student_id) AS n FROM discussion_messages m
      JOIN discussion_sessions s ON s.discussion_id = m.discussion_id AND s.student_id = m.student_id
      JOIN classroom_members cm ON cm.classroom_id = $cid AND cm.user_id = m.student_id
        AND cm.status = 'active' AND cm.role = 'student'
      WHERE m.discussion_id = $did`,
-    { did: d.id, cid: d.classroom_id },
-  ))?.n ?? 0;
-  const submitted = (await one<{ n: number }>(
-    db,
-    `SELECT COUNT(*) AS n FROM discussion_sessions s
+        { did: d.id, cid: d.classroom_id },
+      )
+    )?.n ?? 0;
+  const submitted =
+    (
+      await one<{ n: number }>(
+        db,
+        `SELECT COUNT(*) AS n FROM discussion_sessions s
      JOIN classroom_members cm ON cm.classroom_id = $cid AND cm.user_id = s.student_id
        AND cm.status = 'active' AND cm.role = 'student'
      WHERE s.discussion_id = $did AND s.conclusion IS NOT NULL`,
-    { did: d.id, cid: d.classroom_id },
-  ))?.n ?? 0;
-  const rounds = (await one<{ n: number }>(
-    db,
-    `SELECT COUNT(*) AS n FROM discussion_messages m
+        { did: d.id, cid: d.classroom_id },
+      )
+    )?.n ?? 0;
+  const rounds =
+    (
+      await one<{ n: number }>(
+        db,
+        `SELECT COUNT(*) AS n FROM discussion_messages m
      JOIN classroom_members cm ON cm.classroom_id = $cid AND cm.user_id = m.student_id
        AND cm.status = 'active' AND cm.role = 'student'
      WHERE m.discussion_id = $did AND m.role = 'user'`,
-    { did: d.id, cid: d.classroom_id },
-  ))?.n ?? 0;
+        { did: d.id, cid: d.classroom_id },
+      )
+    )?.n ?? 0;
   return { total, started, submitted, avgRounds: started ? Math.round((rounds / started) * 10) / 10 : 0 };
 }
 
@@ -310,12 +340,17 @@ export async function discussionTaskJson(db: Db, d: DiscussionRow, myStatus?: st
 }
 
 export async function discussionSessionJson(db: Db, d: DiscussionRow, session: any, meId: string) {
-  const user = await one<UserRow>(db, "SELECT id, name, role, avatar_url, created_at FROM users WHERE id = $id", { id: session.student_id });
-  const rounds = (await one<{ n: number }>(
-    db,
-    "SELECT COUNT(*) AS n FROM discussion_messages WHERE discussion_id = $did AND student_id = $sid AND role = 'user'",
-    { did: d.id, sid: session.student_id },
-  ))?.n ?? 0;
+  const user = await one<UserRow>(db, "SELECT id, name, role, avatar_url, created_at FROM users WHERE id = $id", {
+    id: session.student_id,
+  });
+  const rounds =
+    (
+      await one<{ n: number }>(
+        db,
+        "SELECT COUNT(*) AS n FROM discussion_messages WHERE discussion_id = $did AND student_id = $sid AND role = 'user'",
+        { did: d.id, sid: session.student_id },
+      )
+    )?.n ?? 0;
   const textRows = await all<{ text: string }>(
     db,
     "SELECT text FROM discussion_messages WHERE discussion_id = $did AND student_id = $sid AND role = 'user' ORDER BY created_at",
@@ -339,17 +374,26 @@ export async function discussionSessionJson(db: Db, d: DiscussionRow, session: a
 }
 
 export async function discussionSessionDetailJson(db: Db, d: DiscussionRow, session: any, meId: string) {
-  const messages = await all(db, "SELECT * FROM discussion_messages WHERE discussion_id = $did AND student_id = $sid ORDER BY created_at", {
-    did: d.id, sid: session.student_id,
-  });
+  const messages = await all(
+    db,
+    "SELECT * FROM discussion_messages WHERE discussion_id = $did AND student_id = $sid ORDER BY created_at",
+    {
+      did: d.id,
+      sid: session.student_id,
+    },
+  );
   return { ...(await discussionSessionJson(db, d, session, meId)), messages: messages.map(dialogueJson) };
 }
 
 const CUE = {
-  claim: /我(覺得|認為|想|主張|相信)|應該|不應該|才是|就是|不是|\bI (think|believe|feel)\b|\bwe (think|believe)\b|\bshould(n't| not)?\b|\b(creo|pienso|opino|considero)\b|me parece|\bdeber[ií]a/i,
-  reason: /因為|由於|原因|所以|因此|畢竟|\b(because|since|therefore|after all)\b|\b(porque|ya que|puesto que|por lo tanto|por eso)\b/i,
-  evidence: /例如|比如|像是|舉例|例子|研究|新聞|經驗|報導|統計|資料|for example|for instance|such as|\b(study|studies|research|news|experience|data|statistics)\b|por ejemplo|\b(estudio|estudios|investigaci[oó]n|noticias?|experiencia|datos|estad[ií]sticas?)\b/i,
-  counter: /但是|不過|然而|除非|可是|也許|可能|另一方面|反過來|\b(but|however|unless|although|maybe|perhaps|possibly)\b|on the other hand|\b(pero|aunque|quiz[aá]s?|tal vez|posiblemente)\b|sin embargo|a menos que|por otro lado/i,
+  claim:
+    /我(覺得|認為|想|主張|相信)|應該|不應該|才是|就是|不是|\bI (think|believe|feel)\b|\bwe (think|believe)\b|\bshould(n't| not)?\b|\b(creo|pienso|opino|considero)\b|me parece|\bdeber[ií]a/i,
+  reason:
+    /因為|由於|原因|所以|因此|畢竟|\b(because|since|therefore|after all)\b|\b(porque|ya que|puesto que|por lo tanto|por eso)\b/i,
+  evidence:
+    /例如|比如|像是|舉例|例子|研究|新聞|經驗|報導|統計|資料|for example|for instance|such as|\b(study|studies|research|news|experience|data|statistics)\b|por ejemplo|\b(estudio|estudios|investigaci[oó]n|noticias?|experiencia|datos|estad[ií]sticas?)\b/i,
+  counter:
+    /但是|不過|然而|除非|可是|也許|可能|另一方面|反過來|\b(but|however|unless|although|maybe|perhaps|possibly)\b|on the other hand|\b(pero|aunque|quiz[aá]s?|tal vez|posiblemente)\b|sin embargo|a menos que|por otro lado/i,
 };
 
 export function coverageOf(texts: string[]) {

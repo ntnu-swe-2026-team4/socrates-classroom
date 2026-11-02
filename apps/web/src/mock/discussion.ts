@@ -11,8 +11,15 @@ import { mulberry32, hashSeed } from "@/lib/star/data";
 import { coverage } from "./debate-ai";
 import { tr } from "@/i18n";
 import type {
-  Coverage, DialogueMessage, DiscussionSession, DiscussionSessionDetail, DiscussionSessionStatus,
-  DiscussionStats, DiscussionStatus, DiscussionTask, DiscussionTaskInput,
+  Coverage,
+  DialogueMessage,
+  DiscussionSession,
+  DiscussionSessionDetail,
+  DiscussionSessionStatus,
+  DiscussionStats,
+  DiscussionStatus,
+  DiscussionTask,
+  DiscussionTaskInput,
 } from "@/api/types";
 
 export interface StoredSession {
@@ -85,7 +92,7 @@ const CONCLUSIONS = [
   "我的結論是反對。最主要的理由是：這個做法把成本轉給最沒有辦法拒絕的人，而他們沒有參與決定。",
 ];
 
-const pick = <T,>(rng: () => number, xs: T[]) => xs[(rng() * xs.length) | 0];
+const pick = <T>(rng: () => number, xs: T[]) => xs[(rng() * xs.length) | 0];
 
 /** 依「題目 + 同學」產生一段固定的對話；rounds = 0 代表這位同學還沒開始 */
 function simulate(taskId: string, studentId: string, studentName: string, maxRounds: number): StoredSession {
@@ -98,12 +105,21 @@ function simulate(taskId: string, studentId: string, studentName: string, maxRou
   const base = Date.now() - (1 + rng() * 3) * 864e5;
   const at = (i: number) => new Date(base + i * 7 * 60_000).toISOString();
   for (let i = 0; i < rounds; i++) {
-    const text = i === 0 ? pick(rng, OPENERS) : i === rounds - 1 && rounds > 2 ? pick(rng, CLOSERS) : pick(rng, MIDDLES);
+    const text =
+      i === 0 ? pick(rng, OPENERS) : i === rounds - 1 && rounds > 2 ? pick(rng, CLOSERS) : pick(rng, MIDDLES);
     messages.push({ id: `${studentId}-u${i}`, role: "user", text: tr(text), at: at(i * 2) });
-    messages.push({ id: `${studentId}-a${i}`, role: "assistant", text: tr(SOCRATIC[(i + ((rng() * 3) | 0)) % SOCRATIC.length]), at: at(i * 2 + 1) });
+    messages.push({
+      id: `${studentId}-a${i}`,
+      role: "assistant",
+      text: tr(SOCRATIC[(i + ((rng() * 3) | 0)) % SOCRATIC.length]),
+      at: at(i * 2 + 1),
+    });
   }
   return {
-    studentId, studentName, messages, simulated: true,
+    studentId,
+    studentName,
+    messages,
+    simulated: true,
     conclusion: submitted ? tr(pick(rng, CONCLUSIONS)) : null,
     submittedAt: submitted ? at(rounds * 2) : null,
     lastActiveAt: rounds ? at(rounds * 2) : null,
@@ -120,13 +136,24 @@ const coverageOf = (s: StoredSession): Coverage =>
 export const roundsOf = (s: StoredSession) => s.messages.filter((m) => m.role === "user").length;
 
 const toSession = (d: StoredDiscussion, s: StoredSession, meId: string): DiscussionSession => ({
-  id: `${d.id}:${s.studentId}`, taskId: d.id, studentId: s.studentId, studentName: s.studentName,
-  status: statusOf(s), rounds: roundsOf(s), conclusion: s.conclusion, submittedAt: s.submittedAt,
-  lastActiveAt: s.lastActiveAt, coverage: coverageOf(s), simulated: s.simulated, isMe: s.studentId === meId,
+  id: `${d.id}:${s.studentId}`,
+  taskId: d.id,
+  studentId: s.studentId,
+  studentName: s.studentName,
+  status: statusOf(s),
+  rounds: roundsOf(s),
+  conclusion: s.conclusion,
+  submittedAt: s.submittedAt,
+  lastActiveAt: s.lastActiveAt,
+  coverage: coverageOf(s),
+  simulated: s.simulated,
+  isMe: s.studentId === meId,
 });
 
-export const toSessionDetail = (d: StoredDiscussion, s: StoredSession, meId: string): DiscussionSessionDetail =>
-  ({ ...toSession(d, s, meId), messages: s.messages.map((m) => ({ ...m })) });
+export const toSessionDetail = (d: StoredDiscussion, s: StoredSession, meId: string): DiscussionSessionDetail => ({
+  ...toSession(d, s, meId),
+  messages: s.messages.map((m) => ({ ...m })),
+});
 
 function stats(d: StoredDiscussion): DiscussionStats {
   const all = [...d.sessions.values()];
@@ -144,23 +171,51 @@ function stats(d: StoredDiscussion): DiscussionStats {
 export function toTask(d: StoredDiscussion, myId: string | null): DiscussionTask {
   const mine = myId ? d.sessions.get(myId) : undefined;
   return {
-    id: d.id, classroomId: d.classroomId, title: d.title, prompt: d.prompt, conclusionHint: d.conclusionHint,
-    dueAt: d.dueAt, maxRounds: d.maxRounds, status: d.status, createdAt: d.createdAt, updatedAt: d.updatedAt,
-    stats: stats(d), ...(myId ? { myStatus: mine ? statusOf(mine) : ("todo" as const) } : {}),
+    id: d.id,
+    classroomId: d.classroomId,
+    title: d.title,
+    prompt: d.prompt,
+    conclusionHint: d.conclusionHint,
+    dueAt: d.dueAt,
+    maxRounds: d.maxRounds,
+    status: d.status,
+    createdAt: d.createdAt,
+    updatedAt: d.updatedAt,
+    stats: stats(d),
+    ...(myId ? { myStatus: mine ? statusOf(mine) : ("todo" as const) } : {}),
   };
 }
 
 export const listSessions = (d: StoredDiscussion, meId: string) =>
   [...d.sessions.values()]
-    .sort((a, b) => Number(b.studentId === meId) - Number(a.studentId === meId) || a.studentName.localeCompare(b.studentName))
+    .sort(
+      (a, b) =>
+        Number(b.studentId === meId) - Number(a.studentId === meId) || a.studentName.localeCompare(b.studentName),
+    )
     .map((s) => toSession(d, s, meId));
 
 /* ---------------- 建立與修改 ---------------- */
-export function createDiscussion(classroomId: string, input: DiscussionTaskInput, students: string[], meName: string, meId: string, id?: string): StoredDiscussion {
+export function createDiscussion(
+  classroomId: string,
+  input: DiscussionTaskInput,
+  students: string[],
+  meName: string,
+  meId: string,
+  id?: string,
+): StoredDiscussion {
   const at = now();
   const d: StoredDiscussion = {
-    id: id ?? newId("dq"), classroomId, title: input.title, prompt: input.prompt, conclusionHint: input.conclusionHint,
-    dueAt: input.dueAt, maxRounds: input.maxRounds, status: "open", createdAt: at, updatedAt: at, sessions: new Map(),
+    id: id ?? newId("dq"),
+    classroomId,
+    title: input.title,
+    prompt: input.prompt,
+    conclusionHint: input.conclusionHint,
+    dueAt: input.dueAt,
+    maxRounds: input.maxRounds,
+    status: "open",
+    createdAt: at,
+    updatedAt: at,
+    sessions: new Map(),
   };
   // 教室裡的每位同學各有一段對話：登入的那位從空的開始，其他人用模擬的
   for (const name of students) {
@@ -168,7 +223,15 @@ export function createDiscussion(classroomId: string, input: DiscussionTaskInput
     const sid = `sim-${hashSeed(name).toString(36)}`;
     d.sessions.set(sid, simulate(d.id, sid, name, d.maxRounds));
   }
-  d.sessions.set(meId, { studentId: meId, studentName: meName, messages: [], conclusion: null, submittedAt: null, lastActiveAt: null, simulated: false });
+  d.sessions.set(meId, {
+    studentId: meId,
+    studentName: meName,
+    messages: [],
+    conclusion: null,
+    submittedAt: null,
+    lastActiveAt: null,
+    simulated: false,
+  });
   discussions.push(d);
   return d;
 }
@@ -182,7 +245,19 @@ export function findDiscussion(id: string): StoredDiscussion {
 /** 自己的那段對話（還沒有就開一段新的） */
 export function mySession(d: StoredDiscussion, meId: string, meName: string): StoredSession {
   let s = d.sessions.get(meId);
-  if (!s) d.sessions.set(meId, (s = { studentId: meId, studentName: meName, messages: [], conclusion: null, submittedAt: null, lastActiveAt: null, simulated: false }));
+  if (!s) {
+    s = {
+      studentId: meId,
+      studentName: meName,
+      messages: [],
+      conclusion: null,
+      submittedAt: null,
+      lastActiveAt: null,
+      simulated: false,
+    };
+    d.sessions.set(meId, s);
+  }
+  d.sessions.set(meId, session);
   return s;
 }
 

@@ -33,10 +33,13 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   renderer.toneMappingExposure = 1.0;
 
   const scene = new THREE.Scene();
-  const STAGE_DARK = new THREE.Color(0x2b2d33); // 原本 0x1a1714 太黑，調成偏灰的深色
-  const STAGE_LIGHT = new THREE.Color(0xdcdad3); // matches the CSS light-mode gradient's base tone
-  scene.background = null; renderer.setClearColor(0x000000, 0); // 透明背景，直接融入頁面
-  const setTheme = (_light) => { /* 背景透明，不隨主題變 */ };
+  const _STAGE_DARK = new THREE.Color(0x2b2d33); // 原本 0x1a1714 太黑，調成偏灰的深色
+  const _STAGE_LIGHT = new THREE.Color(0xdcdad3); // matches the CSS light-mode gradient's base tone
+  scene.background = null;
+  renderer.setClearColor(0x000000, 0); // 透明背景，直接融入頁面
+  const setTheme = (_light) => {
+    /* 背景透明，不隨主題變 */
+  };
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.35;
@@ -65,7 +68,8 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   let modelHeight = 1;
 
   function resize() {
-    const w = stage.clientWidth, h = stage.clientHeight;
+    const w = stage.clientWidth,
+      h = stage.clientHeight;
     if (w === 0 || h === 0) return;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
@@ -80,7 +84,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     camera.position.set(
       modelCenter.x + Math.sin(angle) * distance,
       modelCenter.y,
-      modelCenter.z + Math.cos(angle) * distance
+      modelCenter.z + Math.cos(angle) * distance,
     );
     camera.lookAt(modelCenter);
     camera.updateProjectionMatrix();
@@ -197,7 +201,8 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   let transitioning = false;
   const hybridMaterials = [];
   let maxDist = 1;
-  let bandMinY = -1, bandMaxY = 1;
+  let bandMinY = -1,
+    bandMaxY = 1;
 
   function startTransition(clickPointWorld) {
     if (!hybridMaterials.length || transitioning) return;
@@ -215,8 +220,10 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     const start = performance.now();
     function step(now) {
       const t = Math.min((now - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - t, 2);
-      hybridMaterials.forEach((m) => { m.uniforms.uRadius.value = eased * maxDist * 1.6; });
+      const eased = 1 - (1 - t) ** 2;
+      hybridMaterials.forEach((m) => {
+        m.uniforms.uRadius.value = eased * maxDist * 1.6;
+      });
       if (t < 1) {
         requestAnimationFrame(step);
       } else {
@@ -238,7 +245,9 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     const rect = canvas.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, h: rect.height };
   }
-  canvas.addEventListener("pointerdown", (e) => { downPos = getPointer(e); });
+  canvas.addEventListener("pointerdown", (e) => {
+    downPos = getPointer(e);
+  });
   canvas.addEventListener("pointerup", (e) => {
     if (!downPos || !avatarRootRef) return;
     const up = getPointer(e);
@@ -253,7 +262,11 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   });
 
   // 模型只下載、解析一次；每個畫面各自複製一份（幾何與貼圖共用，不重複佔記憶體）；表情動畫只是資料，直接共用
-  const loadModel = (url) => (modelCache.get(url) ?? modelCache.set(url, new GLTFLoader().loadAsync(url)).get(url)).then((g) => ({ model: cloneSkinned(g.scene), clips: g.animations }));
+  const loadModel = (url) =>
+    (modelCache.get(url) ?? modelCache.set(url, new GLTFLoader().loadAsync(url)).get(url)).then((g) => ({
+      model: cloneSkinned(g.scene),
+      clips: g.animations,
+    }));
 
   let pendingExpression = null; // 模型還沒載入完就指定的表情，載入後再播
   loadModel("/socrates.glb")
@@ -290,7 +303,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
       });
 
       resize();
-      loaded = true;
+      _loaded = true;
       opts.onReady?.();
       kick();
     })
@@ -301,7 +314,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
 
   const clock = new THREE.Clock();
   let raf = 0;
-  let loaded = false;
+  let _loaded = false;
   let visible = true;
   const FRAME_MS = mini ? 1000 / 30 : 0; // 小尺寸版限制 30 fps，其餘功能（拖曳、全息、眨眼）跟大版一樣
   let last = 0;
@@ -310,7 +323,10 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   function frame(now) {
     raf = 0;
     if (!visible || document.hidden) return; // 看不到就完全不畫，等 kick() 再喚醒
-    if (FRAME_MS && now - last < FRAME_MS) { raf = requestAnimationFrame(frame); return; }
+    if (FRAME_MS && now - last < FRAME_MS) {
+      raf = requestAnimationFrame(frame);
+      return;
+    }
     last = now;
     const dt = Math.min(clock.getDelta(), 0.1);
     if (avatar) {
@@ -320,25 +336,46 @@ export function createSocratesScene(canvas, stage, opts = {}) {
       }
       avatar.update(dt);
     }
-    hybridMaterials.forEach((m) => { m.uniforms.uTime.value += dt; });
+    hybridMaterials.forEach((m) => {
+      m.uniforms.uTime.value += dt;
+    });
     controls.update();
     renderer.render(scene, camera);
     if (busy()) raf = requestAnimationFrame(frame);
   }
   function kick() {
-    if (!raf && visible && !document.hidden) { clock.getDelta(); raf = requestAnimationFrame(frame); }
+    if (!raf && visible && !document.hidden) {
+      clock.getDelta();
+      raf = requestAnimationFrame(frame);
+    }
   }
-  const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; if (visible) kick(); });
+  const io = new IntersectionObserver(([e]) => {
+    visible = e.isIntersecting;
+    if (visible) kick();
+  });
   io.observe(stage);
-  const onVisibility = () => { if (!document.hidden) kick(); };
+  const onVisibility = () => {
+    if (!document.hidden) kick();
+  };
   document.addEventListener("visibilitychange", onVisibility);
   kick();
 
   return {
-    setSpeaking(on) { speaking = on; if (!on && avatar) avatar.setViseme(null, 0); kick(); },
+    setSpeaking(on) {
+      speaking = on;
+      if (!on && avatar) avatar.setViseme(null, 0);
+      kick();
+    },
     /** 播放模型內建的表情（Happy / Confused / Angry）；loop 時一直播到換表情或傳 null 為止 */
-    setExpression(name, options) { if (avatar) avatar.setExpression(name, options); else pendingExpression = [name, options]; kick(); },
-    setTheme(light) { setTheme(light); kick(); },
+    setExpression(name, options) {
+      if (avatar) avatar.setExpression(name, options);
+      else pendingExpression = [name, options];
+      kick();
+    },
+    setTheme(light) {
+      setTheme(light);
+      kick();
+    },
     dispose() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);

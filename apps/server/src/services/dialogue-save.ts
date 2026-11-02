@@ -26,20 +26,58 @@ export async function saveTurn(db: Db, input: SaveTurnInput): Promise<{ id: stri
       { id: input.scopeId },
     );
     await db.batch([
-      { sql: "INSERT INTO archive_messages (id, archive_id, role, text, emotion, created_at) VALUES ($id, $aid, 'user', $text, NULL, $at)", params: { id: userId, aid: input.scopeId, text: input.userText, at } },
-      { sql: "INSERT INTO archive_messages (id, archive_id, role, text, emotion, created_at) VALUES ($id, $aid, 'assistant', $text, $emotion, $at)", params: { id: assistantId, aid: input.scopeId, text: input.assistantText, emotion: input.emotion, at } },
-      { sql: "UPDATE archives SET rounds = $rounds, snippet = $snippet, date = $at, updated_at = $at WHERE id = $id", params: { rounds: rounds?.n ?? 0, snippet: input.assistantText.slice(0, 60), at, id: input.scopeId } },
+      {
+        sql: "INSERT INTO archive_messages (id, archive_id, role, text, emotion, created_at) VALUES ($id, $aid, 'user', $text, NULL, $at)",
+        params: { id: userId, aid: input.scopeId, text: input.userText, at },
+      },
+      {
+        sql: "INSERT INTO archive_messages (id, archive_id, role, text, emotion, created_at) VALUES ($id, $aid, 'assistant', $text, $emotion, $at)",
+        params: { id: assistantId, aid: input.scopeId, text: input.assistantText, emotion: input.emotion, at },
+      },
+      {
+        sql: "UPDATE archives SET rounds = $rounds, snippet = $snippet, date = $at, updated_at = $at WHERE id = $id",
+        params: { rounds: rounds?.n ?? 0, snippet: input.assistantText.slice(0, 60), at, id: input.scopeId },
+      },
     ]);
   } else if (input.scope === "activity") {
     await db.batch([
-      { sql: "INSERT INTO activity_dialogue (id, activity_id, student_id, role, text, emotion, created_at) VALUES ($id, $aid, $sid, 'user', $text, NULL, $at)", params: { id: userId, aid: input.scopeId, sid: input.userId, text: input.userText, at } },
-      { sql: "INSERT INTO activity_dialogue (id, activity_id, student_id, role, text, emotion, created_at) VALUES ($id, $aid, $sid, 'assistant', $text, $emotion, $at)", params: { id: assistantId, aid: input.scopeId, sid: input.userId, text: input.assistantText, emotion: input.emotion, at } },
+      {
+        sql: "INSERT INTO activity_dialogue (id, activity_id, student_id, role, text, emotion, created_at) VALUES ($id, $aid, $sid, 'user', $text, NULL, $at)",
+        params: { id: userId, aid: input.scopeId, sid: input.userId, text: input.userText, at },
+      },
+      {
+        sql: "INSERT INTO activity_dialogue (id, activity_id, student_id, role, text, emotion, created_at) VALUES ($id, $aid, $sid, 'assistant', $text, $emotion, $at)",
+        params: {
+          id: assistantId,
+          aid: input.scopeId,
+          sid: input.userId,
+          text: input.assistantText,
+          emotion: input.emotion,
+          at,
+        },
+      },
     ]);
   } else {
     await db.batch([
-      { sql: "INSERT INTO discussion_messages (id, discussion_id, student_id, role, text, emotion, created_at) VALUES ($id, $did, $sid, 'user', $text, NULL, $at)", params: { id: userId, did: input.scopeId, sid: input.userId, text: input.userText, at } },
-      { sql: "INSERT INTO discussion_messages (id, discussion_id, student_id, role, text, emotion, created_at) VALUES ($id, $did, $sid, 'assistant', $text, $emotion, $at)", params: { id: assistantId, did: input.scopeId, sid: input.userId, text: input.assistantText, emotion: input.emotion, at } },
-      { sql: "UPDATE discussion_sessions SET last_active_at = $at WHERE discussion_id = $did AND student_id = $sid", params: { at, did: input.scopeId, sid: input.userId } },
+      {
+        sql: "INSERT INTO discussion_messages (id, discussion_id, student_id, role, text, emotion, created_at) VALUES ($id, $did, $sid, 'user', $text, NULL, $at)",
+        params: { id: userId, did: input.scopeId, sid: input.userId, text: input.userText, at },
+      },
+      {
+        sql: "INSERT INTO discussion_messages (id, discussion_id, student_id, role, text, emotion, created_at) VALUES ($id, $did, $sid, 'assistant', $text, $emotion, $at)",
+        params: {
+          id: assistantId,
+          did: input.scopeId,
+          sid: input.userId,
+          text: input.assistantText,
+          emotion: input.emotion,
+          at,
+        },
+      },
+      {
+        sql: "UPDATE discussion_sessions SET last_active_at = $at WHERE discussion_id = $did AND student_id = $sid",
+        params: { at, did: input.scopeId, sid: input.userId },
+      },
     ]);
   }
   return { id: assistantId, at };
@@ -50,7 +88,12 @@ function scopePrefix(scope: SaveTurnInput["scope"]): string {
 }
 
 /** 對話歷史的讀取（移植自三個路由的前置查詢；供首次建立 pi session 時注入上下文）。 */
-export async function loadHistory(db: Db, scope: SaveTurnInput["scope"], scopeId: string, userId: string): Promise<Array<{ role: "user" | "assistant"; text: string }>> {
+export async function loadHistory(
+  db: Db,
+  scope: SaveTurnInput["scope"],
+  scopeId: string,
+  userId: string,
+): Promise<Array<{ role: "user" | "assistant"; text: string }>> {
   if (scope === "archive") {
     const rows = await db.all<{ role: string; text: string }>(
       "SELECT role, text FROM archive_messages WHERE archive_id = $id ORDER BY created_at DESC, rowid DESC LIMIT 40",

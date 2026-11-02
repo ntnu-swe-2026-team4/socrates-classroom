@@ -20,11 +20,22 @@ export function BackgroundPaths({ variant = "login", mirrored = false }: Props) 
   useEffect(() => {
     const el = svg.current!;
     let inView = false;
-    const sync = () => { el.dataset.running = String(inView && !document.hidden); };
-    const observer = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; sync(); }, { root: el.closest("#site-scroll"), threshold: .15 });
+    const sync = () => {
+      el.dataset.running = String(inView && !document.hidden);
+    };
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        inView = entry.isIntersecting;
+        sync();
+      },
+      { root: el.closest("#site-scroll"), threshold: 0.15 },
+    );
     observer.observe(el);
     document.addEventListener("visibilitychange", sync);
-    return () => { observer.disconnect(); document.removeEventListener("visibilitychange", sync); };
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", sync);
+    };
   }, []);
   return (
     <svg
@@ -42,18 +53,20 @@ export function BackgroundPaths({ variant = "login", mirrored = false }: Props) 
           <stop offset="100%" stopColor="#66794f" stopOpacity="0.18" />
         </linearGradient>
       </defs>
-      {paths.filter((_, i) => variant === "login" || (variant === "hero" ? i > 0 && i < 7 : i % 2 === 0)).map((d, i) => (
-        <g key={d}>
-          <path className="background-path-base" d={d} pathLength="1" />
-          <path
-            className="background-path-tracer"
-            stroke={`url(#${gradientId})`}
-            d={d}
-            pathLength="1"
-            style={{ animationDelay: `${i * .12}s` }}
-          />
-        </g>
-      ))}
+      {paths
+        .filter((_, i) => variant === "login" || (variant === "hero" ? i > 0 && i < 7 : i % 2 === 0))
+        .map((d, i) => (
+          <g key={d}>
+            <path className="background-path-base" d={d} pathLength="1" />
+            <path
+              className="background-path-tracer"
+              stroke={`url(#${gradientId})`}
+              d={d}
+              pathLength="1"
+              style={{ animationDelay: `${i * 0.12}s` }}
+            />
+          </g>
+        ))}
     </svg>
   );
 }

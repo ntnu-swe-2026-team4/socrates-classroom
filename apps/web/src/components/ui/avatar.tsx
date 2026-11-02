@@ -4,7 +4,13 @@ import { cn } from "@/lib/utils";
 /** 使用者頭像：有圖片就顯示圖片，沒有就是黑底白字的姓名首字 */
 export function Avatar({ name, src, className }: { name?: string; src?: string | null; className?: string }) {
   return (
-    <span className={cn("relative inline-flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black font-serif text-[15px] text-white ring-1 ring-line-strong", className)} aria-hidden="true">
+    <span
+      className={cn(
+        "relative inline-flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black font-serif text-[15px] text-white ring-1 ring-line-strong",
+        className,
+      )}
+      aria-hidden="true"
+    >
       {src ? <img src={src} alt="" className="size-full object-cover" draggable={false} /> : (name?.trim()[0] ?? "?")}
     </span>
   );

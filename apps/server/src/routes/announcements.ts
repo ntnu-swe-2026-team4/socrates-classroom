@@ -13,7 +13,8 @@ export function announcementRoutes(db: Db) {
     const user = requireUser(c);
     const { classroom, role } = await accessClassroom(db, c.req.param("id"), user);
     const staff = role === "teacher" || role === "assistant";
-    const rows = await all<any>(db,
+    const rows = await all<any>(
+      db,
       `SELECT * FROM announcements WHERE classroom_id = $cid ${staff ? "" : "AND publish_at <= $now"}
        ORDER BY pinned DESC, publish_at DESC`,
       staff ? { cid: classroom.id } : { cid: classroom.id, now: nowIso() },
@@ -32,7 +33,8 @@ export function announcementRoutes(db: Db) {
     if (!publishAt) fail(422, "invalid_datetime");
     const at = nowIso();
     const id = newId("an_");
-    await run(db,
+    await run(
+      db,
       `INSERT INTO announcements (id, classroom_id, title, body, pinned, publish_at, author_id, created_at, updated_at)
        VALUES ($id, $cid, $title, $body, $pinned, $publishAt, $author, $at, $at)`,
       { id, cid: classroom.id, title, body: text, pinned: pinned ? 1 : 0, publishAt, author: user.id, at },
@@ -52,7 +54,10 @@ export function announcementRoutes(db: Db) {
     }
     if (body.body !== undefined) {
       if (typeof body.body !== "string") fail(422, "validation");
-      await run(db, "UPDATE announcements SET body = $v WHERE id = $id", { v: body.body.trim().slice(0, 20000), id: row.id });
+      await run(db, "UPDATE announcements SET body = $v WHERE id = $id", {
+        v: body.body.trim().slice(0, 20000),
+        id: row.id,
+      });
     }
     if (body.pinned !== undefined) {
       if (typeof body.pinned !== "boolean") fail(422, "validation");
@@ -64,7 +69,9 @@ export function announcementRoutes(db: Db) {
       await run(db, "UPDATE announcements SET publish_at = $v WHERE id = $id", { v: publishAt, id: row.id });
     }
     await run(db, "UPDATE announcements SET updated_at = $at WHERE id = $id", { at: nowIso(), id: row.id });
-    return c.json(await announcementJson(db, await one<any>(db, "SELECT * FROM announcements WHERE id = $id", { id: row.id })));
+    return c.json(
+      await announcementJson(db, await one<any>(db, "SELECT * FROM announcements WHERE id = $id", { id: row.id })),
+    );
   });
 
   r.delete("/announcements/:id", async (c) => {

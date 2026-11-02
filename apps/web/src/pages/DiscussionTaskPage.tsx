@@ -5,8 +5,15 @@ import { ArrowLeft, Check, Lock, LockOpen, Pencil, Send, Trash2, Users } from "l
 import { api } from "@/api";
 import type { Coverage, DialogueMessage, DiscussionSession, DiscussionSessionStatus, DiscussionTask } from "@/api";
 import {
-  keys, useDeleteDiscussion, useDiscussion, useDiscussionSession, useDiscussionSessions,
-  useIsStaff, useMe, useSetDiscussionStatus, useSubmitConclusion,
+  keys,
+  useDeleteDiscussion,
+  useDiscussion,
+  useDiscussionSession,
+  useDiscussionSessions,
+  useIsStaff,
+  useMe,
+  useSetDiscussionStatus,
+  useSubmitConclusion,
 } from "@/api/queries";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,15 +28,27 @@ import { DiscussionFormDialog } from "./DiscussionTasks";
 import { SESSION_NAME, SESSION_TONE } from "./discussion-shared";
 import { Panel, Section, StageLayout } from "./stages/shared";
 
-const COV: [keyof Coverage, string][] = [["claim", "主張"], ["reason", "理由"], ["evidence", "證據或例子"], ["counter", "反例的回應"]];
+const COV: [keyof Coverage, string][] = [
+  ["claim", "主張"],
+  ["reason", "理由"],
+  ["evidence", "證據或例子"],
+  ["counter", "反例的回應"],
+];
 
 function CoverageChips({ coverage }: { coverage?: Coverage }) {
   const t = useT();
   return (
     <div className="flex flex-wrap gap-1.5">
       {COV.map(([k, n]) => (
-        <span key={k} className={cn("rounded-full border px-3 py-1 text-[11.5px]", coverage?.[k] ? "border-olive-soft bg-olive-soft text-olive" : "border-line text-ink-faint")}>
-          {coverage?.[k] ? "✓ " : ""}{t(n)}
+        <span
+          key={k}
+          className={cn(
+            "rounded-full border px-3 py-1 text-[11.5px]",
+            coverage?.[k] ? "border-olive-soft bg-olive-soft text-olive" : "border-line text-ink-faint",
+          )}
+        >
+          {coverage?.[k] ? "✓ " : ""}
+          {t(n)}
         </span>
       ))}
     </div>
@@ -47,7 +66,14 @@ function Bubble({ role, text, speaker }: { role: "user" | "assistant"; text: str
       <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-line-strong bg-bg-2 font-serif text-sm text-bronze">
         {role === "user" ? (speaker?.[0] ?? t("我")) : t("蘇")}
       </span>
-      <p className={cn("max-w-[80%] rounded-2xl border border-line px-4 py-2.5 font-serif text-[14.5px] leading-7 whitespace-pre-line", role === "user" ? "bg-bronze-soft" : "bg-bg-2")}>{text}</p>
+      <p
+        className={cn(
+          "max-w-[80%] rounded-2xl border border-line px-4 py-2.5 font-serif text-[14.5px] leading-7 whitespace-pre-line",
+          role === "user" ? "bg-bronze-soft" : "bg-bg-2",
+        )}
+      >
+        {text}
+      </p>
     </div>
   );
 }
@@ -66,13 +92,18 @@ function StudentChat({ d, readOnly }: { d: DiscussionTask; readOnly: boolean }) 
   const rounds = session?.rounds ?? 0;
   const full = rounds >= d.maxRounds;
 
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages, pending, mine]);
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, []);
   useEffect(() => stopAiSpeech, []);
 
   async function send() {
     const msg = text.trim();
     if (!msg || pending !== null) return;
-    setText(""); setMine(msg); setPending(""); setError("");
+    setText("");
+    setMine(msg);
+    setPending("");
+    setError("");
     try {
       const reply = await api.sendDiscussionMessage(d.id, msg, (c) => setPending((p) => (p ?? "") + c));
       speakAi(reply.text);
@@ -80,7 +111,8 @@ function StudentChat({ d, readOnly }: { d: DiscussionTask; readOnly: boolean }) 
       setText(msg); // 送出失敗（限流／LLM 無法使用）時把輸入還給使用者，不用重打
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setPending(null); setMine(null);
+      setPending(null);
+      setMine(null);
       qc.invalidateQueries({ queryKey: keys.discussionSession(d.id, "me") });
       qc.invalidateQueries({ queryKey: keys.discussion(d.id) });
     }
@@ -89,22 +121,40 @@ function StudentChat({ d, readOnly }: { d: DiscussionTask; readOnly: boolean }) 
   return (
     <Panel>
       <div className="flex-1 space-y-4 overflow-y-auto p-5">
-        <Bubble role="assistant" text={t("老師出的題目是「{title}」。先不用急著下結論——你現在怎麼想？", { title: d.title })} />
-        {messages.map((m) => <Bubble key={m.id} role={m.role} text={m.text} />)}
-        {mine && <Bubble role="user" text={mine} />}
-        {pending !== null && <Bubble role="assistant" text={pending || "…"} />}
+        <Bubble text={t("老師出的題目是「{title}」。先不用急著下結論——你現在怎麼想？", { title: d.title })} />
+        {messages.map((m) => (
+          <Bubble key={m.id} role={m.role} text={m.text} />
+        ))}
+        {mine && <Bubble text={mine} />}
+        {pending !== null && <Bubble text={pending || "…"} />}
         {error && <p className="text-[12.5px] text-wine">{error}</p>}
         <div ref={end} />
       </div>
       {readOnly ? (
-        <p className="border-t border-line px-5 py-3 text-[12.5px] text-ink-faint">{t("這個討論已經結束，只能回看對話。")}</p>
+        <p className="border-t border-line px-5 py-3 text-[12.5px] text-ink-faint">
+          {t("這個討論已經結束，只能回看對話。")}
+        </p>
       ) : full ? (
-        <p className="border-t border-line px-5 py-3 text-[12.5px] text-ink-faint">{t("已經聊滿 {n} 輪了，到左欄寫下你的結論吧。", { n: d.maxRounds })}</p>
+        <p className="border-t border-line px-5 py-3 text-[12.5px] text-ink-faint">
+          {t("已經聊滿 {n} 輪了，到左欄寫下你的結論吧。", { n: d.maxRounds })}
+        </p>
       ) : (
         <div className="flex items-end gap-2 border-t border-line p-3">
-          <Textarea rows={1} value={text} placeholder={t("輸入你的想法…")} onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }} />
-          <Button size="icon" onClick={() => void send()} disabled={pending !== null} aria-label={t("送出")}><Send className="size-4" /></Button>
+          <Textarea
+            rows={1}
+            value={text}
+            placeholder={t("輸入你的想法…")}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+          />
+          <Button size="icon" onClick={() => void send()} disabled={pending !== null} aria-label={t("送出")}>
+            <Send className="size-4" />
+          </Button>
         </div>
       )}
     </Panel>
@@ -126,7 +176,9 @@ function StudentInfo({ d, readOnly }: { d: DiscussionTask; readOnly: boolean }) 
       <Section>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Badge tone={SESSION_TONE[session?.status ?? "todo"]}>{t(SESSION_NAME[session?.status ?? "todo"])}</Badge>
-          <span className="text-[12px] text-ink-faint">{t("已對話 {n} / {max} 輪", { n: rounds, max: d.maxRounds })}</span>
+          <span className="text-[12px] text-ink-faint">
+            {t("已對話 {n} / {max} 輪", { n: rounds, max: d.maxRounds })}
+          </span>
         </div>
         {d.prompt && <p className="mb-3 whitespace-pre-line text-[13.5px] leading-relaxed text-ink-dim">{d.prompt}</p>}
         <CoverageChips coverage={session?.coverage} />
@@ -134,30 +186,69 @@ function StudentInfo({ d, readOnly }: { d: DiscussionTask; readOnly: boolean }) 
       <Section>
         <div className="mb-2 flex items-center justify-between gap-2">
           <h3 className="font-serif text-[15px]">{t("我的結論")}</h3>
-          {conclusion && !readOnly && !editing && <Button variant="ghost" size="sm" onClick={() => setDraft(conclusion)}>{t("修改")}</Button>}
+          {conclusion && !readOnly && !editing && (
+            <Button variant="ghost" size="sm" onClick={() => setDraft(conclusion)}>
+              {t("修改")}
+            </Button>
+          )}
         </div>
-        {d.conclusionHint && !conclusion && <p className="mb-3 whitespace-pre-line text-[12px] leading-relaxed text-ink-faint">{d.conclusionHint}</p>}
+        {d.conclusionHint && !conclusion && (
+          <p className="mb-3 whitespace-pre-line text-[12px] leading-relaxed text-ink-faint">{d.conclusionHint}</p>
+        )}
         {editing ? (
           <div className="space-y-3">
-            <Textarea rows={6} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t("寫下你的主張、理由，以及你怎麼回應反對意見…")} />
+            <Textarea
+              rows={6}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder={t("寫下你的主張、理由，以及你怎麼回應反對意見…")}
+            />
             {submit.error && <p className="text-[12.5px] text-wine">{submit.error.message}</p>}
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>{t("取消")}</Button>
-              <Button size="sm" disabled={submit.isPending || !draft.trim()} onClick={() => submit.mutate(draft, { onSuccess: () => setDraft(null) })}>{t("送出結論")}</Button>
+              <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>
+                {t("取消")}
+              </Button>
+              <Button
+                size="sm"
+                disabled={submit.isPending || !draft.trim()}
+                onClick={() => submit.mutate(draft, { onSuccess: () => setDraft(null) })}
+              >
+                {t("送出結論")}
+              </Button>
             </div>
           </div>
         ) : conclusion ? (
           <>
             <p className="whitespace-pre-line font-serif text-[14px] leading-relaxed">{conclusion}</p>
-            {session?.submittedAt && <p className="mt-2 text-[11.5px] text-ink-faint">{t("送出於 {at}", { at: formatDateTime(session.submittedAt) })}</p>}
-            {!readOnly && <Button variant="outline" size="sm" className="mt-3" disabled={submit.isPending} onClick={() => submit.mutate(null)}>{t("收回結論，繼續討論")}</Button>}
+            {session?.submittedAt && (
+              <p className="mt-2 text-[11.5px] text-ink-faint">
+                {t("送出於 {at}", { at: formatDateTime(session.submittedAt) })}
+              </p>
+            )}
+            {!readOnly && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                disabled={submit.isPending}
+                onClick={() => submit.mutate(null)}
+              >
+                {t("收回結論，繼續討論")}
+              </Button>
+            )}
           </>
         ) : readOnly ? (
           <p className="text-[12.5px] text-ink-faint">{t("這個討論結束前你沒有送出結論。")}</p>
         ) : rounds > 0 ? (
-          <Button size="sm" onClick={() => setDraft("")}>{t("寫下我的結論")}</Button>
+          <Button size="sm" onClick={() => setDraft("")}>
+            {t("寫下我的結論")}
+          </Button>
         ) : (
-          <p className="text-[12.5px] leading-relaxed text-ink-faint">{t("先在右邊跟蘇格拉底聊你的想法。")}<b className="text-ink">{t("AI 只提問、不給答案")}</b>{t("；聊過之後再回來寫結論，老師看得到你的結論與整段對話。")}</p>
+          <p className="text-[12.5px] leading-relaxed text-ink-faint">
+            {t("先在右邊跟蘇格拉底聊你的想法。")}
+            <b className="text-ink">{t("AI 只提問、不給答案")}</b>
+            {t("；聊過之後再回來寫結論，老師看得到你的結論與整段對話。")}
+          </p>
         )}
       </Section>
     </>
@@ -179,20 +270,30 @@ function SessionSheet({ d, row, onClose }: { d: DiscussionTask; row: DiscussionS
             <div className="mt-2 mb-4 flex flex-wrap items-center gap-2">
               <Badge tone={SESSION_TONE[row.status]}>{t(SESSION_NAME[row.status])}</Badge>
               <span className="text-[12px] text-ink-faint">{t("{n} 輪", { n: row.rounds })}</span>
-              {row.lastActiveAt && <span className="text-[12px] text-ink-faint">· {formatDateTime(row.lastActiveAt)}</span>}
+              {row.lastActiveAt && (
+                <span className="text-[12px] text-ink-faint">· {formatDateTime(row.lastActiveAt)}</span>
+              )}
             </div>
             <CoverageChips coverage={row.coverage} />
             <section className="mt-5">
               <h4 className="mb-2 text-xs tracking-wider text-ink-faint">{t("結論")}</h4>
-              {row.conclusion
-                ? <p className="whitespace-pre-line rounded-2xl border border-line bg-bg-2 p-4 font-serif text-[14px] leading-relaxed">{row.conclusion}</p>
-                : <p className="text-[13px] text-ink-faint">{t("還沒有送出結論。")}</p>}
+              {row.conclusion ? (
+                <p className="whitespace-pre-line rounded-2xl border border-line bg-bg-2 p-4 font-serif text-[14px] leading-relaxed">
+                  {row.conclusion}
+                </p>
+              ) : (
+                <p className="text-[13px] text-ink-faint">{t("還沒有送出結論。")}</p>
+              )}
             </section>
             <section className="mt-5">
               <h4 className="mb-3 text-xs tracking-wider text-ink-faint">{t("與蘇格拉底的對話")}</h4>
               <div className="space-y-3">
-                {detail?.messages.map((m) => <Bubble key={m.id} role={m.role} text={m.text} speaker={row.isMe ? undefined : row.studentName} />)}
-                {detail && !detail.messages.length && <p className="text-[13px] text-ink-faint">{t("這位同學還沒有開始對話。")}</p>}
+                {detail?.messages.map((m) => (
+                  <Bubble key={m.id} role={m.role} text={m.text} speaker={row.isMe ? undefined : row.studentName} />
+                ))}
+                {detail && !detail.messages.length && (
+                  <p className="text-[13px] text-ink-faint">{t("這位同學還沒有開始對話。")}</p>
+                )}
                 {error && <p className="text-[13px] text-wine">{error.message}</p>}
                 {!detail && !error && <p className="text-[13px] text-ink-faint">{t("載入中…")}</p>}
               </div>
@@ -204,7 +305,12 @@ function SessionSheet({ d, row, onClose }: { d: DiscussionTask; row: DiscussionS
   );
 }
 
-const FILTERS: [DiscussionSessionStatus | "all", string][] = [["all", "全部"], ["submitted", "已送出結論"], ["talking", "對話中"], ["todo", "未開始"]];
+const FILTERS: [DiscussionSessionStatus | "all", string][] = [
+  ["all", "全部"],
+  ["submitted", "已送出結論"],
+  ["talking", "對話中"],
+  ["todo", "未開始"],
+];
 
 function TeacherResults({ d, teacher }: { d: DiscussionTask; teacher: boolean }) {
   const t = useT();
@@ -212,27 +318,49 @@ function TeacherResults({ d, teacher }: { d: DiscussionTask; teacher: boolean })
   const [filter, setFilter] = useState<DiscussionSessionStatus | "all">("all");
   // 只記 studentId，彈窗開著時 refetch 進來的最新資料也能即時反映（存整列會變成過期快照）
   const [openId, setOpenId] = useState<string | null>(null);
-  const openRow = openId ? sessions.find((s) => s.id === openId) ?? null : null;
+  const openRow = openId ? (sessions.find((s) => s.id === openId) ?? null) : null;
   const shown = filter === "all" ? sessions : sessions.filter((s) => s.status === filter);
   const pct = (n: number) => (d.stats.total ? Math.round((n / d.stats.total) * 100) : 0);
-  const chip = (on: boolean) => cn("cursor-pointer rounded-full border px-3 py-1 text-[12.5px]", on ? "border-bronze-dim text-bronze" : "border-line text-ink-dim hover:text-ink");
+  const chip = (on: boolean) =>
+    cn(
+      "cursor-pointer rounded-full border px-3 py-1 text-[12.5px]",
+      on ? "border-bronze-dim text-bronze" : "border-line text-ink-dim hover:text-ink",
+    );
 
   const left = (
     <>
       <Section>
-        <p className="mb-3 text-[12.5px] leading-relaxed text-ink-faint">{t("每位同學各自跟 AI 蘇格拉底對話（AI 只提問、不給答案），再寫下自己的結論。你看得到每個人的結論與整段對話。")}</p>
+        <p className="mb-3 text-[12.5px] leading-relaxed text-ink-faint">
+          {t(
+            "每位同學各自跟 AI 蘇格拉底對話（AI 只提問、不給答案），再寫下自己的結論。你看得到每個人的結論與整段對話。",
+          )}
+        </p>
         {d.prompt && <p className="whitespace-pre-line text-[13.5px] leading-relaxed text-ink-dim">{d.prompt}</p>}
       </Section>
       <Section>
         <h3 className="mb-3 font-serif text-[15px]">{t("全班進度")}</h3>
         <div className="space-y-2.5 text-[13px]">
-          {([["已送出結論", d.stats.submitted], ["已開始對話", d.stats.started]] as [string, number][]).map(([name, n]) => (
+          {(
+            [
+              ["已送出結論", d.stats.submitted],
+              ["已開始對話", d.stats.started],
+            ] as [string, number][]
+          ).map(([name, n]) => (
             <div key={name}>
-              <div className="mb-1 flex items-center justify-between gap-2"><span className="text-ink-dim">{t(name)}</span><em className="not-italic text-ink-faint">{n} / {d.stats.total}</em></div>
-              <span className="block h-2 overflow-hidden rounded bg-bg-3"><i className="block h-full bg-bronze transition-[width] duration-500" style={{ width: `${pct(n)}%` }} /></span>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-ink-dim">{t(name)}</span>
+                <em className="not-italic text-ink-faint">
+                  {n} / {d.stats.total}
+                </em>
+              </div>
+              <span className="block h-2 overflow-hidden rounded bg-bg-3">
+                <i className="block h-full bg-bronze transition-[width] duration-500" style={{ width: `${pct(n)}%` }} />
+              </span>
             </div>
           ))}
-          <p className="pt-1 text-[12px] text-ink-faint">{t("平均對話 {n} 輪（上限 {max}）", { n: d.stats.avgRounds, max: d.maxRounds })}</p>
+          <p className="pt-1 text-[12px] text-ink-faint">
+            {t("平均對話 {n} 輪（上限 {max}）", { n: d.stats.avgRounds, max: d.maxRounds })}
+          </p>
         </div>
       </Section>
       {d.conclusionHint && (
@@ -247,24 +375,48 @@ function TeacherResults({ d, teacher }: { d: DiscussionTask; teacher: boolean })
   const right = (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap gap-1.5 border-b border-line px-5 py-3" role="group" aria-label={t("依狀態篩選")}>
-        {FILTERS.map(([k, n]) => <button key={k} type="button" aria-pressed={filter === k} onClick={() => setFilter(k)} className={chip(filter === k)}>{t(n)}</button>)}
+        {FILTERS.map(([k, n]) => (
+          <button
+            key={k}
+            type="button"
+            aria-pressed={filter === k}
+            onClick={() => setFilter(k)}
+            className={chip(filter === k)}
+          >
+            {t(n)}
+          </button>
+        ))}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-5">
         {shown.map((s) => (
-          <button key={s.id} type="button" onClick={() => setOpenId(s.id)}
-            className="grid w-full cursor-pointer grid-cols-[1.2fr_auto_3.2em_2fr] items-center gap-3 border-b border-line py-3 text-left text-[13px] hover:bg-bg-2 max-md:grid-cols-[1fr_auto]">
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setOpenId(s.id)}
+            className="grid w-full cursor-pointer grid-cols-[1.2fr_auto_3.2em_2fr] items-center gap-3 border-b border-line py-3 text-left text-[13px] hover:bg-bg-2 max-md:grid-cols-[1fr_auto]"
+          >
             <span className="flex min-w-0 items-center gap-2">
-              <i className="flex size-6 shrink-0 items-center justify-center rounded-full bg-bronze-soft font-serif text-[11.5px] not-italic text-bronze">{s.studentName[0]}</i>
+              <i className="flex size-6 shrink-0 items-center justify-center rounded-full bg-bronze-soft font-serif text-[11.5px] not-italic text-bronze">
+                {s.studentName[0]}
+              </i>
               <span className="truncate">{s.studentName}</span>
               {/* 老師沒有自己的討論；示範資料裡的「你」是學生模式用的那個帳號 */}
-              {s.isMe && <em className="shrink-0 rounded-full bg-bg-3 px-2 py-0.5 text-[10px] not-italic text-ink-dim">{teacher ? t("學生模式的你") : t("你")}</em>}
+              {s.isMe && (
+                <em className="shrink-0 rounded-full bg-bg-3 px-2 py-0.5 text-[10px] not-italic text-ink-dim">
+                  {teacher ? t("學生模式的你") : t("你")}
+                </em>
+              )}
             </span>
             <Badge tone={SESSION_TONE[s.status]}>{t(SESSION_NAME[s.status])}</Badge>
             <span className="text-xs text-ink-faint max-md:hidden">{t("{n} 輪", { n: s.rounds })}</span>
             <span className="truncate text-xs text-ink-dim max-md:hidden">{s.conclusion ?? "—"}</span>
           </button>
         ))}
-        {!shown.length && <p className="py-6 text-sm text-ink-faint">{sessions.length ? t("沒有符合條件的同學。") : t("這個教室還沒有學生。")}</p>}
+        {!shown.length && (
+          <p className="py-6 text-sm text-ink-faint">
+            {sessions.length ? t("沒有符合條件的同學。") : t("這個教室還沒有學生。")}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -278,7 +430,15 @@ function TeacherResults({ d, teacher }: { d: DiscussionTask; teacher: boolean })
 }
 
 /* ---------------- 頁面 ---------------- */
-function DeleteDialog({ d, open, onOpenChange }: { d: DiscussionTask; open: boolean; onOpenChange: (v: boolean) => void }) {
+function DeleteDialog({
+  d,
+  open,
+  onOpenChange,
+}: {
+  d: DiscussionTask;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
   const t = useT();
   const navigate = useNavigate();
   const del = useDeleteDiscussion(d.classroomId);
@@ -286,13 +446,30 @@ function DeleteDialog({ d, open, onOpenChange }: { d: DiscussionTask; open: bool
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogTitle>{t("刪除討論？")}</DialogTitle>
-        <DialogDescription>{t("「{title}」會被永久刪除，連同全班同學的對話與結論，無法復原。", { title: d.title })}</DialogDescription>
+        <DialogDescription>
+          {t("「{title}」會被永久刪除，連同全班同學的對話與結論，無法復原。", { title: d.title })}
+        </DialogDescription>
         {del.error && <p className="mb-3 text-[12.5px] text-wine">{del.error.message}</p>}
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("取消")}</Button>
-          <Button variant="danger" disabled={del.isPending}
-            onClick={() => del.mutate(d.id, { onSuccess: () => navigate({ to: "/classrooms/$classroomId", params: { classroomId: d.classroomId }, search: { tab: "discussions" } }) })}>
-            <Trash2 className="size-4" />{t("刪除")}
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {t("取消")}
+          </Button>
+          <Button
+            variant="danger"
+            disabled={del.isPending}
+            onClick={() =>
+              del.mutate(d.id, {
+                onSuccess: () =>
+                  navigate({
+                    to: "/classrooms/$classroomId",
+                    params: { classroomId: d.classroomId },
+                    search: { tab: "discussions" },
+                  }),
+              })
+            }
+          >
+            <Trash2 className="size-4" />
+            {t("刪除")}
           </Button>
         </div>
       </DialogContent>
@@ -316,10 +493,24 @@ export function DiscussionTaskPage() {
   const teacher = me?.role === "teacher";
 
   const back = (
-    <Link to="/classrooms/$classroomId" params={{ classroomId }} search={{ tab: "discussions" }} aria-label={t("回討論列表")} title={t("回討論列表")}
-      className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-dim hover:bg-bg-2 hover:text-ink"><ArrowLeft className="size-4" /></Link>
+    <Link
+      to="/classrooms/$classroomId"
+      params={{ classroomId }}
+      search={{ tab: "discussions" }}
+      aria-label={t("回討論列表")}
+      title={t("回討論列表")}
+      className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-dim hover:bg-bg-2 hover:text-ink"
+    >
+      <ArrowLeft className="size-4" />
+    </Link>
   );
-  if (error) return <div className="mx-auto max-w-3xl p-8">{back}<p className="mt-6 text-sm text-ink-faint">{error.message}</p></div>;
+  if (error)
+    return (
+      <div className="mx-auto max-w-3xl p-8">
+        {back}
+        <p className="mt-6 text-sm text-ink-faint">{error.message}</p>
+      </div>
+    );
   if (!d) return null;
   const closed = d.status === "closed";
 
@@ -327,27 +518,72 @@ export function DiscussionTaskPage() {
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 min-h-topbar border-b border-line px-4 py-1.5">
         {back}
-        <h2 className="min-w-0 flex-1 truncate font-serif text-[16px] leading-tight" title={d.title}>{d.title}</h2>
+        <h2 className="min-w-0 flex-1 truncate font-serif text-[16px] leading-tight" title={d.title}>
+          {d.title}
+        </h2>
         {closed && <Badge tone="neutral">{t("已結束")}</Badge>}
         <DueLabel at={d.dueAt} />
         {staff && (
           <span className="flex items-center gap-1">
-            <span className="hidden items-center gap-1 text-[12.5px] text-ink-faint sm:flex"><Users className="size-3.5" />{d.stats.submitted}/{d.stats.total}</span>
-            <Button variant="outline" size="sm" disabled={setStatus.isPending} title={closed ? t("重新開放，同學可以繼續對話") : t("結束討論，同學只能回看")}
-              onClick={() => setStatus.mutate(closed ? "open" : "closed")}>
-              {closed ? <LockOpen className="size-3.5" /> : <Lock className="size-3.5" />}{closed ? t("重新開放") : t("結束討論")}
+            <span className="hidden items-center gap-1 text-[12.5px] text-ink-faint sm:flex">
+              <Users className="size-3.5" />
+              {d.stats.submitted}/{d.stats.total}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={setStatus.isPending}
+              title={closed ? t("重新開放，同學可以繼續對話") : t("結束討論，同學只能回看")}
+              onClick={() => setStatus.mutate(closed ? "open" : "closed")}
+            >
+              {closed ? <LockOpen className="size-3.5" /> : <Lock className="size-3.5" />}
+              {closed ? t("重新開放") : t("結束討論")}
             </Button>
-            <Button variant="ghost" size="icon" className="size-8" aria-label={t("編輯討論")} title={t("編輯討論")} onClick={() => setEditing(true)}><Pencil className="size-3.5" /></Button>
-            {teacher && <Button variant="danger" size="icon" className="size-8" aria-label={t("刪除討論")} title={t("刪除討論")} onClick={() => setDeleting(true)}><Trash2 className="size-3.5" /></Button>}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              aria-label={t("編輯討論")}
+              title={t("編輯討論")}
+              onClick={() => setEditing(true)}
+            >
+              <Pencil className="size-3.5" />
+            </Button>
+            {teacher && (
+              <Button
+                variant="danger"
+                size="icon"
+                className="size-8"
+                aria-label={t("刪除討論")}
+                title={t("刪除討論")}
+                onClick={() => setDeleting(true)}
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            )}
           </span>
         )}
-        {!staff && d.myStatus === "submitted" && <span className="flex items-center gap-1 text-[12.5px] text-olive"><Check className="size-3.5" />{t("已送出結論")}</span>}
+        {!staff && d.myStatus === "submitted" && (
+          <span className="flex items-center gap-1 text-[12.5px] text-olive">
+            <Check className="size-3.5" />
+            {t("已送出結論")}
+          </span>
+        )}
       </header>
-      {setStatus.error && <p className="border-b border-line px-5 py-2 text-[12.5px] text-wine">{setStatus.error.message}</p>}
+      {setStatus.error && (
+        <p className="border-b border-line px-5 py-2 text-[12.5px] text-wine">{setStatus.error.message}</p>
+      )}
       <div className="flex min-h-0 flex-1 flex-col">
-        {staff
-          ? <TeacherResults d={d} teacher={teacher} />
-          : <StageLayout leftLabel={t("題目與我的結論")} left={<StudentInfo d={d} readOnly={closed} />} rightLabel={t("與蘇格拉底對話")} right={<StudentChat d={d} readOnly={closed} />} />}
+        {staff ? (
+          <TeacherResults d={d} teacher={teacher} />
+        ) : (
+          <StageLayout
+            leftLabel={t("題目與我的結論")}
+            left={<StudentInfo d={d} readOnly={closed} />}
+            rightLabel={t("與蘇格拉底對話")}
+            right={<StudentChat d={d} readOnly={closed} />}
+          />
+        )}
       </div>
       {staff && (
         <>

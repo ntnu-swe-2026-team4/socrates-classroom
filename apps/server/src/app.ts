@@ -21,7 +21,10 @@ export function createApp(env: Env): Hono<AppEnv> {
   const db = d1(env.DB);
   configureEventBus(env.ActivityEvents);
   setPublicBase(env.PUBLIC_BASE_URL);
-  const corsOrigins = (env.CORS_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const corsOrigins = (env.CORS_ORIGINS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   const app = new Hono<AppEnv>();
 
@@ -74,12 +77,17 @@ export function createApp(env: Env): Hono<AppEnv> {
 
   app.get("/health", (c) => c.json({ ok: true, db: "d1" }));
 
-  app.notFound((c) => c.json({ message: msg(languageOf(c.req.header("Accept-Language")), "not_found"), code: "not_found" }, 404));
+  app.notFound((c) =>
+    c.json({ message: msg(languageOf(c.req.header("Accept-Language")), "not_found"), code: "not_found" }, 404),
+  );
 
   app.onError((error, c) => {
     const language = c.get("lang") ?? languageOf(c.req.header("Accept-Language"));
     if (error instanceof HttpError) {
-      return c.json({ message: msg(language, error.key, error.vars), code: error.code ?? error.key }, error.status as any);
+      return c.json(
+        { message: msg(language, error.key, error.vars), code: error.code ?? error.key },
+        error.status as any,
+      );
     }
     const raw = error instanceof Error ? error.message : String(error);
     if (raw === "already_streaming") {

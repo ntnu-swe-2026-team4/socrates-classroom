@@ -68,7 +68,13 @@ const API_IMPLS = {
   "google-generative-ai": googleGenerativeAIApi(),
 } as Partial<Record<Api, unknown>>;
 
-function staticKeyProvider(id: string, baseUrl: string, key: string, models: AnyModel[] | readonly AnyModel[], name?: string): Provider {
+function staticKeyProvider(
+  id: string,
+  baseUrl: string,
+  key: string,
+  models: AnyModel[] | readonly AnyModel[],
+  name?: string,
+): Provider {
   return createProvider({
     id,
     name: name ?? id,
@@ -119,9 +125,7 @@ export function buildPool(env: Env): Pool {
       if (entry.provider === "mock") {
         const handle = fauxProvider({});
         models.setProvider(handle.provider);
-        handle.setResponses([
-          () => fauxAssistantMessage([fauxText("[neutral] 這是離線測試回覆。你想先聊聊什麼？")]),
-        ]);
+        handle.setResponses([() => fauxAssistantMessage([fauxText("[neutral] 這是離線測試回覆。你想先聊聊什麼？")])]);
         const model = handle.getModel("faux-1");
         if (model) chain.push({ provider: "mock", model: model as unknown as AnyModel });
       } else if (entry.provider === "dgx-spark") {
@@ -134,7 +138,10 @@ export function buildPool(env: Env): Pool {
           auth: {
             apiKey: {
               name: "DGX access",
-              resolve: async () => ({ auth: { apiKey: (env as Env & { DGX_API_KEY?: string }).DGX_API_KEY ?? "none" }, source: "self-hosted" }),
+              resolve: async () => ({
+                auth: { apiKey: (env as Env & { DGX_API_KEY?: string }).DGX_API_KEY ?? "none" },
+                source: "self-hosted",
+              }),
             },
           },
           models: [
@@ -157,7 +164,12 @@ export function buildPool(env: Env): Pool {
         });
         models.setProvider(provider);
         const model = models.getModelOfType("chat", "dgx-spark", entry.model);
-        if (model) chain.push({ provider: "dgx-spark", model: model as unknown as AnyModel, gate: countingGate(entry.concurrency ?? 4) });
+        if (model)
+          chain.push({
+            provider: "dgx-spark",
+            model: model as unknown as AnyModel,
+            gate: countingGate(entry.concurrency ?? 4),
+          });
       } else if (entry.provider === "workers-ai") {
         const ai = createAI({ binding: env.AI });
         models.setProvider(ai.provider);
@@ -218,12 +230,16 @@ export async function completeText(
     if (!isHealthy(item.provider)) continue;
     if (item.gate && !(await item.gate.acquire())) continue;
     try {
-      const message = await pool.models.complete(item.model as never, {
-        system: opts.system,
-        messages: [{ role: "user", content: opts.user, timestamp: Date.now() }],
-      } as never, { maxTokens: opts.maxTokens ?? 700 } as never);
+      const message = await pool.models.complete(
+        item.model as never,
+        {
+          system: opts.system,
+          messages: [{ role: "user", content: opts.user, timestamp: Date.now() }],
+        } as never,
+        { maxTokens: opts.maxTokens ?? 700 } as never,
+      );
       const text = extractText(message);
-      if (text && text.trim()) return text;
+      if (text?.trim()) return text;
       markDegraded(item.provider);
     } catch (error) {
       console.warn(`[pool] ${item.provider} failed:`, error instanceof Error ? error.message : String(error));
@@ -239,7 +255,12 @@ function extractText(message: unknown): string | null {
   // pi-ai AssistantMessage.content: Array<{ type: "text", text } | …>
   const content = (message as { content?: Array<{ type: string; text?: string }> })?.content;
   if (!Array.isArray(content)) return null;
-  return content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("") || null;
+  return (
+    content
+      .filter((c) => c.type === "text")
+      .map((c) => c.text ?? "")
+      .join("") || null
+  );
 }
 
 /** 走完整鏈取一次 JSON 補全（舊 completeJson 契約：失敗回 null）。 */

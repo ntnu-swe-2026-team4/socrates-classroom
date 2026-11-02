@@ -10,7 +10,7 @@
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
-  return function () {
+  return () => {
     a |= 0;
     a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
@@ -30,10 +30,10 @@ export function hashSeed(str) {
 }
 
 /* 配色取自網站本身的調色盤（青銅 / 鋼藍 / 橄欖 / 酒紅），深淺色背景上都看得清楚 */
-export const AXIS_COLORS = ['#c9a15a', '#6f95c9', '#7ea56a', '#cc6f5c'];
+export const AXIS_COLORS = ["#c9a15a", "#6f95c9", "#7ea56a", "#cc6f5c"];
 
 /* 分群色：跟軸色刻意錯開，避免「這個群是不是那個軸」的誤會 */
-export const CLUSTER_PALETTE = ['#d9855a', '#5fae8e', '#7a8fd6', '#c9a15a', '#b27ac0', '#5ab1c2'];
+export const CLUSTER_PALETTE = ["#d9855a", "#5fae8e", "#7a8fd6", "#c9a15a", "#b27ac0", "#5ab1c2"];
 
 /* ---------------- k-means ---------------- */
 
@@ -67,7 +67,10 @@ export function kmeans(points, k, { restarts = 10, maxIter = 60, seed = 42 } = {
       let idx = n - 1;
       for (let i = 0; i < n; i++) {
         target -= dists[i];
-        if (target <= 0) { idx = i; break; }
+        if (target <= 0) {
+          idx = i;
+          break;
+        }
       }
       centroids.push(points[idx].slice());
     }
@@ -76,16 +79,23 @@ export function kmeans(points, k, { restarts = 10, maxIter = 60, seed = 42 } = {
     for (let iter = 0; iter < maxIter; iter++) {
       let moved = false;
       for (let i = 0; i < n; i++) {
-        let bestC = 0, bestD = Infinity;
+        let bestC = 0,
+          bestD = Infinity;
         for (let c = 0; c < k; c++) {
           let s = 0;
           for (let d = 0; d < dim; d++) {
             const t = points[i][d] - centroids[c][d];
             s += t * t;
           }
-          if (s < bestD) { bestD = s; bestC = c; }
+          if (s < bestD) {
+            bestD = s;
+            bestC = c;
+          }
         }
-        if (assignments[i] !== bestC) { assignments[i] = bestC; moved = true; }
+        if (assignments[i] !== bestC) {
+          assignments[i] = bestC;
+          moved = true;
+        }
       }
       const sums = Array.from({ length: k }, () => new Float64Array(dim));
       const counts = new Array(k).fill(0);
@@ -94,9 +104,7 @@ export function kmeans(points, k, { restarts = 10, maxIter = 60, seed = 42 } = {
         for (let d = 0; d < dim; d++) sums[assignments[i]][d] += points[i][d];
       }
       for (let c = 0; c < k; c++) {
-        centroids[c] = counts[c] === 0
-          ? points[(rng() * n) | 0].slice()
-          : Array.from(sums[c], (v) => v / counts[c]);
+        centroids[c] = counts[c] === 0 ? points[(rng() * n) | 0].slice() : Array.from(sums[c], (v) => v / counts[c]);
       }
       if (!moved && iter > 0) break;
     }
@@ -127,10 +135,15 @@ export function alignClusters(prev, next) {
   const map = new Array(k).fill(-1); // next 的 i → 對齊後的編號 j
   const usedJ = new Set();
   for (const [, i, j] of pairs) {
-    if (map[i] === -1 && !usedJ.has(j)) { map[i] = j; usedJ.add(j); }
+    if (map[i] === -1 && !usedJ.has(j)) {
+      map[i] = j;
+      usedJ.add(j);
+    }
   }
   const centroids = new Array(k);
-  next.centroids.forEach((c, i) => { centroids[map[i]] = c; });
+  next.centroids.forEach((c, i) => {
+    centroids[map[i]] = c;
+  });
   return {
     assignments: next.assignments.map((a) => map[a]),
     centroids,
@@ -150,5 +163,5 @@ export function labelCluster(centroid, activeAxes, slotIdx, t) {
     const v = centroid[slotIdx[i]];
     if (Math.abs(v) >= 0.28) parts.push(T(v > 0 ? ax.right : ax.left));
   });
-  return parts.length ? T('偏 {labels}', { labels: parts.slice(0, 3).join(T('・')) }) : T('居中派');
+  return parts.length ? T("偏 {labels}", { labels: parts.slice(0, 3).join(T("・")) }) : T("居中派");
 }

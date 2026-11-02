@@ -11,7 +11,21 @@ export type SocratesHandle = {
 };
 
 /** 3D 蘇格拉底：speaking 為 true 時嘴巴會動；ref 可以播表情；點模型可切換全息效果，左右拖曳旋轉 */
-export function SocratesStage({ ref, speaking, className, mini = false, hideStatus = false, onReady }: { ref?: Ref<SocratesHandle>; speaking: boolean; className?: string; mini?: boolean; hideStatus?: boolean; onReady?: () => void }) {
+export function SocratesStage({
+  ref,
+  speaking,
+  className,
+  mini = false,
+  hideStatus = false,
+  onReady,
+}: {
+  ref?: Ref<SocratesHandle>;
+  speaking: boolean;
+  className?: string;
+  mini?: boolean;
+  hideStatus?: boolean;
+  onReady?: () => void;
+}) {
   const t = useT();
   const { theme } = useTheme();
   const box = useRef<HTMLDivElement>(null);
@@ -26,25 +40,49 @@ export function SocratesStage({ ref, speaking, className, mini = false, hideStat
     box.current?.prepend(cv);
     let s: ReturnType<typeof createSocratesScene>;
     try {
-      s = createSocratesScene(cv, box.current, { light: theme === "light", mini, onReady: () => { setState("ready"); onReady?.(); }, onError: () => setState("error") });
+      s = createSocratesScene(cv, box.current, {
+        light: theme === "light",
+        mini,
+        onReady: () => {
+          setState("ready");
+          onReady?.();
+        },
+        onError: () => setState("error"),
+      });
     } catch {
       cv.remove();
       setState("error");
       return;
     }
     scene.current = s;
-    return () => { s.dispose(); scene.current = null; cv.remove(); };
+    return () => {
+      s.dispose();
+      scene.current = null;
+      cv.remove();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => { scene.current?.setTheme(theme === "light"); }, [theme]);
-  useEffect(() => { scene.current?.setSpeaking(speaking); }, [speaking]);
-  useImperativeHandle(ref, () => ({
-    setExpression: (name, options) => scene.current?.setExpression(name, options),
-  }), []);
+  }, [theme, onReady, mini]);
+  useEffect(() => {
+    scene.current?.setTheme(theme === "light");
+  }, [theme]);
+  useEffect(() => {
+    scene.current?.setSpeaking(speaking);
+  }, [speaking]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      setExpression: (name, options) => scene.current?.setExpression(name, options),
+    }),
+    [],
+  );
 
   return (
     <div ref={box} className={className}>
-      {state !== "ready" && !hideStatus && <div className="absolute inset-0 flex items-center justify-center text-sm text-ink-faint">{state === "loading" ? t("載入模型中…") : t("模型載入失敗")}</div>}
+      {state !== "ready" && !hideStatus && (
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-ink-faint">
+          {state === "loading" ? t("載入模型中…") : t("模型載入失敗")}
+        </div>
+      )}
     </div>
   );
 }

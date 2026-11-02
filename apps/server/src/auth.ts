@@ -14,15 +14,15 @@ export function authMiddleware(db: Db): MiddlewareHandler<AppEnv> {
     c.set("lang", languageOf(c.req.header("Accept-Language")));
     const token = getCookie(c, SESSION_COOKIE);
     if (token) {
-      const row = await one<{ user_id: string; expires_at: string }>(db,
+      const row = await one<{ user_id: string; expires_at: string }>(
+        db,
         "SELECT user_id, expires_at FROM sessions WHERE token = $token",
         { token },
       );
       if (row && row.expires_at > new Date().toISOString()) {
-        const user = await one<UserRow>(db,
-          "SELECT id, name, role, avatar_url, created_at FROM users WHERE id = $id",
-          { id: row.user_id },
-        );
+        const user = await one<UserRow>(db, "SELECT id, name, role, avatar_url, created_at FROM users WHERE id = $id", {
+          id: row.user_id,
+        });
         if (user) c.set("user", user);
       } else if (row) {
         await run(db, "DELETE FROM sessions WHERE token = $token", { token });
@@ -44,9 +44,16 @@ export async function startSession(db: Db, c: any, userId: string, secure: boole
   const token = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
   const now = new Date();
   const expires = new Date(now.getTime() + SESSION_DAYS * 864e5);
-  await run(db, "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES ($token, $userId, $now, $expires)", {
-    token, userId, now: now.toISOString(), expires: expires.toISOString(),
-  });
+  await run(
+    db,
+    "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES ($token, $userId, $now, $expires)",
+    {
+      token,
+      userId,
+      now: now.toISOString(),
+      expires: expires.toISOString(),
+    },
+  );
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "Lax",
