@@ -138,6 +138,13 @@ CI 用 `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`（`cf` 與 `wrangler` �
 - PR 可以加 `--mode preview` 出預覽網址（`ctx.isPreview` 分支）；不想每個 PR 都花部署額度的話，只 dry-run 也可
 - 不採 Workers Builds（CF 的 git 整合）當主線：monorepo 的 path filter 與測試閘門自管 Actions 比較清楚
 
+#### 官方 action 現況（2026-11 查證）
+
+- **`cloudflare/wrangler-action@v4`**（官方維護，約 2k stars）：存在，但它是 **wrangler 專用**——`command` 只吃 wrangler 子指令、讀 `wrangler.jsonc`/`wrangler.toml`，不吃 `cloudflare.config.ts`。想用它等於回到 wrangler 路線。它對 package manager 支援齊全（`packageManager: npm|pnpm|yarn|bun`）、有 `deployment-url` 等 outputs。
+- **`cf` CLI 沒有專屬官方 action**（搜尋會撞到的 `cf-cli-action` 是 Cloud Foundry 的，別誤用）。cf 的官方 CD 範本就是上表的純 steps：`cf` 鎖在 devDependencies、`npx cf` 跑專案內版本，版本一致性由 lockfile 保證，不需要 action 那層封裝。
+- **完全不想寫 workflow 的官方選項**：Workers Builds（Cloudflare 儀表板連 GitHub，push 即自動 build+deploy，PR 有 preview URL）——零 YAML，但 monorepo 的觸發條件與測試閘門控制力弱，適合當方案 B。
+- **結論：走 cf 路線就用純 steps**（這正是官方欽定方式）；wrangler-action 只有在改回 wrangler 設定檔路線時才用。
+
 #### Bun 的去留
 
 「不能用 Bun」的實際範圍只有一件事：**`cf` 指令不能用 Bun runtime 執行**（載入 `cloudflare.config.ts` 會直接報錯）。`cf` 的 bin 是 `#!/usr/bin/env node`——機器上有 Node ≥ 22.23 的話，`bun run deploy` 觸發的 `cf` 照樣跑在 Node 上。會炸的只有三種用法：`bun cf`、全域用 `bun add --global cf` 安裝、機器只裝 Bun 沒裝 Node。
