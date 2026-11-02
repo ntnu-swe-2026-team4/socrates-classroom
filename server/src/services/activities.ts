@@ -399,10 +399,10 @@ export function scoreRows(db: DB, activity: ActivityRow, onlyMemberId?: string) 
 }
 
 /* ---------------- 立場星圖 ---------------- */
-const STEP_TEXT: Record<Lang, { individual: string; team: string; onlyIndividual: string; onlyTeam: string }> = {
-  zh: { individual: "個人調查後", team: "團隊提純後", onlyIndividual: "個人調查", onlyTeam: "每個人自己確認的座標" },
-  en: { individual: "After individual inquiry", team: "After team refinement", onlyIndividual: "Individual inquiry", onlyTeam: "Coordinates each student confirmed" },
-  es: { individual: "Tras la investigación individual", team: "Tras el refinamiento en equipo", onlyIndividual: "Investigación individual", onlyTeam: "Coordenadas confirmadas por cada estudiante" },
+const STEP_TEXT: Record<Lang, { individual: string; team: string; onlyIndividual: string; onlyTeam: string; teamAligned: string }> = {
+  zh: { individual: "個人調查後", team: "團隊提純後", onlyIndividual: "個人調查", onlyTeam: "每個人自己確認的座標", teamAligned: "向組內共識靠近的座標" },
+  en: { individual: "After individual inquiry", team: "After team refinement", onlyIndividual: "Individual inquiry", onlyTeam: "Coordinates each student confirmed", teamAligned: "Positions aligned with the group consensus" },
+  es: { individual: "Tras la investigación individual", team: "Tras el refinamiento en equipo", onlyIndividual: "Investigación individual", onlyTeam: "Coordenadas confirmadas por cada estudiante", teamAligned: "Coordenadas alineadas con el consenso del grupo" },
 };
 
 export function starData(db: DB, activity: ActivityRow, lang: Lang, meId?: string) {
@@ -455,7 +455,7 @@ export function starData(db: DB, activity: ActivityRow, lang: Lang, meId?: strin
     initialStep: activity.stage === "done" ? 1 : 0,
     groups: { labels: groups.map((g) => g.label), assignments },
     stepLabels: [stepText.individual, stepText.team],
-    stepNotes: [stepText.onlyTeam, stepText.onlyTeam],
+    stepNotes: [stepText.onlyTeam, stepText.teamAligned],
   };
 }
 
