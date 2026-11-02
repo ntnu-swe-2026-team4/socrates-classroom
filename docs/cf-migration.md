@@ -2,6 +2,7 @@
 
 > 調查日期：2026-11 ｜ 分支：`explore/cf-pi-durable` ｜ 狀態：調查報告，尚未實作
 > 目標：把整套「詰問 · 蘇格拉底對話教室」（前端 + 後端 + SQLite + 上傳 + LLM 對話）部署到 Cloudflare，並用 Pi Durable（`PiHarness`）作為 LLM 框架的核心。
+> **重構目標架構已定案：見 [`architecture.md`](./architecture.md)**（配套：[`providers.md`](./providers.md)）。
 
 ## TL;DR
 

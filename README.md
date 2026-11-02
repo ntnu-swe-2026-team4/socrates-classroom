@@ -57,5 +57,8 @@ Vite 開發伺服器會把 `/api` 代理到 `http://localhost:8000`，不需要�
 
 - [`docs/frontend.md`](docs/frontend.md) — 前端導覽：檔案位置、功能 ↔ API 對照、詳細啟動教學
 - [`docs/api-contract.md`](docs/api-contract.md) — 前後端 API 契約
+- [`docs/architecture.md`](docs/architecture.md) — 重構架構設計（Cloudflare + Pi Durable 目標形狀，explore branch）
+- [`docs/providers.md`](docs/providers.md) — LLM providers 總表（端點、用量、併發、ZDR）
+- [`docs/cf-migration.md`](docs/cf-migration.md) — Cloudflare 部署與 Pi Durable 調查報告
 - [`server/README.md`](server/README.md) — 後端架構、環境變數、目錄、測試與設計重點
 - [`llm/README.md`](llm/README.md) — 提示詞與 LLM 供應商設定
