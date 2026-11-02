@@ -43,7 +43,7 @@
 | Provider | 官方用量限制 | 官方併發 | 課堂角色 |
 |---|---|---|---|
 | GLM Coding Plan Global | 5 小時 + 每週雙窗口（credits 制：Lite 2,000/5h・10,000/週、Pro 12,000・60,000、Max 28,000・140,000；離峰五折、峰時〔週一～五 14:00–18:00 UTC+8〕GLM-5.3-Flash 為 0.4×/1.2×）| **不公布數字**：官方只說「Max > Pro > Lite、動態調整」，建議 Lite 單專案、Pro 1–2、Max 2+；社群實測 Lite/Pro ≈ **1 併發**（超過回 429 Too much concurrency）、Max 動態可到約 30，且 2026-01 有 5→2→1 收緊紀錄 | 開發／老師個人助理。**整班共用一把 key 違反「訂閱僅限訂閱者」政策**，有風控（限速/凍結）風險 |
-| OpenCode Go（`opencode-go`） | 每帳號 5h / 7d / 30d 三層預算；數字未公布 | 未公布；Go 端點為 agent 推理設計，`x-opencode-session` 可貼 prompt-cache 節點（對話延遲有利） | 溢位 / fallback；單一帳號單一預算 |
+| OpenCode Go（`opencode-go`） | 官方有公布**每模型請求量估算**（依典型用量換算）：Go $10/月 — GLM-5.3-Flash **6,320 req/5h**・15,790/週・31,580/月、GLM-5.3 220/5h；Go Plus $40/月 — Flash **18,960/5h**、GLM-5.3 1,760/5h；Go Teams $20/人/月（每人獨立額度）。有峰離峰倍率（如 DeepSeek 峰時 01:00–04:00・06:00–10:00 UTC） | 未公布數字；官方要求自報 user-agent + 每對話固定 `x-opencode-session`（cache 親和），設計上就是多工作階段；濫用會被監控 | 溢位 / fallback；額度對蘇格拉底對話非常充足 |
 | CF Workers AI | 文字生成預設 **300 req/min**；需付費方案的模型（如 GLM）標準計費 **20 req/min**、預付 AI Gateway credits **50 req/min**（每帳號每模型） | = RPM 上限（每個串流算一請求） | 免 key、零政策風險的底線；但 20/min 對整班爆發偏低，要吃預付 credits 才夠 |
 | 自架 DGX Spark ×2（GLM-5.3-Flash EXL3，1M ctx） | token 無上限、資料不出門 | **4 併發**（團隊實測） | 課堂主力：4 併發 + 佇列；爆發期學生排隊數秒，零邊際成本 |
 
@@ -208,6 +208,8 @@ socrates-classroom/
 
 - Pi AI providers（CLI 層，含 ZAI Coding Plan Global/China）：https://pi.dev/docs/latest/providers
 - pi.dev 自訂 provider / models.json：https://pi.dev/docs/latest/custom-provider
+- OpenCode Go 官方用量（每模型請求估算表）：https://opencode.ai/docs/go/
+- pi × OpenCode Go/Zend 整合：https://opencode.ai/v2/docs/console/harnesses/pi/
 - pi-ai library 層內建 zai / zai-coding-cn provider：以 `explore/pi-agent/node_modules/@earendil-works/pi-ai/dist/providers/zai.js` 原始碼查證
 - Pi harness（Agents SDK）：https://developers.cloudflare.com/agents/harnesses/pi/
 - 官方完整範例（WebSocket + workspace）：https://github.com/cloudflare/agents/tree/main/examples/next/harnesses/pi
