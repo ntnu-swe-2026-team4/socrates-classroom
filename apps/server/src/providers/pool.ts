@@ -89,6 +89,24 @@ export interface PoolChainEntry {
   key?: string;
 }
 
+const gateRegistry = new Map<string, Gate>();
+
+function persistentGate(provider: string, factory: () => Gate): Gate {
+  let gate = gateRegistry.get(provider);
+  if (!gate) {
+    gate = factory();
+    gateRegistry.set(provider, gate);
+  }
+  return gate;
+}
+
+let poolCache: { key: string; pool: Pool } | undefined;
+
+function poolKey(env: Env): string {
+  const e = env as Env & { DGX_BASE_URL?: string; DGX_API_KEY?: string };
+  return [env.LLM_PROVIDER, e.DGX_BASE_URL, e.DGX_API_KEY, env.OPENCODE_API_KEY, env.OPENROUTER_API_KEY, env.ZAI_API_KEY].join("\u0000");
+}
+
 export interface Pool {
   models: MutableModels;
   chain: PoolChainEntry[];
@@ -107,6 +125,8 @@ export function isHealthy(provider: string): boolean {
 }
 
 export function buildPool(env: Env): Pool {
+  const key = poolKey(env);
+  if (env.LLM_PROVIDER !== "mock" && poolCache?.key === key) return poolCache.pool;
   const mode = env.LLM_PROVIDER;
   const entries = poolForMode(mode);
   const models = mode === "mock" ? createModels({}) : createModels();
@@ -159,13 +179,13 @@ export function buildPool(env: Env): Pool {
           chain.push({
             provider: "dgx-spark",
             model: model as unknown as AnyModel,
-            gate: countingGate(entry.concurrency ?? 4),
+            gate: persistentGate("dgx-spark", () => countingGate(entry.concurrency ?? 4)),
           });
       } else if (entry.provider === "workers-ai") {
         const ai = createAI({ binding: env.AI });
         models.setProvider(ai.provider);
         const model = ai(entry.model);
-        chain.push({ provider: "workers-ai", model: model as unknown as AnyModel, gate: rpmGate(50) });
+        chain.push({ provider: "workers-ai", model: model as unknown as AnyModel, gate: persistentGate("workers-ai", () => rpmGate(50)) });
       } else {
         const key = keyFor(env, entry.provider);
         if (!key) continue;
@@ -179,6 +199,7 @@ export function buildPool(env: Env): Pool {
       console.warn(`[pool] skip ${entry.provider}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+  if (mode !== "mock") poolCache = { key: poolKey(env), pool: { models, chain } };
   return { models, chain };
 }
 

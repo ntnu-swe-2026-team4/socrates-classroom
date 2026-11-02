@@ -21,14 +21,5 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "workerd",
-      "esbuild",
-      "@biomejs/biome",
-      "sharp",
-      "esbuild@0.28.1"
-    ]
   }
 }
