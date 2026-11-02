@@ -1,6 +1,6 @@
 # 重構架構設計：socrates-classroom → Cloudflare + Pi Durable
 
-> 日期：2026-11 ｜ 分支：`refactor/cf-pi-durable` ｜ 狀態：**已實作（R0–R6）**——測試全綠；剩 R3 實際部署（需 Cloudflare 帳號）與 R7 WebSocket（Phase 3）
+> 日期：2026-11 ｜ 分支：`refactor/cf-pi-durable` ｜ 狀態：**R0–R5 已實作、R6 僅完成 shared 型別（`hc<RpcApp>` web 端改寫未做）**——測試全綠；剩 R3 實際部署（需 Cloudflare 帳號）與 R7 WebSocket（Phase 3）
 > 相關文件：[`cf.md`](./cf.md)（Cloudflare CLI）、[`pi.md`](./pi.md)（Pi Durable）、[`providers.md`](./providers.md)（provider 查證）、[`feature.md`](./feature.md)（功能總覽）
 
 ## 0. 已定決策（本文的約束條件）

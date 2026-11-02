@@ -662,7 +662,8 @@ export const mockApi: Api = {
     await delay(30);
     return [...(topicDialogues.get(id) ?? [])];
   },
-  async sendTopicDialogue(id, text, onDelta, onEmotion) {
+  async sendTopicDialogue(id, text, onDelta, onEmotion, signal) {
+    if (signal?.aborted) throw abortError();
     const list = topicDialogues.get(id) ?? [];
     topicDialogues.set(id, list);
     const a = archives.find((x) => x.id === id);
@@ -795,7 +796,7 @@ export const mockApi: Api = {
     await delay(30);
     return [...E.findAct(id).dialogue];
   },
-  sendDialogue: (id, text, onDelta) => E.sendDialogue(E.findAct(id), text, onDelta),
+  sendDialogue: (id, text, onDelta, signal) => E.sendDialogue(E.findAct(id), text, onDelta, signal),
   async getProgress(id) {
     await delay(30);
     return E.progress(E.findAct(id));
@@ -1401,7 +1402,8 @@ export const mockApi: Api = {
     }
     return Q.toSessionDetail(d, Q.mySession(d, MY_ID, ME), MY_ID);
   },
-  async sendDiscussionMessage(id, text, onDelta, onEmotion) {
+  async sendDiscussionMessage(id, text, onDelta, onEmotion, signal) {
+    if (signal?.aborted) throw abortError();
     needStudent();
     const d = Q.findDiscussion(id);
     if (d.status === "closed") throw new Error(tr("這個討論已經結束了"));
@@ -1615,4 +1617,8 @@ function groupAct(gid: string) {
   const a = E.acts.find((x) => x.groups.some((g: any) => g.id === gid));
   if (!a) throw new Error(tr("找不到組別"));
   return a;
+}
+
+function abortError(): Error {
+  return new DOMException("dialogue aborted", "AbortError");
 }

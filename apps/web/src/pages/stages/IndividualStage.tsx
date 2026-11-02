@@ -76,6 +76,9 @@ function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
   }, []);
   useEffect(() => stopAiSpeech, []);
 
+  const dialogueAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => dialogueAbort.current?.abort(), []);
+
   async function send() {
     const msg = text.trim();
     if (!msg || pending !== null) return;
@@ -83,12 +86,18 @@ function ChatPanel({ a, readOnly }: { a: Activity; readOnly: boolean }) {
     setMine(msg);
     setPending("");
     setError("");
+    dialogueAbort.current?.abort();
+    const ac = new AbortController();
+    dialogueAbort.current = ac;
     try {
-      const reply = await api.sendDialogue(a.id, msg, (c) => setPending((p) => (p ?? "") + c));
+      const reply = await api.sendDialogue(a.id, msg, (c) => setPending((p) => (p ?? "") + c), ac.signal);
+      if (ac.signal.aborted) return;
       speakAi(reply.text);
     } catch (e) {
-      setText(msg);
-      setError(e instanceof Error ? e.message : String(e));
+      if (!ac.signal.aborted) {
+        setText(msg);
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
       setPending(null);
       setMine(null);

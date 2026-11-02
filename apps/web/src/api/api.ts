@@ -71,6 +71,7 @@ export interface Api {
     text: string,
     onDelta?: (chunk: string) => void,
     onEmotion?: (emotion: Emotion) => void,
+    signal?: AbortSignal,
   ): Promise<DialogueMessage>;
 
   listClassrooms(): Promise<Classroom[]>;
@@ -135,6 +136,7 @@ export interface Api {
     text: string,
     onDelta?: (chunk: string) => void,
     onEmotion?: (emotion: Emotion) => void,
+    signal?: AbortSignal,
   ): Promise<DialogueMessage>;
   submitDiscussionConclusion(discussionId: string, conclusion: string | null): Promise<DiscussionSessionDetail>;
 
@@ -148,7 +150,12 @@ export interface Api {
   deleteCalendarEvent(id: string): Promise<void>;
 
   listDialogue(activityId: string): Promise<DialogueMessage[]>;
-  sendDialogue(activityId: string, text: string, onDelta?: (chunk: string) => void): Promise<DialogueMessage>;
+  sendDialogue(
+    activityId: string,
+    text: string,
+    onDelta?: (chunk: string) => void,
+    signal?: AbortSignal,
+  ): Promise<DialogueMessage>;
   getProgress(activityId: string): Promise<Progress>;
   draftPosition(activityId: string): Promise<PositionDraft>;
   confirmPosition(activityId: string, summary: ArgumentSummary): Promise<Position>;

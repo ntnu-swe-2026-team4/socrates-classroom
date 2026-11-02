@@ -32,7 +32,7 @@ export async function saveTurn(db: Db, input: SaveTurnInput): Promise<{ id: stri
       },
       {
         sql: "UPDATE archives SET rounds = $rounds, snippet = $snippet, date = $at, updated_at = $at WHERE id = $id",
-        params: { rounds: rounds?.n ?? 0, snippet: input.assistantText.slice(0, 60), at, id: input.scopeId },
+        params: { rounds: (rounds?.n ?? 0) + 1, snippet: input.assistantText.slice(0, 60), at, id: input.scopeId },
       },
     ]);
   } else if (input.scope === "activity") {

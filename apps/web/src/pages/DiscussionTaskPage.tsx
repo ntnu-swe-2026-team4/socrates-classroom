@@ -91,6 +91,8 @@ function StudentChat({ d, readOnly }: { d: DiscussionTask; readOnly: boolean }) 
   const [mine, setMine] = useState<string | null>(null);
   const [error, setError] = useState("");
   const end = useRef<HTMLDivElement>(null);
+  const dialogueAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => dialogueAbort.current?.abort(), []);
   const messages: DialogueMessage[] = session?.messages ?? [];
   const rounds = session?.rounds ?? 0;
   const full = rounds >= d.maxRounds;
@@ -107,12 +109,24 @@ function StudentChat({ d, readOnly }: { d: DiscussionTask; readOnly: boolean }) 
     setMine(msg);
     setPending("");
     setError("");
+    dialogueAbort.current?.abort();
+    const ac = new AbortController();
+    dialogueAbort.current = ac;
     try {
-      const reply = await api.sendDiscussionMessage(d.id, msg, (c) => setPending((p) => (p ?? "") + c));
+      const reply = await api.sendDiscussionMessage(
+        d.id,
+        msg,
+        (c) => setPending((p) => (p ?? "") + c),
+        undefined,
+        ac.signal,
+      );
+      if (ac.signal.aborted) return;
       speakAi(reply.text);
     } catch (e) {
-      setText(msg);
-      setError(e instanceof Error ? e.message : String(e));
+      if (!ac.signal.aborted) {
+        setText(msg);
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
       setPending(null);
       setMine(null);

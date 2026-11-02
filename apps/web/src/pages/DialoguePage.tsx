@@ -46,6 +46,8 @@ export function DialoguePage() {
   const [listening, setListening] = useState(false);
   const [status, setStatus] = useState("");
   const [rec] = useState(() => createRecognizer());
+  const dialogueAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => dialogueAbort.current?.abort(), []);
   const stage = useRef<SocratesHandle>(null);
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -83,8 +85,18 @@ export function DialoguePage() {
       reactedAt = performance.now();
       stage.current?.setExpression(EMOTION_CLIP[e]);
     };
+    dialogueAbort.current?.abort();
+    const ac = new AbortController();
+    dialogueAbort.current = ac;
     try {
-      const msg = await api.sendTopicDialogue(archive.id, input, (c) => setPending((p) => (p ?? "") + c), react);
+      const msg = await api.sendTopicDialogue(
+        archive.id,
+        input,
+        (c) => setPending((p) => (p ?? "") + c),
+        react,
+        ac.signal,
+      );
+      if (ac.signal.aborted) return false;
       setStatus("");
       const emotion = msg.emotion ?? "neutral";
       react(emotion);
@@ -95,8 +107,10 @@ export function DialoguePage() {
       );
       return true;
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e));
-      stage.current?.setExpression(null);
+      if (!ac.signal.aborted) {
+        setStatus(e instanceof Error ? e.message : String(e));
+        stage.current?.setExpression(null);
+      }
       return false;
     } finally {
       setPending(null);

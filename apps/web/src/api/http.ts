@@ -83,18 +83,22 @@ export async function streamDialogue(
   body: unknown,
   onDelta?: (c: string) => void,
   onEmotion?: (e: Emotion) => void,
+  signal?: AbortSignal,
 ): Promise<DialogueMessage> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream", "Accept-Language": currentLang() },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok) throw await errorOf(res);
   if (!res.body) throw new ApiError(502, tr("串流結束但沒有收到完整訊息"));
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = "";
+  const onAbort = () => reader.cancel().catch(() => {});
+  signal?.addEventListener("abort", onAbort);
   const handle = (block: string): DialogueMessage | null => {
     const ev = parseSseBlock(block);
     if (!ev) return null;
@@ -108,6 +112,7 @@ export async function streamDialogue(
   };
   try {
     for (;;) {
+      if (signal?.aborted) throw abortError();
       const { value, done } = await reader.read();
       buf += dec.decode(value, { stream: !done });
       let m: RegExpExecArray | null = /\r?\n\r?\n/.exec(buf);
@@ -123,9 +128,14 @@ export async function streamDialogue(
     const final = handle(buf.replace(/\r/g, ""));
     if (final) return final;
   } finally {
+    signal?.removeEventListener("abort", onAbort);
     reader.cancel().catch(() => {});
   }
   throw new ApiError(502, tr("串流結束但沒有收到完整訊息"));
+}
+
+function abortError(): Error {
+  return new DOMException("dialogue aborted", "AbortError");
 }
 
 export const httpApi: Api = {
@@ -147,8 +157,8 @@ export const httpApi: Api = {
 
   createArchive: (title) => post("/api/archives", { title }),
   listTopicDialogue: (id) => get(`/api/archives/${id}/dialogue`),
-  sendTopicDialogue: (id, text, onDelta, onEmotion) =>
-    streamDialogue(`/api/archives/${id}/dialogue`, { text }, onDelta, onEmotion),
+  sendTopicDialogue: (id, text, onDelta, onEmotion, signal) =>
+    streamDialogue(`/api/archives/${id}/dialogue`, { text }, onDelta, onEmotion, signal),
 
   listClassrooms: () => get("/api/classrooms"),
   getClassroom: (id) => get(`/api/classrooms/${id}`),
@@ -203,8 +213,8 @@ export const httpApi: Api = {
   deleteDiscussion: (id) => del(`/api/discussions/${id}`),
   listDiscussionSessions: (id) => get(`/api/discussions/${id}/sessions`),
   getDiscussionSession: (id, studentId) => get(`/api/discussions/${id}/sessions/${studentId ?? "me"}`),
-  sendDiscussionMessage: (id, text, onDelta, onEmotion) =>
-    streamDialogue(`/api/discussions/${id}/sessions/me/messages`, { text }, onDelta, onEmotion),
+  sendDiscussionMessage: (id, text, onDelta, onEmotion, signal) =>
+    streamDialogue(`/api/discussions/${id}/sessions/me/messages`, { text }, onDelta, onEmotion, signal),
   submitDiscussionConclusion: (id, conclusion) => put(`/api/discussions/${id}/sessions/me/conclusion`, { conclusion }),
 
   listPosts: (cid, topicId) => get(`/api/classrooms/${cid}/posts${qs({ topicId: topicId ?? undefined })}`),
@@ -217,7 +227,8 @@ export const httpApi: Api = {
   listCalendar: ({ from, to, classroomId }) => get(`/api/classrooms/${classroomId}/calendar${qs({ from, to })}`),
 
   listDialogue: (id) => get(`/api/activities/${id}/dialogue`),
-  sendDialogue: (id, text, onDelta) => streamDialogue(`/api/activities/${id}/dialogue`, { text }, onDelta),
+  sendDialogue: (id, text, onDelta, signal) =>
+    streamDialogue(`/api/activities/${id}/dialogue`, { text }, onDelta, undefined, signal),
   getProgress: (id) => get(`/api/activities/${id}/progress`),
   draftPosition: (id) => post(`/api/activities/${id}/position/draft`),
   confirmPosition: (id, summary) => put(`/api/activities/${id}/position`, { summary }),

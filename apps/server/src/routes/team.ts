@@ -19,6 +19,7 @@ import {
 } from "../services/activities";
 import { counterexampleFor, ensureGroupArguments as ensureArgs, groupLabel, tally } from "../services/debate";
 import { publish } from "../do/events";
+import { checkRate } from "../services/rate-limit";
 import { argumentJson, groupJson, groupMessageJson, judgmentJson, turnJson } from "../services/serialize";
 
 function membershipOfGroup(group: any, userId: string): boolean {
@@ -86,6 +87,7 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
 
   r.post("/groups/:gid/ai/summarize", async (c) => {
     const user = requireUser(c);
+    checkRate(user.id);
     const { group, activity, role } = await accessGroup(db, c.req.param("gid"), user);
     if (role === "student" && !membershipOfGroup(group, user.id)) fail(403, "not_your_group");
     if (activity.stage !== "team") fail(409, "stage_not_team");
@@ -124,6 +126,7 @@ export function teamRoutes(db: Db, getLang: (c: any) => Lang) {
 
   r.post("/groups/:gid/ai/counterexample", async (c) => {
     const user = requireUser(c);
+    checkRate(user.id);
     const { group, activity, role } = await accessGroup(db, c.req.param("gid"), user);
     if (role === "student" && !membershipOfGroup(group, user.id)) fail(403, "not_your_group");
     if (activity.stage !== "team") fail(409, "stage_not_team");

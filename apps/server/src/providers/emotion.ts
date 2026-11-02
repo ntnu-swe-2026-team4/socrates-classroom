@@ -1,5 +1,7 @@
 import type { Emotion } from "@socrates/shared";
 
+const TAGS = ["neutral", "happy", "confused", "angry"];
+
 export class EmotionSplitter {
   private buffer = "";
   private resolved = false;
@@ -30,9 +32,12 @@ export class EmotionSplitter {
     if (!this.resolved) {
       this.resolved = true;
       this.emotion = "neutral";
-      const out = this.buffer;
+      const leading = this.buffer.replace(/^\s+/, "");
       this.buffer = "";
-      return { emotion: this.emotion, text: out || undefined };
+      const partial = /^\[([a-z]*)\]?$/.exec(leading.toLowerCase());
+      const isTagRemnant = partial !== null && TAGS.some((t) => t.startsWith(partial[1]));
+      const out = isTagRemnant ? "" : this.buffer;
+      return { emotion: "neutral", text: out || undefined };
     }
     return { emotion: this.emotion ?? "neutral" };
   }

@@ -101,7 +101,7 @@ export async function seedDemo(db: Db): Promise<boolean> {
   await member(db, "c2", "s_guest", "student", "invited");
   await policy(db, "c2", "PLATO8");
 
-  classroom(
+  await classroom(
     db,
     "c3",
     "大學先修：邏輯與論證",

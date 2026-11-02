@@ -3,7 +3,7 @@ import { fail } from "../http";
 const locks = new Set<string>();
 const rates = new Map<string, number[]>();
 const RATE_WINDOW = 60_000;
-const RATE_MAX = 20;
+const RATE_MAX = 60;
 
 export function checkRate(userId: string): void {
   const now = Date.now();

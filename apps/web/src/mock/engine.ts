@@ -90,13 +90,19 @@ const replies = () => [
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const userTexts = (a: any) => a.dialogue.filter((m: any) => m.role === "user").map((m: any) => m.text);
 
-export async function sendDialogue(a: any, text: string, onDelta?: (c: string) => void): Promise<any> {
+export async function sendDialogue(
+  a: any,
+  text: string,
+  onDelta?: (c: string) => void,
+  signal?: AbortSignal,
+): Promise<any> {
   if (a.stage !== "individual") throw new Error(tr("個人調查已經結束"));
   if (userTexts(a).length >= 20) throw new Error(tr("已達最多 20 輪"));
   a.dialogue.push({ id: uid("m"), role: "user", text, at: now() });
   const rs = replies();
   const reply = rs[a.dialogue.filter((m: any) => m.role === "assistant").length % rs.length];
   for (let i = 0; i < reply.length; i += 4) {
+    if (signal?.aborted) throw abortError();
     await wait(25);
     onDelta?.(reply.slice(i, i + 4));
   }
@@ -805,4 +811,8 @@ export function starData(a: any) {
     stepLabels: [tr("個人調查後"), tr("團隊提純後")],
     stepNotes: [tr("每個人自己確認的座標"), tr("依組內投票推估（示範）")],
   };
+}
+
+function abortError(): Error {
+  return new DOMException("dialogue aborted", "AbortError");
 }
