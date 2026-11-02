@@ -155,7 +155,7 @@ data: {"message":{"id":"m42","role":"assistant","text":"有意思。但你剛才
 實作在 `apps/server/src/providers/pool.ts`（白名單路由）與 `src/do/pi-agent.ts`（PiHarness 對話執行緒）；規則與查證見 `docs/providers.md` 與 `docs/pi.md`。要點：
 
 - **白名單鏈**：`CLASS_POOL`（`whitelist.ts`）——自架 DGX Spark（CF Tunnel，4 併發）→ OpenCode Go → OpenRouter（`zdr:true` 模型）→ Workers AI；全 ZDR 0-day retention
-- **本地開發**：`.dev.vars` 設 `DGX_BASE_URL`（自架 DGX）或 `LLM_PROVIDER=dev`（GLM Coding Plan 優先，dev-only 條款）或 `CF_REMOTE_AI=true`（Workers AI）；詳見 `docs/development.md`
+- **本地開發**：`.env.local` 設 `DGX_BASE_URL`（自架 DGX）或 `LLM_PROVIDER=dev`（GLM Coding Plan 優先，dev-only 條款）或 `CF_REMOTE_AI=true`（Workers AI）；詳見 `docs/development.md`
 - **提示詞**：`packages/llm/prompts/socrates.md` 於 build time 注入 system；回覆語言依 `Accept-Language`
 - **歷史**：由 Pi transcript 管理（首次對話把 D1 歷史摘要為 digest 前綴）；單輪回覆 ≤3 句、以問句結尾（提示詞契約見 `packages/llm/prompts/`）
 - **情緒標記**：模型開頭輸出 `[neutral/happy/confused/angry]`，由 `EmotionSplitter` 拆出（協議格式不可變）；思考內容一律丟棄，不送前端不存庫

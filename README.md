@@ -6,22 +6,27 @@
 
 ## Quickstart
 
-需要 **Node.js ≥ 26.12**（2026-10 安全版；cf CLI 不支援 Bun）與 **pnpm ≥ 12**。
+需要 **Node.js ≥ 26.12**（2026-10 安全版；cf CLI 不支援 Bun）與 **pnpm ≥ 12**（`corepack enable` 或 `npm i -g pnpm`）。
 
 ```bash
 pnpm install
-prek install                        # git pre-commit hooks（biome / yamllint / whitespace）
-pnpm dev                        # 單一全端 dev server（SPA HMR + Worker + 本地 D1/R2）:5173
+cp apps/web/.env.example apps/web/.env.local # SEED_TOKEN=dev-seed——先於 pnpm dev（server 啟動時載入）
+pnpm dev                                      # 自動套 D1 migrations → http://localhost:5173
 ```
 
-第一次啟動：D1 是空的，灌示範資料（教室：高二哲學選修 A、倫理學讀書會）：
+另開一個終端機灌示範資料（教室：高二哲學選修 A、倫理學讀書會）：
 
 ```bash
-cp apps/web/.env.example apps/web/.dev.vars   # 已含 SEED_TOKEN=dev-seed
-pnpm seed
+pnpm seed                                     # 需要 dev server 運行中；SEED_TOKEN 自動讀 .env.local
 ```
 
-示範帳號：老師 `林老師`、學生 `訪客`（示範登入：選身分 + 輸入姓名即可）。
+示範帳號：老師 `林老師`、學生 `訪客`（示範登入：選身分 + 輸入姓名即可）。對話功能的 LLM 設定三選一見 [`docs/development.md`](docs/development.md)。
+
+選配——git pre-commit hooks（需先安裝 [prek](https://github.com/j178/prek)：`pipx install prek` 或 `uv tool install prek`）：
+
+```bash
+prek install
+```
 
 ## 部署
 
@@ -44,7 +49,7 @@ CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) 
 | `pnpm typecheck`   | server 與 web 的 TypeScript 檢查                              |
 | `pnpm lint`        | Biome 檢查（`pnpm format` 自動修）                            |
 | `pnpm migrate`     | 本地 D1 migrations                                            |
-| `pnpm seed`        | 灌示範資料                                                    |
+| `pnpm seed`        | 灌示範資料（需 dev server 運行中）                            |
 | `pnpm deploy`      | 部署到 Cloudflare（apps/web）                                 |
 
 ## 結構

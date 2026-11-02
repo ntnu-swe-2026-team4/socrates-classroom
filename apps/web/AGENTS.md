@@ -12,7 +12,7 @@ pnpm typecheck
 ```
 
 - `cf dev` / `cf build` / `cf deploy` / `cf d1 …` all run **from this directory** — the plugin resolves `cloudflare.config.ts` from the vite root, and `.cloudflare/` output lives here
-- Dev secrets/vars: `.dev.vars` (this directory, gitignored — see `.env.example`); plain `vars` can be overridden at config evaluation via environment variables (`LLM_PROVIDER`, `DGX_BASE_URL`)
+- Dev vars/secrets: `.env.local` (this directory, gitignored — see `.env.example`); `cloudflare.config.ts` reads it via `loadEnv` in dev mode only — production builds keep config defaults. `CF_REMOTE_AI` is read from the shell environment
 - `VITE_API_MODE=mock` is for offline demo; production deploys must not rely on it (see reviewer note on `src/api/index.ts` default)
 
 ## Deltas & boundaries

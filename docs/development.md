@@ -4,22 +4,18 @@
 
 ## 快速開始
 
-```bash
-pnpm install
-prek install                        # git pre-commit hooks
-pnpm dev                           # 單一全端 dev server（啟動時自動套 D1 migrations；SPA HMR + Worker + 本地 D1/R2）:5173
-pnpm migrate                       # 手動套 schema（dev 啟動時已自動執行；見下方「本地資料庫」）
-pnpm seed                          # 灌示範資料（需 .dev.vars 設 SEED_TOKEN）
-```
+完整 quickstart（安裝 → seed → 登入）見 [README](../README.md#quickstart)。本文件記 dev 專屬細節：
 
-示範帳號：老師 `林老師`、學生 `訪客`（示範登入：選身分＋姓名即可）。
+- `pnpm dev` 啟動時**自動套用 D1 migrations**（vite `configureServer` 跑 `pnpm migrate`，冪等約 1s）；手動 `pnpm migrate` 等價
+- `pnpm seed` 需要 **dev server 運行中**；SEED_TOKEN 自動讀 `apps/web/.env.local`（或環境變數），且 `.env.local` 需在 `pnpm dev` **之前**就位（server 啟動時載入）
+- 示範帳號：老師 `林老師`、學生 `訪客`
 
 ## 不需要 Cloudflare 帳號
 
 預設情況（`CF_REMOTE_AI` 未設）**整個開發流程不需要 CF 帳號**：
 
 - D1 / R2 / Durable Objects 都是本地模擬，資料存在 `apps/web/.cloudflare/state/`
-- 對話功能在 `.dev.vars` 設 `DGX_BASE_URL=http://100.102.84.36:8888/v1` 即可用自架 DGX Spark（純 HTTP，不經 CF）
+- 對話功能在 `.env.local` 設 `DGX_BASE_URL=http://100.102.84.36:8888/v1` 即可用自架 DGX Spark（純 HTTP，不經 CF）
 
 只有 `CF_REMOTE_AI=true`（用 Workers AI 作對話 fallback）時才需要 `cf login`。
 
@@ -32,7 +28,7 @@ pnpm seed                          # 灌示範資料（需 .dev.vars 設 SEED_TO
 
 ## 對話功能（LLM）在本地
 
-`.dev.vars`（gitignored，範本見 `.env.example`）三選一：
+`.env.local`（gitignored，範本見 `.env.example`；僅 dev 讀取——build/deploy 用 config 預設，生產設定走 `cf deploy --secrets-file`）三選一：
 
 | 方式            | 設定                                        | 費用                                          |
 | --------------- | ------------------------------------------- | --------------------------------------------- |
@@ -45,5 +41,6 @@ pnpm seed                          # 灌示範資料（需 .dev.vars 設 SEED_TO
 ## 常見問題
 
 - **`pnpm dev` 要求 Cloudflare 授權** → 有人設了 `CF_REMOTE_AI=true` 或 shell 有殘留 env；unset 即可
-- **seed 失敗「請設定 SEED_TOKEN」** → `.dev.vars` 的 `SEED_TOKEN` 與執行 `pnpm seed` 時的環境變數一致（範本預設 `dev-seed`）
+- **seed 失敗「找不到 SEED_TOKEN」** → `.env.local` 不存在或沒有 `SEED_TOKEN` 行；**改了 `.env.local` 要重啟 dev**（server 只在啟動時載入）
+- **seed「連不上」** → dev server 沒起來（`pnpm dev` 先跑）；或 seed 跑在 dev 前面
 - **改 config 後資料不見** → 見上「Persistence scope 陷阱」

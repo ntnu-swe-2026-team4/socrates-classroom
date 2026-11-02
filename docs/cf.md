@@ -98,8 +98,8 @@ npx cf d1 migrations apply socrates --dir migrations
 ```bash
 # 單一 secret（cf 尚未支援，暫用 wrangler）
 npx wrangler secret put OPENCODE_API_KEY
-# 或一次上傳（.dev.vars 同格式）
-npx cf deploy --prebuilt --mode production --secrets-file .dev.vars
+# 或一次上傳（dotenv 格式；.env.production.local 不會進 dev）
+npx cf deploy --prebuilt --mode production --secrets-file .env.production.local
 ```
 
 本專案 secrets：`OPENCODE_API_KEY`、`OPENROUTER_API_KEY`、`ZAI_API_KEY`（dev 用）、`BYOK_ENC_KEY`。
