@@ -8,6 +8,7 @@ import {
   Moon,
   PanelLeft,
   Plus,
+  Search,
   Settings,
   SquareActivity,
   Sun,
@@ -26,9 +27,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [localeOpen, setLocaleOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const termHistory = useQuery({ queryKey: ["termHistory"], queryFn: () => api.termHistory() });
   const logout = useMutation({
     mutationFn: () => api.logout(),
     onSuccess: async () => {
@@ -56,113 +59,96 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { title: "努力的報酬", when: locale === "zh" ? "本週" : locale === "en" ? "This week" : "Esta semana" },
   ];
 
-  const row =
-    "flex h-9 items-center gap-2.5 rounded-xl text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink";
+  const terms = termHistory.data ?? [];
+  const q = search.trim().toLowerCase();
+  const matchedSessions = q ? recent.filter((item) => item.title.toLowerCase().includes(q)) : recent;
+  const matchedTerms = q ? terms.filter((item) => item.term.toLowerCase().includes(q)) : terms;
+
+  const row = "flex h-9 items-center rounded-xl text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink";
   const rowActive = "bg-paper-deep text-ink";
 
-  function railCollapsed() {
-    return (
-      <>
+  function searchBox(expand: boolean) {
+    if (!expand) {
+      return (
         <button
           type="button"
-          aria-label={t("menu_open")}
-          title={t("menu_open")}
-          onClick={() => setExpanded(true)}
+          aria-label={t("nav_search")}
+          title={t("nav_search")}
+          onClick={() => {
+            setExpanded(true);
+            setDrawerOpen(false);
+          }}
           className={cn(row, "text-ink-faint")}
         >
-          <PanelLeft size={18} strokeWidth={1.6} />
+          <Search size={18} strokeWidth={1.6} />
         </button>
+      );
+    }
+    return (
+      <div className="relative px-2">
+        <Search size={15} strokeWidth={1.6} className="absolute left-4.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={t("search_placeholder")}
+          className="h-9 w-full rounded-xl border border-line bg-card pl-8 pr-3 text-[13px] text-ink placeholder:text-ink-faint focus:border-ember focus:outline-none"
+        />
+      </div>
+    );
+  }
 
-        <Link to="/" aria-label="home" title={t("app_name")} className="mt-2 flex h-9 w-9 items-center justify-center">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink font-serif text-[15px] font-semibold text-paper">
-            詰
-          </span>
-        </Link>
-
-        <nav className="mt-4 flex flex-col items-center gap-1">
-          {actions.map((item) => {
-            const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                aria-label={item.label}
-                title={item.label}
-                className={cn(row, active && rowActive)}
-              >
-                {item.icon}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="mt-auto flex flex-col items-center gap-1">
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setLocaleOpen((v) => !v)}
-              aria-label={t("settings_lang")}
-              title={`${t("settings_lang")} · ${locale.toUpperCase()}`}
-              className={cn(row, localeOpen && rowActive)}
-            >
-              <Globe size={18} strokeWidth={1.6} />
-            </button>
-            {localeOpen && (
-              <div
-                role="listbox"
-                className="absolute bottom-11 left-0 z-50 flex flex-col rounded-xl border border-line bg-card p-1 shadow-sm"
-              >
-                {locales.map((l: Locale) => (
-                  <button
-                    key={l}
-                    type="button"
-                    role="option"
-                    aria-selected={l === locale}
-                    onClick={() => {
-                      setLocale(l);
-                      setLocaleOpen(false);
-                    }}
-                    className={cn(
-                      "rounded-lg px-4 py-1.5 text-left text-[13px]",
-                      l === locale ? "bg-paper-deep font-medium text-ink" : "text-ink-soft",
-                    )}
+  function searchResults() {
+    if (!q) return null;
+    const empty = matchedSessions.length === 0 && matchedTerms.length === 0;
+    return (
+      <div className="mt-3 flex flex-col gap-3 px-3">
+        {empty && <p className="px-2.5 text-[12.5px] text-ink-faint">{t("search_none")}</p>}
+        {matchedSessions.length > 0 && (
+          <div>
+            <p className="mb-1 px-2.5 text-[11px] font-medium tracking-wider text-ink-faint uppercase">
+              {t("nav_recent")}
+            </p>
+            <ul className="flex flex-col gap-0.5">
+              {matchedSessions.map((item) => (
+                <li key={item.title}>
+                  <Link
+                    to="/dialogue"
+                    onClick={() => setDrawerOpen(false)}
+                    className="flex items-baseline justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-ink-soft hover:bg-paper-deep hover:text-ink"
                   >
-                    {l === "zh" ? "繁體中文" : l === "en" ? "English" : "Español"}
-                  </button>
-                ))}
-              </div>
-            )}
+                    <span className="truncate">{item.title}</span>
+                    <span className="shrink-0 text-[11px] text-ink-faint">{item.when}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
-
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label={t("theme_toggle")}
-            title={t("theme_toggle")}
-            className={row}
-          >
-            {theme === "dark" ? <Sun size={18} strokeWidth={1.6} /> : <Moon size={18} strokeWidth={1.6} />}
-          </button>
-
-          {me.data ? (
-            <button
-              type="button"
-              onClick={() => logout.mutate()}
-              title={`${me.data.name} · ${t("account_logout")}`}
-              aria-label={`${me.data.name} · ${t("account_logout")}`}
-              className="flex h-9 w-9 items-center justify-center"
-            >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-ember-wash font-serif text-[13px] text-ember">
-                {me.data.name.slice(0, 1)}
-              </span>
-            </button>
-          ) : (
-            <Link to="/login" aria-label={t("login_title")} title={t("login_title")} className={row}>
-              <User size={18} strokeWidth={1.6} />
-            </Link>
-          )}
-        </div>
-      </>
+        )}
+        {matchedTerms.length > 0 && (
+          <div>
+            <p className="mb-1 px-2.5 text-[11px] font-medium tracking-wider text-ink-faint uppercase">
+              {t("term_history")}
+            </p>
+            <ul className="flex flex-col gap-0.5">
+              {matchedTerms.map((item) => (
+                <li key={item.at}>
+                  <Link
+                    to="/dialogue"
+                    search={{ term: item.term }}
+                    onClick={() => setDrawerOpen(false)}
+                    className="flex items-baseline justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-ink-soft hover:bg-paper-deep hover:text-ink"
+                  >
+                    <span className="truncate">{item.term}</span>
+                    <span className="shrink-0 text-[11px] text-ink-faint">
+                      {new Date(item.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -170,22 +156,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <>
         <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink font-serif text-[15px] font-semibold text-paper">
-            詰
-          </span>
-          <span className="min-w-0 flex-1 truncate font-serif text-[15px] font-semibold text-ink">{t("app_name")}</span>
+          <Link to="/" className="flex h-9 items-center gap-2">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink font-serif text-[15px] font-semibold text-paper">
+              詰
+            </span>
+            <span className="font-serif text-[15px] font-semibold text-ink">{t("app_name")}</span>
+          </Link>
           <button
             type="button"
             aria-label={t("menu_open")}
-            title={t("menu_open")}
             onClick={() => setExpanded(false)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-ink-faint hover:bg-paper-deep hover:text-ink"
+            className="ml-auto flex h-9 w-9 items-center justify-center rounded-xl text-ink-faint hover:bg-paper-deep hover:text-ink"
           >
             <PanelLeft size={18} strokeWidth={1.6} />
           </button>
         </div>
 
-        <nav className="flex flex-col gap-0.5">
+        {searchBox(true)}
+        {searchResults()}
+
+        <nav className={cn("flex flex-col gap-0.5 px-3", q ? "mt-4" : "mt-2")}>
           {actions.map((item) => {
             const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
             return (
@@ -193,7 +183,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 key={item.to}
                 to={item.to}
                 onClick={() => setDrawerOpen(false)}
-                className={cn(row, "pl-[22px] pr-3 text-[13.5px]", active && rowActive)}
+                className={cn(row, "px-2.5 text-[13.5px]", active && rowActive)}
               >
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center">{item.icon}</span>
                 <span className="truncate">{item.label}</span>
@@ -202,27 +192,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="mt-6 flex min-h-0 flex-1 flex-col px-3">
-          <p className="mb-1 px-2.5 text-[11px] font-medium tracking-wider text-ink-faint uppercase">
-            {t("nav_recent")}
-          </p>
-          <ul className="flex flex-col gap-0.5 overflow-y-auto">
-            {recent.map((item) => (
-              <li key={item.title}>
-                <Link
-                  to="/dialogue"
-                  onClick={() => setDrawerOpen(false)}
-                  className="flex items-baseline justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-ink-soft hover:bg-paper-deep hover:text-ink"
-                >
-                  <span className="truncate">{item.title}</span>
-                  <span className="shrink-0 text-[11px] text-ink-faint">{item.when}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {!q && (
+          <div className="mt-6 flex min-h-0 flex-1 flex-col px-3">
+            <p className="mb-1 px-2.5 text-[11px] font-medium tracking-wider text-ink-faint uppercase">
+              {t("nav_recent")}
+            </p>
+            <ul className="flex flex-col gap-0.5 overflow-y-auto">
+              {recent.map((item) => (
+                <li key={item.title}>
+                  <Link
+                    to="/dialogue"
+                    onClick={() => setDrawerOpen(false)}
+                    className="flex items-baseline justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-ink-soft hover:bg-paper-deep hover:text-ink"
+                  >
+                    <span className="truncate">{item.title}</span>
+                    <span className="shrink-0 text-[11px] text-ink-faint">{item.when}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-        <div className="flex items-center justify-between gap-2 border-t border-line/60 p-3">
+        <div className={cn("flex items-center justify-between gap-2 border-t border-line/60 p-3", !q && "mt-auto")}>
           {me.data ? (
             <div className="flex min-w-0 items-center gap-2">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ember-wash font-serif text-[13px] text-ember">
@@ -238,11 +230,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           ) : (
-            <Link
-              to="/login"
-              onClick={() => setDrawerOpen(false)}
-              className={cn(row, "flex-1 pl-[22px] pr-3 text-[13.5px]")}
-            >
+            <Link to="/login" onClick={() => setDrawerOpen(false)} className={cn(row, "flex-1 px-2.5 text-[13.5px]")}>
               <User size={17} strokeWidth={1.6} />
               <span>{t("login_title")}</span>
             </Link>
@@ -294,6 +282,127 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {theme === "dark" ? <Sun size={17} strokeWidth={1.6} /> : <Moon size={17} strokeWidth={1.6} />}
             </button>
           </div>
+        </div>
+      </>
+    );
+  }
+
+  function railCollapsed() {
+    return (
+      <>
+        <button
+          type="button"
+          aria-label={t("menu_open")}
+          title={t("menu_open")}
+          onClick={() => setExpanded(true)}
+          className={cn(row, "text-ink-faint")}
+        >
+          <PanelLeft size={18} strokeWidth={1.6} />
+        </button>
+
+        <Link to="/" aria-label="home" title={t("app_name")} className="mt-2 flex h-9 w-9 items-center justify-center">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink font-serif text-[15px] font-semibold text-paper">
+            詰
+          </span>
+        </Link>
+
+        <nav className="mt-4 flex flex-col items-center gap-1">
+          {actions.slice(0, 2).map((item) => {
+            const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-label={item.label}
+                title={item.label}
+                className={cn(row, active && rowActive)}
+              >
+                {item.icon}
+              </Link>
+            );
+          })}
+          {searchBox(false)}
+          {actions.slice(2).map((item) => {
+            const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-label={item.label}
+                title={item.label}
+                className={cn(row, active && rowActive)}
+              >
+                {item.icon}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="mt-auto flex flex-col items-center gap-1 pb-4">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setLocaleOpen((v) => !v)}
+              aria-label={t("settings_lang")}
+              title={`${t("settings_lang")} · ${locale.toUpperCase()}`}
+              className={cn(row, localeOpen && rowActive)}
+            >
+              <Globe size={18} strokeWidth={1.6} />
+            </button>
+            {localeOpen && (
+              <div
+                role="listbox"
+                className="absolute bottom-11 left-0 z-50 flex flex-col rounded-xl border border-line bg-card p-1 shadow-sm"
+              >
+                {locales.map((l: Locale) => (
+                  <button
+                    key={l}
+                    type="button"
+                    role="option"
+                    aria-selected={l === locale}
+                    onClick={() => {
+                      setLocale(l);
+                      setLocaleOpen(false);
+                    }}
+                    className={cn(
+                      "rounded-lg px-4 py-1.5 text-left text-[13px]",
+                      l === locale ? "bg-paper-deep font-medium text-ink" : "text-ink-soft",
+                    )}
+                  >
+                    {l === "zh" ? "繁體中文" : l === "en" ? "English" : "Español"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={t("theme_toggle")}
+            title={t("theme_toggle")}
+            className={cn(row)}
+          >
+            {theme === "dark" ? <Sun size={18} strokeWidth={1.6} /> : <Moon size={18} strokeWidth={1.6} />}
+          </button>
+
+          {me.data ? (
+            <button
+              type="button"
+              onClick={() => logout.mutate()}
+              title={`${me.data.name} · ${t("account_logout")}`}
+              aria-label={`${me.data.name} · ${t("account_logout")}`}
+              className="flex h-9 w-9 items-center justify-center"
+            >
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-ember-wash font-serif text-[13px] text-ember">
+                {me.data.name.slice(0, 1)}
+              </span>
+            </button>
+          ) : (
+            <Link to="/login" aria-label={t("login_title")} title={t("login_title")} className={row}>
+              <User size={18} strokeWidth={1.6} />
+            </Link>
+          )}
         </div>
       </>
     );

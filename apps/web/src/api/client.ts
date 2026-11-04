@@ -10,6 +10,7 @@ const store = {
   joined: new Map<string, { user: User; activityId: string }>(),
   live: new Map<string, ReturnType<typeof seedLiveStudents>>(),
   turns: new Map<string, number>(),
+  termHistory: [] as { term: string; at: string }[],
 };
 
 export const mockApi: Api = {
@@ -120,4 +121,46 @@ export const mockApi: Api = {
     store.byok = null;
     return store.byok;
   },
+  async lookupTerm(term) {
+    await latency(500 + Math.random() * 500);
+    store.termHistory = [
+      { term, at: new Date().toISOString() },
+      ...store.termHistory.filter((q) => q.term !== term),
+    ].slice(0, 30);
+    return { term, markdown: buildTermMarkdown(term) };
+  },
+  async termHistory() {
+    await latency(150);
+    return store.termHistory;
+  },
 };
+
+function buildTermMarkdown(term: string): string {
+  const tiebacks = [
+    "這個概念正是蘇格拉底會追問的地方——你用它支持你的立場，但它的定義本身站得住嗎？",
+    "注意：你引用這個詞時，其實預設了一整套價值排序。說說看那個排序從何而來？",
+    "如果對造人用完全相反的方式定義這個詞，你的論證還成立嗎？",
+  ];
+  const pick = tiebacks[term.length % tiebacks.length]!;
+  return [
+    `**${term}**`,
+    "",
+    `> 一句話：關於「${term}」的精確定義，此處為查詢管線（#76）串接 wiki／SEP 後的摘要輸出。`,
+    "",
+    "## 哲學連結",
+    "",
+    pick,
+    "",
+    "## 常見混淆",
+    "",
+    "- 「直覺定義」與「原則化定義」的差異——後者才能普遍化",
+    "- 詞義的規範性（應然）與描述性（實然）層次",
+    "",
+    "## 來源",
+    "",
+    `1. [Stanford Encyclopedia of Philosophy](https://plato.stanford.edu/search/searcher.py?query=${encodeURIComponent(term)})`,
+    `2. [中文維基百科](https://zh.wikipedia.org/wiki/${encodeURIComponent(term)})`,
+    "",
+    "*查詢結果會融入對話流，不另計輪數。*",
+  ].join("\n");
+}

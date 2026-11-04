@@ -111,10 +111,31 @@ const LINE_VIEWS: Record<string, ViewDef> = {
   z: { pos: [0, 3.2, 0], up: [1, 0, 0] },
 };
 
+const SCENE_COLORS = {
+  dark: {
+    bg: "#191510",
+    frame: "#4a3b28",
+    gridA: "#33291a",
+    gridB: "#261e13",
+    planeOutline: "#c8aa6e",
+    planeGridA: "#4a3b28",
+    planeGridB: "#2c2418",
+  },
+  light: {
+    bg: "#f2ecdf",
+    frame: "#c4b99f",
+    gridA: "#d8cfba",
+    gridB: "#e2dac8",
+    planeOutline: "#b0512b",
+    planeGridA: "#c9bfa6",
+    planeGridB: "#d8cfba",
+  },
+} as const;
+
 const DUR = 900; // 維度切換統一時長（鏡頭、軸生長、點位同一時鐘）
 const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
-function makeTextSprite(text: string, color: string) {
+function makeTextSprite(text: string, color: string, scheme: "dark" | "light") {
   const canvas = document.createElement("canvas");
   canvas.width = 256;
   canvas.height = 64;
@@ -122,8 +143,12 @@ function makeTextSprite(text: string, color: string) {
   ctx.font = 'bold 34px "Noto Serif TC", serif';
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.shadowColor = "rgba(8, 6, 4, 0.95)";
-  ctx.shadowBlur = 7;
+  if (scheme === "light") {
+    ctx.fillStyle = "#4a4234";
+  } else {
+    ctx.shadowColor = "rgba(8, 6, 4, 0.95)";
+    ctx.shadowBlur = 7;
+  }
   ctx.fillStyle = color;
   ctx.fillText(text, 128, 34);
   ctx.fillText(text, 128, 34);
@@ -146,6 +171,7 @@ interface Scene3DProps {
   activeSlots: Slot[];
   axes: AxisDef[];
   background?: string;
+  scheme?: "dark" | "light";
 }
 
 export default function Scene3D({
@@ -158,10 +184,17 @@ export default function Scene3D({
   dim,
   activeSlots,
   axes,
-  background = "#191510",
+  background,
+  scheme = "dark",
 }: Scene3DProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
+  const scenePal = SCENE_COLORS[scheme];
   const threeRef = useRef<SceneState | null>(null);
+
+  useEffect(() => {
+    const scene = threeRef.current?.scene;
+    if (scene) scene.background = new THREE.Color(background ?? scenePal.bg);
+  }, [background, scenePal.bg]);
 
   // ---- 目標位置（React 資料 → 座標；未啟用槽位歸 0，0 軸時全員歸中間點） ----
   // biome-ignore lint/correctness/useExhaustiveDependencies: version 是 mutation 計數器（agents 原地變異），刻意作為重算觸發
@@ -217,7 +250,7 @@ export default function Scene3D({
     const mount = mountRef.current;
     if (!mount) return;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(background);
+    scene.background = new THREE.Color(background ?? scenePal.bg);
 
     const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
     camera.position.set(2.1, 1.7, 2.7);
@@ -504,11 +537,11 @@ export default function Scene3D({
         new THREE.LineBasicMaterial({ color: axisMeta.color, transparent: true, opacity: 0.9 }),
       );
       axisGroup.add(line);
-      const negLabel = makeTextSprite(axis.left, axisMeta.color);
+      const negLabel = makeTextSprite(axis.left, axisMeta.color, scheme);
       negLabel.position.copy(dir.clone().multiplyScalar(-CUBE * 1.32));
       negLabel.userData.sign = -1;
       axisGroup.add(negLabel);
-      const posLabel = makeTextSprite(axis.right, axisMeta.color);
+      const posLabel = makeTextSprite(axis.right, axisMeta.color, scheme);
       posLabel.position.copy(dir.clone().multiplyScalar(CUBE * 1.32));
       posLabel.userData.sign = 1;
       axisGroup.add(posLabel);

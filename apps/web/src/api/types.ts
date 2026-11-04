@@ -96,6 +96,16 @@ export interface Report {
 
 export type ByokStatus = { provider: string; last4: string } | null;
 
+export interface TermExplanation {
+  term: string;
+  markdown: string;
+}
+
+export interface TermQuery {
+  term: string;
+  at: string;
+}
+
 export interface Api {
   me(): Promise<User | null>;
   login(email: string, password: string): Promise<User>;
@@ -119,4 +129,6 @@ export interface Api {
   byokStatus(): Promise<ByokStatus>;
   byokSet(provider: string, key: string): Promise<ByokStatus>;
   byokClear(): Promise<ByokStatus>;
+  lookupTerm(term: string): Promise<TermExplanation>;
+  termHistory(): Promise<TermQuery[]>;
 }

@@ -7,6 +7,7 @@ import Scene3D, { type ClusterResult, CLUSTER_PALETTE } from "@/components/const
 import { kmeans } from "@/components/constellation/kmeans";
 import { Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
+import { useTheme } from "@/theme";
 
 export const Route = createFileRoute("/report/$id")({
   component: ReportPage,
@@ -18,6 +19,7 @@ function ReportPage() {
   const [view, setView] = useState<"group" | "individual">("group");
   const [studentIdx, setStudentIdx] = useState(0);
   const [checkedAxes, setCheckedAxes] = useState<number[]>([0, 1, 2]);
+  const theme = useTheme();
   const [showTraj, setShowTraj] = useState(false);
   const report = useQuery({ queryKey: ["report", id], queryFn: () => api.report(id) });
 
@@ -92,7 +94,7 @@ function ReportPage() {
             </button>
           </div>
 
-          <Constellation3D group={data.group} checkedAxes={checkedAxes} showTraj={showTraj} />
+          <Constellation3D group={data.group} checkedAxes={checkedAxes} showTraj={showTraj} scheme={theme} />
           <div className="flex flex-wrap justify-center gap-4">
             {data.group.clusters.map((cluster) => (
               <span key={cluster.id} className="flex items-center gap-2 text-[13px] text-ink-soft">
@@ -169,10 +171,12 @@ function Constellation3D({
   group,
   checkedAxes,
   showTraj,
+  scheme,
 }: {
   group: GroupReport;
   checkedAxes: number[];
   showTraj: boolean;
+  scheme: "dark" | "light";
 }) {
   const agents = useMemo(
     () =>
@@ -196,6 +200,7 @@ function Constellation3D({
   return (
     <div className="h-105 w-full overflow-hidden rounded-2xl border border-line">
       <Scene3D
+        key={scheme}
         agents={agents}
         version={0}
         axisMap={AXIS_MAP}
@@ -205,6 +210,7 @@ function Constellation3D({
         dim={checkedAxes.length}
         activeSlots={activeSlots}
         axes={group.axes}
+        scheme={scheme}
       />
     </div>
   );
