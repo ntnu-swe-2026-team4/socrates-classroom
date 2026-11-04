@@ -26,6 +26,7 @@ This directory is the project's **documentation SSOT**. Each document owns one d
 - When changing an API, read `api-contract.md` and `feature.md` together — the contract owns formats, feature owns existence.
 - Boundaries and prohibitions (ZDR, secrets) appear in both `providers.md` and the per-layer `AGENTS.md` files — `providers.md` is authoritative; AGENTS.md files carry only action directives.
 - Biome formats Markdown — after formatting, verify tables and semantics survived.
+- **Never** write an ambiguous date. Doc dates, verification stamps, and changelog entries are `YYYY-MM-DD`; a year-month alone is unverifiable, and "recently"/"lately" is not a date.
 - **Never** draw diagrams as ASCII art — always use Mermaid (`flowchart` / `sequenceDiagram` / `stateDiagram`, any diagram type). GitHub and most Markdown renderers render it natively.
 
 ## Language
