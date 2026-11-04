@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AmbientGlow } from "@/components/AmbientGlow";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
@@ -10,15 +11,16 @@ import { cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/dialogue")({
-  validateSearch: (search: Record<string, unknown>): { topic?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { topic?: string; q?: string } => ({
     topic: typeof search.topic === "string" ? search.topic : undefined,
+    q: typeof search.q === "string" ? search.q : undefined,
   }),
   component: DialoguePage,
 });
 
 function DialoguePage() {
   const t = useT();
-  const { topic: topicId } = Route.useSearch();
+  const { topic: topicId, q } = Route.useSearch();
   const activityId = "a-current";
   const topicQuery = useQuery({
     queryKey: ["topics"],
@@ -39,6 +41,14 @@ function DialoguePage() {
     if (phase === "speaking") amp.set(0.7);
     else if (phase === "idle") amp.set(0);
   }, [phase, amp]);
+
+  const sentFromHome = useRef(false);
+  useEffect(() => {
+    if (q && !sentFromHome.current && phase === "idle" && !history.isPending) {
+      sentFromHome.current = true;
+      void send(q);
+    }
+  }, [q, phase, history.isPending, send]);
 
   const onVoiceFinal = useCallback((text: string) => void send(text), [send]);
   const onAmplitude = useCallback((value: number) => amp.set(value), [amp]);
@@ -73,7 +83,7 @@ function DialoguePage() {
   const busy = phase !== "idle";
 
   return (
-    <div className="mx-auto flex h-dvh w-full max-w-3xl flex-col px-4 sm:px-6">
+    <div className="relative mx-auto flex h-dvh w-full max-w-3xl flex-col px-4 sm:px-6">
       <header className="flex items-center justify-between py-3">
         <div className="min-w-0">
           <p className="truncate font-serif text-[17px] font-semibold text-ink">{topic?.title ?? t("dlg_title")}</p>
@@ -89,7 +99,9 @@ function DialoguePage() {
         </button>
       </header>
 
-      <div className="flex flex-col items-center pb-2">
+      {messages.length === 0 && <AmbientGlow />}
+
+      <div className="relative z-10 flex flex-col items-center pb-2">
         <AvatarStage state={avatarState} amplitude={amplitude} />
         <p className="mt-1 h-5 text-[12.5px] text-ink-faint">
           {voice.state === "listening" && <span className="state-shimmer">{t("dlg_listening")}</span>}
@@ -98,7 +110,12 @@ function DialoguePage() {
         </p>
       </div>
 
-      <div ref={scrollRef} onScroll={onScroll} className="stream-scroll flex-1 overflow-y-auto" aria-busy={busy}>
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="stream-scroll relative z-10 flex-1 overflow-y-auto"
+        aria-busy={busy}
+      >
         <div className="flex flex-col gap-5 py-4">
           {messages.map((message) => (
             <Bubble key={message.id} speaker={message.role} text={message.text} />
@@ -131,7 +148,7 @@ function DialoguePage() {
         </p>
       )}
 
-      <footer className="sticky bottom-0 bg-gradient-to-t from-paper via-paper to-transparent pb-4 pt-2">
+      <footer className="sticky bottom-0 z-10 bg-gradient-to-t from-paper via-paper to-transparent pb-4 pt-2">
         <div className="flex items-center gap-2 rounded-full border border-line bg-card p-1.5 pl-5 shadow-sm">
           <input
             value={text}

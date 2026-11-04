@@ -20,6 +20,107 @@
   --color-flag-wash: #f6ecd4;
 }
 
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-paper: #0d0d10;
+  --color-paper-deep: #151518;
+  --color-card: #1a1a1e;
+  --color-ink: #ece7dd;
+  --color-ink-soft: #a49c8e;
+  --color-ink-faint: #736d61;
+  --color-line: #2a2930;
+  --color-ember: #e0784a;
+  --color-ember-deep: #c9602f;
+  --color-ember-wash: rgb(224 120 74 / 0.13);
+  --color-moss: #8bb2a0;
+  --color-moss-wash: rgb(139 178 160 / 0.13);
+  --color-flag: #d9a94e;
+  --color-flag-wash: rgb(217 169 78 / 0.14);
+  --glow-a: rgb(48 84 200 / 0.4);
+  --glow-b: rgb(160 62 26 / 0.3);
+  --glow-c: rgb(70 130 110 / 0.22);
+}
+
+:root {
+  --glow-a: rgb(224 120 74 / 0.2);
+  --glow-b: rgb(71 104 90 / 0.16);
+  --glow-c: rgb(176 81 43 / 0.1);
+}
+
+.glow-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  will-change: transform;
+}
+
+.glow-a {
+  width: 58rem;
+  height: 34rem;
+  left: 50%;
+  top: 60%;
+  margin-left: -29rem;
+  background: radial-gradient(closest-side, var(--glow-a), transparent 72%);
+}
+
+.glow-b {
+  width: 44rem;
+  height: 30rem;
+  left: 18%;
+  top: 30%;
+  background: radial-gradient(closest-side, var(--glow-b), transparent 72%);
+}
+
+.glow-c {
+  width: 40rem;
+  height: 28rem;
+  right: 6%;
+  top: 18%;
+  background: radial-gradient(closest-side, var(--glow-c), transparent 72%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .glow-a {
+    animation: glow-drift-a 30s ease-in-out infinite;
+  }
+  .glow-b {
+    animation: glow-drift-b 38s ease-in-out infinite;
+  }
+  .glow-c {
+    animation: glow-drift-c 46s ease-in-out infinite;
+  }
+}
+
+@keyframes glow-drift-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(7%, -8%) scale(1.18);
+  }
+}
+
+@keyframes glow-drift-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1.05);
+  }
+  50% {
+    transform: translate(12%, 10%) scale(0.92);
+  }
+}
+
+@keyframes glow-drift-c {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(0.95);
+  }
+  50% {
+    transform: translate(-10%, 12%) scale(1.12);
+  }
+}
+
 :root {
   color-scheme: light;
   --amp: 0;
