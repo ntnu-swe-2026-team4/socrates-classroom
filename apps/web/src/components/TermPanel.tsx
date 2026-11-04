@@ -107,7 +107,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
           <div className="flex items-center gap-1.5 overflow-x-auto px-3 pb-2">
             {stack.map((entry, i) => (
               <button
-                key={`${i}-${entry.term}`}
+                key={entry.term}
                 type="button"
                 onClick={() => setStack((prev) => prev.slice(0, i + 1))}
                 className={cn(
