@@ -1,6 +1,6 @@
 # 重構架構設計：socrates-classroom → Cloudflare + Pi Durable
 
-> 日期：2026-11 ｜ 分支：`refactor/cf-pi-durable` ｜ 狀態：**R0–R5 已實作、R6 僅完成 shared 型別（`hc<RpcApp>` web 端改寫未做）**——測試全綠；剩 R3 實際部署（需 Cloudflare 帳號）與 R7 WebSocket（Phase 3）
+> 日期：2026-11 ｜ 分支：`refactor/cf-pi-durable` ｜ 狀態：**R0–R5 已實作、R6 僅完成 shared 型別（`hc<RpcApp>` web 端改寫未做）**——測試全綠；剩 R3 實際部署（需 Cloudflare 帳號）與 R7 WebSocket（Phase 3）｜ **§13 v2 規模設計（D9–D13）：規劃中（`experiment/web-next`）**
 > 相關文件：[`cf.md`](./cf.md)（Cloudflare CLI）、[`pi.md`](./pi.md)（Pi Durable）、[`providers.md`](./providers.md)（provider 查證）、[`feature.md`](./feature.md)（功能總覽）
 
 ## 0. 已定決策（本文的約束條件）
@@ -261,5 +261,83 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 | opencode-go 條款灰域                                                                            | 上線前 email 官方；未確認前它不是唯一依賴（有 OpenRouter/Workers AI 兜底）                       |
 | Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）                                          | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                       |
 | module 級狀態（rate-limit 的 Map、pool 的 degraded/gate、acquireLock）隨 isolate 分散且重啟歸零 | 定位為 best-effort；跨請求一致的併發守衛在 PiAgent DO 的 busy flag。多 isolate 佈局後限流改走 DO |
-```
-```
+
+## 13. 規模設計 v2（D9–D13）——10k 併發為程式碼標準
+
+> 狀態：**規劃中**（`experiment/web-next`）。設計容量 10,000 併發對話；這不是流量預期，是**程式碼品質標準**：我們是 serverless，水平擴展是 Cloudflare 的責任，**自建瓶頸是我們的責任**。任何熱路徑必須屬於三型之一——(a) 無狀態水平：任何 isolate 皆可執行；(b) DO 分片：狀態鎖進單執行緒單元；(c) 佇列緩衝：寫入以批次吸收。平台事實（D1 單寫入者吞吐、Queues 限額、DO 無限時串流）已於 2026-11 對官方文件查證。
+
+### 13.0 負載模型（設計公理）
+
+| 項目 | 穩態 | 開場爆發（~30s） |
+| --- | --- | --- |
+| 併發對話 thread | 10,000（~250 班 × 40 人） | — |
+| 生成平面（對話輪/秒） | ~220 | ~1,000 |
+| 判斷平面（choice/秒） | ~220 | ~1,000 |
+| STT（音檔/秒） | ~220 | ~1,000 |
+| SSE/WS 連線（學生＋教師面板） | ~10,400 | — |
+| 原始寫入（輪＋違規＋事件＋帳本） | ~700/s | ~3,000/s |
+| 讀（auth／面板／歷史） | ~5,000/s | — |
+
+第一個結構性死巷：同步寫 D1 在 ~300 writes/s 觸頂（D1 單寫入者、寫入每筆數 ms；官方吞吐公式＝1/查詢時長，`batch()` 是官方逃生口）→ 對策是 D12。
+
+### 13.1 D9 判斷平面（one-shot 閘道）
+
+v3 的班級層產出——面板標記、單人報告、群體星圖、六角圖、認真度——全部是判斷平面對 transcripts 的消化物。生成平面採集，判斷平面加工；教學目標（C1/C2/S1/S2/A1/A2）的代理指標全部由判斷層量測。
+
+- 閘道＝**無狀態函式**（isolate 內直呼，不經 DO）：輸入＝transcript 片段＋題型；輸出＝結構化 choice／評分。題型：逐輪違規 choice（#71）、意圖分類（#76）、報告分析（#74）、表情 choice（#90 之後）
+- 逐輪判斷非同步：turn commit → enqueue（D10）→ 判斷 → violations 批次入庫 → publish 事件層 → 面板；延遲預算 ≤30s，不擋對話主迴圈
+- 判斷模型也進 router catalog（Clef／Clef-flash／Jev／自架）：Workers AI 判斷額度在 220 rps 下數小時耗盡——判斷與生成共用 D11 的多 provider 分流語意（不同 traffic class）
+- 模型可抽換（#55 既定）：題型 schema 在 shared，實作模型是 catalog 一行設定
+
+### 13.2 D10 背景工作平面（Queues + Workflows）
+
+- 事件流（turn done／violation／usage）→ **Workers Queues**（每佇列 5,000 msg/s、consumer 並行至 250、批次 100、15 分鐘執行時限、DLQ）→ consumer `batch()` 寫 D1——700 writes/s 收斂為 <10 batch requests/s
+- 報告生成 → **CF Workflows** 編排：activity finish → fan-out 單人分析（經 Queues 平行）→ aggregate 立場軸/落點/分群 → 存 D1 → 通知。50 生平行 ≈ <2 分鐘，滿足 #74「幾分鐘內可讀」
+- 事件不可弄丟：DLQ＋保留期重放；consumer 冪等（以 turn id 去重）
+
+### 13.3 D11 路由平面（並行分流，取代 §5 的 fallback 鏈）
+
+- **catalog（資料，非程式）**：每個 provider 一份描述檔——額度模型（concurrency／滑動窗口／RPM／餘額／neurons）、成本、ZDR、traffic class 支援、親和提示
+- **並行多 provider**：所有 healthy 且有餘量的 provider 同時計分收新 thread；系統吞吐＝各 provider 容量之和，不是鏈首的 max。分派偏好：成本優先＋免費容量緩衾（爆發留量）
+- **Coordinator DO**（每 provider／每 BYOK namespace 一個 instance）：全域 gate＋帳本＋親和 map＋circuit breaker（closed/open/half-open）。acquire/release 是記憶體操作＋input gate 批次化，單 DO 數千 rps 可達（D1 本身即 DO 所建，吞吐量級佐證）
+- **親和（thread 級）**：thread 誕生時計分一次、落點快取於 PiAgent DO storage——per-turn 零 coordinator 讀；affinity map 記 `home／current／since`。opencode 的 `x-opencode-session` 由 per-thread header 注入（providers.md 客戶端要求）
+- **failover 階梯**：暫態錯誤（單輪 429/逾時）→ 該輪借道他廠、home 不變；真失敗（breaker open）→ 該 thread 重分派＋home 改寫＋provider 摘出計分池。**failback＝重新入池，不召回既有 thread**（不打斷 prompt cache／語氣連續，避免震盪），加恢復觀察窗
+- **帳本**：每輪一筆 Analytics Engine data point（provider／tokens／latency／outcome／class），cron 匯總寫 D1 rollup——#80 面板、#81 警示、#63 停損 kill-switch 的同源資料；kill-switch 是 router 的強制點（額度見底→該 namespace 分數歸零）
+- **BYOK namespace**（#82：老師／單人）：namespace＝key 擁有者。老師 key 承載全班＝單一額度帳本被全班 thread 併發計量——全域計量是必要條件
+
+### 13.4 D12 資料層分級
+
+| 層 | 內容 | 規則 |
+| --- | --- | --- |
+| L0 | transcript 熱真相 | DO SQLite（`pi_*`，D2 既有決策的強化）：**生成平面零同步 D1 寫入** |
+| L1 | 事件流投影 | Queues → `batch()` 寫 D1（dialogue 投影／violations／usage 明細） |
+| L2 | 產品表 | users／classrooms／topics／activities 低頻寫；讀走 read replication（Sessions API） |
+| L3 | auth | 簽章 cookie（HMAC＋短 TTL）——熱路徑零 DB 讀；revocation 表僅敏感操作查（#67 重寫時落地） |
+
+成長逃生口（現不做）：D1 per-shard（付費帳號可開百萬級 DB，平台鼓勵的多租戶模式）。寫入分級後 10k 僅需 <50 writes/s 進 D1。
+
+### 13.5 D13 事件層
+
+ActivityEvents DO：SSE-in-DO → **WebSocket hibernation API**（休眠零記憶體、eviction 不掉線）＋ ring buffer（最後 N 事件）＋ Last-Event-ID 補播——#73 的「即時」在斷線重連下成立。
+
+### 13.6 與現有實作的差距（＝實驗分支工單）
+
+| # | 變更 | 對應 |
+| --- | --- | --- |
+| 1 | 簽章 cookie 取代 sessions 表熱讀（每請求 -2 D1 讀） | #67 |
+| 2 | dialogue-save 同步寫 → Queues 投影 | 本節 |
+| 3 | violations／usage 事件流 → Queues＋batch | #71 |
+| 4 | 報告生成 → Workflows 編排 | #74 |
+| 5 | ActivityEvents → WS hibernation＋ring buffer | #73 |
+| 6 | pool.ts → router（catalog／coordinator／親和／帳本） | 取代 §5 |
+| 7 | agents 0.33＋pi 1.5（串流期 storage 寫入 -27x；10k DO 的必要條件） | pi.md 配對鎖 |
+| 8 | AE data point＋cron rollup | #80／#81／#63 |
+
+新 bindings（ask-first，一次打包確認）：Queues、Workflows、Coordinator DO、Rate Limiting、Analytics Engine。
+
+### 13.7 誠實斷點（設計不假裝解決的）
+
+1. **Provider 經濟**：220 rps × ~1.5k token ≈ 330k token/s，滿載 ~$120–360/小時（GLM flash 級）。router 只提供商業開關（namespace／kill-switch／traffic class），誰付錢是 #62 的決策
+2. **Workers AI 判斷額度**：Clef 免費日額數小時耗盡——判斷平面必須多 provider
+3. **單一 D1**：分級後 10k 可達；真到百萬級 OLTP 需求 → 分片逃生口
+4. **單 Worker＝全體同時換版**：部署走 Gradual Deployments＋expand-contract migrations
