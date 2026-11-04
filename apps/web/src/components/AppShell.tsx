@@ -56,7 +56,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { title: "努力的報酬", when: locale === "zh" ? "本週" : locale === "en" ? "This week" : "Esta semana" },
   ];
 
-  const row = "flex h-9 items-center rounded-xl text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink";
+  const row =
+    "flex h-9 items-center gap-2.5 rounded-xl text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink";
   const rowActive = "bg-paper-deep text-ink";
 
   function railCollapsed() {
@@ -192,7 +193,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 key={item.to}
                 to={item.to}
                 onClick={() => setDrawerOpen(false)}
-                className={cn(row, "px-2.5 text-[13.5px]", active && rowActive)}
+                className={cn(row, "pl-[22px] pr-3 text-[13.5px]", active && rowActive)}
               >
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center">{item.icon}</span>
                 <span className="truncate">{item.label}</span>
@@ -237,19 +238,62 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           ) : (
-            <Link to="/login" onClick={() => setDrawerOpen(false)} className={cn(row, "flex-1 px-2.5 text-[13.5px]")}>
+            <Link
+              to="/login"
+              onClick={() => setDrawerOpen(false)}
+              className={cn(row, "flex-1 pl-[22px] pr-3 text-[13.5px]")}
+            >
               <User size={17} strokeWidth={1.6} />
               <span>{t("login_title")}</span>
             </Link>
           )}
-          <Link
-            to="/settings"
-            onClick={() => setDrawerOpen(false)}
-            aria-label={t("nav_settings")}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-ink-faint hover:bg-paper-deep hover:text-ink"
-          >
-            <Settings size={17} strokeWidth={1.6} />
-          </Link>
+          <div className="flex shrink-0 items-center gap-1">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setLocaleOpen((v) => !v)}
+                aria-label={t("settings_lang")}
+                title={`${t("settings_lang")} · ${locale.toUpperCase()}`}
+                className={cn(row, "w-9 justify-center")}
+              >
+                <Globe size={17} strokeWidth={1.6} />
+              </button>
+              {localeOpen && (
+                <div
+                  role="listbox"
+                  className="absolute bottom-11 left-0 z-50 flex flex-col rounded-xl border border-line bg-card p-1 shadow-sm"
+                >
+                  {locales.map((l: Locale) => (
+                    <button
+                      key={l}
+                      type="button"
+                      role="option"
+                      aria-selected={l === locale}
+                      onClick={() => {
+                        setLocale(l);
+                        setLocaleOpen(false);
+                      }}
+                      className={cn(
+                        "rounded-lg px-4 py-1.5 text-left text-[13px]",
+                        l === locale ? "bg-paper-deep font-medium text-ink" : "text-ink-soft",
+                      )}
+                    >
+                      {l === "zh" ? "繁體中文" : l === "en" ? "English" : "Español"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={t("theme_toggle")}
+              title={t("theme_toggle")}
+              className={cn(row, "w-9 justify-center")}
+            >
+              {theme === "dark" ? <Sun size={17} strokeWidth={1.6} /> : <Moon size={17} strokeWidth={1.6} />}
+            </button>
+          </div>
         </div>
       </>
     );
