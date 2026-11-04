@@ -110,7 +110,7 @@ function DialoguePage() {
         </button>
       )}
       <div className="relative mx-auto flex h-full w-full max-w-3xl flex-col px-4 sm:px-6">
-        <header className="flex items-center py-3">
+        <header className="flex items-center py-3 pl-12 md:pl-0">
           <div className="min-w-0">
             <p className="truncate font-serif text-[17px] font-semibold text-ink">{topic?.title ?? t("dlg_title")}</p>
             <p className="truncate text-[12px] text-ink-faint">{topic?.statement}</p>
@@ -127,8 +127,8 @@ function DialoguePage() {
 
         {messages.length === 0 && <AmbientGlow />}
 
-        <div className="relative z-10 flex h-64 w-full shrink-0 flex-col pb-2">
-          <div className="relative min-h-0 w-full flex-1">
+        <div className="relative z-10 mx-auto flex w-full max-w-sm shrink-0 flex-col pb-2">
+          <div className="relative aspect-[5/4] w-full">
             <SocratesStage ref={stageRef} speaking={phase === "speaking"} className="absolute inset-0" />
           </div>
           <p className="mt-1 h-5 text-center text-[12.5px] text-ink-faint">

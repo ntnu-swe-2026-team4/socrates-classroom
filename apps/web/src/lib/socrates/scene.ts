@@ -62,7 +62,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     camera.aspect = w / h;
 
     const fovRad = (camera.fov * Math.PI) / 180;
-    const desiredScreenFrac = mini ? 1.15 : 1.65;
+    const desiredScreenFrac = mini ? 1.6 : 1.25;
     const distance = (modelHeight * desiredScreenFrac) / (2 * Math.tan(fovRad / 2));
 
     const angle = controls.getAzimuthalAngle();
