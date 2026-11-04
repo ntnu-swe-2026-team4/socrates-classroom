@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, type GroupReport } from "@/api";
+import { scoreToCoords } from "@/components/constellation/sim";
 import Scene3D, { type ClusterResult, CLUSTER_PALETTE } from "@/components/constellation/Scene3D";
 import { kmeans } from "@/components/constellation/kmeans";
 import { Segmented, Spinner, cn } from "@/components/ui";
@@ -16,7 +17,7 @@ function ReportPage() {
   const { id } = Route.useParams();
   const [view, setView] = useState<"group" | "individual">("group");
   const [studentIdx, setStudentIdx] = useState(0);
-  const [checkedAxes, setCheckedAxes] = useState<number[]>([0, 1]);
+  const [checkedAxes, setCheckedAxes] = useState<number[]>([0, 1, 2]);
   const [showTraj, setShowTraj] = useState(false);
   const report = useQuery({ queryKey: ["report", id], queryFn: () => api.report(id) });
 
@@ -160,6 +161,10 @@ function ReportPage() {
   );
 }
 
+const SLOTS = ["x", "y", "z"] as const;
+type Slot = (typeof SLOTS)[number];
+const AXIS_MAP: Record<Slot, number> = { x: 0, y: 1, z: 2 };
+
 function Constellation3D({
   group,
   checkedAxes,
@@ -178,28 +183,26 @@ function Constellation3D({
     [group.points],
   );
   const maxAbsTable = useMemo(() => group.points.map(() => group.axes.map(() => 1)), [group.points, group.axes]);
+
+  const activeSlots = SLOTS.filter((sl) => checkedAxes.includes(AXIS_MAP[sl]));
+
+  // 分群基於目前顯示的座標（未勾選軸壓平為 0）——群心球隨維度收合移動
   const cluster = useMemo<ClusterResult>(() => {
-    const coords = group.points.map((point) => point.values.map((v) => Math.max(-1, Math.min(1, v))));
+    const coords = group.points.map((point) => scoreToCoords(point.values, AXIS_MAP, null, activeSlots));
     const k = group.clusters.length || 1;
     return kmeans(coords, k, { seed: 42 + k * 17 });
-  }, [group.points, group.axes, group.clusters]);
-
-  type Slot = "x" | "y" | "z";
-
-const slots: Slot[] = ["x", "y", "z"];
-  const activeSlots = slots.slice(0, Math.max(1, checkedAxes.length));
-  const axisMap = { x: checkedAxes[0] ?? 0, y: checkedAxes[1] ?? 1, z: checkedAxes[2] ?? 2 };
+  }, [group.points, group.clusters, activeSlots]);
 
   return (
     <div className="h-105 w-full overflow-hidden rounded-2xl border border-line">
       <Scene3D
         agents={agents}
         version={0}
-        axisMap={axisMap}
+        axisMap={AXIS_MAP}
         cluster={cluster}
         showTraj={showTraj}
         maxAbsTable={maxAbsTable}
-        dim={Math.max(1, checkedAxes.length)}
+        dim={checkedAxes.length}
         activeSlots={activeSlots}
         axes={group.axes}
       />

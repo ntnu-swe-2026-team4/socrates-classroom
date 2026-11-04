@@ -4,88 +4,88 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { scoreToCoords } from "./sim.js";
 
 export interface AxisDef {
-  name: string
-  left: string
-  right: string
-  color: string
+  name: string;
+  left: string;
+  right: string;
+  color: string;
 }
 
 export interface SceneAgent {
-  id: number
-  history: number[][]
+  id: number;
+  history: number[][];
 }
 
 export interface ClusterResult {
-  assignments: number[]
-  centroids: number[][]
-  inertia: number
+  assignments: number[];
+  centroids: number[][];
+  inertia: number;
 }
 
-type Slot = 'x' | 'y' | 'z'
+type Slot = "x" | "y" | "z";
 
 interface AxisVisual {
-  line: THREE.Line
-  labels: THREE.Sprite[]
+  line: THREE.Line;
+  labels: THREE.Sprite[];
 }
 
 interface TweenState {
-  start: number
-  dur: number
-  fromS: Record<Slot, number>
-  toS: Record<Slot, number>
-  fromPlane: number
-  toPlane: number
-  fromCube: number
-  toCube: number
+  start: number;
+  dur: number;
+  fromS: Record<Slot, number>;
+  toS: Record<Slot, number>;
+  fromPlane: number;
+  toPlane: number;
+  fromCube: number;
+  toCube: number;
 }
 
 interface CamAnim {
-  start: number
-  dur: number
-  fromPos: THREE.Vector3
-  toPos: THREE.Vector3
-  fromUp: THREE.Vector3
-  toUp: THREE.Vector3
-  cb?: () => void
+  start: number;
+  dur: number;
+  fromPos: THREE.Vector3;
+  toPos: THREE.Vector3;
+  fromUp: THREE.Vector3;
+  toUp: THREE.Vector3;
+  cb?: () => void;
 }
 
 interface PosAnim {
-  start: number
-  dur: number
-  from: Float32Array
-  to: Float32Array
+  start: number;
+  dur: number;
+  from: Float32Array;
+  to: Float32Array;
 }
 
 interface SceneState {
-  scene: THREE.Scene
-  camera: THREE.PerspectiveCamera
-  renderer: THREE.WebGLRenderer
-  controls: OrbitControls
-  axisGroup: THREE.Group
-  trajGroup: THREE.Group
-  centroidGroup: THREE.Group
-  points: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>
-  plane: THREE.Group
-  frame: THREE.LineSegments
-  grid: THREE.GridHelper
-  targets: Float32Array
-  disposed: boolean
-  dim: number
-  slotP: Record<Slot, number>
-  planeP: number
-  cubeP: number
-  pointSize: number
-  tween: TweenState | null
-  camAnim: CamAnim | null
-  posAnim: PosAnim | null
-  pendingPosAnim: boolean
-  axisVisuals: Partial<Record<Slot, AxisVisual>>
-  planeScaleMap: { mx: Slot; my: Slot }
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  renderer: THREE.WebGLRenderer;
+  controls: OrbitControls;
+  axisGroup: THREE.Group;
+  trajGroup: THREE.Group;
+  centroidGroup: THREE.Group;
+  points: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
+  plane: THREE.Group;
+  frame: THREE.LineSegments;
+  grid: THREE.GridHelper;
+  targets: Float32Array;
+  disposed: boolean;
+  dim: number;
+  slotP: Record<Slot, number>;
+  planeP: number;
+  cubeP: number;
+  pointSize: number;
+  tween: TweenState | null;
+  camAnim: CamAnim | null;
+  posAnim: PosAnim | null;
+  pendingPosAnim: boolean;
+  axisVisuals: Partial<Record<Slot, AxisVisual>>;
+  planeScaleMap: { mx: Slot; my: Slot };
 }
 
 interface ViewDef {
-  pos: [number, number, number]
-  up: [number, number, number]
+  pos: [number, number, number];
+  up: [number, number, number];
 }
 
 export const CLUSTER_PALETTE = ["#c9564f", "#57a86e", "#5b8fc9", "#d9924f", "#9a6fc9", "#4fb3b3", "#c964a5", "#a89f4f"];
@@ -164,6 +164,7 @@ export default function Scene3D({
   const threeRef = useRef<SceneState | null>(null);
 
   // ---- 目標位置（React 資料 → 座標；未啟用槽位歸 0，0 軸時全員歸中間點） ----
+  // biome-ignore lint/correctness/useExhaustiveDependencies: version 是 mutation 計數器（agents 原地變異），刻意作為重算觸發
   const targets = useMemo(() => {
     const t = new Float32Array(agents.length * 3);
     agents.forEach((a, i) => {
@@ -195,6 +196,7 @@ export default function Scene3D({
   }, [agents, cluster]);
 
   // ---- 軌跡折線資料（維持完整 3D 形狀，收合交給 trajGroup 縮放） ----
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 同上，version 觸發軌跡重算
   const trajectories = useMemo(() => {
     if (!showTraj) return null;
     return agents.map((a) => {
@@ -209,7 +211,8 @@ export default function Scene3D({
     });
   }, [agents, showTraj, axisMap, maxAbsTable, version]);
 
-  // ---------- Three.js 場景初始化（只跑一次） ----------
+  // ---------- Three.js 場景初始化（只跑一次；background/axes 於掛載時擷取） ----------
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 場景只初始化一次
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
@@ -339,7 +342,7 @@ export default function Scene3D({
         s.camera.lookAt(0, 0, 0);
         if (t >= 1) {
           s.camAnim = null;
-          a.cb && a.cb();
+          a.cb?.();
         }
       } else if (s.controls.enabled) {
         s.controls.update();
@@ -468,6 +471,7 @@ export default function Scene3D({
   }, []);
 
   // ---------- 人數變動 → 重建點位緩衝區 ----------
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 刻意只在人數變動時重建
   useEffect(() => {
     const s = threeRef.current;
     if (!s) return;
@@ -481,6 +485,7 @@ export default function Scene3D({
   }, [agents.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------- 軸線與標籤（依 axisMap 重建，記錄各槽位視覺） ----------
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 軸線視覺只隨 axisMap 重建
   useEffect(() => {
     const s = threeRef.current;
     if (!s) return;
@@ -550,7 +555,7 @@ export default function Scene3D({
     }
 
     // 依維度選鏡頭：3=立體、2=正面、1=量表水平、0=正面空白
-    let view;
+    let view: ViewDef;
     if (dim === 3) view = { pos: [2.1, 1.7, 2.7], up: [0, 1, 0] };
     else if (dim === 2) view = PLANAR_VIEWS[activeSlots.join(",")];
     else if (dim === 1) view = LINE_VIEWS[activeSlots[0]];
