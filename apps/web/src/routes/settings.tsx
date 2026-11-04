@@ -54,7 +54,7 @@ function SettingsPage() {
                   : "border-line bg-card text-ink-soft",
               )}
             >
-              {l === "zh" ? "繁體中文" : l === "en" ? "English" : "Español"}
+              {l === "zh-TW" ? "繁體中文" : l === "en" ? "English" : "Español"}
             </button>
           ))}
         </div>

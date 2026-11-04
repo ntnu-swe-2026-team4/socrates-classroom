@@ -86,16 +86,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { to: "/settings", match: "/settings", label: t("nav_settings"), icon: <Settings size={17} strokeWidth={1.6} /> },
   ];
 
-  const recent = [
-    { title: "電車難題", when: locale === "zh" ? "今天" : locale === "en" ? "Today" : "Hoy" },
-    { title: "器官移植", when: locale === "zh" ? "今天" : locale === "en" ? "Today" : "Hoy" },
-    { title: "努力的報酬", when: locale === "zh" ? "昨天" : locale === "en" ? "Yesterday" : "Ayer" },
-    { title: "言論的界線", when: locale === "zh" ? "本週" : locale === "en" ? "This week" : "Esta semana" },
-  ];
-
   const terms = termHistory.data ?? [];
   const q = search.trim().toLowerCase();
-  const matchedSessions = q ? recent.filter((item) => item.title.toLowerCase().includes(q)) : recent;
   const matchedTerms = q ? terms.filter((item) => item.term.toLowerCase().includes(q)) : terms;
 
   function navLink(item: (typeof actions)[number], collapsed: boolean) {
@@ -117,23 +109,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   function sessionList() {
-    const empty = matchedSessions.length === 0 && matchedTerms.length === 0;
+    const empty = matchedTerms.length === 0;
     if (empty) return <p className="px-2.5 text-[12.5px] text-ink-faint">{t("search_none")}</p>;
     return (
       <ul className="flex flex-col gap-0.5">
-        {matchedSessions.map((item) => (
-          <li key={item.title}>
-            <Link
-              to="/dialogue"
-              onClick={() => setDrawerOpen(false)}
-              className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] text-ink-soft hover:bg-paper-deep hover:text-ink"
-            >
-              <MessageSquare size={14} strokeWidth={1.6} className="shrink-0" />
-              <span className="min-w-0 flex-1 truncate">{item.title}</span>
-              <span className="shrink-0 text-[11px] text-ink-faint">{item.when}</span>
-            </Link>
-          </li>
-        ))}
         {matchedTerms.map((item) => (
           <li key={item.at}>
             <Link
@@ -233,7 +212,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       l === locale ? "bg-paper-deep font-medium text-ink" : "text-ink-soft",
                     )}
                   >
-                    {l === "zh" ? "繁體中文" : l === "en" ? "English" : "Español"}
+                    {l === "zh-TW" ? "繁體中文" : l === "en" ? "English" : "Español"}
                   </button>
                 ))}
               </div>
@@ -282,7 +261,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {search && (
           <button
             type="button"
-            aria-label="clear"
+            aria-label={t("common_clear")}
             onClick={() => setSearch("")}
             className="absolute top-1/2 right-5 -translate-y-1/2 text-ink-faint hover:text-ink"
           >
@@ -345,7 +324,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <PanelLeft size={18} strokeWidth={1.6} />
         </button>
 
-        <Link to="/" aria-label="home" title={t("app_name")} className="mt-2 flex h-9 w-9 items-center justify-center">
+        <Link
+          to="/"
+          aria-label={t("app_name")}
+          title={t("app_name")}
+          className="mt-2 flex h-9 w-9 items-center justify-center"
+        >
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink font-serif text-[15px] font-semibold text-paper">
             詰
           </span>

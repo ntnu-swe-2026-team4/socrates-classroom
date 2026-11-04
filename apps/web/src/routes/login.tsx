@@ -41,10 +41,10 @@ function LoginPage() {
       </div>
 
       <Card className="mt-8 flex flex-col gap-5 p-6 opacity-90" aria-label={t("login_title")}>
-        <Field label={t("電子郵件")}>
+        <Field label={t("login_email")}>
           <Input type="email" placeholder="you@example.com" disabled />
         </Field>
-        <Field label={t("密碼")}>
+        <Field label={t("login_password")}>
           <Input type="password" placeholder="••••••••" disabled />
         </Field>
         <Button disabled className="w-full">

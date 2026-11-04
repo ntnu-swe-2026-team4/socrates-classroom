@@ -243,7 +243,7 @@ function DialoguePage() {
                   void send(text);
                   setText("");
                 }}
-                aria-label="send"
+                aria-label={t("common_send")}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink text-paper transition-colors hover:bg-ink-soft"
               >
                 <svg

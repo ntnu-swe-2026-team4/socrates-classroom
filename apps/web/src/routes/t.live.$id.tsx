@@ -76,7 +76,7 @@ function LivePage() {
               {t("live_last", { text: student.lastUtterance })}
             </p>
             <div className="mt-3 flex items-center justify-between text-[12px] text-ink-faint">
-              <span>{t("live_rounds", { n: student.rounds })}</span>
+              <span>{t(student.rounds === 1 ? "live_round_one" : "live_rounds", { n: student.rounds })}</span>
               {student.flagged && (
                 <span className="flex items-center gap-1.5 rounded-full bg-flag-wash px-2.5 py-0.5 font-medium text-flag">
                   <svg

@@ -1,27 +1,15 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-export const locales = ["zh", "en", "es"] as const;
+export const locales = ["zh-TW", "en", "es"] as const;
 export const LANGS = [
-  { code: "zh", label: "繁體中文" },
+  { code: "zh-TW", label: "繁體中文" },
   { code: "en", label: "English" },
   { code: "es", label: "Español" },
 ] as const;
 export type Locale = (typeof locales)[number];
-export type MessageKey = keyof typeof messages.zh;
 
 const messages = {
-  zh: {
-    我: "我",
-    "我們上次談到「{title}」。你現在的想法有什麼不一樣嗎？": "我們上次談到「{title}」。你現在的想法有什麼不一樣嗎？",
-    "還沒有建立任何教室，按上面「新增教室」開始吧。": "還沒有建立任何教室，按上面「新增教室」開始吧。",
-    "處理老師的邀請、用邀請碼加入，或到「探索教室」找開放加入的課程。":
-      "處理老師的邀請、用邀請碼加入，或到「探索教室」找開放加入的課程。",
-    "建立教室、邀請學生加入，之後可以在教室裡管理成員、發起辯論。":
-      "建立教室、邀請學生加入，之後可以在教室裡管理成員、發起辯論。",
-    "整理你的核心主張、支持理由，以及過程中立場如何被檢驗與修正。":
-      "整理你的核心主張、支持理由，以及過程中立場如何被檢驗與修正。",
-    "私人與公開題庫只能擇一；論點總結是另外獨立的，加入後會出現在「論點總結」頁。":
-      "私人與公開題庫只能擇一；論點總結是另外獨立的，加入後會出現在「論點總結」頁。",
+  "zh-TW": {
     "但他從不直接回答，只用一個又一個提問，領著你走向自己的答案。":
       "但他從不直接回答，只用一個又一個提問，領著你走向自己的答案。",
     "消息傳開之後，人們趨之若鶩——每個人都渴望，能和這位「希臘三哲」對話。":
@@ -38,12 +26,7 @@ const messages = {
     "重播「{label}」的插畫": "重播「{label}」的插畫",
     插畫暫時無法顯示: "插畫暫時無法顯示",
     "插畫載入中…": "插畫載入中…",
-    "暫時無法進入教室，請稍後再試。": "暫時無法進入教室，請稍後再試。",
-    回到頂端: "回到頂端",
-    前往登入: "前往登入",
     進入教室: "進入教室",
-    蘇格拉底對話教室: "蘇格拉底對話教室",
-    開始一場對話: "開始一場對話",
     故事播放控制: "故事播放控制",
     "第 {n} 幕，共 4 幕。": "第 {n} 幕，共 4 幕。",
     載入故事: "載入故事",
@@ -55,116 +38,6 @@ const messages = {
     暫停: "暫停",
     "跳過故事，前往登入": "跳過故事，前往登入",
     跳過: "跳過",
-    "從一個好問題開始。": "從一個好問題開始。",
-    "選擇你的身分，展開提問與論證的練習。": "選擇你的身分，展開提問與論證的練習。",
-    我想以這個身分體驗: "我想以這個身分體驗",
-    學生: "學生",
-    教師: "教師",
-    "進入對話教室，練習提問與論證": "進入對話教室，練習提問與論證",
-    "管理議題、教室與學生名單": "管理議題、教室與學生名單",
-    "正在進入教室…": "正在進入教室…",
-    以學生身分進入: "以學生身分進入",
-    以教師身分進入: "以教師身分進入",
-    選擇身分後進入: "選擇身分後進入",
-    "免帳號體驗 · 重新整理後，示範資料會重置": "免帳號體驗 · 重新整理後，示範資料會重置",
-    帳號服務: "帳號服務",
-    即將開放: "即將開放",
-    "目前可先選擇身分，免帳號進入示範教室。": "目前可先選擇身分，免帳號進入示範教室。",
-    帳號服務預覽: "帳號服務預覽",
-    登入: "登入",
-    註冊帳號: "註冊帳號",
-    登入表單預覽: "登入表單預覽",
-    註冊表單預覽: "註冊表單預覽",
-    姓名: "姓名",
-    你的姓名: "你的姓名",
-    電子郵件: "電子郵件",
-    密碼: "密碼",
-    輸入密碼: "輸入密碼",
-    設定一組密碼: "設定一組密碼",
-    隱藏密碼: "隱藏密碼",
-    顯示密碼: "顯示密碼",
-    隱藏: "隱藏",
-    顯示: "顯示",
-    "忘記密碼？": "忘記密碼？",
-    建立帳號: "建立帳號",
-    "帳號登入、註冊與密碼重設尚未開放。": "帳號登入、註冊與密碼重設尚未開放。",
-    夜深了: "夜深了",
-    早安: "早安",
-    午安: "午安",
-    午後好: "午後好",
-    晚安: "晚安",
-    "{greeting}，{name}": "{greeting}，{name}",
-    "未經審視的人生，不值得活。": "未經審視的人生，不值得活。",
-    "我唯一知道的，就是我一無所知。": "我唯一知道的，就是我一無所知。",
-    "努力就一定會有回報嗎？": "努力就一定會有回報嗎？",
-    "自由的界線在哪裡？": "自由的界線在哪裡？",
-    "朋友犯錯，我該不該檢舉？": "朋友犯錯，我該不該檢舉？",
-    完成的對話: "完成的對話",
-    "存在「議題」": "存在「議題」",
-    論點總結: "論點總結",
-    點開看整理: "點開看整理",
-    尚未加入: "尚未加入",
-    我的教室: "我的教室",
-    已加入的教室: "已加入的教室",
-    "共 {n} 位學生": "共 {n} 位學生",
-    "{n} 個待處理邀請": "{n} 個待處理邀請",
-    "今天，想追問什麼問題？": "今天，想追問什麼問題？",
-    "輸入一個你想想清楚的問題，按 Enter 開始…": "輸入一個你想想清楚的問題，按 Enter 開始…",
-    "開始對話 →": "開始對話 →",
-    接續上次的對話: "接續上次的對話",
-    "{n} 輪": "{n} 輪",
-    "繼續 →": "繼續 →",
-    最近的議題: "最近的議題",
-    "全部議題 →": "全部議題 →",
-    "{n} 輪對話": "{n} 輪對話",
-    教室概況: "教室概況",
-    教室動態: "教室動態",
-    "全部教室 →": "全部教室 →",
-    "前往教室 →": "前往教室 →",
-    "{n} 位學生": "{n} 位學生",
-    "{n} 場辯論": "{n} 場辯論",
-    "還沒有教室。到「教室」頁建立第一個吧。": "還沒有教室。到「教室」頁建立第一個吧。",
-    "{name} 邀請你加入": "{name} 邀請你加入",
-    邀請: "邀請",
-    辯論: "辯論",
-    "老師發起辯論後，會出現在這裡。": "老師發起辯論後，會出現在這裡。",
-    "搜尋議題標題或內容…": "搜尋議題標題或內容…",
-    私: "私",
-    公: "公",
-    總: "總",
-    "沒有符合的議題。": "沒有符合的議題。",
-    辯論活動: "辯論活動",
-    繼續對話: "繼續對話",
-    歸類到: "歸類到",
-    私人: "私人",
-    公開: "公開",
-    "從左邊選一個議題。": "從左邊選一個議題。",
-    "從「議題」加進來的對話": "從「議題」加進來的對話",
-    移除: "移除",
-    "（共 {n} 輪對話，{date}）": "（共 {n} 輪對話，{date}）",
-    "尚未加入任何對話記錄。": "尚未加入任何對話記錄。",
-    "先到「議題」頁，把想整理的對話加進來。": "先到「議題」頁，把想整理的對話加進來。",
-    只有你看得到: "只有你看得到",
-    大家都看得到: "大家都看得到",
-    私人題庫: "私人題庫",
-    公開題庫: "公開題庫",
-    "這裡還沒有題目。到「議題」把對話加進題庫。": "這裡還沒有題目。到「議題」把對話加進題庫。",
-    新增教室: "新增教室",
-    待處理邀請: "待處理邀請",
-    用邀請碼加入: "用邀請碼加入",
-    探索教室: "探索教室",
-    "目前還沒有加入任何教室。": "目前還沒有加入任何教室。",
-    "思考中…": "思考中…",
-    "我們來談談「{title}」。你現在怎麼想？": "我們來談談「{title}」。你現在怎麼想？",
-    "聆聽中…": "聆聽中…",
-    按住麥克風說話: "按住麥克風說話",
-    "這個瀏覽器不支援語音辨識，請用文字輸入": "這個瀏覽器不支援語音辨識，請用文字輸入",
-    點一下可切換全息效果: "點一下可切換全息效果",
-    與蘇格拉底對話: "與蘇格拉底對話",
-    按住說話: "按住說話",
-    "沒聽清楚，請再說一次": "沒聽清楚，請再說一次",
-    "輸入你的想法…": "輸入你的想法…",
-    送出: "送出",
     stage_loading: "載入模型中…",
     stage_error: "模型載入失敗",
     term_panel: "查詢",
@@ -180,7 +53,6 @@ const messages = {
     nav_reports: "報告",
     nav_setup: "開課",
     nav_live: "即時面板",
-    nav_recent: "近期對話",
     nav_settings: "設定",
     hero_greeting: "你想從哪裡著手？",
     hero_placeholder: "說出你的立場，或輸入文字…",
@@ -201,11 +73,6 @@ const messages = {
     app_name: "詰問",
     app_sub: "蘇格拉底對話教室",
     landing_kicker: "未經審視的觀點，不值得堅持。",
-    landing_title: "與蘇格拉底辯論一場",
-    landing_body: "他會站在你的對立面，追問你的每一個理由，直到你看清自己真正相信的是什麼。",
-    landing_cta_teach: "我是老師，開一間教室",
-    landing_cta_join: "我有邀請碼",
-    landing_hint: "免註冊，輸入名字即可開始",
     join_title: "即將開始",
     join_name_label: "你的名字",
     join_name_placeholder: "課堂中顯示給老師看",
@@ -215,7 +82,6 @@ const messages = {
     login_title: "登入",
     login_email: "Email",
     login_password: "密碼",
-    login_submit: "登入",
     login_hint: "學生不需要帳號——從邀請連結進入即可。",
     setup_title: "開課",
     setup_step_class: "教室",
@@ -270,15 +136,11 @@ const messages = {
     settings_byok_save: "儲存",
     settings_byok_clear: "清除",
     settings_byok_set: "已設定（…{last4}）",
-    settings_byok_none: "未設定",
     common_back: "返回",
-    common_confirm: "確認",
-    common_loading: "載入中…",
     common_error: "出了點問題",
-    common_mute: "靜音",
-    common_unmute: "取消靜音",
-    role_teacher: "老師",
-    role_student: "學生",
+    common_send: "送出",
+    common_clear: "清除",
+    live_round_one: "第 {n} 輪",
   },
   en: {
     stage_loading: "Loading model…",
@@ -296,7 +158,6 @@ const messages = {
     nav_reports: "Reports",
     nav_setup: "New class",
     nav_live: "Live dashboard",
-    nav_recent: "Recent",
     nav_settings: "Settings",
     hero_greeting: "Where shall we begin?",
     hero_placeholder: "State your position, or type…",
@@ -317,11 +178,6 @@ const messages = {
     app_name: "Elenchus",
     app_sub: "Socratic Dialogue Classroom",
     landing_kicker: "The unexamined opinion is not worth holding.",
-    landing_title: "Debate Socrates, one question at a time",
-    landing_body:
-      "He will take the opposite side, interrogate every reason you give, until you see what you truly believe.",
-    landing_cta_teach: "I'm a teacher — open a classroom",
-    landing_cta_join: "I have a join code",
     join_title: "You're about to begin",
     join_name_label: "Your name",
     join_name_placeholder: "Shown to your teacher",
@@ -332,7 +188,6 @@ const messages = {
     login_title: "Sign in",
     login_email: "Email",
     login_password: "Password",
-    login_submit: "Sign in",
     login_hint: "Students don't need an account — enter from the invite link.",
     setup_title: "New class",
     setup_step_class: "Classroom",
@@ -388,15 +243,40 @@ const messages = {
     settings_byok_save: "Save",
     settings_byok_clear: "Clear",
     settings_byok_set: "Set (…{last4})",
-    settings_byok_none: "Not set",
     common_back: "Back",
     common_confirm: "Confirm",
     common_loading: "Loading…",
     common_error: "Something went wrong",
-    common_mute: "Mute",
-    common_unmute: "Unmute",
-    role_teacher: "Teacher",
-    role_student: "Student",
+    common_send: "Send",
+    common_clear: "Clear",
+    live_round_one: "{n} turn",
+    "重播「{label}」的插畫": "Replay the “{label}” illustration",
+    插畫暫時無法顯示: "Illustration unavailable right now",
+    "插畫載入中…": "Loading illustration…",
+    故事播放控制: "Story playback controls",
+    "第 {n} 幕，共 4 幕。": "Scene {n} of 4.",
+    載入故事: "Loading story",
+    已暫停: "Paused",
+    進入教室: "Enter the classroom",
+    下一幕: "Next scene",
+    繼續播放故事: "Resume the story",
+    暫停故事: "Pause the story",
+    繼續播放: "Resume",
+    暫停: "Pause",
+    "跳過故事，前往登入": "Skip the story and go to sign-in",
+    跳過: "Skip",
+    喚醒一段對話: "Awakening a dialogue",
+    "一群工程師，在漫長的開發之中，重新喚醒了一個活在兩千四百年前的靈魂。":
+      "A team of engineers, in the middle of a long build, woke a soul that had slept for twenty-four hundred years.",
+    每個人都帶著問題: "Everyone carries a question",
+    "消息傳開之後，人們趨之若鶩——每個人都渴望，能和這位「希臘三哲」對話。":
+      "Word spread, and people came flocking — everyone longed to converse with this “Greek sage”.",
+    "他從不直接給答案。": "He never gives the answer outright.",
+    讓問題被聽見: "Let the question be heard",
+    "蘇格拉底接受了每一個問題——": "Socrates took every question —",
+    找到自己的答案: "Find your own answer",
+    "但他從不直接回答，只用一個又一個提問，領著你走向自己的答案。":
+      "But he never answers directly; question after question, he leads you toward your own answer.",
   },
   es: {
     stage_loading: "Cargando modelo…",
@@ -414,7 +294,6 @@ const messages = {
     nav_reports: "Informes",
     nav_setup: "Nueva clase",
     nav_live: "Panel en vivo",
-    nav_recent: "Recientes",
     nav_settings: "Ajustes",
     hero_greeting: "¿Por dónde empezamos?",
     hero_placeholder: "Di tu postura, o escribe…",
@@ -435,11 +314,6 @@ const messages = {
     app_name: "Elenquista",
     app_sub: "Aula de Diálogo Socrático",
     landing_kicker: "La opinión no examinada no merece defenderse.",
-    landing_title: "Debate con Sócrates, pregunta a pregunta",
-    landing_body:
-      "Él tomará la posición contraria e interrogará cada razón que des, hasta que veas lo que realmente crees.",
-    landing_cta_teach: "Soy docente — abrir un aula",
-    landing_cta_join: "Tengo un código",
     join_title: "Estás a punto de empezar",
     join_name_label: "Tu nombre",
     join_name_placeholder: "Visible para tu docente",
@@ -450,7 +324,6 @@ const messages = {
     login_title: "Iniciar sesión",
     login_email: "Email",
     login_password: "Contraseña",
-    login_submit: "Entrar",
     login_hint: "El alumnado no necesita cuenta — entra desde el enlace.",
     setup_title: "Nueva clase",
     setup_step_class: "Aula",
@@ -506,30 +379,63 @@ const messages = {
     settings_byok_save: "Guardar",
     settings_byok_clear: "Borrar",
     settings_byok_set: "Configurada (…{last4})",
-    settings_byok_none: "Sin configurar",
     common_back: "Volver",
     common_confirm: "Confirmar",
     common_loading: "Cargando…",
     common_error: "Algo salió mal",
-    common_mute: "Silenciar",
-    common_unmute: "Activar sonido",
-    role_teacher: "Docente",
-    role_student: "Estudiante",
+    common_send: "Enviar",
+    common_clear: "Limpiar",
+    live_round_one: "{n} ronda",
+    "重播「{label}」的插畫": "Repetir la ilustración «{label}»",
+    插畫暫時無法顯示: "La ilustración no está disponible por ahora",
+    "插畫載入中…": "Cargando ilustración…",
+    故事播放控制: "Controles de reproducción de la historia",
+    "第 {n} 幕，共 4 幕。": "Escena {n} de 4.",
+    載入故事: "Cargando la historia",
+    已暫停: "En pausa",
+    進入教室: "Entrar al aula",
+    下一幕: "Siguiente escena",
+    繼續播放故事: "Reanudar la historia",
+    暫停故事: "Pausar la historia",
+    繼續播放: "Reanudar",
+    暫停: "Pausar",
+    "跳過故事，前往登入": "Saltar la historia e ir al acceso",
+    跳過: "Saltar",
+    喚醒一段對話: "Despertar un diálogo",
+    "一群工程師，在漫長的開發之中，重新喚醒了一個活在兩千四百年前的靈魂。":
+      "Un equipo de ingenieros, en medio de un largo desarrollo, despertó a un alma dormida durante veinticuatro siglos.",
+    每個人都帶著問題: "Todos llevan una pregunta",
+    "消息傳開之後，人們趨之若鶩——每個人都渴望，能和這位「希臘三哲」對話。":
+      "Se corrió la voz y la gente acudió en masa: todos ansiaban dialogar con este «sabio griego».",
+    "他從不直接給答案。": "Él nunca da la respuesta directa.",
+    讓問題被聽見: "Deja que la pregunta se escuche",
+    "蘇格拉底接受了每一個問題——": "Sócrates aceptaba cada pregunta:",
+    找到自己的答案: "Encuentra tu propia respuesta",
+    "但他從不直接回答，只用一個又一個提問，領著你走向自己的答案。":
+      "Pero nunca responde directamente: pregunta tras pregunta te conduce hacia tu propia respuesta.",
   },
 } as const;
 
-const dictionaries = messages as Record<Locale, Record<MessageKey, string>>;
+export type MessageKey = keyof (typeof messages)["zh-TW"];
+
+const dictionaries: Record<Locale, Record<MessageKey, string>> = messages;
 
 const STORAGE_KEY = "locale";
 let current: Locale = readInitial();
+document.documentElement.lang = { "zh-TW": "zh-TW", en: "en", es: "es" }[current];
 
 function readInitial(): Locale {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved && (locales as readonly string[]).includes(saved)) return saved as Locale;
+    const normalized = saved === "zh" ? "zh-TW" : saved;
+    if (normalized && (locales as readonly string[]).includes(normalized)) return normalized as Locale;
   } catch {}
-  const nav = navigator.language.slice(0, 2).toLowerCase();
-  return (locales as readonly string[]).includes(nav) ? (nav as Locale) : "zh";
+  for (const tag of navigator.languages) {
+    const base = new Intl.Locale(tag.toLowerCase()).language;
+    const match = (locales as readonly string[]).find((l) => l.toLowerCase() === base);
+    if (match) return match as Locale;
+  }
+  return "zh-TW";
 }
 
 const listeners = new Set<() => void>();
@@ -539,7 +445,7 @@ export function setLocale(locale: Locale) {
   try {
     localStorage.setItem(STORAGE_KEY, locale);
   } catch {}
-  document.documentElement.lang = { zh: "zh-Hant", en: "en", es: "es" }[locale];
+  document.documentElement.lang = { "zh-TW": "zh-TW", en: "en", es: "es" }[locale];
   for (const notify of listeners) notify();
 }
 
@@ -555,7 +461,7 @@ export function localeSnapshot(): Locale {
 export type Translate = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
 export function translate(locale: Locale, key: MessageKey, vars?: Record<string, string | number>): string {
-  let text: string = dictionaries[locale][key] ?? messages.zh[key];
+  let text: string = dictionaries[locale][key] ?? messages["zh-TW"][key];
   if (vars) for (const [k, v] of Object.entries(vars)) text = text.replaceAll(`{${k}}`, String(v));
   return text;
 }
