@@ -14,6 +14,7 @@ This directory is the project's **documentation SSOT**. Each document owns one d
 | LLM providers (endpoints/quotas/concurrency/ZDR)          | `providers.md`    | on provider/quota/terms changes or new verifications     |
 | Cloudflare CLI usage                                      | `cf.md`           | when the cf workflow changes                             |
 | Pi Durable / PiHarness usage                              | `pi.md`           | on pi/agents version bumps and pi-related pitfalls       |
+| 前端架構與頁面（route map／stack／契約層）                  | `frontend.md`     | 頁面集合、stack 或契約層決策變更時                        |
 | Quickstart (for humans)                                   | `../README.md`    | when commands or prerequisites change                    |
 | Local development (zero-account, DB, dialogue)            | `development.md`  | when the dev flow or local simulation behavior changes   |
 
