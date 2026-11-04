@@ -3,6 +3,7 @@ import { AmbientGlow } from "@/components/AmbientGlow";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { TextSearch } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
 import { AvatarStage, type AvatarState } from "@/components/AvatarStage";
@@ -115,6 +116,17 @@ function DialoguePage() {
             <p className="truncate text-[12px] text-ink-faint">{topic?.statement}</p>
           </div>
           <div className="flex items-center gap-1.5">
+            {!panelOpen && (
+              <button
+                type="button"
+                onClick={() => setPanelOpen(true)}
+                aria-label={t("term_panel")}
+                title={t("term_panel")}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-ink-faint transition-colors hover:border-ink-faint hover:text-ink"
+              >
+                <TextSearch size={16} strokeWidth={1.5} />
+              </button>
+            )}
             <button
               type="button"
               onClick={interrupt}

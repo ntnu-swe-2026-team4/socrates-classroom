@@ -68,12 +68,6 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
     >
       <div className="flex h-full w-88 flex-col">
         <header className="flex items-center gap-2 px-3 pt-3 pb-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ember-wash text-ember">
-            <TextSearch size={16} strokeWidth={1.6} />
-          </span>
-          <span className="min-w-0 flex-1 truncate font-serif text-[15px] font-semibold text-ink">
-            {t("term_panel")}
-          </span>
           <button
             type="button"
             aria-label={t("menu_open")}
@@ -83,6 +77,12 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
           >
             <PanelRight size={18} strokeWidth={1.6} />
           </button>
+          <span className="min-w-0 flex-1 truncate text-right font-serif text-[15px] font-semibold text-ink">
+            {t("term_panel")}
+          </span>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ember-wash text-ember">
+            <TextSearch size={16} strokeWidth={1.6} />
+          </span>
         </header>
 
         {stack.length > 0 && (
