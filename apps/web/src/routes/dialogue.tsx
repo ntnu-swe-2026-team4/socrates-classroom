@@ -114,24 +114,16 @@ function DialoguePage() {
             <p className="truncate font-serif text-[17px] font-semibold text-ink">{topic?.title ?? t("dlg_title")}</p>
             <p className="truncate text-[12px] text-ink-faint">{topic?.statement}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setPanelOpen((v) => !v)}
-            className={cn(
-              "mr-1 flex h-7 items-center gap-1 rounded-full px-2.5 text-[12px] transition-colors",
-              panelOpen ? "bg-ember-wash text-ember" : "text-ink-faint hover:bg-paper-deep hover:text-ink",
-            )}
-          >
-            {t("term_panel")}
-          </button>
-          <button
-            type="button"
-            onClick={interrupt}
-            aria-label={t("dlg_tap_to_interrupt")}
-            className="rounded-full px-3 py-1 text-[12px] text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink"
-          >
-            {busy ? t("dlg_tap_to_interrupt") : ""}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={interrupt}
+              aria-label={t("dlg_tap_to_interrupt")}
+              className="rounded-full px-3 py-1 text-[12px] text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink"
+            >
+              {busy ? t("dlg_tap_to_interrupt") : ""}
+            </button>
+          </div>
         </header>
 
         {messages.length === 0 && <AmbientGlow />}
