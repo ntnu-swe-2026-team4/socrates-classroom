@@ -20,14 +20,15 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 
 ## 1. 自架 DGX Spark ×2（生產主力）
 
-- **端點**（來源：`~/.pi/agent/models.json` 的 `dgx-spark-x2`）：
-  - `http://100.102.84.36:8888/v1` — 2× DGX Spark，GLM-5.3-Flash EXL3，1M ctx（Tailscale IP）
-  - `http://192.168.101.70:8888/v1` — 1× DGX Spark，DeepSeek V4 Flash，384k ctx（內網 IP）
+- **端點**（來源：`~/.pi/agent/models.json` 的 `dgx-spark-x2`；對外一律經 **Cloudflare Tunnel** 暴露，原文 IP 已移除，內網位址見 team 內部紀錄）：
+  - 2× DGX Spark — GLM-5.3-Flash EXL3，1M ctx（僅此一組，無其他 Spark）
 - **協定**：`openai-completions`、`apiKey: none`
 - **compat 設定**（必抄）：`supportsDeveloperRole: false`、`supportsReasoningEffort: false`、`maxTokensField: "max_tokens"`
 - **併發 4**（團隊實測）、token 無上限、ZDR 本質成立
 - ✅ **外部連通已定案：Cloudflare Tunnel**（團隊確認會把自架推理服務掛上 Tunnel）。設定時注意：(1) 用 Access policy 限制只有自家 Worker 能呼叫；(2) Tunnel 會多一跳（學生 → CF edge → tunnel → 實驗室網路 → Spark），爆發期延遲要實測；(3) 自架端點的 prompt cache 策略由推理伺服器決定，與 `x-opencode-session` 式親和無關。
 - 容量估算：4 併發 × 短回覆（≤3 句）≈ 60–120 輪/分鐘，一班爆發期學生排隊數秒。
+- **Serving stack**：[MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold)（engine：[ashhart/TensorFold](https://github.com/ashhart/TensorFold)，Zig、CUDA backend；recipe 跑 TensorFold v0.6.0＋96 patches）——2× DGX Spark（GB10 128GB，CX7 互連 TP=2）、4 concurrent、完整 1,048,576-token context、kept-state pool（NVMe spill tier，shared system prompt 跨對話保狀態）
+- ⚠️ **容量狀態（2026-11-04，team lead 回報）**：大部分時間 **memory ~95% 滿載**——既有推理（GLM-5.3-Flash EXL3，2× Spark TP=2）已占滿，**不可再加 self-hosted 工作負載**：whisper STT、Clef 判斷模型、TTS 的「自架 DGX」選項全部出局（#55、#56 的自架評估項視同關閉）。自架擴容＝加機器（新 catalog entry），不在現有 DGX 加載。
 
 ## 2. OpenCode Go（第一溢位）
 
@@ -88,6 +89,7 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 - [ ] opencode-go 的實際併發實測（官方無數字）
 - [ ] 產品級 BYOK：學生 key 的加密儲存（D1）與 `zdr` 強制路由設計
 - [ ] `CLASS_POOL`（`apps/server/src/providers/whitelist.ts`）之外是否需要更多 runtime 設定層（模型/併發目前寫死在 pool.ts）
+- [ ] server-side TTS 選型查證：Workers AI TTS model 的 ZDR／價格／zh-TW 支援（TTS 保證路徑＝server-side，2026-11-04 決策，見 `architecture.md` §1；自架 DGX 已出局）
 
 ## 來源
 
