@@ -17,7 +17,7 @@ interface StackEntry {
 }
 
 const ROW =
-  "flex h-9 w-full items-center gap-2.5 rounded-xl px-2.5 text-[13px] text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink";
+  "flex h-9 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[13px] text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink";
 
 export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: () => void }>(function TermPanel(
   { open, onClose },
