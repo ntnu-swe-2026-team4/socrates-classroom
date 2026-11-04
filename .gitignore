@@ -19,3 +19,6 @@ coverage/
 
 # agents
 .pi/
+
+# playwright
+.playwright-cli/

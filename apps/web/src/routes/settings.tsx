@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api";
 import { Button, Card, Field, Input, Spinner } from "@/components/ui";
 import { locales, setLocale, useI18n, useT, type Locale } from "@/i18n";
@@ -15,14 +15,21 @@ const PROVIDERS = ["openrouter", "openai", "anthropic", "google"];
 function SettingsPage() {
   const t = useT();
   const { locale } = useI18n();
+  const queryClient = useQueryClient();
   const byok = useQuery({ queryKey: ["byok"], queryFn: () => api.byokStatus() });
   const [provider, setProvider] = useState("openrouter");
   const [key, setKey] = useState("");
   const save = useMutation({
     mutationFn: () => api.byokSet(provider, key),
-    onSuccess: () => setKey(""),
+    onSuccess: (status) => {
+      queryClient.setQueryData(["byok"], status);
+      setKey("");
+    },
   });
-  const clear = useMutation({ mutationFn: () => api.byokClear() });
+  const clear = useMutation({
+    mutationFn: () => api.byokClear(),
+    onSuccess: (status) => queryClient.setQueryData(["byok"], status),
+  });
 
   return (
     <div className="mx-auto w-full max-w-md px-6 py-10">

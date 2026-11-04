@@ -17,7 +17,8 @@
       "!/skills-lock.json",
       "!**/routeTree.gen.ts",
       "!.agents",
-      "!.claude"
+      "!.claude",
+      "!.playwright-cli"
     ]
   },
   "formatter": {

@@ -1,4 +1,4 @@
-import { createContext, useContext, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 export const locales = ["zh", "en", "es"] as const;
 export type Locale = (typeof locales)[number];
@@ -304,9 +304,10 @@ export function translate(locale: Locale, key: MessageKey, vars?: Record<string,
 
 export function useI18n(): { t: Translate; locale: Locale } {
   const locale = useSyncExternalStore(subscribeLocale, localeSnapshot);
-  const t = (key: MessageKey, vars?: Record<string, string | number>) => translate(locale, key, vars);
+  const t = useCallback<Translate>((key, vars) => translate(locale, key, vars), [locale]);
   return { t, locale };
 }
 
-export const I18nContext = createContext<Translate>((key) => messages.zh[key]);
-export const useT = (): Translate => useContext(I18nContext);
+export function useT(): Translate {
+  return useI18n().t;
+}

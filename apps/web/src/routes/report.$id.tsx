@@ -192,7 +192,7 @@ function Hexagon({ axes }: { axes: { label: string; value: number }[] }) {
 
   return (
     <figure>
-      <svg aria-hidden viewBox="0 0 260 260" className="h-64 w-64">
+      <svg aria-hidden viewBox="-64 -18 388 296" className="h-64 w-72">
         {[0.25, 0.5, 0.75, 1].map((scale) => (
           <polygon
             key={scale}
