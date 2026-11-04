@@ -1,21 +1,23 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/api";
-import { Segmented, Spinner } from "@/components/ui";
+import { api, type GroupReport } from "@/api";
+import Scene3D, { type ClusterResult, CLUSTER_PALETTE } from "@/components/constellation/Scene3D";
+import { kmeans } from "@/components/constellation/kmeans";
+import { Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/report/$id")({
   component: ReportPage,
 });
 
-const CLUSTER_COLORS = ["#b0512b", "#47685a", "#8a6d3b"];
-
 function ReportPage() {
   const t = useT();
   const { id } = Route.useParams();
   const [view, setView] = useState<"group" | "individual">("group");
   const [studentIdx, setStudentIdx] = useState(0);
+  const [checkedAxes, setCheckedAxes] = useState<number[]>([0, 1]);
+  const [showTraj, setShowTraj] = useState(false);
   const report = useQuery({ queryKey: ["report", id], queryFn: () => api.report(id) });
 
   if (report.isPending) {
@@ -53,17 +55,50 @@ function ReportPage() {
       </div>
 
       {view === "group" ? (
-        <section className="mt-6 flex flex-col items-center gap-6">
-          <Constellation
-            axisLeft={data.group.axisLeft}
-            axisRight={data.group.axisRight}
-            points={data.group.points}
-            clusters={data.group.clusters}
-          />
+        <section className="mt-6 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[12px] font-medium tracking-wider text-ink-faint uppercase">
+                {t("report_axes")}
+              </span>
+              {data.group.axes.map((axis, i) => (
+                <button
+                  key={axis.name}
+                  type="button"
+                  onClick={() =>
+                    setCheckedAxes((prev) => (prev.includes(i) ? prev.filter((v) => v !== i) : [...prev, i].sort()))
+                  }
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-[12.5px] transition-colors",
+                    checkedAxes.includes(i)
+                      ? "border-ember bg-ember-wash font-medium text-ember"
+                      : "border-line bg-card text-ink-soft",
+                  )}
+                >
+                  {axis.left} ↔ {axis.right}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowTraj((v) => !v)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-[12.5px] transition-colors",
+                showTraj ? "border-ember bg-ember-wash font-medium text-ember" : "border-line bg-card text-ink-soft",
+              )}
+            >
+              軌跡
+            </button>
+          </div>
+
+          <Constellation3D group={data.group} checkedAxes={checkedAxes} showTraj={showTraj} />
           <div className="flex flex-wrap justify-center gap-4">
             {data.group.clusters.map((cluster) => (
               <span key={cluster.id} className="flex items-center gap-2 text-[13px] text-ink-soft">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: CLUSTER_COLORS[cluster.id % 3] }} />
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{ background: CLUSTER_PALETTE[cluster.id % CLUSTER_PALETTE.length] }}
+                />
                 {cluster.label}
               </span>
             ))}
@@ -125,58 +160,50 @@ function ReportPage() {
   );
 }
 
-function Constellation({
-  axisLeft,
-  axisRight,
-  points,
-  clusters,
+function Constellation3D({
+  group,
+  checkedAxes,
+  showTraj,
 }: {
-  axisLeft: string;
-  axisRight: string;
-  points: { pseudonym: string; x: number; y: number; cluster: number }[];
-  clusters: { id: number; label: string }[];
+  group: GroupReport;
+  checkedAxes: number[];
+  showTraj: boolean;
 }) {
-  void clusters;
+  const agents = useMemo(
+    () =>
+      group.points.map((point, i) => ({
+        id: i,
+        history: [point.values.map(() => 0), point.values],
+      })),
+    [group.points],
+  );
+  const maxAbsTable = useMemo(() => group.points.map(() => group.axes.map(() => 1)), [group.points, group.axes]);
+  const cluster = useMemo<ClusterResult>(() => {
+    const coords = group.points.map((point) => point.values.map((v) => Math.max(-1, Math.min(1, v))));
+    const k = group.clusters.length || 1;
+    return kmeans(coords, k, { seed: 42 + k * 17 });
+  }, [group.points, group.axes, group.clusters]);
+
+  type Slot = "x" | "y" | "z";
+
+const slots: Slot[] = ["x", "y", "z"];
+  const activeSlots = slots.slice(0, Math.max(1, checkedAxes.length));
+  const axisMap = { x: checkedAxes[0] ?? 0, y: checkedAxes[1] ?? 1, z: checkedAxes[2] ?? 2 };
+
   return (
-    <figure className="w-full max-w-xl">
-      <svg aria-hidden viewBox="0 0 400 320" className="w-full">
-        <rect x="60" y="20" width="280" height="260" rx="12" className="fill-card stroke-line" />
-        <line x1="200" y1="20" x2="200" y2="280" className="stroke-line" strokeDasharray="3 6" />
-        <text x="66" y="300" className="fill-ink-faint" fontSize="11">
-          {axisLeft}
-        </text>
-        <text x="334" y="300" textAnchor="end" className="fill-ink-faint" fontSize="11">
-          {axisRight}
-        </text>
-        {points.map((point) => (
-          <g key={point.pseudonym}>
-            <circle
-              cx={60 + (point.x / 100) * 280}
-              cy={20 + (point.y / 100) * 260}
-              r="9"
-              className="fill-none"
-              stroke={CLUSTER_COLORS[point.cluster % 3]}
-              strokeWidth="2"
-              opacity="0.5"
-            />
-            <circle
-              cx={60 + (point.x / 100) * 280}
-              cy={20 + (point.y / 100) * 260}
-              r="3.5"
-              fill={CLUSTER_COLORS[point.cluster % 3]}
-            />
-            <text
-              x={60 + (point.x / 100) * 280 + 9}
-              y={20 + (point.y / 100) * 260 - 9}
-              className="fill-ink-soft"
-              fontSize="9.5"
-            >
-              {point.pseudonym}
-            </text>
-          </g>
-        ))}
-      </svg>
-    </figure>
+    <div className="h-105 w-full overflow-hidden rounded-2xl border border-line">
+      <Scene3D
+        agents={agents}
+        version={0}
+        axisMap={axisMap}
+        cluster={cluster}
+        showTraj={showTraj}
+        maxAbsTable={maxAbsTable}
+        dim={Math.max(1, checkedAxes.length)}
+        activeSlots={activeSlots}
+        axes={group.axes}
+      />
+    </div>
   );
 }
 

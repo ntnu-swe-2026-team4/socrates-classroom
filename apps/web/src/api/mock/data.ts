@@ -97,17 +97,19 @@ export function advanceLive(prev: StudentLive[]): StudentLive[] {
 export const report: Report = {
   topicTitle: "電車難題",
   group: {
-    axisLeft: "絕對不可犧牲",
-    axisRight: "結果決定一切",
+    axes: [
+      { name: "立場", left: "絕對不可犧牲", right: "結果決定一切", color: "#e0a83c" },
+      { name: "參與", left: "沉默", right: "投入", color: "#6fbf8a" },
+    ],
     points: [
-      { pseudonym: "學生 A", x: 18, y: 72, cluster: 0 },
-      { pseudonym: "學生 B", x: 24, y: 60, cluster: 0 },
-      { pseudonym: "學生 C", x: 82, y: 30, cluster: 1 },
-      { pseudonym: "學生 D", x: 88, y: 42, cluster: 1 },
-      { pseudonym: "學生 E", x: 50, y: 55, cluster: 2 },
-      { pseudonym: "學生 F", x: 58, y: 48, cluster: 2 },
-      { pseudonym: "學生 G", x: 44, y: 62, cluster: 2 },
-      { pseudonym: "學生 H", x: 12, y: 85, cluster: 0 },
+      { pseudonym: "學生 A", values: [-0.64, 0.44], cluster: 0 },
+      { pseudonym: "學生 B", values: [-0.52, -0.2], cluster: 0 },
+      { pseudonym: "學生 C", values: [0.64, -0.4], cluster: 1 },
+      { pseudonym: "學生 D", values: [0.76, 0.16], cluster: 1 },
+      { pseudonym: "學生 E", values: [0.0, 0.1], cluster: 2 },
+      { pseudonym: "學生 F", values: [0.16, -0.04], cluster: 2 },
+      { pseudonym: "學生 G", values: [-0.12, 0.24], cluster: 2 },
+      { pseudonym: "學生 H", values: [-0.76, -0.7], cluster: 0 },
     ],
     clusters: [
       { id: 0, label: "義務論傾向" },

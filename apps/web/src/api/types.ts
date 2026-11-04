@@ -69,16 +69,21 @@ export interface IndividualReport {
   violations: ViolationSlice[];
 }
 
+export interface ReportAxis {
+  name: string;
+  left: string;
+  right: string;
+  color: string;
+}
+
 export interface StancePoint {
   pseudonym: string;
-  x: number;
-  y: number;
+  values: number[];
   cluster: number;
 }
 
 export interface GroupReport {
-  axisLeft: string;
-  axisRight: string;
+  axes: ReportAxis[];
   points: StancePoint[];
   clusters: { id: number; label: string }[];
 }
