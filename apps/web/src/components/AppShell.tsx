@@ -185,7 +185,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
 
-        <nav className="flex flex-col gap-0.5 px-3">
+        <nav className="flex flex-col gap-0.5">
           {actions.map((item) => {
             const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
             return (
@@ -203,7 +203,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="mt-6 flex min-h-0 flex-1 flex-col px-3">
-          <p className="mb-1 px-2.5 text-[11px] font-medium tracking-wider text-ink-faint uppercase">
+          <p className="mb-1 pl-[40px] text-[11px] font-medium tracking-wider text-ink-faint uppercase">
             {t("nav_recent")}
           </p>
           <ul className="flex flex-col gap-0.5 overflow-y-auto">
@@ -212,7 +212,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Link
                   to="/dialogue"
                   onClick={() => setDrawerOpen(false)}
-                  className="flex items-baseline justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-ink-soft hover:bg-paper-deep hover:text-ink"
+                  className="flex items-baseline justify-between gap-2 rounded-lg py-1.5 pl-[40px] pr-2.5 text-[13px] text-ink-soft hover:bg-paper-deep hover:text-ink"
                 >
                   <span className="truncate">{item.title}</span>
                   <span className="shrink-0 text-[11px] text-ink-faint">{item.when}</span>
