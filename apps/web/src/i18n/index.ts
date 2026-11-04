@@ -1,0 +1,312 @@
+import { createContext, useContext, useSyncExternalStore } from "react";
+
+export const locales = ["zh", "en", "es"] as const;
+export type Locale = (typeof locales)[number];
+export type MessageKey = keyof typeof messages.zh;
+
+const messages = {
+  zh: {
+    app_name: "詰問",
+    app_sub: "蘇格拉底對話教室",
+    landing_kicker: "未經審視的觀點，不值得堅持。",
+    landing_title: "與蘇格拉底辯論一場",
+    landing_body: "他會站在你的對立面，追問你的每一個理由，直到你看清自己真正相信的是什麼。",
+    landing_cta_teach: "我是老師，開一間教室",
+    landing_cta_join: "我有邀請碼",
+    landing_hint: "免註冊，輸入名字即可開始",
+    join_title: "即將開始",
+    join_name_label: "你的名字",
+    join_name_placeholder: "課堂中顯示給老師看",
+    join_tos: "我同意以哲學思辨為目的使用本教室，不用它寫作業、寫程式或測試系統。",
+    join_start: "開始對話",
+    join_invalid: "邀請碼無效或已過期",
+    login_title: "登入",
+    login_email: "Email",
+    login_password: "密碼",
+    login_submit: "登入",
+    login_hint: "學生不需要帳號——從邀請連結進入即可。",
+    setup_title: "開課",
+    setup_step_class: "教室",
+    setup_step_topic: "主題",
+    setup_step_share: "邀請",
+    setup_class_label: "教室名稱",
+    setup_class_placeholder: "例如：公民課 · 第四週",
+    setup_topic_pick: "指定既有",
+    setup_topic_custom: "自訂",
+    setup_topic_ai: "AI 生成",
+    setup_topic_direction: "主題方向",
+    setup_topic_generate: "生成候選",
+    setup_topic_statement: "討論命題",
+    setup_share_title: "教室已就緒",
+    setup_share_hint: "學生掃碼或點連結，輸入名字即開始。",
+    setup_copy: "複製連結",
+    setup_copied: "已複製",
+    setup_go_live: "進入即時面板",
+    dlg_title: "對話",
+    dlg_hold_to_talk: "按住說話",
+    dlg_release_to_send: "放開送出",
+    dlg_listening: "聆聽中…",
+    dlg_thinking: "思考中…",
+    dlg_speaking: "回應中…",
+    dlg_tap_to_interrupt: "輕觸可打斷",
+    dlg_input_placeholder: "或輸入文字…",
+    dlg_opening_hint: "從一個想法開始，或直接按住說話",
+    live_title: "即時面板",
+    live_needs_attention: "需要關注",
+    live_all: "全部",
+    live_rounds: "{n} 輪",
+    live_idle: "閒置",
+    live_active: "對話中",
+    live_speaking: "發言中",
+    live_last: "「{text}」",
+    report_title: "班級報告",
+    report_group: "群體",
+    report_individual: "單人",
+    report_axes: "立場分佈",
+    report_hex: "思辨表現",
+    report_summary: "論點總結",
+    report_violations: "違規切片",
+    report_claim: "主張",
+    report_reason: "理由",
+    report_tension: "張力",
+    settings_title: "設定",
+    settings_lang: "介面語言",
+    settings_byok: "自帶 API Key",
+    settings_byok_hint: "你的流量將使用自己的額度。金鑰加密儲存，只顯示末四碼。",
+    settings_byok_provider: "Provider",
+    settings_byok_key: "API Key",
+    settings_byok_save: "儲存",
+    settings_byok_clear: "清除",
+    settings_byok_set: "已設定（…{last4}）",
+    settings_byok_none: "未設定",
+    common_back: "返回",
+    common_confirm: "確認",
+    common_loading: "載入中…",
+    common_error: "出了點問題",
+    common_mute: "靜音",
+    common_unmute: "取消靜音",
+    role_teacher: "老師",
+    role_student: "學生",
+  },
+  en: {
+    app_name: "Elenchus",
+    app_sub: "Socratic Dialogue Classroom",
+    landing_kicker: "The unexamined opinion is not worth holding.",
+    landing_title: "Debate Socrates, one question at a time",
+    landing_body:
+      "He will take the opposite side, interrogate every reason you give, until you see what you truly believe.",
+    landing_cta_teach: "I'm a teacher — open a classroom",
+    landing_cta_join: "I have a join code",
+    join_title: "You're about to begin",
+    join_name_label: "Your name",
+    join_name_placeholder: "Shown to your teacher",
+    join_tos:
+      "I agree to use this classroom for philosophical inquiry — not for homework, coding, or testing the system.",
+    join_start: "Start the dialogue",
+    join_invalid: "Invalid or expired join code",
+    login_title: "Sign in",
+    login_email: "Email",
+    login_password: "Password",
+    login_submit: "Sign in",
+    login_hint: "Students don't need an account — enter from the invite link.",
+    setup_title: "New class",
+    setup_step_class: "Classroom",
+    setup_step_topic: "Topic",
+    setup_step_share: "Invite",
+    setup_class_label: "Classroom name",
+    setup_class_placeholder: "e.g. Civics · Week 4",
+    setup_topic_pick: "Pick existing",
+    setup_topic_custom: "Custom",
+    setup_topic_ai: "AI generate",
+    setup_topic_direction: "Topic direction",
+    setup_topic_generate: "Generate",
+    setup_topic_statement: "Statement under discussion",
+    setup_share_title: "Classroom ready",
+    setup_share_hint: "Students scan or tap the link, type a name, and start.",
+    setup_copy: "Copy link",
+    setup_copied: "Copied",
+    setup_go_live: "Open live dashboard",
+    dlg_title: "Dialogue",
+    dlg_hold_to_talk: "Hold to talk",
+    dlg_release_to_send: "Release to send",
+    dlg_listening: "Listening…",
+    dlg_thinking: "Thinking…",
+    dlg_speaking: "Speaking…",
+    dlg_tap_to_interrupt: "Tap to interrupt",
+    dlg_input_placeholder: "or type…",
+    dlg_opening_hint: "Start with an idea, or just hold to talk",
+    live_title: "Live dashboard",
+    live_needs_attention: "Needs attention",
+    live_all: "All",
+    live_rounds: "{n} turns",
+    live_idle: "Idle",
+    live_active: "In dialogue",
+    live_speaking: "Speaking",
+    live_last: "“{text}”",
+    report_title: "Class report",
+    report_group: "Group",
+    report_individual: "Individual",
+    report_axes: "Stance distribution",
+    report_hex: "Critical thinking",
+    report_summary: "Argument summary",
+    report_violations: "Violations",
+    report_claim: "Claim",
+    report_reason: "Reason",
+    report_tension: "Tension",
+    settings_title: "Settings",
+    settings_lang: "Language",
+    settings_byok: "Bring your own key",
+    settings_byok_hint:
+      "Your traffic uses your own quota. Keys are stored encrypted; only the last 4 digits are shown.",
+    settings_byok_provider: "Provider",
+    settings_byok_key: "API Key",
+    settings_byok_save: "Save",
+    settings_byok_clear: "Clear",
+    settings_byok_set: "Set (…{last4})",
+    settings_byok_none: "Not set",
+    common_back: "Back",
+    common_confirm: "Confirm",
+    common_loading: "Loading…",
+    common_error: "Something went wrong",
+    common_mute: "Mute",
+    common_unmute: "Unmute",
+    role_teacher: "Teacher",
+    role_student: "Student",
+  },
+  es: {
+    app_name: "Elenquista",
+    app_sub: "Aula de Diálogo Socrático",
+    landing_kicker: "La opinión no examinada no merece defenderse.",
+    landing_title: "Debate con Sócrates, pregunta a pregunta",
+    landing_body:
+      "Él tomará la posición contraria e interrogará cada razón que des, hasta que veas lo que realmente crees.",
+    landing_cta_teach: "Soy docente — abrir un aula",
+    landing_cta_join: "Tengo un código",
+    join_title: "Estás a punto de empezar",
+    join_name_label: "Tu nombre",
+    join_name_placeholder: "Visible para tu docente",
+    join_tos:
+      "Acepto usar este aula para el razonamiento filosófico — no para tareas, programación ni probar el sistema.",
+    join_start: "Comenzar el diálogo",
+    join_invalid: "Código inválido o caducado",
+    login_title: "Iniciar sesión",
+    login_email: "Email",
+    login_password: "Contraseña",
+    login_submit: "Entrar",
+    login_hint: "El alumnado no necesita cuenta — entra desde el enlace.",
+    setup_title: "Nueva clase",
+    setup_step_class: "Aula",
+    setup_step_topic: "Tema",
+    setup_step_share: "Invitar",
+    setup_class_label: "Nombre del aula",
+    setup_class_placeholder: "p. ej. Cívica · Semana 4",
+    setup_topic_pick: "Elegir existente",
+    setup_topic_custom: "Personalizado",
+    setup_topic_ai: "Generar con IA",
+    setup_topic_direction: "Dirección del tema",
+    setup_topic_generate: "Generar",
+    setup_topic_statement: "Propuesta en debate",
+    setup_share_title: "Aula lista",
+    setup_share_hint: "Escanea o toca el enlace, escribe un nombre y empieza.",
+    setup_copy: "Copiar enlace",
+    setup_copied: "Copiado",
+    setup_go_live: "Abrir panel en vivo",
+    dlg_title: "Diálogo",
+    dlg_hold_to_talk: "Mantén para hablar",
+    dlg_release_to_send: "Suelta para enviar",
+    dlg_listening: "Escuchando…",
+    dlg_thinking: "Pensando…",
+    dlg_speaking: "Respondiendo…",
+    dlg_tap_to_interrupt: "Toca para interrumpir",
+    dlg_input_placeholder: "o escribe…",
+    dlg_opening_hint: "Empieza con una idea, o mantén para hablar",
+    live_title: "Panel en vivo",
+    live_needs_attention: "Requiere atención",
+    live_all: "Todos",
+    live_rounds: "{n} turnos",
+    live_idle: "Inactivo",
+    live_active: "En diálogo",
+    live_speaking: "Hablando",
+    live_last: "«{text}»",
+    report_title: "Informe de la clase",
+    report_group: "Grupo",
+    report_individual: "Individual",
+    report_axes: "Distribución de posturas",
+    report_hex: "Pensamiento crítico",
+    report_summary: "Resumen de argumentos",
+    report_violations: "Infracciones",
+    report_claim: "Tesis",
+    report_reason: "Razón",
+    report_tension: "Tensión",
+    settings_title: "Ajustes",
+    settings_lang: "Idioma",
+    settings_byok: "Tu propia API key",
+    settings_byok_hint:
+      "Tu tráfico usa tu propia cuota. Las claves se guardan cifradas; solo se muestran los últimos 4 dígitos.",
+    settings_byok_provider: "Proveedor",
+    settings_byok_key: "API Key",
+    settings_byok_save: "Guardar",
+    settings_byok_clear: "Borrar",
+    settings_byok_set: "Configurada (…{last4})",
+    settings_byok_none: "Sin configurar",
+    common_back: "Volver",
+    common_confirm: "Confirmar",
+    common_loading: "Cargando…",
+    common_error: "Algo salió mal",
+    common_mute: "Silenciar",
+    common_unmute: "Activar sonido",
+    role_teacher: "Docente",
+    role_student: "Estudiante",
+  },
+} as const;
+
+const dictionaries = messages as Record<Locale, Record<MessageKey, string>>;
+
+const STORAGE_KEY = "locale";
+let current: Locale = readInitial();
+
+function readInitial(): Locale {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved && (locales as readonly string[]).includes(saved)) return saved as Locale;
+  } catch {}
+  const nav = navigator.language.slice(0, 2).toLowerCase();
+  return (locales as readonly string[]).includes(nav) ? (nav as Locale) : "zh";
+}
+
+const listeners = new Set<() => void>();
+
+export function setLocale(locale: Locale) {
+  current = locale;
+  try {
+    localStorage.setItem(STORAGE_KEY, locale);
+  } catch {}
+  document.documentElement.lang = { zh: "zh-Hant", en: "en", es: "es" }[locale];
+  for (const notify of listeners) notify();
+}
+
+export function subscribeLocale(notify: () => void) {
+  listeners.add(notify);
+  return () => listeners.delete(notify);
+}
+
+export function localeSnapshot(): Locale {
+  return current;
+}
+
+export type Translate = (key: MessageKey, vars?: Record<string, string | number>) => string;
+
+export function translate(locale: Locale, key: MessageKey, vars?: Record<string, string | number>): string {
+  let text: string = dictionaries[locale][key] ?? messages.zh[key];
+  if (vars) for (const [k, v] of Object.entries(vars)) text = text.replaceAll(`{${k}}`, String(v));
+  return text;
+}
+
+export function useI18n(): { t: Translate; locale: Locale } {
+  const locale = useSyncExternalStore(subscribeLocale, localeSnapshot);
+  const t = (key: MessageKey, vars?: Record<string, string | number>) => translate(locale, key, vars);
+  return { t, locale };
+}
+
+export const I18nContext = createContext<Translate>((key) => messages.zh[key]);
+export const useT = (): Translate => useContext(I18nContext);
