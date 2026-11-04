@@ -44,9 +44,19 @@ JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie�
 
 ### 架構與 API key
 
-```
-瀏覽器 ──POST /api/…/dialogue──▶ Worker（Hono） ──▶ PiAgent Durable Object（PiHarness）
-       ◀──SSE: delta… done─────    provider pool：DGX Spark → OpenCode Go → OpenRouter → Workers AI
+```mermaid
+sequenceDiagram
+    participant B as 瀏覽器
+    participant W as Worker（Hono）
+    participant DO as PiAgent Durable Object（PiHarness）
+    participant P as provider pool（DGX Spark → OpenCode Go → OpenRouter → Workers AI）
+    B->>W: POST /api/…/dialogue
+    W->>DO: 轉發（idFromName = 對話執行緒）
+    DO->>P: 模型呼叫（白名單路由）
+    loop SSE 串流
+        DO-->>B: event: delta …（經 Worker 透傳）
+    end
+    DO-->>B: event: done
 ```
 
 - 路由由 provider pool 白名單決定（ZDR 規則見 `docs/providers.md`）；健康降級自動換下一棒

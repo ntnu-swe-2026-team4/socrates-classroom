@@ -18,34 +18,29 @@
 
 ## 1. 系統拓撲
 
-```
-                     GitHub (main / PR)
-                        │ cf build + deploy --prebuilt
-                        ▼
-┌────────────────────────────────────────────────────────────────┐
-│ Cloudflare Worker  socrates-classroom  (cloudflare.config.ts)  │
-│                                                                │
-│  請求 ──► runWorkerFirst("/api/*")                             │
-│           │                                                    │
-│           ▼                                                    │
-│  Hono app (apps/server)                                        │
-│   ├─ auth ─ cookie session ──► D1.users/sessions               │
-│   ├─ classrooms/topics/posts/calendar/discussions ─► D1        │
-│   ├─ uploads ──► R2 (UPLOADS)                                  │
-│   └─ POST /api/dialogue/:scope/:id (SSE)                       │
-│           │ idFromName("archive:a_1" / "activity:…" / …)       │
-│           ▼                                                    │
-│  PiAgent Durable Object（每執行緒一個）                          │
-│   ├─ PiHarness ─ pi_* 表（DO SQLite：transcript/inbox/tasks）   │
-│   ├─ Events→SSE adapter（EmotionSplitter 在此）                 │
-│   ├─ ProviderPool（閘門 + 白名單 + fallback）                    │
-│   └─ done ─ save callback ─► D1（對話記錄照 API 契約寫回）      │
-│                                                                │
-│  其餘路徑 ─► Static Assets（apps/web build，SPA fallback）      │
-└────────────────────────────────────────────────────────────────┘
-        │ D1            │ R2         │ AI binding        │ fetch
-        ▼               ▼            ▼                   ▼
-     D1 資料庫      上傳檔案     Workers AI(壓底)   自架 Tunnel / opencode-go / OpenRouter
+```mermaid
+flowchart TD
+    GH["GitHub（main / PR）"] -->|"cf build + deploy --prebuilt"| WORKER
+
+    subgraph WORKER["Cloudflare Worker：socrates-classroom（cloudflare.config.ts）"]
+        REQ["請求（runWorkerFirst /api/*）"] --> HONO["Hono app（apps/server）"]
+        HONO --> AUTH["auth：cookie session"]
+        AUTH --> D1U[("D1：users / sessions")]
+        HONO --> ROUTES["classrooms／topics／posts／calendar／discussions"]
+        ROUTES --> D1[("D1")]
+        HONO --> UPLOADS["uploads"]
+        UPLOADS --> R2[("R2：UPLOADS")]
+        HONO --> DLG["POST /api/dialogue/:scope/:id（SSE）"]
+        DLG -->|"idFromName：archive:a_1 / activity:… / …"| DO["PiAgent Durable Object（每執行緒一個）"]
+        DO --> PI["PiHarness——pi_* 表（DO SQLite：transcript / inbox / tasks）"]
+        DO --> ADAPTER["Events→SSE adapter（EmotionSplitter 在此）"]
+        DO --> POOL["ProviderPool（閘門＋白名單＋fallback）"]
+        DO -->|"done：save callback（照 API 契約寫回）"| D1
+        HONO -.其餘路徑.-> SA["Static Assets（apps/web build，SPA fallback）"]
+    end
+
+    POOL -->|"fetch"| EXT["自架 Tunnel／opencode-go／OpenRouter"]
+    POOL -->|"AI binding"| WAI["Workers AI（壓底）"]
 ```
 
 非同步面：GitHub Actions 兩條 workflow（見 §8）；`cf previews deploy` 出 PR 預覽。
