@@ -1,4 +1,21 @@
 import type { Api, ByokStatus, User } from "./types";
+
+const TERM_KEY = "socrates_terms";
+
+function readTermHistory(): { term: string; at: string }[] {
+  try {
+    const raw = localStorage.getItem(TERM_KEY);
+    return raw ? (JSON.parse(raw) as { term: string; at: string }[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistTermHistory() {
+  try {
+    localStorage.setItem(TERM_KEY, JSON.stringify(store.termHistory));
+  } catch {}
+}
 import { aiTopics, advanceLive, report, seedLiveStudents, teacher, topics } from "./mock/data";
 import { mockSocrates, openingMessage } from "./mock/dialogue";
 
@@ -10,7 +27,7 @@ const store = {
   joined: new Map<string, { user: User; activityId: string }>(),
   live: new Map<string, ReturnType<typeof seedLiveStudents>>(),
   turns: new Map<string, number>(),
-  termHistory: [] as { term: string; at: string }[],
+  termHistory: readTermHistory(),
 };
 
 export const mockApi: Api = {
@@ -127,6 +144,7 @@ export const mockApi: Api = {
       { term, at: new Date().toISOString() },
       ...store.termHistory.filter((q) => q.term !== term),
     ].slice(0, 30);
+    persistTermHistory();
     return { term, markdown: buildTermMarkdown(term) };
   },
   async termHistory() {
