@@ -6,8 +6,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { TextSearch } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
-import { AvatarStage, type AvatarState } from "@/components/AvatarStage";
-import { amplitudeStore, useAmplitude } from "@/hooks/amplitude";
+import { SocratesStage, type SocratesHandle } from "@/components/SocratesStage";
 import { useDialogue } from "@/hooks/useDialogue";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { cn } from "@/components/ui";
@@ -40,15 +39,15 @@ function DialoguePage() {
   const initialText = useMemo(() => history.data?.map((message) => message.text) ?? [], [history.data]);
   const { messages, draft, phase, send, interrupt } = useDialogue(activityId, initialText);
 
+  const stageRef = useRef<SocratesHandle>(null);
+  useEffect(() => {
+    if (phase === "thinking") stageRef.current?.setExpression("Confused", { loop: true });
+    else stageRef.current?.setExpression(null);
+  }, [phase]);
+
   const [panelOpen, setPanelOpen] = useState(false);
   const panelRef = useRef<TermPanelHandle>(null);
   const navigate = useNavigate();
-
-  const amp = useRef(amplitudeStore()).current;
-  useEffect(() => {
-    if (phase === "speaking") amp.set(0.7);
-    else if (phase === "idle") amp.set(0);
-  }, [phase, amp]);
 
   const sentFromHome = useRef(false);
   const termHandled = useRef(false);
@@ -68,8 +67,7 @@ function DialoguePage() {
   }, [q, phase, history.isPending, send]);
 
   const onVoiceFinal = useCallback((text: string) => void send(text), [send]);
-  const onAmplitude = useCallback((value: number) => amp.set(value), [amp]);
-  const voice = useVoiceInput(onVoiceFinal, onAmplitude);
+  const voice = useVoiceInput(onVoiceFinal, () => {});
 
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -95,15 +93,6 @@ function DialoguePage() {
     pinnedRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48;
   }
 
-  const avatarState: AvatarState =
-    voice.state === "listening"
-      ? "listening"
-      : phase === "thinking"
-        ? "thinking"
-        : phase === "speaking"
-          ? "speaking"
-          : "idle";
-  const amplitude = useAmplitude(amp);
   const streaming = phase === "streaming";
   const busy = phase !== "idle";
 
@@ -138,8 +127,8 @@ function DialoguePage() {
 
         {messages.length === 0 && <AmbientGlow />}
 
-        <div className="relative z-10 flex flex-col items-center pb-2">
-          <AvatarStage state={avatarState} amplitude={amplitude} />
+        <div className="relative z-10 flex h-44 w-full flex-col items-center pb-2">
+          <SocratesStage ref={stageRef} speaking={phase === "speaking"} className="h-44 w-44" />
           <p className="mt-1 h-5 text-[12.5px] text-ink-faint">
             {voice.state === "listening" && <span className="state-shimmer">{t("dlg_listening")}</span>}
             {phase === "thinking" && <span className="state-shimmer">{t("dlg_thinking")}</span>}

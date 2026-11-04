@@ -106,7 +106,6 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
         {stack.length > 0 && (
           <div className="flex items-center gap-1.5 overflow-x-auto px-3 pb-2">
             {stack.map((entry, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: breadcrumb 位置即語意（截斷堆疊）
               <button
                 key={`${i}-${entry.term}`}
                 type="button"

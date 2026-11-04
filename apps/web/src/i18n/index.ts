@@ -6,6 +6,8 @@ export type MessageKey = keyof typeof messages.zh;
 
 const messages = {
   zh: {
+    stage_loading: "載入模型中…",
+    stage_error: "模型載入失敗",
     term_panel: "查詢",
     term_hint: "在對話或解釋中框選一個詞，即可查詢精確定義。查詢紀錄會留在這裡。",
     term_history: "查詢紀錄",
@@ -111,6 +113,8 @@ const messages = {
     role_student: "學生",
   },
   en: {
+    stage_loading: "Loading model…",
+    stage_error: "Model failed to load",
     term_panel: "Lookup",
     term_hint: "Select a word in the dialogue or the explanation to look it up. Your queries stay here.",
     term_history: "Query history",
@@ -218,6 +222,8 @@ const messages = {
     role_student: "Student",
   },
   es: {
+    stage_loading: "Cargando modelo…",
+    stage_error: "Error al cargar el modelo",
     term_panel: "Consulta",
     term_hint: "Selecciona una palabra del diálogo o de la explicación para consultarla. Tus consultas quedan aquí.",
     term_history: "Historial de consultas",
