@@ -61,6 +61,8 @@ Journey：學生 `1→2→5→7`；老師 `1→3→4→6→7`；單人 `1→2（
 | i18n         | **Paraglide JS 3**                             | 3.1.0（2026-11-04 查）                                       | compile-time 訊息函數、tree-shakable、`LocalizedString`；取代手寫 i18n 目錄 |
 | 動畫         | lottie-web（故事頁既有素材）、three.js（頭像） | 既有                                                         | #83 明訂不從頭重做動畫                                                      |
 
+資產管線：頭像模型以 gltfpack 壓縮——`npx gltfpack -i public/socrates.glb -o out.glb -cc -kn -vp 16 -vn 16 -vt 16 -vc 16`（7.9MB → 1.8MB，2026-11-05）；`scene.ts` 掛 `MeshoptDecoder` 解壓。每次更新模型後重跑，並驗證 `targetNames`（41 個 viseme／blink／brow morphs）與嘴型動畫存活。
+
 不採用：tRPC（非 REST、client ~12KB）；oRPC（typed SSE／OpenAPI 為優勢，待對外 API 需求再評）；Elysia（Bun-locked，Workers 不可用）；TanStack Start（1.0 於 2026-10-13，SPA＋Hono 對 single-Worker 部署更合）。
 
 ## 4. 契約層（前後端溝通）

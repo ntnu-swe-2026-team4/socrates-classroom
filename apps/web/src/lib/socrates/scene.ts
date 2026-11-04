@@ -1,6 +1,7 @@
 // @ts-nocheck
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -234,7 +235,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   });
 
   const loadModel = (url) =>
-    (modelCache.get(url) ?? modelCache.set(url, new GLTFLoader().loadAsync(url)).get(url)).then((g) => ({
+    (modelCache.get(url) ?? modelCache.set(url, new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url)).get(url)).then((g) => ({
       model: cloneSkinned(g.scene),
       clips: g.animations,
     }));
