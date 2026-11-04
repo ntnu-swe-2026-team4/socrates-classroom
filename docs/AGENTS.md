@@ -27,3 +27,4 @@
 - 邊界與禁令（ZDR、金鑰）同時屬於 `providers.md` 與各層 `AGENTS.md`——以 providers.md 為準，AGENTS.md 只放「行動指令」
 - 語言：繁體中文（`AGENTS.md` 們為英文，供 agent 閱讀）
 - Biome 會格式化 Markdown——格式化後檢查表格與語意沒有被破壞
+- **Never** 用 ASCII art 畫圖——圖一律使用 Mermaid（`flowchart`／`sequenceDiagram`／`stateDiagram` 等各種圖型皆可），GitHub 與多數 Markdown 渲染器原生支援
