@@ -29,7 +29,9 @@ export function useSelectionPopover(containerRef: React.RefObject<HTMLElement | 
         setSelection(null);
         return;
       }
-      setSelection({ text, x: rect.left + rect.width / 2, y: rect.top });
+      const rawX = rect.left + rect.width / 2;
+      const x = Math.min(Math.max(rawX, 150), window.innerWidth - 150);
+      setSelection({ text, x, y: rect.top });
     };
     const onScroll = () => setSelection(null);
 

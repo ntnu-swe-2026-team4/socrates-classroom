@@ -221,7 +221,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
             className="fixed z-50 -translate-x-1/2 -translate-y-full rounded-full bg-ink px-3.5 py-1.5 text-[12.5px] text-paper shadow-sm"
             style={{ left: selection.x, top: selection.y - 8 }}
           >
-            {t("term_lookup")}「{selection.text.slice(0, 16)}」
+            {t("term_lookup")}「<span className="inline-block max-w-52 truncate align-middle">{selection.text}</span>」
           </button>
         )}
       </div>
