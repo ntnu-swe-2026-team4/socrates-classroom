@@ -109,33 +109,31 @@ function DialoguePage() {
 
   return (
     <div className="relative mx-auto flex h-dvh w-full flex-row">
+      {!panelOpen && (
+        <button
+          type="button"
+          onClick={() => setPanelOpen(true)}
+          aria-label={t("term_panel")}
+          title={t("term_panel")}
+          className="absolute top-3 right-3 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-line bg-paper/80 text-ink-faint backdrop-blur transition-colors hover:border-ink-faint hover:text-ink"
+        >
+          <TextSearch size={16} strokeWidth={1.5} />
+        </button>
+      )}
       <div className="relative mx-auto flex h-full w-full max-w-3xl flex-col px-4 sm:px-6">
-        <header className="flex items-center justify-between py-3">
+        <header className="flex items-center py-3">
           <div className="min-w-0">
             <p className="truncate font-serif text-[17px] font-semibold text-ink">{topic?.title ?? t("dlg_title")}</p>
             <p className="truncate text-[12px] text-ink-faint">{topic?.statement}</p>
           </div>
-          <div className="flex items-center gap-1.5">
-            {!panelOpen && (
-              <button
-                type="button"
-                onClick={() => setPanelOpen(true)}
-                aria-label={t("term_panel")}
-                title={t("term_panel")}
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-ink-faint transition-colors hover:border-ink-faint hover:text-ink"
-              >
-                <TextSearch size={16} strokeWidth={1.5} />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={interrupt}
-              aria-label={t("dlg_tap_to_interrupt")}
-              className="rounded-full px-3 py-1 text-[12px] text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink"
-            >
-              {busy ? t("dlg_tap_to_interrupt") : ""}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={interrupt}
+            aria-label={t("dlg_tap_to_interrupt")}
+            className="rounded-full px-3 py-1 text-[12px] text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink"
+          >
+            {busy ? t("dlg_tap_to_interrupt") : ""}
+          </button>
         </header>
 
         {messages.length === 0 && <AmbientGlow />}
