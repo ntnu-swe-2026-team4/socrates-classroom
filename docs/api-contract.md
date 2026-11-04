@@ -51,8 +51,8 @@ sequenceDiagram
     participant DO as PiAgent Durable Object（PiHarness）
     participant P as provider pool（DGX Spark → OpenCode Go → OpenRouter → Workers AI）
     B->>W: POST /api/…/dialogue
-    W->>DO: 轉發（idFromName = 對話執行緒）
-    DO->>P: 模型呼叫（白名單路由）
+    W->>DO: forward（idFromName = dialogue thread）
+    DO->>P: model call（whitelist routing）
     loop SSE 串流
         DO-->>B: event: delta …（經 Worker 透傳）
     end
