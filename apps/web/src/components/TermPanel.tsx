@@ -76,6 +76,15 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
         <header className="flex items-center gap-2 px-3 pt-3 pb-2">
           <button
             type="button"
+            aria-label={t("menu_open")}
+            title={t("menu_open")}
+            onClick={onClose}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-ink-faint hover:bg-paper-deep hover:text-ink"
+          >
+            <PanelRight size={18} strokeWidth={1.6} />
+          </button>
+          <button
+            type="button"
             aria-label={t("term_history")}
             title={t("term_history")}
             onClick={() => setShowHistory((v) => !v)}
@@ -85,15 +94,6 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
             )}
           >
             <History size={18} strokeWidth={1.6} />
-          </button>
-          <button
-            type="button"
-            aria-label={t("menu_open")}
-            title={t("menu_open")}
-            onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-ink-faint hover:bg-paper-deep hover:text-ink"
-          >
-            <PanelRight size={18} strokeWidth={1.6} />
           </button>
           <span className="min-w-0 flex-1 truncate text-right font-serif text-[15px] font-semibold text-ink">
             {t("term_panel")}
