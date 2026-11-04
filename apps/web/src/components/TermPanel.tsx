@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { PanelRight, Search, TextSearch } from "lucide-react";
+import { History, PanelRight, Search, TextSearch } from "lucide-react";
 import { api, type TermExplanation } from "@/api";
 import { Markdown } from "@/components/Markdown";
 import { Spinner, cn } from "@/components/ui";
@@ -27,6 +27,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
   const queryClient = useQueryClient();
   const [stack, setStack] = useState<StackEntry[]>([]);
   const [loadingTerm, setLoadingTerm] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const { selection, clear } = useSelectionPopover(bodyRef);
   const history = useQuery({ queryKey: ["termHistory"], queryFn: () => api.termHistory(), enabled: open });
@@ -40,6 +41,11 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
   async function lookup(term: string) {
     const trimmed = term.trim().slice(0, 40);
     if (!trimmed || loadingTerm) return;
+    const existing = stack.findIndex((entry) => entry.term === trimmed);
+    if (existing >= 0) {
+      setStack((prev) => prev.slice(0, existing + 1));
+      return;
+    }
     setLoadingTerm(trimmed);
     setStack((prev) => [...prev, { term: trimmed, explanation: null }]);
     try {
@@ -68,6 +74,18 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
     >
       <div className="flex h-full w-88 flex-col">
         <header className="flex items-center gap-2 px-3 pt-3 pb-2">
+          <button
+            type="button"
+            aria-label={t("term_history")}
+            title={t("term_history")}
+            onClick={() => setShowHistory((v) => !v)}
+            className={cn(
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors",
+              showHistory ? "bg-paper-deep text-ink" : "text-ink-faint hover:bg-paper-deep hover:text-ink",
+            )}
+          >
+            <History size={18} strokeWidth={1.6} />
+          </button>
           <button
             type="button"
             aria-label={t("menu_open")}
@@ -112,7 +130,37 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
         )}
 
         <div ref={bodyRef} className="stream-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-          {current === null && !loadingTerm && (
+          {showHistory && (
+            <div>
+              <ul className="flex flex-col gap-0.5">
+                {historyData.length > 0 ? (
+                  historyData.map((query) => (
+                    <li key={query.at}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStack([{ term: query.term, explanation: null }]);
+                          setShowHistory(false);
+                          void lookup(query.term);
+                        }}
+                        className={ROW}
+                      >
+                        <Search size={14} strokeWidth={1.6} className="shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">{query.term}</span>
+                        <span className="shrink-0 text-[11px] text-ink-faint">
+                          {new Date(query.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </button>
+                    </li>
+                  ))
+                ) : (
+                  <p className="px-2.5 text-[12.5px] text-ink-faint">{t("term_no_query")}</p>
+                )}
+              </ul>
+            </div>
+          )}
+
+          {!showHistory && current === null && !loadingTerm && (
             <div className="flex flex-col gap-5">
               <p className="px-2.5 text-[13px] leading-[1.85] text-ink-soft">{t("term_hint")}</p>
               <div>
@@ -140,7 +188,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
             </div>
           )}
 
-          {current?.explanation && (
+          {!showHistory && current?.explanation && (
             <div className="px-1 pb-4">
               <h2 className="mb-3 mt-1 px-1.5 font-serif text-lg font-semibold text-ink">{current.explanation.term}</h2>
               <Markdown>{current.explanation.markdown}</Markdown>
