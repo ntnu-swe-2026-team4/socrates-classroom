@@ -1,6 +1,6 @@
 # 功能總覽（Feature Inventory）
 
-> 最後更新：2026-11 ｜ 對應 `apps/server/src/routes`（99 個端點）與 `apps/web/src/pages`
+> 最後更新：2026-11-03 ｜ 對應 `apps/server/src/routes`（99 個端點）與 `apps/web/src/pages`
 > API 細節見 [`api-contract.md`](./api-contract.md)；架構見 [`architecture.md`](./architecture.md)
 
 ## 目錄
