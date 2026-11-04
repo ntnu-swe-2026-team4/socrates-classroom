@@ -127,9 +127,11 @@ function DialoguePage() {
 
         {messages.length === 0 && <AmbientGlow />}
 
-        <div className="relative z-10 flex h-44 w-full flex-col items-center pb-2">
-          <SocratesStage ref={stageRef} speaking={phase === "speaking"} className="h-44 w-44" />
-          <p className="mt-1 h-5 text-[12.5px] text-ink-faint">
+        <div className="relative z-10 flex h-64 w-full shrink-0 flex-col pb-2">
+          <div className="relative min-h-0 w-full flex-1">
+            <SocratesStage ref={stageRef} speaking={phase === "speaking"} className="absolute inset-0" />
+          </div>
+          <p className="mt-1 h-5 text-center text-[12.5px] text-ink-faint">
             {voice.state === "listening" && <span className="state-shimmer">{t("dlg_listening")}</span>}
             {phase === "thinking" && <span className="state-shimmer">{t("dlg_thinking")}</span>}
             {phase === "speaking" && <span className="state-shimmer">{t("dlg_speaking")}</span>}
@@ -139,7 +141,7 @@ function DialoguePage() {
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="stream-scroll relative z-10 flex-1 overflow-y-auto"
+          className="stream-scroll relative z-10 min-h-0 flex-1 overflow-y-auto"
           aria-busy={busy}
         >
           <div className="flex flex-col gap-5 py-4">
