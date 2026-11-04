@@ -37,7 +37,7 @@ function SettingsPage() {
 
   return (
     <div className="mx-auto w-full max-w-md px-6 py-10">
-      <h1 className="font-serif text-2xl font-semibold text-ink">{t("settings_title")}</h1>
+      <h1 className="font-serif text-2xl font-semibold text-ink pl-12 md:pl-0">{t("settings_title")}</h1>
 
       <Card className="mt-8 flex flex-col gap-3 p-5">
         <p className="text-[13px] font-medium text-ink-soft">{t("settings_lang")}</p>

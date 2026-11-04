@@ -46,7 +46,7 @@ function SetupPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-5 px-6 py-10">
-      <h1 className="font-serif text-2xl font-semibold text-ink">{t("setup_title")}</h1>
+      <h1 className="font-serif text-2xl font-semibold text-ink pl-12 md:pl-0">{t("setup_title")}</h1>
 
       <section aria-labelledby="setup-class" className="flex flex-col gap-4">
         <h2

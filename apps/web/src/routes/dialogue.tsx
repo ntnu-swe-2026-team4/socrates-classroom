@@ -106,18 +106,18 @@ function DialoguePage() {
 
   return (
     <div className="relative mx-auto flex h-dvh w-full flex-row">
-      {!panelOpen && (
-        <button
-          type="button"
-          onClick={() => setPanelOpen(true)}
-          aria-label={t("term_panel")}
-          title={t("term_panel")}
-          className="absolute top-3 right-3 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-line bg-paper/80 text-ink-faint backdrop-blur transition-colors hover:border-ink-faint hover:text-ink"
-        >
-          <TextSearch size={16} strokeWidth={1.5} />
-        </button>
-      )}
       <div className="relative mx-auto flex h-full w-full max-w-3xl flex-col px-4 sm:px-6">
+        {!panelOpen && (
+          <button
+            type="button"
+            onClick={() => setPanelOpen(true)}
+            aria-label={t("term_panel")}
+            title={t("term_panel")}
+            className="absolute top-3 right-4 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-line bg-paper/80 text-ink-faint backdrop-blur transition-colors hover:border-ink-faint hover:text-ink sm:right-6"
+          >
+            <TextSearch size={16} strokeWidth={1.5} />
+          </button>
+        )}
         <header className="flex items-center py-3 pl-12 md:pl-0">
           <div className="min-w-0">
             <p className="truncate font-serif text-[17px] font-semibold text-ink">{topic?.title ?? t("dlg_title")}</p>

@@ -59,7 +59,7 @@ function JoinPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col justify-center px-6 py-14">
+    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-14">
       <p className="text-[13px] font-medium tracking-widest text-ink-faint">{t("join_title")}</p>
       <h1 className="mt-3 font-serif text-3xl font-semibold text-ink">{topic.title}</h1>
       <p className="mt-4 rounded-2xl border border-line bg-card p-4 text-[14.5px] leading-[1.85] text-ink-soft">

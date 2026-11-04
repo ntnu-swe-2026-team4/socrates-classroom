@@ -41,7 +41,7 @@ function ReportPage() {
 
   return (
     <div className="mx-auto w-full max-w-4xl px-5 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 pl-12 md:pl-0">
         <div>
           <h1 className="font-serif text-2xl font-semibold text-ink">{t("report_title")}</h1>
           <p className="mt-1 text-[13px] text-ink-faint">{data.topicTitle}</p>

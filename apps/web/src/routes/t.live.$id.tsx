@@ -26,7 +26,7 @@ function LivePage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-5 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 pl-12 md:pl-0">
         <h1 className="font-serif text-2xl font-semibold text-ink">{t("live_title")}</h1>
         <div className="flex flex-wrap items-center gap-3">
           <Segmented

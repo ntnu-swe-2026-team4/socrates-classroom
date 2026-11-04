@@ -31,7 +31,7 @@ function LoginPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-col justify-center px-6 py-16">
+    <div className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center px-6 py-16">
       <div className="flex flex-col items-center text-center">
         <span className="flex h-12 w-12 items-center justify-center rounded-full bg-ink font-serif text-lg font-semibold text-paper shadow-sm">
           詰
