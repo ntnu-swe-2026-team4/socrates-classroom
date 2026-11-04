@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api";
@@ -22,6 +22,10 @@ function JoinPage() {
   const [tos, setTos] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const info = useQuery({ queryKey: ["join", code], queryFn: () => api.joinByCode(code) });
+
+  useEffect(() => {
+    fetch("/socrates.glb", { priority: "low" }).catch(() => {});
+  }, []);
 
   if (info.isPending) {
     return (
