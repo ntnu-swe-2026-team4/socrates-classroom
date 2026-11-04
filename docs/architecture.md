@@ -24,24 +24,33 @@ flowchart TD
 
     subgraph WORKER["Cloudflare Worker：socrates-classroom（cloudflare.config.ts）"]
         REQ["request（runWorkerFirst /api/*）"] --> HONO["Hono app（apps/server）"]
-        HONO --> AUTH["auth：cookie session"]
-        AUTH --> D1U[("D1：users / sessions")]
-        HONO --> ROUTES["classrooms／topics／posts／calendar／discussions"]
-        ROUTES --> D1[("D1")]
-        HONO --> UPLOADS["uploads"]
-        UPLOADS --> R2[("R2：UPLOADS")]
-        HONO --> DLG["POST /api/dialogue/:scope/:id（SSE）"]
-        DLG -->|"idFromName：archive:a_1 / activity:… / …"| DO["PiAgent Durable Object（per dialogue thread）"]
-        DO --> PI["PiHarness——pi_* 表（DO SQLite：transcript / inbox / tasks）"]
-        DO --> ADAPTER["Events→SSE adapter（EmotionSplitter 在此）"]
-        DO --> POOL["ProviderPool（gate＋whitelist＋fallback）"]
+        HONO --> AUTH["auth：訪客名字即玩＋帳號登入（#67）"]
+        AUTH --> D1[("D1：users／sessions")]
+        HONO --> ROUTES["classrooms／topics／activities／reports／violations"]
+        ROUTES --> D1
+        HONO --> STT["STT（#69：音檔 → whisper）"]
+        HONO --> TTS["TTS（#68：server-side 為保證路徑）"]
+        HONO --> BYOK["BYOK（#82：老師／單人 key，AES-GCM in D1）"]
+        BYOK --> D1
+        BYOK --> POOL
+        HONO --> DLG["POST /api/dialogue/:scope/:id（SSE：delta／done／error）"]
+        DLG -->|"idFromName：per dialogue thread"| DO["PiAgent Durable Object"]
+        DO --> PI["PiHarness——pi_* 表（DO SQLite：transcript／inbox／tasks）"]
+        DO --> ADAPTER["Events→SSE adapter"]
+        DO --> POOL["ProviderPool（gate＋whitelist，ZDR）"]
         DO -->|"done：save callback（dialogue rows per API contract）"| D1
+        HONO --> EVENTS["ActivityEvents DO（老師即時面板 #73）"]
         HONO -."non-API paths".-> SA["Static Assets（apps/web build，SPA fallback）"]
     end
 
     POOL -->|"fetch"| EXT["自架 Tunnel／opencode-go／OpenRouter"]
-    POOL -->|"AI binding"| WAI["Workers AI（壓底）"]
+    POOL -->|"AI binding"| WAI["Workers AI（LLM 壓底＋whisper STT）"]
+    STT -->|"AI binding"| WAI
+    TTS -->|"AI binding（model 待查證）"| WAI
 ```
+
+- TTS 保證路徑＝**server-side**（2026-11-04 決策）：預設 server-side，或 client `speechSynthesis` 先試、失敗/無 voice 時 fallback——#68 實作時定。原因：Firefox desktop 49+／Android 62+ 有 API（2026-11-04 查證 caniuse／MDN BCD）但 voices 全來自 OS、無 network voices——Linux 無 speech-dispatcher 時 `getVoices()` 為空、zh-TW voice 視 OS 而定，朗讀體驗不保證均一。server-side TTS candidate＝Workers AI（同 `AI` binding；model 的 ZDR／價格／zh-TW 待查證，見 providers.md 待辦）
+- 圖為 v3 target view：uploads/R2（#87）、教室社群 posts/announcements/calendar/discussions（#85/#89）、題庫分享（#86）、四階段 debate（#84）、EmotionSplitter（#90）已依 v3 移除
 
 非同步面：GitHub Actions 兩條 workflow（見 §8）；`cf previews deploy` 出 PR 預覽。
 
@@ -259,7 +268,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 13. Scale design v2（D9–D13）——10k 併發作為 code quality bar
 
-> 狀態：**規劃中**（`experiment/web-next`，2026-11-04）。設計容量 10,000 條 concurrent 對話 thread；這不是流量預期，是**程式碼品質標準**：我們是 serverless，horizontal scaling 是 Cloudflare 的責任，**自建 bottleneck 是我們的責任**。任何 hot path 必須屬於三型之一——(a) stateless-horizontal：任何 isolate 皆可執行；(b) DO-sharded：狀態鎖進單執行緒單元；(c) queue-buffered：寫入以 batch 吸收。平台事實（D1 single-writer throughput、Queues limits、DO streaming 無時限）已於 2026-11-04 對官方文件查證。
+> 狀態：規劃中（`experiment/web-next`，2026-11-04）。設計容量 10,000 條 concurrent 對話 thread，作為 code quality bar（非流量預期）：horizontal scaling 是 Cloudflare 的責任，自建 bottleneck 是本 repo 的責任。任何 hot path 必須屬於三型之一——(a) stateless-horizontal：任何 isolate 皆可執行；(b) DO-sharded：狀態鎖進單執行緒單元；(c) queue-buffered：寫入以 batch 吸收。平台事實（D1 single-writer throughput、Queues limits、DO streaming 無時限）已於 2026-11-04 對官方文件查證。
 
 ### 13.0 負載模型（axiom）
 
