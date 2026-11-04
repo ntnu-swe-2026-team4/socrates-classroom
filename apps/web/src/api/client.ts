@@ -1,6 +1,7 @@
 import type { Api, ByokStatus, User } from "./types";
 
 const TERM_KEY = "socrates_terms";
+const ACTIVITY_KEY = "socrates_activity";
 
 function readTermHistory(): { term: string; at: string }[] {
   try {
@@ -16,13 +17,29 @@ function persistTermHistory() {
     localStorage.setItem(TERM_KEY, JSON.stringify(store.termHistory));
   } catch {}
 }
+import { DEFAULT_JOIN_CODE } from "./index";
 import { aiTopics, advanceLive, report, seedLiveStudents, teacher, topics } from "./mock/data";
 import { mockSocrates, openingMessage } from "./mock/dialogue";
 
 const latency = (ms = 220 + Math.random() * 320) => new Promise<void>((r) => setTimeout(r, ms));
 
+function readActivityId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVITY_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function persistActivityId(id: string) {
+  try {
+    localStorage.setItem(ACTIVITY_KEY, id);
+  } catch {}
+}
+
 const store = {
   me: null as User | null,
+  lastActivityId: readActivityId(),
   byok: null as ByokStatus,
   joined: new Map<string, { user: User; activityId: string }>(),
   live: new Map<string, ReturnType<typeof seedLiveStudents>>(),
@@ -52,6 +69,8 @@ export const mockApi: Api = {
   async joinAsGuest(code, name) {
     await latency(420);
     const activityId = `a-${code}`;
+    store.lastActivityId = activityId;
+    persistActivityId(activityId);
     const user: User = { id: crypto.randomUUID(), name, role: "student" };
     store.me = user;
     store.joined.set(activityId, { user, activityId });
@@ -70,8 +89,10 @@ export const mockApi: Api = {
     void name;
     void topicId;
     await latency(520);
-    const code = "socrat";
+    const code = DEFAULT_JOIN_CODE;
     const activityId = `a-${crypto.randomUUID().slice(0, 8)}`;
+    store.lastActivityId = activityId;
+    persistActivityId(activityId);
     store.live.set(activityId, seedLiveStudents(activityId));
     return { code, url: `${location.origin}/join/${code}`, activityId };
   },
@@ -150,6 +171,9 @@ export const mockApi: Api = {
   async termHistory() {
     await latency(150);
     return store.termHistory;
+  },
+  currentActivityId() {
+    return store.lastActivityId;
   },
 };
 

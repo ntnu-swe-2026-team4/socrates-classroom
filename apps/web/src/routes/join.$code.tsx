@@ -1,18 +1,23 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api";
 import { Button, Checkbox, Field, Input, Spinner } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/join/$code")({
+  validateSearch: (search: Record<string, unknown>): { draft?: string } => ({
+    draft: typeof search.draft === "string" ? search.draft : undefined,
+  }),
   component: JoinPage,
 });
 
 function JoinPage() {
   const { code } = Route.useParams();
+  const { draft } = Route.useSearch();
   const t = useT();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [tos, setTos] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -42,8 +47,12 @@ function JoinPage() {
   async function start() {
     setSubmitting(true);
     try {
-      await api.joinAsGuest(code, name.trim());
-      await navigate({ to: "/dialogue", search: { topic: topic.id } });
+      const { activityId, user } = await api.joinAsGuest(code, name.trim());
+      queryClient.setQueryData(["me"], user);
+      await navigate({
+        to: "/dialogue",
+        search: { activityId, topic: topic.id, ...(draft ? { q: draft } : {}) },
+      });
     } finally {
       setSubmitting(false);
     }

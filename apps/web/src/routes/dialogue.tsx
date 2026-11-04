@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AmbientGlow } from "@/components/AmbientGlow";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { useSelectionPopover } from "@/hooks/useSelectionPopover";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { TextSearch } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/api";
+import { api, DEFAULT_JOIN_CODE } from "@/api";
 import { SocratesStage, type SocratesHandle } from "@/components/SocratesStage";
 import { useDialogue } from "@/hooks/useDialogue";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
@@ -13,18 +13,26 @@ import { cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/dialogue")({
-  validateSearch: (search: Record<string, unknown>): { topic?: string; q?: string; term?: string } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { activityId?: string; topic?: string; q?: string; term?: string } => ({
+    activityId: typeof search.activityId === "string" ? search.activityId : undefined,
     topic: typeof search.topic === "string" ? search.topic : undefined,
     q: typeof search.q === "string" ? search.q : undefined,
     term: typeof search.term === "string" ? search.term : undefined,
   }),
+  beforeLoad: ({ search }) => {
+    if (!search.activityId && !api.currentActivityId()) {
+      throw redirect({ to: "/join/$code", params: { code: DEFAULT_JOIN_CODE } });
+    }
+  },
   component: DialoguePage,
 });
 
 function DialoguePage() {
   const t = useT();
-  const { topic: topicId, q, term } = Route.useSearch();
-  const activityId = "a-current";
+  const { activityId: activityParam, topic: topicId, q, term } = Route.useSearch();
+  const activityId = activityParam ?? api.currentActivityId() ?? "";
   const topicQuery = useQuery({
     queryKey: ["topics"],
     queryFn: () => api.listTopics(),

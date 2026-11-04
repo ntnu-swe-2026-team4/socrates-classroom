@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
 import { Segmented } from "@/components/ui";
@@ -7,6 +7,10 @@ import { cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/t/live/$id")({
+  beforeLoad: async ({ context }) => {
+    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    if (me?.role !== "teacher") throw redirect({ to: "/login" });
+  },
   component: LivePage,
 });
 
@@ -24,15 +28,24 @@ function LivePage() {
     <div className="mx-auto w-full max-w-5xl px-5 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-serif text-2xl font-semibold text-ink">{t("live_title")}</h1>
-        <Segmented
-          label={t("live_title")}
-          value={filter}
-          onChange={setFilter}
-          items={[
-            { value: "attention", label: `${t("live_needs_attention")} ${flaggedCount}` },
-            { value: "all", label: `${t("live_all")} ${students.length}` },
-          ]}
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <Segmented
+            label={t("live_title")}
+            value={filter}
+            onChange={setFilter}
+            items={[
+              { value: "attention", label: `${t("live_needs_attention")} ${flaggedCount}` },
+              { value: "all", label: `${t("live_all")} ${students.length}` },
+            ]}
+          />
+          <Link
+            to="/report/$id"
+            params={{ id }}
+            className="rounded-full border border-line bg-card px-4 py-1.5 text-[13px] text-ink-soft transition-colors hover:border-ember hover:text-ember"
+          >
+            {t("live_finish")}
+          </Link>
+        </div>
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-busy={live.isFetching}>

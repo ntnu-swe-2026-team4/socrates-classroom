@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api";
 import { Button, Card, Field, Input, Spinner } from "@/components/ui";
@@ -7,6 +7,10 @@ import { locales, setLocale, useI18n, useT, type Locale } from "@/i18n";
 import { cn } from "@/components/ui";
 
 export const Route = createFileRoute("/settings")({
+  beforeLoad: async ({ context }) => {
+    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    if (me?.role !== "teacher") throw redirect({ to: "/" });
+  },
   component: SettingsPage,
 });
 

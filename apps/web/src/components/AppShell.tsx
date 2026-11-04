@@ -47,17 +47,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   });
 
   const isTeacher = me.data?.role === "teacher";
+  const currentActivityId = api.currentActivityId();
 
   const actions = [
-    { to: "/dialogue", label: t("nav_dialogue"), icon: <MessageSquare size={17} strokeWidth={1.6} /> },
-    { to: "/report/current", label: t("nav_reports"), icon: <ChartNoAxesColumn size={17} strokeWidth={1.6} /> },
-    ...(isTeacher
+    {
+      to: "/dialogue",
+      match: "/dialogue",
+      label: t("nav_dialogue"),
+      icon: <MessageSquare size={17} strokeWidth={1.6} />,
+    },
+    ...(currentActivityId
       ? [
-          { to: "/t/setup", label: t("nav_setup"), icon: <Plus size={17} strokeWidth={1.6} /> },
-          { to: "/t/live/current", label: t("nav_live"), icon: <SquareActivity size={17} strokeWidth={1.6} /> },
+          {
+            to: "/report/$id",
+            params: { id: currentActivityId },
+            match: "/report",
+            label: t("nav_reports"),
+            icon: <ChartNoAxesColumn size={17} strokeWidth={1.6} />,
+          },
         ]
       : []),
-    { to: "/settings", label: t("nav_settings"), icon: <Settings size={17} strokeWidth={1.6} /> },
+    ...(isTeacher
+      ? [
+          { to: "/t/setup", match: "/t/setup", label: t("nav_setup"), icon: <Plus size={17} strokeWidth={1.6} /> },
+          ...(currentActivityId
+            ? [
+                {
+                  to: "/t/live/$id",
+                  params: { id: currentActivityId },
+                  match: "/t/live",
+                  label: t("nav_live"),
+                  icon: <SquareActivity size={17} strokeWidth={1.6} />,
+                },
+              ]
+            : []),
+        ]
+      : []),
+    { to: "/settings", match: "/settings", label: t("nav_settings"), icon: <Settings size={17} strokeWidth={1.6} /> },
   ];
 
   const recent = [
@@ -73,11 +99,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const matchedTerms = q ? terms.filter((item) => item.term.toLowerCase().includes(q)) : terms;
 
   function navLink(item: (typeof actions)[number], collapsed: boolean) {
-    const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
+    const active = pathname === item.match || pathname.startsWith(`${item.match}/`);
     return (
       <Link
-        key={item.to}
+        key={item.match}
         to={item.to}
+        params={"params" in item ? item.params : undefined}
         aria-label={item.label}
         title={item.label}
         onClick={() => setDrawerOpen(false)}

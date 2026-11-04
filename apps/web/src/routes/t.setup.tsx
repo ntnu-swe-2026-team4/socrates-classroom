@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import { api } from "@/api";
@@ -7,6 +7,10 @@ import { Button, Card, Field, Input, Segmented, Spinner } from "@/components/ui"
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/t/setup")({
+  beforeLoad: async ({ context }) => {
+    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    if (me?.role !== "teacher") throw redirect({ to: "/login" });
+  },
   component: SetupPage,
 });
 

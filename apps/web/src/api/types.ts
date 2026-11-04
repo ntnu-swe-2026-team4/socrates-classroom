@@ -131,4 +131,5 @@ export interface Api {
   byokClear(): Promise<ByokStatus>;
   lookupTerm(term: string): Promise<TermExplanation>;
   termHistory(): Promise<TermQuery[]>;
+  currentActivityId(): string | null;
 }
