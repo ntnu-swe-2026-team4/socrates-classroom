@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { env } from "cloudflare:test";
 import { createApp } from "../src/app";
-import { d1, one, all, run, type Db } from "../src/db/d1";
+import { d1, one, run, type Db } from "../src/db/d1";
 import { seedDemo } from "../src/seed";
 import type { Hono } from "hono";
 import type { AppEnv } from "../src/http";
