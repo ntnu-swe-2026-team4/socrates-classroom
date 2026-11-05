@@ -235,7 +235,10 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   });
 
   const loadModel = (url) =>
-    (modelCache.get(url) ?? modelCache.set(url, new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url)).get(url)).then((g) => ({
+    (
+      modelCache.get(url) ??
+      modelCache.set(url, new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url)).get(url)
+    ).then((g) => ({
       model: cloneSkinned(g.scene),
       clips: g.animations,
     }));
