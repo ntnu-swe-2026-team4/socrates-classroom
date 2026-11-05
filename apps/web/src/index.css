@@ -123,7 +123,6 @@
 
 :root {
   color-scheme: light;
-  --amp: 0;
 }
 
 html,
@@ -135,35 +134,6 @@ body,
 body {
   @apply bg-paper text-ink font-sans antialiased;
   line-height: 1.7;
-}
-
-@keyframes breathe {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.9;
-  }
-  50% {
-    transform: scale(1.045);
-    opacity: 1;
-  }
-}
-
-@keyframes ring-pulse {
-  0% {
-    transform: scale(calc(0.94 + var(--amp) * 0.16));
-    opacity: calc(0.35 + var(--amp) * 0.65);
-  }
-  100% {
-    transform: scale(calc(1.02 + var(--amp) * 0.2));
-    opacity: calc(0.1 + var(--amp) * 0.4);
-  }
-}
-
-@keyframes dash-rotate {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @keyframes caret-blink {
@@ -237,18 +207,6 @@ body {
   }
   .anim-flag {
     animation: flag-pulse 2.2s ease-in-out infinite;
-  }
-  .avatar-idle {
-    transform-origin: 48px 48px;
-    animation: breathe 4.5s ease-in-out infinite;
-  }
-  .avatar-listening {
-    transform-origin: 48px 48px;
-    animation: ring-pulse 1.4s ease-in-out infinite;
-  }
-  .avatar-thinking {
-    transform-origin: 48px 48px;
-    animation: dash-rotate 5s linear infinite;
   }
 }
 

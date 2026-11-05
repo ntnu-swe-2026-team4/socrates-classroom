@@ -3,7 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#faf6ef" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf6ef" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d0d10" />
+    <script>
+      var __theme;
+      try {
+        __theme = localStorage.getItem("theme");
+        if (__theme !== "light" && __theme !== "dark")
+          __theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme = __theme;
+      } catch {}
+    </script>
     <meta name="description" content="大班課堂的蘇格拉底對話教室——語音提問、即時詰問、班級立場報告。" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="詰問 · 蘇格拉底對話教室" />

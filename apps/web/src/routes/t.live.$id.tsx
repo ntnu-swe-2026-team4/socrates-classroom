@@ -2,8 +2,7 @@ import { useState } from "react";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
-import { Segmented } from "@/components/ui";
-import { cn } from "@/components/ui";
+import { Segmented, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/t/live/$id")({
@@ -49,6 +48,11 @@ function LivePage() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-busy={live.isFetching}>
+        {shown.length === 0 && (
+          <p className="col-span-full rounded-2xl border border-dashed border-line bg-card px-4 py-10 text-center text-[13.5px] text-ink-faint">
+            {t("live_none_attention")}
+          </p>
+        )}
         {shown.map((student) => (
           <article
             key={student.id}

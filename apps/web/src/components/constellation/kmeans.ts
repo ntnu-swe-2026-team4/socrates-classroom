@@ -12,12 +12,17 @@ export interface ClusterResult {
 export function kmeans(
   points: number[][],
   kInput: number,
-  { restarts = 10, maxIter = 60, seed = 42 }: { restarts?: number; maxIter?: number; seed?: number } = {},
+  {
+    restarts: restartsInput = 10,
+    maxIter = 60,
+    seed = 42,
+  }: { restarts?: number; maxIter?: number; seed?: number } = {},
 ): ClusterResult {
   const n = points.length;
   if (n === 0) return { assignments: [], centroids: [], inertia: 0 };
   const k = Math.max(1, Math.min(kInput, n));
   const dim = points[0]!.length;
+  const restarts = Math.max(1, restartsInput);
   const rng = mulberry32(seed);
   let best: ClusterResult | null = null;
 

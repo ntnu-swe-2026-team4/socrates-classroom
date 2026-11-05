@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -47,7 +47,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   });
 
   const isTeacher = me.data?.role === "teacher";
-  const currentActivityId = api.currentActivityId();
+  const [currentActivityId, setCurrentActivityId] = useState<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read on every navigation（mock 的 localStorage 語意，C 連線後改 server-backed）
+  useEffect(() => {
+    setCurrentActivityId(api.currentActivityId());
+  }, [pathname]);
 
   const actions = [
     {
@@ -117,7 +121,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <li key={item.at}>
             <Link
               to="/dialogue"
-              search={{ term: item.term }}
+              search={(prev) => ({ ...prev, term: item.term })}
               onClick={() => setDrawerOpen(false)}
               className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] text-ink-soft hover:bg-paper-deep hover:text-ink"
             >

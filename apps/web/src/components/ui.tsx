@@ -1,8 +1,7 @@
-import { useState } from "react";
 import { cva } from "class-variance-authority";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { locales, setLocale, useI18n, type Locale } from "@/i18n";
+import { useI18n } from "@/i18n";
 
 export function cn(...inputs: Parameters<typeof clsx>) {
   return twMerge(clsx(inputs));
@@ -123,49 +122,6 @@ export function Segmented<T extends string>({
           {item.label}
         </button>
       ))}
-    </div>
-  );
-}
-
-export function LocaleSwitch({ className }: { className?: string }) {
-  const { locale } = useI18n();
-  const [open, setOpen] = useState(false);
-  return (
-    <div className={cn("relative", className)}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-8 items-center rounded-full border border-line bg-card px-3 font-mono text-[12px] font-medium text-ink-soft"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        {locale.toUpperCase()}
-      </button>
-      {open && (
-        <div
-          role="listbox"
-          className="absolute right-0 top-10 z-50 flex flex-col rounded-xl border border-line bg-card p-1 shadow-sm"
-        >
-          {locales.map((l: Locale) => (
-            <button
-              key={l}
-              type="button"
-              role="option"
-              aria-selected={l === locale}
-              onClick={() => {
-                setLocale(l);
-                setOpen(false);
-              }}
-              className={cn(
-                "rounded-lg px-4 py-1.5 text-left text-[13px]",
-                l === locale ? "bg-paper-deep font-medium text-ink" : "text-ink-soft",
-              )}
-            >
-              {l === "zh-TW" ? "繁體中文" : l === "en" ? "English" : "Español"}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

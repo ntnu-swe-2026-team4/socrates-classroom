@@ -12,8 +12,10 @@ export interface TermPanelHandle {
 }
 
 interface StackEntry {
+  id: number;
   term: string;
-  explanation: TermExplanation | null;
+  status: "loading" | "ready" | "error";
+  explanation?: TermExplanation;
 }
 
 const ROW =
@@ -26,8 +28,8 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
   const t = useT();
   const queryClient = useQueryClient();
   const [stack, setStack] = useState<StackEntry[]>([]);
-  const [loadingTerm, setLoadingTerm] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const entrySeq = useRef(0);
   const bodyRef = useRef<HTMLDivElement>(null);
   const { selection, clear } = useSelectionPopover(bodyRef);
   const history = useQuery({ queryKey: ["termHistory"], queryFn: () => api.termHistory(), enabled: open });
@@ -40,24 +42,29 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
 
   async function lookup(term: string) {
     const trimmed = term.trim().slice(0, 40);
-    if (!trimmed || loadingTerm) return;
+    if (!trimmed) return;
     const existing = stack.findIndex((entry) => entry.term === trimmed);
     if (existing >= 0) {
       setStack((prev) => prev.slice(0, existing + 1));
       return;
     }
-    setLoadingTerm(trimmed);
-    setStack((prev) => [...prev, { term: trimmed, explanation: null }]);
+    setStack((prev) => [...prev, { id: ++entrySeq.current, term: trimmed, status: "loading" }]);
     try {
       const explanation = await api.lookupTerm(trimmed);
       setStack((prev) => {
         const next = [...prev];
-        next[next.length - 1] = { term: trimmed, explanation };
+        const index = next.findLastIndex((entry) => entry.term === trimmed);
+        if (index >= 0) next[index] = { ...next[index], status: "ready", explanation };
         return next;
       });
       queryClient.setQueryData(["termHistory"], await api.termHistory());
-    } finally {
-      setLoadingTerm(null);
+    } catch {
+      setStack((prev) => {
+        const next = [...prev];
+        const index = next.findLastIndex((entry) => entry.term === trimmed);
+        if (index >= 0) next[index] = { ...next[index], status: "error" };
+        return next;
+      });
     }
   }
 
@@ -66,6 +73,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
 
   return (
     <aside
+      inert={!open}
       className={cn(
         "flex shrink-0 flex-col overflow-hidden border-line bg-paper transition-[width] duration-200",
         open ? "w-88 border-l" : "w-0 border-l-0",
@@ -107,11 +115,12 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
           <div className="flex items-center gap-1.5 overflow-x-auto px-3 pb-2">
             {stack.map((entry, i) => (
               <button
-                key={entry.term}
+                key={entry.id}
                 type="button"
                 onClick={() => setStack((prev) => prev.slice(0, i + 1))}
                 className={cn(
                   "max-w-44 shrink-0 truncate rounded-full px-2.5 py-0.5 text-[12px] transition-colors",
+                  i === stack.length - 1 && entry.status === "loading" && "text-ink-faint",
                   i === stack.length - 1
                     ? "bg-ember-wash font-medium text-ember"
                     : "text-ink-faint hover:bg-paper-deep",
@@ -120,11 +129,6 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
                 {entry.term}
               </button>
             ))}
-            {loadingTerm && (
-              <span className="shrink-0 rounded-full bg-paper-deep px-2.5 py-0.5 text-[12px] text-ink-faint">
-                {loadingTerm}…
-              </span>
-            )}
           </div>
         )}
 
@@ -138,7 +142,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
                       <button
                         type="button"
                         onClick={() => {
-                          setStack([{ term: query.term, explanation: null }]);
+                          setStack([{ id: ++entrySeq.current, term: query.term, status: "loading" }]);
                           setShowHistory(false);
                           void lookup(query.term);
                         }}
@@ -159,7 +163,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
             </div>
           )}
 
-          {!showHistory && current === null && !loadingTerm && (
+          {!showHistory && current === null && (
             <div className="flex flex-col gap-5">
               <p className="px-2.5 text-[13px] leading-[1.85] text-ink-soft">{t("term_hint")}</p>
               <div>
@@ -187,7 +191,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
             </div>
           )}
 
-          {!showHistory && current?.explanation && (
+          {!showHistory && current?.status === "ready" && current.explanation && (
             <div className="px-1 pb-4">
               <h2 className="mb-3 mt-1 px-1.5 font-serif text-lg font-semibold text-ink">{current.explanation.term}</h2>
               <Markdown>{current.explanation.markdown}</Markdown>
@@ -203,9 +207,22 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
             </div>
           )}
 
-          {loadingTerm && current?.explanation === null && (
+          {!showHistory && current?.status === "loading" && (
             <div className="flex justify-center py-10">
               <Spinner className="h-5 w-5" />
+            </div>
+          )}
+
+          {!showHistory && current?.status === "error" && (
+            <div className="flex flex-col items-center gap-3 py-10">
+              <p className="text-[13px] text-ink-faint">{t("common_error")}</p>
+              <button
+                type="button"
+                onClick={() => void lookup(current.term)}
+                className="rounded-full border border-line px-3 py-1 text-[12.5px] text-ink-soft transition-colors hover:border-ember hover:text-ember"
+              >
+                {t("term_retry")}
+              </button>
             </div>
           )}
         </div>

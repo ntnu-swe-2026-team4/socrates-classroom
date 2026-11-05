@@ -21,6 +21,17 @@ function apply() {
 
 apply();
 
+if (typeof matchMedia === "function") {
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (event) => {
+    try {
+      if (localStorage.getItem(KEY)) return;
+    } catch {}
+    current = event.matches ? "dark" : "light";
+    apply();
+    for (const notify of listeners) notify();
+  });
+}
+
 export function setTheme(theme: Theme) {
   current = theme;
   try {

@@ -90,7 +90,7 @@ function ReportPage() {
                 showTraj ? "border-ember bg-ember-wash font-medium text-ember" : "border-line bg-card text-ink-soft",
               )}
             >
-              軌跡
+              {t("report_trajectory")}
             </button>
           </div>
 
@@ -147,8 +147,12 @@ function ReportPage() {
                 {person.violations.length > 0 && (
                   <div className="flex flex-col gap-2">
                     <h3 className="text-[14px] font-medium text-flag">{t("report_violations")}</h3>
-                    {person.violations.map((violation) => (
-                      <p key={violation.turn} className="rounded-xl bg-flag-wash px-4 py-2 text-[13px] text-ink-soft">
+                    {person.violations.map((violation, index) => (
+                      <p
+                        // biome-ignore lint/suspicious/noArrayIndexKey: 同一輪可有多筆同類違規，index 僅作消歧
+                        key={`${violation.turn}-${violation.type}-${index}`}
+                        className="rounded-xl bg-flag-wash px-4 py-2 text-[13px] text-ink-soft"
+                      >
                         #{violation.turn} · {violation.type} —「{violation.excerpt}」
                       </p>
                     ))}
@@ -188,7 +192,7 @@ function Constellation3D({
   );
   const maxAbsTable = useMemo(() => group.points.map(() => group.axes.map(() => 1)), [group.points, group.axes]);
 
-  const activeSlots = SLOTS.filter((sl) => checkedAxes.includes(AXIS_MAP[sl]));
+  const activeSlots = useMemo(() => SLOTS.filter((sl) => checkedAxes.includes(AXIS_MAP[sl])), [checkedAxes]);
 
   // 分群基於目前顯示的座標（未勾選軸壓平為 0）——群心球隨維度收合移動
   const cluster = useMemo<ClusterResult>(() => {
