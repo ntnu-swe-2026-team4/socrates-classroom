@@ -1,10 +1,17 @@
 import type { Env } from "../env";
 
-export type ProviderId = "dgx-spark" | "opencode-go" | "openrouter" | "mock";
+export type ProviderId =
+  | "dgx-spark"
+  | "opencode-go"
+  | "openrouter"
+  | "workers-ai-5.3-flash"
+  | "workers-ai-4.7-flash"
+  | "mock";
 
 export interface ProviderDescriptor {
   id: ProviderId;
   model: string;
+  kind?: "rest" | "binding";
   baseUrl?: string;
   apiKey?: string;
   baseUrlEnv?: keyof Env;
@@ -48,6 +55,21 @@ const CATALOG: ProviderDescriptor[] = [
     costPerToken: { input: 0.0285 / 1e6, output: 0.0923 / 1e6 },
   },
   {
+    id: "workers-ai-5.3-flash",
+    model: "@cf/zai-org/glm-5.3-flash",
+    kind: "binding",
+    concurrency: 20,
+    rpm: 20,
+    priority: 4,
+  },
+  {
+    id: "workers-ai-4.7-flash",
+    model: "@cf/zai-org/glm-4.7-flash",
+    kind: "binding",
+    concurrency: 300,
+    priority: 5,
+  },
+  {
     id: "mock",
     model: "socrates-mock",
     priority: 99,
@@ -62,6 +84,7 @@ export function availableProviders(env: Env): ProviderDescriptor[] {
   if (isMockMode(env)) return CATALOG.filter((p) => p.id === "mock");
   return CATALOG.filter((p) => {
     if (p.id === "mock") return false;
+    if (p.kind === "binding") return !!env.AI;
     const url = p.baseUrl ?? ((p.baseUrlEnv ? env[p.baseUrlEnv] : undefined) as string | undefined);
     if (!url) return false;
     if (p.apiKeyEnv && !env[p.apiKeyEnv]) return false;

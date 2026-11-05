@@ -60,6 +60,16 @@ describe("catalog", () => {
     } as never);
     expect(real.map((p) => p.id)).toEqual(["dgx-spark", "openrouter"]);
   });
+
+  test("binding 條目：env.AI 存在時加入，且優先序在 rest 之後", () => {
+    const real = availableProviders({
+      LLM_PROVIDER: "pool",
+      DGX_BASE_URL: "http://dgx:8888/v1",
+      OPENROUTER_API_KEY: "sk",
+      AI: { run: async () => ({}) },
+    } as never);
+    expect(real.map((p) => p.id)).toEqual(["dgx-spark", "openrouter", "workers-ai-5.3-flash", "workers-ai-4.7-flash"]);
+  });
 });
 
 describe("messages", () => {

@@ -154,7 +154,10 @@ export async function classifyViolationViaClef(
     } as never,
   );
   const answer = result.answers.violation;
-  if (result.stopReason !== "stop" || answer?.type !== "choice") return null;
+  if (result.stopReason !== "stop" || answer?.type !== "choice") {
+    console.warn("[clef] unavailable", result.stopReason, result.errorMessage);
+    return null;
+  }
   return {
     type: answer.choice as ViolationType,
     probability: answer.probabilities[answer.choice] ?? 0,

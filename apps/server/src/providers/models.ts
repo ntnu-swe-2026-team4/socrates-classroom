@@ -12,6 +12,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/compat";
+import { createAI } from "agents/models/pi-ai";
 import type { Env } from "../env";
 import { availableProviders, isMockMode, resolveBaseUrl, type ProviderId } from "./catalog";
 import { buildClefClassifier } from "./clef";
@@ -82,6 +83,11 @@ export function buildModels(env: Env, sessionKey = "socrates"): ModelsBundle {
 
   let clef: ModelsBundle["clef"];
   if (env.AI) {
+    const aiBinding = createAI({ binding: env.AI, id: "socrates" });
+    models.setProvider(aiBinding.provider);
+    for (const descriptor of providers.filter((p) => p.kind === "binding")) {
+      byId.set(descriptor.id, aiBinding(descriptor.model) as unknown as AnyModel);
+    }
     clef = buildClefClassifier(env);
     models.setProvider(clef.provider);
   }

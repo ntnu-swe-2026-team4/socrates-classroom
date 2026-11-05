@@ -53,9 +53,15 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 
 ## 4. CF Workers AI（壓底）
 
-- **接入**：`AI` binding（`agents/models/pi-ai` 的 `createAI` 或直接 `env.AI.run`）
-- **模型**：`@cf/zai-org/glm-4.7-flash`（約 $0.0605/M input、$0.40/M output）；`@cf/zai-org/glm-5.3`（1M ctx，需 Workers 付費方案）
-- **速率**：文字生成預設 **300 req/min**；需付費方案的模型：標準計費 **20 req/min**、預付 AI Gateway credits **50 req/min**（每帳號每模型）——整班爆發期要吃預付 credits
+- **接入**：`AI` binding——`agents/models/pi-ai` 的 `createAI({ binding, id })`（回 pi-ai Provider，id `cloudflare`，靜態清單＝全部 Workers AI id）；直接 `env.AI.run` 亦可
+- **免費額度（2026-11-05 官方 pricing/limits 查證）**：**10,000 Neurons/day**（Free 與 Paid 方案皆有，00:00 UTC 重置）；超過按 **$0.011/1k Neurons**（需 Workers Paid）。⚠️ **local dev（wrangler/vite remote）的推論也計入 limits**
+- **付費模型清單**（需 Workers Paid **或** 預付 AI Gateway credits）：`@cf/zai-org/glm-5.2`／`glm-5.3`／**`glm-5.3-flash`**、`@cf/moonshotai/kimi-k2.6`／`kimi-k2.7-code`、`@cf/deepseek-ai/deepseek-v4*`——**注意：`@cf/zai-org/glm-4.7-flash` 不在清單（免費 neurons 可用）**
+- **速率**：文字生成預設 **300 req/min**；付費清單模型：標準計費 **20 req/min**、預付 credits **50 req/min**（每帳號每模型）
+- **壓底策略（同模型不換腦）**：`@cf/zai-org/glm-5.3-flash`＝與自架頭部同模型（failover 語氣連續）→ 排第一，402/403（未付費）由 breaker 降級 → `glm-4.7-flash`（免費 neurons、300 rpm）收尾。5.3-flash 是否可用取決於帳號方案，catalog 兩個都列
+- **AI Gateway credits（2026-11-05 官方 Unified Billing）**：**純預付、無免費月度額度**，購買收 5% 手續費（僅信用卡）；推論價格 pass-through。Web Search API（ceramic $0.25/1k）與付費清單模型都吃這個——**402 web_search_payment_required＝credits 為零**，載入後即通
+- **語音模型（#56/#69，2026-11-05 官方目錄查證）**：
+  - STT：`@cf/openai/whisper-large-v3-turbo`（ZDR yes、$0.000513/audio-min）；binding 輸入＝base64 字串（schema `audio: string｜{body,contentType}`）
+  - TTS：`@cf/myshell-ai/melotts`（ZDR yes、$0.000205/audio-min、zh 支援）；binding 參數 `prompt`＋`lang`，回 base64 WAV 文字流——**已實測**（216KB WAV→whisper 閉環轉錄）
 - **ZDR**：官方明文「Zero data retention」+「No training」；⚠️ 例外：**AI Gateway 開 logging/caching 會存內容**——學生流量不要開
 
 ## 5. OpenRouter（聚合器／BYOK 路由）
@@ -89,7 +95,7 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 - [ ] opencode-go 的實際併發實測（官方無數字）
 - [ ] 產品級 BYOK：學生 key 的加密儲存（D1）與 `zdr` 強制路由設計
 - [ ] `CLASS_POOL`（`apps/server/src/providers/whitelist.ts`）之外是否需要更多 runtime 設定層（模型/併發目前寫死在 pool.ts）
-- [ ] server-side TTS 選型查證：Workers AI TTS model 的 ZDR／價格／zh-TW 支援（TTS 保證路徑＝server-side，2026-11-04 決策，見 `architecture.md` §1；自架 DGX 已出局）
+- [x] server-side TTS 選型查證：**已定案 `@cf/myshell-ai/melotts`**（ZDR yes、$0.000205/audio-min、zh 支援；2026-11-05 官方目錄查證＋實測閉環，見 §4 語音模型；自架 DGX 已出局）
 
 ## 來源
 
