@@ -1,6 +1,6 @@
 # 前端架構（web-next）
 
-> 日期：2026-11-04 ｜ 分支：`experiment/web-next` ｜ 狀態：定案
+> 日期：2026-11-05 ｜ 分支：`experiment/web-next` ｜ 狀態：定案
 > 前端 SSOT：頁面集合、route map、stack、契約層。功能存在性見 `feature.md`，產品定義見 spec v3（Outline）。
 
 ## 1. 產品形態
@@ -49,21 +49,21 @@ Journey：學生 `1→2→5→7`；老師 `1→3→4→6→7`；單人 `1→2（
 
 ## 3. Stack（版本 2026-11-04 查證）
 
-| 層           | 選擇                                           | 查證版本                                                     | 備註                                                                        |
-| ------------ | ---------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| UI framework | React + **React Compiler**                     | 19.3（19.3.0 2026-09-09）／Compiler 1.0（2025-10-07 stable） | Compiler 自動 memoization；鎖精確版本                                       |
-| Build        | **Vite 8**（Rolldown）                         | 8.0（2026-03-12；Rolldown 1.0 2026-05-07）                   | 單一 Rust bundler；與 `@cloudflare/vite-plugin` 相容                        |
-| Router       | **TanStack Router**（file-based）              | 1.170.46（2026-10-22）                                       | 型別安全 search params（入場碼、報告視角）                                  |
-| Server state | **TanStack Query**                             | 5.104.5（2026-10-19）                                        | route loader + `ensureQueryData` 沿用現有模式                               |
-| Components   | **Base UI**（`@base-ui/react`）                | 1.9.0（2026-10-09）                                          | shadcn 預設底層（2026-07 起）；`render` prop 取代 `asChild`                 |
-| Styling      | Tailwind CSS 4                                 | 既有                                                         | `@tailwindcss/vite` 已在用                                                  |
-| API client   | **Hono RPC `hc<RpcApp>`**                      | hono 4.13.16                                                 | client ~2KB＝typed fetch；見 §4                                             |
-| i18n         | **Paraglide JS 3**                             | 3.1.0（2026-11-04 查）                                       | compile-time 訊息函數、tree-shakable、`LocalizedString`；取代手寫 i18n 目錄 |
-| 動畫         | lottie-web（故事頁既有素材）、three.js（頭像） | 既有                                                         | #83 明訂不從頭重做動畫                                                      |
+| 層           | 選擇                                                           | 查證版本                                                     | 備註                                                                  |
+| ------------ | -------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------- |
+| UI framework | React + **React Compiler**                                     | 19.3（19.3.0 2026-09-09）／Compiler 1.0（2025-10-07 stable） | Compiler 自動 memoization；鎖精確版本                                 |
+| Build        | **Vite 8**（Rolldown）                                         | 8.0（2026-03-12；Rolldown 1.0 2026-05-07）                   | 單一 Rust bundler；與 `@cloudflare/vite-plugin` 相容                  |
+| Router       | **TanStack Router**（file-based）                              | 1.170.46（2026-10-22）                                       | 型別安全 search params（入場碼、報告視角）                            |
+| Server state | **TanStack Query**                                             | 5.104.5（2026-10-19）                                        | route loader + `ensureQueryData` 沿用現有模式                         |
+| Components   | **Base UI**（`@base-ui/react`）                                | 1.9.0（2026-10-09）                                          | shadcn 預設底層（2026-07 起）；`render` prop 取代 `asChild`           |
+| Styling      | Tailwind CSS 4                                                 | 既有                                                         | `@tailwindcss/vite` 已在用                                            |
+| API client   | **Hono RPC `hc<RpcApp>`**                                      | hono 4.13.16                                                 | client ~2KB＝typed fetch；見 §4                                       |
+| i18n         | 手寫 typed dictionary（`Record<MessageKey,string>`＋`useT()`） | —                                                            | in-place 語言切換（不換頁、保留 React state）已實測；三語編譯期完整性 |
+| 動畫         | lottie-web（故事頁既有素材）、three.js（頭像）                 | 既有                                                         | #83 明訂不從頭重做動畫                                                |
 
 資產管線：頭像模型以 gltfpack 壓縮——`npx gltfpack -i public/socrates.glb -o out.glb -cc -kn -vp 16 -vn 16 -vt 16 -vc 16`（7.9MB → 1.8MB，2026-11-05）；`scene.ts` 掛 `MeshoptDecoder` 解壓。每次更新模型後重跑，並驗證 `targetNames`（41 個 viseme／blink／brow morphs）與嘴型動畫存活。
 
-不採用：tRPC（非 REST、client ~12KB）；oRPC（typed SSE／OpenAPI 為優勢，待對外 API 需求再評）；Elysia（Bun-locked，Workers 不可用）；TanStack Start（1.0 於 2026-10-13，SPA＋Hono 對 single-Worker 部署更合）。
+不採用：tRPC（非 REST、client ~12KB）；oRPC（typed SSE／OpenAPI 為優勢，待對外 API 需求再評）；Elysia（Bun-locked，Workers 不可用）；TanStack Start（1.0 於 2026-10-13，SPA＋Hono 對 single-Worker 部署更合）；Paraglide JS 3（官方明文 in-place locale transition preserving React state 屬「評估 runtime 替代品」的形狀——本產品核心互動為對話中切語言，2026-11-05 查證 paraglidejs.com/react）。
 
 ## 4. 契約層（前後端溝通）
 
