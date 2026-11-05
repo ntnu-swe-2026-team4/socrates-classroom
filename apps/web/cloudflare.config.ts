@@ -28,6 +28,7 @@ export default defineConfig(({ mode }) => {
         COOKIE_SECURE: text("COOKIE_SECURE", "true"),
         LLM_PROVIDER: text("LLM_PROVIDER", "pool"),
         DGX_BASE_URL: text("DGX_BASE_URL", ""),
+        SEED_TOKEN: bindings.secret(),
         TTS_MODEL: text("TTS_MODEL", ""),
         OPENCODE_API_KEY: bindings.secret(),
         OPENROUTER_API_KEY: bindings.secret(),
