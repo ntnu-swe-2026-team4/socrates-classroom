@@ -12,6 +12,7 @@ import { buildModels, fauxTurn } from "../providers/models";
 import { mockSocratesReply } from "../providers/mock-socrates";
 import { ProviderRouter, type SettleKind } from "../providers/router";
 import { oneshot } from "../providers/oneshot";
+import { classifyViolationViaClef, type ViolationType } from "../providers/clef";
 
 const ViolationChoiceSchema = z.object({
   type: z.enum(["on_topic", "math", "coding", "injection", "other"]),
@@ -267,13 +268,29 @@ export class PiAgent extends DurableObject<Env> {
         { aid: activityId, sid: userId },
       );
       const turn = rounds?.n ?? 1;
-      const choice = await oneshot(this.env, {
-        system:
-          "You are a classroom safety classifier for a Socratic philosophy dialogue app. Classify the student's latest message intent.",
-        user: `Student said: ${userText}\nAssistant replied: ${replyText.slice(0, 300)}`,
-        schema: ViolationChoiceSchema,
-        mock: () => classifyMock(userText),
-      });
+      const transcript = await all<{ role: string; text: string }>(
+        db,
+        "SELECT role, text FROM messages WHERE activity_id = $aid AND student_id = $sid ORDER BY at, rowid",
+        { aid: activityId, sid: userId },
+      );
+      let choice: { type: ViolationType; probability: number } | null = this.models.clef
+        ? await classifyViolationViaClef(
+            this.env,
+            this.models.models as unknown as Parameters<typeof classifyViolationViaClef>[1],
+            this.models.clef.model,
+            transcript,
+            userText,
+          )
+        : null;
+      if (!choice) {
+        choice = await oneshot(this.env, this.models, {
+          system:
+            "You are a classroom safety classifier for a Socratic philosophy dialogue app. Classify the student's latest message intent.",
+          user: `Student said: ${userText}\nAssistant replied: ${replyText.slice(0, 300)}`,
+          schema: ViolationChoiceSchema,
+          mock: () => classifyMock(userText),
+        });
+      }
       if (choice.type !== "on_topic") {
         await batch(db, [
           {

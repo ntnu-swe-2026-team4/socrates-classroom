@@ -19,7 +19,9 @@ export default defineConfig(({ mode }) => {
       observability: { enabled: true },
       env: {
         DB: bindings.d1({ name: "socrates", id: "d1db0ca1-1111-4000-8000-000000000001" }),
-        ...(process.env.CF_REMOTE_AI === "true" ? { AI: bindings.ai({ dev: { remote: true } }) } : {}),
+        ...(local.CF_REMOTE_AI === "true" || process.env.CF_REMOTE_AI === "true"
+          ? { AI: bindings.ai({ dev: { remote: true } }) }
+          : { AI: bindings.ai({}) }),
         PiAgent: bindings.durableObject({ worker: "socrates-classroom", exportName: "PiAgent" }),
         ActivityEvents: bindings.durableObject({ worker: "socrates-classroom", exportName: "ActivityEvents" }),
         Coordinator: bindings.durableObject({ worker: "socrates-classroom", exportName: "Coordinator" }),
@@ -29,7 +31,7 @@ export default defineConfig(({ mode }) => {
         LLM_PROVIDER: text("LLM_PROVIDER", "pool"),
         DGX_BASE_URL: text("DGX_BASE_URL", ""),
         SEED_TOKEN: bindings.secret(),
-        TTS_MODEL: text("TTS_MODEL", ""),
+        TTS_MODEL: text("TTS_MODEL", "@cf/myshell-ai/melotts"),
         OPENCODE_API_KEY: bindings.secret(),
         OPENROUTER_API_KEY: bindings.secret(),
         AUTH_SECRET: bindings.secret(),

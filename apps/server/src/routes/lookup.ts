@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { LookupInputSchema, type Lang } from "@socrates/shared";
 import { parseBody, requireUser, type AppEnv } from "../http";
-import { oneshot } from "../providers/oneshot";
+import { getOneshotBundle, oneshot } from "../providers/oneshot";
 import { z } from "zod";
 
 const ExplanationSchema = z.object({ markdown: z.string().min(1) });
@@ -28,15 +28,27 @@ export function lookupRoutes() {
     requireUser(c);
     const input = await parseBody(c, LookupInputSchema);
     const lang = c.get("lang");
-    const search = (c.env.AI as unknown as { websearch?: (req: unknown) => Promise<unknown> } | undefined)?.websearch;
-    if (!search) {
+    const ai = c.env.AI as unknown as { websearch?: (req: unknown) => Promise<Response> } | undefined;
+    if (!ai?.websearch) {
+      console.error(
+        "[lookup] no websearch on AI binding, keys:",
+        c.env.AI ? Object.keys(c.env.AI).slice(0, 20) : "no AI",
+      );
       return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) });
     }
     try {
-      const raw = (await search({ query: input.term })) as {
-        results?: Array<{ url?: string; title?: string; snippet?: string }>;
-      };
-      const hits = (raw.results ?? [])
+      const response = await ai.websearch({
+        gatewayId: "default",
+        query: input.term,
+        provider: "ceramic",
+        limit: 5,
+      });
+      if (!response.ok) {
+        console.error("[lookup] websearch failed", response.status, (await response.text()).slice(0, 200));
+        throw new Error(`websearch_${response.status}`);
+      }
+      const raw = (await response.json()) as { items?: Array<{ url?: string; title?: string; description?: string }> };
+      const hits = (raw.items ?? [])
         .filter((hit) => {
           try {
             const host = new URL(hit.url ?? "").hostname;
@@ -47,9 +59,9 @@ export function lookupRoutes() {
         })
         .slice(0, 3);
       const sources = hits
-        .map((hit, index) => `[${index + 1}] ${hit.title ?? hit.url}\n${hit.snippet ?? ""}`)
+        .map((hit, index) => `[${index + 1}] ${hit.title ?? hit.url}\n${hit.description ?? ""}`)
         .join("\n\n");
-      const explanation = await oneshot(c.env, {
+      const explanation = await oneshot(c.env, getOneshotBundle(c.env), {
         system:
           "You explain a term for a student in a Socratic philosophy dialogue. One short paragraph of markdown, cite sources inline, end by pointing back to the argument. Reply JSON only.",
         user: `Term: ${input.term}\nLanguage: ${lang}\nSources:\n${sources || "(none)"}`,
@@ -57,7 +69,8 @@ export function lookupRoutes() {
         mock: () => ({ markdown: mockMarkdown(input.term, lang) }),
       });
       return c.json({ term: input.term, markdown: explanation.markdown });
-    } catch {
+    } catch (error) {
+      console.error("[lookup] pipeline failed", error);
       return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) });
     }
   });

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { ApiError } from "@socrates/shared";
 import { localize } from "./messages";
 import { normalizeLang, type AppEnv } from "./http";
@@ -16,6 +17,21 @@ import { byokRoutes } from "./routes/byok";
 
 export function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+
+  app.use(
+    "/api/*",
+    cors({
+      origin: (origin, c) =>
+        (c.env.CORS_ORIGINS ?? "")
+          .split(",")
+          .map((item: string) => item.trim())
+          .includes(origin)
+          ? origin
+          : "",
+      credentials: true,
+      allowHeaders: ["Content-Type", "Accept", "Accept-Language"],
+    }),
+  );
 
   app.use("/api/*", async (c, next) => {
     c.set("lang", normalizeLang(c.req.header("Accept-Language")));

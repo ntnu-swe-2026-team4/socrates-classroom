@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { GroupReport, IndividualReport, StancePoint } from "@socrates/shared";
 import type { Env } from "../env";
 import { all, one, run } from "../db/d1";
-import { oneshot } from "../providers/oneshot";
+import { getOneshotBundle, oneshot } from "../providers/oneshot";
 
 const IndividualAnalysisSchema = z.object({
   hexagon: z.array(z.object({ label: z.string(), value: z.number().min(0).max(100) })).length(6),
@@ -150,7 +150,7 @@ export class ReportJob extends DurableObject<Env> {
         { aid: activityId, sid: member.user_id },
       );
       const userTexts = transcript.filter((row) => row.role === "user").map((row) => row.text);
-      const analysis = await oneshot(this.env, {
+      const analysis = await oneshot(this.env, getOneshotBundle(this.env), {
         system: "You analyze one student's Socratic dialogue transcript for a philosophy class. Reply with JSON only.",
         user: `Topic: ${topic.title}\nStatement: ${topic.statement}\nStudent messages:\n${userTexts
           .slice(0, 12)

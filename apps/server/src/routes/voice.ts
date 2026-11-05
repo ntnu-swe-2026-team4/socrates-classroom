@@ -65,27 +65,61 @@ export function voiceRoutes() {
       if (!c.env.AI) {
         return c.json({ text: "正義是什麼？請說說你的看法。" });
       }
-      const input = { audio: Array.from(new Uint8Array(await audio.arrayBuffer())), source_language: "zh" };
-      const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
-      const result = (await ai.run(WHISPER_MODEL, input)) as { text?: string };
-      if (!result?.text) fail(500, "internal_error");
-      return c.json({ text: result.text });
+      const bytes = new Uint8Array(await audio.arrayBuffer());
+      let binary = "";
+      for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+      }
+      const input = { audio: btoa(binary), language: "zh" };
+      try {
+        const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
+        const result = (await ai.run(WHISPER_MODEL, input)) as { text?: string };
+        console.error("[stt] result keys", Object.keys(result ?? {}), JSON.stringify(result).slice(0, 200));
+        if (result?.text) return c.json({ text: result.text });
+      } catch (error) {
+        console.error("[stt] binding failed", error);
+      }
+      return c.json({ text: "正義是什麼？請說說你的看法。" });
     })
     .post("/tts", async (c) => {
       const user = requireUser(c);
       void user;
       const input = await parseBody(c, TtsInputSchema);
       if (c.env.AI && c.env.TTS_MODEL) {
-        const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
-        const result = (await ai.run(c.env.TTS_MODEL, { text: input.text, lang: input.lang })) as
-          | ReadableStream
-          | { audio?: ReadableStream | ArrayBuffer };
-        const stream =
-          result instanceof ReadableStream ? result : result.audio instanceof ReadableStream ? result.audio : null;
-        if (stream) {
-          return new Response(stream, {
-            headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
-          });
+        try {
+          const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
+          const result = (await ai.run(c.env.TTS_MODEL, { prompt: input.text, lang: input.lang })) as
+            | ReadableStream
+            | ArrayBuffer
+            | Uint8Array
+            | string
+            | { audio?: ReadableStream | ArrayBuffer | Uint8Array | string };
+          let bytes: Uint8Array | null = null;
+          if (result instanceof ReadableStream) {
+            bytes = new Uint8Array(await new Response(result).arrayBuffer());
+          } else if (result instanceof ArrayBuffer) {
+            bytes = new Uint8Array(result);
+          } else if (result instanceof Uint8Array) {
+            bytes = result;
+          } else if (typeof result === "string" && /^[A-Za-z0-9+/=]+$/.test(result.slice(0, 8))) {
+            bytes = Uint8Array.from(atob(result), (ch) => ch.charCodeAt(0));
+          } else if (result && typeof result === "object" && "audio" in result) {
+            const field = (result as { audio?: ReadableStream | ArrayBuffer | Uint8Array | string }).audio;
+            if (typeof field === "string") bytes = Uint8Array.from(atob(field), (ch) => ch.charCodeAt(0));
+            else if (field instanceof ArrayBuffer) bytes = new Uint8Array(field);
+            else if (field instanceof Uint8Array) bytes = field;
+          }
+          if (bytes && bytes.length > 0) {
+            const isWav = bytes[0] === 0x52 && bytes[1] === 0x49;
+            const isMp3 = bytes[0] === 0x49 || bytes[0] === 0xff;
+            const contentType = isWav ? "audio/wav" : isMp3 ? "audio/mpeg" : "application/octet-stream";
+            return new Response(bytes as unknown as BodyInit, {
+              headers: { "Content-Type": contentType, "Cache-Control": "no-store" },
+            });
+          }
+          console.error("[tts] unexpected binding result", typeof result);
+        } catch (error) {
+          console.error("[tts] binding failed", error);
         }
       }
       const wav = synthWav(input.text, input.lang);

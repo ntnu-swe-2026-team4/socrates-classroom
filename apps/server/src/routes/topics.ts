@@ -4,7 +4,7 @@ import { GenerateTopicsInputSchema, TopicCreateInputSchema } from "@socrates/sha
 import { all, one, run } from "../db/d1";
 import { newId, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
 import { parsePrompts, type TopicRow } from "../services/members";
-import { oneshot } from "../providers/oneshot";
+import { getOneshotBundle, oneshot } from "../providers/oneshot";
 
 const GeneratedTopicsSchema = z.object({
   topics: z
@@ -53,7 +53,7 @@ export function topicsRoutes() {
     .post("/topics/generate", async (c) => {
       requireTeacher(c);
       const input = await parseBody(c, GenerateTopicsInputSchema);
-      const result = await oneshot(c.env, {
+      const result = await oneshot(c.env, getOneshotBundle(c.env), {
         system:
           "You draft discussion topic sets for a Socratic philosophy classroom (Sandel-style). Reply with JSON only.",
         user: `Direction: ${input.direction}. Produce 3 topics, each with a title, a one-sentence statement, and 2-3 Socratic opening prompts.`,
