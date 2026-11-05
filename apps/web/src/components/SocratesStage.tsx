@@ -1,5 +1,4 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { useTheme } from "@/theme";
 import { useT } from "@/i18n";
 import { createSocratesScene } from "@/lib/socrates/scene";
 
@@ -24,7 +23,6 @@ export function SocratesStage({
   onReady?: () => void;
 }) {
   const t = useT();
-  const theme = useTheme();
   const box = useRef<HTMLDivElement>(null);
   const scene = useRef<ReturnType<typeof createSocratesScene> | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -36,7 +34,6 @@ export function SocratesStage({
     let s: ReturnType<typeof createSocratesScene>;
     try {
       s = createSocratesScene(cv, box.current, {
-        light: theme === "light",
         mini,
         onReady: () => {
           setState("ready");
@@ -55,10 +52,7 @@ export function SocratesStage({
       scene.current = null;
       cv.remove();
     };
-  }, [theme, onReady, mini]);
-  useEffect(() => {
-    scene.current?.setTheme(theme === "light");
-  }, [theme]);
+  }, [onReady, mini]);
   useEffect(() => {
     scene.current?.setSpeaking(speaking);
   }, [speaking]);

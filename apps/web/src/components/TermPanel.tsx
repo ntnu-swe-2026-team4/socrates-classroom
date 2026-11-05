@@ -142,7 +142,6 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
                       <button
                         type="button"
                         onClick={() => {
-                          setStack([{ id: ++entrySeq.current, term: query.term, status: "loading" }]);
                           setShowHistory(false);
                           void lookup(query.term, true);
                         }}

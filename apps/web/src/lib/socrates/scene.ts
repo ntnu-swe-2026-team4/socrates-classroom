@@ -234,18 +234,25 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     if (hits.length > 0) startTransition(hits[0].point);
   });
 
-  const loadModel = (url) =>
-    (
-      modelCache.get(url) ??
-      modelCache.set(url, new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url)).get(url)
-    ).then((g) => ({
+  const loadModel = (url) => {
+    const cached = modelCache.get(url);
+    if (cached) return cached.then((g) => ({ model: cloneSkinned(g.scene), clips: g.animations }));
+    const load = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url);
+    modelCache.set(url, load);
+    load.catch(() => {
+      if (modelCache.get(url) === load) modelCache.delete(url);
+    });
+    return load.then((g) => ({
       model: cloneSkinned(g.scene),
       clips: g.animations,
     }));
+  };
 
   let pendingExpression = null;
+  let disposed = false;
   loadModel("/socrates.glb")
     .then(({ model, clips }) => {
+      if (disposed) return;
       avatar = new Avatar(model, clips);
       if (pendingExpression) avatar.setExpression(...pendingExpression);
       avatarRootRef = avatar.root;
@@ -279,8 +286,8 @@ export function createSocratesScene(canvas, stage, opts = {}) {
       opts.onReady?.();
       kick();
     })
-    .catch((e) => {
-      console.error(e);
+    .catch(() => {
+      if (disposed) return;
       opts.onError?.();
     });
 
@@ -292,6 +299,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   let last = 0;
   const busy = () => true;
   function frame(now) {
+    if (disposed) return;
     raf = 0;
     if (!visible || document.hidden) return;
     if (FRAME_MS && now - last < FRAME_MS) {
@@ -315,10 +323,9 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     if (busy()) raf = requestAnimationFrame(frame);
   }
   function kick() {
-    if (!raf && visible && !document.hidden) {
-      clock.getDelta();
-      raf = requestAnimationFrame(frame);
-    }
+    if (disposed || raf || !visible || document.hidden) return;
+    clock.getDelta();
+    raf = requestAnimationFrame(frame);
   }
   const io = new IntersectionObserver(([e]) => {
     visible = e.isIntersecting;
@@ -347,6 +354,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
       kick();
     },
     dispose() {
+      disposed = true;
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
       document.removeEventListener("visibilitychange", onVisibility);
@@ -354,6 +362,9 @@ export function createSocratesScene(canvas, stage, opts = {}) {
       ro.disconnect();
       controls.dispose();
       pmrem.dispose();
+      hybridMaterials.forEach((m) => {
+        m.dispose();
+      });
       renderer.dispose();
       renderer.forceContextLoss();
     },

@@ -27,7 +27,7 @@
 | ------------------------------------------------------------------------------------------------------- | ---- | --------------------- | ------------------------------------- |
 | `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅   | ✅                    | ✅                                    |
 | `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —    | ✅                    | ✅                                    |
-| `GET/PUT/DELETE /settings/byok`                                                                         | —    | ✅                    | ✅                                    |
+| `GET/PUT/DELETE /settings/byok`（**學生 BYOK UI 延後至單人模式**；API 層不鎖）                          | —    | ✅                    | ✅                                    |
 | `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —    | —                     | ✅                                    |
 | `GET /activities/:id`、`GET /report`                                                                    | —    | 需教室成員            | 需教室成員                            |
 | `GET /activities/:id/dialogue`                                                                          | —    | 需教室成員（僅自己）  | 需教室成員（任意學生，`?studentId=`） |

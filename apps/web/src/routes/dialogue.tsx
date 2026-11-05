@@ -29,8 +29,14 @@ export const Route = createFileRoute("/dialogue")({
     q: typeof search.q === "string" ? search.q : undefined,
     term: typeof search.term === "string" ? search.term : undefined,
   }),
-  beforeLoad: ({ search }) => {
+  beforeLoad: async ({ search, context }) => {
     if (!search.activityId && !api.currentActivityId()) {
+      const me = await context.queryClient.fetchQuery({
+        queryKey: ["me"],
+        queryFn: () => api.me(),
+        staleTime: Infinity,
+      });
+      if (me?.role === "teacher") throw redirect({ to: "/t/setup" });
       throw redirect({ to: "/join" });
     }
   },

@@ -76,6 +76,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
   }, [stopEverything]);
 
   const stopRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const stopRequestedRef = useRef(false);
   useEffect(() => {
     stopRef.current = stop;
   });
@@ -87,6 +88,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     setInterim("");
     setError(null);
     setState("listening");
+    stopRequestedRef.current = false;
     if (!navigator.mediaDevices?.getUserMedia) {
       setState("idle");
       setError("unsupported");
@@ -98,6 +100,13 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     } catch (cause) {
       setState("idle");
       setError(cause instanceof DOMException && cause.name === "NotAllowedError" ? "denied" : "failed");
+      return;
+    }
+    if (stopRequestedRef.current) {
+      stream.getTracks().forEach((track) => {
+        track.stop();
+      });
+      setState("idle");
       return;
     }
     const session0: VoiceSession = {
@@ -175,6 +184,14 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
 
       session0.ctx = ctx;
       session0.startedAt = Date.now();
+      if (stopRequestedRef.current) {
+        session0.stream.getTracks().forEach((track) => {
+          track.stop();
+        });
+        void ctx.close().catch(() => {});
+        setState("idle");
+        return;
+      }
       session.current = session0;
       tick();
       session0.stopTimer = setTimeout(() => {
@@ -190,6 +207,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
   }, [stopEverything]);
 
   const stop = useCallback(async () => {
+    stopRequestedRef.current = true;
     const s = session.current;
     if (!s) return;
 

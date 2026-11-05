@@ -1,7 +1,7 @@
-/**
- * cf CLI（beta）設定：單一 Worker（API + 前端 assets + PiAgent DO）。
- * 本檔位於 apps/web（vite root，plugin 由此讀取）；Worker 原始碼在 apps/server。
- * dev（vite dev）以 loadEnv 讀 .env* 覆寫 text bindings；build/deploy（production）用 fallback。
+/*
+ * cf CLI (beta) config: single Worker (API + web assets + PiAgent DO).
+ * Lives in apps/web (vite root, plugin reads it here); Worker source is apps/server.
+ * dev (vite dev) reads .env* via loadEnv to override text bindings; build/deploy (production) use fallback.
  */
 import { loadEnv } from "vite";
 import { bindings, defineConfig, exports } from "cf/config";

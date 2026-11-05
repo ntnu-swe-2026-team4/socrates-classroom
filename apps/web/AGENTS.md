@@ -17,7 +17,7 @@ pnpm typecheck
 
 ## Deltas & boundaries
 
-- The API layer is only `src/api/`: `VITE_API_MODE=mock` (built-in demo data, works offline) | `http` (real backend). Both modes must behave identically
+- The API layer is only `src/api/`: `VITE_API_MODE=mock` (built-in demo data, works offline) | `http` (real backend). Both modes must behave identically. **`http` mode is NOT implemented yet** (lands with the C-connection step; `src/api/index.ts` currently exports the mock unconditionally)
 - The dialogue SSE contract (`delta/done/error`) is parsed in the api layer (`src/api/`) and typed in `packages/shared` — any contract change lands in both
 - Styling is Tailwind v4 utilities; theme colors are CSS variables (`@theme` in `src/index.css`) — never hardcode color values
 - `src/landing/` is a prototype-port zone: the Biome linter is off for this directory, keep it tidy yourself

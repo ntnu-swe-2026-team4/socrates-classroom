@@ -6,7 +6,7 @@ export interface SelectionState {
   y: number;
 }
 
-const MAX_LEN = 40;
+const MAX_LEN = 30;
 
 export function useSelectionPopover(containerRef: React.RefObject<HTMLElement | null>) {
   const [selection, setSelection] = useState<SelectionState | null>(null);
