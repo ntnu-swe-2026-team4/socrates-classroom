@@ -12,6 +12,9 @@ export interface ProviderDescriptor {
   concurrency?: number;
   rpm?: number;
   priority: number;
+  userAgent?: string;
+  sessionHeader?: string;
+  costPerToken?: { input: number; output: number };
 }
 
 const CATALOG: ProviderDescriptor[] = [
@@ -21,6 +24,8 @@ const CATALOG: ProviderDescriptor[] = [
     baseUrlEnv: "DGX_BASE_URL",
     concurrency: 4,
     priority: 1,
+    userAgent: "socrates-classroom/1.0",
+    costPerToken: { input: 0, output: 0 },
   },
   {
     id: "opencode-go",
@@ -29,6 +34,9 @@ const CATALOG: ProviderDescriptor[] = [
     apiKeyEnv: "OPENCODE_API_KEY",
     concurrency: 8,
     priority: 2,
+    userAgent: "socrates-classroom/1.0",
+    sessionHeader: "x-opencode-session",
+    costPerToken: { input: 0, output: 0 },
   },
   {
     id: "openrouter",
@@ -37,6 +45,7 @@ const CATALOG: ProviderDescriptor[] = [
     apiKeyEnv: "OPENROUTER_API_KEY",
     concurrency: 16,
     priority: 3,
+    costPerToken: { input: 0.0285 / 1e6, output: 0.0923 / 1e6 },
   },
   {
     id: "mock",

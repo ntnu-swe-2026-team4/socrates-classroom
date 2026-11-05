@@ -16,4 +16,5 @@ export interface Env {
   OPENROUTER_API_KEY?: string;
   BYOK_ENC_KEY?: string;
   TTS_MODEL?: string;
+  SEED_TOKEN?: string;
 }

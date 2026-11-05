@@ -18,6 +18,7 @@
   "vars": {
     "LLM_PROVIDER": "mock",
     "PUBLIC_BASE_URL": "",
-    "COOKIE_SECURE": "false"
+    "COOKIE_SECURE": "false",
+    "SEED_TOKEN": "dev-seed-token"
   }
 }

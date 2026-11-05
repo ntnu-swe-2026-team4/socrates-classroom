@@ -52,7 +52,8 @@ interface SessionLike {
 }
 
 export class PiAgent extends DurableObject<Env> {
-  readonly models = buildModels(this.env);
+  private readonly sessionKey = this.ctx.id.name ?? "socrates";
+  readonly models = buildModels(this.env, this.sessionKey);
   readonly registry = createRegistry();
   readonly router = new ProviderRouter(this.env);
 

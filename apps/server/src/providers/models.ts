@@ -18,7 +18,16 @@ export interface ModelsBundle {
   faux?: ReturnType<typeof fauxProvider>;
 }
 
-function modelOf(providerId: ProviderId, modelId: string, baseUrl: string): AnyModel {
+function modelOf(
+  providerId: ProviderId,
+  modelId: string,
+  baseUrl: string,
+  cost?: { input: number; output: number },
+): AnyModel {
+  const compat =
+    providerId === "dgx-spark"
+      ? { supportsDeveloperRole: false, supportsReasoningEffort: false, maxTokensField: "max_tokens" as const }
+      : {};
   return {
     id: modelId,
     name: modelId,
@@ -26,11 +35,17 @@ function modelOf(providerId: ProviderId, modelId: string, baseUrl: string): AnyM
     provider: providerId,
     baseUrl,
     input: ["text"],
-    cost: {},
+    cost: {
+      input: cost?.input ?? 0,
+      output: cost?.output ?? 0,
+      cacheRead: cost?.input ?? 0,
+      cacheWrite: cost?.output ?? 0,
+    },
+    compat,
   } as AnyModel;
 }
 
-export function buildModels(env: Env): ModelsBundle {
+export function buildModels(env: Env, sessionKey = "socrates"): ModelsBundle {
   const providers = availableProviders(env);
   const models = isMockMode(env) ? createModels({}) : createModels();
   const byId = new Map<ProviderId, AnyModel>();
@@ -49,13 +64,17 @@ export function buildModels(env: Env): ModelsBundle {
       id: descriptor.id,
       name: descriptor.id,
       baseUrl,
+      headers: {
+        ...(descriptor.userAgent ? { "User-Agent": descriptor.userAgent } : {}),
+        ...(descriptor.sessionHeader ? { [descriptor.sessionHeader]: sessionKey } : {}),
+      },
       auth: {
         apiKey: {
           name: `${descriptor.id} key`,
           resolve: async () => ({ auth: { apiKey }, source: descriptor.id }),
         },
       },
-      models: [modelOf(descriptor.id, descriptor.model, baseUrl)],
+      models: [modelOf(descriptor.id, descriptor.model, baseUrl, descriptor.costPerToken)],
       api: { "openai-completions": openAICompletionsApi() },
     } as never);
     models.setProvider(provider);

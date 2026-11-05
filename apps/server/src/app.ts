@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { ApiError } from "@socrates/shared";
 import { localize } from "./messages";
 import { normalizeLang, type AppEnv } from "./http";
+import { seedDemo } from "./seed";
 import { SESSION_COOKIE, userFromSessionToken } from "./auth";
 import { getCookie } from "hono/cookie";
 import { authRoutes } from "./routes/auth";
@@ -36,6 +37,18 @@ export function createApp(): Hono<AppEnv> {
   app.route("/api", api);
 
   app.get("/health", (c) => c.json({ ok: true }));
+
+  app.post("/api/dev/seed", async (c) => {
+    const token = c.req.header("x-seed-token") ?? "";
+    if (!c.env.SEED_TOKEN || token !== c.env.SEED_TOKEN) {
+      return c.json(
+        { message: localize("not_found", normalizeLang(c.req.header("Accept-Language"))), code: "not_found" },
+        404,
+      );
+    }
+    await seedDemo(c.env.DB);
+    return c.json({ seeded: true });
+  });
 
   app.onError((error, c) => {
     const lang = c.get("lang") ?? normalizeLang(c.req.header("Accept-Language"));
