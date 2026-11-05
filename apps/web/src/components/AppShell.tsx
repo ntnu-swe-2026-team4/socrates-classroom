@@ -48,7 +48,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const isTeacher = me.data?.role === "teacher";
   const [currentActivityId, setCurrentActivityId] = useState<string | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read on every navigation（mock 的 localStorage 語意，C 連線後改 server-backed）
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read on every navigation (mock localStorage semantics; becomes server-backed with the http client)
   useEffect(() => {
     setCurrentActivityId(api.currentActivityId());
   }, [pathname]);

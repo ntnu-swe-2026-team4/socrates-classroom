@@ -91,20 +91,18 @@ interface ViewDef {
 export const CLUSTER_PALETTE = ["#c9564f", "#57a86e", "#5b8fc9", "#d9924f", "#9a6fc9", "#4fb3b3", "#c964a5", "#a89f4f"];
 const NEUTRAL_COLOR = "#7d7466";
 
-const CUBE = 1; // 座標範圍 [-1, 1]
+const CUBE = 1;
 const SLOTS: Slot[] = ["x", "y", "z"];
 const SLOT_DIRS: Record<Slot, THREE.Vector3> = {
   x: new THREE.Vector3(1, 0, 0),
   y: new THREE.Vector3(0, 1, 0),
   z: new THREE.Vector3(0, 0, 1),
 };
-// 各平面組合的「正面」機位與 up 向量（笛卡爾座標：第一軸水平、第二軸垂直）
 const PLANAR_VIEWS: Record<string, ViewDef> = {
   "x,y": { pos: [0, 0, 3.2], up: [0, 1, 0] },
   "x,z": { pos: [0, -3.2, 0], up: [0, 0, 1] },
   "y,z": { pos: [3.2, 0, 0], up: [0, 0, 1] },
 };
-// 單軸量表：讓該軸呈水平左右的機位
 const LINE_VIEWS: Record<string, ViewDef> = {
   x: { pos: [0, 0, 3.2], up: [0, 1, 0] },
   y: { pos: [3.2, 0, 0], up: [0, 0, 1] },
@@ -132,7 +130,7 @@ const SCENE_COLORS = {
   },
 } as const;
 
-const DUR = 900; // 維度切換統一時長（鏡頭、軸生長、點位同一時鐘）
+const DUR = 900;
 const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
 function makeTextSprite(text: string, color: string, scheme: "dark" | "light") {
@@ -196,8 +194,7 @@ export default function Scene3D({
     if (scene) scene.background = new THREE.Color(background ?? scenePal.bg);
   }, [background, scenePal.bg]);
 
-  // ---- 目標位置（React 資料 → 座標；未啟用槽位歸 0，0 軸時全員歸中間點） ----
-  // biome-ignore lint/correctness/useExhaustiveDependencies: version 是 mutation 計數器（agents 原地變異），刻意作為重算觸發
+  // biome-ignore lint/correctness/useExhaustiveDependencies: version is a mutation counter mutated in place; intentional recompute trigger
   const targets = useMemo(() => {
     const t = new Float32Array(agents.length * 3);
     agents.forEach((a, i) => {
@@ -210,7 +207,6 @@ export default function Scene3D({
     return t;
   }, [agents, version, axisMap, maxAbsTable, activeSlots]);
 
-  // ---- 每個點的顏色 ----
   const colors = useMemo(() => {
     const c = new Float32Array(agents.length * 3);
     const neutral = new THREE.Color(NEUTRAL_COLOR);
@@ -228,8 +224,7 @@ export default function Scene3D({
     return c;
   }, [agents, cluster]);
 
-  // ---- 軌跡折線資料（維持完整 3D 形狀，收合交給 trajGroup 縮放） ----
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 同上，version 觸發軌跡重算
+  // biome-ignore lint/correctness/useExhaustiveDependencies: same as above; version retriggers the trajectory rebuild
   const trajectories = useMemo(() => {
     if (!showTraj) return null;
     return agents.map((a) => {
@@ -244,8 +239,7 @@ export default function Scene3D({
     });
   }, [agents, showTraj, axisMap, maxAbsTable, version]);
 
-  // ---------- Three.js 場景初始化（只跑一次；background/axes 於掛載時擷取） ----------
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 場景只初始化一次
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scene initializes once
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
@@ -265,20 +259,17 @@ export default function Scene3D({
     controls.minDistance = 1.2;
     controls.maxDistance = 10;
 
-    // 立方體外框（3D 模式）
     const frame = new THREE.LineSegments(
       new THREE.EdgesGeometry(new THREE.BoxGeometry(CUBE * 2, CUBE * 2, CUBE * 2)),
       new THREE.LineBasicMaterial({ color: "#4a3b28", transparent: true, opacity: 0.9 }),
     );
     scene.add(frame);
 
-    // 底面格線（3D 模式）
     const grid = new THREE.GridHelper(CUBE * 2, 8, "#33291a", "#261e13");
     grid.material.transparent = true;
     grid.position.y = -CUBE;
     scene.add(grid);
 
-    // 2D 平面（金框 + 內格線，2D 模式淡入並隨軸生長展開）
     const plane = new THREE.Group();
     const planeOutline = new THREE.LineLoop(
       new THREE.BufferGeometry().setFromPoints([
@@ -299,13 +290,11 @@ export default function Scene3D({
     plane.visible = false;
     scene.add(plane);
 
-    // 動態元素群組
-    const axisGroup = new THREE.Group(); // 軸線 + 端點標籤
-    const trajGroup = new THREE.Group(); // 軌跡
-    const centroidGroup = new THREE.Group(); // 群心
+    const axisGroup = new THREE.Group();
+    const trajGroup = new THREE.Group();
+    const centroidGroup = new THREE.Group();
     scene.add(axisGroup, trajGroup, centroidGroup);
 
-    // 散點
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(0), 3));
     geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(0), 3));
@@ -347,9 +336,8 @@ export default function Scene3D({
       planeScaleMap: { mx: "x", my: "y" },
     };
     threeRef.current = state;
-    const s = state; // init effect 內的別名
+    const s = state;
 
-    // 1D/2D 模式的滾輪縮放（OrbitControls 已停用）
     const onWheel = (e: WheelEvent) => {
       if (s.dim === 3 || s.camAnim) return;
       e.preventDefault();
@@ -365,7 +353,6 @@ export default function Scene3D({
       requestAnimationFrame(animate);
       const now = performance.now();
 
-      // 鏡頭動畫（ease-in-out，與軸生長、點位同一時鐘）
       if (s.camAnim) {
         const a = s.camAnim;
         const t = Math.min(1, (now - a.start) / a.dur);
@@ -381,7 +368,6 @@ export default function Scene3D({
         s.controls.update();
       }
 
-      // 維度補間時鐘：各槽位生長進度、平面/立方體濃度
       if (s.tween) {
         const a = s.tween;
         const t = Math.min(1, (now - a.start) / a.dur);
@@ -392,7 +378,6 @@ export default function Scene3D({
         if (t >= 1) s.tween = null;
       }
 
-      // 軸線從中心生長（左右展開），標籤隨之滑出
       for (const sl of SLOTS) {
         const v = s.axisVisuals[sl];
         if (!v) continue;
@@ -409,10 +394,8 @@ export default function Scene3D({
         });
       }
 
-      // 軌跡隨各槽位收合
       s.trajGroup.scale.set(Math.max(0.001, s.slotP.x), Math.max(0.001, s.slotP.y), Math.max(0.001, s.slotP.z));
 
-      // 2D 平面：濃度淡入 + 沿兩軸展開
       s.plane.visible = s.planeP > 0.005;
       if (s.plane.visible) {
         s.plane.traverse((obj) => {
@@ -427,16 +410,13 @@ export default function Scene3D({
         );
       }
 
-      // 3D 骨架
       (s.frame.material as THREE.LineBasicMaterial).opacity = 0.9 * s.cubeP;
       (s.grid.material as THREE.Material).opacity = s.cubeP;
       s.frame.visible = s.grid.visible = s.cubeP > 0.005;
 
-      // 點徑隨維度平滑調整（低維時點更明顯）
       const sizeTarget = s.dim === 1 ? 0.105 : s.dim === 2 ? 0.068 : 0.05;
       material.size += (sizeTarget - material.size) * 0.12;
 
-      // 點位：維度切換時以 ease-in-out 補間；平時用指數趨近（逐題漂移）
       const pos = geometry.attributes.position.array;
       const tgt = s.targets;
       if (pos.length === tgt.length) {
@@ -503,22 +483,19 @@ export default function Scene3D({
     };
   }, []);
 
-  // ---------- 人數變動 → 重建點位緩衝區 ----------
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 刻意只在人數變動時重建
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rebuild only when the roster size changes
   useEffect(() => {
     const s = threeRef.current;
     if (!s) return;
     const geometry = s.points.geometry;
     geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(agents.length * 3), 3));
     geometry.setAttribute("color", new THREE.BufferAttribute(colors.slice(), 3));
-    // 新一輪測驗：直接跳到初始位置，不做補間
     s.targets = targets.slice();
     geometry.attributes.position.array.set(targets);
     geometry.attributes.position.needsUpdate = true;
-  }, [agents.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [agents.length]);
 
-  // ---------- 軸線與標籤（依 axisMap 重建，記錄各槽位視覺） ----------
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 軸線視覺只隨 axisMap 重建
+  // biome-ignore lint/correctness/useExhaustiveDependencies: axis visuals rebuild only when axisMap changes
   useEffect(() => {
     const s = threeRef.current;
     if (!s) return;
@@ -550,15 +527,13 @@ export default function Scene3D({
     s.axisVisuals = visuals;
   }, [axisMap]);
 
-  // ---------- 維度切換：鏡頭、軸生長、點位壓平／展開（同一時鐘同步） ----------
   useEffect(() => {
     const s = threeRef.current;
     if (!s) return;
     s.dim = dim;
-    s.controls.enabled = false; // 動畫期間停用軌道控制
-    s.pendingPosAnim = true; // 下一幀以當下點位為起點，ease 到新目標
+    s.controls.enabled = false;
+    s.pendingPosAnim = true;
 
-    // 各槽位生長目標
     const toS = { x: 0, y: 0, z: 0 };
     for (const sl of activeSlots) toS[sl] = 1;
     s.tween = {
@@ -572,7 +547,6 @@ export default function Scene3D({
       toCube: dim === 3 ? 1 : 0,
     };
 
-    // 2D 平面轉到對應的面上，並記錄展開軸對應
     if (dim === 2 && activeSlots.length === 2) {
       const [a, b] = activeSlots;
       if (a === "x" && b === "y") {
@@ -587,7 +561,6 @@ export default function Scene3D({
       }
     }
 
-    // 依維度選鏡頭：3=立體、2=正面、1=量表水平、0=正面空白
     let view: ViewDef;
     if (dim === 3) view = { pos: [2.1, 1.7, 2.7], up: [0, 1, 0] };
     else if (dim === 2) view = PLANAR_VIEWS[activeSlots.join(",")];
@@ -607,14 +580,12 @@ export default function Scene3D({
     };
   }, [dim, activeSlots]);
 
-  // ---------- 資料更新：目標位置 / 顏色 / 軌跡 / 群心 ----------
   useEffect(() => {
     const s = threeRef.current;
     if (!s) return;
     s.targets = targets;
     s.points.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
-    // 軌跡
     s.trajGroup.clear();
     if (trajectories) {
       agents.forEach((_, i) => {
@@ -628,7 +599,6 @@ export default function Scene3D({
       });
     }
 
-    // 群心球（低維模式時重心本來就落在線／面上）
     s.centroidGroup.clear();
     if (cluster) {
       cluster.centroids.forEach((c) => {

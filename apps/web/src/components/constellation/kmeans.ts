@@ -6,9 +6,6 @@ export interface ClusterResult {
   inertia: number;
 }
 
-/**
- * K-means 分群（k-means++ 初始化 + 多次重啟取最佳）
- */
 export function kmeans(
   points: number[][],
   kInput: number,
@@ -27,7 +24,6 @@ export function kmeans(
   let best: ClusterResult | null = null;
 
   for (let r = 0; r < restarts; r++) {
-    // --- k-means++ 初始化 ---
     const centroids: number[][] = [points[(rng() * n) | 0]!.slice()];
     while (centroids.length < k) {
       const dists = new Float64Array(n);
@@ -57,7 +53,6 @@ export function kmeans(
       centroids.push(points[idx]!.slice());
     }
 
-    // --- 主要迭代 ---
     const assignments = new Array<number>(n).fill(0);
     for (let iter = 0; iter < maxIter; iter++) {
       let moved = false;
@@ -81,7 +76,6 @@ export function kmeans(
         }
       }
 
-      // 重算重心
       const sums = Array.from({ length: k }, () => new Float64Array(dim));
       const counts = new Array<number>(k).fill(0);
       for (let i = 0; i < n; i++) {
@@ -91,7 +85,7 @@ export function kmeans(
       }
       for (let c = 0; c < k; c++) {
         if (counts[c] === 0) {
-          centroids[c] = points[(rng() * n) | 0]!.slice(); // 空群：重新播種
+          centroids[c] = points[(rng() * n) | 0]!.slice();
         } else {
           centroids[c] = Array.from(sums[c]!, (v) => v / counts[c]!);
         }
@@ -99,7 +93,6 @@ export function kmeans(
       if (!moved && iter > 0) break;
     }
 
-    // --- 計算這次重啟的總變異 ---
     let inertia = 0;
     for (let i = 0; i < n; i++) {
       let s = 0;
@@ -115,9 +108,6 @@ export function kmeans(
   return best!;
 }
 
-/**
- * 肘部法：算 k=1..maxK 的 inertia，提供「該分幾群」的參考。
- */
 export function elbowCurve(points: number[][], maxK = 8): { k: number; inertia: number }[] {
   const curve: { k: number; inertia: number }[] = [];
   for (let k = 1; k <= Math.min(maxK, points.length); k++) {

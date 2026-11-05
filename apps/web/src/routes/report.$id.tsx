@@ -149,7 +149,7 @@ function ReportPage() {
                     <h3 className="text-[14px] font-medium text-flag">{t("report_violations")}</h3>
                     {person.violations.map((violation, index) => (
                       <p
-                        // biome-ignore lint/suspicious/noArrayIndexKey: 同一輪可有多筆同類違規，index 僅作消歧
+                        // biome-ignore lint/suspicious/noArrayIndexKey: several violations can share one turn; the index disambiguates
                         key={`${violation.turn}-${violation.type}-${index}`}
                         className="rounded-xl bg-flag-wash px-4 py-2 text-[13px] text-ink-soft"
                       >
@@ -194,7 +194,6 @@ function Constellation3D({
 
   const activeSlots = useMemo(() => SLOTS.filter((sl) => checkedAxes.includes(AXIS_MAP[sl])), [checkedAxes]);
 
-  // 分群基於目前顯示的座標（未勾選軸壓平為 0）——群心球隨維度收合移動
   const cluster = useMemo<ClusterResult>(() => {
     const coords = group.points.map((point) => scoreToCoords(point.values, AXIS_MAP, null, activeSlots));
     const k = group.clusters.length || 1;

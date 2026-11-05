@@ -1,4 +1,4 @@
-// biome-ignore-all lint/correctness/noPrecisionLoss: mulberry32 標準常數（演算法依賴 32bit 溢位語意）
+// biome-ignore-all lint/correctness/noPrecisionLoss: standard mulberry32 constants (the algorithm relies on 32-bit overflow semantics)
 export const mulberry32 = (seed: number): (() => number) => {
   let a = seed >>> 0;
   return () => {
@@ -13,7 +13,6 @@ export const mulberry32 = (seed: number): (() => number) => {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-// historyEntry = 各軸值（index 對應 axisMap 的值，已正規化 [-1,1]）
 export function scoreToCoords(
   historyEntry: readonly number[],
   axisMap: Record<string, number>,
