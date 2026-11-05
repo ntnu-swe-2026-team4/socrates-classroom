@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, DEFAULT_JOIN_CODE } from "@/api";
+import { api } from "@/api";
 import { Button, Card, Field, Input, Spinner, Wordmark } from "@/components/ui";
 import { useT } from "@/i18n";
 
@@ -53,10 +53,7 @@ function LoginPage() {
       </Card>
 
       <div className="mt-6 flex flex-col gap-2.5">
-        <Button
-          variant="outline"
-          onClick={() => void navigate({ to: "/join/$code", params: { code: DEFAULT_JOIN_CODE } })}
-        >
+        <Button variant="outline" onClick={() => void navigate({ to: "/join" })}>
           {t("login_guest")}
         </Button>
         <Button variant="ghost" onClick={() => void demoTeacher()} disabled={busy !== null}>

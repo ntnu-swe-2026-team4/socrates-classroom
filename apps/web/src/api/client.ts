@@ -1,4 +1,6 @@
-import type { Api, ByokStatus, User } from "./types";
+import type { Api, ByokStatus, Topic, User } from "./types";
+
+export const DEFAULT_JOIN_CODE = "socrat";
 
 const TERM_KEY = "socrates_terms";
 const ACTIVITY_KEY = "socrates_activity";
@@ -17,11 +19,6 @@ function persistTermHistory() {
     localStorage.setItem(TERM_KEY, JSON.stringify(store.termHistory));
   } catch {}
 }
-import { DEFAULT_JOIN_CODE } from "./index";
-import { aiTopics, advanceLive, report, seedLiveStudents, teacher, topics } from "./mock/data";
-import { mockSocrates, openingMessage } from "./mock/dialogue";
-
-const latency = (ms = 220 + Math.random() * 320) => new Promise<void>((r) => setTimeout(r, ms));
 
 function readActivityId(): string | null {
   try {
@@ -37,15 +34,32 @@ function persistActivityId(id: string) {
   } catch {}
 }
 
+const latency = (ms = 220 + Math.random() * 320) => new Promise<void>((r) => setTimeout(r, ms));
+
 const store = {
   me: null as User | null,
   lastActivityId: readActivityId(),
   byok: null as ByokStatus,
   joined: new Map<string, { user: User; activityId: string }>(),
-  live: new Map<string, ReturnType<typeof seedLiveStudents>>(),
+  live: new Map<string, ReturnType<typeof import("./mock/data").seedLiveStudents>>(),
   turns: new Map<string, number>(),
   termHistory: readTermHistory(),
+  classrooms: new Map<string, { name: string; topicId: string }>(),
+  activities: new Map<string, string>(),
+  customTopics: new Map<string, Topic>(),
 };
+
+import { advanceLive, aiTopics, report, seedLiveStudents, teacher, topics } from "./mock/data";
+import { mockSocrates, openingMessage } from "./mock/dialogue";
+
+function topicById(topicId: string): Topic {
+  return (
+    topics.find((item) => item.id === topicId) ??
+    aiTopics.find((item) => item.id === topicId) ??
+    store.customTopics.get(topicId) ??
+    topics[0]!
+  );
+}
 
 export const mockApi: Api = {
   async me() {
@@ -64,11 +78,17 @@ export const mockApi: Api = {
   async joinByCode(code) {
     await latency(360);
     if (!/^[a-z0-9]{4,8}$/i.test(code)) throw new Error("invalid_code");
-    return { code, classroomName: "公民課 · 第四週", topic: topics[0]! };
+    const room = store.classrooms.get(code);
+    const topic = room ? topicById(room.topicId) : topics[0]!;
+    return { code, classroomName: room?.name ?? "公民課 · 第四週", topic };
   },
   async joinAsGuest(code, name) {
     await latency(420);
-    const activityId = `a-${code}`;
+    const room = store.classrooms.get(code);
+    const activityId = room ? `a-${code}` : `a-${code}-${crypto.randomUUID().slice(0, 6)}`;
+    if (room && !store.activities.has(activityId)) {
+      store.activities.set(activityId, room.topicId);
+    }
     store.lastActivityId = activityId;
     persistActivityId(activityId);
     const user: User = { id: crypto.randomUUID(), name, role: "student" };
@@ -79,18 +99,30 @@ export const mockApi: Api = {
   },
   async listTopics() {
     await latency(260);
-    return topics;
+    return [...topics, ...aiTopics.filter((item) => !store.customTopics.has(item.id)), ...store.customTopics.values()];
   },
   async generateTopics(_direction) {
     await latency(1400);
     return aiTopics;
   },
+  async createTopic(input) {
+    await latency(500);
+    const topic: Topic = {
+      id: `t-${crypto.randomUUID().slice(0, 8)}`,
+      title: input.title,
+      statement: input.statement,
+      summary: input.summary ?? "",
+      prompts: input.prompts,
+    };
+    store.customTopics.set(topic.id, topic);
+    return topic;
+  },
   async createClassroom(name, topicId) {
-    void name;
-    void topicId;
     await latency(520);
     const code = DEFAULT_JOIN_CODE;
     const activityId = `a-${crypto.randomUUID().slice(0, 8)}`;
+    store.classrooms.set(code, { name, topicId });
+    store.activities.set(activityId, topicId);
     store.lastActivityId = activityId;
     persistActivityId(activityId);
     store.live.set(activityId, seedLiveStudents(activityId));
@@ -105,8 +137,8 @@ export const mockApi: Api = {
   },
   async dialogueHistory(activityId) {
     await latency(280);
-    const topic = topics[0]!;
-    void activityId;
+    const topicId = store.activities.get(activityId);
+    const topic = topicId ? topicById(topicId) : topics[0]!;
     return [openingMessage(topic.prompts, topic.statement)];
   },
   async sendDialogue(activityId, text, onDelta, signal) {
@@ -126,18 +158,25 @@ export const mockApi: Api = {
     await latency(900 + Math.random() * 700);
     return "我認為可以拉桿，因為五條命比一條命重要";
   },
-  async tts(text, onBoundary, signal) {
+  async tts(text, onAmplitude, signal) {
     return new Promise<void>((resolve) => {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = document.documentElement.lang || "zh-Hant";
-      utterance.onboundary = (event) => onBoundary(event.charIndex);
-      utterance.onend = () => resolve();
-      utterance.onerror = () => resolve();
+      const timer = setInterval(() => onAmplitude(0.45 + 0.4 * Math.abs(Math.sin(Date.now() / 110))), 70);
       const stop = () => {
+        clearInterval(timer);
         speechSynthesis.cancel();
         resolve();
       };
       signal?.addEventListener("abort", stop, { once: true });
+      utterance.onend = () => {
+        clearInterval(timer);
+        resolve();
+      };
+      utterance.onerror = () => {
+        clearInterval(timer);
+        resolve();
+      };
       speechSynthesis.speak(utterance);
     });
   },

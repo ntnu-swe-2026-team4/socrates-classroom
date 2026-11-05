@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DialogueRouteImport } from './routes/dialogue'
+import { Route as JoinRouteImport } from './routes/join'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
@@ -28,6 +29,11 @@ const DialogueRoute = DialogueRouteImport.update({
   path: '/dialogue',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JoinRoute = JoinRouteImport.update({
+  id: '/join',
+  path: '/join',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -39,9 +45,9 @@ const SettingsRoute = SettingsRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const JoinCodeRoute = JoinCodeRouteImport.update({
-  id: '/join/$code',
-  path: '/join/$code',
-  getParentRoute: () => rootRouteImport,
+  id: '/$code',
+  path: '/$code',
+  getParentRoute: () => JoinRoute,
 } as any)
 const ReportIdRoute = ReportIdRouteImport.update({
   id: '/report/$id',
@@ -62,6 +68,7 @@ const TLiveIdRoute = TLiveIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dialogue': typeof DialogueRoute
+  '/join': typeof JoinRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/join/$code': typeof JoinCodeRoute
@@ -72,6 +79,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dialogue': typeof DialogueRoute
+  '/join': typeof JoinRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/join/$code': typeof JoinCodeRoute
@@ -83,6 +91,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dialogue': typeof DialogueRoute
+  '/join': typeof JoinRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/join/$code': typeof JoinCodeRoute
@@ -95,6 +104,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dialogue'
+    | '/join'
     | '/login'
     | '/settings'
     | '/join/$code'
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/dialogue'
+    | '/join'
     | '/login'
     | '/settings'
     | '/join/$code'
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/dialogue'
+    | '/join'
     | '/login'
     | '/settings'
     | '/join/$code'
@@ -126,9 +138,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DialogueRoute: typeof DialogueRoute
+  JoinRoute: typeof JoinRouteWithChildren
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
-  JoinCodeRoute: typeof JoinCodeRoute
   ReportIdRoute: typeof ReportIdRoute
   TSetupRoute: typeof TSetupRoute
   TLiveIdRoute: typeof TLiveIdRoute
@@ -150,6 +162,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DialogueRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/join': {
+      id: '/join'
+      path: '/join'
+      fullPath: '/join'
+      preLoaderRoute: typeof JoinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -166,10 +185,10 @@ declare module '@tanstack/react-router' {
     }
     '/join/$code': {
       id: '/join/$code'
-      path: '/join/$code'
+      path: '/$code'
       fullPath: '/join/$code'
       preLoaderRoute: typeof JoinCodeRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof JoinRoute
     }
     '/report/$id': {
       id: '/report/$id'
@@ -195,12 +214,22 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface JoinRouteChildren {
+  JoinCodeRoute: typeof JoinCodeRoute
+}
+
+const JoinRouteChildren: JoinRouteChildren = {
+  JoinCodeRoute: JoinCodeRoute,
+}
+
+const JoinRouteWithChildren = JoinRoute._addFileChildren(JoinRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DialogueRoute: DialogueRoute,
+  JoinRoute: JoinRouteWithChildren,
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
-  JoinCodeRoute: JoinCodeRoute,
   ReportIdRoute: ReportIdRoute,
   TSetupRoute: TSetupRoute,
   TLiveIdRoute: TLiveIdRoute,

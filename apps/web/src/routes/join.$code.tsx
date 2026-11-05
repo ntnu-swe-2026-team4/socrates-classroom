@@ -21,6 +21,7 @@ function JoinPage() {
   const [name, setName] = useState("");
   const [tos, setTos] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [failed, setFailed] = useState(false);
   const info = useQuery({ queryKey: ["join", code], queryFn: () => api.joinByCode(code) });
 
   useEffect(() => {
@@ -50,6 +51,7 @@ function JoinPage() {
 
   async function start() {
     setSubmitting(true);
+    setFailed(false);
     try {
       const { activityId, user } = await api.joinAsGuest(code, name.trim());
       queryClient.setQueryData(["me"], user);
@@ -57,6 +59,8 @@ function JoinPage() {
         to: "/dialogue",
         search: { activityId, topic: topic.id, ...(draft ? { q: draft } : {}) },
       });
+    } catch {
+      setFailed(true);
     } finally {
       setSubmitting(false);
     }
@@ -70,6 +74,7 @@ function JoinPage() {
         {topic.summary}
       </p>
       <div className="mt-8 flex flex-col gap-5">
+        {failed && <p className="text-[13px] text-ember">{t("join_failed")}</p>}
         <Field label={t("join_name_label")}>
           <Input
             value={name}

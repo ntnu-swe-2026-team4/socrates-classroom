@@ -27,7 +27,15 @@ function SetupPage() {
   const [direction, setDirection] = useState("");
   const topics = useQuery({ queryKey: ["topics"], queryFn: () => api.listTopics(), staleTime: Infinity });
   const generated = useMutation({ mutationFn: () => api.generateTopics(direction) });
-  const create = useMutation({ mutationFn: () => api.createClassroom(classroomName, picked ?? customTitle) });
+  const create = useMutation({
+    mutationFn: async () => {
+      const topicId =
+        source === "custom"
+          ? (await api.createTopic({ title: customTitle.trim(), statement: customStatement.trim(), prompts: [] })).id
+          : picked!;
+      return api.createClassroom(classroomName.trim(), topicId);
+    },
+  });
   const created = create.data ?? null;
   const [copied, setCopied] = useState(false);
 
@@ -39,9 +47,13 @@ function SetupPage() {
 
   async function copy() {
     if (!created) return;
-    await navigator.clipboard.writeText(created.url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+    try {
+      await navigator.clipboard.writeText(created.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
   }
 
   return (
@@ -206,20 +218,17 @@ function cnLocked(locked: boolean): string {
 }
 
 function QrBlock({ url }: { url: string }) {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
-  useQuery({
+  const t = useT();
+  const { data: dataUrl } = useQuery({
     queryKey: ["qr", url],
-    queryFn: async () => {
-      const result = await QRCode.toDataURL(url, {
+    queryFn: () =>
+      QRCode.toDataURL(url, {
         margin: 1,
         width: 192,
         color: { dark: "#251f16", light: "#fffdf8" },
-      });
-      setDataUrl(result);
-      return result;
-    },
+      }),
     staleTime: Infinity,
   });
   if (!dataUrl) return <div className="h-48 w-48 rounded-xl bg-paper-deep" />;
-  return <img src={dataUrl} alt="QR" className="h-48 w-48 rounded-xl border border-line" />;
+  return <img src={dataUrl} alt={t("qr_alt")} className="h-48 w-48 rounded-xl border border-line" />;
 }

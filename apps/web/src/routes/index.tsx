@@ -3,7 +3,6 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AmbientGlow } from "@/components/AmbientGlow";
 import { Wordmark } from "@/components/ui";
 import { useT } from "@/i18n";
-import { DEFAULT_JOIN_CODE } from "@/api";
 import { STORY_SCENES } from "@/landing/story";
 import { StorySection, useReducedMotion, useStoryDamping } from "@/landing/StorySection";
 import { useStoryTour } from "@/landing/useStoryTour";
@@ -31,11 +30,7 @@ function Home() {
 
   function begin() {
     const draft = text.trim();
-    void navigate({
-      to: "/join/$code",
-      params: { code: DEFAULT_JOIN_CODE },
-      ...(draft ? { search: { draft } } : {}),
-    });
+    void navigate({ to: "/join", ...(draft ? { search: { draft } } : {}) });
   }
 
   return (
@@ -93,7 +88,7 @@ function Home() {
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-[13px]">
             <button
               type="button"
-              onClick={() => void navigate({ to: "/join/$code", params: { code: DEFAULT_JOIN_CODE } })}
+              onClick={() => void navigate({ to: "/join" })}
               className="rounded-full border border-line bg-card/70 px-4 py-1.5 text-ink-soft transition-colors hover:border-ember hover:text-ember"
             >
               {t("hero_chip_join")}
@@ -134,7 +129,7 @@ function Home() {
             <button
               type="button"
               id="story-end-cta"
-              onClick={() => void navigate({ to: "/join/$code", params: { code: DEFAULT_JOIN_CODE } })}
+              onClick={() => void navigate({ to: "/join" })}
               className="rounded-full bg-ember px-6 py-2.5 text-[14.5px] text-paper shadow-sm transition-colors hover:bg-ember-deep"
             >
               {t("story_end_cta")}

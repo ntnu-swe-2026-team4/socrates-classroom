@@ -124,7 +124,8 @@ export interface Api {
     signal?: AbortSignal,
   ): Promise<DialogueMessage>;
   stt(audio: Blob): Promise<string>;
-  tts(text: string, onBoundary: (charIndex: number) => void, signal?: AbortSignal): Promise<void>;
+  tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
+  createTopic(input: { title: string; statement: string; summary?: string; prompts: string[] }): Promise<Topic>;
   report(activityId: string): Promise<Report>;
   byokStatus(): Promise<ByokStatus>;
   byokSet(provider: string, key: string): Promise<ByokStatus>;
