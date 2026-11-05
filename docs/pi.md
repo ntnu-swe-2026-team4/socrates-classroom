@@ -22,10 +22,10 @@
 
 | 套件                                             | 版本      |
 | ------------------------------------------------ | --------- |
-| `agents`                                         | `^0.32.0` |
-| `@earendil-works/pi-durable` / `pi-ai` / `chord` | `~1.4.0`  |
+| `agents`                                         | `^0.33.0` |
+| `@earendil-works/pi-durable` / `pi-ai` / `chord` | `~1.5.0`  |
 
-升級時兩邊必須一起評估（pi 1.5 已發布，但 agents 尚未跟進——**不要單獨升 pi**）。
+agents 0.33.0（2026-11-03）跟進 pi 1.5：串流期 storage 寫入批次化（長回覆 -27x）＋大 tool call 記憶體修復。**1.5 的兩個 breaking**：工具驗證改 `pi-schema`（TypeBox `Type.Refine()` 等不再適用）；pi-ai 移除 TypeBox 再輸出（`Type` 改由 `pi-ai/compat` 轉發）。升級時兩邊必須一起評估。
 
 ## 在本專案的架構位置
 
@@ -41,34 +41,36 @@ apps/server/src/do/pi-agent.ts   # PiAgent Durable Object
 - pi 的資料放在 DO SQLite 的 `pi_*` 表——與 D1 的產品資料（對話記錄、成績）**分離**
 - DO 建構時 `buildPool(env)` 組出 models registry；`defaults.model` = 鏈首，每輪再用 `session.setModel()` 指到當前健康的 provider
 
-## 核心模型：session / submit / events / wait
+## 核心模型：session / submit / watch / wait（1.5）
 
 ```ts
 const session = harness.session(); // root session（id "1"）
-const stream = await session.events(); // AgentEventStream：snapshot + 每 commit 一批
+const stream = await session.watch(); // WatchHandle<ConversationView>（observer 模型，取代 1.4 的 events()）
 const receipt = await session.submit(text); // durably 入隊（回 operationId）
-const result = await session.wait(receipt.operationId); // { status: "done" | "unanswered", ... }
+const result = await session.wait(receipt.operationId); // { status, text?, reason? }——answered 時 text 是最終全文
 const entries = await session.messages(); // EntryRecord[]（最終真相）
 ```
+
+**串流 partial 的位置（1.5）**：`view.docs["pi.live"]` → `LiveState.generation.message`＝in-flight 回覆的**累計全文**（非 delta），`WatchHandle.start(listener)` 每次交付整份 view；客戶端以 `sent.length` diff 出增量。partial 的持久化由進度節流批次 commit（`settings.progress.persistWithinMs`），因此 delta 粒度≈commit 節奏。1.4 的 `session.events()`（`message_update`/`text_delta`）已不存在。
 
 - `submit` 先落盤再執行——同一 session 的後續輸入自動排隊（`whenBusy: "queue"`），`steer()` 則插進當前回合
 - `wait()` 回覆 `{ status: "done" | "unanswered", reason? }`；`unanswered` 代表模型失敗且重試用盡（例如 `no_model`、`model_error`）
 - `session.setModel(model)` 可在 submit 前換模型（本專案用它做健康優先選路）
 - `session.messages()` 回 `EntryRecord[]`：`kind`（如 `pi.user` / `pi.assistant`）+ `model?: Message[]`——**最終文字從這裡拿**，delta 只是串流 UX
 
-## 順序陷阱：先掛事件再 submit
+## 順序陷阱：先掛 watch 再 submit
 
-`session.events()` 的串流**不重播歷史**。若先 `submit` 再 `start()` 監聽，瞬時完成的 run（mock、快取命中）會什麼都收不到——本專案踩過。正確順序：
+`session.watch()` 的首個值只含附掛當下的視窗；先 `submit` 再 `start()` 會漏掉瞬時完成 run 的中間態——本專案踩過。正確順序：
 
 ```
-events = await session.events()      // ① 先拿串流
-stream.start(handleBatches)          // ② 先開始消費
+stream = await session.watch()       // ① 先拿 watch
+stream.start(listener)               // ② 先開始消費（listener 收 folded view）
 receipt = await session.submit(...)  // ③ 再送出
-result  = await session.wait(...)    // ④ 等結算
-// ⑤ 收尾前再讀一次 messages() 補齐最終文字
+result  = await session.wait(...)    // ④ 等結算（result.text 為最終全文）
+// ⑤ 收尾前以 result.text 補齊 listener 未送完的差額
 ```
 
-`AgentEvent` 的文字增量在 `message_update.changes[]` 的 `{ type: "text_delta", delta }`。
+1.4 的 `session.events()`（`message_update`/`text_delta`）已由 ConversationView observer 模型取代；文字增量改從 `docs["pi.live"].generation.message` diff。
 
 ## 設定（settings）
 
