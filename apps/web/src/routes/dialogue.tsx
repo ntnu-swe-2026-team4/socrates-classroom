@@ -5,12 +5,20 @@ import { useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { TextSearch } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { api, DEFAULT_JOIN_CODE } from "@/api";
+import { api } from "@/api";
 import { SocratesStage, type SocratesHandle } from "@/components/SocratesStage";
 import { useDialogue } from "@/hooks/useDialogue";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { cn } from "@/components/ui";
-import { useT } from "@/i18n";
+import { useT, type MessageKey } from "@/i18n";
+
+const VOICE_ERROR_KEY: Record<"denied" | "unsupported" | "failed", MessageKey> = {
+  denied: "voice_denied",
+  unsupported: "voice_unsupported",
+  failed: "voice_failed",
+};
+
+const onAmplitudeNoop = () => {};
 
 export const Route = createFileRoute("/dialogue")({
   validateSearch: (
@@ -23,7 +31,7 @@ export const Route = createFileRoute("/dialogue")({
   }),
   beforeLoad: ({ search }) => {
     if (!search.activityId && !api.currentActivityId()) {
-      throw redirect({ to: "/join/$code", params: { code: DEFAULT_JOIN_CODE } });
+      throw redirect({ to: "/join" });
     }
   },
   component: DialoguePage,
@@ -45,7 +53,7 @@ function DialoguePage() {
 
   const history = useQuery({ queryKey: ["history", activityId], queryFn: () => api.dialogueHistory(activityId) });
   const initialText = useMemo(() => history.data?.map((message) => message.text) ?? [], [history.data]);
-  const { messages, draft, phase, send, interrupt } = useDialogue(activityId, initialText);
+  const { messages, draft, phase, error, send, retryLast, interrupt } = useDialogue(activityId, initialText);
 
   const stageRef = useRef<SocratesHandle>(null);
   useEffect(() => {
@@ -64,9 +72,9 @@ function DialoguePage() {
       termHandled.current = true;
       setPanelOpen(true);
       panelRef.current?.openTerm(term);
-      void navigate({ to: "/dialogue", search: { topic: topicId }, replace: true });
+      void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, term: undefined }), replace: true });
     }
-  }, [term, topicId, navigate]);
+  }, [term, navigate]);
   useEffect(() => {
     if (q && !sentFromHome.current && phase === "idle" && !history.isPending) {
       sentFromHome.current = true;
@@ -75,7 +83,7 @@ function DialoguePage() {
   }, [q, phase, history.isPending, send]);
 
   const onVoiceFinal = useCallback((text: string) => void send(text), [send]);
-  const voice = useVoiceInput(onVoiceFinal, () => {});
+  const voice = useVoiceInput(onVoiceFinal, onAmplitudeNoop);
 
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -193,6 +201,25 @@ function DialoguePage() {
           <p className="mx-auto max-w-full truncate rounded-full bg-paper-deep px-4 py-1.5 text-center text-[13px] text-ink-faint">
             {voice.interim}
           </p>
+        )}
+
+        {voice.error && (
+          <p className="mx-auto max-w-full truncate rounded-full bg-paper-deep px-4 py-1.5 text-center text-[13px] text-ember">
+            {t(VOICE_ERROR_KEY[voice.error])}
+          </p>
+        )}
+
+        {error && (
+          <div className="mx-auto flex items-center gap-2 rounded-xl border border-line bg-card px-4 py-2 text-[13px] text-ink-soft">
+            <span className="min-w-0 flex-1 truncate">{t("dlg_error")}</span>
+            <button
+              type="button"
+              onClick={retryLast}
+              className="shrink-0 rounded-full border border-line px-3 py-1 text-[12.5px] text-ember transition-colors hover:border-ember"
+            >
+              {t("dlg_retry")}
+            </button>
+          </div>
         )}
 
         <footer className="sticky bottom-0 z-10 bg-gradient-to-t from-paper via-paper to-transparent pb-4 pt-2">

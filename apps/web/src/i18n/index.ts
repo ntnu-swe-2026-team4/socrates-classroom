@@ -141,6 +141,19 @@ const messages = {
     common_send: "送出",
     common_clear: "清除",
     live_round_one: "第 {n} 輪",
+    dlg_error: "回應中斷了，請再試一次。",
+    dlg_retry: "重試",
+    voice_denied: "沒有麥克風權限——請在瀏覽器設定允許。",
+    voice_unsupported: "此瀏覽器不支援語音輸入。",
+    voice_failed: "語音輸入失敗，請再試一次。",
+    report_trajectory: "軌跡",
+    qr_alt: "教室邀請 QR Code",
+    term_retry: "重新查詢",
+    join_code_label: "輸入邀請碼",
+    join_code_placeholder: "邀請碼",
+    join_code_go: "進入教室",
+    join_failed: "加入失敗，請稍後再試。",
+    live_none_attention: "目前沒有需要關注的學生。",
   },
   en: {
     stage_loading: "Loading model…",
@@ -244,8 +257,6 @@ const messages = {
     settings_byok_clear: "Clear",
     settings_byok_set: "Set (…{last4})",
     common_back: "Back",
-    common_confirm: "Confirm",
-    common_loading: "Loading…",
     common_error: "Something went wrong",
     common_send: "Send",
     common_clear: "Clear",
@@ -277,6 +288,19 @@ const messages = {
     找到自己的答案: "Find your own answer",
     "但他從不直接回答，只用一個又一個提問，領著你走向自己的答案。":
       "But he never answers directly; question after question, he leads you toward your own answer.",
+    dlg_error: "The response was interrupted. Please try again.",
+    dlg_retry: "Retry",
+    voice_denied: "Microphone permission denied — allow it in your browser settings.",
+    voice_unsupported: "Voice input is not supported in this browser.",
+    voice_failed: "Voice input failed. Please try again.",
+    report_trajectory: "Trajectory",
+    qr_alt: "Classroom invite QR code",
+    term_retry: "Look up again",
+    join_code_label: "Enter your invite code",
+    join_code_placeholder: "Invite code",
+    join_code_go: "Join classroom",
+    join_failed: "Failed to join. Please try again later.",
+    live_none_attention: "No students need attention right now.",
   },
   es: {
     stage_loading: "Cargando modelo…",
@@ -380,8 +404,6 @@ const messages = {
     settings_byok_clear: "Borrar",
     settings_byok_set: "Configurada (…{last4})",
     common_back: "Volver",
-    common_confirm: "Confirmar",
-    common_loading: "Cargando…",
     common_error: "Algo salió mal",
     common_send: "Enviar",
     common_clear: "Limpiar",
@@ -413,12 +435,25 @@ const messages = {
     找到自己的答案: "Encuentra tu propia respuesta",
     "但他從不直接回答，只用一個又一個提問，領著你走向自己的答案。":
       "Pero nunca responde directamente: pregunta tras pregunta te conduce hacia tu propia respuesta.",
+    dlg_error: "La respuesta se interrumpió. Inténtalo de nuevo.",
+    dlg_retry: "Reintentar",
+    voice_denied: "Permiso de micrófono denegado; permítelo en la configuración del navegador.",
+    voice_unsupported: "Este navegador no admite la entrada de voz.",
+    voice_failed: "Error de entrada de voz. Inténtalo de nuevo.",
+    report_trajectory: "Trayectoria",
+    qr_alt: "Código QR de invitación a la clase",
+    term_retry: "Volver a buscar",
+    join_code_label: "Introduce tu código de invitación",
+    join_code_placeholder: "Código de invitación",
+    join_code_go: "Unirse a la clase",
+    join_failed: "No se pudo unir. Inténtalo más tarde.",
+    live_none_attention: "Ahora mismo no hay estudiantes que necesiten atención.",
   },
 } as const;
 
 export type MessageKey = keyof (typeof messages)["zh-TW"];
 
-const dictionaries: Record<Locale, Record<MessageKey, string>> = messages;
+export const dictionaries: Record<Locale, Record<MessageKey, string>> = messages;
 
 const STORAGE_KEY = "locale";
 let current: Locale = readInitial();
@@ -431,9 +466,11 @@ function readInitial(): Locale {
     if (normalized && (locales as readonly string[]).includes(normalized)) return normalized as Locale;
   } catch {}
   for (const tag of navigator.languages) {
-    const base = new Intl.Locale(tag.toLowerCase()).language;
-    const match = (locales as readonly string[]).find((l) => l.toLowerCase() === base);
-    if (match) return match as Locale;
+    try {
+      const base = new Intl.Locale(tag.toLowerCase()).language;
+      const match = (locales as readonly string[]).find((l) => l.toLowerCase() === base);
+      if (match) return match as Locale;
+    } catch {}
   }
   return "zh-TW";
 }
