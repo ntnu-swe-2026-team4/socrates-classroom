@@ -8,7 +8,7 @@ import "./index.css";
 import { routeTree } from "./routeTree.gen";
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 30_000, retry: 1 } },
+  defaultOptions: { queries: { refetchOnWindowFocus: false, refetchOnReconnect: false, staleTime: 30_000, retry: 1 } },
 });
 
 const router = createRouter({ routeTree, context: { queryClient } });

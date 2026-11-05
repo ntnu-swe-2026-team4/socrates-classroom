@@ -50,7 +50,7 @@ function LivePage() {
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-busy={live.isFetching}>
         {shown.length === 0 && (
           <p className="col-span-full rounded-2xl border border-dashed border-line bg-card px-4 py-10 text-center text-[13.5px] text-ink-faint">
-            {t("live_none_attention")}
+            {filter === "attention" ? t("live_none_attention") : t("live_none_all")}
           </p>
         )}
         {shown.map((student) => (

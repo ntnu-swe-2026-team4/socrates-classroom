@@ -34,7 +34,10 @@ function JoinEntry() {
             value={code}
             placeholder={t("join_code_placeholder")}
             onChange={(event) => setCode(event.target.value)}
-            onKeyDown={(event) => event.key === "Enter" && go()}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+              if (event.key === "Enter") go();
+            }}
             autoCapitalize="characters"
             autoCorrect="off"
             className="font-mono uppercase"

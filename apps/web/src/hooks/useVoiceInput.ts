@@ -34,6 +34,8 @@ interface VoiceSession {
   liveText: string;
   raf: number;
   ctx: AudioContext;
+  startedAt: number;
+  stopTimer?: ReturnType<typeof setTimeout>;
 }
 
 export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (value: number) => void) {
@@ -62,6 +64,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     for (const track of s.stream.getTracks()) {
       track.stop();
     }
+    clearTimeout(s.stopTimer);
     void s.ctx.close().catch(() => {});
     session.current = null;
     onAmplitudeRef.current(0);
@@ -71,6 +74,11 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
   useEffect(() => {
     stopEverythingRef.current = stopEverything;
   }, [stopEverything]);
+
+  const stopRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  useEffect(() => {
+    stopRef.current = stop;
+  });
 
   useEffect(() => () => stopEverythingRef.current(), []);
 
@@ -87,9 +95,9 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
+    } catch (cause) {
       setState("idle");
-      setError("denied");
+      setError(cause instanceof DOMException && cause.name === "NotAllowedError" ? "denied" : "failed");
       return;
     }
     const session0: VoiceSession = {
@@ -101,6 +109,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
       liveText: "",
       raf: 0,
       ctx: null as unknown as AudioContext,
+      startedAt: 0,
     };
     try {
       const ctx = new AudioContext();
@@ -165,8 +174,12 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
       }
 
       session0.ctx = ctx;
+      session0.startedAt = Date.now();
       session.current = session0;
       tick();
+      session0.stopTimer = setTimeout(() => {
+        if (session.current === session0) void stopRef.current?.();
+      }, 60_000);
     } catch {
       stream.getTracks().forEach((track) => {
         track.stop();
@@ -183,15 +196,22 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     const capturedFinal = s.liveText;
     const chunks = s.chunks;
     const hasRecognition = Boolean(s.recognition);
+    const elapsedMs = Date.now() - s.startedAt;
     stopEverything();
     setState("processing");
     try {
       if (hasRecognition && capturedFinal) {
         onFinalRef.current(capturedFinal);
-      } else if (chunks.length > 0) {
+      } else if (chunks.length > 0 && elapsedMs <= 60_000) {
         const blob = new Blob(chunks, { type: chunks[0]!.type });
-        const text = await api.stt(blob);
-        onFinalRef.current(text);
+        try {
+          const text = await api.stt(blob);
+          onFinalRef.current(text);
+        } catch {
+          setError("failed");
+        }
+      } else if (chunks.length > 0) {
+        setError("failed");
       }
     } finally {
       setState("idle");

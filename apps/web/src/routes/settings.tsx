@@ -30,6 +30,7 @@ function SettingsPage() {
       setKey("");
     },
   });
+  const saveFailed = save.isError;
   const clear = useMutation({
     mutationFn: () => api.byokClear(),
     onSuccess: (status) => queryClient.setQueryData(["byok"], status),
@@ -100,6 +101,7 @@ function SettingsPage() {
             >
               {save.isPending ? <Spinner /> : t("settings_byok_save")}
             </Button>
+            {(saveFailed || clear.isError) && <p className="text-[12.5px] text-ember">{t("common_error")}</p>}
           </div>
         )}
       </Card>

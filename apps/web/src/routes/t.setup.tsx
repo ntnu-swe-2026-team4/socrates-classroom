@@ -153,7 +153,7 @@ function SetupPage() {
 
             {source === "custom" && (
               <div className="flex flex-col gap-5">
-                <Field label={t("setup_class_label")}>
+                <Field label={t("setup_topic_title")}>
                   <Input
                     value={customTitle}
                     maxLength={40}

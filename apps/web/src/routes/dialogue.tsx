@@ -79,8 +79,9 @@ function DialoguePage() {
     if (q && !sentFromHome.current && phase === "idle" && !history.isPending) {
       sentFromHome.current = true;
       void send(q);
+      void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, q: undefined }), replace: true });
     }
-  }, [q, phase, history.isPending, send]);
+  }, [q, phase, history.isPending, send, navigate]);
 
   const onVoiceFinal = useCallback((text: string) => void send(text), [send]);
   const voice = useVoiceInput(onVoiceFinal, onAmplitudeNoop);
@@ -229,6 +230,7 @@ function DialoguePage() {
               placeholder={t("dlg_input_placeholder")}
               onChange={(event) => setText(event.target.value)}
               onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing || event.keyCode === 229) return;
                 if (event.key === "Enter" && text.trim() && !busy) {
                   void send(text);
                   setText("");

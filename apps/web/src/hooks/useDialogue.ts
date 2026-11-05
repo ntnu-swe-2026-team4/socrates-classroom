@@ -21,14 +21,16 @@ export function useDialogue(activityId: string, initialText: string[]) {
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, isRetry = false) => {
       const trimmed = text.trim();
       if (!trimmed || phase !== "idle") return;
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
       lastSentRef.current = trimmed;
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", text: trimmed }]);
+      setMessages((prev) =>
+        (isRetry ? prev.slice(0, -1) : prev).concat({ id: crypto.randomUUID(), role: "user", text: trimmed }),
+      );
       setPhase("thinking");
       setDraft("");
       setError(null);
@@ -64,7 +66,7 @@ export function useDialogue(activityId: string, initialText: string[]) {
     const text = lastSentRef.current;
     if (!text) return;
     lastSentRef.current = null;
-    void send(text);
+    void send(text, true);
   }, [send]);
 
   const interrupt = useCallback(() => {

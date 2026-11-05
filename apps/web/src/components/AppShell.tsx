@@ -87,7 +87,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             : []),
         ]
       : []),
-    { to: "/settings", match: "/settings", label: t("nav_settings"), icon: <Settings size={17} strokeWidth={1.6} /> },
+    ...(isTeacher
+      ? [
+          {
+            to: "/settings",
+            match: "/settings",
+            label: t("nav_settings"),
+            icon: <Settings size={17} strokeWidth={1.6} />,
+          },
+        ]
+      : []),
   ];
 
   const terms = termHistory.data ?? [];

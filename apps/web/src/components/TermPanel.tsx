@@ -40,10 +40,10 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
     },
   }));
 
-  async function lookup(term: string) {
-    const trimmed = term.trim().slice(0, 40);
+  async function lookup(term: string, force = false) {
+    const trimmed = term.trim().slice(0, 30);
     if (!trimmed) return;
-    const existing = stack.findIndex((entry) => entry.term === trimmed);
+    const existing = force ? -1 : stack.findIndex((entry) => entry.term === trimmed);
     if (existing >= 0) {
       setStack((prev) => prev.slice(0, existing + 1));
       return;
@@ -144,7 +144,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
                         onClick={() => {
                           setStack([{ id: ++entrySeq.current, term: query.term, status: "loading" }]);
                           setShowHistory(false);
-                          void lookup(query.term);
+                          void lookup(query.term, true);
                         }}
                         className={ROW}
                       >
@@ -174,7 +174,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
                   <ul className="flex flex-col gap-0.5">
                     {historyData.map((query) => (
                       <li key={query.at}>
-                        <button type="button" onClick={() => void lookup(query.term)} className={ROW}>
+                        <button type="button" onClick={() => void lookup(query.term, true)} className={ROW}>
                           <Search size={14} strokeWidth={1.6} className="shrink-0" />
                           <span className="min-w-0 flex-1 truncate">{query.term}</span>
                           <span className="shrink-0 text-[11px] text-ink-faint">
@@ -218,7 +218,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
               <p className="text-[13px] text-ink-faint">{t("common_error")}</p>
               <button
                 type="button"
-                onClick={() => void lookup(current.term)}
+                onClick={() => void lookup(current.term, true)}
                 className="rounded-full border border-line px-3 py-1 text-[12.5px] text-ink-soft transition-colors hover:border-ember hover:text-ember"
               >
                 {t("term_retry")}
