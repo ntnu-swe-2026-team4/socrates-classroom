@@ -1,492 +1,506 @@
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { beforeAll, describe, expect, test } from "vitest";
 import { env } from "cloudflare:test";
 import { createApp } from "../src/app";
-import { d1, one, run, type Db } from "../src/db/d1";
 import { seedDemo } from "../src/seed";
+import { run } from "../src/db/d1";
 import type { Hono } from "hono";
 import type { AppEnv } from "../src/http";
 import migrationSql from "../migrations/001_init.sql";
 
-let db: Db;
-let app: Hono<AppEnv>;
-const cookies = new Map<string, string>();
-
-function baseHeaders(cookie?: string, json = true): Record<string, string> {
-  return {
-    Accept: "application/json",
-    "Accept-Language": "zh-TW",
-    ...(json ? { "Content-Type": "application/json" } : {}),
-    ...(cookie ? { Cookie: cookie } : {}),
-  };
+declare global {
+  var classroom: { code: string; activityId: string; classroomId: string };
 }
 
-async function req(method: string, url: string, options: { cookie?: string; body?: unknown } = {}): Promise<any> {
+let app: Hono<AppEnv>;
+const jar: { teacher?: string; student?: string; student2?: string } = {};
+
+interface SseFrame {
+  event: string;
+  data: unknown;
+}
+
+async function readSse(res: Response, until: (body: string) => boolean): Promise<string> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let body = "";
+  while (!until(body)) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    body += decoder.decode(value, { stream: true });
+  }
+  await reader.cancel().catch(() => {});
+  return body;
+}
+
+function parseSse(body: string): SseFrame[] {
+  const frames: SseFrame[] = [];
+  for (const block of body.split("\n\n")) {
+    const eventLine = block.split("\n").find((line) => line.startsWith("event: "));
+    const dataLine = block.split("\n").find((line) => line.startsWith("data: "));
+    if (eventLine && dataLine) {
+      frames.push({ event: eventLine.slice(7), data: JSON.parse(dataLine.slice(6)) });
+    }
+  }
+  return frames;
+}
+
+async function req(
+  method: string,
+  url: string,
+  options: { cookie?: string; body?: unknown; raw?: BodyInit; contentType?: string } = {},
+): Promise<Response> {
+  const hasJson = options.body !== undefined;
+  const hasRaw = options.raw !== undefined;
   return app.request(
     url,
     {
       method,
-      headers: baseHeaders(options.cookie, options.body !== undefined),
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      headers: {
+        Accept: "application/json",
+        "Accept-Language": "zh-TW",
+        ...(hasJson ? { "Content-Type": "application/json" } : {}),
+        ...(hasRaw && options.contentType ? { "Content-Type": options.contentType } : {}),
+        ...(options.cookie ? { Cookie: options.cookie } : {}),
+      },
+      body: hasJson ? JSON.stringify(options.body) : options.raw,
     },
     env,
   );
 }
 
-async function login(role: "student" | "teacher", name: string): Promise<string> {
-  const res = await req("POST", "/api/auth/login", { body: { role, name } });
-  expect(res.status).toBe(200);
-  const setCookie = res.headers.getSetCookie?.()[0] ?? res.headers.get("set-cookie") ?? "";
-  const cookie = setCookie.split(";")[0];
-  expect(cookie).toContain("socrates_session=");
-  cookies.set(name, cookie);
-  return cookie;
+function cookieOf(res: Response): string {
+  const set = res.headers.getSetCookie?.()[0] ?? res.headers.get("set-cookie") ?? "";
+  return set.split(";")[0]!;
 }
 
 beforeAll(async () => {
-  // 去掉 PRAGMA（D1 不支援，foreign_keys 恆開）與註解行，切成單句後 batch
-  const cleaned = migrationSql
-    .split("\n")
-    .filter((line) => !/^\s*(--|PRAGMA)/i.test(line))
-    .join("\n");
-  const statements = cleaned
-    .split(";")
-    .map((statement) => statement.trim())
-    .filter((statement) => statement.length > 0)
-    .map((statement) => env.DB.prepare(statement));
-  await env.DB.batch(statements);
-  db = d1(env.DB);
-  await seedDemo(db);
-  app = createApp(env);
-});
-
-afterAll(() => {
-  /* pool-workers 每測試檔隔離，不需清理 */
-});
-
-function parseSse(text: string) {
-  const events: { event: string; data: any }[] = [];
-  for (const block of text.split(/\n\n/)) {
-    if (!block.trim() || block.trim().startsWith(":")) continue;
-    let event = "message";
-    const data: string[] = [];
-    for (const line of block.split("\n")) {
-      if (line.startsWith("event:")) event = line.slice(6).trim();
-      else if (line.startsWith("data:")) data.push(line.slice(5).trim());
-    }
-    if (data.length) events.push({ event, data: JSON.parse(data.join("\n")) });
+  app = createApp();
+  for (const statement of migrationSql.split(";")) {
+    const trimmed = statement.trim();
+    if (trimmed) await run(env.DB, trimmed);
   }
-  return events;
-}
-
-async function sendDialogue(cookie: string, url: string, text: string) {
-  const res = await app.request(
-    url,
-    {
-      method: "POST",
-      headers: { ...baseHeaders(cookie), Accept: "text/event-stream" },
-      body: JSON.stringify({ text }),
-    },
-    env,
-  );
-  expect(res.status).toBe(200);
-  const textBody = await res.text();
-  const events = parseSse(textBody);
-  const done = events.find((e) => e.event === "done");
-  expect(done).toBeTruthy();
-  expect(events.some((e) => e.event === "emotion")).toBe(true);
-  return { events, message: done!.data.message as any };
-}
-
-describe("認證與教室", () => {
-  test("未登入回 401，登入後拿到自己", async () => {
-    expect((await req("GET", "/api/me")).status).toBe(401);
-    const teacher = await login("teacher", "林老師");
-    const me = await (await req("GET", "/api/me", { cookie: teacher })).json();
-    expect(me.name).toBe("林老師");
-    expect(me.role).toBe("teacher");
-  });
-
-  test("老師看得到自己的教室與成員", async () => {
-    const teacher = cookies.get("林老師")!;
-    const classrooms = await (await req("GET", "/api/classrooms", { cookie: teacher })).json();
-    expect(classrooms.some((c: any) => c.id === "c1" && c.myRole === "teacher")).toBe(true);
-    const members = await (await req("GET", "/api/classrooms/c1/members", { cookie: teacher })).json();
-    expect(members.length).toBe(6);
-    expect(members.find((m: any) => m.name === "陳○宇").role).toBe("assistant");
-  });
-
-  test("學生用邀請碼加入、需要審核的教室走申請流程", async () => {
-    const student = await login("student", "新同學");
-    const discover = await (await req("GET", "/api/classrooms/discover", { cookie: student })).json();
-    expect(discover.some((c: any) => c.id === "c3")).toBe(true);
-
-    const preview = await (await req("GET", "/api/join-codes/LOGIC3", { cookie: student })).json();
-    expect(preview.id).toBe("c3");
-    const joined = await (await req("POST", "/api/classrooms/c3/join", { cookie: student, body: {} })).json();
-    expect(joined.status).toBe("joined");
-    expect(joined.classroom.joined).toBe(true);
-
-    const ethics = await (await req("GET", "/api/join-codes/ETHIC5", { cookie: student })).json();
-    expect(ethics.requireApproval).toBe(true);
-    const answers: Record<string, string> = {
-      q1: "我想學會把倫理問題說清楚。",
-      q2: "《正義：一場思辨之旅》",
-      q3: "可以",
-    };
-    const pending = await (await req("POST", "/api/classrooms/c4/join", { cookie: student, body: { answers } })).json();
-    expect(pending.status).toBe("pending");
-
-    const teacher = cookies.get("林老師")!;
-    const applications = await (
-      await req("GET", "/api/classrooms/c4/applications?status=pending", { cookie: teacher })
-    ).json();
-    const mine = (Array.isArray(applications) ? applications : []).find((a: any) => a.studentName === "新同學");
-    expect(mine).toBeTruthy();
-    const approved = await (
-      await req("POST", `/api/applications/${mine.id}/review`, {
-        cookie: teacher,
-        body: { decision: "approve", note: "歡迎" },
-      })
-    ).json();
-    expect(approved.status).toBe("approved");
-    const my = await (await req("GET", "/api/me/applications", { cookie: student })).json();
-    expect(my.find((a: any) => a.id === mine.id).status).toBe("approved");
-    const classrooms = await (await req("GET", "/api/classrooms", { cookie: student })).json();
-    expect(classrooms.some((c: any) => c.id === "c4" && c.joined)).toBe(true);
-  });
+  await seedDemo(env.DB);
 });
 
-describe("議題、題庫與對話", () => {
-  test("建立議題、串流對話、歷史與分享", async () => {
-    const guest = await login("student", "訪客");
-    const created = await (await req("POST", "/api/archives", { cookie: guest, body: { title: "測試：誠實" } })).json();
-    const { message, events } = await sendDialogue(
-      guest,
-      `/api/archives/${created.id}/dialogue`,
-      "我覺得說謊有時候是對的",
-    );
-    expect(message.text.length).toBeGreaterThan(0);
-    expect(events.filter((e) => e.event === "delta").length).toBeGreaterThan(0);
-    expect(
-      events
-        .filter((e) => e.event === "delta")
-        .map((e) => e.data.text)
-        .join(""),
-    ).toBe(message.text);
-
-    const history = await (await req("GET", `/api/archives/${created.id}/dialogue`, { cookie: guest })).json();
-    expect(history.length).toBe(2);
-    expect(history[1].emotion).toBeTruthy();
-
-    const targets = await (await req("GET", "/api/me/share-targets", { cookie: guest })).json();
-    const wang = targets.find((t: any) => t.name === "王○安");
-    const patched = await (
-      await req("PATCH", `/api/archives/${created.id}`, {
-        cookie: guest,
-        body: { bank: "private", sharedWithIds: [wang.id] },
-      })
-    ).json();
-    expect(patched.sharedWithIds).toEqual([wang.id]);
-
-    const wangCookie = await login("student", "王○安");
-    const shared = await (await req("GET", "/api/archives", { cookie: wangCookie })).json();
-    const received = shared.find((a: any) => a.id === created.id);
-    expect(received.sharedBy).toBe("訪客");
-    expect(received.sharedWithIds).toEqual([]);
-    expect(
-      (await req("PATCH", `/api/archives/${created.id}`, { cookie: wangCookie, body: { inSummary: true } })).status,
-    ).toBe(403);
-    expect(
-      (await req("POST", `/api/archives/${created.id}/dialogue`, { cookie: wangCookie, body: { text: "hi" } })).status,
-    ).toBe(403);
-  });
-
-  test("空白訊息回 422，非同步鎖與長度限制", async () => {
-    const guest = await login("student", "訪客");
-    const created = await (await req("POST", "/api/archives", { cookie: guest, body: { title: "格式檢查" } })).json();
-    expect(
-      (await req("POST", `/api/archives/${created.id}/dialogue`, { cookie: guest, body: { text: "   " } })).status,
-    ).toBe(422);
-    expect(
-      (await req("POST", `/api/archives/${created.id}/dialogue`, { cookie: guest, body: { text: "x".repeat(2001) } }))
-        .status,
-    ).toBe(422);
-  });
-});
-
-describe("公告、討論區與行事曆", () => {
-  test("學生看不到排程中的公告，老師看得到", async () => {
-    const guest = cookies.get("訪客")!;
-    const teacher = cookies.get("林老師")!;
-    const studentList = await (await req("GET", "/api/classrooms/c1/announcements", { cookie: guest })).json();
-    expect(studentList.some((a: any) => a.title.includes("第二場"))).toBe(false);
-    const teacherList = await (await req("GET", "/api/classrooms/c1/announcements", { cookie: teacher })).json();
-    expect(teacherList.some((a: any) => a.title.includes("第二場"))).toBe(true);
-  });
-
-  test("匿名貼文對同學隱藏身分，對老師顯示", async () => {
-    const guest = cookies.get("訪客")!;
-    const teacher = cookies.get("林老師")!;
-    const created = await (
-      await req("POST", "/api/classrooms/c1/posts", {
-        cookie: guest,
-        body: { topicId: null, body: "匿名發問", anonymous: true },
-      })
-    ).json();
-    expect(created.authorId).toBe("s_guest");
-    const asOther = await (await req("GET", "/api/classrooms/c1/posts", { cookie: teacher })).json();
-    const row = asOther.find((p: any) => p.id === created.id);
-    expect(row.authorLabel).toBe("訪客（匿名）");
-    expect(row.authorId).toBe("s_guest");
-    const other = await login("student", "李○恩");
-    const asStudent = await (await req("GET", "/api/classrooms/c1/posts", { cookie: other })).json();
-    expect(asStudent.find((p: any) => p.id === created.id).authorId).toBeNull();
-  });
-
-  test("行事曆包含四種系統事件與自訂事件", async () => {
-    const teacher = cookies.get("林老師")!;
-    const events = await (
-      await req("GET", "/api/classrooms/c1/calendar?from=2000-01-01T00:00:00.000Z&to=2100-01-01T00:00:00.000Z", {
-        cookie: teacher,
-      })
-    ).json();
-    const kinds = new Set(events.map((e: any) => e.kind));
-    expect(kinds.has("topic_due")).toBe(true);
-    expect(kinds.has("announcement")).toBe(true);
-    expect(kinds.has("discussion_due")).toBe(true);
-    expect(kinds.has("custom")).toBe(true);
-  });
-});
-
-describe("教材與結論報告", () => {
-  test("老師上傳教材、學生下載；學生上傳報告", async () => {
-    const teacher = cookies.get("林老師")!;
-    const guest = cookies.get("訪客")!;
-    const topic = (await one<any>(db, "SELECT id FROM topics WHERE title LIKE '正義是否%'"))!;
-    const form = new FormData();
-    form.append("file", new File(["課堂講義內容"], "講義.txt", { type: "text/plain" }));
-    const uploaded = await app.request(
-      `/api/topics/${topic.id}/resources/files`,
-      {
-        method: "POST",
-        headers: { Cookie: teacher, Accept: "application/json", "Accept-Language": "zh-TW" },
-        body: form,
-      },
-      env,
-    );
-    expect(uploaded.status).toBe(200);
-    const resource = (await uploaded.json()) as any;
-    expect(resource.kind).toBe("file");
-    const download = await app.request(resource.file.url, { headers: { Cookie: guest } }, env);
-    expect(download.status).toBe(200);
-    expect(await download.text()).toBe("課堂講義內容");
-
-    const reportTopic = (await one<any>(db, "SELECT id FROM topics WHERE accepts_reports = 1"))!;
-    const reportForm = new FormData();
-    reportForm.append("file", new File(["我的結論"], "結論.txt", { type: "text/plain" }));
-    reportForm.append("comment", "這是我的結論");
-    const submitted = await app.request(
-      `/api/topics/${reportTopic.id}/reports`,
-      {
-        method: "POST",
-        headers: { Cookie: guest, Accept: "application/json", "Accept-Language": "zh-TW" },
-        body: reportForm,
-      },
-      env,
-    );
-    expect(submitted.status).toBe(200);
-    const report = (await submitted.json()) as any;
-    expect(report.comment).toBe("這是我的結論");
-    const list = await (await req("GET", `/api/topics/${reportTopic.id}/reports`, { cookie: teacher })).json();
-    expect(list.some((r: any) => r.id === report.id)).toBe(true);
-    const deleted = await req("DELETE", `/api/reports/${report.id}`, { cookie: guest });
-    expect(deleted.status).toBe(204);
-  });
-});
-
-describe("多人討論", () => {
-  test("學生只看到自己的進度；老師看全班成果", async () => {
-    const guest = cookies.get("訪客")!;
-    const teacher = cookies.get("林老師")!;
-    const task = (await (await req("GET", "/api/classrooms/c1/discussions", { cookie: guest })).json())[0];
-    expect(task.myStatus).toBeTruthy();
-    const sessionsAsStudent = await req("GET", `/api/discussions/${task.id}/sessions`, { cookie: guest });
-    expect(sessionsAsStudent.status).toBe(403);
-    const sessions = await (await req("GET", `/api/discussions/${task.id}/sessions`, { cookie: teacher })).json();
-    expect(sessions.length).toBeGreaterThan(0);
-    expect(sessions.some((s: any) => s.status === "submitted")).toBe(true);
-  });
-
-  test("串流訊息、結論與結束後唯讀", async () => {
-    const guest = cookies.get("訪客")!;
-    const teacher = cookies.get("林老師")!;
-    const task = (await (await req("GET", "/api/classrooms/c1/discussions", { cookie: guest })).json())[0];
-    const { message } = await sendDialogue(
-      guest,
-      `/api/discussions/${task.id}/sessions/me/messages`,
-      "我認為 AI 可以協助評分，因為它可以檢查遺漏，例如一致性。",
-    );
-    expect(message.text.length).toBeGreaterThan(0);
-    const detail = await (
-      await req("PUT", `/api/discussions/${task.id}/sessions/me/conclusion`, {
-        cookie: guest,
-        body: { conclusion: "我的結論是：輔助可以，取代不行。" },
-      })
-    ).json();
-    expect(detail.status).toBe("submitted");
-    const updatedTask = await (await req("GET", `/api/discussions/${task.id}`, { cookie: guest })).json();
-    expect(updatedTask.myStatus).toBe("submitted");
-    expect(updatedTask.stats.submitted).toBeGreaterThan(0);
-
-    await req("PUT", `/api/discussions/${task.id}/status`, { cookie: teacher, body: { status: "closed" } });
-    expect(
-      (
-        await req("POST", `/api/discussions/${task.id}/sessions/me/messages`, {
-          cookie: guest,
-          body: { text: "還能說嗎" },
-        })
-      ).status,
-    ).toBe(409);
-    expect(
-      (
-        await req("PUT", `/api/discussions/${task.id}/sessions/me/conclusion`, {
-          cookie: guest,
-          body: { conclusion: null },
-        })
-      ).status,
-    ).toBe(409);
-    await req("PUT", `/api/discussions/${task.id}/status`, { cookie: teacher, body: { status: "open" } });
-  });
-});
-
-describe("四階段辯論", () => {
-  let activityId = "";
-  let groupId = "";
-  let roomId = "";
-
-  test("學生對話、草稿與確認論點", async () => {
-    const guest = cookies.get("訪客")!;
-    activityId = (await one<{ id: string }>(db, "SELECT id FROM activities WHERE title LIKE '我們該不該%'"))!.id;
-    await sendDialogue(
-      guest,
-      `/api/activities/${activityId}/dialogue`,
-      "我認為誠實很重要，因為信任是社會的基礎。例如朋友之間如果常說謊就無法合作。",
-    );
-    const progress = await (await req("GET", `/api/activities/${activityId}/progress`, { cookie: guest })).json();
-    expect(progress.rounds).toBe(1);
-    expect(progress.coverage.claim).toBe(true);
-    const draft = await (await req("POST", `/api/activities/${activityId}/position/draft`, { cookie: guest })).json();
-    expect(draft.summary.claim.length).toBeGreaterThan(0);
-    const position = await (
-      await req("PUT", `/api/activities/${activityId}/position`, {
-        cookie: guest,
-        body: { summary: { claim: "誠實很重要", reason: "信任是基礎", evidence: "朋友之間要合作" } },
-      })
-    ).json();
-    expect(position.confirmed).toBe(true);
-    expect(position.coords).toBeNull();
-  });
-
-  test("推進到團隊提純、分組與組內投票", async () => {
-    const teacher = cookies.get("林老師")!;
-    const guest = cookies.get("訪客")!;
-    const advanced = await (await req("POST", `/api/activities/${activityId}/advance`, { cookie: teacher })).json();
-    expect(advanced.stage).toBe("team");
-    const groups = await (await req("GET", `/api/activities/${activityId}/groups`, { cookie: teacher })).json();
-    expect(groups.length).toBeGreaterThanOrEqual(2);
-    groupId = groups.find((g: any) => g.memberIds.includes("s_guest")).id;
-    const message = await (
-      await req("POST", `/api/groups/${groupId}/messages`, { cookie: guest, body: { text: "我們可以先確認共同點。" } })
-    ).json();
-    expect(message.kind).toBe("chat");
-    const args = await (await req("POST", `/api/groups/${groupId}/ai/summarize`, { cookie: guest })).json();
-    expect(args.length).toBeGreaterThan(0);
-    const claim = args.find((a: any) => a.kind === "claim");
-    const voted = await (
-      await req("POST", `/api/arguments/${claim.id}/vote`, { cookie: guest, body: { vote: "endorse" } })
-    ).json();
-    expect(voted.votes.s_guest).toBe("endorse");
-    const counter = await (await req("POST", `/api/groups/${groupId}/ai/counterexample`, { cookie: guest })).json();
-    expect(counter.kind).toBe("ai_counterexample");
-  });
-
-  test("推進到比賽、發言、裁判與老師覆寫", async () => {
-    const teacher = cookies.get("林老師")!;
-    const guest = cookies.get("訪客")!;
-    const advanced = await (await req("POST", `/api/activities/${activityId}/advance`, { cookie: teacher })).json();
-    expect(advanced.stage).toBe("debate");
-    const rooms = await (await req("GET", `/api/activities/${activityId}/rooms`, { cookie: guest })).json();
-    expect(rooms.length).toBeGreaterThan(0);
-    const room = rooms.find((r: any) => r.groupA === groupId || r.groupB === groupId);
-    roomId = room.id;
-    const started = await (await req("POST", `/api/rooms/${roomId}/start`, { cookie: guest })).json();
-    expect(started.status).toBe("live");
-    let speaker = guest;
-    if (started.turn.memberId !== "s_guest") {
-      const name = (await one<{ name: string }>(db, "SELECT name FROM users WHERE id = $id", {
-        id: started.turn.memberId,
-      }))!.name;
-      speaker = await login("student", name);
-    }
-    const turn = await (
-      await req("POST", `/api/rooms/${roomId}/turns`, {
-        cookie: speaker,
-        body: { text: "我方主張誠實是原則，因為信任需要可預期。例如合作需要彼此相信。" },
-      })
-    ).json();
-    expect(turn.side).toBe("a");
-    const record = await (await req("GET", `/api/rooms/${roomId}/turns`, { cookie: guest })).json();
-    const judgment = record.judgments.find((j: any) => j.turnId === turn.id);
-    expect(judgment).toBeTruthy();
-    const overridden = await (
-      await req("PATCH", `/api/judgments/${judgment.id}`, { cookie: teacher, body: { teacherScore: 5 } })
-    ).json();
-    expect(overridden.teacherScore).toBe(5);
-    expect(
-      (await req("PATCH", `/api/judgments/${judgment.id}`, { cookie: guest, body: { teacherScore: 3 } })).status,
-    ).toBe(403);
-  });
-
-  test("組內出現分歧時可以分裂成兩組", async () => {
-    const activity = (await one<any>(db, "SELECT * FROM activities WHERE title LIKE '正義是否%'"))!;
-    await run(db, "UPDATE activities SET stage = 'team' WHERE id = $id", { id: activity.id });
-    const gid = "g_split_test";
-    const groupId = "g_split_old";
-    void gid;
-    await db.batch([
-      {
-        sql: "INSERT INTO groups (id, activity_id, label, member_ids, centroid, formed_by, seq) VALUES ($id, $aid, '第 1 組', $members, '[0,0]', 'auto', 0)",
-        params: { id: groupId, aid: activity.id, members: JSON.stringify(["s_guest", "s_wang", "s_li", "s_lin"]) },
-      },
-      {
-        sql: "INSERT INTO group_arguments (id, group_id, kind, text, parent_id, axis_index, sign, status, votes, countered, seq) VALUES ('arg_split', $gid, 'claim', '測試主張', NULL, 0, 1, 'contested', $votes, 0, 0)",
-        params: {
-          gid: groupId,
-          votes: JSON.stringify({ s_guest: "oppose", s_wang: "oppose", s_li: "endorse", s_lin: "endorse" }),
-        },
-      },
-    ]);
-    const res = await req("POST", `/api/groups/${groupId}/split`, { cookie: cookies.get("林老師")! });
+describe("身分", () => {
+  test("me 未登入回 null", async () => {
+    const res = await req("GET", "/api/me");
     expect(res.status).toBe(200);
-    const groups = (await res.json()) as any[];
-    expect(groups.length).toBe(2);
-    expect(groups.find((g) => g.id === groupId).memberIds.length).toBe(2);
-    expect(groups.find((g) => g.id === groupId).memberIds).toEqual(["s_li", "s_lin"]);
-    expect(groups.find((g) => g.id !== groupId).memberIds.length).toBe(2);
+    expect(await res.json()).toBeNull();
   });
 
-  test("結束活動後結算與星圖公開", async () => {
-    const teacher = cookies.get("林老師")!;
-    const guest = cookies.get("訪客")!;
-    expect((await req("GET", `/api/activities/${activityId}/star`, { cookie: guest })).status).toBe(403);
-    const finished = await (await req("POST", `/api/activities/${activityId}/finish`, { cookie: teacher })).json();
-    expect(finished.stage).toBe("done");
-    const scores = await (await req("GET", `/api/activities/${activityId}/scores`, { cookie: teacher })).json();
-    expect(scores.length).toBeGreaterThan(0);
-    const star = await (await req("GET", `/api/activities/${activityId}/star`, { cookie: guest })).json();
-    expect(star.axes.length).toBeGreaterThan(0);
-    expect(star.hasTimeline).toBe(true);
-    const roomTurns = await (await req("GET", `/api/rooms/${roomId}/turns`, { cookie: teacher })).json();
-    expect(roomTurns.turns.length).toBeGreaterThan(0);
+  test("demo 老師登入成功並設 cookie", async () => {
+    const res = await req("POST", "/api/auth/login", {
+      body: { email: "demo@socrates.tw", password: "demo-demo" },
+    });
+    expect(res.status).toBe(200);
+    const user = await res.json();
+    expect(user.role).toBe("teacher");
+    jar.teacher = cookieOf(res);
+    expect(jar.teacher).toContain("socrates_session=");
+  });
+
+  test("錯誤密碼 401 unauthorized（zh 訊息）", async () => {
+    const res = await req("POST", "/api/auth/login", {
+      body: { email: "demo@socrates.tw", password: "wrong-pass" },
+    });
+    expect(res.status).toBe(401);
+    const error = await res.json();
+    expect(error.code).toBe("unauthorized");
+    expect(error.message).toContain("登入");
+  });
+});
+
+describe("開課", () => {
+  test("未登入存 topics 401", async () => {
+    const res = await req("GET", "/api/topics");
+    expect(res.status).toBe(401);
+  });
+
+  test("老師列系統主題、自建主題、AI 生成", async () => {
+    const list = await req("GET", "/api/topics", { cookie: jar.teacher });
+    expect(list.status).toBe(200);
+    const topics = (await list.json()) as Array<{ id: string; prompts: string[] }>;
+    expect(topics.length).toBeGreaterThanOrEqual(3);
+
+    const created = await req("POST", "/api/topics", {
+      cookie: jar.teacher,
+      body: { title: "測試主題", statement: "測試敘述", prompts: ["為什麼？"] },
+    });
+    expect(created.status).toBe(201);
+    const topic = await created.json();
+    expect(topic.prompts).toEqual(["為什麼？"]);
+
+    const generated = await req("POST", "/api/topics/generate", {
+      cookie: jar.teacher,
+      body: { direction: "AI 對就業的影響" },
+    });
+    const topics2 = (await generated.json()) as unknown[];
+    expect(topics2.length).toBe(3);
+  });
+
+  test("建立教室回 code/url/activityId，重開新活動同 code", async () => {
+    const created = await req("POST", "/api/classrooms", {
+      cookie: jar.teacher,
+      body: { name: "高三忠班", topicId: "t_first" },
+    });
+    expect(created.status).toBe(404);
+    const list = await req("GET", "/api/topics", { cookie: jar.teacher });
+    const first = ((await list.json()) as Array<{ id: string }>)[0]!;
+    const ok = await req("POST", "/api/classrooms", {
+      cookie: jar.teacher,
+      body: { name: "高三忠班", topicId: first.id },
+    });
+    expect(ok.status).toBe(201);
+    const classroom = await ok.json();
+    expect(classroom.code).toHaveLength(6);
+    expect(classroom.url).toContain(`/join/${classroom.code}`);
+    expect(classroom.activityId).toBeTruthy();
+    expect(classroom.classroomId).toBeTruthy();
+    globalThis.classroom = classroom;
+  });
+});
+
+describe("入場", () => {
+  let classroom: { code: string; activityId: string };
+
+  beforeAll(() => {
+    classroom = globalThis.classroom as { code: string; activityId: string };
+  });
+
+  test("無效碼 404 join_code_invalid", async () => {
+    const res = await req("GET", "/api/join/nope99");
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { code: string }).code).toBe("join_code_invalid");
+  });
+
+  test("GET join 回 JoinInfo", async () => {
+    const res = await req("GET", `/api/join/${classroom.code}`);
+    expect(res.status).toBe(200);
+    const info = await res.json();
+    expect(info.classroomName).toBe("高三忠班");
+    expect(info.topic.title).toBeTruthy();
+    expect(Array.isArray(info.topic.prompts)).toBe(true);
+  });
+
+  test("未勾 ToS 422 tos_required", async () => {
+    const res = await req("POST", "/api/join", {
+      body: { code: classroom.code, name: "小明", tosAccepted: false },
+    });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe("tos_required");
+  });
+
+  test("訪客 join 建身分＋入教室", async () => {
+    const res = await req("POST", "/api/join", {
+      body: { code: classroom.code, name: "小明", tosAccepted: true },
+    });
+    expect(res.status).toBe(200);
+    const payload = await res.json();
+    expect(payload.user.role).toBe("student");
+    expect(payload.user.name).toBe("小明");
+    expect(payload.activityId).toBe(classroom.activityId);
+    jar.student = cookieOf(res);
+
+    const again = await req("POST", "/api/join", {
+      cookie: jar.student,
+      body: { code: classroom.code, tosAccepted: true },
+    });
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { activityId: string }).activityId).toBe(classroom.activityId);
+  });
+
+  test("同名訪客 409 name_taken", async () => {
+    const res = await req("POST", "/api/join", {
+      body: { code: classroom.code, name: "小明", tosAccepted: true },
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe("name_taken");
+  });
+
+  test("老師 session join 403 only_student", async () => {
+    const res = await req("POST", "/api/join", {
+      cookie: jar.teacher,
+      body: { code: classroom.code, tosAccepted: true },
+    });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe("only_student");
+  });
+
+  test("第二位學生入場", async () => {
+    const res = await req("POST", "/api/join", {
+      body: { code: classroom.code, name: "小美", tosAccepted: true },
+    });
+    expect(res.status).toBe(200);
+    jar.student2 = cookieOf(res);
+  });
+});
+
+describe("對話", () => {
+  let classroom: { code: string; activityId: string };
+
+  beforeAll(() => {
+    classroom = globalThis.classroom as { code: string; activityId: string };
+  });
+
+  test("活動資訊", async () => {
+    const res = await req("GET", `/api/activities/${classroom.activityId}`, { cookie: jar.student });
+    expect(res.status).toBe(200);
+    const info = await res.json();
+    expect(info.finishedAt).toBeNull();
+    expect(info.topic).toBeTruthy();
+  });
+
+  test("非成員 403", async () => {
+    const res = await req("POST", "/api/join", {
+      body: { code: classroom.code, name: "路人", tosAccepted: true },
+    });
+    const outsider = cookieOf(res);
+    const list = await req("GET", "/api/topics", { cookie: outsider });
+    expect(list.status).toBe(403);
+  });
+
+  test("SSE 一輪對話：delta → done，歷史入庫", async () => {
+    const res = await req("POST", `/api/activities/${classroom.activityId}/dialogue`, {
+      cookie: jar.student,
+      body: { text: "我覺得應該要拉桿，救五個人。" },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    const body = await readSse(res, (text) => text.includes("event: done"));
+    const frames = parseSse(body);
+    const events = frames.map((frame) => frame.event);
+    expect(events).toContain("delta");
+    expect(events[events.length - 1]).toBe("done");
+    const done = frames.find((frame) => frame.event === "done")!.data as {
+      message: { text: string; role: string };
+    };
+    expect(done.message.role).toBe("assistant");
+    expect(done.message.text.length).toBeGreaterThan(4);
+    expect(frames.some((frame) => frame.event === "emotion")).toBe(false);
+    expect(frames.some((frame) => frame.event === "meta")).toBe(false);
+
+    const history = await req("GET", `/api/activities/${classroom.activityId}/dialogue`, { cookie: jar.student });
+    const messages = (await history.json()) as Array<{ role: string }>;
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+  });
+
+  test("老師 POST 對話 403 only_student；帶 studentId 可讀任意歷史", async () => {
+    const res = await req("POST", `/api/activities/${classroom.activityId}/dialogue`, {
+      cookie: jar.teacher,
+      body: { text: "老師也想聊" },
+    });
+    expect(res.status).toBe(403);
+
+    const me = await req("GET", "/api/me", { cookie: jar.student });
+    const studentId = ((await me.json()) as { id: string }).id;
+    const history = await req("GET", `/api/activities/${classroom.activityId}/dialogue?studentId=${studentId}`, {
+      cookie: jar.teacher,
+    });
+    expect(history.status).toBe(200);
+    expect(((await history.json()) as unknown[]).length).toBe(2);
+  });
+
+  test("學生帶他人 studentId 403", async () => {
+    const me = await req("GET", "/api/me", { cookie: jar.student2 });
+    const otherId = ((await me.json()) as { id: string }).id;
+    const res = await req("GET", `/api/activities/${classroom.activityId}/dialogue?studentId=${otherId}`, {
+      cookie: jar.student,
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("即時面板", () => {
+  let classroom: { activityId: string };
+
+  beforeAll(() => {
+    classroom = globalThis.classroom as { activityId: string };
+  });
+
+  test("學生不能看面板", async () => {
+    const res = await req("GET", `/api/activities/${classroom.activityId}/live`, { cookie: jar.student });
+    expect(res.status).toBe(403);
+  });
+
+  test("老師面板 snapshot", async () => {
+    const res = await req("GET", `/api/activities/${classroom.activityId}/live`, { cookie: jar.teacher });
+    expect(res.status).toBe(200);
+    const students = (await res.json()) as Array<{ name: string; rounds: number; flagged: boolean }>;
+    expect(students.length).toBe(3);
+    expect(students.some((s) => s.name === "小明" && s.rounds === 1)).toBe(true);
+  });
+
+  test("events SSE 首發 live snapshot", async () => {
+    const res = await req("GET", `/api/activities/${classroom.activityId}/events`, { cookie: jar.teacher });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    const body = await readSse(res, (text) => text.includes("event: live"));
+    const frames = parseSse(body);
+    expect(frames[0]?.event).toBe("live");
+  });
+});
+
+describe("結束與報告", () => {
+  let classroom: { activityId: string };
+
+  beforeAll(() => {
+    classroom = globalThis.classroom as { activityId: string };
+  });
+
+  test("學生不能 finish", async () => {
+    const res = await req("POST", `/api/activities/${classroom.activityId}/finish`, { cookie: jar.student });
+    expect(res.status).toBe(403);
+  });
+
+  test("finish 後 report_pending → advance → ready", async () => {
+    const finish = await req("POST", `/api/activities/${classroom.activityId}/finish`, { cookie: jar.teacher });
+    expect(finish.status).toBe(204);
+
+    const pending = await req("GET", `/api/activities/${classroom.activityId}/report`, { cookie: jar.teacher });
+    expect(pending.status).toBe(404);
+    expect(((await pending.json()) as { code: string }).code).toBe("report_pending");
+
+    await env.ReportJob.getByName(classroom.activityId).advance();
+
+    const teacherReport = await req("GET", `/api/activities/${classroom.activityId}/report`, {
+      cookie: jar.teacher,
+    });
+    expect(teacherReport.status).toBe(200);
+    const report = (await teacherReport.json()) as {
+      topicTitle: string;
+      group: { axes: unknown[]; points: Array<{ pseudonym: string; values: number[]; cluster: number }> };
+      individuals: Array<{ pseudonym: string; hexagon: unknown[]; arguments: unknown[]; violations: unknown[] }>;
+    };
+    expect(report.group.axes.length).toBeGreaterThanOrEqual(2);
+    expect(report.individuals.length).toBe(3);
+    expect(report.individuals[0]!.hexagon.length).toBe(6);
+    expect(report.group.points[0]!.values.length).toBe(2);
+
+    const studentReport = await req("GET", `/api/activities/${classroom.activityId}/report`, {
+      cookie: jar.student,
+    });
+    expect(studentReport.status).toBe(200);
+    const sreport = (await studentReport.json()) as { individual: { pseudonym: string } };
+    expect(sreport.individual.pseudonym).toMatch(/^學生/);
+  });
+
+  test("結束後不能再對話 409 activity_finished", async () => {
+    const res = await req("POST", `/api/activities/${classroom.activityId}/dialogue`, {
+      cookie: jar.student,
+      body: { text: "還想聊" },
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe("activity_finished");
+  });
+});
+
+describe("語音／查詢／BYOK", () => {
+  test("stt 無 AI binding 回 mock 文本", async () => {
+    const form = new FormData();
+    form.append("audio", new Blob([new Uint8Array([1, 2, 3])], { type: "audio/webm" }));
+    const res = await req("POST", "/api/stt", { cookie: jar.student, raw: form });
+    expect(res.status).toBe(200);
+    const payload = await res.json();
+    expect(typeof payload.text).toBe("string");
+  });
+
+  test("tts 回 WAV", async () => {
+    const res = await req("POST", "/api/tts", { cookie: jar.student, body: { text: "正義是什麼", lang: "zh" } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("audio/wav");
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect(bytes[0]).toBe(0x52);
+    expect(bytes[1]).toBe(0x49);
+  });
+
+  test("lookup mock 回 markdown", async () => {
+    const res = await req("POST", "/api/lookup", { cookie: jar.student, body: { term: "功利主義" } });
+    expect(res.status).toBe(200);
+    const payload = await res.json();
+    expect(payload.term).toBe("功利主義");
+    expect(payload.markdown).toContain("功利主義");
+  });
+
+  test("byok set/get/delete，非法 provider 422", async () => {
+    const bad = await req("PUT", "/api/settings/byok", {
+      cookie: jar.teacher,
+      body: { provider: "evil-corp", key: "sk-12345678" },
+    });
+    expect(bad.status).toBe(422);
+    expect(((await bad.json()) as { code: string }).code).toBe("byok_provider_invalid");
+
+    const set = await req("PUT", "/api/settings/byok", {
+      cookie: jar.teacher,
+      body: { provider: "openrouter", key: "sk-or-v1-abcdefgh" },
+    });
+    expect(set.status).toBe(200);
+    expect(((await set.json()) as { last4: string }).last4).toBe("efgh");
+
+    const get = await req("GET", "/api/settings/byok", { cookie: jar.teacher });
+    expect(((await get.json()) as { provider: string }).provider).toBe("openrouter");
+
+    const del = await req("DELETE", "/api/settings/byok", { cookie: jar.teacher });
+    expect(del.status).toBe(204);
+    expect(await (await req("GET", "/api/settings/byok", { cookie: jar.teacher })).json()).toBeNull();
+  });
+});
+
+describe("違規標記", () => {
+  test("數學作業訊息觸發 violation 事件與面板 flag", async () => {
+    const list = await req("GET", "/api/topics", { cookie: jar.teacher });
+    const first = ((await list.json()) as Array<{ id: string }>)[0]!;
+    const created = await req("POST", "/api/classrooms", {
+      cookie: jar.teacher,
+      body: { name: "違規班", topicId: first.id },
+    });
+    const classroom = (await created.json()) as { code: string; activityId: string };
+
+    const joined = await req("POST", "/api/join", {
+      body: { code: classroom.code, name: "阿明", tosAccepted: true },
+    });
+    const cookie = cookieOf(joined);
+
+    const turn = await req("POST", `/api/activities/${classroom.activityId}/dialogue`, {
+      cookie,
+      body: { text: "幫我解這題數學作業的方程式" },
+    });
+    expect(turn.status).toBe(200);
+    await parseSse(await turn.text());
+
+    const live = await req("GET", `/api/activities/${classroom.activityId}/live`, { cookie: jar.teacher });
+    const students = (await live.json()) as Array<{ name: string; flagged: boolean; flagReason?: string }>;
+    const row = students.find((s) => s.name === "阿明");
+    expect(row?.flagged).toBe(true);
+    expect(row?.flagReason).toBe("math");
+  });
+});
+
+describe("重開活動", () => {
+  test("既有教室重開：同 code、新 activityId，join 解析到最新", async () => {
+    const classroom = globalThis.classroom as {
+      classroomId: string;
+      code: string;
+      activityId: string;
+    };
+    const list = await req("GET", "/api/topics", { cookie: jar.teacher });
+    const first = ((await list.json()) as Array<{ id: string }>)[0]!;
+    const res = await req("POST", `/api/classrooms/${classroom.classroomId}/activities`, {
+      cookie: jar.teacher,
+      body: { name: "高三忠班", topicId: first.id },
+    });
+    expect(res.status).toBe(201);
+    const reopened = (await res.json()) as { code: string; activityId: string };
+    expect(reopened.code).toBe(classroom.code);
+    expect(reopened.activityId).not.toBe(classroom.activityId);
+
+    const info = await req("GET", `/api/join/${classroom.code}`);
+    const joinedAgain = await req("POST", "/api/join", {
+      cookie: jar.student,
+      body: { code: classroom.code, tosAccepted: true },
+    });
+    const payload = (await joinedAgain.json()) as { activityId: string };
+    expect(payload.activityId).toBe(reopened.activityId);
+    void info;
   });
 });

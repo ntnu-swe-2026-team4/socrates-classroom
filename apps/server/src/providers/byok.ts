@@ -1,72 +1,52 @@
-import {
-  anthropicMessagesApi,
-  googleGenerativeAIApi,
-  openAICompletionsApi,
-  openAIResponsesApi,
-} from "@earendil-works/pi-ai/compat";
-import { createProvider, type Api, type Model, type Provider } from "@earendil-works/pi-ai";
-import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import type { Env } from "../env";
 
-export const BYOK_CATALOG: Record<string, { name: string; defaultModel: string; env?: string }> = {
-  openrouter: { name: "OpenRouter", defaultModel: "z-ai/glm-5.3-flash", env: "OPENROUTER_API_KEY" },
-  zai: { name: "Z.AI (GLM)", defaultModel: "glm-5.3-flash", env: "ZAI_API_KEY" },
-  "zai-coding-cn": { name: "Z.AI Coding (China)", defaultModel: "glm-5.3-flash", env: "ZAI_CODING_CN_API_KEY" },
-  opencode: { name: "OpenCode Zen", defaultModel: "glm-5.3-flash", env: "OPENCODE_API_KEY" },
-  "opencode-go": { name: "OpenCode Go", defaultModel: "glm-5.3-flash", env: "OPENCODE_API_KEY" },
-  anthropic: { name: "Anthropic", defaultModel: "claude-sonnet-4-5", env: "ANTHROPIC_API_KEY" },
-  openai: { name: "OpenAI", defaultModel: "gpt-5.2", env: "OPENAI_API_KEY" },
-  "openai-codex": { name: "OpenAI Codex", defaultModel: "gpt-5.3-codex", env: "OPENAI_API_KEY" },
-  google: { name: "Google Gemini", defaultModel: "gemini-3-flash", env: "GEMINI_API_KEY" },
-  deepseek: { name: "DeepSeek", defaultModel: "deepseek-v4", env: "DEEPSEEK_API_KEY" },
-  groq: { name: "Groq", defaultModel: "llama-4-maverick", env: "GROQ_API_KEY" },
-  xai: { name: "xAI", defaultModel: "grok-4", env: "XAI_API_KEY" },
-  mistral: { name: "Mistral", defaultModel: "mistral-large", env: "MISTRAL_API_KEY" },
-  moonshotai: { name: "Moonshot AI", defaultModel: "kimi-k3", env: "MOONSHOT_API_KEY" },
-  minimax: { name: "MiniMax", defaultModel: "minimax-m3", env: "MINIMAX_API_KEY" },
-  together: { name: "Together AI", defaultModel: "glm-5.3-flash", env: "TOGETHER_API_KEY" },
-  fireworks: { name: "Fireworks", defaultModel: "glm-5.3-flash", env: "FIREWORKS_API_KEY" },
-  "vercel-ai-gateway": { name: "Vercel AI Gateway", defaultModel: "z-ai/glm-5.3-flash", env: "AI_GATEWAY_API_KEY" },
-  nvidia: { name: "NVIDIA NIM", defaultModel: "deepseek-v4", env: "NVIDIA_API_KEY" },
-  baseten: { name: "Baseten", defaultModel: "glm-5.3-flash", env: "BASETEN_API_KEY" },
-  huggingface: { name: "Hugging Face", defaultModel: "deepseek-v4", env: "HF_TOKEN" },
-  "kimi-coding": { name: "Kimi For Coding", defaultModel: "kimi-k3", env: "KIMI_API_KEY" },
-};
+const ALLOWED = ["openrouter", "opencode-go"] as const;
+export type ByokProvider = (typeof ALLOWED)[number];
 
-export function byokSupported(providerId: string): boolean {
-  return providerId in BYOK_CATALOG;
+export function isAllowedProvider(provider: string): provider is ByokProvider {
+  return (ALLOWED as readonly string[]).includes(provider);
 }
 
-function apiMap(): Partial<Record<Api, unknown>> {
-  return {
-    "openai-completions": openAICompletionsApi(),
-    "openai-responses": openAIResponsesApi(),
-    "anthropic-messages": anthropicMessagesApi(),
-    "google-generative-ai": googleGenerativeAIApi(),
-  } as Partial<Record<Api, unknown>>;
+async function aesKey(env: Env): Promise<CryptoKey> {
+  const secret = env.BYOK_ENC_KEY ?? "socrates-dev-secret";
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+  return crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
-export function byokProvider(providerId: string, apiKey: string, modelId?: string): Provider {
-  const meta = BYOK_CATALOG[providerId];
-  if (!meta) throw new Error(`byok_provider_unsupported:${providerId}`);
-  let models: readonly Model<Api>[];
+function b64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function fromB64(text: string): Uint8Array {
+  const binary = atob(text);
+  return Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+}
+
+export async function encryptKey(env: Env, plaintext: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await aesKey(env);
+  const sealed = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: iv as BufferSource },
+    key,
+    new TextEncoder().encode(plaintext),
+  );
+  return `${b64(iv)}.${b64(new Uint8Array(sealed))}`;
+}
+
+export async function decryptKey(env: Env, stored: string): Promise<string | null> {
+  const [ivPart, dataPart] = stored.split(".");
+  if (!ivPart || !dataPart) return null;
   try {
-    models = (getBuiltinModels as unknown as (p: string) => readonly Model<Api>[])(providerId);
+    const key = await aesKey(env);
+    const plain = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: fromB64(ivPart) as BufferSource },
+      key,
+      fromB64(dataPart) as BufferSource,
+    );
+    return new TextDecoder().decode(plain);
   } catch {
-    throw new Error(`byok_provider_unknown:${providerId}`);
+    return null;
   }
-  if (!models.length) throw new Error(`byok_provider_unknown:${providerId}`);
-  const baseUrl = (modelId ? models.find((m) => m.id === modelId) : models[0])?.baseUrl ?? models[0].baseUrl;
-  return createProvider({
-    id: providerId,
-    name: meta.name,
-    baseUrl,
-    auth: { apiKey: { name: `${meta.name} API key`, resolve: async () => ({ auth: { apiKey }, source: "BYOK" }) } },
-    models,
-    api: apiMap() as any,
-  });
-}
-
-export function resolveByokKey(_env: Env, _providerId: string, supplied?: string): string | undefined {
-  return supplied ?? undefined;
 }

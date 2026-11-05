@@ -1,80 +1,79 @@
 import { describe, expect, test } from "vitest";
-import { prepare } from "../src/db/d1";
-import { CLASS_POOL, DEV_POOL, MOCK_POOL, poolForMode } from "../src/providers/whitelist";
-import { BYOK_CATALOG, byokSupported } from "../src/providers/byok";
+import { issueSessionToken, userFromSessionToken, hashPassword, verifyPassword } from "../src/auth";
+import { encryptKey, decryptKey, isAllowedProvider } from "../src/providers/byok";
+import { availableProviders } from "../src/providers/catalog";
+import { localize } from "../src/messages";
+import { mockSocratesReply, openingMessage } from "../src/providers/mock-socrates";
 
-describe("D1 $named → 位置參數轉換", () => {
-  test("基本轉換：出現順序即綁定順序", () => {
-    const q = prepare("SELECT * FROM users WHERE id = $id AND role = $role", { role: "teacher", id: "u_1" });
-    expect(q.sql).toBe("SELECT * FROM users WHERE id = ? AND role = ?");
-    // $id 在 SQL 中先出現，即使 params 物件順序相反
-    expect(q.values).toEqual(["u_1", "teacher"]);
+const envStub = { env: { AUTH_SECRET: "unit-test-secret" } } as never;
+
+describe("signed session", () => {
+  test("token roundtrip", async () => {
+    const user = { id: "u1", name: "小明", role: "student" as const };
+    const token = await issueSessionToken(envStub, user);
+    expect(await userFromSessionToken(envStub, token)).toEqual(user);
   });
 
-  test("同一參數重複出現會綁兩次", () => {
-    const q = prepare("INSERT INTO t (a, b) VALUES ($v, $v)", { v: 7 });
-    expect(q.values).toEqual([7, 7]);
+  test("竄改 token 拒絕", async () => {
+    const token = await issueSessionToken(envStub, { id: "u1", name: "小明", role: "student" });
+    const tampered = `${token.slice(0, -3)}xyz`;
+    expect(await userFromSessionToken(envStub, tampered)).toBeNull();
   });
 
-  test("缺參數直接丟錯（避免静默 null）", () => {
-    expect(() => prepare("SELECT * FROM t WHERE a = $missing", {})).toThrow(/\$missing/);
-  });
-
-  test("undefined 轉成 null", () => {
-    const q = prepare("INSERT INTO t (a) VALUES ($a)", { a: undefined });
-    expect(q.values).toEqual([null]);
-  });
-});
-
-describe("provider 白名單（ZDR 規則）", () => {
-  test("班級 pool：四段、順序固定、全在白名單內", () => {
-    expect(CLASS_POOL.map((p) => p.provider)).toEqual(["dgx-spark", "opencode-go", "openrouter", "workers-ai"]);
-    expect(CLASS_POOL.every((p) => /glm/i.test(p.model))).toBe(true);
-  });
-
-  test("開發路由：Coding Plan 優先", () => {
-    expect(DEV_POOL[0]).toEqual({ provider: "zai", model: "glm-5.3-flash" });
-  });
-
-  test("mock 模式與模式解析", () => {
-    expect(MOCK_POOL[0].provider).toBe("mock");
-    expect(poolForMode("dev")[0].provider).toBe("zai");
-    expect(poolForMode("mock")[0].provider).toBe("mock");
-    expect(poolForMode(undefined)[0].provider).toBe("dgx-spark");
-    expect(poolForMode("pool")).toEqual(CLASS_POOL);
-  });
-
-  test("禁入清單不得出現在任何 pool", () => {
-    const banned = ["muse", "iceman", "grok", "gpt", "claude", "deepseek"];
-    for (const pool of [CLASS_POOL, DEV_POOL, MOCK_POOL]) {
-      for (const entry of pool) {
-        for (const b of banned) {
-          expect(`${entry.provider}:${entry.model}`.toLowerCase().includes(b)).toBe(false);
-        }
-      }
-    }
+  test("過期 token 拒絕", async () => {
+    const user = { id: "u1", name: "小明", role: "student" as const };
+    const token = await issueSessionToken(envStub, user);
+    const [payload, sig] = token.split(".");
+    const claims = JSON.parse(atob(payload!.replaceAll("-", "+").replaceAll("_", "/"))) as { exp: number };
+    claims.exp = Date.now() - 1000;
+    const expiredPayload = btoa(JSON.stringify(claims)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+    expect(await userFromSessionToken(envStub, `${expiredPayload}.${sig}`)).toBeNull();
   });
 });
 
-describe("BYOK 目錄", () => {
-  test("班級 pool 用到的雲端 provider 都在 BYOK 目錄內", () => {
-    for (const entry of [...CLASS_POOL, ...DEV_POOL]) {
-      if (["dgx-spark", "workers-ai", "mock"].includes(entry.provider)) continue;
-      expect(byokSupported(entry.provider)).toBe(true);
-    }
+describe("password", () => {
+  test("pbkdf2 roundtrip", async () => {
+    const hash = await hashPassword("demo-demo");
+    expect(await verifyPassword("demo-demo", hash)).toBe(true);
+    expect(await verifyPassword("wrong", hash)).toBe(false);
   });
+});
 
-  test("主要 BYOK provider 都有預設模型與環境變數名", () => {
-    for (const id of ["openrouter", "zai", "opencode-go", "anthropic", "openai", "google", "groq"]) {
-      expect(BYOK_CATALOG[id]).toBeDefined();
-      expect(BYOK_CATALOG[id].defaultModel.length).toBeGreaterThan(0);
-      expect(BYOK_CATALOG[id].env).toBeDefined();
-    }
+describe("byok", () => {
+  test("aes-gcm roundtrip 與 allowlist", async () => {
+    const enc = await encryptKey({ BYOK_ENC_KEY: "k" } as never, "sk-or-v1-abcdefgh");
+    expect(enc).not.toContain("sk-or");
+    expect(await decryptKey({ BYOK_ENC_KEY: "k" } as never, enc)).toBe("sk-or-v1-abcdefgh");
+    expect(isAllowedProvider("openrouter")).toBe(true);
+    expect(isAllowedProvider("evil")).toBe(false);
   });
+});
 
-  test("不支援的 provider 直接拒絕", () => {
-    expect(byokSupported("github-copilot")).toBe(false);
-    expect(byokSupported("amazon-bedrock")).toBe(false);
-    expect(byokSupported("not-a-provider")).toBe(false);
+describe("catalog", () => {
+  test("mock 模式只有 mock；real 模式依 env 過濾", () => {
+    const mockEnv = { LLM_PROVIDER: "mock" } as never;
+    expect(availableProviders(mockEnv).map((p) => p.id)).toEqual(["mock"]);
+    const real = availableProviders({
+      LLM_PROVIDER: "pool",
+      DGX_BASE_URL: "http://dgx:8888/v1",
+      OPENROUTER_API_KEY: "sk",
+    } as never);
+    expect(real.map((p) => p.id)).toEqual(["dgx-spark", "openrouter"]);
+  });
+});
+
+describe("messages", () => {
+  test("三語在地化", () => {
+    expect(localize("tos_required", "zh")).toContain("同意");
+    expect(localize("tos_required", "en")).toContain("Terms");
+    expect(localize("tos_required", "es")).toContain("Términos");
+  });
+});
+
+describe("mock socrates", () => {
+  test("回覆包含挑戰語氣且非空", () => {
+    const reply = mockSocratesReply("我認為效益最大", 3);
+    expect(reply.length).toBeGreaterThan(8);
+    expect(openingMessage("電車難題")).toContain("電車難題");
   });
 });
