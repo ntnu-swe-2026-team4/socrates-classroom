@@ -6,6 +6,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { TextSearch } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
+import { readActivityId } from "@/api/local";
 import { SocratesStage, type SocratesHandle } from "@/components/SocratesStage";
 import { useDialogue } from "@/hooks/useDialogue";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
@@ -30,7 +31,7 @@ export const Route = createFileRoute("/dialogue")({
     term: typeof search.term === "string" ? search.term : undefined,
   }),
   beforeLoad: async ({ search, context }) => {
-    if (!search.activityId && !api.currentActivityId()) {
+    if (!search.activityId && !readActivityId()) {
       const me = await context.queryClient.fetchQuery({
         queryKey: ["me"],
         queryFn: () => api.me(),
@@ -46,7 +47,7 @@ export const Route = createFileRoute("/dialogue")({
 function DialoguePage() {
   const t = useT();
   const { activityId: activityParam, topic: topicId, q, term } = Route.useSearch();
-  const activityId = activityParam ?? api.currentActivityId() ?? "";
+  const activityId = activityParam ?? readActivityId() ?? "";
   const topicQuery = useQuery({
     queryKey: ["topics"],
     queryFn: () => api.listTopics(),

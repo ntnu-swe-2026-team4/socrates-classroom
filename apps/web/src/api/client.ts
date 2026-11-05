@@ -1,38 +1,7 @@
+import { readActivityId, persistActivityId, recordTerm } from "./local";
 import type { Api, ByokStatus, Topic, User } from "./types";
 
 export const DEFAULT_JOIN_CODE = "socrat";
-
-const TERM_KEY = "socrates_terms";
-const ACTIVITY_KEY = "socrates_activity";
-
-function readTermHistory(): { term: string; at: string }[] {
-  try {
-    const raw = localStorage.getItem(TERM_KEY);
-    return raw ? (JSON.parse(raw) as { term: string; at: string }[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function persistTermHistory() {
-  try {
-    localStorage.setItem(TERM_KEY, JSON.stringify(store.termHistory));
-  } catch {}
-}
-
-function readActivityId(): string | null {
-  try {
-    return localStorage.getItem(ACTIVITY_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function persistActivityId(id: string) {
-  try {
-    localStorage.setItem(ACTIVITY_KEY, id);
-  } catch {}
-}
 
 const latency = (ms = 220 + Math.random() * 320) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -43,13 +12,12 @@ const store = {
   joined: new Map<string, { user: User; activityId: string }>(),
   live: new Map<string, ReturnType<typeof import("./mock/data").seedLiveStudents>>(),
   turns: new Map<string, number>(),
-  termHistory: readTermHistory(),
   classrooms: new Map<string, { name: string; topicId: string }>(),
   activities: new Map<string, string>(),
   customTopics: new Map<string, Topic>(),
 };
 
-import { advanceLive, aiTopics, report, seedLiveStudents, teacher, topics } from "./mock/data";
+import { advanceLive, aiTopics, seedLiveStudents, teacher, teacherReport, topics } from "./mock/data";
 import { mockSocrates, openingMessage } from "./mock/dialogue";
 
 function topicById(topicId: string): Topic {
@@ -182,7 +150,22 @@ export const mockApi: Api = {
   },
   async report(_activityId) {
     await latency(500);
-    return report;
+    return teacherReport;
+  },
+  async activityInfo(activityId) {
+    await latency(200);
+    const topicId = store.activities.get(activityId);
+    const topic = topicId ? topicById(topicId) : topics[0]!;
+    return {
+      id: activityId,
+      classroomId: "c-mock",
+      classroomName: "公民課 · 第四週",
+      topic,
+      finishedAt: null,
+    };
+  },
+  async finishActivity(_activityId) {
+    await latency(200);
   },
   async byokStatus() {
     await latency(140);
@@ -200,19 +183,8 @@ export const mockApi: Api = {
   },
   async lookupTerm(term) {
     await latency(500 + Math.random() * 500);
-    store.termHistory = [
-      { term, at: new Date().toISOString() },
-      ...store.termHistory.filter((q) => q.term !== term),
-    ].slice(0, 30);
-    persistTermHistory();
+    recordTerm(term);
     return { term, markdown: buildTermMarkdown(term) };
-  },
-  async termHistory() {
-    await latency(150);
-    return store.termHistory;
-  },
-  currentActivityId() {
-    return store.lastActivityId;
   },
 };
 

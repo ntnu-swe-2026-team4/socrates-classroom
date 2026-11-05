@@ -2,6 +2,7 @@ import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { History, PanelRight, Search, TextSearch } from "lucide-react";
 import { api, type TermExplanation } from "@/api";
+import { readTermHistory } from "@/api/local";
 import { Markdown } from "@/components/Markdown";
 import { Spinner, cn } from "@/components/ui";
 import { useSelectionPopover } from "@/hooks/useSelectionPopover";
@@ -32,7 +33,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
   const entrySeq = useRef(0);
   const bodyRef = useRef<HTMLDivElement>(null);
   const { selection, clear } = useSelectionPopover(bodyRef);
-  const history = useQuery({ queryKey: ["termHistory"], queryFn: () => api.termHistory(), enabled: open });
+  const history = useQuery({ queryKey: ["termHistory"], queryFn: () => readTermHistory(), enabled: open });
 
   useImperativeHandle(ref, () => ({
     openTerm(term: string) {
@@ -57,7 +58,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
         if (index >= 0) next[index] = { ...next[index], status: "ready", explanation };
         return next;
       });
-      queryClient.setQueryData(["termHistory"], await api.termHistory());
+      queryClient.setQueryData(["termHistory"], readTermHistory());
     } catch {
       setStack((prev) => {
         const next = [...prev];

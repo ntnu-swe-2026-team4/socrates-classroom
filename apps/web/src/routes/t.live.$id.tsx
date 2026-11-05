@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
 import { Segmented, cn } from "@/components/ui";
 import { useT } from "@/i18n";
+import { Spinner } from "@/components/ui";
 
 export const Route = createFileRoute("/t/live/$id")({
   beforeLoad: async ({ context }) => {
@@ -15,9 +16,19 @@ export const Route = createFileRoute("/t/live/$id")({
 
 function LivePage() {
   const t = useT();
+  const navigate = useNavigate();
   const { id } = Route.useParams();
   const [filter, setFilter] = useState<"attention" | "all">("all");
   const live = useQuery({ queryKey: ["live", id], queryFn: () => api.liveStudents(id), refetchInterval: 2500 });
+  const finish = useMutation({
+    mutationFn: () => api.finishActivity(id),
+  });
+
+  async function finishAndReport() {
+    if (finish.isPending) return;
+    await finish.mutateAsync().catch(() => {});
+    await navigate({ to: "/report/$id", params: { id } });
+  }
 
   const students = live.data ?? [];
   const shown = filter === "attention" ? students.filter((student) => student.flagged) : students;
@@ -37,13 +48,15 @@ function LivePage() {
               { value: "all", label: `${t("live_all")} ${students.length}` },
             ]}
           />
-          <Link
-            to="/report/$id"
-            params={{ id }}
-            className="rounded-full border border-line bg-card px-4 py-1.5 text-[13px] text-ink-soft transition-colors hover:border-ember hover:text-ember"
+          <button
+            type="button"
+            onClick={() => void finishAndReport()}
+            disabled={finish.isPending}
+            className="flex items-center gap-2 rounded-full border border-line bg-card px-4 py-1.5 text-[13px] text-ink-soft transition-colors hover:border-ember hover:text-ember disabled:opacity-60"
           >
+            {finish.isPending ? <Spinner /> : null}
             {t("live_finish")}
-          </Link>
+          </button>
         </div>
       </div>
 

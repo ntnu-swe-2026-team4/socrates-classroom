@@ -1,3 +1,5 @@
+import type { ErrorCode } from "@socrates/shared";
+
 export type Role = "student" | "teacher";
 
 export interface User {
@@ -10,7 +12,7 @@ export interface Topic {
   id: string;
   title: string;
   statement: string;
-  summary: string;
+  summary?: string;
   prompts: string[];
 }
 
@@ -45,6 +47,14 @@ export interface DialogueMessage {
   at: string;
 }
 
+export interface ActivityInfo {
+  id: string;
+  classroomId: string;
+  classroomName: string;
+  topic: Topic;
+  finishedAt: string | null;
+}
+
 export interface HexagonAxis {
   label: string;
   value: number;
@@ -63,7 +73,7 @@ export interface ViolationSlice {
 }
 
 export interface IndividualReport {
-  studentName: string;
+  pseudonym: string;
   hexagon: HexagonAxis[];
   arguments: ArgumentPoint[];
   violations: ViolationSlice[];
@@ -88,10 +98,27 @@ export interface GroupReport {
   clusters: { id: number; label: string }[];
 }
 
-export interface Report {
+export interface TeacherReport {
   topicTitle: string;
   group: GroupReport;
   individuals: IndividualReport[];
+}
+
+export interface StudentReport {
+  topicTitle: string;
+  group: GroupReport;
+  individual: IndividualReport;
+}
+
+export type Report = TeacherReport | StudentReport;
+
+export class ApiError extends Error {
+  constructor(
+    public readonly code: ErrorCode,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 export type ByokStatus = { provider: string; last4: string } | null;
@@ -126,11 +153,11 @@ export interface Api {
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
   createTopic(input: { title: string; statement: string; summary?: string; prompts: string[] }): Promise<Topic>;
+  activityInfo(activityId: string): Promise<ActivityInfo>;
+  finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
   byokStatus(): Promise<ByokStatus>;
   byokSet(provider: string, key: string): Promise<ByokStatus>;
   byokClear(): Promise<ByokStatus>;
   lookupTerm(term: string): Promise<TermExplanation>;
-  termHistory(): Promise<TermQuery[]>;
-  currentActivityId(): string | null;
 }

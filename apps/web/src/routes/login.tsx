@@ -13,8 +13,25 @@ function LoginPage() {
   const t = useT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [busy, setBusy] = useState<"teacher" | null>(null);
+  const [busy, setBusy] = useState<"teacher" | "form" | null>(null);
   const [error, setError] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    setError("");
+    setBusy("form");
+    try {
+      const user = await api.login(email, password);
+      queryClient.setQueryData(["me"], user);
+      await navigate({ to: "/t/setup" });
+    } catch {
+      setError(t("common_error"));
+      setBusy(null);
+    }
+  }
 
   async function demoTeacher() {
     if (busy) return;
@@ -40,16 +57,33 @@ function LoginPage() {
         <p className="mt-3 text-[13.5px] leading-[1.8] text-ink-soft">{t("login_hint")}</p>
       </div>
 
-      <Card className="mt-8 flex flex-col gap-5 p-6 opacity-90" aria-label={t("login_title")}>
-        <Field label={t("login_email")}>
-          <Input type="email" placeholder="you@example.com" disabled />
-        </Field>
-        <Field label={t("login_password")}>
-          <Input type="password" placeholder="••••••••" disabled />
-        </Field>
-        <Button disabled className="w-full">
-          {t("login_title")}
-        </Button>
+      <Card className="mt-8 flex flex-col gap-5 p-6" aria-label={t("login_title")}>
+        <form className="flex flex-col gap-5" onSubmit={(event) => void submit(event)}>
+          <Field label={t("login_email")}>
+            <Input
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </Field>
+          <Field label={t("login_password")}>
+            <Input
+              type="password"
+              autoComplete="current-password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </Field>
+          {error ? <p className="text-[13px] text-flag">{error}</p> : null}
+          <Button type="submit" disabled={busy !== null} className="w-full">
+            {busy === "form" ? <Spinner /> : t("login_title")}
+          </Button>
+        </form>
       </Card>
 
       <div className="mt-6 flex flex-col gap-2.5">

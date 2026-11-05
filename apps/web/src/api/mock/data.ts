@@ -1,4 +1,4 @@
-import type { Report, StudentLive, Topic, User } from "../types";
+import type { StudentLive, TeacherReport, Topic, User } from "../types";
 
 export const topics: Topic[] = [
   {
@@ -94,7 +94,7 @@ export function advanceLive(prev: StudentLive[]): StudentLive[] {
   });
 }
 
-export const report: Report = {
+export const teacherReport: TeacherReport = {
   topicTitle: "電車難題",
   group: {
     axes: [
@@ -118,15 +118,15 @@ export const report: Report = {
       { id: 2, label: "條件論傾向" },
     ],
   },
-  individuals: students.slice(0, 5).map((s, i) => ({
-    studentName: s.name,
+  individuals: students.slice(0, 5).map((_student, i) => ({
+    pseudonym: `學生 ${String.fromCharCode(65 + i)}`,
     hexagon: [
-      { label: "辨識盲點", value: 0.4 + (i % 3) * 0.2 },
-      { label: "區分前提", value: 0.5 + (i % 4) * 0.15 },
-      { label: "普遍化原則", value: 0.35 + (i % 2) * 0.3 },
-      { label: "理由支持", value: 0.55 + (i % 3) * 0.15 },
-      { label: "對立同理", value: 0.3 + (i % 5) * 0.12 },
-      { label: "確定度變化", value: 0.45 + (i % 2) * 0.25 },
+      { label: "辨識盲點", value: 40 + (i % 3) * 20 },
+      { label: "區分前提", value: 50 + (i % 4) * 15 },
+      { label: "普遍化原則", value: 35 + (i % 2) * 30 },
+      { label: "理由支持", value: 55 + (i % 3) * 15 },
+      { label: "對立同理", value: 30 + (i % 5) * 12 },
+      { label: "確定度變化", value: 45 + (i % 2) * 25 },
     ],
     arguments: [
       {

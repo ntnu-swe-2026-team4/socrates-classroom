@@ -15,6 +15,7 @@ import {
   User,
 } from "lucide-react";
 import { api } from "@/api";
+import { readActivityId, readTermHistory } from "@/api/local";
 import { cn } from "@/components/ui";
 import { locales, setLocale, useI18n, type Locale } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
@@ -37,7 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
-  const termHistory = useQuery({ queryKey: ["termHistory"], queryFn: () => api.termHistory() });
+  const termHistory = useQuery({ queryKey: ["termHistory"], queryFn: () => readTermHistory() });
   const logout = useMutation({
     mutationFn: () => api.logout(),
     onSuccess: async () => {
@@ -50,7 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [currentActivityId, setCurrentActivityId] = useState<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-read on every navigation (mock localStorage semantics; becomes server-backed with the http client)
   useEffect(() => {
-    setCurrentActivityId(api.currentActivityId());
+    setCurrentActivityId(readActivityId());
   }, [pathname]);
 
   const actions = [

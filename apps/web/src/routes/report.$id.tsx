@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { api, type GroupReport } from "@/api";
+import { api, ApiError, type GroupReport } from "@/api";
 import { scoreToCoords } from "@/components/constellation/sim";
 import Scene3D, { type ClusterResult, CLUSTER_PALETTE } from "@/components/constellation/Scene3D";
 import { kmeans } from "@/components/constellation/kmeans";
@@ -21,7 +21,12 @@ function ReportPage() {
   const [checkedAxes, setCheckedAxes] = useState<number[]>([0, 1, 2]);
   const theme = useTheme();
   const [showTraj, setShowTraj] = useState(false);
-  const report = useQuery({ queryKey: ["report", id], queryFn: () => api.report(id) });
+  const report = useQuery({
+    queryKey: ["report", id],
+    queryFn: () => api.report(id),
+    retry: (failureCount, error) => error instanceof ApiError && error.code === "report_pending" && failureCount < 30,
+    retryDelay: 4000,
+  });
 
   if (report.isPending) {
     return (
@@ -30,14 +35,27 @@ function ReportPage() {
       </div>
     );
   }
-  if (report.isError || !report.data) {
+  if (report.isError) {
+    const pending = report.error instanceof ApiError && report.error.code === "report_pending";
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-[15px] text-ink-soft">{t("common_error")}</div>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-[15px] text-ink-soft">
+        {pending ? <Spinner className="h-6 w-6" /> : null}
+        <p>{pending ? t("report_generating") : t("common_error")}</p>
+      </div>
+    );
+  }
+  if (!report.data) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Spinner className="h-6 w-6" />
+      </div>
     );
   }
 
   const data = report.data;
-  const person = data.individuals[Math.min(studentIdx, data.individuals.length - 1)];
+  const isTeacherView = "individuals" in data;
+  const person = isTeacherView ? data.individuals[Math.min(studentIdx, data.individuals.length - 1)] : data.individual;
+  const individuals = isTeacherView ? data.individuals : [data.individual];
 
   return (
     <div className="mx-auto w-full max-w-4xl px-5 py-8">
@@ -111,10 +129,10 @@ function ReportPage() {
         person && (
           <section className="mt-6 flex flex-col gap-8">
             <div className="flex flex-wrap gap-2">
-              {data.individuals.map((individual, index) => (
+              {individuals.map((individual, index) => (
                 <button
                   type="button"
-                  key={individual.studentName}
+                  key={individual.pseudonym}
                   onClick={() => setStudentIdx(index)}
                   className={`rounded-full border px-3.5 py-1.5 text-[13px] transition-colors ${
                     index === studentIdx
@@ -122,7 +140,7 @@ function ReportPage() {
                       : "border-line bg-card text-ink-soft"
                   }`}
                 >
-                  {individual.studentName}
+                  {individual.pseudonym}
                 </button>
               ))}
             </div>
@@ -226,7 +244,7 @@ function Hexagon({ axes }: { axes: { label: string; value: number }[] }) {
   const angle = (i: number) => (Math.PI * 2 * i) / axes.length - Math.PI / 2;
   const vertex = (i: number, scale: number) =>
     [cx + Math.cos(angle(i)) * r * scale, cy + Math.sin(angle(i)) * r * scale] as const;
-  const polygon = axes.map((axis, i) => vertex(i, axis.value).join(",")).join(" ");
+  const polygon = axes.map((axis, i) => vertex(i, Math.max(0.04, Math.min(1, axis.value / 100))).join(",")).join(" ");
   const outline = axes.map((_, i) => vertex(i, 1).join(",")).join(" ");
 
   return (
