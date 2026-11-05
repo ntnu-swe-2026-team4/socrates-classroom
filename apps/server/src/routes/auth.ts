@@ -45,11 +45,15 @@ export function authRoutes() {
       const id = newId("u_");
       const at = nowIso();
       const hash = await hashPassword(input.password);
-      await run(
-        c.env.DB,
-        "INSERT INTO users (id, name, role, email, password_hash, created_at) VALUES ($id, $name, 'student', $email, $hash, $at)",
-        { id, name: input.name, email: input.email, hash, at },
-      );
+      try {
+        await run(
+          c.env.DB,
+          "INSERT INTO users (id, name, role, email, password_hash, created_at) VALUES ($id, $name, 'student', $email, $hash, $at)",
+          { id, name: input.name, email: input.email, hash, at },
+        );
+      } catch {
+        fail(409, "conflict");
+      }
       await run(
         c.env.DB,
         "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",

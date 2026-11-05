@@ -98,146 +98,159 @@ export class PiAgent extends DurableObject<Env> {
 
   async dialogue(input: { activityId: string; userId: string; userText: string; title: string }): Promise<Response> {
     if (this.busy) throw new Error("already_streaming");
-    const db = this.env.DB;
-    const activity = await one<{ finished_at: string | null }>(
-      db,
-      "SELECT finished_at FROM activities WHERE id = $id",
-      { id: input.activityId },
-    );
-    if (!activity) throw new Error("activity_missing");
-    if (activity.finished_at) throw new Error("activity_finished");
-
     this.busy = true;
-    const threadKey = `activity:${input.activityId}:${input.userId}`;
-    const homeProvider = (await this.ctx.storage.get<string>("home")) ?? undefined;
-    let lease: Awaited<ReturnType<ProviderRouter["acquire"]>>;
-    try {
-      lease = await this.router.acquire(threadKey, homeProvider);
-      await this.ctx.storage.put("home", lease.provider.id);
-    } catch {
-      this.busy = false;
-      throw new Error("llm_unavailable");
-    }
+    let released = false;
+    const release = () => {
+      if (!released) {
+        released = true;
+        this.busy = false;
+      }
+    };
 
-    const session = this.harness.session() as unknown as SessionLike;
-    const encoder = new TextEncoder();
-    let closed = false;
-    const body = new ReadableStream<Uint8Array>({
-      start: (controller) => {
-        const send = (event: string, data: unknown) => {
-          if (closed) return;
-          try {
-            controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-          } catch {
-            closed = true;
-          }
-        };
-        const pump = async () => {
-          const ping = setInterval(() => {
+    const db = this.env.DB;
+    try {
+      const activity = await one<{ finished_at: string | null }>(
+        db,
+        "SELECT finished_at FROM activities WHERE id = $id",
+        { id: input.activityId },
+      );
+      if (!activity) throw new Error("activity_missing");
+      if (activity.finished_at) throw new Error("activity_finished");
+
+      const threadKey = `activity:${input.activityId}:${input.userId}`;
+      const homeProvider = (await this.ctx.storage.get<string>("home")) ?? undefined;
+      const lease = await this.router.acquire(threadKey, homeProvider);
+      await this.ctx.storage.put("home", lease.provider.id);
+
+      const session = this.harness.session() as unknown as SessionLike;
+      const encoder = new TextEncoder();
+      let closed = false;
+      const body = new ReadableStream<Uint8Array>({
+        start: (controller) => {
+          const send = (event: string, data: unknown) => {
             if (closed) return;
             try {
-              controller.enqueue(encoder.encode(": ping\n\n"));
-            } catch {}
-          }, 15_000);
-          try {
-            if (lease.provider.id === "mock" && this.models.faux) {
-              const existing = (await session.messages()) as unknown as Array<{ kind?: string }>;
-              const turn = existing.filter((entry) => entry.kind?.startsWith("pi.user")).length;
-              fauxTurn(this.models.faux, mockSocratesReply(input.userText, turn));
+              controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+            } catch {
+              closed = true;
             }
-            const model = this.models.byId.get(lease.provider.id);
-            if (model) await session.setModel(model).catch(() => {});
-
-            const stream = await session.watch();
-            let sent = 0;
-            let streamed = false;
-            stream.start(async (call) => {
-              if (call.kind !== "value") return;
-              const partial = livePartialText(call.value);
-              if (partial.length > sent) {
-                streamed = true;
-                send("delta", { text: partial.slice(sent) });
-                sent = partial.length;
-              }
-            });
-
-            const receipt = await session.submit(input.userText);
-            const result = await session.wait(receipt.operationId);
-            const final = (result.text ?? "").trim();
-            if (result.status !== "done" || !final) {
-              throw new Error(`llm_unavailable:${result.reason ?? ""}`);
-            }
-            if (final.length > sent) {
-              send("delta", { text: final.slice(streamed ? sent : 0) });
-            }
-            await stream.stop().catch(() => {});
-            void streamed;
-            const at = new Date().toISOString();
-            const userMessage: DialogueMessage = {
-              id: crypto.randomUUID(),
-              role: "user",
-              text: input.userText,
-              at,
-            };
-            const assistantMessage: DialogueMessage = {
-              id: crypto.randomUUID(),
-              role: "assistant",
-              text: final,
-              at,
-            };
-            await batch(db, [
-              {
-                sql: "INSERT INTO messages (id, activity_id, student_id, role, text, at) VALUES ($id, $aid, $sid, 'user', $text, $at)",
-                params: { id: userMessage.id, aid: input.activityId, sid: input.userId, text: userMessage.text, at },
-              },
-              {
-                sql: "INSERT INTO messages (id, activity_id, student_id, role, text, at) VALUES ($id, $aid, $sid, 'assistant', $text, $at)",
-                params: {
-                  id: assistantMessage.id,
-                  aid: input.activityId,
-                  sid: input.userId,
-                  text: assistantMessage.text,
-                  at,
-                },
-              },
-            ]);
-            send("done", { message: assistantMessage });
-            await this.router.settle(lease, "ok");
-            await this.afterTurn(db, input.activityId, input.userId, input.userText, final);
-          } catch (error) {
-            const raw = error instanceof Error ? error.message : String(error);
-            const kind: SettleKind = /rate|429|concurren/i.test(raw)
-              ? "rate"
-              : /abort|timeout/i.test(raw)
-                ? "timeout"
-                : "error";
-            await this.router.settle(lease, kind).catch(() => {});
-            const code = kind === "rate" ? "llm_rate_limited" : kind === "timeout" ? "llm_timeout" : "llm_unavailable";
-            send("error", { message: raw.slice(0, 200), code });
-          } finally {
-            clearInterval(ping);
-            this.busy = false;
-            closed = true;
+          };
+          const pump = async () => {
+            const ping = setInterval(() => {
+              if (closed) return;
+              try {
+                controller.enqueue(encoder.encode(": ping\n\n"));
+              } catch {}
+            }, 15_000);
             try {
-              controller.close();
-            } catch {}
-          }
-        };
-        void pump();
-      },
-      cancel: () => {
-        closed = true;
-      },
-    });
+              if (lease.provider.id === "mock" && this.models.faux) {
+                const existing = (await session.messages()) as unknown as Array<{ kind?: string }>;
+                const turn = existing.filter((entry) => entry.kind?.startsWith("pi.user")).length;
+                const reply = mockSocratesReply(input.userText, turn);
+                if (input.userText.endsWith("…")) {
+                  fauxTurn(this.models.faux, reply, 400);
+                } else {
+                  fauxTurn(this.models.faux, reply);
+                }
+              }
+              const model = this.models.byId.get(lease.provider.id);
+              if (model) await session.setModel(model).catch(() => {});
 
-    return new Response(body, {
-      headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-      },
-    });
+              const stream = await session.watch();
+              let sent = 0;
+              stream.start(async (call) => {
+                if (call.kind !== "value") return;
+                const partial = livePartialText(call.value);
+                if (partial.length > sent) {
+                  send("delta", { text: partial.slice(sent) });
+                  sent = partial.length;
+                }
+              });
+
+              const receipt = await session.submit(input.userText);
+              const result = await session.wait(receipt.operationId);
+              const final = (result.text ?? "").trim();
+              if (result.status !== "done" || !final) {
+                throw new Error(`llm_unavailable:${result.reason ?? ""}`);
+              }
+              if (final.length > sent) {
+                send("delta", { text: final.slice(sent) });
+              }
+              await stream.stop().catch(() => {});
+
+              const at = new Date().toISOString();
+              const userMessage: DialogueMessage = {
+                id: crypto.randomUUID(),
+                role: "user",
+                text: input.userText,
+                at,
+              };
+              const assistantMessage: DialogueMessage = {
+                id: crypto.randomUUID(),
+                role: "assistant",
+                text: final,
+                at,
+              };
+              await batch(db, [
+                {
+                  sql: "INSERT INTO messages (id, activity_id, student_id, role, text, at) VALUES ($id, $aid, $sid, 'user', $text, $at)",
+                  params: { id: userMessage.id, aid: input.activityId, sid: input.userId, text: userMessage.text, at },
+                },
+                {
+                  sql: "INSERT INTO messages (id, activity_id, student_id, role, text, at) VALUES ($id, $aid, $sid, 'assistant', $text, $at)",
+                  params: {
+                    id: assistantMessage.id,
+                    aid: input.activityId,
+                    sid: input.userId,
+                    text: assistantMessage.text,
+                    at,
+                  },
+                },
+              ]);
+              send("done", { message: assistantMessage });
+              await this.router.settle(lease, "ok");
+              release();
+              await this.afterTurn(db, input.activityId, input.userId, input.userText, final);
+            } catch (error) {
+              const raw = error instanceof Error ? error.message : String(error);
+              const kind: SettleKind = /rate|429|concurren/i.test(raw)
+                ? "rate"
+                : /abort|timeout/i.test(raw)
+                  ? "timeout"
+                  : "error";
+              await this.router.settle(lease, kind).catch(() => {});
+              const code =
+                kind === "rate" ? "llm_rate_limited" : kind === "timeout" ? "llm_timeout" : "llm_unavailable";
+              send("error", { message: raw.slice(0, 200), code });
+              release();
+            } finally {
+              clearInterval(ping);
+              closed = true;
+              release();
+              try {
+                controller.close();
+              } catch {}
+            }
+          };
+          void pump();
+        },
+        cancel: () => {
+          closed = true;
+        },
+      });
+
+      return new Response(body, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    } catch (error) {
+      release();
+      throw error;
+    }
   }
 
   private async afterTurn(

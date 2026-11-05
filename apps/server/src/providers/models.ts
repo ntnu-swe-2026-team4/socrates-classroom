@@ -85,6 +85,15 @@ export function buildModels(env: Env, sessionKey = "socrates"): ModelsBundle {
   return { models, byId, faux };
 }
 
-export function fauxTurn(handle: NonNullable<ModelsBundle["faux"]>, text: string): void {
-  handle.setResponses([fauxAssistantMessage([fauxText(text)])]);
+export function fauxTurn(handle: NonNullable<ModelsBundle["faux"]>, text: string, delayMs = 0): void {
+  if (delayMs === 0) {
+    handle.setResponses([fauxAssistantMessage([fauxText(text)])]);
+    return;
+  }
+  handle.setResponses([
+    async () => {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return fauxAssistantMessage([fauxText(text)]);
+    },
+  ]);
 }

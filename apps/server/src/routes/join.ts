@@ -69,11 +69,15 @@ export function joinRoutes() {
         if (clash && clash.user_id !== sessionUser.id) fail(409, "name_taken");
       }
 
-      await run(
-        c.env.DB,
-        "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
-        { cid: classroom.id, uid: sessionUser.id, name: sessionUser.name, at },
-      );
+      try {
+        await run(
+          c.env.DB,
+          "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
+          { cid: classroom.id, uid: sessionUser.id, name: sessionUser.name, at },
+        );
+      } catch {
+        fail(409, "name_taken");
+      }
       return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
     });
 }
