@@ -5,6 +5,7 @@ import {
   type ClassifierResult,
   type Provider,
 } from "@earendil-works/pi-ai";
+import type { ViolationType } from "@socrates/shared";
 import type { Env } from "../env";
 
 export const CLEF_MODEL_ID = "@cf/cloudflare/clef-flash";
@@ -17,8 +18,6 @@ interface ClefAnswer {
   probabilities?: Record<string, number>;
   confidence?: number;
 }
-
-export type ViolationType = "on_topic" | "math" | "coding" | "injection" | "other";
 
 const VIOLATION_CRITERIA: Record<ViolationType, string> = {
   on_topic: "Philosophical dialogue: ethics, justice, arguments, dilemmas, or Socratic questioning",

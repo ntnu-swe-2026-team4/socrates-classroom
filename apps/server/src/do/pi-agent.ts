@@ -4,7 +4,7 @@ import { PiHarness } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
 import type { AnyModel } from "@earendil-works/pi-ai";
 import type { DialogueMessage } from "@socrates/shared";
-import { z } from "zod";
+import { LANG_NAMES, ViolationChoiceSchema, type Lang, type ViolationType } from "@socrates/shared";
 import PREAMBLE_RAW from "../../../../packages/llm/prompts/socrates.md?raw";
 import type { Env } from "../env";
 import { all, batch, one } from "../db/d1";
@@ -12,14 +12,9 @@ import { buildModels, fauxTurn } from "../providers/models";
 import { mockSocratesReply } from "../providers/mock-socrates";
 import { ProviderRouter, type SettleKind } from "../providers/router";
 import { oneshot } from "../providers/oneshot";
-import { classifyViolationViaClef, type ViolationType } from "../providers/clef";
+import { classifyViolationViaClef } from "../providers/clef";
 
-const ViolationChoiceSchema = z.object({
-  type: z.enum(["on_topic", "math", "coding", "injection", "other"]),
-  probability: z.number().min(0).max(1),
-});
-
-function classifyMock(text: string): z.infer<typeof ViolationChoiceSchema> {
+function classifyMock(text: string): { type: ViolationType; probability: number } {
   const lowered = text.toLowerCase();
   if (/math|數學|方程|微積分|因式分解|作業/.test(lowered)) return { type: "math", probability: 0.92 };
   if (/code|程式|python|javascript|debug|寫程式/.test(lowered)) return { type: "coding", probability: 0.9 };
@@ -62,7 +57,15 @@ export class PiAgent extends DurableObject<Env> {
     harness: ({ storage, context, onWake }) => {
       this.registry.install({
         name: "socrates",
-        sections: [{ key: "preamble", render: () => PREAMBLE_RAW.trim(), tag: false }],
+        sections: [
+          { key: "preamble", render: () => PREAMBLE_RAW.trim(), tag: false },
+          {
+            key: "language",
+            render: () =>
+              `Language: the student is conversing in ${LANG_NAMES[this.threadLang]}. Always reply in ${LANG_NAMES[this.threadLang]}, regardless of the language of this instruction.`,
+            tag: false,
+          },
+        ],
       });
       return import("@earendil-works/pi-durable").then(({ Harness }) =>
         Harness.open(
@@ -97,7 +100,16 @@ export class PiAgent extends DurableObject<Env> {
     return this.env.ActivityEvents.getByName(activityId);
   }
 
-  async dialogue(input: { activityId: string; userId: string; userText: string; title: string }): Promise<Response> {
+  private threadLang: Lang = "zh";
+
+  async dialogue(input: {
+    activityId: string;
+    userId: string;
+    userText: string;
+    title: string;
+    lang?: Lang;
+  }): Promise<Response> {
+    if (input.lang) this.threadLang = input.lang;
     if (this.busy) throw new Error("already_streaming");
     this.busy = true;
     let released = false;

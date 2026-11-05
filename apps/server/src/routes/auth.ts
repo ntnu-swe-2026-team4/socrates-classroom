@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { LoginInputSchema, RegisterInputSchema } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
 import { endSession, hashPassword, startSession, verifyPassword } from "../auth";
-import { fail, newId, nowIso, parseBody, type AppEnv } from "../http";
+import { enforceIpLimit, fail, newId, nowIso, parseBody, type AppEnv } from "../http";
 
 interface UserRow {
   id: string;
@@ -16,6 +16,7 @@ export function authRoutes() {
   return new Hono<AppEnv>()
     .get("/me", (c) => c.json(c.get("user")))
     .post("/auth/login", async (c) => {
+      await enforceIpLimit(c, "login", 30);
       const input = await parseBody(c, LoginInputSchema);
       const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE email = $email AND role = 'teacher'", {
         email: input.email,
@@ -27,6 +28,7 @@ export function authRoutes() {
       return c.json(user);
     })
     .post("/auth/register", async (c) => {
+      await enforceIpLimit(c, "register", 30);
       const input = await parseBody(c, RegisterInputSchema);
       const classroom = await one<{ id: string }>(c.env.DB, "SELECT id FROM classrooms WHERE join_code = $code", {
         code: input.code,

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { DialogueMessage, StudentReport, TeacherReport } from "@socrates/shared";
 import { one, run } from "../db/d1";
-import { fail, parseBody, requireUser, type AppEnv } from "../http";
+import { fail, langOf, parseBody, requireUser, type AppEnv } from "../http";
 import { DialogueInputSchema } from "@socrates/shared";
 import { requireMembership, topicOf } from "../services/members";
 
@@ -48,6 +48,7 @@ export function activityRoutes() {
           userId: user.id,
           userText: input.text,
           title: topic.title,
+          lang: langOf(c),
         });
       } catch (error) {
         const raw = error instanceof Error ? error.message : String(error);

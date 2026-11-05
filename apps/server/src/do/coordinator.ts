@@ -66,4 +66,16 @@ export class Coordinator extends DurableObject<Env> {
       usage: this.usage,
     };
   }
+
+  async rateLimit(bucket: string, limit: number, windowMs = 60_000): Promise<boolean> {
+    const now = Date.now();
+    const hits = ((await this.ctx.storage.get<number[]>(`rl:${bucket}`)) ?? []).filter((t) => now - t < windowMs);
+    if (hits.length >= limit) {
+      void this.ctx.storage.put(`rl:${bucket}`, hits);
+      return false;
+    }
+    hits.push(now);
+    await this.ctx.storage.put(`rl:${bucket}`, hits);
+    return true;
+  }
 }

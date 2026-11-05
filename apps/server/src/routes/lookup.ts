@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { LookupInputSchema, type Lang } from "@socrates/shared";
+import { LANG_NAMES, LookupInputSchema, type Lang } from "@socrates/shared";
 import { parseBody, requireUser, type AppEnv } from "../http";
 import { getOneshotBundle, oneshot } from "../providers/oneshot";
 import { z } from "zod";
@@ -16,11 +16,9 @@ const DOMAIN_ALLOWLIST = [
 ];
 
 function mockMarkdown(term: string, lang: Lang): string {
-  const body =
-    lang === "en"
-      ? `**${term}** — a working definition for our dialogue, then back to the argument.`
-      : `**${term}**——在對話中使用的定義（示例）。理解之後，我們回到論證本身。`;
-  return body;
+  if (lang === "en") return `**${term}** — a working definition for our dialogue, then back to the argument.`;
+  if (lang === "es") return `**${term}** — definición provisional para el diálogo; volvamos al argumento.`;
+  return `**${term}**——在對話中使用的定義（示例）。理解之後，我們回到論證本身。`;
 }
 
 export function lookupRoutes() {
@@ -62,8 +60,7 @@ export function lookupRoutes() {
         .map((hit, index) => `[${index + 1}] ${hit.title ?? hit.url}\n${hit.description ?? ""}`)
         .join("\n\n");
       const explanation = await oneshot(c.env, getOneshotBundle(c.env), {
-        system:
-          "You explain a term for a student in a Socratic philosophy dialogue. One short paragraph of markdown, cite sources inline, end by pointing back to the argument. Reply JSON only.",
+        system: `You explain a term for a student in a Socratic philosophy dialogue. One short paragraph of markdown in ${LANG_NAMES[lang]}, cite sources inline, end by pointing back to the argument. Reply JSON only.`,
         user: `Term: ${input.term}\nLanguage: ${lang}\nSources:\n${sources || "(none)"}`,
         schema: ExplanationSchema,
         mock: () => ({ markdown: mockMarkdown(input.term, lang) }),

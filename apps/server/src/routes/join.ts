@@ -2,12 +2,13 @@ import { Hono } from "hono";
 import { JoinInputSchema } from "@socrates/shared";
 import { one, run } from "../db/d1";
 import { startSession } from "../auth";
-import { fail, newId, nowIso, parseBody, type AppEnv } from "../http";
+import { enforceIpLimit, fail, newId, nowIso, parseBody, type AppEnv } from "../http";
 import { topicOf, type ClassroomRow } from "../services/members";
 
 export function joinRoutes() {
   return new Hono<AppEnv>()
     .get("/join/:code", async (c) => {
+      await enforceIpLimit(c, "join-code", 60);
       const classroom = await one<ClassroomRow>(c.env.DB, "SELECT * FROM classrooms WHERE join_code = $code", {
         code: c.req.param("code"),
       });
@@ -20,6 +21,7 @@ export function joinRoutes() {
       return c.json({ code: classroom.join_code, classroomName: classroom.name, topic });
     })
     .post("/join", async (c) => {
+      await enforceIpLimit(c, "join", 30);
       const input = await parseBody(c, JoinInputSchema);
       if (input.tosAccepted !== true) fail(422, "tos_required");
       const classroom = await one<ClassroomRow>(c.env.DB, "SELECT * FROM classrooms WHERE join_code = $code", {

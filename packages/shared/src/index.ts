@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 export type Lang = "zh" | "en" | "es";
+export const LANG_NAMES: Record<Lang, string> = {
+  zh: "Traditional Chinese (繁體中文)",
+  en: "English",
+  es: "Spanish (Español)",
+};
 
 export const UserSchema = z.object({
   id: z.string(),
@@ -162,7 +167,7 @@ export const TopicCreateInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   statement: z.string().trim().min(1).max(2000),
   summary: z.string().trim().max(500).optional(),
-  prompts: z.array(z.string().trim().min(1).max(160)).min(1).max(6),
+  prompts: z.array(z.string().trim().min(1).max(160)).max(6),
 });
 export const GenerateTopicsInputSchema = z.object({
   direction: z.string().trim().min(1).max(200),
@@ -177,6 +182,13 @@ export const TtsInputSchema = z.object({ text: z.string().min(1).max(2000), lang
 export const ByokSetInputSchema = z.object({
   provider: z.enum(["openrouter", "opencode-go"]),
   key: z.string().min(8).max(256),
+});
+
+export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
+export type ViolationType = (typeof VIOLATION_TYPES)[number];
+export const ViolationChoiceSchema = z.object({
+  type: z.enum(VIOLATION_TYPES),
+  probability: z.number().min(0).max(1),
 });
 
 export const ERROR_CODES = [

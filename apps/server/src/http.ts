@@ -60,3 +60,9 @@ export function requireTeacher(c: Ctx): User {
   if (user.role !== "teacher") fail(403, "forbidden");
   return user;
 }
+
+export async function enforceIpLimit(c: Ctx, scope: string, limit = 30): Promise<void> {
+  const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+  const ok = await c.env.Coordinator.getByName(`ratelimit:${scope}`).rateLimit(ip, limit);
+  if (!ok) fail(429, "rate_limited");
+}
