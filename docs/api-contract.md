@@ -223,6 +223,25 @@ interface StudentReport {
 | `PUT /api/settings/byok` `{provider, key}` → `{provider, last4}` | 白名單子集；非法 provider → 422 `byok_provider_invalid`                                    |
 | `DELETE /api/settings/byok` → `204`                              |                                                                                            |
 
+## 9.5 單人對話與教室列表（實驗分支新增）
+
+前端改為「首頁／聊天／教室」三分頁：聊天＝不需教室的單人對話；教室內才是開課、入場、即時面板與報告。
+
+| Endpoint                                                 | 誰                       | 說明                                                                                                      |
+| -------------------------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `POST /auth/guest` `{ name? }`                           | 未登入                   | 建立 guest student 並開 session（不綁教室；未帶 name 時給預設名「訪客 1234」，依 Accept-Language 本地化） |
+| `PATCH /me` `{ name }`                                   | 登入者                   | 改顯示名稱，同步 `members.name` 並重簽 session cookie；與已加入教室的其他成員同名時 409 `name_taken`      |
+| `POST /auth/register` `{ name, email, password, code? }` | 未登入                   | `code` 改為選填；不帶 code 只建學生帳號                                                                   |
+| `POST /auth/login`                                       | 未登入                   | 不再限老師；學生帳號也可登入                                                                              |
+| `GET /solo/chats`、`POST /solo/chats` `{ title }`        | 登入者（學生、老師皆可） | 列出／建立自己的單人對話                                                                                  |
+| `GET /solo/chats/:id`、`DELETE /solo/chats/:id`          | 擁有者                   | 單一對話 metadata／刪除                                                                                   |
+| `GET /solo/chats/:id/dialogue`                           | 擁有者                   | 歷史 `DialogueMessage[]`                                                                                  |
+| `POST /solo/chats/:id/dialogue` `{ text }`               | 擁有者                   | SSE，契約同 §5（`delta/done/error`）；不做 violation 分類、不推 ActivityEvents                            |
+| `GET /classrooms`                                        | 登入者                   | 老師：自己開的教室；學生：已加入的教室。`ClassroomSummary[]`，`code/url` 只回給老師                       |
+| `GET /classrooms/:id`                                    | 老師或成員               | 單一 `ClassroomSummary`；非成員 403                                                                       |
+
+資料：`migrations/002_solo.sql` 新增 `solo_chats`、`solo_messages`（與教室的 `messages` 分開，不進報告與即時面板）。PiAgent instance 名稱為 `solo:<chatId>`。
+
 ## 10. 錯誤碼
 
 `code` 為 shared 的 `ErrorCode` literal union＋`ApiError`（帶型別 `code`），呼叫端 switch 窮舉有編譯期檢查。

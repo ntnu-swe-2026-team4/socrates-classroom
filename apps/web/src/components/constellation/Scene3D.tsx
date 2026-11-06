@@ -111,22 +111,22 @@ const LINE_VIEWS: Record<string, ViewDef> = {
 
 const SCENE_COLORS = {
   dark: {
-    bg: "#191510",
-    frame: "#4a3b28",
-    gridA: "#33291a",
-    gridB: "#261e13",
-    planeOutline: "#c8aa6e",
-    planeGridA: "#4a3b28",
-    planeGridB: "#2c2418",
+    bg: "#1f2228",
+    frame: "#4a4f5a",
+    gridA: "#383d47",
+    gridB: "#2d3139",
+    planeOutline: "#c9a15a",
+    planeGridA: "#4a4f5a",
+    planeGridB: "#2d3139",
   },
   light: {
-    bg: "#f2ecdf",
-    frame: "#c4b99f",
-    gridA: "#d8cfba",
-    gridB: "#e2dac8",
-    planeOutline: "#b0512b",
-    planeGridA: "#c9bfa6",
-    planeGridB: "#d8cfba",
+    bg: "#ffffff",
+    frame: "#c9c7c0",
+    gridA: "#dedcd5",
+    gridB: "#ebe9e3",
+    planeOutline: "#b3813a",
+    planeGridA: "#d3d0c8",
+    planeGridB: "#e2e0d9",
   },
 } as const;
 
@@ -261,11 +261,11 @@ export default function Scene3D({
 
     const frame = new THREE.LineSegments(
       new THREE.EdgesGeometry(new THREE.BoxGeometry(CUBE * 2, CUBE * 2, CUBE * 2)),
-      new THREE.LineBasicMaterial({ color: "#4a3b28", transparent: true, opacity: 0.9 }),
+      new THREE.LineBasicMaterial({ color: scenePal.frame, transparent: true, opacity: 0.9 }),
     );
     scene.add(frame);
 
-    const grid = new THREE.GridHelper(CUBE * 2, 8, "#33291a", "#261e13");
+    const grid = new THREE.GridHelper(CUBE * 2, 8, scenePal.gridA, scenePal.gridB);
     grid.material.transparent = true;
     grid.position.y = -CUBE;
     scene.add(grid);
@@ -278,10 +278,10 @@ export default function Scene3D({
         new THREE.Vector3(CUBE, CUBE, 0),
         new THREE.Vector3(-CUBE, CUBE, 0),
       ]),
-      new THREE.LineBasicMaterial({ color: "#c8aa6e", transparent: true, opacity: 0 }),
+      new THREE.LineBasicMaterial({ color: scenePal.planeOutline, transparent: true, opacity: 0 }),
     );
     planeOutline.userData.base = 0.9;
-    const planeGrid = new THREE.GridHelper(CUBE * 2, 8, "#4a3b28", "#2c2418");
+    const planeGrid = new THREE.GridHelper(CUBE * 2, 8, scenePal.planeGridA, scenePal.planeGridB);
     planeGrid.rotation.x = Math.PI / 2;
     planeGrid.material.transparent = true;
     planeGrid.material.opacity = 0;

@@ -6,6 +6,7 @@ import { run } from "../src/db/d1";
 import type { Hono } from "hono";
 import type { AppEnv } from "../src/http";
 import migrationSql from "../migrations/001_init.sql";
+import soloMigrationSql from "../migrations/002_solo.sql";
 
 declare global {
   var classroom: { code: string; activityId: string; classroomId: string };
@@ -75,7 +76,7 @@ function cookieOf(res: Response): string {
 
 beforeAll(async () => {
   app = createApp();
-  for (const statement of migrationSql.split(";")) {
+  for (const statement of `${migrationSql};${soloMigrationSql}`.split(";")) {
     const trimmed = statement.trim();
     if (trimmed) await run(env.DB, trimmed);
   }
@@ -502,5 +503,121 @@ describe("重開活動", () => {
     const payload = (await joinedAgain.json()) as { activityId: string };
     expect(payload.activityId).toBe(reopened.activityId);
     void info;
+  });
+});
+
+describe("單人對話與教室列表", () => {
+  const solo: { guest?: string; other?: string; chatId?: string } = {};
+
+  test("訪客名字即玩：建立學生、不屬於任何教室", async () => {
+    const res = await req("POST", "/api/auth/guest", { body: { name: "小芸" } });
+    expect(res.status).toBe(200);
+    expect((await res.json()).role).toBe("student");
+    solo.guest = cookieOf(res);
+    const list = await req("GET", "/api/classrooms", { cookie: solo.guest });
+    expect(list.status).toBe(200);
+    expect(await list.json()).toEqual([]);
+  });
+
+  test("不帶邀請碼註冊學生，之後可用 email 登入", async () => {
+    const reg = await req("POST", "/api/auth/register", {
+      body: { email: "solo-student@example.com", password: "student-pass", name: "阿明" },
+    });
+    expect(reg.status).toBe(200);
+    expect((await reg.json()).role).toBe("student");
+    const login = await req("POST", "/api/auth/login", {
+      body: { email: "solo-student@example.com", password: "student-pass" },
+    });
+    expect(login.status).toBe(200);
+    expect((await login.json()).role).toBe("student");
+    solo.other = cookieOf(login);
+  });
+
+  test("建立單人對話、SSE 一輪、歷史與輪數", async () => {
+    const created = await req("POST", "/api/solo/chats", { cookie: solo.guest, body: { title: "自由的界線在哪裡？" } });
+    expect(created.status).toBe(201);
+    const chat = (await created.json()) as { id: string; rounds: number };
+    expect(chat.rounds).toBe(0);
+    solo.chatId = chat.id;
+
+    const res = await req("POST", `/api/solo/chats/${chat.id}/dialogue`, {
+      cookie: solo.guest,
+      body: { text: "我覺得只要不傷害別人就是自由。" },
+    });
+    expect(res.status).toBe(200);
+    const frames = parseSse(await readSse(res, (text) => text.includes("event: done")));
+    expect(frames[frames.length - 1]!.event).toBe("done");
+
+    const history = await req("GET", `/api/solo/chats/${chat.id}/dialogue`, { cookie: solo.guest });
+    const messages = (await history.json()) as Array<{ role: string }>;
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+
+    const list = (await (await req("GET", "/api/solo/chats", { cookie: solo.guest })).json()) as Array<{
+      id: string;
+      rounds: number;
+    }>;
+    expect(list.find((item) => item.id === chat.id)?.rounds).toBe(1);
+  });
+
+  test("別人讀不到我的單人對話", async () => {
+    const res = await req("GET", `/api/solo/chats/${solo.chatId}/dialogue`, { cookie: solo.other });
+    expect(res.status).toBe(403);
+  });
+
+  test("老師也能單人對話", async () => {
+    const created = await req("POST", "/api/solo/chats", { cookie: jar.teacher, body: { title: "老師自己試試" } });
+    expect(created.status).toBe(201);
+    const chat = (await created.json()) as { id: string };
+    const res = await req("POST", `/api/solo/chats/${chat.id}/dialogue`, {
+      cookie: jar.teacher,
+      body: { text: "正義是強者的利益嗎？" },
+    });
+    expect(res.status).toBe(200);
+    const frames = parseSse(await readSse(res, (text) => text.includes("event: done")));
+    expect(frames.some((frame) => frame.event === "done")).toBe(true);
+  });
+
+  test("教室列表：老師看得到邀請碼，學生看不到；非成員 403", async () => {
+    const classroom = globalThis.classroom as { code: string; classroomId: string };
+    const teacherList = (await (await req("GET", "/api/classrooms", { cookie: jar.teacher })).json()) as Array<{
+      id: string;
+      role: string;
+      code: string | null;
+    }>;
+    const mine = teacherList.find((item) => item.id === classroom.classroomId);
+    expect(mine?.role).toBe("teacher");
+    expect(mine?.code).toBe(classroom.code);
+
+    const studentView = await req("GET", `/api/classrooms/${classroom.classroomId}`, { cookie: jar.student });
+    expect(studentView.status).toBe(200);
+    const summary = (await studentView.json()) as { role: string; code: string | null; current: unknown };
+    expect(summary.role).toBe("student");
+    expect(summary.code).toBeNull();
+    expect(summary.current).toBeTruthy();
+
+    const outsider = await req("GET", `/api/classrooms/${classroom.classroomId}`, { cookie: solo.guest });
+    expect(outsider.status).toBe(403);
+  });
+});
+
+describe("訪客預設名稱與改名", () => {
+  test("訪客不填名字也能進入，拿到預設名稱；改名後 me 與教室成員同步", async () => {
+    const res = await req("POST", "/api/auth/guest", { body: {} });
+    expect(res.status).toBe(200);
+    const guest = (await res.json()) as { name: string };
+    expect(guest.name).toMatch(/^訪客 \d{4}$/);
+    const cookie = cookieOf(res);
+
+    const classroom = globalThis.classroom as { code: string; classroomId: string };
+    const joined = await req("POST", "/api/join", { cookie, body: { code: classroom.code, tosAccepted: true } });
+    expect(joined.status).toBe(200);
+
+    const renamed = await req("PATCH", "/api/me", { cookie, body: { name: "新名字" } });
+    expect(renamed.status).toBe(200);
+    const fresh = cookieOf(renamed);
+    expect((await (await req("GET", "/api/me", { cookie: fresh })).json()).name).toBe("新名字");
+
+    const clash = await req("PATCH", "/api/me", { cookie: fresh, body: { name: "小明" } });
+    expect(clash.status).toBe(409);
   });
 });
