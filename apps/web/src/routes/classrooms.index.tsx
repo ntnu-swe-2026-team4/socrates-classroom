@@ -40,7 +40,7 @@ function ClassroomsPage() {
             </Button>
           ) : (
             <form
-              className="flex items-center gap-2"
+              className="flex w-full items-center gap-2 sm:w-auto"
               onSubmit={(event) => {
                 event.preventDefault();
                 join();
@@ -54,7 +54,7 @@ function ClassroomsPage() {
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
-                className="w-44 font-mono tracking-[0.2em]"
+                className="min-w-0 flex-1 font-mono tracking-[0.2em] sm:w-44 sm:flex-none"
               />
               <Button type="submit" disabled={!code.trim()}>
                 {t("join_code_go")}

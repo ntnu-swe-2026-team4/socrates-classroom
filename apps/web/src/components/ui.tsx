@@ -164,12 +164,12 @@ export function PageHeader({
   return (
     <header className={cn("mx-auto w-full px-6 pt-20 pb-1 md:pt-10", width)}>
       {eyebrow && <div className="mb-2 text-[13px] text-ink-faint">{eyebrow}</div>}
-      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        <div className="min-w-0 flex-1">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+        <div className="min-w-0 sm:flex-1">
           <h1 className="font-serif text-[26px] leading-tight text-ink md:text-[30px]">{title}</h1>
           {description && <p className="mt-2 max-w-[62ch] text-sm leading-relaxed text-ink-soft">{description}</p>}
         </div>
-        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+        {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>}
       </div>
     </header>
   );
