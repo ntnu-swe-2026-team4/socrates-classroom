@@ -186,6 +186,7 @@ export const ByokSetInputSchema = z.object({
 
 export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
 export type ViolationType = (typeof VIOLATION_TYPES)[number];
+export type { ViolationType as SharedViolationType };
 export const ViolationChoiceSchema = z.object({
   type: z.enum(VIOLATION_TYPES),
   probability: z.number().min(0).max(1),

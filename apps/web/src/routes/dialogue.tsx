@@ -59,8 +59,8 @@ function DialoguePage() {
   );
 
   const history = useQuery({ queryKey: ["history", activityId], queryFn: () => api.dialogueHistory(activityId) });
-  const initialText = useMemo(() => history.data?.map((message) => message.text) ?? [], [history.data]);
-  const { messages, draft, phase, error, send, retryLast, interrupt } = useDialogue(activityId, initialText);
+  const initialHistory = useMemo(() => history.data ?? [], [history.data]);
+  const { messages, draft, phase, error, send, retryLast, interrupt } = useDialogue(activityId, initialHistory);
 
   const stageRef = useRef<SocratesHandle>(null);
   useEffect(() => {

@@ -17,4 +17,5 @@ export interface Env {
   BYOK_ENC_KEY?: string;
   TTS_MODEL?: string;
   SEED_TOKEN?: string;
+  TYPESAFE_API_KEY?: string;
 }

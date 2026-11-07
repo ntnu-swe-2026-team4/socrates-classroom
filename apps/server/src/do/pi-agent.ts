@@ -13,6 +13,7 @@ import { mockSocratesReply } from "../providers/mock-socrates";
 import { ProviderRouter, type SettleKind } from "../providers/router";
 import { oneshot } from "../providers/oneshot";
 import { classifyViolationViaClef } from "../providers/clef";
+import { buildJevClassifier, classifyViolationViaJev } from "../providers/jev";
 
 function classifyMock(text: string): { type: ViolationType; probability: number } {
   const lowered = text.toLowerCase();
@@ -174,20 +175,21 @@ export class PiAgent extends DurableObject<Env> {
               stream.start(async (call) => {
                 if (call.kind !== "value") return;
                 const partial = livePartialText(call.value);
-                if (partial.length > sent) {
-                  send("delta", { text: partial.slice(sent) });
-                  sent = partial.length;
+                const clean = stripEmotionTag(partial);
+                if (clean.length > sent) {
+                  send("delta", { text: clean.slice(sent) });
+                  sent = clean.length;
                 }
               });
 
               const receipt = await session.submit(input.userText);
               const result = await session.wait(receipt.operationId);
-              const final = (result.text ?? "").trim();
+              const final = stripEmotionTag((result.text ?? "").trim());
               if (result.status !== "done" || !final) {
                 throw new Error(`llm_unavailable:${result.reason ?? ""}`);
               }
               if (final.length > sent) {
-                send("delta", { text: final.slice(sent) });
+                send("delta", { text: final.slice(Math.min(sent, final.length)) });
               }
               await stream.stop().catch(() => {});
 
@@ -285,7 +287,7 @@ export class PiAgent extends DurableObject<Env> {
         "SELECT role, text FROM messages WHERE activity_id = $aid AND student_id = $sid ORDER BY at, rowid",
         { aid: activityId, sid: userId },
       );
-      let choice: { type: ViolationType; probability: number } | null = this.models.clef
+      let choice: { type: ViolationType; probability: number; source?: string } | null = this.models.clef
         ? await classifyViolationViaClef(
             this.env,
             this.models.models as unknown as Parameters<typeof classifyViolationViaClef>[1],
@@ -294,6 +296,18 @@ export class PiAgent extends DurableObject<Env> {
             userText,
           )
         : null;
+      if (!choice) {
+        const jev = buildJevClassifier(this.env);
+        if (jev) {
+          this.models.models.setProvider(jev.provider);
+          choice = await classifyViolationViaJev(
+            this.models.models as unknown as Parameters<typeof classifyViolationViaJev>[0],
+            jev.model,
+            transcript,
+            userText,
+          );
+        }
+      }
       if (!choice) {
         choice = await oneshot(this.env, this.models, {
           system:
@@ -354,6 +368,12 @@ export class PiAgent extends DurableObject<Env> {
       providers: [...this.models.byId.keys()],
     };
   }
+}
+
+const EMOTION_TAG_RE = /^\[(neutral|happy|confused|angry)\]\s*/;
+
+function stripEmotionTag(text: string): string {
+  return text.replace(EMOTION_TAG_RE, "");
 }
 
 function livePartialText(view: unknown): string {

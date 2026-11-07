@@ -81,7 +81,13 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     stopRef.current = stop;
   });
 
-  useEffect(() => () => stopEverythingRef.current(), []);
+  useEffect(
+    () => () => {
+      stopRequestedRef.current = true;
+      stopEverythingRef.current();
+    },
+    [],
+  );
 
   const start = useCallback(async () => {
     if (session.current) return;
@@ -211,10 +217,29 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     const s = session.current;
     if (!s) return;
 
-    const capturedFinal = s.liveText;
-    const chunks = s.chunks;
     const hasRecognition = Boolean(s.recognition);
+    const capturedFinal = s.liveText;
     const elapsedMs = Date.now() - s.startedAt;
+
+    let chunks: Blob[] = [];
+    if (s.recorder) {
+      chunks = await new Promise<Blob[]>((resolve) => {
+        const recorder = s.recorder!;
+        const originalOnData = recorder.ondataavailable;
+        const collected: Blob[] = [...s.chunks];
+        recorder.ondataavailable = (event) => {
+          originalOnData?.call(recorder, event);
+          if (event.data.size > 0) collected.push(event.data);
+        };
+        recorder.onstop = () => {
+          resolve(collected);
+        };
+        if (recorder.state === "recording") recorder.stop();
+        else resolve(collected);
+        setTimeout(() => resolve(collected), 1000);
+      });
+    }
+
     stopEverything();
     setState("processing");
     try {

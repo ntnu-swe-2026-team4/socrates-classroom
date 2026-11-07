@@ -6,6 +6,7 @@ import {
   type Provider,
 } from "@earendil-works/pi-ai";
 import type { ViolationType } from "@socrates/shared";
+export type { ViolationType };
 import type { Env } from "../env";
 
 export const CLEF_MODEL_ID = "@cf/cloudflare/clef-flash";
@@ -131,7 +132,7 @@ export function buildClefClassifier(env: Env): { provider: Provider; model: Clas
 export interface ViolationJudgment {
   type: ViolationType;
   probability: number;
-  source: "clef" | "llm" | "mock";
+  source: "clef" | "jev" | "llm" | "mock";
 }
 
 export async function classifyViolationViaClef(

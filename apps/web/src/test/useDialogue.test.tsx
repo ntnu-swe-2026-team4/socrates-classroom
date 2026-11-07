@@ -12,7 +12,7 @@ vi.mock("@/api", () => ({
   },
 }));
 
-const INITIAL: string[] = [];
+const INITIAL: Array<{ id?: string; role: "user" | "assistant"; text: string }> = [];
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

@@ -1,4 +1,4 @@
-import { persistActivityId } from "./local";
+import { persistActivityId, recordTerm } from "./local";
 import type {
   Api,
   ByokStatus,
@@ -117,7 +117,24 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
     window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const context = new AudioContextCtor();
   const source = context.createBufferSource();
-  source.buffer = await context.decodeAudioData(bytes);
+  const stopEarly = () => {
+    void context.close().catch(() => {});
+  };
+  if (signal?.aborted) {
+    stopEarly();
+    throw new DOMException("aborted", "AbortError");
+  }
+  const onAbortDuringDecode = () => stopEarly();
+  signal?.addEventListener("abort", onAbortDuringDecode, { once: true });
+  try {
+    source.buffer = await context.decodeAudioData(bytes);
+  } finally {
+    signal?.removeEventListener("abort", onAbortDuringDecode);
+  }
+  if (signal?.aborted) {
+    stopEarly();
+    throw new DOMException("aborted", "AbortError");
+  }
   const analyser = context.createAnalyser();
   analyser.fftSize = 256;
   source.connect(analyser);
@@ -189,5 +206,9 @@ export const httpApi: Api = {
     await call<void>("/settings/byok", { method: "DELETE" });
     return null;
   },
-  lookupTerm: (term) => call<TermExplanation>("/lookup", { method: "POST", json: { term } }),
+  lookupTerm: async (term) => {
+    const explanation = await call<TermExplanation>("/lookup", { method: "POST", json: { term } });
+    recordTerm(explanation.term);
+    return explanation;
+  },
 };

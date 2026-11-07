@@ -43,6 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     mutationFn: () => api.logout(),
     onSuccess: async () => {
       queryClient.setQueryData(["me"], null);
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "me" });
       await navigate({ to: "/" });
     },
   });
