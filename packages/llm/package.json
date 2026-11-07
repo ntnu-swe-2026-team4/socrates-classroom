@@ -3,5 +3,15 @@
   "private": true,
   "type": "module",
   "version": "0.1.0",
-  "description": "提示詞與 provider 設定層（zero-code）：改檔後重新部署即生效"
+  "description": "LLM 層：runtime、任務（task.ts＋prompt）、provider 設定",
+  "scripts": {
+    "bundle": "node -e \"import('./devtools/bundle.ts').then(m => console.log(m.writeBundle()))\""
+  },
+  "dependencies": {
+    "dotprompt": "1.1.2",
+    "typebox": "1.3.27"
+  },
+  "devDependencies": {
+    "handlebars": "4.7.10"
+  }
 }

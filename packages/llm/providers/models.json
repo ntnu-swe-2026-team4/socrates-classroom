@@ -4,6 +4,11 @@
       "baseUrl": "https://api.z.ai/api/coding/paas/v4",
       "defaultModel": "glm-4.6",
       "models": ["glm-4.6", "glm-4.7", "glm-5.3", "glm-4.5-air"],
+      "params": {
+        "thinking": {
+          "type": "disabled"
+        }
+      },
       "notes": "OpenAI 相容（POST {baseUrl}/chat/completions、SSE、response_format）。GLM Coding Plan 用 api.z.ai/api/coding/paas/v4；一般 API 用 https://open.bigmodel.cn/api/paas/v4，兩者都需要對應方案才有額度。"
     },
     "mock": {
