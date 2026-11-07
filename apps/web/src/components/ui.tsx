@@ -78,11 +78,11 @@ export function Checkbox({
         onChange={(event) => onCheckedChange(event.target.checked)}
         className="peer sr-only"
       />
-      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-line-strong bg-paper-deep transition-colors peer-checked:border-ember peer-checked:bg-ember peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ember">
+      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-line-strong bg-paper-deep transition-colors peer-checked:border-ember peer-checked:bg-ember peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ember peer-checked:[&>svg]:opacity-100">
         <svg
           aria-hidden
           viewBox="0 0 16 16"
-          className="h-3.5 w-3.5 fill-none stroke-on-ember stroke-[2.5]"
+          className="h-3.5 w-3.5 fill-none stroke-on-ember stroke-[2.5] opacity-0 transition-opacity"
           strokeLinecap="round"
           strokeLinejoin="round"
         >

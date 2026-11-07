@@ -451,6 +451,12 @@ export default function Scene3D({
       const h = mount.clientHeight;
       if (w === 0 || h === 0) return;
       camera.aspect = w / h;
+      // Portrait (phone) viewports: widen the vertical FOV so the horizontal FOV never drops below
+      // the 50° landscape framing, otherwise the axis labels at the cube edges get clipped.
+      camera.fov =
+        camera.aspect < 1
+          ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(25)) / camera.aspect))
+          : 50;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     };

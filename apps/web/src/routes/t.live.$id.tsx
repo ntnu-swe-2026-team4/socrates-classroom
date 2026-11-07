@@ -61,7 +61,7 @@ function LivePage() {
       />
 
       <div className="mx-auto w-full max-w-5xl space-y-4 px-6 py-6">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
           <Stat label={t("live_all")} value={students.length} />
           <Stat label={t("live_active")} value={activeCount} />
           <Stat label={t("live_needs_attention")} value={flaggedCount} tone={flaggedCount ? "flag" : undefined} />
@@ -92,7 +92,19 @@ function LivePage() {
                 <i className="flex size-7 shrink-0 items-center justify-center rounded-full bg-ember-wash font-serif text-xs not-italic text-ember">
                   {student.name.slice(0, 1)}
                 </i>
-                <span className="truncate">{student.name}</span>
+                <span className="min-w-0">
+                  <span className="block truncate">{student.name}</span>
+                  <span
+                    className={cn(
+                      "block truncate text-[11.5px] md:hidden",
+                      student.status === "speaking" && "text-ember",
+                      student.status === "active" && "text-moss",
+                      student.status === "idle" && "text-ink-faint",
+                    )}
+                  >
+                    {student.status === "idle" ? "○" : "●"} {t(`live_${student.status}` as const)}
+                  </span>
+                </span>
               </span>
               <span
                 className={cn(
@@ -136,9 +148,11 @@ function LivePage() {
 
 function Stat({ label, value, tone }: { label: string; value: number; tone?: "flag" }) {
   return (
-    <Card className="p-5">
-      <div className="text-xs tracking-wider text-ink-faint">{label}</div>
-      <div className={cn("mt-1 font-serif text-3xl", tone === "flag" ? "text-flag" : "text-ember")}>{value}</div>
+    <Card className="min-w-0 p-3.5 sm:p-5">
+      <div className="truncate text-[11.5px] tracking-wider text-ink-faint sm:text-xs">{label}</div>
+      <div className={cn("mt-1 font-serif text-2xl sm:text-3xl", tone === "flag" ? "text-flag" : "text-ember")}>
+        {value}
+      </div>
     </Card>
   );
 }

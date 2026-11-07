@@ -1,7 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, History, Mic, Search, Square, SquarePen, TextSearch, Trash2, UserRound, X } from "lucide-react";
+import {
+  ArrowUp,
+  History,
+  Mic,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Square,
+  SquarePen,
+  TextSearch,
+  Trash2,
+  UserRound,
+  X,
+} from "lucide-react";
 import { api, type SoloChat } from "@/api";
 import { SocratesStage, type SocratesHandle } from "@/components/SocratesStage";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
@@ -9,6 +22,7 @@ import { cn } from "@/components/ui";
 import { useDialogue, type DialoguePhase } from "@/hooks/useDialogue";
 import { useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { SUGGESTION_KEYS, useStartChat } from "@/hooks/useStartChat";
+import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useT, type MessageKey, type Translate } from "@/i18n";
 
@@ -67,6 +81,7 @@ export function ChatWorkspace({ chatId, autoSend, onAutoSent, openTerm, onTermOp
   const stageRef = useRef<SocratesHandle>(null);
   const miniRef = useRef<SocratesHandle>(null);
   const desktop = useIsDesktop();
+  const [collapsed, setCollapsed] = usePersistentFlag("socrates_chat_collapsed", false);
 
   const chat = useQuery({
     queryKey: ["soloChat", chatId],
@@ -147,13 +162,40 @@ export function ChatWorkspace({ chatId, autoSend, onAutoSent, openTerm, onTermOp
 
   return (
     <div className="flex h-dvh min-h-0">
-      <aside className="hidden w-[300px] shrink-0 flex-col border-r border-line bg-card md:flex lg:w-[320px]">
-        <PanelHeader tab={tab} onTab={setTab} onNavigate={() => setDrawerOpen(false)} />
-        {panelBody}
-      </aside>
+      {!collapsed && (
+        <aside className="hidden w-[300px] shrink-0 flex-col border-r border-line bg-card md:flex lg:w-[320px]">
+          <PanelHeader
+            tab={tab}
+            onTab={setTab}
+            onNavigate={() => setDrawerOpen(false)}
+            onCollapse={() => setCollapsed(true)}
+          />
+          {panelBody}
+        </aside>
+      )}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex h-[88px] shrink-0 items-center gap-2 pr-4 pl-16 md:h-14 md:pl-6">
+        <header
+          className={cn(
+            "flex h-[88px] shrink-0 items-center gap-2 pr-4 pl-16 md:h-14",
+            collapsed ? "md:pl-3" : "md:pl-6",
+          )}
+        >
+          {collapsed && (
+            <span className="hidden items-center gap-0.5 md:flex">
+              <IconButton label={t("panel_expand")} onClick={() => setCollapsed(false)}>
+                <PanelLeftOpen className="size-[18px]" />
+              </IconButton>
+              <Link
+                to="/chat"
+                aria-label={t("chat_new_button")}
+                title={t("chat_new_button")}
+                className="flex size-9 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
+              >
+                <SquarePen className="size-[18px]" />
+              </Link>
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[15px] font-medium text-ink">{title || t("dlg_title")}</h1>
             <p className="truncate text-[11.5px] text-ink-faint md:hidden">{t("chat_eyebrow")}</p>
@@ -253,11 +295,13 @@ function PanelHeader({
   onTab,
   onNavigate,
   onClose,
+  onCollapse,
 }: {
   tab: PanelTab;
   onTab: (tab: PanelTab) => void;
   onNavigate: () => void;
   onClose?: () => void;
+  onCollapse?: () => void;
 }) {
   const t = useT();
   return (
@@ -274,6 +318,11 @@ function PanelHeader({
           >
             <SquarePen className="size-[18px]" />
           </Link>
+          {onCollapse && (
+            <IconButton label={t("panel_collapse")} onClick={onCollapse}>
+              <PanelLeftClose className="size-[18px]" />
+            </IconButton>
+          )}
           {onClose && (
             <IconButton label={t("common_back")} onClick={onClose}>
               <X className="size-[18px]" />

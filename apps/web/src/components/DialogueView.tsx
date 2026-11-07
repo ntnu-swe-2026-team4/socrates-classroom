@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Mic, Send, TextSearch } from "lucide-react";
+import { ChevronDown, ChevronUp, Mic, PanelLeftClose, PanelLeftOpen, Send, TextSearch } from "lucide-react";
 import type { DialogueMessage } from "@/api";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { SocratesStage, type SocratesHandle } from "@/components/SocratesStage";
 import { TopBar, cn } from "@/components/ui";
 import { useDialogue } from "@/hooks/useDialogue";
+import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useT, type MessageKey } from "@/i18n";
@@ -57,6 +58,7 @@ export function DialogueView({
   });
 
   const stageRef = useRef<SocratesHandle>(null);
+  const [socratesOpen, setSocratesOpen] = usePersistentFlag("socrates_dialogue_panel", true);
   useEffect(() => {
     if (phase === "thinking") stageRef.current?.setExpression("Confused", { loop: true });
     else stageRef.current?.setExpression(null);
@@ -164,25 +166,60 @@ export function DialogueView({
       />
 
       <div className="flex min-h-0 flex-1">
-        <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[minmax(280px,38%)_minmax(0,1fr)] md:grid-rows-1">
-          <section className="flex min-h-0 flex-col border-b border-line md:border-r md:border-b-0">
-            <div className="flex h-11 shrink-0 items-center border-b border-line px-4 text-[13px] text-ink-soft">
-              {t("dlg_socrates")}
-            </div>
-            <div className="relative h-52 shrink-0 md:h-auto md:min-h-0 md:flex-1">
-              <SocratesStage ref={stageRef} speaking={phase === "speaking"} className="absolute inset-0" />
-            </div>
-            <div className="hidden shrink-0 flex-col items-center gap-1.5 px-5 pt-2 pb-5 text-center md:flex">
-              <p className="h-5 text-[12.5px] text-ink-faint">
-                {status ? <span className="state-shimmer">{status}</span> : t("dlg_opening_hint")}
-              </p>
-            </div>
-          </section>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+          {socratesOpen && (
+            <section className="flex shrink-0 flex-col border-b border-line md:min-h-0 md:w-[320px] md:border-r md:border-b-0 lg:w-[360px]">
+              <div className="flex h-11 shrink-0 items-center justify-between border-b border-line pr-2 pl-4 text-[13px] text-ink-soft">
+                <span className="flex min-w-0 items-center gap-2">
+                  {t("dlg_socrates")}
+                  {status && <span className="state-shimmer truncate text-[12px] md:hidden">{status}</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSocratesOpen(false)}
+                  aria-label={t("panel_collapse")}
+                  title={t("panel_collapse")}
+                  className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
+                >
+                  <PanelLeftClose className="hidden size-[17px] md:block" />
+                  <ChevronUp className="size-[17px] md:hidden" />
+                </button>
+              </div>
+              <div className="flex flex-col items-center justify-center md:min-h-0 md:flex-1 md:gap-3 md:px-4 md:py-6">
+                <div className="relative aspect-square h-36 md:h-auto md:w-full md:max-w-[340px]">
+                  <SocratesStage ref={stageRef} speaking={phase === "speaking"} className="absolute inset-0" />
+                </div>
+                <p className="hidden h-5 text-center text-[12.5px] text-ink-faint md:block">
+                  {status ? <span className="state-shimmer">{status}</span> : t("dlg_opening_hint")}
+                </p>
+              </div>
+            </section>
+          )}
 
-          <section className="flex min-h-0 min-w-0 flex-col">
-            <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-4 text-[13px] text-ink-soft">
-              <span>{t("dlg_title")}</span>
-              {status && <span className="state-shimmer text-[12px] md:hidden">{status}</span>}
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div
+              className={cn(
+                "h-11 shrink-0 items-center justify-between gap-2 border-b border-line px-4 text-[13px] text-ink-soft",
+                socratesOpen ? "hidden md:flex" : "flex",
+              )}
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                {!socratesOpen && (
+                  <button
+                    type="button"
+                    onClick={() => setSocratesOpen(true)}
+                    aria-label={t("panel_expand")}
+                    title={t("panel_expand")}
+                    className="-ml-2 flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
+                  >
+                    <PanelLeftOpen className="hidden size-[17px] md:block" />
+                    <ChevronDown className="size-[17px] md:hidden" />
+                    <span>{t("dlg_socrates")}</span>
+                  </button>
+                )}
+                <span className={cn(!socratesOpen && "hidden sm:inline")}>{t("dlg_title")}</span>
+              </span>
+              {status && !socratesOpen && <span className="state-shimmer text-[12px]">{status}</span>}
             </div>
 
             <div
