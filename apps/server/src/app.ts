@@ -14,6 +14,7 @@ import { activityRoutes } from "./routes/activity";
 import { voiceRoutes } from "./routes/voice";
 import { lookupRoutes } from "./routes/lookup";
 import { byokRoutes } from "./routes/byok";
+import { soloRoutes } from "./routes/solo";
 
 export function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
@@ -48,7 +49,8 @@ export function createApp(): Hono<AppEnv> {
     .route("/", activityRoutes())
     .route("/", voiceRoutes())
     .route("/", lookupRoutes())
-    .route("/", byokRoutes());
+    .route("/", byokRoutes())
+    .route("/", soloRoutes());
 
   app.route("/api", api);
 

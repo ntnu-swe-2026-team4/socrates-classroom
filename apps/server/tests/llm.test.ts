@@ -10,7 +10,7 @@ describe("PiAgent mock 對話（SSE 契約）", () => {
     const { createApp } = await import("../src/app");
     const { seedDemo } = await import("../src/seed");
     const { run, one } = await import("../src/db/d1");
-    const migration = (await import("../migrations/001_init.sql")).default;
+    const migration = `${(await import("../migrations/001_init.sql")).default};${(await import("../migrations/002_solo.sql")).default}`;
     const app = createApp();
     for (const statement of migration.split(";")) {
       if (statement.trim()) await run(env.DB, statement.trim());

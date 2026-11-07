@@ -28,7 +28,7 @@ function hmacKey(secret: string): Promise<CryptoKey> {
 }
 
 function secretOf(ctx: { env: { AUTH_SECRET?: string; BYOK_ENC_KEY?: string } }): string {
-  return ctx.env.AUTH_SECRET ?? ctx.env.BYOK_ENC_KEY ?? "socrates-dev-secret";
+  return ctx.env.AUTH_SECRET || ctx.env.BYOK_ENC_KEY || "socrates-dev-secret";
 }
 
 function b64url(bytes: Uint8Array): string {

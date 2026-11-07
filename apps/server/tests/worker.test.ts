@@ -4,6 +4,7 @@ import worker from "../src/index";
 import { run } from "../src/db/d1";
 import { seedDemo } from "../src/seed";
 import migrationSql from "../migrations/001_init.sql";
+import soloMigrationSql from "../migrations/002_solo.sql";
 
 const ctx = createExecutionContext();
 
@@ -46,7 +47,7 @@ interface Fixture {
 let fx: Fixture;
 
 beforeAll(async () => {
-  for (const statement of migrationSql.split(";")) {
+  for (const statement of `${migrationSql};${soloMigrationSql}`.split(";")) {
     if (statement.trim()) await run(env.DB, statement.trim());
   }
   await seedDemo(env.DB);

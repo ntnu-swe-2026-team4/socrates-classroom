@@ -7,8 +7,11 @@ import { loadEnv } from "vite";
 import { bindings, defineConfig, exports } from "cf/config";
 
 export default defineConfig(({ mode }) => {
-  const local = mode === "development" ? loadEnv(mode, import.meta.dirname, "") : {};
+  const dev = mode === "development";
+  const local = dev ? loadEnv(mode, import.meta.dirname, "") : {};
   const text = (key: string, fallback: string) => bindings.text(local[key] ?? fallback);
+  const remoteAi = local.CF_REMOTE_AI === "true" || process.env.CF_REMOTE_AI === "true";
+  const ai = remoteAi ? { AI: bindings.ai({ dev: { remote: true } }) } : dev ? {} : { AI: bindings.ai({}) };
 
   return {
     worker: {
@@ -19,9 +22,7 @@ export default defineConfig(({ mode }) => {
       observability: { enabled: true },
       env: {
         DB: bindings.d1({ name: "socrates", id: "d1db0ca1-1111-4000-8000-000000000001" }),
-        ...(local.CF_REMOTE_AI === "true" || process.env.CF_REMOTE_AI === "true"
-          ? { AI: bindings.ai({ dev: { remote: true } }) }
-          : { AI: bindings.ai({}) }),
+        ...ai,
         PiAgent: bindings.durableObject({ worker: "socrates-classroom", exportName: "PiAgent" }),
         ActivityEvents: bindings.durableObject({ worker: "socrates-classroom", exportName: "ActivityEvents" }),
         Coordinator: bindings.durableObject({ worker: "socrates-classroom", exportName: "Coordinator" }),

@@ -108,6 +108,7 @@ export class PiAgent extends DurableObject<Env> {
     userText: string;
     title: string;
     lang?: Lang;
+    solo?: boolean;
   }): Promise<Response> {
     if (input.lang) this.threadLang = input.lang;
     if (this.busy) throw new Error("already_streaming");
@@ -122,15 +123,23 @@ export class PiAgent extends DurableObject<Env> {
 
     const db = this.env.DB;
     try {
-      const activity = await one<{ finished_at: string | null }>(
-        db,
-        "SELECT finished_at FROM activities WHERE id = $id",
-        { id: input.activityId },
-      );
-      if (!activity) throw new Error("activity_missing");
-      if (activity.finished_at) throw new Error("activity_finished");
+      if (input.solo) {
+        const chat = await one<{ id: string }>(db, "SELECT id FROM solo_chats WHERE id = $id AND user_id = $uid", {
+          id: input.activityId,
+          uid: input.userId,
+        });
+        if (!chat) throw new Error("activity_missing");
+      } else {
+        const activity = await one<{ finished_at: string | null }>(
+          db,
+          "SELECT finished_at FROM activities WHERE id = $id",
+          { id: input.activityId },
+        );
+        if (!activity) throw new Error("activity_missing");
+        if (activity.finished_at) throw new Error("activity_finished");
+      }
 
-      const threadKey = `activity:${input.activityId}:${input.userId}`;
+      const threadKey = `${input.solo ? "solo" : "activity"}:${input.activityId}:${input.userId}`;
       const homeProvider = (await this.ctx.storage.get<string>("home")) ?? undefined;
       const lease = await this.router.acquire(threadKey, homeProvider);
       await this.ctx.storage.put("home", lease.provider.id);
@@ -204,26 +213,49 @@ export class PiAgent extends DurableObject<Env> {
                 text: final,
                 at,
               };
-              await batch(db, [
-                {
-                  sql: "INSERT INTO messages (id, activity_id, student_id, role, text, at) VALUES ($id, $aid, $sid, 'user', $text, $at)",
-                  params: { id: userMessage.id, aid: input.activityId, sid: input.userId, text: userMessage.text, at },
-                },
-                {
-                  sql: "INSERT INTO messages (id, activity_id, student_id, role, text, at) VALUES ($id, $aid, $sid, 'assistant', $text, $at)",
-                  params: {
-                    id: assistantMessage.id,
-                    aid: input.activityId,
-                    sid: input.userId,
-                    text: assistantMessage.text,
-                    at,
+              if (input.solo) {
+                await batch(db, [
+                  {
+                    sql: "INSERT INTO solo_messages (id, chat_id, role, text, at) VALUES ($id, $cid, 'user', $text, $at)",
+                    params: { id: userMessage.id, cid: input.activityId, text: userMessage.text, at },
                   },
-                },
-              ]);
+                  {
+                    sql: "INSERT INTO solo_messages (id, chat_id, role, text, at) VALUES ($id, $cid, 'assistant', $text, $at)",
+                    params: { id: assistantMessage.id, cid: input.activityId, text: assistantMessage.text, at },
+                  },
+                  {
+                    sql: "UPDATE solo_chats SET updated_at = $at WHERE id = $cid",
+                    params: { cid: input.activityId, at },
+                  },
+                ]);
+              } else {
+                await batch(db, [
+                  {
+                    sql: "INSERT INTO messages (id, activity_id, student_id, role, text, at) VALUES ($id, $aid, $sid, 'user', $text, $at)",
+                    params: {
+                      id: userMessage.id,
+                      aid: input.activityId,
+                      sid: input.userId,
+                      text: userMessage.text,
+                      at,
+                    },
+                  },
+                  {
+                    sql: "INSERT INTO messages (id, activity_id, student_id, role, text, at) VALUES ($id, $aid, $sid, 'assistant', $text, $at)",
+                    params: {
+                      id: assistantMessage.id,
+                      aid: input.activityId,
+                      sid: input.userId,
+                      text: assistantMessage.text,
+                      at,
+                    },
+                  },
+                ]);
+              }
               send("done", { message: assistantMessage });
               await this.router.settle(lease, "ok");
               release();
-              await this.afterTurn(db, input.activityId, input.userId, input.userText, final);
+              if (!input.solo) await this.afterTurn(db, input.activityId, input.userId, input.userText, final);
             } catch (error) {
               const raw = error instanceof Error ? error.message : String(error);
               const kind: SettleKind = /rate|429|concurren/i.test(raw)

@@ -6,7 +6,10 @@ export type DialogueError = { code: string } | null;
 
 const NO_AMPLITUDE = () => {};
 
-export function useDialogue(activityId: string, initialText: string[]) {
+type InitialMessage = string | { id?: string; role: "user" | "assistant"; text: string };
+
+export function useDialogue(activityId: string, initialText: InitialMessage[], options: { solo?: boolean } = {}) {
+  const solo = Boolean(options.solo);
   const [messages, setMessages] = useState<{ id: string; role: "user" | "assistant"; text: string }[]>([]);
   const [draft, setDraft] = useState("");
   const [phase, setPhase] = useState<DialoguePhase>("idle");
@@ -15,7 +18,13 @@ export function useDialogue(activityId: string, initialText: string[]) {
   const lastSentRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setMessages(initialText.map((text, i) => ({ id: `init-${i}`, role: "assistant" as const, text })));
+    setMessages(
+      initialText.map((entry, i) =>
+        typeof entry === "string"
+          ? { id: `init-${i}`, role: "assistant" as const, text: entry }
+          : { id: entry.id ?? `init-${i}`, role: entry.role, text: entry.text },
+      ),
+    );
   }, [initialText]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -35,7 +44,7 @@ export function useDialogue(activityId: string, initialText: string[]) {
       setDraft("");
       setError(null);
       try {
-        const message = await api.sendDialogue(
+        const message = await (solo ? api.sendSoloDialogue : api.sendDialogue)(
           activityId,
           trimmed,
           (delta) => {
@@ -59,7 +68,7 @@ export function useDialogue(activityId: string, initialText: string[]) {
         setPhase("idle");
       }
     },
-    [activityId, phase],
+    [activityId, phase, solo],
   );
 
   const retryLast = useCallback(() => {

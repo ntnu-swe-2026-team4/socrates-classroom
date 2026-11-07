@@ -2,7 +2,6 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
-import "@fontsource-variable/noto-sans-tc";
 import "@fontsource-variable/noto-serif-tc";
 import "./index.css";
 import { routeTree } from "./routeTree.gen";

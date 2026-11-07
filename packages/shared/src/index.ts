@@ -153,7 +153,7 @@ export type ByokStatus = z.infer<typeof ByokStatusSchema>;
 
 export const LoginInputSchema = z.object({ email: z.email(), password: z.string().min(8).max(128) });
 export const RegisterInputSchema = z.object({
-  code: z.string().min(4).max(32),
+  code: z.string().min(4).max(32).optional(),
   email: z.email(),
   password: z.string().min(8).max(128),
   name: z.string().trim().min(1).max(80),
@@ -177,6 +177,40 @@ export const ClassroomCreateInputSchema = z.object({
   topicId: z.string().min(1),
 });
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
+export const GuestInputSchema = z.object({ name: z.string().trim().min(1).max(40).optional() });
+export const MeUpdateInputSchema = z.object({ name: z.string().trim().min(1).max(40) });
+export const SoloChatCreateInputSchema = z.object({ title: z.string().trim().min(1).max(120) });
+
+export const SoloChatSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  rounds: z.number(),
+  lastText: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type SoloChat = z.infer<typeof SoloChatSchema>;
+
+export const ClassroomSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  role: z.enum(["teacher", "student"]),
+  teacherName: z.string(),
+  memberCount: z.number(),
+  code: z.string().nullable(),
+  url: z.string().nullable(),
+  current: z
+    .object({
+      activityId: z.string(),
+      topicId: z.string(),
+      topicTitle: z.string(),
+      topicStatement: z.string(),
+      finished: z.boolean(),
+    })
+    .nullable(),
+  createdAt: z.string(),
+});
+export type ClassroomSummary = z.infer<typeof ClassroomSummarySchema>;
 export const LookupInputSchema = z.object({ term: z.string().trim().min(1).max(30) });
 export const TtsInputSchema = z.object({ text: z.string().min(1).max(2000), lang: z.enum(["zh", "en", "es"]) });
 export const ByokSetInputSchema = z.object({

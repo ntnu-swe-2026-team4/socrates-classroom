@@ -5,7 +5,7 @@ import { api, ApiError, type GroupReport } from "@/api";
 import { scoreToCoords } from "@/components/constellation/sim";
 import Scene3D, { type ClusterResult, CLUSTER_PALETTE } from "@/components/constellation/Scene3D";
 import { kmeans } from "@/components/constellation/kmeans";
-import { Segmented, Spinner, cn } from "@/components/ui";
+import { Card, PageHeader, Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 import { useTheme } from "@/theme";
 
@@ -58,129 +58,131 @@ function ReportPage() {
   const individuals = isTeacherView ? data.individuals : [data.individual];
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-5 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-3 pl-12 md:pl-0">
-        <div>
-          <h1 className="font-serif text-2xl font-semibold text-ink">{t("report_title")}</h1>
-          <p className="mt-1 text-[13px] text-ink-faint">{data.topicTitle}</p>
-        </div>
-        <Segmented
-          label={t("report_title")}
-          value={view}
-          onChange={setView}
-          items={[
-            { value: "group", label: t("report_group") },
-            { value: "individual", label: t("report_individual") },
-          ]}
-        />
-      </div>
-
-      {view === "group" ? (
-        <section className="mt-6 flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[12px] font-medium tracking-wider text-ink-faint uppercase">
-                {t("report_axes")}
-              </span>
-              {data.group.axes.map((axis, i) => (
-                <button
-                  key={axis.name}
-                  type="button"
-                  onClick={() =>
-                    setCheckedAxes((prev) => (prev.includes(i) ? prev.filter((v) => v !== i) : [...prev, i].sort()))
-                  }
-                  className={cn(
-                    "rounded-full border px-3 py-1 text-[12.5px] transition-colors",
-                    checkedAxes.includes(i)
-                      ? "border-ember bg-ember-wash font-medium text-ember"
-                      : "border-line bg-card text-ink-soft",
-                  )}
-                >
-                  {axis.left} ↔ {axis.right}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowTraj((v) => !v)}
-              className={cn(
-                "rounded-full border px-3 py-1 text-[12.5px] transition-colors",
-                showTraj ? "border-ember bg-ember-wash font-medium text-ember" : "border-line bg-card text-ink-soft",
-              )}
-            >
-              {t("report_trajectory")}
-            </button>
-          </div>
-
-          <Constellation3D group={data.group} checkedAxes={checkedAxes} showTraj={showTraj} scheme={theme} />
-          <div className="flex flex-wrap justify-center gap-4">
-            {data.group.clusters.map((cluster) => (
-              <span key={cluster.id} className="flex items-center gap-2 text-[13px] text-ink-soft">
-                <span
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={{ background: CLUSTER_PALETTE[cluster.id % CLUSTER_PALETTE.length] }}
-                />
-                {cluster.label}
-              </span>
-            ))}
-          </div>
-        </section>
-      ) : (
-        person && (
-          <section className="mt-6 flex flex-col gap-8">
-            <div className="flex flex-wrap gap-2">
-              {individuals.map((individual, index) => (
-                <button
-                  type="button"
-                  key={individual.pseudonym}
-                  onClick={() => setStudentIdx(index)}
-                  className={`rounded-full border px-3.5 py-1.5 text-[13px] transition-colors ${
-                    index === studentIdx
-                      ? "border-ember bg-ember-wash font-medium text-ember"
-                      : "border-line bg-card text-ink-soft"
-                  }`}
-                >
-                  {individual.pseudonym}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-col items-center gap-10 lg:flex-row lg:items-start lg:justify-center">
-              <div className="flex flex-col items-center gap-2">
-                <Hexagon axes={person.hexagon} />
-                <p className="text-[12.5px] text-ink-faint">{t("report_hex")}</p>
-              </div>
-              <div className="flex max-w-xl flex-col gap-4">
-                <h2 className="font-serif text-lg font-semibold text-ink">{t("report_summary")}</h2>
-                {person.arguments.map((argument) => (
-                  <div key={argument.claim} className="rounded-2xl border border-line bg-card p-4">
-                    <p className="text-[14.5px] font-medium text-ink">{argument.claim}</p>
-                    <p className="mt-1.5 text-[13.5px] leading-relaxed text-ink-soft">
-                      <span className="font-medium text-moss">{t("report_reason")}·</span> {argument.reason}
-                    </p>
-                    <p className="mt-1 text-[13.5px] leading-relaxed text-ink-faint">
-                      <span className="font-medium text-ember">{t("report_tension")}·</span> {argument.tension}
-                    </p>
-                  </div>
+    <div className="flex min-h-full flex-col">
+      <PageHeader
+        eyebrow={data.topicTitle}
+        title={t("report_title")}
+        actions={
+          <Segmented
+            label={t("report_title")}
+            value={view}
+            onChange={setView}
+            items={[
+              { value: "group", label: t("report_group") },
+              { value: "individual", label: t("report_individual") },
+            ]}
+          />
+        }
+      />
+      <div className="mx-auto w-full max-w-5xl px-6 py-6">
+        {view === "group" ? (
+          <Card className="flex flex-col gap-4 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="mr-1 font-serif text-[15.5px] text-ink">{t("report_axes")}</span>
+                {data.group.axes.map((axis, i) => (
+                  <button
+                    key={axis.name}
+                    type="button"
+                    onClick={() =>
+                      setCheckedAxes((prev) => (prev.includes(i) ? prev.filter((v) => v !== i) : [...prev, i].sort()))
+                    }
+                    className={cn(
+                      "cursor-pointer rounded-full border px-3 py-1 text-[12.5px] transition-colors",
+                      checkedAxes.includes(i)
+                        ? "border-ember-deep text-ember"
+                        : "border-line text-ink-soft hover:text-ink",
+                    )}
+                  >
+                    {axis.left} ↔ {axis.right}
+                  </button>
                 ))}
-                {person.violations.length > 0 && (
-                  <div className="flex flex-col gap-2">
-                    <h3 className="text-[14px] font-medium text-flag">{t("report_violations")}</h3>
-                    {person.violations.map((violation, index) => (
-                      <p
-                        // biome-ignore lint/suspicious/noArrayIndexKey: several violations can share one turn; the index disambiguates
-                        key={`${violation.turn}-${violation.type}-${index}`}
-                        className="rounded-xl bg-flag-wash px-4 py-2 text-[13px] text-ink-soft"
-                      >
-                        #{violation.turn} · {violation.type} —「{violation.excerpt}」
-                      </p>
-                    ))}
-                  </div>
-                )}
               </div>
+              <button
+                type="button"
+                onClick={() => setShowTraj((v) => !v)}
+                className={cn(
+                  "cursor-pointer rounded-full border px-3 py-1 text-[12.5px] transition-colors",
+                  showTraj ? "border-ember-deep text-ember" : "border-line text-ink-soft hover:text-ink",
+                )}
+              >
+                {t("report_trajectory")}
+              </button>
             </div>
-          </section>
-        )
-      )}
+
+            <Constellation3D group={data.group} checkedAxes={checkedAxes} showTraj={showTraj} scheme={theme} />
+            <div className="flex flex-wrap justify-center gap-4">
+              {data.group.clusters.map((cluster) => (
+                <span key={cluster.id} className="flex items-center gap-2 text-[13px] text-ink-soft">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ background: CLUSTER_PALETTE[cluster.id % CLUSTER_PALETTE.length] }}
+                  />
+                  {cluster.label}
+                </span>
+              ))}
+            </div>
+          </Card>
+        ) : (
+          person && (
+            <section className="flex flex-col gap-6">
+              <div className="flex flex-wrap gap-2">
+                {individuals.map((individual, index) => (
+                  <button
+                    type="button"
+                    key={individual.pseudonym}
+                    onClick={() => setStudentIdx(index)}
+                    className={cn(
+                      "cursor-pointer rounded-full border px-3.5 py-1.5 text-[13px] transition-colors",
+                      index === studentIdx
+                        ? "border-ember bg-ember font-semibold text-on-ember"
+                        : "border-line-strong bg-paper-deep text-ink-soft hover:text-ink",
+                    )}
+                  >
+                    {individual.pseudonym}
+                  </button>
+                ))}
+              </div>
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
+                <Card className="flex flex-col items-center gap-2 p-5">
+                  <Hexagon axes={person.hexagon} />
+                  <p className="text-[12.5px] text-ink-faint">{t("report_hex")}</p>
+                </Card>
+                <Card className="flex flex-col gap-3 p-5">
+                  <h2 className="font-serif text-[15.5px] text-ink">{t("report_summary")}</h2>
+                  {person.arguments.map((argument) => (
+                    <div key={argument.claim} className="border-t border-line pt-3 first-of-type:border-t-0">
+                      <p className="border-l-2 border-ember-deep pl-3 font-serif text-[15px] text-ink">
+                        {argument.claim}
+                      </p>
+                      <p className="mt-1.5 text-[13.5px] leading-relaxed text-ink-soft">
+                        <span className="font-medium text-moss">{t("report_reason")}·</span> {argument.reason}
+                      </p>
+                      <p className="mt-1 text-[13.5px] leading-relaxed text-ink-faint">
+                        <span className="font-medium text-ember">{t("report_tension")}·</span> {argument.tension}
+                      </p>
+                    </div>
+                  ))}
+                  {person.violations.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <h3 className="text-[14px] font-medium text-flag">{t("report_violations")}</h3>
+                      {person.violations.map((violation, index) => (
+                        <p
+                          // biome-ignore lint/suspicious/noArrayIndexKey: several violations can share one turn; the index disambiguates
+                          key={`${violation.turn}-${violation.type}-${index}`}
+                          className="rounded-xl bg-flag-wash px-4 py-2 text-[13px] text-ink-soft"
+                        >
+                          #{violation.turn} · {violation.type} —「{violation.excerpt}」
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              </div>
+            </section>
+          )
+        )}
+      </div>
     </div>
   );
 }
@@ -219,7 +221,7 @@ function Constellation3D({
   }, [group.points, group.clusters, activeSlots]);
 
   return (
-    <div className="h-105 w-full overflow-hidden rounded-2xl border border-line">
+    <div className="h-105 w-full overflow-hidden rounded-2xl border border-line bg-paper">
       <Scene3D
         key={scheme}
         agents={agents}

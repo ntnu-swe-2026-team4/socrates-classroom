@@ -3,6 +3,8 @@ import type {
   Api,
   ByokStatus,
   ClassroomCreated,
+  ClassroomSummary,
+  SoloChat,
   DialogueMessage,
   JoinInfo,
   StudentLive,
@@ -47,13 +49,31 @@ async function call<T>(path: string, init: RequestInit & { json?: unknown } = {}
   return payload as T;
 }
 
-async function sendDialogue(
+function sendDialogue(
   activityId: string,
   text: string,
   onDelta: (delta: string) => void,
   signal?: AbortSignal,
 ): Promise<DialogueMessage> {
-  const res = await fetch(`${BASE}/activities/${activityId}/dialogue`, {
+  return streamDialogue(`/activities/${activityId}/dialogue`, text, onDelta, signal);
+}
+
+function sendSoloDialogue(
+  chatId: string,
+  text: string,
+  onDelta: (delta: string) => void,
+  signal?: AbortSignal,
+): Promise<DialogueMessage> {
+  return streamDialogue(`/solo/chats/${chatId}/dialogue`, text, onDelta, signal);
+}
+
+async function streamDialogue(
+  path: string,
+  text: string,
+  onDelta: (delta: string) => void,
+  signal?: AbortSignal,
+): Promise<DialogueMessage> {
+  const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", "Accept-Language": lang() },
@@ -156,6 +176,19 @@ export const httpApi: Api = {
   me: () => call<User | null>("/me"),
   login: (email, password) => call<User>("/auth/login", { method: "POST", json: { email, password } }),
   logout: () => call<void>("/auth/logout", { method: "POST" }),
+  guest: (name) => call<User>("/auth/guest", { method: "POST", json: name ? { name } : {} }),
+  updateMe: (name) => call<User>("/me", { method: "PATCH", json: { name } }),
+  register: (input) => call<User>("/auth/register", { method: "POST", json: input }),
+  listSoloChats: () => call<SoloChat[]>("/solo/chats"),
+  createSoloChat: (title) => call<SoloChat>("/solo/chats", { method: "POST", json: { title } }),
+  soloChat: (chatId) => call<SoloChat>(`/solo/chats/${chatId}`),
+  deleteSoloChat: (chatId) => call<void>(`/solo/chats/${chatId}`, { method: "DELETE" }),
+  soloHistory: (chatId) => call<DialogueMessage[]>(`/solo/chats/${chatId}/dialogue`),
+  sendSoloDialogue,
+  listClassrooms: () => call<ClassroomSummary[]>("/classrooms"),
+  classroom: (classroomId) => call<ClassroomSummary>(`/classrooms/${classroomId}`),
+  startActivity: (classroomId, topicId) =>
+    call<ClassroomCreated>(`/classrooms/${classroomId}/activities`, { method: "POST", json: { topicId } }),
   joinByCode: (code) => call<JoinInfo>(`/join/${encodeURIComponent(code)}`),
   async joinAsGuest(code, name) {
     const payload = await call<{ user: User; activityId: string }>("/join", {

@@ -1390,3 +1390,148 @@
     display: none;
   }
 }
+
+.login-card.login-card-split.login-card-single {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 520px;
+  margin: 0 auto;
+}
+.login-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.login-alt {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.login-alt .pill-btn {
+  width: 100%;
+  justify-content: space-between;
+}
+.login-alt-note {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-faint);
+  margin: 2px 0 0;
+}
+.join-topic {
+  margin: 0 0 24px;
+  padding: 16px 18px;
+  border-left: 2px solid var(--bronze-dim);
+  background: var(--bronze-soft);
+  border-radius: 0 var(--r-m) var(--r-m) 0;
+  font-family: var(--font-serif);
+  font-size: 15.5px;
+  line-height: 1.85;
+  color: var(--ink-dim);
+}
+.tos-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--ink-dim);
+}
+.tos-check input {
+  margin-top: 4px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--bronze);
+  flex-shrink: 0;
+}
+.code-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.3em;
+  text-transform: lowercase;
+}
+.hero-ask {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(560px, 100%);
+  margin: 30px auto 0;
+  padding: 6px 6px 6px 22px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  box-shadow: 0 18px 48px -32px rgba(64, 46, 22, 0.35);
+}
+.hero-ask input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  font-size: 15px;
+  color: var(--ink);
+  outline: none;
+}
+.hero-ask input::placeholder {
+  color: var(--ink-faint);
+}
+.hero-ask button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bronze);
+  color: #221a0c;
+  cursor: pointer;
+}
+.hero-ask button svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+}
+.hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.hero-chips button {
+  border: 1px solid var(--line-strong);
+  background: color-mix(in srgb, var(--bg-1) 80%, transparent);
+  color: var(--ink-dim);
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    color 0.2s;
+}
+.hero-chips button:hover {
+  border-color: var(--bronze-dim);
+  color: var(--bronze);
+}
+.story-end-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+.login-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 16px;
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+.login-or::before,
+.login-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}

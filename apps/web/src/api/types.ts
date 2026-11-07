@@ -22,7 +22,35 @@ export interface JoinInfo {
   topic: Topic;
 }
 
+export interface SoloChat {
+  id: string;
+  title: string;
+  rounds: number;
+  lastText: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClassroomSummary {
+  id: string;
+  name: string;
+  role: Role;
+  teacherName: string;
+  memberCount: number;
+  code: string | null;
+  url: string | null;
+  current: {
+    activityId: string;
+    topicId: string;
+    topicTitle: string;
+    topicStatement: string;
+    finished: boolean;
+  } | null;
+  createdAt: string;
+}
+
 export interface ClassroomCreated {
+  classroomId: string;
   code: string;
   url: string;
   activityId: string;
@@ -136,6 +164,23 @@ export interface TermQuery {
 export interface Api {
   me(): Promise<User | null>;
   login(email: string, password: string): Promise<User>;
+  guest(name?: string): Promise<User>;
+  updateMe(name: string): Promise<User>;
+  register(input: { name: string; email: string; password: string }): Promise<User>;
+  listSoloChats(): Promise<SoloChat[]>;
+  createSoloChat(title: string): Promise<SoloChat>;
+  soloChat(chatId: string): Promise<SoloChat>;
+  deleteSoloChat(chatId: string): Promise<void>;
+  soloHistory(chatId: string): Promise<DialogueMessage[]>;
+  sendSoloDialogue(
+    chatId: string,
+    text: string,
+    onDelta: (delta: string) => void,
+    signal?: AbortSignal,
+  ): Promise<DialogueMessage>;
+  listClassrooms(): Promise<ClassroomSummary[]>;
+  classroom(classroomId: string): Promise<ClassroomSummary>;
+  startActivity(classroomId: string, topicId: string): Promise<ClassroomCreated>;
   logout(): Promise<void>;
   joinByCode(code: string): Promise<JoinInfo>;
   joinAsGuest(code: string, name: string): Promise<{ user: User; activityId: string }>;

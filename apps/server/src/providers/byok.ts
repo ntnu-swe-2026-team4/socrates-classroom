@@ -8,7 +8,7 @@ export function isAllowedProvider(provider: string): provider is ByokProvider {
 }
 
 async function aesKey(env: Env): Promise<CryptoKey> {
-  const secret = env.BYOK_ENC_KEY ?? "socrates-dev-secret";
+  const secret = env.BYOK_ENC_KEY || "socrates-dev-secret";
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
   return crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
