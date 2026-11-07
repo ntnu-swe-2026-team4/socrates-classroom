@@ -3,6 +3,8 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUp,
+  ChevronDown,
+  ChevronUp,
   History,
   Mic,
   PanelLeftClose,
@@ -208,16 +210,7 @@ export function ChatWorkspace({ chatId, autoSend, onAutoSent, openTerm, onTermOp
           </IconButton>
         </header>
 
-        {!desktop && !drawerOpen && (
-          <MobileSocrates
-            stageRef={miniRef}
-            phase={phase}
-            onOpen={() => {
-              setTab("socrates");
-              setDrawerOpen(true);
-            }}
-          />
-        )}
+        {!desktop && !drawerOpen && <MobileSocrates stageRef={miniRef} phase={phase} />}
 
         <div className="flex min-h-0 flex-1">
           <Conversation
@@ -370,33 +363,44 @@ function SocratesPane({ phase, stageRef }: { phase: DialoguePhase; stageRef: Rea
   );
 }
 
+/** Phone-only Socrates strip, collapsible upward like the classroom dialogue view. */
 function MobileSocrates({
   stageRef,
   phase,
-  onOpen,
 }: {
   stageRef: React.RefObject<SocratesHandle | null>;
   phase: DialoguePhase;
-  onOpen: () => void;
 }) {
   const t = useT();
   const status = statusOf(phase, t);
+  const [open, setOpen] = usePersistentFlag("socrates_chat_mobile_open", true);
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex w-full shrink-0 cursor-pointer items-center gap-3 border-b border-line bg-card px-4 py-2 text-left"
-    >
-      <span className="relative size-14 shrink-0">
-        <SocratesStage ref={stageRef} speaking={phase === "speaking"} mini hideStatus className="absolute inset-0" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <b className="block font-serif text-[14px] font-medium text-ink">{t("dlg_socrates")}</b>
-        <span className="block truncate text-[12px] text-ink-faint">
-          {status ? <span className="state-shimmer">{status}</span> : t("chat_disclaimer")}
+    <section className="shrink-0 border-b border-line">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-label={open ? t("panel_collapse") : t("panel_expand")}
+        className={cn(
+          "flex h-11 w-full cursor-pointer items-center gap-2 px-4 text-left text-[13px] text-ink-soft",
+          open && "border-b border-line",
+        )}
+      >
+        {!open && <ChevronDown className="size-[17px] shrink-0" />}
+        <span className="shrink-0">{t("dlg_socrates")}</span>
+        <span className="min-w-0 flex-1 truncate text-[12px] text-ink-faint">
+          {status && <span className="state-shimmer">{status}</span>}
         </span>
-      </span>
-    </button>
+        {open && <ChevronUp className="size-[17px] shrink-0" />}
+      </button>
+      {open && (
+        <div className="flex justify-center">
+          <div className="relative aspect-square h-36">
+            <SocratesStage ref={stageRef} speaking={phase === "speaking"} className="absolute inset-0" />
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
