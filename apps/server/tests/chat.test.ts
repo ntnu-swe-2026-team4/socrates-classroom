@@ -5,11 +5,9 @@ import { applyImmutable } from "@earendil-works/chord/delta";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import worker from "../src/index";
-import { run } from "../src/db/d1";
 import { seedDemo } from "../src/seed";
-import migrationSql from "../migrations/001_init.sql";
-import keysMigration from "../migrations/002_teacher_keys.sql";
 import type { ServerMessage } from "../src/ws/protocol";
+import { applyMigrations } from "./migrations";
 
 let teacherCookie: string;
 let classroomCode: string;
@@ -96,9 +94,7 @@ function latestView(list: ServerMessage[]): ConversationView | undefined {
 }
 
 beforeAll(async () => {
-  for (const statement of [...migrationSql.split(";"), ...keysMigration.split(";")]) {
-    if (statement.trim()) await run(env.DB, statement.trim());
-  }
+  await applyMigrations(env.DB);
   await seedDemo(env.DB);
   const login = await call("/api/auth/login", {
     method: "POST",
@@ -208,6 +204,18 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     await r2.until((f) => f.length > 0 || asPeer.readyState === WebSocket.CLOSED);
     expect(r2.list.some((m) => m.type === "hello")).toBe(false);
     asPeer.close();
+  });
+
+  it("授權 race：拒絕後 close 前逕送 watch → 不給 view（逐訊閘門）", async () => {
+    const owner = await joinStudent("賽窗本人");
+    const thread = `${activityId}:${owner.userId}`;
+    const socket = await connect(thread);
+    const rx = frames(socket);
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.length > 0 || socket.readyState === WebSocket.CLOSED);
+    expect(rx.list.some((m) => m.type === "view")).toBe(false);
+    expect(rx.list.some((m) => m.type === "hello")).toBe(false);
+    socket.close();
   });
 
   it("授權：老師可觀察學生 thread（hello 送達）", async () => {

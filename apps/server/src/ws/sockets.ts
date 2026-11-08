@@ -9,8 +9,11 @@ import type {
 } from "@earendil-works/pi-durable";
 import type { Connection, ConnectionContext } from "agents/lifecycle";
 import type { WebSocketMessage, WebSocketsOptions } from "agents/websockets";
-import { type PiHarness, ROOT_SESSION } from "agents/harness/pi";
+import { type PiHarness, type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } from "agents/harness/pi";
+import type { UserInput } from "@earendil-works/pi-durable";
 import type { ClientMessage, ServerMessage } from "./protocol";
+
+export type SubmitRoute = (handle: PiSession, input: UserInput, options: PiSubmitOptions) => Promise<PiReceipt>;
 
 const OPEN = 1;
 
@@ -41,18 +44,22 @@ export class ChatSockets {
   readonly #registry: RegistryReader;
   readonly #getWebSockets: (tag?: string) => WebSocket[];
   readonly #authorize?: (request: Request) => Promise<boolean>;
+  readonly #submitRoute?: SubmitRoute;
   readonly #watches = new Map<WebSocket, ConversationWatch>();
+  readonly #authorized = new Set<WebSocket>();
 
   constructor(
     harness: PiHarness,
     registry: RegistryReader,
     getWebSockets: (tag?: string) => WebSocket[],
     authorize?: (request: Request) => Promise<boolean>,
+    submitRoute?: SubmitRoute,
   ) {
     this.#harness = harness;
     this.#registry = registry;
     this.#getWebSockets = getWebSockets;
     this.#authorize = authorize;
+    this.#submitRoute = submitRoute;
   }
 
   options(): WebSocketsOptions {
@@ -81,6 +88,7 @@ export class ChatSockets {
       }
       return;
     }
+    this.#authorized.add(connection);
     send(connection, {
       type: "hello",
       tools: this.#registry
@@ -135,6 +143,7 @@ export class ChatSockets {
   }
 
   async #unwatch(socket: WebSocket): Promise<void> {
+    this.#authorized.delete(socket);
     const watch = this.#watches.get(socket);
     if (!watch) return;
     this.#watches.delete(socket);
@@ -143,6 +152,14 @@ export class ChatSockets {
 
   async #onMessage(connection: Connection, raw: WebSocketMessage): Promise<void> {
     if (typeof raw !== "string") return;
+    if (this.#authorize && !this.#authorized.has(connection)) {
+      try {
+        connection.close(1008, "unauthorized");
+      } catch {
+        // Already closed.
+      }
+      return;
+    }
     let message: ClientMessage;
     try {
       message = JSON.parse(raw) as ClientMessage;
@@ -169,10 +186,15 @@ export class ChatSockets {
     const handle = this.#harness.session(ROOT_SESSION);
     switch (message.type) {
       case "submit":
-        return await handle.submit(message.input, {
-          ...(message.operationId ? { operationId: message.operationId } : {}),
-          whenBusy: "reject",
-        });
+        return this.#submitRoute
+          ? await this.#submitRoute(handle, message.input, {
+              ...(message.operationId ? { operationId: message.operationId } : {}),
+              whenBusy: "reject",
+            })
+          : await handle.submit(message.input, {
+              ...(message.operationId ? { operationId: message.operationId } : {}),
+              whenBusy: "reject",
+            });
       case "abort":
         return await handle.abort();
       case "watch": {
