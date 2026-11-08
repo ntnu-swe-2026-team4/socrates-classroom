@@ -27,7 +27,7 @@ function JoinPage() {
   const info = useQuery({ queryKey: ["join", code], queryFn: () => api.joinByCode(code) });
 
   useEffect(() => {
-    fetch("/socrates.glb", { priority: "low" }).catch(() => {});
+    fetch("/socrates.glb").catch(() => {});
   }, []);
 
   const topic = info.data?.topic;
