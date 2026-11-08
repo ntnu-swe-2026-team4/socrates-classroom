@@ -4,6 +4,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { cloudflare } from "@cloudflare/vite-plugin";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 
 function autoMigrate(): Plugin {
   return {
@@ -15,7 +16,13 @@ function autoMigrate(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), autoMigrate(), cloudflare()],
+  plugins: [
+    tanstackRouter({ target: "react", autoCodeSplitting: true }),
+    react({ compiler: true }),
+    tailwindcss(),
+    autoMigrate(),
+    cloudflare(),
+  ],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
   build: { target: "es2022" },
   server: { port: 5173 },
