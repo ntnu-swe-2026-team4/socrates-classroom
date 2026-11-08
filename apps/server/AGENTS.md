@@ -2,7 +2,7 @@
 
 We use pi. pi **really** handles everything: transcript, admission, runs, retries, crash recovery, streaming, tasks, docs. If you are about to write any of that, you are wrong — it already exists in pi-durable. Verify against its source (`node_modules/@earendil-works/pi-durable/dist/harness/types.d.ts`), never from memory.
 
-Everything is an extension. All behavior — prompts, tools, hooks, tasks — lives in pi extensions installed on the registry. DOs only host; transport only moves. If logic isn't in an extension, it's in the wrong place.
+Everything is an extension. All behavior — prompts, tools, hooks, tasks — lives in pi extensions installed on the registry. DOs only host; transport only moves. If logic isn't in an extension, it's in the wrong place. When a change is needed, the first attempt is an extension; only genuinely non-behavioral work (data plumbing, pure SQL/REST) goes in routes, DOs, or transport.
 
 Non-negotiables: no queue feature (`whenBusy: "reject"` — a busy thread refuses, never queues); ZDR whitelist for providers (`docs/providers.md`); version-pair lock `agents` 0.33 ↔ pi 1.5 (`docs/pi.md`); tests are real DO + real WebSocket + faux model (`tests/chat.test.ts` is the pattern); no hardcoded model ids — everything routes through `providers.config.yaml`; files over ~200 lines mean you are re-implementing pi.
 
