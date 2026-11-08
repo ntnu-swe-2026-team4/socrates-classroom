@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { TtsInputSchema } from "@socrates/shared";
 import { fail, parseBody, requireUser, type AppEnv } from "../http";
+import { routingConfig } from "../routing/config.gen";
 
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
-const WHISPER_MODEL = "@cf/openai/whisper-large-v3-turbo";
 const SAMPLE_RATE = 22050;
 
 function wavBytes(samples: Float32Array): Uint8Array {
@@ -73,7 +73,7 @@ export function voiceRoutes() {
       const input = { audio: btoa(binary), language: "zh" };
       try {
         const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
-        const result = (await ai.run(WHISPER_MODEL, input)) as { text?: string };
+        const result = (await ai.run(routingConfig.voice.stt, input)) as { text?: string };
         console.error("[stt] result keys", Object.keys(result ?? {}), JSON.stringify(result).slice(0, 200));
         if (result?.text) return c.json({ text: result.text });
       } catch (error) {
@@ -85,10 +85,11 @@ export function voiceRoutes() {
       const user = requireUser(c);
       void user;
       const input = await parseBody(c, TtsInputSchema);
-      if (c.env.AI && c.env.TTS_MODEL) {
+      const ttsModel = c.env.TTS_MODEL ?? routingConfig.voice.tts;
+      if (c.env.AI && ttsModel) {
         try {
           const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
-          const result = (await ai.run(c.env.TTS_MODEL, { prompt: input.text, lang: input.lang })) as
+          const result = (await ai.run(ttsModel, { prompt: input.text, lang: input.lang })) as
             | ReadableStream
             | ArrayBuffer
             | Uint8Array

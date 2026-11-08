@@ -25,6 +25,16 @@ export const TrafficClassSchema = z.object({
 export const RoutingConfigSchema = z.object({
   providers: z.record(z.string(), ProviderSchema),
   classifiers: z.record(z.string(), z.string().min(1)),
+  voice: z.object({
+    stt: z.string().min(1),
+    tts: z.string().min(1),
+  }),
+  report: z.object({
+    studentAttempts: z.number().int().min(1),
+    alarmAttempts: z.number().int().min(1),
+    alarmBackoffMs: z.number().int().min(0),
+    pseudonymPrefix: z.string().min(1),
+  }),
   defaults: z.object({ availability: z.array(AvailabilityEntrySchema) }),
   trafficClasses: z.record(z.string(), TrafficClassSchema),
 });

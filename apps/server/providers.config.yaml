@@ -38,6 +38,16 @@ classifiers:
   emotion: "@cf/cloudflare/clef-flash"
   violation: "@cf/cloudflare/clef-flash"
 
+voice:
+  stt: "@cf/openai/whisper-large-v3-turbo"
+  tts: "@cf/myshell-ai/melotts"
+
+report:
+  studentAttempts: 2
+  alarmAttempts: 3
+  alarmBackoffMs: 4000
+  pseudonymPrefix: "學生"
+
 defaults:
   availability:
     - provider: dgx-spark

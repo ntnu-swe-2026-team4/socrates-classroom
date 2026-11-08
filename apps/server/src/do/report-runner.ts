@@ -15,10 +15,8 @@ import {
   type ViolationType,
 } from "@socrates/shared";
 import { Router } from "../routing/router";
+import { routingConfig } from "../routing/config.gen";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
-
-const PSEUDONYM_PREFIX = "學生";
-const MAX_STUDENT_ATTEMPTS = 2;
 
 export class ReportRunner extends DurableObject<Env> {
   readonly models = buildModels(this.env);
@@ -60,6 +58,7 @@ export class ReportRunner extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
+    const { report } = routingConfig;
     const activityId = this.ctx.id.name ?? "";
     const row = await one<{ status: string }>(this.env.DB, "SELECT status FROM reports WHERE activity_id = $id", {
       id: activityId,
@@ -67,7 +66,7 @@ export class ReportRunner extends DurableObject<Env> {
     if (row?.status === "ready" || row?.status === "failed") return;
     const attempts = ((await this.ctx.storage.get<number>("attempts")) ?? 0) + 1;
     await this.ctx.storage.put("attempts", attempts);
-    if (attempts > 3) {
+    if (attempts > report.alarmAttempts) {
       await run(this.env.DB, "UPDATE reports SET status = 'failed', updated_at = $at WHERE activity_id = $id", {
         id: activityId,
         at: nowIso(),
@@ -78,7 +77,7 @@ export class ReportRunner extends DurableObject<Env> {
       await this.generate(activityId);
     } catch (error) {
       console.error("[report] generation failed", error);
-      await this.ctx.storage.setAlarm(Date.now() + attempts * 4_000);
+      await this.ctx.storage.setAlarm(Date.now() + attempts * report.alarmBackoffMs);
     }
   }
 
@@ -90,6 +89,7 @@ export class ReportRunner extends DurableObject<Env> {
   }
 
   async generate(activityId: string): Promise<void> {
+    const { report } = routingConfig;
     const db = this.env.DB;
     const activity = await one<{ title: string; statement: string; classroom_id: string }>(
       db,
@@ -111,7 +111,7 @@ export class ReportRunner extends DurableObject<Env> {
         "SELECT pseudonym FROM pseudonyms WHERE activity_id = $aid AND student_id = $sid",
         { aid: activityId, sid: member.user_id },
       );
-      const pseudonym = existing?.pseudonym ?? `${PSEUDONYM_PREFIX}${String.fromCharCode(65 + (index % 26))}`;
+      const pseudonym = existing?.pseudonym ?? `${report.pseudonymPrefix}${String.fromCharCode(65 + (index % 26))}`;
       pseudonyms.set(member.user_id, pseudonym);
       if (!existing) {
         await run(db, "INSERT INTO pseudonyms (activity_id, student_id, pseudonym) VALUES ($aid, $sid, $p)", {
@@ -142,7 +142,7 @@ export class ReportRunner extends DurableObject<Env> {
             studentAnalyses.set(member.user_id, null);
             return;
           }
-          for (let attempt = 0; attempt < MAX_STUDENT_ATTEMPTS; attempt += 1) {
+          for (let attempt = 0; attempt < report.studentAttempts; attempt += 1) {
             const { text } = await this.runAgent(
               harness,
               "report-analyst",
@@ -152,7 +152,7 @@ export class ReportRunner extends DurableObject<Env> {
               studentAnalyses.set(member.user_id, StudentAnalysisSchema.parse(JSON.parse(text)));
               break;
             } catch {
-              if (attempt === MAX_STUDENT_ATTEMPTS - 1) studentAnalyses.set(member.user_id, null);
+              if (attempt === report.studentAttempts - 1) studentAnalyses.set(member.user_id, null);
             }
           }
         }),

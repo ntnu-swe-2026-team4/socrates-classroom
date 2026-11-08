@@ -11,5 +11,5 @@ const CONFIG = ${json} as unknown;
 
 export const routingConfig: RoutingConfig = RoutingConfigSchema.parse(CONFIG);
 `;
-writeFileSync("src/providers/config.gen.ts", body);
+writeFileSync("src/routing/config.gen.ts", body);
 console.log("gen ok");
