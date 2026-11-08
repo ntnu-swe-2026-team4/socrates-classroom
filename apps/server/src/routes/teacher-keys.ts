@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { all, one, run } from "../db/d1";
+import { all, batch, one, run } from "../db/d1";
 import { fail, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
 import { encryptKey } from "../auth-crypto";
 import { routingConfig } from "../routing/config.gen";
@@ -52,12 +52,12 @@ export function teacherKeyRoutes() {
       const ownedProviders = new Set(owned.map((row) => row.provider_id));
       if (input.providers.some((pid) => !ownedProviders.has(pid))) fail(422, "validation");
       if (input.providers.length > 0) {
-        await c.env.DB.batch(
-          input.providers.map((pid, index) =>
-            c.env.DB.prepare(
-              "UPDATE teacher_keys SET sort_order = $order WHERE user_id = $uid AND provider_id = $pid",
-            ).bind(index, user.id, pid),
-          ),
+        await batch(
+          c.env.DB,
+          input.providers.map((pid, index) => ({
+            sql: "UPDATE teacher_keys SET sort_order = $order WHERE user_id = $uid AND provider_id = $pid",
+            params: { order: index, uid: user.id, pid },
+          })),
         );
       }
       return c.json({ providers: input.providers });
@@ -70,10 +70,10 @@ export function teacherKeyRoutes() {
       const enc = await encryptKey(c.env, input.key);
       const existing = await one<{ n: number }>(
         c.env.DB,
-        "SELECT COALESCE(MAX(sort_order), 0) AS n FROM teacher_keys WHERE user_id = $uid AND provider_id != $pid",
+        "SELECT COALESCE(MAX(sort_order), -1) AS n FROM teacher_keys WHERE user_id = $uid AND provider_id != $pid",
         { uid: user.id, pid: provider },
       );
-      const order = existing?.n ?? 0;
+      const order = (existing?.n ?? -1) + 1;
       await run(
         c.env.DB,
         `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
@@ -91,26 +91,5 @@ export function teacherKeyRoutes() {
       });
       if ((result.meta?.changes ?? 0) === 0) fail(404, "not_found");
       return c.body(null, 204);
-    })
-    .put("/settings/keys/order", async (c) => {
-      const user = requireTeacher(c);
-      const input = await parseBody(c, OrderInputSchema);
-      const owned = await all<{ provider_id: string }>(
-        c.env.DB,
-        "SELECT provider_id FROM teacher_keys WHERE user_id = $uid",
-        { uid: user.id },
-      );
-      const ownedProviders = new Set(owned.map((row) => row.provider_id));
-      if (input.providers.some((pid) => !ownedProviders.has(pid))) fail(422, "validation");
-      if (input.providers.length > 0) {
-        await c.env.DB.batch(
-          input.providers.map((pid, index) =>
-            c.env.DB.prepare(
-              "UPDATE teacher_keys SET sort_order = $order WHERE user_id = $uid AND provider_id = $pid",
-            ).bind(index, user.id, pid),
-          ),
-        );
-      }
-      return c.json({ providers: input.providers });
     });
 }
