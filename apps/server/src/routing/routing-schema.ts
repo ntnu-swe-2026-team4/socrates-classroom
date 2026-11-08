@@ -35,6 +35,9 @@ export const RoutingConfigSchema = z.object({
     alarmBackoffMs: z.number().int().min(0),
     pseudonymPrefix: z.string().min(1),
   }),
+  teacherChain: z.object({
+    maxConcurrency: z.number().int().min(1).max(100),
+  }),
   defaults: z.object({ availability: z.array(AvailabilityEntrySchema) }),
   trafficClasses: z.record(z.string(), TrafficClassSchema),
 });

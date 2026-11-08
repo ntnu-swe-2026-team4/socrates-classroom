@@ -1,6 +1,6 @@
 import type { LedgerKey } from "./routing-schema";
 
-export type SettleKind = "ok" | "rate" | "timeout" | "error" | "auth";
+export type SettleKind = "ok" | "error";
 
 interface LedgerEntry {
   requests: number;
@@ -10,12 +10,11 @@ interface LedgerEntry {
 }
 
 const COOLDOWN_MS = 60_000;
-const AUTH_COOLDOWN_MS = Number.POSITIVE_INFINITY;
 const MAX_FAILURES_FOR_COOLDOWN = 5;
 
 /**
- * Cooldown expiry is automatic (no probe); auth failures stay dead until the
- * credential itself changes, because retrying them cannot succeed.
+ * pi surfaces no structured error status (only message strings), so the
+ * ledger accounts ok/error only; cooldown comes from consecutive errors.
  */
 export class RoutingLedger {
   readonly #ledger = new Map<string, LedgerEntry>();
@@ -36,10 +35,6 @@ export class RoutingLedger {
 
   inFlight(key: LedgerKey): number {
     return this.#inFlight.get(this.#key(key)) ?? 0;
-  }
-
-  isDead(key: LedgerKey): boolean {
-    return this.cooldownUntil(key) === Number.POSITIVE_INFINITY;
   }
 
   record(key: LedgerKey): void {
@@ -72,9 +67,7 @@ export class RoutingLedger {
       this.#cooldown.delete(id);
     } else {
       entry.failures += 1;
-      if (kind === "auth") this.#cooldown.set(id, Date.now() + AUTH_COOLDOWN_MS);
-      else if (kind === "rate" || kind === "timeout") this.#cooldown.set(id, Date.now() + COOLDOWN_MS);
-      else if (entry.failures >= MAX_FAILURES_FOR_COOLDOWN) this.#cooldown.set(id, Date.now() + COOLDOWN_MS);
+      if (entry.failures >= MAX_FAILURES_FOR_COOLDOWN) this.#cooldown.set(id, Date.now() + COOLDOWN_MS);
     }
     this.#ledger.set(id, entry);
   }
@@ -84,7 +77,6 @@ export class RoutingLedger {
     failures: number;
     lastKind: SettleKind | null;
     cooldown: boolean;
-    dead: boolean;
   } {
     const entry = this.#ledger.get(this.#key(key));
     return {
@@ -92,7 +84,6 @@ export class RoutingLedger {
       failures: entry?.failures ?? 0,
       lastKind: entry?.lastKind ?? null,
       cooldown: this.inCooldown(key),
-      dead: this.isDead(key),
     };
   }
 }

@@ -72,6 +72,9 @@ const CONFIG = {
     "alarmBackoffMs": 4000,
     "pseudonymPrefix": "學生"
   },
+  "teacherChain": {
+    "maxConcurrency": 4
+  },
   "defaults": {
     "availability": [
       {

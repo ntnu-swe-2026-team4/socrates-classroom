@@ -1,28 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { RoutingLedger } from "../src/routing/ledger";
 
-describe("routing ledger（cooldown 語意，LiteLLM 慣例）", () => {
+describe("routing ledger（pi 無結構化錯誤狀態 → 只記 ok/error；連續錯誤 cooldown）", () => {
   const key = { provider: "dgx-spark", model: "GLM-5.3-Flash-EXL3", credential: "platform" };
 
-  it("ok 清除 cooldown；429/timeout 開 60s；過期自然回（無 probe）", () => {
+  it("cooldown 過期自然回（無 probe）", () => {
     const ledger = new RoutingLedger();
-    ledger.record(key);
-    ledger.settle(key, "rate");
+    for (let i = 0; i < 5; i += 1) {
+      ledger.record(key);
+      ledger.settle(key, "error");
+    }
     expect(ledger.inCooldown(key)).toBe(true);
-
-    // Cooldown expiry is passive: time advances, no probe needed
-    const ledger2 = new RoutingLedger();
-    ledger2.record(key);
-    ledger2.settle(key, "timeout");
-    expect(ledger2.inCooldown(key, Date.now() + 61_000)).toBe(false);
-  });
-
-  it("auth（401/403）直接 dead，不重試", () => {
-    const ledger = new RoutingLedger();
-    ledger.record(key);
-    ledger.settle(key, "auth");
-    expect(ledger.isDead(key)).toBe(true);
-    expect(ledger.inCooldown(key, Date.now() + 999_999_999)).toBe(true);
+    expect(ledger.inCooldown(key, Date.now() + 61_000)).toBe(false);
   });
 
   it("連續 5 次 error 開 cooldown；ok 重置失敗計數", () => {
@@ -45,6 +34,17 @@ describe("routing ledger（cooldown 語意，LiteLLM 慣例）", () => {
       ledger2.settle(key, "error");
     }
     expect(ledger2.inCooldown(key)).toBe(false);
+  });
+
+  it("begin/end 包住 inFlight；settle 結束併發計數", () => {
+    const ledger = new RoutingLedger();
+    ledger.begin(key);
+    ledger.begin(key);
+    expect(ledger.inFlight(key)).toBe(2);
+    ledger.settle(key, "ok");
+    expect(ledger.inFlight(key)).toBe(1);
+    ledger.settle(key, "error");
+    expect(ledger.inFlight(key)).toBe(0);
   });
 });
 
@@ -78,6 +78,41 @@ describe("router 走訪（config 驅動，cooldown 過濾）", () => {
     router.ledger.record(flash);
     expect(router.ledger.status(flash).requests).toBe(2);
     expect(router.ledger.status(free).requests).toBe(0);
+  });
+});
+
+describe("teacher legs（#82：老師 key 前置，平台鏈墊後）", () => {
+  const teacherLeg = {
+    provider: "openrouter",
+    model: "z-ai/glm-5.3-flash",
+    credential: "teacher:u_teacher",
+    maxConcurrency: 4,
+    priority: 0,
+  };
+
+  it("teacher leg 排在平台鏈前；canServe 擋下後落到平台鏈", async () => {
+    const { Router } = await import("../src/routing/router");
+    const router = new Router({ AI: {}, DGX_BASE_URL: "http://spark:8888/v1" } as never);
+    const chain = router.chain("interactive", undefined, [teacherLeg]);
+    expect(chain[0]).toMatchObject({ provider: "openrouter", credential: "teacher:u_teacher" });
+    expect(chain[1]!.provider).toBe("dgx-spark");
+
+    const blocked = router.chain("interactive", (e) => e.credential !== "teacher:u_teacher", [teacherLeg]);
+    expect(blocked.every((e) => e.credential !== "teacher:u_teacher")).toBe(true);
+  });
+
+  it("teacher leg 獨立記帳：cooldown 不影響平台鏈", async () => {
+    const { Router } = await import("../src/routing/router");
+    const router = new Router({ AI: {} } as never);
+    const decision = router.pick("interactive", undefined, [teacherLeg])!;
+    expect(decision.key.credential).toBe("teacher:u_teacher");
+    for (let i = 0; i < 5; i += 1) {
+      router.ledger.record(decision.key);
+      router.settle(decision, "error");
+    }
+    expect(router.ledger.inCooldown(decision.key)).toBe(true);
+    const platform = router.pick("interactive", undefined, [teacherLeg]);
+    expect(platform?.key.credential).toBe("platform");
   });
 });
 
