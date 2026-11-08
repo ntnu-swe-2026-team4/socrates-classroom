@@ -8,4 +8,7 @@ export default defineConfig({
       isolatedStorage: false,
     } as never),
   ],
+  test: {
+    fsModuleCache: false,
+  },
 });
