@@ -55,13 +55,6 @@ export const DialogueMessageSchema = z.object({
 });
 export type DialogueMessage = z.infer<typeof DialogueMessageSchema>;
 
-export const DialogueSseEventSchema = z.discriminatedUnion("event", [
-  z.object({ event: z.literal("delta"), data: z.object({ text: z.string() }) }),
-  z.object({ event: z.literal("done"), data: z.object({ message: DialogueMessageSchema }) }),
-  z.object({ event: z.literal("error"), data: z.object({ message: z.string(), code: z.string() }) }),
-]);
-export type DialogueSseEvent = z.infer<typeof DialogueSseEventSchema>;
-
 export const StudentLiveSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -72,17 +65,6 @@ export const StudentLiveSchema = z.object({
   lastUtterance: z.string(),
 });
 export type StudentLive = z.infer<typeof StudentLiveSchema>;
-
-export const ActivitySseEventSchema = z.discriminatedUnion("event", [
-  z.object({ event: z.literal("live"), data: z.array(StudentLiveSchema), id: z.number().optional() }),
-  z.object({ event: z.literal("update"), data: StudentLiveSchema, id: z.number().optional() }),
-  z.object({
-    event: z.literal("violation"),
-    data: z.object({ studentId: z.string(), turn: z.number(), type: z.string(), excerpt: z.string() }),
-    id: z.number().optional(),
-  }),
-]);
-export type ActivitySseEvent = z.infer<typeof ActivitySseEventSchema>;
 
 export const HexagonAxisSchema = z.object({ label: z.string(), value: z.number() });
 export type HexagonAxis = z.infer<typeof HexagonAxisSchema>;
@@ -144,6 +126,7 @@ export const StudentReportSchema = z.object({
   individual: IndividualReportSchema,
 });
 export type StudentReport = z.infer<typeof StudentReportSchema>;
+export type Report = TeacherReport | StudentReport;
 
 export const TermExplanationSchema = z.object({ term: z.string(), markdown: z.string() });
 export type TermExplanation = z.infer<typeof TermExplanationSchema>;
@@ -179,11 +162,6 @@ export const ClassroomCreateInputSchema = z.object({
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
 export const LookupInputSchema = z.object({ term: z.string().trim().min(1).max(30) });
 export const TtsInputSchema = z.object({ text: z.string().min(1).max(2000), lang: z.enum(["zh", "en", "es"]) });
-export const ByokSetInputSchema = z.object({
-  provider: z.enum(["openrouter", "opencode-go"]),
-  key: z.string().min(8).max(256),
-});
-
 export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
 export type ViolationType = (typeof VIOLATION_TYPES)[number];
 export type { ViolationType as SharedViolationType };
