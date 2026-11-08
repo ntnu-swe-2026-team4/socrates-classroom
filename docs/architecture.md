@@ -286,7 +286,7 @@ v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78�
 
 - gateway＝**stateless function**（isolate 內直呼，不經 DO）：輸入＝transcript 片段＋prompt 題型；輸出＝structured choice／評分。題型：逐輪 violation choice（#71）、intent 分類（#76）、report 分析（#74）、表情 choice（#90 之後）
 - 逐輪 judgment 走 async：turn commit → enqueue（D10）→ judgment → violations 批次寫入 → publish 到 event layer → 面板；latency budget ≤30s，不擋對話主迴圈
-- judgment 模型也進 router catalog（Clef／Clef-flash／Jev／自架）：Workers AI 的 daily quota 在 220 rps 下數小時耗盡——judgment 與 generation 共用 D11 的 multi-provider routing（不同 traffic class）
+- judgment 模型也進 router catalog（#55 已拍板：Clef-flash 主力、Clef 備選；Jev 不採用——ZDR 未過、自架 DGX 出局——容量）：Workers AI 的 daily quota 在 220 rps 下數小時耗盡——judgment 與 generation 共用 D11 的 multi-provider routing（不同 traffic class）
 - 模型可替換（#55 既定）：題型 schema 放 shared，模型是 catalog 一行設定
 
 ### 13.2 D10 background jobs plane（Queues + Workflows）
