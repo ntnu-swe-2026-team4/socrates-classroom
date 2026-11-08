@@ -123,9 +123,31 @@ export const ClassroomCreateInputSchema = z.object({
   name: z.string().trim().min(1).max(80),
   topicId: z.string().min(1),
 });
+export const ActivityStartInputSchema = z.object({ topicId: z.string().min(1) });
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
 export const LookupInputSchema = z.object({ term: z.string().trim().min(1).max(30) });
 export const TtsInputSchema = z.object({ text: z.string().min(1).max(2000), lang: z.enum(["zh", "en", "es"]) });
+export const ClassroomSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  role: z.enum(["teacher", "student"]),
+  teacherName: z.string(),
+  memberCount: z.number(),
+  code: z.string().nullable(),
+  url: z.string().nullable(),
+  current: z
+    .object({
+      activityId: z.string(),
+      topicId: z.string(),
+      topicTitle: z.string(),
+      topicStatement: z.string(),
+      finished: z.boolean(),
+    })
+    .nullable(),
+  createdAt: z.string(),
+});
+export type ClassroomSummary = z.infer<typeof ClassroomSummarySchema>;
+
 export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
 export type ViolationType = (typeof VIOLATION_TYPES)[number];
 export type { ViolationType as SharedViolationType };
