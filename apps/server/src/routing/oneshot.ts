@@ -20,9 +20,15 @@ export async function oneshot<T>(env: Env, req: OneshotRequest<T>): Promise<T> {
   const decision = router.pick(req.trafficClass ?? "batch");
   if (!decision) return req.mock();
   const models = router.modelsFor(decision);
-  if (!models) return req.mock();
+  if (!models) {
+    router.settle(decision, "error");
+    return req.mock();
+  }
   const model = models.getModel(decision.entry.provider, decision.model) as Model<"openai-completions"> | undefined;
-  if (!model) return req.mock();
+  if (!model) {
+    router.settle(decision, "error");
+    return req.mock();
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);

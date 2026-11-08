@@ -20,6 +20,7 @@ const MAX_FAILURES_FOR_COOLDOWN = 5;
 export class RoutingLedger {
   readonly #ledger = new Map<string, LedgerEntry>();
   readonly #cooldown = new Map<string, number>();
+  readonly #inFlight = new Map<string, number>();
 
   #key(key: LedgerKey): string {
     return `${key.provider}|${key.model}|${key.credential}`;
@@ -34,7 +35,7 @@ export class RoutingLedger {
   }
 
   inFlight(key: LedgerKey): number {
-    return this.#ledger.get(this.#key(key))?.requests ?? 0;
+    return this.#inFlight.get(this.#key(key)) ?? 0;
   }
 
   isDead(key: LedgerKey): boolean {
@@ -48,8 +49,21 @@ export class RoutingLedger {
     this.#ledger.set(this.#key(key), entry);
   }
 
+  begin(key: LedgerKey): void {
+    const id = this.#key(key);
+    this.#inFlight.set(id, (this.#inFlight.get(id) ?? 0) + 1);
+  }
+
+  end(key: LedgerKey): void {
+    const id = this.#key(key);
+    const next = Math.max(0, (this.#inFlight.get(id) ?? 0) - 1);
+    if (next === 0) this.#inFlight.delete(id);
+    else this.#inFlight.set(id, next);
+  }
+
   settle(key: LedgerKey, kind: SettleKind): void {
     const id = this.#key(key);
+    this.end(key);
     const entry = this.#ledger.get(id) ?? { requests: 0, failures: 0, lastKind: null, lastAt: 0 };
     entry.lastKind = kind;
     entry.lastAt = Date.now();

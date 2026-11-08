@@ -55,12 +55,17 @@ export class Router {
     const def = routingConfig.providers[entry.provider]!;
     const key = this.keyOf(entry, def);
     this.#ledger.record(key);
+    this.#ledger.begin(key);
     return {
       entry,
       model: key.model,
       key,
       baseUrl: def.baseUrlEnv ? (this.#env[def.baseUrlEnv as keyof Env] as string | undefined) : undefined,
     };
+  }
+
+  budget(trafficClass: TrafficClass): number {
+    return this.chain(trafficClass).reduce((sum, entry) => sum + entry.maxConcurrency, 0);
   }
 
   settle(decision: RouteDecision, kind: SettleKind): void {
