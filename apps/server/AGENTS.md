@@ -1,86 +1,32 @@
-# AGENTS.md — apps/server (Hono Worker + Pi Durable)
+# AGENTS.md — apps/server
 
-Worker source (Hono API + `PiAgent` / `ActivityEvents` Durable Objects + provider pool) and the vitest setup. The deployable full-stack project lives in `apps/web` (which holds `cloudflare.config.ts` and bundles this package via `entrypoint: ../server/src/index.ts`) — all rules from the root `AGENTS.md` apply; below are the deltas and deep water.
+We use pi. pi **really** handles everything: transcript, admission, runs, retries, crash recovery, streaming, tasks, docs. If you are about to write any of that, you are wrong — it already exists in pi-durable. Verify against its source (`node_modules/@earendil-works/pi-durable/dist/harness/types.d.ts`), never from memory.
 
-## Commands
+Everything is an extension. All behavior — prompts, tools, hooks, tasks — lives in pi extensions installed on the registry. DOs only host; transport only moves. If logic isn't in an extension, it's in the wrong place.
 
-```bash
-pnpm test              # canonical check: vitest-pool-workers (real runtime + local D1/R2/DO)
-pnpm typecheck         # TS 7 strict + @cloudflare/workers-types
-```
+Non-negotiables: no queue feature (`whenBusy: "reject"` — a busy thread refuses, never queues); ZDR whitelist for providers (`docs/providers.md`); version-pair lock `agents` 0.33 ↔ pi 1.5 (`docs/pi.md`); tests are real DO + real WebSocket + faux model (`tests/chat.test.ts` is the pattern); no hardcoded model ids — everything routes through `providers.config.yaml`; files over ~200 lines mean you are re-implementing pi.
 
-- `cf dev/build/deploy` do **not** run here — they run from `apps/web` (the vite root where the plugin finds `cloudflare.config.ts`)
-- Tests cannot run from the repo root without `--root apps/server`; the pool config is `wrangler.vitest.jsonc` (not `cloudflare.config.ts`), and its compatibility date is 2026-08-06 (the vitest plugin's workerd ceiling)
+## Module map
 
-## Vocabulary (get this right)
+| Module                                                        | Responsibility                                                                                                                                  |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`                                                    | Worker entry: `/api/*` → Hono, `/agents/*` → WebSocket, exports DO classes + `RpcApp`                                                           |
+| `app.ts`                                                      | Hono assembly, middleware, error localization, `RpcApp` type export                                                                             |
+| `routes/`                                                     | REST endpoints: zod validation + authorization + thin orchestration; errors only via `fail()`; dialogue has no POST (WS is the only write path) |
+| `do/chat.ts`                                                  | Chat DO (thread-level): hosts PiHarness + per-object registry + models with fallback legs                                                       |
+| `do/report-runner.ts`                                         | ReportRunner DO (activity-level): alarm-driven report generation, parallel per-student + class report → D1                                      |
+| `pi/models.ts`                                                | pi-ai Models registry assembly; fallback legs bound to head model object; zero model ids                                                        |
+| `pi/agents/profiles.ts`                                       | Agent profiles (role fields only, never model) + `runProfile` driver; models/registry/env injected by caller                                    |
+| `pi/extensions/`                                              | All behavior: `socrates` (prompt), `avatar` (emotion entry), `judgment` (violation task + self-report tool), `websearch` (3 tools)              |
+| `routing/`                                                    | Provider policy: YAML schema + build-time config, ledger (cooldown + accounting), chain walk, oneshot                                           |
+| `ws/`                                                         | Transport glue: typed protocol + watch/submit/entries over the harness's public API                                                             |
+| `prompts/`                                                    | LLM team's prompt assets (`?raw` build-time injection)                                                                                          |
+| `auth.ts` + `auth-crypto.ts`                                  | HMAC session cookie, PBKDF2 passwords, AES-GCM key encryption                                                                                   |
+| `db/d1.ts`                                                    | The only D1 access: `one/all/run/batch`; atomicity = `batch` only                                                                               |
+| `http.ts` / `messages.ts` / `services/members.ts` / `seed.ts` | Request helpers (`fail`/`parseBody`/guards), localized error text, membership queries, demo seed                                                |
 
-| Term      | Means                                                                       | Counted against                                   |
-| --------- | --------------------------------------------------------------------------- | ------------------------------------------------- |
-| **stage** | Activity phase: `individual → team → debate → done`                         | `activities.stage`                                |
-| **round** | One student message in a Socratic dialogue (`role = "user"` row)            | `max_rounds` / activity limit 20 / archive rounds |
-| **phase** | Debate room round type: `opening / cross / rebuttal / closing`              | `rooms.phase_idx`, `PHASES`                       |
-| **turn**  | One statement inside a debate room (`rooms.turn_idx`, side a/b + moderator) | `DEFAULT_SECONDS` clock                           |
+Two boundaries worth restating: routing decides _which_ legs / _whose money_ / _whose ledger_ — pi natively owns leg trial-and-error and retry backoff, never re-implement either side. And extensions read their models from `routing/config.gen.ts` (`classifiers.*`) — never hardcode.
 
-"Round" is student dialogue; "turn" is debate-room speech. Never mix them in code or copy.
+## Testing
 
-## Patterns
-
-### D1 access
-
-```ts
-// Good — helpers, $named params, awaited
-const user = await one<UserRow>(db, "SELECT * FROM users WHERE id = $id", { id });
-await db.batch([
-  { sql: "INSERT INTO archive_messages (...) VALUES ($id, $aid, 'user', $text, NULL, $at)", params: { id, aid, text, at } },
-  { sql: "UPDATE archives SET rounds = $rounds WHERE id = $id", params: { rounds, id } },
-]);
-
-// Bad — raw bun-style API (gone), positional ?, unawaited
-db.query("SELECT ...").all({...});
-run(db, sql, params); // ← missing await: the write is lost after the response
-```
-
-- `prepare()` converts `$named` → positional automatically; **keep `$named` in SQL**.
-- Every `one/all/run` call **must be awaited** — an unawaited D1 write is dropped when the response returns.
-- Atomicity = `db.batch([...])` only. For old `tx(db, () => {...})` blocks: read first, then `batch()` the writes.
-
-### Error contract
-
-```ts
-fail(404, "classroom_not_found"); // key must exist in src/messages.ts (zh/en/es)
-fail(409, "max_rounds_reached", { n: 20 }); // vars interpolate into the message
-throw new Error("already_streaming"); // DO internals: app.onError maps known keys
-```
-
-- Never `c.json({ message })` inline from routes — always `fail()` + `src/messages.ts` so all three languages stay in sync.
-
-### Dialogue SSE (frozen contract)
-
-```
-event: meta     { provider }        // informational
-event: emotion  { emotion }          // once, before first delta
-event: delta    { text }             // many; emotion tag already stripped
-event: done     { message }          // D1-saved DialogueMessage
-event: error    { message, code }    // after streaming started
-```
-
-### Adding a provider to the pool
-
-1. Read the ZDR rules in `docs/providers.md` — whitelist only (0-day retention models).
-2. Add a `PoolEntry` to `CLASS_POOL`/`DEV_POOL` in `src/providers/whitelist.ts`.
-3. Wire its auth in `keyFor()` (pool.ts) or a `createProvider` block; builtin catalogs come from `@earendil-works/pi-ai/providers/all`.
-4. `LLM_PROVIDER=mock` tests must still pass — mock never touches the pool chain.
-
-## Boundaries
-
-- **Never** change the SSE event shapes (`delta/emotion/done/error`) — `docs/api-contract.md` is frozen; the frontend must keep working with zero changes
-- **Never** swallow a failed `saveTurn` — saved to pi transcript but missing from D1 is a data inconsistency
-- **Always** attach `session.events()` **before** `session.submit()` — inverted order misses runs that finish instantly (this bug already happened)
-- **Ask first**: changing `PiHarness` settings (retry / afterFailedRun), adding Durable Objects, bumping `@earendil-works/pi-*` (version-locked to `agents`: 0.32 ↔ 1.4)
-
-## Testing conventions
-
-- Integration tests live in `tests/api.test.ts` and are **sequentially coupled** (earlier tests seed data later tests use); `isolatedStorage: false` is intentional
-- Tests use `wrangler.vitest.jsonc` (not `cloudflare.config.ts`) + the mock provider; compatibility date is 2026-08-06 (the vitest plugin's workerd ceiling)
-- LLM assertions only check shape (a `done` event, an `emotion`, non-empty text) — never content
-- Upload/download handlers under test need `app.request(url, init, env)` — the third `env` argument is what puts `c.env` bindings in place (missing it surfaces as `undefined` binding errors)
+Real DO + real WebSocket + faux model — no fetch interception, no mocked DOs. Assertions check shape only, never content. See `tests/chat.test.ts` for the pattern; details in `docs/pi.md` §測試.

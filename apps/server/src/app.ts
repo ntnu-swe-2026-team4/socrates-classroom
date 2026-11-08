@@ -1,109 +1,72 @@
 import { Hono } from "hono";
-import type { Env } from "./env";
-import { d1 } from "./db/d1";
-import { authMiddleware } from "./auth";
-import { HttpError, fail, type AppEnv } from "./http";
-import { languageOf, msg } from "./messages";
-import { configureEventBus } from "./do/events";
-import { setPublicBase } from "./services/serialize";
-import { activityRoutes } from "./routes/activities";
-import { announcementRoutes } from "./routes/announcements";
-import { archiveRoutes } from "./routes/archives";
+import { ApiError } from "@socrates/shared";
+import { localize } from "./messages";
+import { normalizeLang, type AppEnv } from "./http";
+import { seedDemo } from "./seed";
+import { SESSION_COOKIE, userFromSessionToken } from "./auth";
+import { getCookie } from "hono/cookie";
 import { authRoutes } from "./routes/auth";
-import { calendarRoutes } from "./routes/calendar";
-import { classroomRoutes } from "./routes/classrooms";
-import { discussionRoutes } from "./routes/discussions";
-import { postRoutes } from "./routes/posts";
-import { teamRoutes } from "./routes/team";
-import { topicRoutes } from "./routes/topics";
+import { joinRoutes } from "./routes/join";
+import { topicsRoutes } from "./routes/topics";
+import { classroomsRoutes } from "./routes/classrooms";
+import { activityRoutes } from "./routes/activity";
+import { voiceRoutes } from "./routes/voice";
+import { lookupRoutes } from "./routes/lookup";
+import { byokRoutes } from "./routes/byok";
+import { teacherKeyRoutes } from "./routes/teacher-keys";
 
-export function createApp(env: Env): Hono<AppEnv> {
-  const db = d1(env.DB);
-  configureEventBus(env.ActivityEvents);
-  setPublicBase(env.PUBLIC_BASE_URL);
-  const corsOrigins = (env.CORS_ORIGINS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
+export function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
   app.use("/api/*", async (c, next) => {
-    const origin = c.req.header("Origin");
-    const allowed = !!origin && corsOrigins.includes(origin);
-    if (c.req.method === "OPTIONS") {
-      if (allowed) {
-        c.header("Access-Control-Allow-Origin", origin!);
-        c.header("Access-Control-Allow-Credentials", "true");
-        c.header("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
-        c.header("Access-Control-Allow-Headers", "Content-Type, Accept, Accept-Language");
-        c.header("Access-Control-Max-Age", "86400");
-      }
-      return c.body(null, 204);
-    }
+    c.set("lang", normalizeLang(c.req.header("Accept-Language")));
+    const token = getCookie(c, SESSION_COOKIE);
+    c.set("user", await userFromSessionToken({ env: c.env }, token));
     await next();
-    if (allowed) {
-      c.header("Access-Control-Allow-Origin", origin!);
-      c.header("Access-Control-Allow-Credentials", "true");
-      c.header("Vary", "Origin");
-    }
   });
 
-  app.use("/api/*", authMiddleware(db));
-
-  const api = new Hono<AppEnv>();
-  const lang = (c: any) => c.get("lang") as import("@socrates/shared").Lang;
-  api.route("/", authRoutes(db, !!env.COOKIE_SECURE));
-  api.route("/", archiveRoutes(db, lang));
-  api.route("/", classroomRoutes(db));
-  api.route("/", announcementRoutes(db));
-  api.route("/", topicRoutes(db));
-  api.route("/", postRoutes(db));
-  api.route("/", discussionRoutes(db, lang));
-  api.route("/", calendarRoutes(db));
-  api.route("/", activityRoutes(db, lang));
-  api.route("/", teamRoutes(db, lang));
+  const api = new Hono<AppEnv>()
+    .route("/", authRoutes())
+    .route("/", joinRoutes())
+    .route("/", topicsRoutes())
+    .route("/", classroomsRoutes())
+    .route("/", activityRoutes())
+    .route("/", voiceRoutes())
+    .route("/", lookupRoutes())
+    .route("/", byokRoutes())
+    .route("/", teacherKeyRoutes());
 
   app.route("/api", api);
 
+  app.get("/health", (c) => c.json({ ok: true }));
+
   app.post("/api/dev/seed", async (c) => {
     const token = c.req.header("x-seed-token") ?? "";
-    if (!env.SEED_TOKEN || token !== env.SEED_TOKEN) fail(404, "not_found");
-    const { seedDemo } = await import("./seed");
-    const seeded = await seedDemo(db);
-    return c.json({ seeded });
-  });
-
-  app.get("/health", (c) => c.json({ ok: true, db: "d1" }));
-
-  app.notFound((c) =>
-    c.json({ message: msg(languageOf(c.req.header("Accept-Language")), "not_found"), code: "not_found" }, 404),
-  );
-
-  app.onError((error, c) => {
-    const language = c.get("lang") ?? languageOf(c.req.header("Accept-Language"));
-    if (error instanceof HttpError) {
+    if (!c.env.SEED_TOKEN || token !== c.env.SEED_TOKEN) {
       return c.json(
-        { message: msg(language, error.key, error.vars), code: error.code ?? error.key },
-        error.status as any,
+        { message: localize("not_found", normalizeLang(c.req.header("Accept-Language"))), code: "not_found" },
+        404,
       );
     }
-    const raw = error instanceof Error ? error.message : String(error);
-    if (raw === "already_streaming") {
-      return c.json({ message: msg(language, "already_streaming"), code: "already_streaming" }, 409);
+    await seedDemo(c.env.DB);
+    return c.json({ seeded: true });
+  });
+
+  app.onError((error, c) => {
+    const lang = c.get("lang") ?? normalizeLang(c.req.header("Accept-Language"));
+    if (error instanceof ApiError) {
+      return c.json({ message: localize(error.code, lang, error.vars), code: error.code }, error.status as never);
     }
-    if (raw === "llm_not_configured") {
-      return c.json({ message: msg(language, "llm_not_configured"), code: "llm_not_configured" }, 503);
-    }
-    if (raw.startsWith("llm_rate_limited") || raw === "llm_rate_limited") {
-      return c.json({ message: msg(language, "llm_rate_limited"), code: "llm_rate_limited" }, 429);
-    }
-    if (raw.startsWith("llm_unavailable")) {
-      return c.json({ message: msg(language, "llm_unavailable"), code: "llm_unavailable" }, 503);
-    }
-    console.error("[server] unhandled error:", error);
-    return c.json({ message: msg(language, "internal_error"), code: "internal_error" }, 500);
+    console.error("[api] unhandled", error);
+    return c.json({ message: localize("internal_error", lang), code: "internal_error" }, 500);
+  });
+
+  app.notFound((c) => {
+    const lang = normalizeLang(c.req.header("Accept-Language"));
+    return c.json({ message: localize("not_found", lang), code: "not_found" }, 404);
   });
 
   return app;
 }
+
+export type RpcApp = ReturnType<typeof createApp>;

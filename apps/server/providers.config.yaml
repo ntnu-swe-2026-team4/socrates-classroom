@@ -1,0 +1,64 @@
+providers:
+  dgx-spark:
+    kind: openai-completions
+    model: GLM-5.3-Flash-EXL3
+    baseUrlEnv: DGX_BASE_URL
+    cost: free
+  workers-ai:
+    kind: binding
+    models:
+      - id: "@cf/zai-org/glm-5.3-flash"
+        cost: paid
+      - id: "@cf/zai-org/glm-4.7-flash"
+        cost: free
+  openrouter:
+    kind: openai-completions
+    model: z-ai/glm-5.3-flash
+    baseUrl: https://openrouter.ai/api/v1
+    cost: paid
+  glm:
+    kind: openai-completions
+    model: glm-4.6
+    baseUrl: https://api.z.ai/api/coding/paas/v4
+    cost: paid
+    models:
+      - id: glm-4.6
+        cost: paid
+      - id: glm-4.7
+        cost: paid
+      - id: glm-5.3
+        cost: paid
+      - id: glm-4.5-air
+        cost: paid
+    params:
+      thinking:
+        type: disabled
+
+classifiers:
+  emotion: "@cf/cloudflare/clef-flash"
+  violation: "@cf/cloudflare/clef-flash"
+
+defaults:
+  availability:
+    - provider: dgx-spark
+      credential: platform
+      maxConcurrency: 4
+      priority: 1
+    - provider: workers-ai
+      model: "@cf/zai-org/glm-5.3-flash"
+      credential: platform
+      maxConcurrency: 20
+      priority: 2
+    - provider: workers-ai
+      model: "@cf/zai-org/glm-4.7-flash"
+      credential: platform
+      maxConcurrency: 50
+      priority: 3
+
+trafficClasses:
+  interactive:
+    availability: defaults
+  judgment:
+    availability: defaults
+  batch:
+    availability: defaults

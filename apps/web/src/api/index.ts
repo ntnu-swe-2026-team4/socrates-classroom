@@ -1,7 +1,7 @@
-import type { Api } from "./api";
 import { httpApi } from "./http";
+import type { Api } from "./types";
 
-export * from "./types";
-export type { Api } from "./api";
-
-export const api: Api = import.meta.env.VITE_API_MODE === "mock" ? (await import("./mock")).mockApi : httpApi;
+export const api: Api = httpApi;
+export type * from "./types";
+export { ApiError } from "./types";
+export { readTermHistory, recordTerm, readActivityId, persistActivityId } from "./local";

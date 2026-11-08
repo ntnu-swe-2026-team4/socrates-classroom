@@ -5,8 +5,9 @@ A classroom debate platform: Socratic one-on-one dialogue, four-stage classroom 
 ## Language
 
 - The project's docs, UI copy, and commit messages are in **Traditional Chinese (zh-TW)**. Match that when writing docs and commit messages.
+- **All technical terms in docs stay English** (failover, affinity, circuit breaker, ledger, tiering, traffic class, …). zh-TW is for product-level content (features, rationale, spec decisions); never coin Chinese translations for technical terms. Full policy: `docs/AGENTS.md` § Language.
 - **No comments in code or config files.** Code must be self-describing; knowledge that doesn't fit the code belongs in `docs/` or the AGENTS.md files. When a comment is unavoidable (config/YAML), it must be **English only**.
-- UI copy is i18n'd (`apps/web/src/i18n/messages/`): zh-TW / en / es. New user-facing strings need all three.
+- UI copy is i18n'd (`apps/web/src/i18n/index.ts`, typed dictionary): zh-TW / en / es. New user-facing strings need all three.
 - This file (and other AGENTS.md files) are in English for agent legibility; everything else is zh-TW.
 
 ## Setup commands
@@ -24,11 +25,17 @@ pnpm lint && pnpm typecheck         # must be green before any PR
 ## Structure & data flow
 
 - `apps/web` — **the deployable full-stack project**: React SPA + `cloudflare.config.ts` + Vite config; `cf dev/build/deploy` run from here (dev secrets in `apps/web/.dev.vars`)
-- `apps/server` — Worker source (Hono API + `PiAgent` / `ActivityEvents` Durable Objects + provider pool) and the vitest setup (`wrangler.vitest.jsonc`); bundled by the build in `apps/web` via `entrypoint: ../server/src/index.ts`
+- `apps/server` — Worker source (Hono REST + Chat/ReportRunner Durable Objects + pi-durable extensions + routing) and the vitest setup (`wrangler.vitest.jsonc`); bundled by the build in `apps/web` via `entrypoint: ../server/src/index.ts`
 - `packages/shared` — API contract types (single source of truth; changing a type means syncing server and web)
-- `packages/llm` — prompts (`prompts/socrates.md` is injected at build time as the system prompt; edit → redeploy takes effect)
+- `apps/server/src/prompts/` — prompt assets (`socrates.md` injected at build time as the system prompt; edit → redeploy takes effect); provider config lives in `apps/server/providers.config.yaml` (build-time compiled)
 - `.agents/skills/` — third-party Agent Skills (sources pinned in `skills-lock.json`; update with `npx skills update`, add with `npx skills add … -p`). Project-specific knowledge belongs in `docs/` and the AGENTS.md files — not new skills
 - Data: D1 (`apps/server/migrations/`), uploads in R2
+
+## Engineering priorities
+
+- Prioritize code correctness and clarity. Speed and efficiency are secondary priorities unless otherwise specified.
+- Do not write organizational or summary comments. Comments only explain **why** the code is written in some way, and only when the reason is tricky / non-obvious.
+- Prefer implementing functionality in existing files unless it is a new logical component. Avoid creating many small files.
 
 ## Code style
 
@@ -39,7 +46,7 @@ pnpm lint && pnpm typecheck         # must be green before any PR
 ## Testing
 
 - `pnpm test` = vitest-pool-workers (real runtime + local D1/R2/DO; LLM mocked)
-- The SSE dialogue contract (`delta/emotion/done/error`) asserted in `tests/api.test.ts` must never break
+- The WebSocket dialogue protocol (`ws/protocol.ts`: view + chord ops) asserted in `tests/chat.test.ts` must never break; REST shapes follow `docs/api-contract.md`
 - Single test: `pnpm --filter @socrates/server exec vitest run -t "<name>"`
 
 ## Boundaries

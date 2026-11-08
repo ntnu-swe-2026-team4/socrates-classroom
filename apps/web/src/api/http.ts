@@ -1,269 +1,214 @@
-import type { Api } from "./api";
-import { currentLang, tr } from "@/i18n";
-import type { ActivityEvent, DialogueMessage, Emotion } from "./types";
+import { persistActivityId, recordTerm } from "./local";
+import type {
+  Api,
+  ByokStatus,
+  ClassroomCreated,
+  DialogueMessage,
+  JoinInfo,
+  StudentLive,
+  TermExplanation,
+  Topic,
+  User,
+} from "./types";
+import { ApiError } from "./types";
+import type { ActivityInfo, Report } from "./types";
+import type { ErrorCode } from "@socrates/shared";
 
-const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
+const BASE = "/api";
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-    public code?: string,
-  ) {
-    super(message);
-  }
+function lang(): string {
+  const tag = document.documentElement.lang || "zh-TW";
+  if (tag.startsWith("en")) return "en";
+  if (tag.startsWith("es")) return "es";
+  return "zh";
 }
 
-async function errorOf(res: Response, fallback = res.statusText): Promise<ApiError> {
-  let detail = fallback;
-  let code: string | undefined;
-  try {
-    const j = (await res.json()) as { message?: string; detail?: string; code?: string };
-    detail = j.message ?? j.detail ?? detail;
-    code = j.code;
-  } catch {}
-  return new ApiError(res.status, detail, code);
-}
-
-async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function call<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+  const { json, ...rest } = init;
   const res = await fetch(`${BASE}${path}`, {
-    method,
     credentials: "include",
     headers: {
-      "Accept-Language": currentLang(),
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      "Accept-Language": lang(),
+      ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(rest.headers ?? {}),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    ...rest,
+    body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
-  if (!res.ok) throw await errorOf(res);
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
-}
-
-const get = <T>(p: string) => req<T>("GET", p);
-const post = <T>(p: string, b?: unknown) => req<T>("POST", p, b ?? {});
-const put = <T>(p: string, b: unknown) => req<T>("PUT", p, b);
-const patch = <T>(p: string, b: unknown) => req<T>("PATCH", p, b);
-const del = (p: string) => req<void>("DELETE", p);
-const qs = (o: Record<string, string | undefined>) => {
-  const s = new URLSearchParams(Object.entries(o).filter((e): e is [string, string] => e[1] !== undefined)).toString();
-  return s ? `?${s}` : "";
-};
-
-async function upload<T>(path: string, file: File, fields: Record<string, string> = {}): Promise<T> {
-  const form = new FormData();
-  form.append("file", file);
-  for (const [k, v] of Object.entries(fields)) form.append(k, v);
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Accept-Language": currentLang() },
-    body: form,
-  });
-  if (!res.ok) throw await errorOf(res, res.status === 413 ? tr("檔案太大") : res.statusText);
-  return (await res.json()) as T;
-}
-
-function parseSseBlock(block: string): { event: string; data: string } | null {
-  let event = "message";
-  const data: string[] = [];
-  for (const line of block.split("\n")) {
-    if (line.startsWith(":")) continue;
-    const colon = line.indexOf(":");
-    const field = colon < 0 ? line : line.slice(0, colon);
-    const value = colon < 0 ? "" : line.slice(colon + 1).replace(/^ /, "");
-    if (field === "event") event = value;
-    else if (field === "data") data.push(value);
+  const payload =
+    res.status === 503 || res.headers.get("content-type")?.includes("audio")
+      ? null
+      : await res.json().catch(() => null);
+  if (!res.ok) {
+    const error = payload as { message?: string; code?: string } | null;
+    throw new ApiError((error?.code ?? "internal_error") as ErrorCode, error?.message ?? res.statusText);
   }
-  return data.length ? { event, data: data.join("\n") } : null;
+  return payload as T;
 }
 
-export async function streamDialogue(
-  path: string,
-  body: unknown,
-  onDelta?: (c: string) => void,
-  onEmotion?: (e: Emotion) => void,
+async function sendDialogue(
+  activityId: string,
+  text: string,
+  onDelta: (delta: string) => void,
   signal?: AbortSignal,
 ): Promise<DialogueMessage> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${BASE}/activities/${activityId}/dialogue`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream", "Accept-Language": currentLang() },
-    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json", "Accept-Language": lang() },
+    body: JSON.stringify({ text }),
     signal,
   });
-  if (!res.ok) throw await errorOf(res);
-  if (!res.body) throw new ApiError(502, tr("串流結束但沒有收到完整訊息"));
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = "";
-  const onAbort = () => reader.cancel().catch(() => {});
-  signal?.addEventListener("abort", onAbort);
-  const handle = (block: string): DialogueMessage | null => {
-    const ev = parseSseBlock(block);
-    if (!ev) return null;
-    const payload = JSON.parse(ev.data) as { text?: string; message?: DialogueMessage | string; emotion?: Emotion };
-    if (ev.event === "emotion" && payload.emotion) onEmotion?.(payload.emotion);
-    if (ev.event === "delta" && payload.text) onDelta?.(payload.text);
-    if (ev.event === "done" && typeof payload.message === "object") return payload.message;
-    if (ev.event === "error")
-      throw new ApiError(502, typeof payload.message === "string" ? payload.message : tr("串流結束但沒有收到完整訊息"));
-    return null;
-  };
-  try {
-    for (;;) {
-      if (signal?.aborted) throw abortError();
-      const { value, done } = await reader.read();
-      buf += dec.decode(value, { stream: !done });
-      let m: RegExpExecArray | null = /\r?\n\r?\n/.exec(buf);
-      while (m) {
-        const block = buf.slice(0, m.index).replace(/\r/g, "");
-        buf = buf.slice(m.index + m[0].length);
-        m = /\r?\n\r?\n/.exec(buf);
-        const final = handle(block);
-        if (final) return final;
-      }
-      if (done) break;
-    }
-    const final = handle(buf.replace(/\r/g, ""));
-    if (final) return final;
-  } finally {
-    signal?.removeEventListener("abort", onAbort);
-    reader.cancel().catch(() => {});
+  if (!res.ok || !res.body) {
+    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+    throw new ApiError((payload?.code ?? "internal_error") as ErrorCode, payload?.message ?? res.statusText);
   }
-  throw new ApiError(502, tr("串流結束但沒有收到完整訊息"));
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let done: DialogueMessage | null = null;
+
+  const handleFrame = (frame: string) => {
+    const event = frame
+      .split("\n")
+      .find((line) => line.startsWith("event: "))
+      ?.slice(7);
+    const dataLine = frame.split("\n").find((line) => line.startsWith("data: "));
+    if (!event || !dataLine) return;
+    if (event === "delta") {
+      onDelta((JSON.parse(dataLine.slice(6)) as { text: string }).text);
+    } else if (event === "done") {
+      done = (JSON.parse(dataLine.slice(6)) as { message: DialogueMessage }).message;
+    } else if (event === "error") {
+      const error = JSON.parse(dataLine.slice(6)) as { message: string; code: string };
+      throw new ApiError(error.code as ErrorCode, error.message);
+    }
+  };
+
+  while (true) {
+    const { done: streamDone, value } = await reader.read();
+    if (streamDone) break;
+    buffer += decoder.decode(value, { stream: true });
+    let separator = buffer.indexOf("\n\n");
+    while (separator !== -1) {
+      const frame = buffer.slice(0, separator);
+      buffer = buffer.slice(separator + 2);
+      handleFrame(frame);
+      separator = buffer.indexOf("\n\n");
+    }
+  }
+  if (buffer.trim()) handleFrame(buffer);
+  if (!done) throw new ApiError("llm_unavailable" as ErrorCode, "stream_closed");
+  return done;
 }
 
-function abortError(): Error {
-  return new DOMException("dialogue aborted", "AbortError");
+async function playTts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void> {
+  const res = await fetch(`${BASE}/tts`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", "Accept-Language": lang() },
+    body: JSON.stringify({ text, lang: lang() }),
+    signal,
+  });
+  if (!res.ok) throw new ApiError("internal_error" as ErrorCode, res.statusText);
+  const bytes = await res.arrayBuffer();
+  const AudioContextCtor =
+    window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const context = new AudioContextCtor();
+  const source = context.createBufferSource();
+  const stopEarly = () => {
+    void context.close().catch(() => {});
+  };
+  if (signal?.aborted) {
+    stopEarly();
+    throw new DOMException("aborted", "AbortError");
+  }
+  const onAbortDuringDecode = () => stopEarly();
+  signal?.addEventListener("abort", onAbortDuringDecode, { once: true });
+  try {
+    source.buffer = await context.decodeAudioData(bytes);
+  } finally {
+    signal?.removeEventListener("abort", onAbortDuringDecode);
+  }
+  if (signal?.aborted) {
+    stopEarly();
+    throw new DOMException("aborted", "AbortError");
+  }
+  const analyser = context.createAnalyser();
+  analyser.fftSize = 256;
+  source.connect(analyser);
+  analyser.connect(context.destination);
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  let raf = 0;
+  let stopped = false;
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    cancelAnimationFrame(raf);
+    void source.stop();
+    void context.close();
+    signal?.removeEventListener("abort", stop);
+  };
+  signal?.addEventListener("abort", stop, { once: true });
+  await new Promise<void>((resolve) => {
+    const tick = () => {
+      if (stopped) return resolve();
+      analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (const sample of data) sum += (sample - 128) ** 2;
+      onAmplitude(Math.min(1, Math.sqrt(sum / data.length) / 42));
+      raf = requestAnimationFrame(tick);
+    };
+    source.onended = () => {
+      stop();
+      resolve();
+    };
+    source.start();
+    raf = requestAnimationFrame(tick);
+  });
 }
 
 export const httpApi: Api = {
-  login: (i) => post("/api/auth/login", i),
-  me: async () => {
-    try {
-      return await get("/api/me");
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) return null;
-      throw e;
-    }
+  me: () => call<User | null>("/me"),
+  login: (email, password) => call<User>("/auth/login", { method: "POST", json: { email, password } }),
+  logout: () => call<void>("/auth/logout", { method: "POST" }),
+  joinByCode: (code) => call<JoinInfo>(`/join/${encodeURIComponent(code)}`),
+  async joinAsGuest(code, name) {
+    const payload = await call<{ user: User; activityId: string }>("/join", {
+      method: "POST",
+      json: { code, name, tosAccepted: true },
+    });
+    persistActivityId(payload.activityId);
+    return payload;
   },
-  updateMe: (p) => patch("/api/me", p),
-  logout: () => post("/api/auth/logout"),
-
-  listArchives: () => get("/api/archives"),
-  updateArchive: (id, p) => patch(`/api/archives/${id}`, p),
-  listShareTargets: () => get("/api/me/share-targets"),
-
-  createArchive: (title) => post("/api/archives", { title }),
-  listTopicDialogue: (id) => get(`/api/archives/${id}/dialogue`),
-  sendTopicDialogue: (id, text, onDelta, onEmotion, signal) =>
-    streamDialogue(`/api/archives/${id}/dialogue`, { text }, onDelta, onEmotion, signal),
-
-  listClassrooms: () => get("/api/classrooms"),
-  getClassroom: (id) => get(`/api/classrooms/${id}`),
-  createClassroom: (i) => post("/api/classrooms", i),
-  updateClassroom: (id, p) => patch(`/api/classrooms/${id}`, p),
-  acceptInvite: (id) => post(`/api/classrooms/${id}/invite/accept`),
-  declineInvite: (id) => post(`/api/classrooms/${id}/invite/decline`),
-  listClassroomMembers: (id) => get(`/api/classrooms/${id}/members`),
-  addClassroomMember: (id, name) => post(`/api/classrooms/${id}/members`, { name }),
-  importClassroomMembers: (id, names) => post(`/api/classrooms/${id}/members/import`, { names }),
-  removeClassroomMember: (id, mid) => del(`/api/classrooms/${id}/members/${mid}`),
-  setMemberRole: (id, mid, role) => patch(`/api/classrooms/${id}/members/${mid}`, { role }),
-  listActivities: (cid) => get(`/api/classrooms/${cid}/activities`),
-  getActivity: (id) => get(`/api/activities/${id}`),
-  advanceActivity: (id) => post(`/api/activities/${id}/advance`),
-  finishActivity: (id) => post(`/api/activities/${id}/finish`),
-  setStageDeadline: (id, deadline) => put(`/api/activities/${id}/deadline`, { deadline }),
-
-  getJoinPolicy: (cid) => get(`/api/classrooms/${cid}/join-policy`),
-  updateJoinPolicy: (cid, p) => patch(`/api/classrooms/${cid}/join-policy`, p),
-  regenerateJoinCode: (cid) => post(`/api/classrooms/${cid}/join-policy/code`),
-  discoverClassrooms: (q) => get(`/api/classrooms/discover${qs({ q })}`),
-  lookupJoinCode: (code) => get(`/api/join-codes/${encodeURIComponent(code)}`),
-  joinClassroom: (cid, i) => post(`/api/classrooms/${cid}/join`, i),
-  listMyApplications: () => get("/api/me/applications"),
-  cancelApplication: (aid) => del(`/api/applications/${aid}`),
-  listApplications: (cid, status) => get(`/api/classrooms/${cid}/applications${qs({ status })}`),
-  reviewApplication: (aid, decision, note) => post(`/api/applications/${aid}/review`, { decision, note: note ?? null }),
-
-  listAnnouncements: (cid) => get(`/api/classrooms/${cid}/announcements`),
-  createAnnouncement: (cid, i) => post(`/api/classrooms/${cid}/announcements`, i),
-  updateAnnouncement: (id, p) => patch(`/api/announcements/${id}`, p),
-  deleteAnnouncement: (id) => del(`/api/announcements/${id}`),
-
-  listTopics: (cid) => get(`/api/classrooms/${cid}/topics`),
-  getTopic: (id) => get(`/api/topics/${id}`),
-  createTopic: (cid, i) => post(`/api/classrooms/${cid}/topics`, i),
-  updateTopic: (id, p) => patch(`/api/topics/${id}`, p),
-  deleteTopic: (id) => del(`/api/topics/${id}`),
-  addTopicLink: (tid, link) => post(`/api/topics/${tid}/resources`, link),
-  uploadTopicFile: (tid, file) => upload(`/api/topics/${tid}/resources/files`, file),
-  deleteTopicResource: (tid, rid) => del(`/api/topics/${tid}/resources/${rid}`),
-  listReports: (tid) => get(`/api/topics/${tid}/reports`),
-  submitReport: (tid, file, comment) => upload(`/api/topics/${tid}/reports`, file, { comment: comment ?? "" }),
-  deleteReport: (rid) => del(`/api/reports/${rid}`),
-
-  listDiscussions: (cid) => get(`/api/classrooms/${cid}/discussions`),
-  getDiscussion: (id) => get(`/api/discussions/${id}`),
-  createDiscussion: (cid, i) => post(`/api/classrooms/${cid}/discussions`, i),
-  updateDiscussion: (id, p) => patch(`/api/discussions/${id}`, p),
-  setDiscussionStatus: (id, status) => put(`/api/discussions/${id}/status`, { status }),
-  deleteDiscussion: (id) => del(`/api/discussions/${id}`),
-  listDiscussionSessions: (id) => get(`/api/discussions/${id}/sessions`),
-  getDiscussionSession: (id, studentId) => get(`/api/discussions/${id}/sessions/${studentId ?? "me"}`),
-  sendDiscussionMessage: (id, text, onDelta, onEmotion, signal) =>
-    streamDialogue(`/api/discussions/${id}/sessions/me/messages`, { text }, onDelta, onEmotion, signal),
-  submitDiscussionConclusion: (id, conclusion) => put(`/api/discussions/${id}/sessions/me/conclusion`, { conclusion }),
-
-  listPosts: (cid, topicId) => get(`/api/classrooms/${cid}/posts${qs({ topicId: topicId ?? undefined })}`),
-  createPost: (cid, i) => post(`/api/classrooms/${cid}/posts`, i),
-  deletePost: (pid) => del(`/api/posts/${pid}`),
-
-  createCalendarEvent: (cid, i) => post(`/api/classrooms/${cid}/calendar-events`, i),
-  updateCalendarEvent: (id, p) => patch(`/api/calendar-events/${id}`, p),
-  deleteCalendarEvent: (id) => del(`/api/calendar-events/${id}`),
-  listCalendar: ({ from, to, classroomId }) => get(`/api/classrooms/${classroomId}/calendar${qs({ from, to })}`),
-
-  listDialogue: (id) => get(`/api/activities/${id}/dialogue`),
-  sendDialogue: (id, text, onDelta, signal) =>
-    streamDialogue(`/api/activities/${id}/dialogue`, { text }, onDelta, undefined, signal),
-  getProgress: (id) => get(`/api/activities/${id}/progress`),
-  draftPosition: (id) => post(`/api/activities/${id}/position/draft`),
-  confirmPosition: (id, summary) => put(`/api/activities/${id}/position`, { summary }),
-  listPositions: (id) => get(`/api/activities/${id}/positions`),
-  setReady: (id, ready) => put(`/api/activities/${id}/ready`, { ready }),
-  listNotes: (id) => get(`/api/activities/${id}/notes`),
-  createNote: (id, i) => post(`/api/activities/${id}/notes`, i),
-  updateNote: (nid, text) => patch(`/api/notes/${nid}`, { text }),
-  deleteNote: (nid) => del(`/api/notes/${nid}`),
-
-  listMembers: (id) => get(`/api/activities/${id}/members`),
-  listGroups: (id) => get(`/api/activities/${id}/groups`),
-  regroup: (id, groupSize) => post(`/api/activities/${id}/groups/regroup`, { groupSize }),
-  listGroupMessages: (gid) => get(`/api/groups/${gid}/messages`),
-  postGroupMessage: (gid, text) => post(`/api/groups/${gid}/messages`, { text }),
-  summarizeGroup: (gid) => post(`/api/groups/${gid}/ai/summarize`),
-  counterexample: (gid) => post(`/api/groups/${gid}/ai/counterexample`),
-  listArguments: (gid) => get(`/api/groups/${gid}/arguments`),
-  vote: (aid, vote) => post(`/api/arguments/${aid}/vote`, { vote }),
-  splitGroup: (gid) => post(`/api/groups/${gid}/split`),
-
-  listRooms: (id) => get(`/api/activities/${id}/rooms`),
-  startRoom: (rid) => post(`/api/rooms/${rid}/start`),
-  listTurns: (rid) => get(`/api/rooms/${rid}/turns`),
-  postTurn: (rid, text) => post(`/api/rooms/${rid}/turns`, { text }),
-  overrideJudgment: (jid, teacherScore) => patch(`/api/judgments/${jid}`, { teacherScore }),
-
-  listScores: (id) => get(`/api/activities/${id}/scores`),
-  adjustScore: (id, memberId, adjust) => patch(`/api/activities/${id}/scores/${memberId}`, { adjust }),
-
-  getStarData: (id) => get(`/api/activities/${id}/star`),
-
-  subscribe(id, onEvent) {
-    const es = new EventSource(`${BASE}/api/activities/${id}/events`, { withCredentials: true });
-    es.onmessage = (m) => onEvent(JSON.parse(m.data) as ActivityEvent);
-    return () => es.close();
+  listTopics: () => call<Topic[]>("/topics"),
+  generateTopics: (direction) => call<Topic[]>("/topics/generate", { method: "POST", json: { direction } }),
+  createTopic: (input) => call<Topic>("/topics", { method: "POST", json: input }),
+  createClassroom: (name, topicId) =>
+    call<ClassroomCreated>("/classrooms", { method: "POST", json: { name, topicId } }),
+  liveStudents: (activityId) => call<StudentLive[]>(`/activities/${activityId}/live`),
+  dialogueHistory: (activityId) => call<DialogueMessage[]>(`/activities/${activityId}/dialogue`),
+  sendDialogue,
+  async stt(audio: Blob) {
+    const form = new FormData();
+    form.append("audio", audio, "speech.webm");
+    const payload = await call<{ text: string }>("/stt", { method: "POST", body: form });
+    return payload.text;
+  },
+  tts: playTts,
+  activityInfo: (activityId) => call<ActivityInfo>(`/activities/${activityId}`),
+  finishActivity: (activityId) => call<void>(`/activities/${activityId}/finish`, { method: "POST" }),
+  report: (activityId) => call<Report>(`/activities/${activityId}/report`),
+  byokStatus: () => call<ByokStatus>("/settings/byok"),
+  byokSet: (provider, key) => call<ByokStatus>("/settings/byok", { method: "PUT", json: { provider, key } }),
+  async byokClear() {
+    await call<void>("/settings/byok", { method: "DELETE" });
+    return null;
+  },
+  lookupTerm: async (term) => {
+    const explanation = await call<TermExplanation>("/lookup", { method: "POST", json: { term } });
+    recordTerm(explanation.term);
+    return explanation;
   },
 };

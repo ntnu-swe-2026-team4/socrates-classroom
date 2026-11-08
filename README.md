@@ -68,7 +68,7 @@ packages/
 ```
 
 - **對話引擎**：`PiHarness`（Agents SDK）跑在 Durable Object——transcript、排隊、重試、崩潰恢復由 pi 管理；前端對話 API 契約（SSE：`delta/emotion/done/error`）與 [`docs/api-contract.md`](docs/api-contract.md) 一致。
-- **LLM 設定層**：提示詞在 `packages/llm/prompts/`，模型路由在 `apps/server/src/providers/`；規則與查證詳見 [`docs/providers.md`](docs/providers.md)。
+- **LLM 設定層**：提示詞在 `apps/server/src/prompts/`，模型路由在 `apps/server/providers.config.yaml`（build-time 編譯）；規則與查證詳見 [`docs/providers.md`](docs/providers.md)。
 - 沒有金鑰也能開發：`LLM_PROVIDER=mock`（測試預設）用離線 faux 模型。
 
 ## 文件（每份 = 一個領域的 SSOT）
