@@ -4,7 +4,8 @@ A classroom debate platform: Socratic one-on-one dialogue, four-stage classroom 
 
 ## Language
 
-- The project's docs, UI copy, and commit messages are in **Traditional Chinese (zh-TW)**. Match that when writing docs and commit messages.
+- The project's docs and UI copy are in **Traditional Chinese (zh-TW)**. Match that when writing docs.
+- **Commit messages: English Conventional Commits** (`type(scope): imperative summary` — e.g. `feat(server): add classroom list endpoint`). Use zh-TW in the subject or body only when the content is inherently zh-TW (product-level rationale, user-facing wording); never mix languages within one line.
 - **All technical terms in docs stay English** (failover, affinity, circuit breaker, ledger, tiering, traffic class, …). zh-TW is for product-level content (features, rationale, spec decisions); never coin Chinese translations for technical terms. Full policy: `docs/AGENTS.md` § Language.
 - **No comments in code or config files.** Code must be self-describing; knowledge that doesn't fit the code belongs in `docs/` or the AGENTS.md files. When a comment is unavoidable (config/YAML), it must be **English only**.
 - UI copy is i18n'd (`apps/web/src/i18n/index.ts`, typed dictionary): zh-TW / en / es. New user-facing strings need all three.
