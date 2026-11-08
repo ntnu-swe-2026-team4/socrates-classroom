@@ -1,7 +1,20 @@
-import { httpApi } from "./http";
-import type { Api } from "./types";
+import { httpApi, type Api, type ByokStatus } from "./http";
 
 export const api: Api = httpApi;
-export type * from "./types";
-export { ApiError } from "./types";
+export { ApiError } from "./http";
+export type { Api, ByokStatus };
+export type {
+  ActivityInfo,
+  ClassroomCreated,
+  DialogueMessage,
+  GroupReport,
+  JoinInfo,
+  Report,
+  StudentLive,
+  TeacherReport,
+  TermExplanation,
+  Topic,
+  User,
+} from "@socrates/shared";
 export { readTermHistory, recordTerm, readActivityId, persistActivityId } from "./local";
+export type { TermQuery } from "./local";

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { httpApi } from "@/api/http";
 import { ApiError } from "@/api";
-import type { DialogueMessage } from "@/api/types";
+import type { DialogueMessage } from "@/api";
 
 type Handler = (path: string, init: RequestInit) => Response | Promise<Response>;
 const handler = vi.fn<Handler>();
@@ -47,7 +47,7 @@ describe("httpApi 契約（瀏覽器端實際代碼）", () => {
     const [path, init] = handler.mock.calls[0]!;
     expect(path).toBe("/api/me");
     expect(init.credentials).toBe("include");
-    expect((init.headers as Record<string, string>)["Accept-Language"]).toBe("zh");
+    expect(new Headers(init.headers).get("Accept-Language")).toBe("zh");
   });
 
   test("joinAsGuest：POST /api/join 契約形狀＋活動 id 持久化", async () => {

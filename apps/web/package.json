@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit",
+    "build": "pnpm typecheck && vite build",
+    "typecheck": "pnpm --filter @socrates/server run build:types && tsc --noEmit",
     "test": "vitest run",
     "preview": "vite preview",
     "deploy": "cf deploy",
@@ -28,10 +28,12 @@
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.7.0",
     "three": "^0.187.0",
-    "@socrates/shared": "workspace:*"
+    "@socrates/shared": "workspace:*",
+    "hono": "^4.10.7"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.9",
+    "@cloudflare/workers-types": "^5.20261101.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/router-plugin": "^1.168.48",
     "@testing-library/react": "^16.3.3",

@@ -1,50 +1,107 @@
-import { persistActivityId, recordTerm } from "./local";
+import { hc } from "hono/client";
 import type {
-  Api,
-  ByokStatus,
+  ActivityInfo,
   ClassroomCreated,
   DialogueMessage,
   JoinInfo,
+  Report,
   StudentLive,
   TermExplanation,
   Topic,
   User,
-} from "./types";
-import { ApiError } from "./types";
-import type { ActivityInfo, Report } from "./types";
-import type { ErrorCode } from "@socrates/shared";
+} from "@socrates/shared";
+import {
+  ClassroomCreateInputSchema,
+  JoinInputSchema,
+  LoginInputSchema,
+  LookupInputSchema,
+  TtsInputSchema,
+  TopicCreateInputSchema,
+  GenerateTopicsInputSchema,
+  type ErrorCode,
+} from "@socrates/shared";
+import type { RpcApi } from "@server/app";
+import { persistActivityId, recordTerm } from "./local";
 
-const BASE = "/api";
-
-function lang(): string {
-  const tag = document.documentElement.lang || "zh-TW";
-  if (tag.startsWith("en")) return "en";
-  if (tag.startsWith("es")) return "es";
-  return "zh";
+export class ApiError extends Error {
+  constructor(
+    public readonly code: ErrorCode,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
-async function call<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+export type ByokStatus = { provider: string; last4: string } | null;
+
+export interface Api {
+  me(): Promise<User | null>;
+  login(email: string, password: string): Promise<User>;
+  logout(): Promise<void>;
+  joinByCode(code: string): Promise<JoinInfo>;
+  joinAsGuest(code: string, name: string): Promise<{ user: User; activityId: string }>;
+  listTopics(): Promise<Topic[]>;
+  generateTopics(direction: string): Promise<Topic[]>;
+  createClassroom(name: string, topicId: string): Promise<ClassroomCreated>;
+  liveStudents(activityId: string): Promise<StudentLive[]>;
+  dialogueHistory(activityId: string): Promise<DialogueMessage[]>;
+  sendDialogue(
+    activityId: string,
+    text: string,
+    onDelta: (delta: string) => void,
+    signal?: AbortSignal,
+  ): Promise<DialogueMessage>;
+  stt(audio: Blob): Promise<string>;
+  tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
+  createTopic(input: { title: string; statement: string; summary?: string; prompts: string[] }): Promise<Topic>;
+  activityInfo(activityId: string): Promise<ActivityInfo>;
+  finishActivity(activityId: string): Promise<void>;
+  report(activityId: string): Promise<Report>;
+  byokStatus(): Promise<ByokStatus>;
+  byokSet(provider: string, key: string): Promise<ByokStatus>;
+  byokClear(): Promise<ByokStatus>;
+  lookupTerm(term: string): Promise<TermExplanation>;
+}
+
+const client = hc<RpcApi>("/api", {
+  headers: langHeaders,
+  init: { credentials: "include" },
+});
+
+function langHeaders(): Record<string, string> {
+  const tag = document.documentElement.lang || "zh-TW";
+  const value = tag.startsWith("en") ? "en" : tag.startsWith("es") ? "es" : "zh";
+  return { "Accept-Language": value };
+}
+
+type JsonLike = {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  json(): Promise<unknown>;
+};
+
+async function unwrap<R extends JsonLike>(res: R): Promise<Awaited<ReturnType<R["json"]>>> {
+  if (res.status === 204) return undefined as Awaited<ReturnType<R["json"]>>;
+  if (!res.ok) {
+    const error = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+    throw new ApiError((error?.code ?? "internal_error") as ErrorCode, error?.message ?? res.statusText);
+  }
+  return res.json() as Promise<Awaited<ReturnType<R["json"]>>>;
+}
+
+async function raw(path: string, init: RequestInit & { json?: unknown } = {}): Promise<Response> {
   const { json, ...rest } = init;
-  const res = await fetch(`${BASE}${path}`, {
+  return fetch(`/api${path}`, {
     credentials: "include",
     headers: {
-      "Accept-Language": lang(),
+      ...langHeaders(),
       ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
       ...(rest.headers ?? {}),
     },
     ...rest,
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
-  if (res.status === 204) return undefined as T;
-  const payload =
-    res.status === 503 || res.headers.get("content-type")?.includes("audio")
-      ? null
-      : await res.json().catch(() => null);
-  if (!res.ok) {
-    const error = payload as { message?: string; code?: string } | null;
-    throw new ApiError((error?.code ?? "internal_error") as ErrorCode, error?.message ?? res.statusText);
-  }
-  return payload as T;
 }
 
 async function sendDialogue(
@@ -53,13 +110,7 @@ async function sendDialogue(
   onDelta: (delta: string) => void,
   signal?: AbortSignal,
 ): Promise<DialogueMessage> {
-  const res = await fetch(`${BASE}/activities/${activityId}/dialogue`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", "Accept-Language": lang() },
-    body: JSON.stringify({ text }),
-    signal,
-  });
+  const res = await raw(`/activities/${activityId}/dialogue`, { method: "POST", json: { text }, signal });
   if (!res.ok || !res.body) {
     const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
     throw new ApiError((payload?.code ?? "internal_error") as ErrorCode, payload?.message ?? res.statusText);
@@ -104,13 +155,8 @@ async function sendDialogue(
 }
 
 async function playTts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void> {
-  const res = await fetch(`${BASE}/tts`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", "Accept-Language": lang() },
-    body: JSON.stringify({ text, lang: lang() }),
-    signal,
-  });
+  const input = TtsInputSchema.parse({ text, lang: langHeaders()["Accept-Language"] });
+  const res = await client.tts.$post({ json: input }, { init: { signal } });
   if (!res.ok) throw new ApiError("internal_error" as ErrorCode, res.statusText);
   const bytes = await res.arrayBuffer();
   const AudioContextCtor =
@@ -170,45 +216,81 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
 }
 
 export const httpApi: Api = {
-  me: () => call<User | null>("/me"),
-  login: (email, password) => call<User>("/auth/login", { method: "POST", json: { email, password } }),
-  logout: () => call<void>("/auth/logout", { method: "POST" }),
-  joinByCode: (code) => call<JoinInfo>(`/join/${encodeURIComponent(code)}`),
-  async joinAsGuest(code, name) {
-    const payload = await call<{ user: User; activityId: string }>("/join", {
-      method: "POST",
-      json: { code, name, tosAccepted: true },
-    });
-    persistActivityId(payload.activityId);
-    return payload;
+  async me() {
+    return unwrap(await client.me.$get());
   },
-  listTopics: () => call<Topic[]>("/topics"),
-  generateTopics: (direction) => call<Topic[]>("/topics/generate", { method: "POST", json: { direction } }),
-  createTopic: (input) => call<Topic>("/topics", { method: "POST", json: input }),
-  createClassroom: (name, topicId) =>
-    call<ClassroomCreated>("/classrooms", { method: "POST", json: { name, topicId } }),
-  liveStudents: (activityId) => call<StudentLive[]>(`/activities/${activityId}/live`),
-  dialogueHistory: (activityId) => call<DialogueMessage[]>(`/activities/${activityId}/dialogue`),
+  async login(email, password) {
+    return unwrap(await client.auth.login.$post({ json: LoginInputSchema.parse({ email, password }) }));
+  },
+  async logout() {
+    await unwrap(await client.auth.logout.$post());
+  },
+  async joinByCode(code) {
+    return unwrap(await client.join[":code"].$get({ param: { code } }));
+  },
+  async joinAsGuest(code, name) {
+    const payload = unwrap(await client.join.$post({ json: JoinInputSchema.parse({ code, name, tosAccepted: true }) }));
+    const data = await payload;
+    persistActivityId(data.activityId);
+    return data;
+  },
+  async listTopics() {
+    return unwrap(await client.topics.$get());
+  },
+  async generateTopics(direction) {
+    const input = GenerateTopicsInputSchema.parse({ direction });
+    return unwrap(await client.topics.generate.$post({ json: input }));
+  },
+  async createTopic(input) {
+    return unwrap(await client.topics.$post({ json: TopicCreateInputSchema.parse(input) }));
+  },
+  async createClassroom(name, topicId) {
+    const input = ClassroomCreateInputSchema.parse({ name, topicId });
+    return unwrap(await client.classrooms.$post({ json: input }));
+  },
+  async liveStudents(activityId) {
+    const res = await raw(`/activities/${activityId}/live`);
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+      throw new ApiError((payload?.code ?? "internal_error") as ErrorCode, payload?.message ?? res.statusText);
+    }
+    return res.json();
+  },
+  async dialogueHistory(activityId) {
+    return unwrap(await client.activities[":id"].dialogue.$get({ param: { id: activityId } }));
+  },
   sendDialogue,
-  async stt(audio: Blob) {
-    const form = new FormData();
-    form.append("audio", audio, "speech.webm");
-    const payload = await call<{ text: string }>("/stt", { method: "POST", body: form });
+  async stt(audio) {
+    const file = audio instanceof File ? audio : new File([audio], "speech.webm", { type: audio.type });
+    const res = await client.stt.$post({ form: { audio: file } });
+    if (!res.ok) throw new ApiError("internal_error" as ErrorCode, res.statusText);
+    const payload = (await res.json()) as { text: string };
     return payload.text;
   },
   tts: playTts,
-  activityInfo: (activityId) => call<ActivityInfo>(`/activities/${activityId}`),
-  finishActivity: (activityId) => call<void>(`/activities/${activityId}/finish`, { method: "POST" }),
-  report: (activityId) => call<Report>(`/activities/${activityId}/report`),
-  byokStatus: () => call<ByokStatus>("/settings/byok"),
-  byokSet: (provider, key) => call<ByokStatus>("/settings/byok", { method: "PUT", json: { provider, key } }),
+  async activityInfo(activityId) {
+    return unwrap(await client.activities[":id"].$get({ param: { id: activityId } }));
+  },
+  async finishActivity(activityId) {
+    await unwrap(await client.activities[":id"].finish.$post({ param: { id: activityId } }));
+  },
+  async report(activityId) {
+    return unwrap(await client.activities[":id"].report.$get({ param: { id: activityId } }));
+  },
+  async byokStatus() {
+    return unwrap(await client.settings.byok.$get());
+  },
+  async byokSet(provider, key) {
+    return unwrap(await client.settings.byok.$put({ json: { provider, key } }));
+  },
   async byokClear() {
-    await call<void>("/settings/byok", { method: "DELETE" });
+    await unwrap(await client.settings.byok.$delete());
     return null;
   },
-  lookupTerm: async (term) => {
-    const explanation = await call<TermExplanation>("/lookup", { method: "POST", json: { term } });
-    recordTerm(explanation.term);
-    return explanation;
+  async lookupTerm(term) {
+    const input = LookupInputSchema.parse({ term });
+    const data = await unwrap(await client.lookup.$post({ json: input }));
+    recordTerm(data.term);
+    return data;
   },
 };
