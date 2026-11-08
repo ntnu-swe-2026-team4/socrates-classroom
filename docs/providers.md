@@ -82,7 +82,7 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 
 ## 7. Judgment 模型（逐輪違規判斷）
 
-- **基準**：以下內容基於 commit [`e899b03`](https://github.com/ntnu-swe-2026-team4/socrates-classroom/commit/e899b03acbfde76014a7615a41ab2892179c9b47) 的當前狀況撰寫
+- **基準**：以下內容基於 2026-11-08 的程式碼現況撰寫
 - **用途**：#71 逐輪違規標記——每則 assistant reply 後背景非同步分類，不進對話主迴圈（[#71](https://github.com/ntnu-swe-2026-team4/socrates-classroom/issues/71)；設計見 [`architecture.md`](./architecture.md) §13 D9）。avatar 的 emotion 分類同樣用 Clef-flash（[`avatar/index.ts`](../apps/server/src/pi/extensions/avatar/index.ts)，2026-11-08 檢查）。violation 分類會讀到學生原話，適用與 generation 相同的 ZDR 硬門檻（不過就出局）
 - **候選**：
 
