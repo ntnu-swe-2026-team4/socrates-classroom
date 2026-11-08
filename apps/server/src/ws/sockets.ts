@@ -40,13 +40,20 @@ export class ChatSockets {
   readonly #harness: PiHarness;
   readonly #registry: RegistryReader;
   readonly #getWebSockets: (tag?: string) => WebSocket[];
+  readonly #authorize?: (request: Request) => Promise<boolean>;
   readonly #watches = new Map<WebSocket, ConversationWatch>();
   #closed = false;
 
-  constructor(harness: PiHarness, registry: RegistryReader, getWebSockets: (tag?: string) => WebSocket[]) {
+  constructor(
+    harness: PiHarness,
+    registry: RegistryReader,
+    getWebSockets: (tag?: string) => WebSocket[],
+    authorize?: (request: Request) => Promise<boolean>,
+  ) {
     this.#harness = harness;
     this.#registry = registry;
     this.#getWebSockets = getWebSockets;
+    this.#authorize = authorize;
   }
 
   options(): WebSocketsOptions {
@@ -65,7 +72,15 @@ export class ChatSockets {
     await this.#watchOrClose(this.#getWebSockets()[0]!);
   }
 
-  async #onConnect(connection: Connection, _ctx: ConnectionContext): Promise<void> {
+  async #onConnect(connection: Connection, ctx: ConnectionContext): Promise<void> {
+    if (this.#authorize && !(await this.#authorize(ctx.request))) {
+      try {
+        connection.close(1008, "unauthorized");
+      } catch {
+        // Already closed.
+      }
+      return;
+    }
     send(connection, {
       type: "hello",
       tools: this.#registry

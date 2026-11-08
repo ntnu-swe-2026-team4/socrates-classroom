@@ -13,6 +13,8 @@ import { PiHarness } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
+import { SESSION_COOKIE, userFromSessionToken } from "../auth";
+import { requireMembership } from "../services/members";
 import { createAvatarExtension } from "../pi/extensions/avatar";
 import { createJudgmentExtension } from "../pi/extensions/judgment";
 import { createWebSearchExtension } from "../pi/extensions/websearch";
@@ -52,7 +54,12 @@ export class Chat extends DurableObject<Env> {
     defaults: { model: this.models.default, thinkingLevel: "low" },
   });
 
-  readonly sockets = new ChatSockets(this.harness, this.registry, (tag) => this.ctx.getWebSockets(tag));
+  readonly sockets = new ChatSockets(
+    this.harness,
+    this.registry,
+    (tag) => this.ctx.getWebSockets(tag),
+    (request) => this.authorize(request),
+  );
   readonly webSockets = new WebSockets(this.sockets.options());
   readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.harness);
 
@@ -63,6 +70,26 @@ export class Chat extends DurableObject<Env> {
 
   async onStart(): Promise<void> {
     await this.sockets.reattach();
+  }
+
+  private async authorize(request: Request): Promise<boolean> {
+    const name = decodeURIComponent(new URL(request.url).pathname.split("/chat/").at(-1) ?? "");
+    const [activityId, studentId] = name.split(":");
+    if (!activityId || !studentId) return false;
+    const cookie = request.headers.get("Cookie") ?? "";
+    const token = cookie
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${SESSION_COOKIE}=`))
+      ?.slice(SESSION_COOKIE.length + 1);
+    const user = await userFromSessionToken({ env: this.env }, token);
+    if (!user) return false;
+    try {
+      const { isTeacher } = await requireMembership(this.env.DB, activityId, user);
+      return isTeacher || user.id === studentId;
+    } catch {
+      return false;
+    }
   }
 }
 
