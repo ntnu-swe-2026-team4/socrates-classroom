@@ -1,0 +1,1 @@
+ALTER TABLE teacher_keys ADD COLUMN model TEXT NOT NULL DEFAULT '';

@@ -1,3 +1,4 @@
+import type { UserInput } from "@earendil-works/pi-durable";
 import { DurableObject } from "cloudflare:workers";
 import { createRegistry, Harness } from "@earendil-works/pi-durable";
 import {
@@ -9,7 +10,7 @@ import {
   type TextContent,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { PiHarness, ROOT_SESSION } from "agents/harness/pi";
+import { PiHarness, type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
@@ -21,11 +22,17 @@ import { createWebSearchExtension } from "../pi/extensions/websearch";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 import { socratesExtension } from "../pi/extensions/socrates";
 import { buildModels } from "../pi/models";
+import { teacherOfActivity, type TeacherLeg, type TeacherLegRow } from "../pi/credentials";
+import { getRouter } from "../routing/router";
+import { routingConfig } from "../routing/config.gen";
+import { all } from "../db/d1";
 import { ChatSockets } from "../ws/sockets";
 
 export class Chat extends DurableObject<Env> {
   readonly registry = createRegistry();
-  readonly models = buildModels(this.env);
+  readonly models = buildModels(this.env, { teacherOf: () => this.teacherId() });
+  #teacherId: string | null | undefined;
+  #sessionModel: { provider: string; id: string } | undefined;
 
   readonly harness = new PiHarness({
     harness: ({ storage, context, onWake }) => {
@@ -60,6 +67,7 @@ export class Chat extends DurableObject<Env> {
     this.registry,
     (tag) => this.ctx.getWebSockets(tag),
     (request) => this.authorize(request),
+    (handle, input, options) => this.routeSubmit(handle, input, options),
   );
   readonly webSockets = new WebSockets(this.sockets.options());
   readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.harness);
@@ -74,6 +82,57 @@ export class Chat extends DurableObject<Env> {
 
   async onStart(): Promise<void> {
     await this.sockets.reattach();
+  }
+
+  private async teacherId(): Promise<string | null> {
+    if (this.#teacherId === undefined) {
+      const activityId = this.ctx.id.name?.split(":")[0] ?? "";
+      this.#teacherId = activityId ? await teacherOfActivity(this.env, activityId) : null;
+    }
+    return this.#teacherId;
+  }
+
+  private async teacherLegs(): Promise<TeacherLeg[]> {
+    const teacherId = await this.teacherId();
+    if (!teacherId) return [];
+    const rows = await all<TeacherLegRow>(
+      this.env.DB,
+      "SELECT provider_id, model FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
+      { uid: teacherId },
+    );
+    return rows
+      .filter((row) => row.model)
+      .map((row) => ({
+        provider: row.provider_id,
+        model: row.model,
+        credential: `teacher:${teacherId}`,
+        maxConcurrency: routingConfig.teacherChain.maxConcurrency,
+        priority: 0,
+      }));
+  }
+
+  private async routeSubmit(handle: PiSession, input: UserInput, options: PiSubmitOptions): Promise<PiReceipt> {
+    const router = getRouter(this.env);
+    const canServe = (entry: { provider: string; model?: string }): boolean =>
+      this.models.models.getModel(entry.provider, entry.model ?? "") !== undefined;
+    const decision = router.pick("interactive", canServe, await this.teacherLegs());
+    if (decision) {
+      const model = this.models.models.getModel(decision.entry.provider, decision.model);
+      if (model && (this.#sessionModel?.provider !== model.provider || this.#sessionModel?.id !== model.id)) {
+        await handle.setModel({ provider: model.provider, id: model.id });
+        this.#sessionModel = { provider: model.provider, id: model.id };
+      }
+    }
+    const receipt = await handle.submit(input, options);
+    if (decision) {
+      void handle
+        .wait(receipt.operationId)
+        .then((result) => router.settle(decision, result.status === "done" ? "ok" : "error"))
+        .catch(() => {
+          if (router.ledger.inFlight(decision.key) > 0) router.settle(decision, "error");
+        });
+    }
+    return receipt;
   }
 
   async onRequest(request: Request): Promise<Response> {

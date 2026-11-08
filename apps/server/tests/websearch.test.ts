@@ -2,11 +2,9 @@ import { env } from "cloudflare:workers";
 import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import worker from "../src/index";
-import { run } from "../src/db/d1";
 import { seedDemo } from "../src/seed";
-import migrationSql from "../migrations/001_init.sql";
-import keysMigration from "../migrations/002_teacher_keys.sql";
 import type { ServerMessage } from "../src/ws/protocol";
+import { applyMigrations } from "./migrations";
 
 let thread: string;
 let cookie: string;
@@ -37,9 +35,7 @@ async function connect(name: string): Promise<WebSocket> {
 }
 
 beforeAll(async () => {
-  for (const statement of [...migrationSql.split(";"), ...keysMigration.split(";")]) {
-    if (statement.trim()) await run(env.DB, statement.trim());
-  }
+  await applyMigrations(env.DB);
   await seedDemo(env.DB);
   const login = await call("/api/auth/login", {
     method: "POST",

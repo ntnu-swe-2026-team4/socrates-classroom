@@ -3,10 +3,11 @@ import { z } from "zod";
 import { all, batch, one, run } from "../db/d1";
 import { fail, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
 import { encryptKey } from "../auth-crypto";
-import { routingConfig } from "../routing/config.gen";
+import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 
 const KeyInputSchema = z.object({
   provider: z.string(),
+  model: z.string().min(1).max(200),
   key: z.string().min(8).max(256),
 });
 
@@ -14,13 +15,16 @@ const OrderInputSchema = z.object({ providers: z.array(z.string()).max(50) });
 
 interface TeacherKeyRow {
   provider_id: string;
+  model: string;
   last4: string;
   sort_order: number;
   updated_at: string;
 }
 
-function knownProvider(providerId: string): boolean {
-  return routingConfig.providers[providerId] !== undefined;
+const keyableProviders = builtinProviders().filter((provider) => provider.auth.apiKey !== undefined);
+
+function keyableProvider(providerId: string) {
+  return keyableProviders.find((provider) => provider.id === providerId);
 }
 
 export function teacherKeyRoutes() {
@@ -29,17 +33,28 @@ export function teacherKeyRoutes() {
       const user = requireTeacher(c);
       const rows = await all<TeacherKeyRow>(
         c.env.DB,
-        "SELECT provider_id, last4, sort_order, updated_at FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
+        "SELECT provider_id, model, last4, sort_order, updated_at FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
         { uid: user.id },
       );
       return c.json(
         rows.map((row) => ({
           provider: row.provider_id,
+          model: row.model,
           last4: row.last4,
           sortOrder: row.sort_order,
           updatedAt: row.updated_at,
         })),
       );
+    })
+    .get("/settings/keys/providers", async (c) => {
+      requireTeacher(c);
+      return c.json(keyableProviders.map((provider) => ({ id: provider.id, name: provider.name })));
+    })
+    .get("/settings/keys/providers/:provider/models", async (c) => {
+      requireTeacher(c);
+      const provider = keyableProvider(c.req.param("provider"));
+      if (!provider) fail(404, "not_found");
+      return c.json(provider.getModels().map((model) => ({ id: model.id, name: model.name })));
     })
     .put("/settings/keys/order", async (c) => {
       const user = requireTeacher(c);
@@ -66,7 +81,9 @@ export function teacherKeyRoutes() {
       const user = requireTeacher(c);
       const provider = c.req.param("provider");
       const input = await parseBody(c, KeyInputSchema);
-      if (provider !== input.provider || !knownProvider(provider)) fail(422, "byok_provider_invalid");
+      const def = provider !== input.provider ? undefined : keyableProvider(provider);
+      if (!def) fail(422, "byok_provider_invalid");
+      if (!def.getModels().some((model) => model.id === input.model)) fail(422, "validation");
       const enc = await encryptKey(c.env, input.key);
       const existing = await one<{ n: number }>(
         c.env.DB,
@@ -76,12 +93,20 @@ export function teacherKeyRoutes() {
       const order = (existing?.n ?? -1) + 1;
       await run(
         c.env.DB,
-        `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
-         VALUES ($uid, $pid, $enc, $last4, $order, $at)
-         ON CONFLICT(user_id, provider_id) DO UPDATE SET key_enc = $enc, last4 = $last4, updated_at = $at`,
-        { uid: user.id, pid: provider, enc, last4: input.key.slice(-4), order, at: nowIso() },
+        `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, model, sort_order, updated_at)
+         VALUES ($uid, $pid, $enc, $last4, $model, $order, $at)
+         ON CONFLICT(user_id, provider_id) DO UPDATE SET key_enc = $enc, last4 = $last4, model = $model, updated_at = $at`,
+        {
+          uid: user.id,
+          pid: provider,
+          enc,
+          last4: input.key.slice(-4),
+          model: input.model,
+          order,
+          at: nowIso(),
+        },
       );
-      return c.json({ provider, last4: input.key.slice(-4) });
+      return c.json({ provider, model: input.model, last4: input.key.slice(-4) });
     })
     .delete("/settings/keys/:provider", async (c) => {
       const user = requireTeacher(c);

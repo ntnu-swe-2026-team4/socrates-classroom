@@ -1,11 +1,8 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import worker from "../src/index";
-import { run } from "../src/db/d1";
 import { seedDemo } from "../src/seed";
-import migrationSql from "../migrations/001_init.sql";
-import keysMigration from "../migrations/002_teacher_keys.sql";
-import dropDeadTables from "../migrations/003_drop_dead_tables.sql";
+import { applyMigrations } from "./migrations";
 
 async function call(path: string, init: RequestInit = {}): Promise<Response> {
   return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(
@@ -24,9 +21,7 @@ let code: string;
 let activityId: string;
 
 beforeAll(async () => {
-  for (const statement of [...migrationSql.split(";"), ...keysMigration.split(";"), ...dropDeadTables.split(";")]) {
-    if (statement.trim()) await run(env.DB, statement.trim());
-  }
+  await applyMigrations(env.DB);
   await seedDemo(env.DB);
   const login = await call("/api/auth/login", {
     method: "POST",
@@ -199,7 +194,7 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     const put = await call("/api/settings/keys/openrouter", {
       method: "PUT",
       headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ provider: "openrouter", key: "sk-or-v1-abcdefgh" }),
+      body: JSON.stringify({ provider: "openrouter", model: "z-ai/glm-5.3-flash", key: "sk-or-v1-abcdefgh" }),
     });
     expect(put.status).toBe(200);
     expect(((await put.json()) as { last4: string }).last4).toBe("efgh");
@@ -207,23 +202,50 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     const again = await call("/api/settings/keys/openrouter", {
       method: "PUT",
       headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ provider: "openrouter", key: "sk-or-v1-zzzzzzzz" }),
+      body: JSON.stringify({ provider: "openrouter", model: "z-ai/glm-5.3-flash", key: "sk-or-v1-zzzzzzzz" }),
     });
     expect(again.status).toBe(200);
     expect(((await again.json()) as { last4: string }).last4).toBe("zzzz");
 
     const list = (await (await call("/api/settings/keys", { headers: { Cookie: teacher } })).json()) as Array<{
       provider: string;
+      model: string;
       last4: string;
     }>;
-    expect(list).toEqual([{ provider: "openrouter", last4: "zzzz", sortOrder: 0, updatedAt: expect.any(String) }]);
+    expect(list).toEqual([
+      {
+        provider: "openrouter",
+        model: "z-ai/glm-5.3-flash",
+        last4: "zzzz",
+        sortOrder: 0,
+        updatedAt: expect.any(String),
+      },
+    ]);
 
     const badProvider = await call("/api/settings/keys/evil", {
       method: "PUT",
       headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ provider: "evil", key: "sk-or-v1-abcdefgh" }),
+      body: JSON.stringify({ provider: "evil", model: "any", key: "sk-or-v1-abcdefgh" }),
     });
     expect(badProvider.status).toBe(422);
+
+    const badModel = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ provider: "openrouter", model: "not-a-model", key: "sk-or-v1-abcdefgh" }),
+    });
+    expect(badModel.status).toBe(422);
+
+    const providers = (await (
+      await call("/api/settings/keys/providers", { headers: { Cookie: teacher } })
+    ).json()) as Array<{
+      id: string;
+    }>;
+    expect(providers.some((entry) => entry.id === "openrouter")).toBe(true);
+    const models = (await (
+      await call("/api/settings/keys/providers/openrouter/models", { headers: { Cookie: teacher } })
+    ).json()) as Array<{ id: string }>;
+    expect(models.some((entry) => entry.id === "z-ai/glm-5.3-flash")).toBe(true);
 
     const studentCookie = cookieOf(
       await call("/api/join", {

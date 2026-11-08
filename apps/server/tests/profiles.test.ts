@@ -8,15 +8,30 @@ import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import { runProfile, PROFILES } from "../src/pi/agents/profiles";
 
 describe("agent profiles（#113：角色定義，model 由 routing 解析）", () => {
-  it("profiles 表：lookup/topic-gen/report-analyst 的角色欄位正確（零 model hardcode）", () => {
+  it("profiles 表：角色欄位正確（零 model hardcode）", () => {
     expect(PROFILES.lookup.trafficClass).toBe("interactive");
     expect(PROFILES.lookup.maxTurns).toBe(3);
     expect(PROFILES.lookup.extensions).toContain("websearch");
     expect(PROFILES["topic-gen"].trafficClass).toBe("batch");
-    expect(PROFILES["report-analyst"].extensions).toEqual([]);
+    expect(PROFILES["student-report"].extensions).toEqual([]);
+    expect(PROFILES["class-report"].extensions).toEqual([]);
     for (const profile of Object.values(PROFILES)) {
       const json = JSON.stringify(profile);
       expect(json).not.toMatch(/glm|claude|gpt|@cf\//i);
+    }
+  });
+
+  it("instructions：真 prompt 資產接線（非 placeholder）＋ JSON 形狀附錄＋無 Handlebars 殘留", () => {
+    expect(PROFILES["student-report"].instructions).toContain("You are reading one student's conversation");
+    expect(PROFILES["student-report"].instructions).toContain('"stated": true');
+    expect(PROFILES["class-report"].instructions).toContain("You are analyzing the whole class's conversations");
+    expect(PROFILES["class-report"].instructions).toContain('"unstated"');
+    expect(PROFILES.lookup.instructions).toContain("term-lookup assistant");
+    expect(PROFILES["topic-gen"].instructions).toContain("debate topics");
+    expect(PROFILES["topic-gen"].instructions).toContain('"topics"');
+    for (const profile of Object.values(PROFILES)) {
+      expect(profile.instructions).not.toMatch(/\{\{/);
+      expect(profile.instructions).not.toContain("{{role");
     }
   });
 

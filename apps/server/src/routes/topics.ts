@@ -1,14 +1,9 @@
 import { Hono } from "hono";
-import { GenerateTopicsInputSchema, TopicCreateInputSchema } from "@socrates/shared";
+import { GenerateTopicsInputSchema, TopicCreateInputSchema, LANG_NAMES, TopicGenSchema } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
 import { fail, langOf, newId, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
 import { parsePrompts, type TopicRow } from "../services/members";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { createRegistry, Harness } from "@earendil-works/pi-durable";
-import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
-import { runProfile } from "../pi/agents/profiles";
-import { buildModels } from "../pi/models";
-import { TopicGenSchema } from "@socrates/shared";
+import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
 function mockTopics(direction: string) {
   return {
@@ -55,7 +50,6 @@ export function topicsRoutes() {
     .post("/topics/generate", async (c) => {
       requireTeacher(c);
       const input = await parseBody(c, GenerateTopicsInputSchema);
-      const lang = langOf(c);
       if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {
         return c.json(
           mockTopics(input.direction).topics.map((topic, index) => ({
@@ -65,17 +59,14 @@ export function topicsRoutes() {
         );
       }
       try {
-        const models = buildModels(c.env);
-        const harness = await Harness.open(
-          new MemoryStorage(),
-          { models: models.models, registry: createRegistry() },
-          BACKGROUND_CONTEXT,
-        );
+        const user = requireTeacher(c);
+        const { harness, runtime, teacherLegs } = await openProfileHarness(c.env, "topic-gen", async () => user.id);
         const { text } = await runProfile(
           harness,
-          { models, registry: createRegistry(), env: c.env },
+          runtime,
           "topic-gen",
-          `Direction: ${input.direction}\nLanguage: ${lang}\nProduce 3 topics, each with a title, a one-sentence statement, and 2-3 Socratic opening prompts. Search for fact anchors first, then write the topics citing them.`,
+          `Direction: ${input.direction}\n\nWrite in ${LANG_NAMES[langOf(c)]}.`,
+          await teacherLegs,
         );
         const parsed = TopicGenSchema.safeParse(JSON.parse(text));
         if (!parsed.success) throw new Error(`schema_mismatch: ${text.slice(0, 160)}`);

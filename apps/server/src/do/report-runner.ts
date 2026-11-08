@@ -4,6 +4,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { fauxAssistantMessage, type AssistantMessage, type TranscriptContext } from "@earendil-works/pi-ai";
 import type { Env } from "../env";
 import { buildModels } from "../pi/models";
+import { teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import { all, one, run } from "../db/d1";
 import { nowIso } from "../http";
 import {
@@ -14,13 +15,14 @@ import {
   type ViolationSlice,
   type ViolationType,
 } from "@socrates/shared";
-import { Router } from "../routing/router";
+import { getRouter } from "../routing/router";
 import { routingConfig } from "../routing/config.gen";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 
 export class ReportRunner extends DurableObject<Env> {
-  readonly models = buildModels(this.env);
-  readonly router = new Router(this.env);
+  readonly models = buildModels(this.env, {
+    teacherOf: () => teacherOfActivity(this.env, this.ctx.id.name ?? ""),
+  });
   readonly registry = createRegistry();
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -122,7 +124,8 @@ export class ReportRunner extends DurableObject<Env> {
       }
     }
 
-    const batch = this.batchSize(members.length);
+    const legs = await this.teacherLegs();
+    const batch = this.batchSize(members.length, legs);
     const transcripts = new Map<string, { text: string; violations: ViolationSlice[] }>();
     for (let i = 0; i < members.length; i += batch) {
       await Promise.all(
@@ -145,8 +148,9 @@ export class ReportRunner extends DurableObject<Env> {
           for (let attempt = 0; attempt < report.studentAttempts; attempt += 1) {
             const { text } = await this.runAgent(
               harness,
-              "report-analyst",
+              "student-report",
               this.studentReportPrompt(activity, transcript),
+              legs,
             );
             try {
               studentAnalyses.set(member.user_id, StudentAnalysisSchema.parse(JSON.parse(text)));
@@ -160,7 +164,7 @@ export class ReportRunner extends DurableObject<Env> {
     }
 
     const classInput = this.classReportPrompt(activity, members, transcripts, pseudonyms);
-    const { text: classText } = await this.runAgent(harness, "report-analyst", classInput);
+    const { text: classText } = await this.runAgent(harness, "class-report", classInput, legs);
     const classReport = ClassReportSchema.parse(JSON.parse(classText));
 
     await this.persist(activityId, activity.title, classReport, studentAnalyses, pseudonyms, transcripts);
@@ -180,16 +184,46 @@ export class ReportRunner extends DurableObject<Env> {
     );
   }
 
-  private async runAgent(harness: Harness, profile: "report-analyst", input: string): Promise<{ text: string }> {
+  private async runAgent(
+    harness: Harness,
+    profile: "student-report" | "class-report",
+    input: string,
+    legs: TeacherLeg[],
+  ): Promise<{ text: string }> {
     const { runProfile } = (await import("../pi/agents/profiles")) as unknown as {
-      runProfile: (h: Harness, r: unknown, p: "report-analyst", i: string) => Promise<{ text: string }>;
+      runProfile: (
+        h: Harness,
+        r: unknown,
+        p: "student-report" | "class-report",
+        i: string,
+        l: TeacherLeg[],
+      ) => Promise<{ text: string }>;
     };
-    return runProfile(harness, { models: this.models, registry: this.registry, env: this.env }, profile, input);
+    return runProfile(harness, { models: this.models, registry: this.registry, env: this.env }, profile, input, legs);
   }
 
-  private batchSize(memberCount: number): number {
-    const budget = this.router.budget("batch");
+  private batchSize(memberCount: number, legs: TeacherLeg[]): number {
+    const budget = getRouter(this.env).budget("batch", legs);
     return budget > 0 ? Math.min(budget, memberCount) : Math.min(8, memberCount);
+  }
+
+  private async teacherLegs(): Promise<TeacherLeg[]> {
+    const teacherId = await teacherOfActivity(this.env, this.ctx.id.name ?? "");
+    if (!teacherId) return [];
+    const rows = await all<{ provider_id: string; model: string }>(
+      this.env.DB,
+      "SELECT provider_id, model FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
+      { uid: teacherId },
+    );
+    return rows
+      .filter((row) => row.model)
+      .map((row) => ({
+        provider: row.provider_id,
+        model: row.model,
+        credential: `teacher:${teacherId}`,
+        maxConcurrency: routingConfig.teacherChain.maxConcurrency,
+        priority: 0,
+      }));
   }
 
   private async transcriptOf(
