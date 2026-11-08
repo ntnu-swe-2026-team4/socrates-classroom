@@ -1,29 +1,38 @@
-# AGENTS.md — docs/（文件維護規則）
+# AGENTS.md — docs/ (documentation rules)
 
-這個目錄是整個專案的**文件 SSOT**。每份文件擁有一個領域；領域知識只出現在一個地方——其他地方用連結，不要複製。
+This directory is the project's **documentation SSOT**. Each document owns one domain; domain knowledge lives in exactly one place — elsewhere, link to it. Never copy.
 
-## SSOT 地圖
+## SSOT map
 
-| 領域                                 | 唯一來源          | 更新時機                              |
-| ------------------------------------ | ----------------- | ------------------------------------- |
-| 功能清單（現況：功能 ↔ 路由 ↔ 頁面） | `feature.md`      | 功能合併進主分支時（只寫已存在的）    |
-| 願景與規劃（未實作）                 | `roadmap.md`      | 新規劃確定時；實作完成後把條目移出    |
-| 變更紀錄（已完成）                   | `changelog.md`    | 功能合併進主分支後                    |
-| API 請求/回覆格式                    | `api-contract.md` | 改任何 route 的輸入/輸出時            |
-| 系統架構與決策                       | `architecture.md` | 新增 bindings/DO/服務、架構決策變更時 |
-| LLM providers（端點/用量/併發/ZDR）  | `providers.md`    | 新增/更換 provider、配額或條款查證後  |
-| Cloudflare CLI 使用                  | `cf.md`           | cf 工作流變更時                       |
-| Pi Durable / PiHarness 使用          | `pi.md`           | pi/agents 版本升級、pi 相關踩坑時     |
-| 快速開始（人類用）                   | `../README.md`    | 指令或前置需求變更時                  |
-| 本地開發（zero-account、DB、對話）   | `development.md`  | dev 流程、本地模擬行為變更時          |
+| Domain                                                    | Single source     | Update when                                              |
+| --------------------------------------------------------- | ----------------- | -------------------------------------------------------- |
+| Feature inventory (current state: feature ↔ route ↔ page) | `feature.md`      | when a feature merges to main (existing & testable only) |
+| Vision & planning (not yet built)                         | `roadmap.md`      | when a plan is decided; remove the entry once shipped    |
+| Changelog (done)                                          | `changelog.md`    | after a feature merges to main                           |
+| API request/response formats                              | `api-contract.md` | when any route's input/output changes                    |
+| System architecture & decisions                           | `architecture.md` | when bindings/DOs/services are added or decisions change |
+| LLM providers (endpoints/quotas/concurrency/ZDR)          | `providers.md`    | on provider/quota/terms changes or new verifications     |
+| Cloudflare CLI usage                                      | `cf.md`           | when the cf workflow changes                             |
+| Pi Durable / PiHarness usage                              | `pi.md`           | on pi/agents version bumps and pi-related pitfalls       |
+| 前端架構與頁面（route map／stack／契約層）                | `frontend.md`     | 頁面集合、stack 或契約層決策變更時                       |
+| Quickstart (for humans)                                   | `../README.md`    | when commands or prerequisites change                    |
+| Local development (zero-account, DB, dialogue)            | `development.md`  | when the dev flow or local simulation behavior changes   |
 
-## 規則
+## Rules
 
-- **Never** 在兩份文件寫同一件事——寫其中一份，其他地方放連結（含錨點）
-- **現況與願景分離**：`feature.md` 只寫**已存在且可測**的功能（未接線的能力寫進去 = bug）；構想、規劃、設計待決歸 `roadmap.md`。實作完成時走三步：roadmap 條目移除 → changelog 加條目 → feature.md 加功能列
-- **Never** 保留過時內容：文件與程式碼/事實不符 = bug，當場修或刪
-- **Never** 新建文件而不指定它的領域（先更新上面的 SSOT 地圖）
-- 改 API 時：`api-contract.md` 與 `feature.md` 一起看——契約管格式、feature 管存在
-- 邊界與禁令（ZDR、金鑰）同時屬於 `providers.md` 與各層 `AGENTS.md`——以 providers.md 為準，AGENTS.md 只放「行動指令」
-- 語言：繁體中文（`AGENTS.md` 們為英文，供 agent 閱讀）
-- Biome 會格式化 Markdown——格式化後檢查表格與語意沒有被破壞
+- **Never** state the same fact in two documents — write it in one, link from the others (anchors welcome).
+- **Current state vs. vision**: `feature.md` lists only features that **exist and are testable** (an unwired capability listed there = a bug); ideas, plans, and pending designs belong in `roadmap.md`. On completion, follow three steps: remove the roadmap entry → add a changelog entry → add the feature row.
+- **Never** keep stale content: a doc contradicting code/facts is a bug — fix or delete it on sight.
+- **Never** create a document without assigning its domain (update the SSOT map first).
+- When changing an API, read `api-contract.md` and `feature.md` together — the contract owns formats, feature owns existence.
+- Boundaries and prohibitions (ZDR, secrets) appear in both `providers.md` and the per-layer `AGENTS.md` files — `providers.md` is authoritative; AGENTS.md files carry only action directives.
+- Biome formats Markdown — after formatting, verify tables and semantics survived.
+- **Never** write an ambiguous date. Doc dates, verification stamps, and changelog entries are `YYYY-MM-DD`; a year-month alone is unverifiable, and "recently"/"lately" is not a date.
+- **Never** draw diagrams as ASCII art — always use Mermaid (`flowchart` / `sequenceDiagram` / `stateDiagram`, any diagram type). GitHub and most Markdown renderers render it natively.
+
+## Language
+
+- Docs prose is **zh-TW**, but **all technical details are English**: component names, mechanism and architecture terms (e.g. failover, affinity, circuit breaker, ledger, projection, tiering, traffic class, sliding window, hibernation), identifiers, config keys, CLI flags, HTTP semantics. Never coin a Chinese translation for a technical term — the English term is what you grep for and what upstream docs use.
+- Use zh-TW where the content is product-level: feature names, user-facing copy, business rationale, spec/product decisions (主題集、老師即時面板、去識別化、停損…).
+- No gratuitous English in product prose, no gratuitous Chinese in technical description. If the codebase, the platform, or upstream docs establish an English name for something, use that name.
+- This file (and every `AGENTS.md`) is **English only** — they are agent-facing.
