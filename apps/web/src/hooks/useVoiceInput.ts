@@ -126,8 +126,9 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
       ctx: null as unknown as AudioContext,
       startedAt: 0,
     };
+    let ctx: AudioContext | null = null;
     try {
-      const ctx = new AudioContext();
+      ctx = new AudioContext();
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
@@ -194,7 +195,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
         session0.stream.getTracks().forEach((track) => {
           track.stop();
         });
-        void ctx.close().catch(() => {});
+        void ctx?.close().catch(() => {});
         setState("idle");
         return;
       }
@@ -207,6 +208,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
       stream.getTracks().forEach((track) => {
         track.stop();
       });
+      void ctx?.close().catch(() => {});
       setState("idle");
       setError("failed");
     }

@@ -32,8 +32,14 @@ function ReportPage() {
     const pending = report.error instanceof ApiError && report.error.code === "report_pending";
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-[15px] text-ink-soft">
-        {pending ? <Spinner className="h-6 w-6" /> : null}
         <p>{pending ? t("report_generating") : t("common_error")}</p>
+        <button
+          type="button"
+          onClick={() => report.refetch()}
+          className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
+        >
+          {t("report_retry")}
+        </button>
       </div>
     );
   }
