@@ -1,6 +1,6 @@
 # 功能總覽（Feature Inventory）
 
-> 最後更新：2026-11 ｜ 對應 `apps/server/src/routes`（99 個端點）與 `apps/web/src/pages`
+> 最後更新：2026-11-03 ｜ 對應 `apps/server/src/routes`（99 個端點）與 `apps/web/src/pages`
 > API 細節見 [`api-contract.md`](./api-contract.md)；架構見 [`architecture.md`](./architecture.md)
 
 ## 目錄
@@ -34,14 +34,14 @@
 
 ## 單人：與蘇格拉底對話
 
-| 功能     | 說明                                                                | 路由 / 頁面                                     |
-| -------- | ------------------------------------------------------------------- | ----------------------------------------------- |
-| 自由對話 | 學生提問 → 蘇格拉底追問（≤3 句、以問句結尾）；SSE 串流              | `POST /api/archives/:id/dialogue`・DialoguePage |
-| 情緒標記 | AI 回覆開頭 `[neutral/happy/confused/angry]` → 驅動 3D 頭像表情     | 協議見 `packages/llm/prompts/socrates.md`       |
-| 3D 頭像  | three.js 蘇格拉底半身像（`socrates.glb`）＋說話動作                 | DialoguePage・`public/socrates.glb`             |
-| 語音朗讀 | AI 回覆 TTS 朗讀（`speech.ts`）＋ AI 說話中狀態（`ai-speaking.ts`） | DialoguePage・IndividualStage                   |
-| 表情預覽 | 點擊情緒按鈕即時播放頭像表情                                        | DialoguePage                                    |
-| 對話歷史 | 每段對話永久保存於 D1；重新進入可續聊                               | `GET /api/archives/:id/dialogue`                |
+| 功能     | 說明                                                                | 路由 / 頁面                                                         |
+| -------- | ------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 自由對話 | 學生提問 → 蘇格拉底追問（≤3 句、以問句結尾）；SSE 串流              | `POST /api/archives/:id/dialogue`・DialoguePage                     |
+| 情緒標記 | AI 回覆開頭 `[neutral/happy/confused/angry]` → 驅動 3D 頭像表情     | 已退役（#90）：情緒走 avatar extension 的 app.emotion entry（#111） |
+| 3D 頭像  | three.js 蘇格拉底半身像（`socrates.glb`）＋說話動作                 | DialoguePage・`public/socrates.glb`                                 |
+| 語音朗讀 | AI 回覆 TTS 朗讀（`speech.ts`）＋ AI 說話中狀態（`ai-speaking.ts`） | DialoguePage・IndividualStage                                       |
+| 表情預覽 | 點擊情緒按鈕即時播放頭像表情                                        | DialoguePage                                                        |
+| 對話歷史 | 每段對話永久保存於 D1；重新進入可續聊                               | `GET /api/archives/:id/dialogue`                                    |
 
 ## 私人題庫與分享
 
@@ -99,28 +99,28 @@
 
 ## 對話引擎（Pi Durable）
 
-| 能力         | 說明                                                                                   | 位置                                   |
-| ------------ | -------------------------------------------------------------------------------------- | -------------------------------------- |
-| Durable 對話 | 每執行緒一個 `PiAgent` DO：transcript/排隊/重試/恢復存於 DO SQLite（pi_* 表）          | `apps/server/src/do/pi-agent.ts`       |
-| SSE 適配     | `session.events()` → 前端契約 `delta/emotion/done/error`；`EmotionSplitter` 拆情緒標記 | 同上                                   |
-| 情緒解析     | `[tag]` 協議 → `emotion.ts`（格式為協議，不可變）                                      | `apps/server/src/providers/emotion.ts` |
-| D1 寫回      | 完成後 `db.batch()` 寫三 scope（archive/activity/discussion）                          | `services/dialogue-save.ts`            |
-| 事件扇出     | `ActivityEvents` DO（跨 isolate 的活動事件 SSE）                                       | `apps/server/src/do/events.ts`         |
-| 供 mock 測試 | pi-ai faux provider（`LLM_PROVIDER=mock`）                                             | `providers/pool.ts`                    |
+| 能力         | 說明                                                                                                  | 位置                                      |
+| ------------ | ----------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Durable 對話 | 每執行緒一個 Chat DO：transcript/admission/retry/恢復存於 DO SQLite（pi_* 表）；no queue（busy 拒絕） | `apps/server/src/do/chat.ts`              |
+| WebSocket    | `session.watch()` → view + chord ops；客戶端 `applyImmutable` 套用                                    | `apps/server/src/ws/`                     |
+| 情緒協議     | avatar extension：Clef choice 題 → `app.emotion` entry（機率）；文字零污染（#111）                    | `apps/server/src/pi/extensions/avatar/`   |
+| 違規偵測     | judgment extension：逐輪 Clef 分類＋`report_violation` 自報 tool → `app.violation` entry（#71）       | `apps/server/src/pi/extensions/judgment/` |
+| 歷史讀取     | D1 `messages` 表（REST GET）；寫入只經 WS（pi transcript 為真相，D1 為投影）                          | `apps/server/src/routes/activity.ts`      |
+| 供 mock 測試 | pi-ai faux provider（`LLM_PROVIDER=mock`）                                                            | `apps/server/src/pi/models.ts`            |
 
 詳細：[`pi.md`](./pi.md)
 
-## LLM Provider Pool 與 BYOK
+## LLM Routing 與 Teacher Keys
 
-| 能力       | 說明                                                                                                                                      |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| 白名單路由 | 自架 DGX Spark（CF Tunnel，4 併發）→ OpenCode Go → OpenRouter（`zdr:true`）→ Workers AI；全 ZDR 0-day 模型                                |
-| 健康降級   | 429/失敗自動 fallback 下一棒；provider 標記降級 60 秒                                                                                     |
-| 開發路由   | `LLM_PROVIDER=dev`：Z.AI Coding Plan 優先（不進學生流量）                                                                                 |
-| 學生 BYOK  | 目錄 + provider 工廠已備（`byok.ts`，pi 支援的 API-key provider 全可掛）；設定頁/加密儲存/路由串接規劃中，見 [`roadmap.md`](./roadmap.md) |
-| Mock       | `LLM_PROVIDER=mock`：離線 faux 模型（測試預設）                                                                                           |
+| 能力         | 說明                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------ |
+| 配置化路由   | `providers.config.yaml`（build-time 編譯）：provider 實例×credential×priority×traffic class；程式碼零模型 id |
+| fallback     | pi 原生 legs（鏈首綁 symbol）＋`settings.retry` 指數退避；routing 只做決策（cooldown/記帳）                  |
+| cooldown     | (provider, model, credential) 記帳；429/timeout 60s、401/403 dead、過期自然回                                |
+| Teacher keys | 一 provider 一把 key（D1 AES-GCM，回 last4）；拖曳排序＝provider 鏈序；學生無 BYOK（#82）                    |
+| Mock         | `LLM_PROVIDER=mock`：離線 faux 模型（測試預設）                                                              |
 
-詳細規則與查證：[`providers.md`](./providers.md)
+詳細規則與查證：[`providers.md`](./providers.md)、[`architecture.md`](./architecture.md) §5
 
 ## 平台與基礎建設
 
