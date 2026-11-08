@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "gen-config": "node scripts/gen-config.mjs"
+    "gen-config": "node scripts/gen-config.mjs",
+    "build:types": "tsc -p tsconfig.types.json"
   },
   "dependencies": {
     "@earendil-works/chord": "~1.5.0",

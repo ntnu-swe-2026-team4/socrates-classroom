@@ -16,10 +16,6 @@ export class ReportRunner extends DurableObject<Env> {
   readonly router = new Router(this.env);
   readonly registry = createRegistry();
 
-  readonly harness = new (class {
-    constructor(private runner: ReportRunner) {}
-  })(this);
-
   async startReport(input: { activityId: string }): Promise<"started" | "ready"> {
     const db = this.env.DB;
     const row = await one<{ status: string }>(db, "SELECT status FROM reports WHERE activity_id = $id", {

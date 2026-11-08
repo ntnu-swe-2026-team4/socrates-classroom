@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "outDir": "dist/types",
+    "types": ["@cloudflare/workers-types"],
+    "rootDir": "../.."
+  },
+  "include": ["src"]
+}
