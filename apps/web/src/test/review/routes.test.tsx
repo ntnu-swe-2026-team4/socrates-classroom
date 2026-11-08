@@ -11,6 +11,20 @@ vi.mock("@/landing/LandAnimation", () => ({ LandAnimation: () => null }));
 vi.mock("@/components/SocratesStage", () => ({ SocratesStage: () => null }));
 vi.mock("@/components/constellation/Scene3D", () => ({ default: () => null, CLUSTER_PALETTE: [] }));
 
+const agent = vi.hoisted(() => ({ options: null as null | { onMessage?: (event: { data: unknown }) => void } }));
+vi.mock("agents/react", () => ({
+  useAgent: (options: { onMessage?: (event: { data: unknown }) => void }) => {
+    agent.options = options;
+    return { send: () => {}, readyState: 0 };
+  },
+}));
+
+function emitView(entries: object[]) {
+  agent.options?.onMessage?.({
+    data: JSON.stringify({ type: "view", view: { conversation: { id: 1 }, entries, docs: {} } }),
+  });
+}
+
 const topic = {
   id: "topic-1",
   title: "Invitation topic",
@@ -19,8 +33,18 @@ const topic = {
   prompts: [],
 };
 const history = [
-  { id: "user-1", role: "user", text: "My saved question", at: "2026-11-05T00:00:00Z" },
-  { id: "assistant-1", role: "assistant", text: "The saved reply", at: "2026-11-05T00:00:01Z" },
+  {
+    id: 1,
+    conversationId: "c1",
+    kind: "pi.user",
+    model: [{ role: "user", content: "My saved question" }],
+  },
+  {
+    id: 2,
+    conversationId: "c1",
+    kind: "pi.assistant",
+    model: [{ role: "assistant", content: [{ type: "text", text: "The saved reply" }] }],
+  },
 ];
 
 beforeEach(() => {
@@ -41,7 +65,6 @@ beforeEach(() => {
           topic,
           finishedAt: null,
         },
-        "/api/activities/activity-1/dialogue": history,
         "/api/topics": [topic],
       };
       if (path === "/socrates.glb") return new Response(new Uint8Array());
@@ -90,6 +113,8 @@ test("F01: direct invitation URL renders the topic, name and required consent", 
 test("F03: real dialogue route restores the user bubble rather than an assistant bubble", async () => {
   const dispose = await mountRoute("/dialogue?activityId=activity-1");
   try {
+    await waitFor(() => expect(agent.options).not.toBeNull());
+    emitView(history);
     const question = await screen.findByText("My saved question");
     await screen.findByText("The saved reply");
     await waitFor(() => expect(question.closest(".justify-end")).not.toBeNull());

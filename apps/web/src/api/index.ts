@@ -6,7 +6,6 @@ export type { Api, ByokStatus };
 export type {
   ActivityInfo,
   ClassroomCreated,
-  DialogueMessage,
   GroupReport,
   JoinInfo,
   Report,

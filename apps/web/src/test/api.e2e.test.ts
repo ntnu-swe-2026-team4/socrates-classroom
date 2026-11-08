@@ -1,21 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { httpApi } from "@/api/http";
 import { ApiError } from "@/api";
-import type { DialogueMessage } from "@/api";
 
 type Handler = (path: string, init: RequestInit) => Response | Promise<Response>;
 const handler = vi.fn<Handler>();
-
-function sse(chunks: string[]): Response {
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
-      controller.close();
-    },
-  });
-  return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
-}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -73,45 +61,6 @@ describe("httpApi 契約（瀏覽器端實際代碼）", () => {
       expect(error).toBeInstanceOf(ApiError);
       expect((error as ApiError).code).toBe("tos_required");
     }
-  });
-
-  test("sendDialogue：delta 順序累積、done 回完整訊息", async () => {
-    handler.mockReturnValue(
-      sse([
-        'event: delta\ndata: {"text":"你把判準放在"}\n\n',
-        'event: delta\ndata: {"text":"數量上。"}\n\n',
-        'event: done\ndata: {"message":{"id":"m1","role":"assistant","text":"你把判準放在數量上。","at":"2026-11-05T00:00:00Z"}}\n\n',
-      ]),
-    );
-    const deltas: string[] = [];
-    const message = await httpApi.sendDialogue("a_1", "我覺得應該拉桿。", (delta) => deltas.push(delta));
-    expect(deltas).toEqual(["你把判準放在", "數量上。"]);
-    expect(message.text).toBe("你把判準放在數量上。");
-    const [path, init] = handler.mock.calls[0]!;
-    expect(path).toBe("/api/activities/a_1/dialogue");
-    expect(JSON.parse(init.body as string)).toEqual({ text: "我覺得應該拉桿。" });
-  });
-
-  test("sendDialogue：串流中 error 事件 → ApiError 帶契約碼", async () => {
-    handler.mockReturnValue(
-      sse([
-        'event: delta\ndata: {"text":"部分"}\n\n',
-        'event: error\ndata: {"message":"太忙碌了。","code":"llm_rate_limited"}\n\n',
-      ]),
-    );
-    await expect(httpApi.sendDialogue("a_1", "x", () => {})).rejects.toMatchObject({ code: "llm_rate_limited" });
-  });
-
-  test("sendDialogue：容忍未知事件（emotion 過渡期）", async () => {
-    handler.mockReturnValue(
-      sse([
-        'event: emotion\ndata: {"emotion":"happy"}\n\n',
-        'event: delta\ndata: {"text":"ok"}\n\n',
-        'event: done\ndata: {"message":{"id":"m2","role":"assistant","text":"ok","at":"2026-11-05T00:00:00Z"}}\n\n',
-      ]),
-    );
-    const message = await httpApi.sendDialogue("a_1", "x", () => {});
-    expect((message as DialogueMessage).text).toBe("ok");
   });
 
   test("stt：multipart 上傳、回 {text}", async () => {

@@ -2,7 +2,6 @@ import { hc } from "hono/client";
 import type {
   ActivityInfo,
   ClassroomCreated,
-  DialogueMessage,
   JoinInfo,
   Report,
   StudentLive,
@@ -44,13 +43,6 @@ export interface Api {
   generateTopics(direction: string): Promise<Topic[]>;
   createClassroom(name: string, topicId: string): Promise<ClassroomCreated>;
   liveStudents(activityId: string): Promise<StudentLive[]>;
-  dialogueHistory(activityId: string): Promise<DialogueMessage[]>;
-  sendDialogue(
-    activityId: string,
-    text: string,
-    onDelta: (delta: string) => void,
-    signal?: AbortSignal,
-  ): Promise<DialogueMessage>;
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
   createTopic(input: { title: string; statement: string; summary?: string; prompts: string[] }): Promise<Topic>;
@@ -102,56 +94,6 @@ async function raw(path: string, init: RequestInit & { json?: unknown } = {}): P
     ...rest,
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
-}
-
-async function sendDialogue(
-  activityId: string,
-  text: string,
-  onDelta: (delta: string) => void,
-  signal?: AbortSignal,
-): Promise<DialogueMessage> {
-  const res = await raw(`/activities/${activityId}/dialogue`, { method: "POST", json: { text }, signal });
-  if (!res.ok || !res.body) {
-    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new ApiError((payload?.code ?? "internal_error") as ErrorCode, payload?.message ?? res.statusText);
-  }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let done: DialogueMessage | null = null;
-
-  const handleFrame = (frame: string) => {
-    const event = frame
-      .split("\n")
-      .find((line) => line.startsWith("event: "))
-      ?.slice(7);
-    const dataLine = frame.split("\n").find((line) => line.startsWith("data: "));
-    if (!event || !dataLine) return;
-    if (event === "delta") {
-      onDelta((JSON.parse(dataLine.slice(6)) as { text: string }).text);
-    } else if (event === "done") {
-      done = (JSON.parse(dataLine.slice(6)) as { message: DialogueMessage }).message;
-    } else if (event === "error") {
-      const error = JSON.parse(dataLine.slice(6)) as { message: string; code: string };
-      throw new ApiError(error.code as ErrorCode, error.message);
-    }
-  };
-
-  while (true) {
-    const { done: streamDone, value } = await reader.read();
-    if (streamDone) break;
-    buffer += decoder.decode(value, { stream: true });
-    let separator = buffer.indexOf("\n\n");
-    while (separator !== -1) {
-      const frame = buffer.slice(0, separator);
-      buffer = buffer.slice(separator + 2);
-      handleFrame(frame);
-      separator = buffer.indexOf("\n\n");
-    }
-  }
-  if (buffer.trim()) handleFrame(buffer);
-  if (!done) throw new ApiError("llm_unavailable" as ErrorCode, "stream_closed");
-  return done;
 }
 
 async function playTts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void> {
@@ -256,10 +198,6 @@ export const httpApi: Api = {
     }
     return res.json();
   },
-  async dialogueHistory(activityId) {
-    return unwrap(await client.activities[":id"].dialogue.$get({ param: { id: activityId } }));
-  },
-  sendDialogue,
   async stt(audio) {
     const file = audio instanceof File ? audio : new File([audio], "speech.webm", { type: audio.type });
     const res = await client.stt.$post({ form: { audio: file } });

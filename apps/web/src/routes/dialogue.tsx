@@ -31,20 +31,24 @@ export const Route = createFileRoute("/dialogue")({
     term: typeof search.term === "string" ? search.term : undefined,
   }),
   beforeLoad: async ({ search, context }) => {
-    if (!search.activityId && !readActivityId()) {
-      const me = await context.queryClient.fetchQuery({
-        queryKey: ["me"],
-        queryFn: () => api.me(),
-        staleTime: Infinity,
-      });
-      if (me?.role === "teacher") throw redirect({ to: "/t/setup" });
-      throw redirect({ to: "/join" });
-    }
+    const me = await context.queryClient.fetchQuery({
+      queryKey: ["me"],
+      queryFn: () => api.me(),
+      staleTime: Infinity,
+    });
+    if (me?.role === "teacher") throw redirect({ to: "/t/setup" });
+    if (!me && !(search.activityId || readActivityId())) throw redirect({ to: "/join" });
   },
   component: DialoguePage,
 });
 
 function DialoguePage() {
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  if (!me.data) return <div className="h-dvh" aria-busy="true" />;
+  return <DialogueBody userId={me.data.id} />;
+}
+
+function DialogueBody({ userId }: { userId: string }) {
   const t = useT();
   const { activityId: activityParam, topic: topicId, q, term } = Route.useSearch();
   const activityId = activityParam ?? readActivityId() ?? "";
@@ -58,9 +62,7 @@ function DialoguePage() {
     [topicQuery.data, topicId],
   );
 
-  const history = useQuery({ queryKey: ["history", activityId], queryFn: () => api.dialogueHistory(activityId) });
-  const initialHistory = useMemo(() => history.data ?? [], [history.data]);
-  const { messages, draft, phase, error, send, retryLast, interrupt } = useDialogue(activityId, initialHistory);
+  const { messages, draft, phase, error, send, retryLast, interrupt } = useDialogue(activityId, userId);
 
   const stageRef = useRef<SocratesHandle>(null);
   useEffect(() => {
@@ -83,12 +85,12 @@ function DialoguePage() {
     }
   }, [term, navigate]);
   useEffect(() => {
-    if (q && !sentFromHome.current && phase === "idle" && !history.isPending) {
+    if (q && !sentFromHome.current && phase === "idle") {
       sentFromHome.current = true;
       void send(q);
       void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, q: undefined }), replace: true });
     }
-  }, [q, phase, history.isPending, send, navigate]);
+  }, [q, phase, send, navigate]);
 
   const onVoiceFinal = useCallback((text: string) => void send(text), [send]);
   const voice = useVoiceInput(onVoiceFinal, onAmplitudeNoop);

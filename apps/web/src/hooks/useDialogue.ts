@@ -1,107 +1,213 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgent } from "agents/react";
+import { applyImmutable } from "@earendil-works/chord/delta";
+import type { ConversationView } from "@earendil-works/pi-durable";
+import type { Message } from "@earendil-works/pi-ai";
+import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
 import { api } from "@/api";
 
 export type DialoguePhase = "idle" | "thinking" | "streaming" | "speaking";
 export type DialogueError = { code: string } | null;
+export type DialogueEmotion = {
+  emotion: string;
+  confidence: number;
+  probabilities: Record<string, number>;
+  text: string;
+} | null;
+
+export interface DialogueMessage {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+}
 
 const NO_AMPLITUDE = () => {};
 
-export function useDialogue(
-  activityId: string,
-  initialHistory: Array<{ id?: string; role: "user" | "assistant"; text: string }>,
-) {
-  const [messages, setMessages] = useState<{ id: string; role: "user" | "assistant"; text: string }[]>([]);
-  const [draft, setDraft] = useState("");
+function textOf(message: Message | undefined): string {
+  if (!message) return "";
+  if (typeof message.content === "string") return message.content;
+  return message.content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("");
+}
+
+function lastAssistantText(view: ConversationView | null): string {
+  if (!view) return "";
+  for (const entry of [...view.entries].reverse()) {
+    if (entry.kind !== "pi.assistant") continue;
+    const text = textOf(entry.model?.[0]);
+    return text;
+  }
+  return "";
+}
+
+function emotionOf(view: ConversationView | null): DialogueEmotion {
+  if (!view) return null;
+  for (const entry of [...view.entries].reverse()) {
+    if (entry.kind !== "app.emotion") continue;
+    const data = entry.data as DialogueEmotion;
+    return data;
+  }
+  return null;
+}
+
+export function useDialogue(activityId: string, userId: string) {
+  const [view, setView] = useState<ConversationView | null>(null);
   const [phase, setPhase] = useState<DialoguePhase>("idle");
   const [error, setError] = useState<DialogueError>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const inFlightRef = useRef(false);
+  const viewRef = useRef<ConversationView | null>(null);
+  const pendingRef = useRef<string | null>(null);
+  const ttsRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    setMessages(
-      initialHistory.map((entry, i) => ({ id: entry.id ?? `init-${i}`, role: entry.role, text: entry.text })),
-    );
-  }, [initialHistory]);
+  useEffect(
+    () => () => {
+      ttsRef.current?.abort();
+      pendingRef.current = null;
+    },
+    [],
+  );
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  const adopt = useCallback((next: ConversationView) => {
+    viewRef.current = next;
+    setView(next);
+  }, []);
 
-  const send = useCallback(
-    async (text: string, isRetry = false) => {
-      const trimmed = text.trim();
-      if (!trimmed || inFlightRef.current) return;
-      inFlightRef.current = true;
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-      setMessages((prev) =>
-        (isRetry ? prev.slice(0, -1) : prev).concat({ id: crypto.randomUUID(), role: "user", text: trimmed }),
-      );
-      setPhase("thinking");
-      setDraft("");
-      setError(null);
+  const speak = useCallback((text: string) => {
+    ttsRef.current?.abort();
+    const controller = new AbortController();
+    ttsRef.current = controller;
+    return api.tts(text, NO_AMPLITUDE, controller.signal);
+  }, []);
+
+  const onFrame = useCallback(
+    (raw: unknown) => {
+      if (typeof raw !== "string") return;
+      let frame: ServerMessage;
       try {
-        const message = await api.sendDialogue(
-          activityId,
-          trimmed,
-          (delta) => {
-            setPhase((p) => (p === "thinking" ? "streaming" : p));
-            setDraft((prev) => prev + delta);
-          },
-          controller.signal,
-        );
-        setMessages((prev) => [...prev, message]);
-        setDraft("");
-        setPhase("speaking");
-        await api.tts(message.text, NO_AMPLITUDE, controller.signal);
-      } catch (cause) {
-        setDraft("");
-        if (cause instanceof DOMException && cause.name === "AbortError") return;
-        setError({
-          code:
-            cause instanceof Error && "code" in cause ? String((cause as { code: unknown }).code) : "llm_unavailable",
-        });
-      } finally {
-        inFlightRef.current = false;
-        setPhase("idle");
+        frame = JSON.parse(raw) as ServerMessage;
+      } catch {
+        return;
+      }
+      switch (frame.type) {
+        case "view":
+          adopt(frame.view);
+          return;
+        case "ops": {
+          const base = viewRef.current;
+          if (!base) return;
+          adopt(applyImmutable(base, frame.ops));
+          if (frame.ops.length > 0 && lastAssistantText(viewRef.current)) {
+            setPhase((current) => (current === "thinking" ? "streaming" : current));
+          }
+          return;
+        }
+        case "result": {
+          if (frame.id !== pendingRef.current) return;
+          pendingRef.current = null;
+          const text = lastAssistantText(viewRef.current);
+          if (text) {
+            setPhase("speaking");
+            speak(text)
+              .catch(() => {})
+              .finally(() => {
+                ttsRef.current = null;
+                setPhase("idle");
+              });
+          } else {
+            setPhase("idle");
+          }
+          return;
+        }
+        case "error": {
+          if (frame.id !== undefined && frame.id !== pendingRef.current) return;
+          pendingRef.current = null;
+          setPhase("idle");
+          setError({ code: frame.code ?? "llm_unavailable" });
+          return;
+        }
       }
     },
-    [activityId],
+    [adopt, speak],
+  );
+
+  const socket = useAgent({
+    agent: "chat",
+    name: `${activityId}:${userId}`,
+    onOpen: (event) => {
+      (event.target as WebSocket).send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
+    },
+    onMessage: (event) => onFrame(event.data),
+  });
+
+  useEffect(() => {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
+    }
+  }, [socket]);
+
+  const send = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || pendingRef.current) return;
+      const id = crypto.randomUUID();
+      pendingRef.current = id;
+      setError(null);
+      setPhase("thinking");
+      socket.send(JSON.stringify({ type: "submit", id, input: trimmed } satisfies ClientMessage));
+    },
+    [socket],
   );
 
   const retryLast = useCallback(() => {
-    if (inFlightRef.current) return;
-    const failed = messages.findLast((message) => message.role === "user");
+    if (pendingRef.current) return;
+    const failed = [...(viewRef.current?.entries ?? [])].reverse().find((entry) => entry.kind === "pi.user");
     if (!failed) return;
-    void send(failed.text, true);
-  }, [messages, send]);
+    send(textOf(failed.model?.[0]));
+  }, [send]);
 
   const replay = useCallback(() => {
-    if (inFlightRef.current) return;
-    const last = messages.at(-1);
-    if (last?.role !== "assistant") return;
-    inFlightRef.current = true;
-    const controller = new AbortController();
-    abortRef.current = controller;
+    if (pendingRef.current) return;
+    const last = lastAssistantText(viewRef.current);
+    if (!last) return;
     setPhase("speaking");
-    setError(null);
-    api
-      .tts(last.text, NO_AMPLITUDE, controller.signal)
-      .catch((cause) => {
-        if (cause instanceof DOMException && cause.name === "AbortError") return;
-        setError({
-          code:
-            cause instanceof Error && "code" in cause ? String((cause as { code: unknown }).code) : "llm_unavailable",
-        });
+    speak(last)
+      .catch(() => {
+        ttsRef.current = null;
       })
       .finally(() => {
-        inFlightRef.current = false;
+        ttsRef.current = null;
         setPhase("idle");
       });
-  }, [messages]);
+  }, [speak]);
 
   const interrupt = useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
+    if (pendingRef.current) {
+      socket.send(JSON.stringify({ type: "abort", id: pendingRef.current } satisfies ClientMessage));
+      pendingRef.current = null;
+    }
+    ttsRef.current?.abort();
+    ttsRef.current = null;
+    setPhase("idle");
+  }, [socket]);
 
-  return { messages, draft, phase, error, send, retryLast, replay, interrupt };
+  const { messages, draft } = useMemo(() => {
+    const result = { messages: [] as DialogueMessage[], draft: "" };
+    if (!view) return result;
+    const visible = view.entries.filter((entry) => entry.kind === "pi.user" || entry.kind === "pi.assistant");
+    visible.forEach((entry, index) => {
+      const text = textOf(entry.model?.[0]);
+      const streaming = index === visible.length - 1 && (phase === "thinking" || phase === "streaming");
+      if (entry.kind === "pi.assistant" && streaming) {
+        result.draft = text;
+        return;
+      }
+      result.messages.push({ id: `e${entry.id}`, role: entry.kind === "pi.user" ? "user" : "assistant", text });
+    });
+    return result;
+  }, [view, phase]);
+
+  const emotion = useMemo(() => emotionOf(view), [view]);
+
+  return { messages, draft, phase, error, emotion, send, retryLast, replay, interrupt };
 }

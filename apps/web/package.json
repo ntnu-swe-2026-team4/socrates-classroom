@@ -29,7 +29,11 @@
     "tailwind-merge": "^3.7.0",
     "three": "^0.187.0",
     "@socrates/shared": "workspace:*",
-    "hono": "^4.10.7"
+    "hono": "^4.10.7",
+    "agents": "^0.33.0",
+    "@earendil-works/chord": "~1.5.0",
+    "@earendil-works/pi-durable": "~1.5.0",
+    "@earendil-works/pi-ai": "~1.5.0"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.9",

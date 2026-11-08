@@ -1,108 +1,165 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDialogue } from "@/hooks/useDialogue";
+import type { EntryRecord } from "@earendil-works/pi-durable";
+import type { ServerMessage } from "@server/ws/protocol";
 
-const sendDialogue = vi.fn();
-const tts = vi.fn();
+type AgentOptions = {
+  onOpen?: (event: { target: unknown }) => void;
+  onMessage?: (event: { data: unknown }) => void;
+};
 
-vi.mock("@/api", () => ({
-  api: {
-    sendDialogue: (...args: unknown[]) => sendDialogue(...args),
-    tts: (...args: unknown[]) => tts(...args),
+const agent = vi.hoisted(() => ({
+  options: null as AgentOptions | null,
+  sent: [] as string[],
+}));
+
+vi.mock("agents/react", () => ({
+  useAgent: (options: AgentOptions) => {
+    agent.options = options;
+    const socket = {
+      send: (data: string) => {
+        agent.sent.push(data);
+      },
+      readyState: 0,
+    };
+    options.onOpen?.({ target: socket });
+    return socket;
   },
 }));
 
-const INITIAL: Array<{ id?: string; role: "user" | "assistant"; text: string }> = [];
+const tts = vi.fn();
+vi.mock("@/api", () => ({ api: { tts: (...args: unknown[]) => tts(...args) } }));
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
+function emit(frame: ServerMessage) {
+  act(() => {
+    agent.options?.onMessage?.({ data: JSON.stringify(frame) });
   });
-  return { promise, resolve, reject };
+}
+
+const asEntry = (entry: object): EntryRecord => entry as unknown as EntryRecord;
+
+function userEntry(id: number, text: string): EntryRecord {
+  return asEntry({ id, conversationId: "c1", kind: "pi.user", model: [{ role: "user", content: text }] });
+}
+
+function assistantEntry(id: number, text: string): EntryRecord {
+  return asEntry({
+    id,
+    conversationId: "c1",
+    kind: "pi.assistant",
+    model: [{ role: "assistant", content: [{ type: "text", text }] }],
+  });
+}
+
+function emotionEntry(id: number): EntryRecord {
+  return asEntry({
+    id,
+    conversationId: "c1",
+    kind: "app.emotion",
+    data: { emotion: "curious", confidence: 0.9, probabilities: { curious: 0.9 }, text: "回答" },
+  });
+}
+
+function viewFrame(entries: EntryRecord[]): ServerMessage {
+  return { type: "view", view: { conversation: { id: 1 }, entries, docs: {} } } as unknown as ServerMessage;
+}
+
+function submitId(): string | undefined {
+  const frame = agent.sent
+    .map((raw) => JSON.parse(raw) as { type: string; id?: string })
+    .find((f) => f.type === "submit");
+  return frame?.id;
 }
 
 beforeEach(() => {
-  sendDialogue.mockReset();
+  agent.options = null;
+  agent.sent = [];
   tts.mockReset();
   tts.mockResolvedValue(undefined);
 });
 
-describe("useDialogue phase machine", () => {
-  it("goes thinking → streaming → idle and appends the final message", async () => {
-    const pending = deferred<{ id: string; role: "assistant"; text: string; at: string }>();
-    let onDelta!: (delta: string) => void;
-    sendDialogue.mockImplementation((_activityId: string, _text: string, delta: (d: string) => void) => {
-      onDelta = delta;
-      return pending.promise;
-    });
+describe("useDialogue（WS：view/ops 推導）", () => {
+  it("watch→submit→ops 串流→result→speaking→idle 全相位", async () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    expect(JSON.parse(agent.sent[0]!)).toMatchObject({ type: "watch" });
 
-    const { result } = renderHook(() => useDialogue("a-1", INITIAL));
-    expect(result.current.phase).toBe("idle");
-
-    await act(async () => {
-      void result.current.send("我會拉桿");
-    });
+    act(() => result.current.send("正義是什麼？"));
     expect(result.current.phase).toBe("thinking");
-    expect(result.current.messages.at(-1)).toMatchObject({ role: "user", text: "我會拉桿" });
+    expect(JSON.parse(agent.sent[1]!)).toMatchObject({ type: "submit", input: "正義是什麼？" });
 
-    await act(async () => {
-      onDelta("五條命");
-    });
+    emit(viewFrame([userEntry(1, "正義是什麼？")]));
+    expect(result.current.messages).toEqual([{ id: "e1", role: "user", text: "正義是什麼？" }]);
+
+    emit({
+      type: "ops",
+      ops: [
+        [
+          "r",
+          {
+            conversation: { id: 1 },
+            entries: [userEntry(1, "正義是什麼？"), assistantEntry(2, "你的直覺")],
+            docs: {},
+          },
+        ],
+      ],
+    } as unknown as ServerMessage);
     expect(result.current.phase).toBe("streaming");
-    expect(result.current.draft).toBe("五條命");
+    expect(result.current.draft).toBe("你的直覺");
 
-    await act(async () => {
-      pending.resolve({ id: "m1", role: "assistant", text: "五條命比一條命重要", at: "t" });
-    });
+    emit({ type: "result", id: submitId() ?? "none", result: null });
+    expect(result.current.phase).toBe("speaking");
+    expect(result.current.messages.at(-1)).toEqual({ id: "e2", role: "assistant", text: "你的直覺" });
     await waitFor(() => expect(result.current.phase).toBe("idle"));
-    expect(result.current.messages.at(-1)).toMatchObject({ id: "m1", text: "五條命比一條命重要" });
-    expect(result.current.error).toBeNull();
+    expect(tts).toHaveBeenCalledTimes(1);
   });
 
-  it("guards double submit while busy", async () => {
-    sendDialogue.mockImplementation(() => new Promise(() => {}));
-    const { result } = renderHook(() => useDialogue("a-1", INITIAL));
-    await act(async () => {
-      void result.current.send("第一句");
+  it("F22：同步連發只送出第一個 submit（第二個被客戶端擋下）", () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    act(() => {
+      void result.current.send("第一");
+      void result.current.send("第二");
     });
-    await act(async () => {
-      await result.current.send("第二句");
-    });
-    const userMessages = result.current.messages.filter((m) => m.role === "user");
-    expect(userMessages).toHaveLength(1);
-    expect(result.current.phase).toBe("thinking");
+    expect(agent.sent.filter((raw) => raw.includes("submit"))).toHaveLength(1);
   });
 
-  it("surfaces errors, keeps the failed user message, and retries last sent", async () => {
-    sendDialogue.mockRejectedValueOnce(new Error("boom"));
-    const { result } = renderHook(() => useDialogue("a-1", INITIAL));
-
-    await act(async () => {
-      await result.current.send("觸發錯誤");
+  it("ConversationBusy：error frame 帶 code → 錯誤狀態、回到 idle", () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    act(() => void result.current.send("問題"));
+    emit({
+      type: "error",
+      id: submitId(),
+      message: "Conversation is busy",
+      code: "ConversationBusy",
     });
-    expect(result.current.error).toEqual({ code: "llm_unavailable" });
-    expect(result.current.messages.at(-1)).toMatchObject({ role: "user", text: "觸發錯誤" });
     expect(result.current.phase).toBe("idle");
-
-    sendDialogue.mockResolvedValueOnce({ id: "m2", role: "assistant", text: "ok", at: "t" });
-    await act(async () => {
-      result.current.retryLast();
-    });
-    await waitFor(() => expect(result.current.error).toBeNull());
-    expect(sendDialogue).toHaveBeenLastCalledWith("a-1", "觸發錯誤", expect.any(Function), expect.anything());
-    expect(result.current.messages.at(-1)).toMatchObject({ text: "ok" });
+    expect(result.current.error).toEqual({ code: "ConversationBusy" });
   });
 
-  it("treats abort as interruption, not error", async () => {
-    sendDialogue.mockRejectedValueOnce(new DOMException("aborted", "AbortError"));
-    const { result } = renderHook(() => useDialogue("a-1", INITIAL));
-    await act(async () => {
-      await result.current.send("中斷我");
-    });
-    expect(result.current.error).toBeNull();
+  it("interrupt：送 abort、清 phase、不再說話", () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    act(() => void result.current.send("問題"));
+    act(() => result.current.interrupt());
     expect(result.current.phase).toBe("idle");
+    expect(agent.sent.some((raw) => raw.includes('"abort"'))).toBe(true);
+    emit({ type: "result", id: submitId() ?? "none", result: null });
+    expect(result.current.phase).toBe("idle");
+    expect(tts).not.toHaveBeenCalled();
+  });
+
+  it("emotion：最新 app.emotion entry 暴露", () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([userEntry(1, "問題"), assistantEntry(2, "回答"), emotionEntry(3)]));
+    expect(result.current.emotion).toMatchObject({ emotion: "curious", confidence: 0.9 });
+  });
+
+  it("retryLast：從 view 找最後一個 pi.user 重新送出", () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([userEntry(1, "失敗的問題"), assistantEntry(2, "回答")]));
+    act(() => result.current.retryLast());
+    expect(agent.sent.filter((raw) => raw.includes("submit"))).toHaveLength(1);
+    expect(JSON.parse(agent.sent.filter((raw) => raw.includes("submit"))[0]!)).toMatchObject({
+      input: "失敗的問題",
+    });
   });
 });
