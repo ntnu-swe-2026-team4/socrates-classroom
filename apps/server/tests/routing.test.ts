@@ -10,7 +10,7 @@ describe("routing ledger（cooldown 語意，LiteLLM 慣例）", () => {
     ledger.settle(key, "rate");
     expect(ledger.inCooldown(key)).toBe(true);
 
-    // 過期自然回：時間前進即可，不需要 probe
+    // Cooldown expiry is passive: time advances, no probe needed
     const ledger2 = new RoutingLedger();
     ledger2.record(key);
     ledger2.settle(key, "timeout");
@@ -91,7 +91,7 @@ describe("對話 run 的 fallback legs（models.ts 接線）", () => {
     const bundle = buildModels({ AI: fakeAi } as never);
     const model = bundle.models.getModel("cloudflare", "@cf/zai-org/glm-5.3-flash");
     expect(model).toBeDefined();
-    // agents 的 MODEL_OPTIONS symbol：fallback legs 綁在 object 上
+    // agents' MODEL_OPTIONS symbol: fallback legs are bound on the model object
     const OPTIONS = Symbol.for("agents.models.pi-ai.options");
     const options = (model as unknown as Record<symbol, unknown>)[OPTIONS] as { fallback?: string[] } | undefined;
     expect(options?.fallback).toEqual(["@cf/zai-org/glm-4.7-flash"]);
