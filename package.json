@@ -11,7 +11,7 @@
     "dev": "pnpm --filter @socrates/web dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @socrates/server test",
+    "test": "pnpm -r test",
     "lint": "biome check .",
     "format": "biome format --write .",
     "migrate": "pnpm --filter @socrates/web migrate",
