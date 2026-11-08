@@ -19,7 +19,6 @@ import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 
 const PSEUDONYM_PREFIX = "學生";
 const MAX_STUDENT_ATTEMPTS = 2;
-const CONCURRENCY = 8;
 
 export class ReportRunner extends DurableObject<Env> {
   readonly models = buildModels(this.env);
@@ -123,10 +122,11 @@ export class ReportRunner extends DurableObject<Env> {
       }
     }
 
+    const batch = this.batchSize(members.length);
     const transcripts = new Map<string, { text: string; violations: ViolationSlice[] }>();
-    for (let i = 0; i < members.length; i += CONCURRENCY) {
+    for (let i = 0; i < members.length; i += batch) {
       await Promise.all(
-        members.slice(i, i + CONCURRENCY).map(async (member) => {
+        members.slice(i, i + batch).map(async (member) => {
           transcripts.set(member.user_id, await this.transcriptOf(activityId, member.user_id, pseudonyms));
         }),
       );
@@ -134,9 +134,9 @@ export class ReportRunner extends DurableObject<Env> {
 
     const harness = await this.openHarness();
     const studentAnalyses = new Map<string, StudentAnalysis | null>();
-    for (let i = 0; i < members.length; i += CONCURRENCY) {
+    for (let i = 0; i < members.length; i += batch) {
       await Promise.all(
-        members.slice(i, i + CONCURRENCY).map(async (member) => {
+        members.slice(i, i + batch).map(async (member) => {
           const transcript = transcripts.get(member.user_id)?.text ?? "";
           if (!transcript.trim()) {
             studentAnalyses.set(member.user_id, null);
@@ -185,6 +185,11 @@ export class ReportRunner extends DurableObject<Env> {
       runProfile: (h: Harness, r: unknown, p: "report-analyst", i: string) => Promise<{ text: string }>;
     };
     return runProfile(harness, { models: this.models, registry: this.registry, env: this.env }, profile, input);
+  }
+
+  private batchSize(memberCount: number): number {
+    const budget = this.router.budget("batch");
+    return budget > 0 ? budget : memberCount;
   }
 
   private async transcriptOf(
