@@ -6,11 +6,13 @@ export type { Api, ByokStatus };
 export type {
   ActivityInfo,
   ClassroomCreated,
+  ClassroomSummary,
   JoinInfo,
   Report,
   StudentAnalysis,
   StudentLive,
   TeacherReport,
+  DialogueMessage,
   TermExplanation,
   Topic,
   User,

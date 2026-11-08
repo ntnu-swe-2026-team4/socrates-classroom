@@ -2,6 +2,7 @@ import { hc } from "hono/client";
 import type {
   ActivityInfo,
   ClassroomCreated,
+  ClassroomSummary,
   JoinInfo,
   Report,
   StudentLive,
@@ -10,6 +11,7 @@ import type {
   User,
 } from "@socrates/shared";
 import {
+  ActivityStartInputSchema,
   ClassroomCreateInputSchema,
   JoinInputSchema,
   LoginInputSchema,
@@ -42,6 +44,8 @@ export interface Api {
   listTopics(): Promise<Topic[]>;
   generateTopics(direction: string): Promise<Topic[]>;
   createClassroom(name: string, topicId: string): Promise<ClassroomCreated>;
+  listClassrooms(): Promise<ClassroomSummary[]>;
+  startActivity(classroomId: string, topicId: string): Promise<ClassroomCreated>;
   liveStudents(activityId: string): Promise<StudentLive[]>;
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
@@ -189,6 +193,18 @@ export const httpApi: Api = {
   async createClassroom(name, topicId) {
     const input = ClassroomCreateInputSchema.parse({ name, topicId });
     return unwrap(await client.classrooms.$post({ json: input }));
+  },
+  async listClassrooms() {
+    return unwrap(await client.classrooms.$get());
+  },
+  async startActivity(classroomId, topicId) {
+    const input = ActivityStartInputSchema.parse({ topicId });
+    const res = await raw(`/classrooms/${classroomId}/activities`, { method: "POST", json: input });
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+      throw new ApiError((payload?.code ?? "internal_error") as ErrorCode, payload?.message ?? res.statusText);
+    }
+    return res.json();
   },
   async liveStudents(activityId) {
     const res = await raw(`/activities/${activityId}/live`);
