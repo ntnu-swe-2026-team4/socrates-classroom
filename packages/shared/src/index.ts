@@ -95,9 +95,6 @@ export type Report = TeacherReport | StudentReport;
 export const TermExplanationSchema = z.object({ term: z.string(), markdown: z.string() });
 export type TermExplanation = z.infer<typeof TermExplanationSchema>;
 
-export const ByokStatusSchema = z.object({ provider: z.string(), last4: z.string() });
-export type ByokStatus = z.infer<typeof ByokStatusSchema>;
-
 export const LoginInputSchema = z.object({ email: z.email(), password: z.string().min(8).max(128) });
 export const RegisterInputSchema = z.object({
   code: z.string().min(4).max(32),
@@ -150,7 +147,6 @@ export type ClassroomSummary = z.infer<typeof ClassroomSummarySchema>;
 
 export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
 export type ViolationType = (typeof VIOLATION_TYPES)[number];
-export type { ViolationType as SharedViolationType };
 export const ViolationChoiceSchema = z.object({
   type: z.enum(VIOLATION_TYPES),
   probability: z.number().min(0).max(1),

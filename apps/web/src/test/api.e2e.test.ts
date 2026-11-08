@@ -71,15 +71,6 @@ describe("httpApi 契約（瀏覽器端實際代碼）", () => {
     expect(path).toBe("/api/stt");
   });
 
-  test("byokSet：PUT /api/settings/byok 回 last4", async () => {
-    handler.mockReturnValue(json({ provider: "openrouter", last4: "efgh" }));
-    const status = await httpApi.byokSet("openrouter", "sk-or-v1-abcdefgh");
-    expect(status?.last4).toBe("efgh");
-    const [path, init] = handler.mock.calls[0]!;
-    expect(path).toBe("/api/settings/byok");
-    expect(init.method).toBe("PUT");
-  });
-
   test("finishActivity：POST 204 無 body", async () => {
     handler.mockReturnValue(new Response(null, { status: 204 }));
     await expect(httpApi.finishActivity("a_1")).resolves.toBeUndefined();

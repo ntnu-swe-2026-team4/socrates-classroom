@@ -33,8 +33,6 @@ export class ApiError extends Error {
   }
 }
 
-export type ByokStatus = { provider: string; last4: string } | null;
-
 export interface Api {
   me(): Promise<User | null>;
   login(email: string, password: string): Promise<User>;
@@ -53,9 +51,6 @@ export interface Api {
   activityInfo(activityId: string): Promise<ActivityInfo>;
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
-  byokStatus(): Promise<ByokStatus>;
-  byokSet(provider: string, key: string): Promise<ByokStatus>;
-  byokClear(): Promise<ByokStatus>;
   lookupTerm(term: string): Promise<TermExplanation>;
 }
 
@@ -230,16 +225,6 @@ export const httpApi: Api = {
   },
   async report(activityId) {
     return unwrap(await client.activities[":id"].report.$get({ param: { id: activityId } }));
-  },
-  async byokStatus() {
-    return unwrap(await client.settings.byok.$get());
-  },
-  async byokSet(provider, key) {
-    return unwrap(await client.settings.byok.$put({ json: { provider, key } }));
-  },
-  async byokClear() {
-    await unwrap(await client.settings.byok.$delete());
-    return null;
   },
   async lookupTerm(term) {
     const input = LookupInputSchema.parse({ term });

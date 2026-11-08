@@ -199,7 +199,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                 className="mb-4 flex items-center gap-3 rounded-2xl bg-paper-deep px-4 py-3 text-sm hover:text-ember"
               >
                 <KeyRound className="size-4" />
-                <span className="flex-1">{t("settings_byok")}</span>
+                <span className="flex-1">{t("settings_title")}</span>
                 <span aria-hidden="true">›</span>
               </Link>
             )}

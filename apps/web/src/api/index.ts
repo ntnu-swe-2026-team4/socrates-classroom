@@ -1,8 +1,8 @@
-import { httpApi, type Api, type ByokStatus } from "./http";
+import { httpApi, type Api } from "./http";
 
 export const api: Api = httpApi;
 export { ApiError } from "./http";
-export type { Api, ByokStatus };
+export type { Api };
 export type {
   ActivityInfo,
   ClassroomCreated,

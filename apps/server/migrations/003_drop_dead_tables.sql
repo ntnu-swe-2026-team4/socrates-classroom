@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS byok_keys;
+DROP TABLE IF EXISTS messages;
+DROP TABLE IF EXISTS violations;

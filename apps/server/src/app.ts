@@ -12,7 +12,6 @@ import { classroomsRoutes } from "./routes/classrooms";
 import { activityRoutes } from "./routes/activity";
 import { voiceRoutes } from "./routes/voice";
 import { lookupRoutes } from "./routes/lookup";
-import { byokRoutes } from "./routes/byok";
 import { teacherKeyRoutes } from "./routes/teacher-keys";
 
 export function createApi() {
@@ -24,7 +23,6 @@ export function createApi() {
     .route("/", activityRoutes())
     .route("/", voiceRoutes())
     .route("/", lookupRoutes())
-    .route("/", byokRoutes())
     .route("/", teacherKeyRoutes());
 }
 export type RpcApi = ReturnType<typeof createApi>;
