@@ -5,7 +5,6 @@ import type {
   ClassroomSummary,
   JoinInfo,
   Report,
-  StudentLive,
   TermExplanation,
   Topic,
   User,
@@ -44,7 +43,6 @@ export interface Api {
   createClassroom(name: string, topicId: string): Promise<ClassroomCreated>;
   listClassrooms(): Promise<ClassroomSummary[]>;
   startActivity(classroomId: string, topicId: string): Promise<ClassroomCreated>;
-  liveStudents(activityId: string): Promise<StudentLive[]>;
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
   createTopic(input: { title: string; statement: string; summary?: string; prompts: string[] }): Promise<Topic>;
@@ -195,14 +193,6 @@ export const httpApi: Api = {
   async startActivity(classroomId, topicId) {
     const input = ActivityStartInputSchema.parse({ topicId });
     const res = await raw(`/classrooms/${classroomId}/activities`, { method: "POST", json: input });
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-      throw new ApiError((payload?.code ?? "internal_error") as ErrorCode, payload?.message ?? res.statusText);
-    }
-    return res.json();
-  },
-  async liveStudents(activityId) {
-    const res = await raw(`/activities/${activityId}/live`);
     if (!res.ok) {
       const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
       throw new ApiError((payload?.code ?? "internal_error") as ErrorCode, payload?.message ?? res.statusText);

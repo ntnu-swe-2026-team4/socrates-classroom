@@ -11,7 +11,7 @@ describe("i18n", () => {
   });
 
   it("substitutes {n} style placeholders", () => {
-    expect(translate("zh-TW", "live_rounds", { n: 3 })).toContain("3");
+    expect(translate("zh-TW", "report_turn_ref", { turns: 3 })).toContain("3");
   });
 
   it("returns zh-TW text for the zh-TW locale", () => {
