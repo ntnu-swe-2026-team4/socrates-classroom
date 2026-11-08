@@ -1,20 +1,38 @@
 import { DurableObject } from "cloudflare:workers";
 import { createRegistry, type Harness } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { fauxAssistantMessage, type AssistantMessage, type TranscriptContext } from "@earendil-works/pi-ai";
 import type { Env } from "../env";
 import { buildModels } from "../pi/models";
 import { all, one, run } from "../db/d1";
 import { nowIso } from "../http";
-import { ClassReportSchema, StudentAnalysisSchema, type ClassReport, type StudentAnalysis } from "@socrates/shared";
+import {
+  ClassReportSchema,
+  StudentAnalysisSchema,
+  type ClassReport,
+  type StudentAnalysis,
+  type ViolationSlice,
+  type ViolationType,
+} from "@socrates/shared";
 import { Router } from "../routing/router";
+import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 
 const PSEUDONYM_PREFIX = "學生";
 const MAX_STUDENT_ATTEMPTS = 2;
+const CONCURRENCY = 8;
 
 export class ReportRunner extends DurableObject<Env> {
   readonly models = buildModels(this.env);
   readonly router = new Router(this.env);
   readonly registry = createRegistry();
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    if (this.models.faux) {
+      this.models.faux.setResponses([fauxReportScript]);
+      this.registry.install(fauxReplayExtension(this.models.faux, fauxReportScript));
+    }
+  }
 
   async startReport(input: { activityId: string }): Promise<"started" | "ready"> {
     const db = this.env.DB;
@@ -105,41 +123,47 @@ export class ReportRunner extends DurableObject<Env> {
       }
     }
 
-    const transcripts = new Map<string, string>();
-    for (const member of members) {
-      transcripts.set(member.user_id, await this.transcriptOf(activityId, member.user_id, pseudonyms));
+    const transcripts = new Map<string, { text: string; violations: ViolationSlice[] }>();
+    for (let i = 0; i < members.length; i += CONCURRENCY) {
+      await Promise.all(
+        members.slice(i, i + CONCURRENCY).map(async (member) => {
+          transcripts.set(member.user_id, await this.transcriptOf(activityId, member.user_id, pseudonyms));
+        }),
+      );
     }
 
     const harness = await this.openHarness();
     const studentAnalyses = new Map<string, StudentAnalysis | null>();
-    await Promise.all(
-      members.map(async (member) => {
-        const transcript = transcripts.get(member.user_id) ?? "";
-        if (!transcript.trim()) {
-          studentAnalyses.set(member.user_id, null);
-          return;
-        }
-        for (let attempt = 0; attempt < MAX_STUDENT_ATTEMPTS; attempt += 1) {
-          const { text } = await this.runAgent(
-            harness,
-            "report-analyst",
-            this.studentReportPrompt(activity, transcript),
-          );
-          try {
-            studentAnalyses.set(member.user_id, StudentAnalysisSchema.parse(JSON.parse(text)));
-            break;
-          } catch {
-            if (attempt === MAX_STUDENT_ATTEMPTS - 1) studentAnalyses.set(member.user_id, null);
+    for (let i = 0; i < members.length; i += CONCURRENCY) {
+      await Promise.all(
+        members.slice(i, i + CONCURRENCY).map(async (member) => {
+          const transcript = transcripts.get(member.user_id)?.text ?? "";
+          if (!transcript.trim()) {
+            studentAnalyses.set(member.user_id, null);
+            return;
           }
-        }
-      }),
-    );
+          for (let attempt = 0; attempt < MAX_STUDENT_ATTEMPTS; attempt += 1) {
+            const { text } = await this.runAgent(
+              harness,
+              "report-analyst",
+              this.studentReportPrompt(activity, transcript),
+            );
+            try {
+              studentAnalyses.set(member.user_id, StudentAnalysisSchema.parse(JSON.parse(text)));
+              break;
+            } catch {
+              if (attempt === MAX_STUDENT_ATTEMPTS - 1) studentAnalyses.set(member.user_id, null);
+            }
+          }
+        }),
+      );
+    }
 
     const classInput = this.classReportPrompt(activity, members, transcripts, pseudonyms);
     const { text: classText } = await this.runAgent(harness, "report-analyst", classInput);
     const classReport = ClassReportSchema.parse(JSON.parse(classText));
 
-    await this.persist(activityId, activity.title, classReport, studentAnalyses, pseudonyms);
+    await this.persist(activityId, activity.title, classReport, studentAnalyses, pseudonyms, transcripts);
   }
 
   private async openHarness(): Promise<Harness> {
@@ -163,16 +187,32 @@ export class ReportRunner extends DurableObject<Env> {
     return runProfile(harness, { models: this.models, registry: this.registry, env: this.env }, profile, input);
   }
 
-  private async transcriptOf(activityId: string, studentId: string, _pseudonyms: Map<string, string>): Promise<string> {
-    const rows = await all<{ role: string; text: string }>(
-      this.env.DB,
-      "SELECT role, text FROM messages WHERE activity_id = $aid AND student_id = $sid ORDER BY at, rowid",
-      { aid: activityId, sid: studentId },
-    );
-    let turn = 0;
-    return rows
-      .map((row) => (row.role === "user" ? `${PSEUDONYM_PREFIX}（${++turn}）：${row.text}` : `AI：${row.text}`))
+  private async transcriptOf(
+    activityId: string,
+    studentId: string,
+    pseudonyms: Map<string, string>,
+  ): Promise<{ text: string; violations: ViolationSlice[] }> {
+    const stub = this.env.Chat.get(this.env.Chat.idFromName(`${activityId}:${studentId}`));
+    const res = await stub.fetch("https://chat/transcript");
+    if (!res.ok) return { text: "", violations: [] };
+    const data = (await res.json()) as {
+      messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
+      violations: Array<{ turn: number; type: string; excerpt: string }>;
+    };
+    const pseudonym = pseudonyms.get(studentId) ?? studentId;
+    const text = data.messages
+      .map((message) =>
+        message.role === "user" ? `${pseudonym}（${message.turn}）：${message.text}` : `AI：${message.text}`,
+      )
       .join("\n");
+    return {
+      text,
+      violations: data.violations.map((violation) => ({
+        turn: violation.turn,
+        type: violation.type as ViolationType,
+        excerpt: violation.excerpt,
+      })),
+    };
   }
 
   private studentReportPrompt(activity: { title: string; statement: string }, transcript: string): string {
@@ -182,12 +222,12 @@ export class ReportRunner extends DurableObject<Env> {
   private classReportPrompt(
     activity: { title: string; statement: string },
     members: Array<{ user_id: string }>,
-    transcripts: Map<string, string>,
+    transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
     pseudonyms: Map<string, string>,
   ): string {
     const roster = members.map((m) => pseudonyms.get(m.user_id) ?? "").filter(Boolean);
     const conversations = members
-      .map((m) => `### ${pseudonyms.get(m.user_id) ?? m.user_id}\n${transcripts.get(m.user_id) ?? ""}`)
+      .map((m) => `### ${pseudonyms.get(m.user_id) ?? m.user_id}\n${transcripts.get(m.user_id)?.text ?? ""}`)
       .join("\n\n");
     return `## Topic: ${activity.title}\n${activity.statement}\n\n## Roster: ${roster.length} students in the class\n${roster.join(", ")}\n\n## The whole class's conversations\n${conversations}`;
   }
@@ -198,31 +238,19 @@ export class ReportRunner extends DurableObject<Env> {
     classReport: ClassReport,
     studentAnalyses: Map<string, StudentAnalysis | null>,
     pseudonyms: Map<string, string>,
+    transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
   ): Promise<void> {
-    const db = this.env.DB;
-    const violations = await all<{ student_id: string; turn: number; type: string; excerpt: string }>(
-      db,
-      "SELECT student_id, turn, type, excerpt FROM violations WHERE activity_id = $aid ORDER BY turn",
-      { aid: activityId },
-    );
-    const violationsBy = new Map<string, Array<{ turn: number; type: string; excerpt: string }>>();
-    for (const row of violations) {
-      const list = violationsBy.get(row.student_id) ?? [];
-      list.push({ turn: row.turn, type: row.type, excerpt: row.excerpt });
-      violationsBy.set(row.student_id, list);
-    }
-
     const students: Record<string, unknown> = {};
     for (const [studentId, analysis] of studentAnalyses) {
       students[studentId] = {
         pseudonym: pseudonyms.get(studentId) ?? studentId,
         analysis,
-        violations: violationsBy.get(studentId) ?? [],
+        violations: transcripts.get(studentId)?.violations ?? [],
       };
     }
 
     await run(
-      db,
+      this.env.DB,
       `UPDATE reports SET status = 'ready',
         teacher_report = $teacher, student_reports = $students, updated_at = $at
        WHERE activity_id = $id`,
@@ -234,4 +262,46 @@ export class ReportRunner extends DurableObject<Env> {
       },
     );
   }
+}
+
+function textOf(content: string | readonly unknown[]): string {
+  if (typeof content === "string") return content;
+  return (content as Array<{ type: string; text?: string }>)
+    .filter((part) => part.type === "text")
+    .map((part) => part.text ?? "")
+    .join("");
+}
+
+function fauxReportScript(context: TranscriptContext): AssistantMessage {
+  const last = context.messages.filter((message) => message.role !== "system").at(-1);
+  const prompt = last?.role === "user" ? textOf(last.content) : "";
+  if (prompt.includes("## Roster:")) {
+    return fauxAssistantMessage(
+      JSON.stringify({
+        students: [{ id: "學生A", summary: [{ step: "提出直覺判斷並被追問理由", turns: [1] }] }],
+        unstated: [],
+        axes: [
+          {
+            name: "契約與承諾",
+            low: "契約至上",
+            high: "人情優先",
+            positions: [
+              { id: "學生A", turns: [1], view: "先守約再談情", end: "middle", at: 50 },
+              { id: "學生B", turns: [1], view: "契約就是契約", end: "low", at: 10 },
+            ],
+            why: "全班多數先守約，但接受例外",
+          },
+        ],
+        overview: ["全班集中在契約與人情的取捨"],
+      }),
+    );
+  }
+  return fauxAssistantMessage(
+    JSON.stringify({
+      stated: true,
+      claim: { text: "契約應該被遵守", turns: [1] },
+      reasons: { text: "因為雙方事先同意", turns: [1] },
+      tension: null,
+    }),
+  );
 }

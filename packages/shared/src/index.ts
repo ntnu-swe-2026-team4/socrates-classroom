@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ClassReport, StudentAnalysis } from "./reports";
 
 export type Lang = "zh" | "en" | "es";
 export const LANG_NAMES: Record<Lang, string> = {
@@ -66,66 +67,29 @@ export const StudentLiveSchema = z.object({
 });
 export type StudentLive = z.infer<typeof StudentLiveSchema>;
 
-export const HexagonAxisSchema = z.object({ label: z.string(), value: z.number() });
-export type HexagonAxis = z.infer<typeof HexagonAxisSchema>;
+export interface ViolationSlice {
+  turn: number;
+  type: ViolationType;
+  excerpt: string;
+}
 
-export const ArgumentPointSchema = z.object({
-  claim: z.string(),
-  reason: z.string(),
-  tension: z.string(),
-});
-export type ArgumentPoint = z.infer<typeof ArgumentPointSchema>;
+export interface TeacherReport {
+  topicTitle: string;
+  classReport: ClassReport;
+  students: Array<{
+    studentId: string;
+    pseudonym: string;
+    analysis: StudentAnalysis | null;
+    violations: ViolationSlice[];
+  }>;
+}
 
-export const ViolationSliceSchema = z.object({
-  turn: z.number(),
-  type: z.string(),
-  excerpt: z.string(),
-});
-export type ViolationSlice = z.infer<typeof ViolationSliceSchema>;
-
-export const ReportAxisSchema = z.object({
-  name: z.string(),
-  left: z.string(),
-  right: z.string(),
-  color: z.string(),
-});
-export type ReportAxis = z.infer<typeof ReportAxisSchema>;
-
-export const StancePointSchema = z.object({
-  pseudonym: z.string(),
-  values: z.array(z.number()),
-  cluster: z.number(),
-});
-export type StancePoint = z.infer<typeof StancePointSchema>;
-
-export const GroupReportSchema = z.object({
-  axes: z.array(ReportAxisSchema),
-  points: z.array(StancePointSchema),
-  clusters: z.array(z.object({ id: z.number(), label: z.string() })),
-});
-export type GroupReport = z.infer<typeof GroupReportSchema>;
-
-export const IndividualReportSchema = z.object({
-  pseudonym: z.string(),
-  hexagon: z.array(HexagonAxisSchema),
-  arguments: z.array(ArgumentPointSchema),
-  violations: z.array(ViolationSliceSchema),
-});
-export type IndividualReport = z.infer<typeof IndividualReportSchema>;
-
-export const TeacherReportSchema = z.object({
-  topicTitle: z.string(),
-  group: GroupReportSchema,
-  individuals: z.array(IndividualReportSchema),
-});
-export type TeacherReport = z.infer<typeof TeacherReportSchema>;
-
-export const StudentReportSchema = z.object({
-  topicTitle: z.string(),
-  group: GroupReportSchema,
-  individual: IndividualReportSchema,
-});
-export type StudentReport = z.infer<typeof StudentReportSchema>;
+export interface StudentReport {
+  topicTitle: string;
+  pseudonym: string;
+  analysis: StudentAnalysis | null;
+  violations: ViolationSlice[];
+}
 export type Report = TeacherReport | StudentReport;
 
 export const TermExplanationSchema = z.object({ term: z.string(), markdown: z.string() });

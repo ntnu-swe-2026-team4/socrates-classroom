@@ -2,6 +2,7 @@ import type { Ai } from "@cloudflare/workers-types";
 
 export interface Env {
   DB: D1Database;
+  Chat: DurableObjectNamespace<import("./do/chat").Chat>;
   ReportRunner: DurableObjectNamespace<import("./do/report-runner").ReportRunner>;
   AI?: Ai;
   PUBLIC_BASE_URL?: string;

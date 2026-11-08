@@ -108,10 +108,10 @@ type ServerMessage =
 
 ## 7. 活動結束與報告（#74/#78/#79/#72）
 
-| Operation                                                           | 說明                                                                                                                                                |
-| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/activities/:id/finish` → `204`                           | 老師結束活動 → ReportRunner DO `startReport`（alarm 驅動，非同步）。冪等；老師專屬                                                                  |
-| `GET /api/activities/:id/report` → `TeacherReport \| StudentReport` | 生成中 404 `report_pending`（前端輪詢至 200）；失敗 500 `report_failed`（重打 `finish` 可重觸發）。**角色分流**：老師見全班＋個人；學生見全班＋自己 |
+| Operation                                                           | 說明                                                                                                                                                            |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/activities/:id/finish` → `204`                           | 老師結束活動 → ReportRunner DO `startReport`（alarm 驅動，非同步）。冪等；老師專屬                                                                              |
+| `GET /api/activities/:id/report` → `TeacherReport \| StudentReport` | 生成中 404 `report_pending`（前端輪詢至 200）；失敗 500 `report_failed`（重打 `finish` 可重觸發）。**角色分流**：老師見全班＋個人；學生見自己（無 classReport） |
 
 **報告形狀（#74，PR #109 的分析為核心；`pseudonym` 生成一次存 D1，活動內穩定；#72 全去識別化）**：
 
@@ -132,23 +132,32 @@ interface ClassReport {
 // API 回應（組合層）
 interface TeacherReport {
   topicTitle: string;
-  classReport: ClassReport;                      // 群體：軸/落點/分群/整理
-  students: Record<studentId, {
+  classReport: ClassReport;                      // 群體：軸/落點/整理
+  students: Array<{                              // array 保序（joined_at）；10k 班級下回應體積上限由生成端併發與輪詢分頁另議
+    studentId: string;                           // 真實 id——僅老師可見
     pseudonym: string;
     analysis: StudentAnalysis | null;            // 論點總結（claim/reasons/tension＋turns 出處）
-    violations: {turn; type; excerpt}[];         // 違規切片（讀 violations 表，不經 LLM）
+    violations: ViolationSlice[];                 // 違規切片（不經 LLM）
   }>;
 }
 interface StudentReport {
   topicTitle: string;
-  classReport: ClassReport;                      // 全班（自己的落點在其中）
+  pseudonym: string;                             // 學生在 classReport 中的定位線索（老師版可對照）
   analysis: StudentAnalysis | null;              // 自己的
-  violations: {turn; type; excerpt}[];
+  violations: ViolationSlice[];
+}
+interface ViolationSlice {
+  turn: number;                                  // transcript 行號＝「學生（n）」的 n（app.violation entry 抽取時計算）
+  type: ViolationType;                          // shared VIOLATION_TYPES enum
+  excerpt: string;
 }
 ```
 
-- 立場落點**不重算**：單人報告的落點＝classReport 的產物（兩份報告一致，PR #109 設計）
-- hexagon（#78 六角圖）不在本契約——前端頁面屆時從 classReport 的 `at`/`end` 映射或 prompt 擴充，屆時更新本節
+- **學生不拿 classReport**（設計決策）：學生報告只有自己的 analysis＋violations＋pseudonym；全班視角是老師專屬
+- **`ClassReport.students[].id`／`positions[].id`＝pseudonym**（LLM prompt 餵的就是 pseudonym；嚴禁放 studentId——全班互見會洩漏真實 id，#72）
+- transcript 來源：Chat DO `onRequest("/transcript")`（DO→DO，`PiSession.entries` 全量）；violations 同源自 `app.violation` entries——**pi transcript 是唯一真相，violations 不落第二份儲存**
+- 逐生分析與 transcript 抓取以 CONCURRENCY=8 批次進行（10k 班級的生成時間與供應端限流考量）
+- hexagon（#78 六角圖）與星座圖（#79）不在本契約——前端圖表從 classReport 的 `at`/`end` 映射，屆時更新本節
 
 ## 8. 語音（#69）
 

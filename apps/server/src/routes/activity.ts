@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { StudentReport, TeacherReport } from "@socrates/shared";
+import type { ClassReport, StudentAnalysis, StudentReport, TeacherReport, ViolationSlice } from "@socrates/shared";
 import { one, run } from "../db/d1";
 import { fail, requireUser, type AppEnv } from "../http";
 import { requireMembership, topicOf } from "../services/members";
@@ -41,28 +41,36 @@ export function activityRoutes() {
       );
       if (!row || row.status === "pending") fail(404, "report_pending");
       if (row.status === "failed") fail(500, "report_failed");
-      const topic = await topicOf(c.env.DB, activity.topic_id);
-      const teacherPart = row.teacher_report
-        ? (JSON.parse(row.teacher_report) as { group: TeacherReport["group"] })
+      const stored = row.teacher_report
+        ? (JSON.parse(row.teacher_report) as { topicTitle: string; classReport: ClassReport })
         : null;
+      if (!stored) fail(500, "report_failed");
       const students = row.student_reports
-        ? (JSON.parse(row.student_reports) as Record<string, TeacherReport["individuals"][number]>)
+        ? (JSON.parse(row.student_reports) as Record<
+            string,
+            { pseudonym: string; analysis: StudentAnalysis | null; violations: ViolationSlice[] }
+          >)
         : {};
-      if (!teacherPart) fail(500, "report_failed");
       if (isTeacher || user.id === classroom.teacher_id) {
         const report: TeacherReport = {
-          topicTitle: topic.title,
-          group: teacherPart.group,
-          individuals: Object.values(students),
+          topicTitle: stored.topicTitle,
+          classReport: stored.classReport,
+          students: Object.entries(students).map(([studentId, own]) => ({
+            studentId,
+            pseudonym: own.pseudonym,
+            analysis: own.analysis,
+            violations: own.violations,
+          })),
         };
         return c.json(report);
       }
       const own = students[user.id];
       if (!own) fail(404, "not_found");
       const report: StudentReport = {
-        topicTitle: topic.title,
-        group: teacherPart.group,
-        individual: own,
+        topicTitle: stored.topicTitle,
+        pseudonym: own.pseudonym,
+        analysis: own.analysis,
+        violations: own.violations,
       };
       return c.json(report);
     });

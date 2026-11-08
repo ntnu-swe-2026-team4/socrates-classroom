@@ -9,7 +9,7 @@ import {
   type TextContent,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { PiHarness } from "agents/harness/pi";
+import { PiHarness, ROOT_SESSION } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
@@ -18,6 +18,7 @@ import { requireMembership } from "../services/members";
 import { createAvatarExtension } from "../pi/extensions/avatar";
 import { createJudgmentExtension } from "../pi/extensions/judgment";
 import { createWebSearchExtension } from "../pi/extensions/websearch";
+import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 import { socratesExtension } from "../pi/extensions/socrates";
 import { buildModels } from "../pi/models";
 import { ChatSockets } from "../ws/sockets";
@@ -65,11 +66,42 @@ export class Chat extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    if (this.models.faux) this.models.faux.setResponses([fauxSocraticScript]);
+    if (this.models.faux) {
+      this.models.faux.setResponses([fauxSocraticScript]);
+      this.registry.install(fauxReplayExtension(this.models.faux, fauxSocraticScript));
+    }
   }
 
   async onStart(): Promise<void> {
     await this.sockets.reattach();
+  }
+
+  async onRequest(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname !== "/transcript") return new Response("Not found", { status: 404 });
+    return Response.json(await this.transcript());
+  }
+
+  private async transcript(): Promise<{
+    messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
+    violations: Array<{ turn: number; type: string; excerpt: string }>;
+  }> {
+    const entries = await this.harness.session(ROOT_SESSION).entries({ order: "ascending" }, 1000);
+    const items = entries.items;
+    const messages: Array<{ role: "user" | "assistant"; turn: number; text: string }> = [];
+    const violations: Array<{ turn: number; type: string; excerpt: string }> = [];
+    let turn = 0;
+    for (const entry of items) {
+      if (entry.kind === "pi.user") {
+        turn += 1;
+        messages.push({ role: "user", turn, text: entryText(entry) });
+      } else if (entry.kind === "pi.assistant") {
+        messages.push({ role: "assistant", turn, text: entryText(entry) });
+      } else if (entry.kind === "app.violation") {
+        const data = entry.data as { type?: string; excerpt?: string };
+        violations.push({ turn, type: data.type ?? "other", excerpt: data.excerpt ?? "" });
+      }
+    }
+    return { messages, violations };
   }
 
   private async authorize(request: Request): Promise<boolean> {
@@ -110,4 +142,8 @@ function textOf(content: Message["content"]): string {
     .filter((part): part is TextContent => part.type === "text")
     .map((part) => part.text)
     .join("");
+}
+
+function entryText(entry: { model?: readonly Message[] }): string {
+  return textOf(entry.model?.[0]?.content ?? "");
 }
