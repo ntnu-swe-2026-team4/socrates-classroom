@@ -39,7 +39,7 @@ export function joinRoutes() {
           )
         : undefined;
 
-      if (existing) {
+      if (existing && user) {
         return c.json({ user, activityId: classroom.current_activity_id! });
       }
 

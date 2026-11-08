@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { GenerateTopicsInputSchema, TopicCreateInputSchema } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
-import { langOf, newId, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
+import { fail, langOf, newId, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
 import { parsePrompts, type TopicRow } from "../services/members";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createRegistry, Harness } from "@earendil-works/pi-durable";
@@ -49,7 +49,8 @@ export function topicsRoutes() {
         },
       );
       const row = await one<TopicRow>(c.env.DB, "SELECT * FROM topics WHERE id = $id", { id });
-      return c.json(row ? parsePrompts(row) : null, 201);
+      if (!row) fail(500, "internal_error");
+      return c.json(parsePrompts(row), 201);
     })
     .post("/topics/generate", async (c) => {
       requireTeacher(c);
