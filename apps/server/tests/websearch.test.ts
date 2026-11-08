@@ -111,11 +111,12 @@ describe("websearch extension（web_search + get_search_content）", () => {
   }, 30_000);
 
   it("store/find/slice 單元語意：bounded slice 帶續讀提示、findText 帶前後文", async () => {
-    const { storeSearch, getStored, slicePage, findPassages } = await import("../src/pi/extensions/websearch/store");
-    const id = storeSearch([
+    const { createResponseStore, slicePage, findPassages } = await import("../src/pi/extensions/websearch/store");
+    const responses = createResponseStore();
+    const id = responses.storeSearch([
       { query: "正義", answer: "a", error: null, results: [{ title: "T", url: "https://u", snippet: "s" }] },
     ]);
-    const stored = getStored(id);
+    const stored = responses.getStored(id);
     expect(stored).not.toBeNull();
 
     const content = JSON.stringify(stored, null, 2);
@@ -156,9 +157,10 @@ describe("fetch_content（readable/raw＋cache＋SSRF）", () => {
       expect(first.content).toContain("hello body");
       expect(requests).toBe(1);
 
-      const { storeFetched, getStoredFetch, slicePage } = await import("../src/pi/extensions/websearch/store");
-      const fid = storeFetched([{ url: first.url, title: first.title, content: first.content, error: null }]);
-      const stored = getStoredFetch(fid);
+      const { createResponseStore, slicePage } = await import("../src/pi/extensions/websearch/store");
+      const responses = createResponseStore();
+      const fid = responses.storeFetched([{ url: first.url, title: first.title, content: first.content, error: null }]);
+      const stored = responses.getStoredFetch(fid);
       expect(stored?.urls[0]?.title).toBe("Cache Test");
       const page = slicePage(JSON.stringify(stored), 0, 40, fid);
       expect(page.text).toContain("get_search_content");

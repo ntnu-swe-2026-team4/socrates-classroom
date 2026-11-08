@@ -3,14 +3,12 @@ import { arr, int, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import type { Ai } from "@cloudflare/workers-types";
 import { createWebSearch, formatAnswer, type SearchHit } from "./search";
 import {
+  createResponseStore,
   findPassages,
-  getStored,
   getCachedFetch,
   putCachedFetch,
   serialize,
   slicePage,
-  storeSearch,
-  storeFetched,
   type StoredSearch,
 } from "./store";
 import { fetchPage } from "./fetch";
@@ -21,6 +19,7 @@ export interface WebSearchConfig {
 
 export function createWebSearchExtension(ai: Ai | undefined, config: WebSearchConfig = {}) {
   const search = ai ? createWebSearch(ai, config.allowlist) : null;
+  const responses = createResponseStore();
 
   const webSearchTool = defineTool({
     name: "web_search",
@@ -53,7 +52,7 @@ export function createWebSearchExtension(ai: Ai | undefined, config: WebSearchCo
         executed.push({ query, answer: formatAnswer(outcome.hits), error: null, results: outcome.hits });
         inline.push(`[${query}]\n${formatAnswer(outcome.hits)}`);
       }
-      const responseId = storeSearch(executed);
+      const responseId = responses.storeSearch(executed);
       return {
         output: [
           {
@@ -82,7 +81,7 @@ export function createWebSearchExtension(ai: Ai | undefined, config: WebSearchCo
       if (args.findMode !== undefined && args.findText === undefined) {
         return { output: [{ type: "text", text: "findMode requires findText; provide findText or omit findMode." }] };
       }
-      const stored = getStored(args.responseId);
+      const stored = responses.getStored(args.responseId);
       if (!stored) {
         return {
           output: [
@@ -129,7 +128,9 @@ export function createWebSearchExtension(ai: Ai | undefined, config: WebSearchCo
       if (outcome.error) {
         return { output: [{ type: "text", text: `Error fetching ${args.url}: ${outcome.error}` }] };
       }
-      const fetchId = storeFetched([{ url: outcome.url, title: outcome.title, content: outcome.content, error: null }]);
+      const fetchId = responses.storeFetched([
+        { url: outcome.url, title: outcome.title, content: outcome.content, error: null },
+      ]);
       const preview =
         outcome.content.length > 8_000
           ? `${outcome.content.slice(0, 8_000)}\n\n(responseId: ${fetchId} — full content retrievable via get_search_content)`

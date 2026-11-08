@@ -14,7 +14,10 @@ interface SearchHitShape {
   snippet: string;
 }
 
-const store = new Map<string, StoredSearch>();
+export interface StoredFetch {
+  urls: Array<{ url: string; title: string; content: string; error: string | null }>;
+  storedAt: number;
+}
 
 const FETCH_CACHE_TTL_MS = 60 * 60_000;
 const fetchCache = new Map<string, { content: string; title: string; mode: string; at: number }>();
@@ -37,44 +40,50 @@ export function putCachedFetch(url: string, mode: string, content: string, title
   fetchCache.set(`${mode}:${url}`, { content, title, mode, at: Date.now() });
 }
 
-function prune(now = Date.now()): void {
-  for (const [id, data] of store) {
-    if (now - data.storedAt >= RESULT_TTL_MS) store.delete(id);
+export interface ResponseStore {
+  storeSearch(queries: StoredSearch["queries"]): string;
+  getStored(id: string): StoredSearch | null;
+  storeFetched(urls: StoredFetch["urls"]): string;
+  getStoredFetch(id: string): StoredFetch | null;
+}
+
+export function createResponseStore(): ResponseStore {
+  const searches = new Map<string, StoredSearch>();
+  const fetches = new Map<string, StoredFetch>();
+
+  function prune(map: Map<string, { storedAt: number }>, now: number): void {
+    for (const [id, data] of map) {
+      if (now - data.storedAt >= RESULT_TTL_MS) map.delete(id);
+    }
+    while (map.size > MAX_STORED_RESULTS) {
+      const oldest = [...map.entries()].sort((a, b) => a[1].storedAt - b[1].storedAt)[0];
+      if (!oldest) break;
+      map.delete(oldest[0]);
+    }
   }
-  while (store.size > MAX_STORED_RESULTS) {
-    const oldest = [...store.entries()].sort((a, b) => a[1].storedAt - b[1].storedAt)[0];
-    if (!oldest) break;
-    store.delete(oldest[0]);
-  }
-}
 
-export function storeSearch(queries: StoredSearch["queries"]): string {
-  prune();
-  const id = crypto.randomUUID();
-  store.set(id, { queries, storedAt: Date.now() });
-  return id;
-}
-
-export interface StoredFetch {
-  urls: Array<{ url: string; title: string; content: string; error: string | null }>;
-  storedAt: number;
-}
-
-const fetchStore = new Map<string, StoredFetch>();
-
-export function storeFetched(urls: StoredFetch["urls"]): string {
-  const id = crypto.randomUUID();
-  fetchStore.set(id, { urls, storedAt: Date.now() });
-  return id;
-}
-
-export function getStoredFetch(id: string): StoredFetch | null {
-  return fetchStore.get(id) ?? null;
-}
-
-export function getStored(id: string): StoredSearch | null {
-  prune();
-  return store.get(id) ?? null;
+  return {
+    storeSearch(queries) {
+      prune(searches, Date.now());
+      const id = crypto.randomUUID();
+      searches.set(id, { queries, storedAt: Date.now() });
+      return id;
+    },
+    getStored(id) {
+      prune(searches, Date.now());
+      return searches.get(id) ?? null;
+    },
+    storeFetched(urls) {
+      prune(fetches, Date.now());
+      const id = crypto.randomUUID();
+      fetches.set(id, { urls, storedAt: Date.now() });
+      return id;
+    },
+    getStoredFetch(id) {
+      prune(fetches, Date.now());
+      return fetches.get(id) ?? null;
+    },
+  };
 }
 
 export function serialize(stored: StoredSearch): string {
