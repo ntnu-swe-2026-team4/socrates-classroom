@@ -46,28 +46,6 @@ CREATE TABLE members (
 );
 CREATE UNIQUE INDEX members_name ON members(classroom_id, name);
 
-CREATE TABLE messages (
-  id          TEXT PRIMARY KEY,
-  activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
-  student_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role        TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
-  text        TEXT NOT NULL,
-  at          TEXT NOT NULL
-);
-CREATE INDEX messages_thread ON messages(activity_id, student_id, at);
-
-CREATE TABLE violations (
-  id          TEXT PRIMARY KEY,
-  activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
-  student_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  turn        INTEGER NOT NULL,
-  type        TEXT NOT NULL,
-  probability REAL NOT NULL DEFAULT 0,
-  excerpt     TEXT NOT NULL,
-  created_at  TEXT NOT NULL
-);
-CREATE INDEX violations_activity ON violations(activity_id, student_id);
-
 CREATE TABLE reports (
   activity_id    TEXT PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
   status         TEXT NOT NULL CHECK (status IN ('pending', 'ready', 'failed')),
@@ -75,14 +53,6 @@ CREATE TABLE reports (
   student_reports TEXT,
   created_at     TEXT NOT NULL,
   updated_at     TEXT NOT NULL
-);
-
-CREATE TABLE byok_keys (
-  user_id    TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  provider   TEXT NOT NULL,
-  key_enc    TEXT NOT NULL,
-  last4      TEXT NOT NULL,
-  updated_at TEXT NOT NULL
 );
 
 CREATE TABLE pseudonyms (

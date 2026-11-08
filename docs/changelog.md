@@ -2,6 +2,29 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-09 — 第二波深度審查修復＋teacher keys 服務（`experiment/web-next`）
+
+### Added
+
+- **Prompt 資產接線**（審查 CRITICAL）：profiles instructions 從 placeholder 字串改為真資產——`prompts/*.md` 於 `{{role "user"}}` 切開、前段 `?raw` 注入＋JSON 輸出形狀附錄；report-analyst 拆 student-report／class-report 兩 profile；lookup/topic-gen 新撰資產；`templates/` 重複份刪除。§7 報告在真模型下首次可生產
+- **Teacher keys 服務**（#82 定案＋ToS 責任移轉，2026-11-09 拍板）：任意 pi builtin provider＋自選 model（migration 004 `model` 欄）；老師鏈在前、平台鏈墊後；ledger `teacher:<userId>` credential 獨立記帳；Chat DO per-turn pick→setModel→submit→wait 結算；ReportRunner／topic-gen 同接；web 設定頁 provider/model 選單＋責任條款文案（三語）
+- **dgx-spark 首次真正可 serve**：buildModels 註冊全部 pi builtin providers（`builtinModels`＋Workers `AuthContext` 注入）＋dgx `createProvider`（keyless）——priority-1 不再是死配置
+- WS 逐訊授權回歸測試（拒絕後 close 前逕送 watch → 不給 view）
+
+### Fixed
+
+- **WS 逐訊授權閘門**：onConnect 只驗一次，close handshake 期間的 frame 仍會被 dispatch（跨學生 transcript 競窗）——authorized set 修復
+- **guest join 原子化**：batch users＋members、cookie 成功後才發（原 name_taken 競態留下孤兒 session cookie）
+- runProfile settle 包 try/finally（inFlight 不洩漏）；lookup/topic-gen 拿到 websearch 工具（原 `_registryFor` 死碼、registry 空）
+- 測試 migration runner 收斂 `tests/migrations.ts`（001–004 全套；003 原本沒被套用）
+
+### Changed
+
+- **D1 reset 決策記錄**（2026-11-08）：從未部署，`001_init.sql` 原地重寫 v4 schema 且剝除 create-then-drop 死表（10→7 表）——不做前向 migration；本地 v3 殘留刪 `.cloudflare/state` 重來
+- Ledger 種類收斂：pi 無結構化錯誤狀態，刪不可達的 rate/timeout/auth 與 dead 語意；保留 ok/error＋連續 5 error cooldown
+- `modelsFor`／`fallbackModels` 死碼刪除；`providers.config.yaml` 增 `teacherChain.maxConcurrency`
+- Docs：providers.md 學生 BYOK 殘段（與 #82 定案矛盾）改為 teacher keys 服務定案；architecture §8 CI 更新為實況（Node 26/pnpm）＋header 狀態對齊；api-contract §6 live 改 pi transcript 資料源、§9 keys 帶 model 欄＋providers/models 端點、§7 批次寬度改 Router budget
+
 ## 2026-11-09 — 深度審查修復（10 項 blocking＋MINOR，`experiment/web-next`）
 
 ### Fixed

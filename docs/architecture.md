@@ -1,13 +1,13 @@
 # 重構架構設計：socrates-classroom → Cloudflare + Pi Durable
 
-> 日期：2026-11-03（§13：2026-11-04）｜ 分支：`refactor/cf-pi-durable` ｜ 狀態：**R0–R5 已實作、R6 僅完成 shared 型別（`hc<RpcApp>` web 端改寫未做）**——測試全綠；剩 R3 實際部署（需 Cloudflare 帳號）與 R7 WebSocket（Phase 3）｜ **§13 v2 規模設計（D9–D13）：規劃中（`experiment/web-next`）**
+> 日期：2026-11-03（§8/§13：2026-11-09）｜ 分支：`experiment/web-next`（PR #116）｜ 狀態：R0–R7 全數落地（R6 `hc<RpcApi>` 已接、R7 WS transport 已上）；剩實際部署（需 Cloudflare 帳號與 D1）
 > 相關文件：[`cf.md`](./cf.md)（Cloudflare CLI）、[`pi.md`](./pi.md)（Pi Durable）、[`providers.md`](./providers.md)（provider 查證）、[`feature.md`](./feature.md)（功能總覽）
 
 ## 0. 已定決策（本文的約束條件）
 
 | #   | 決策                                                                                             | 理由                                                           |
 | --- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| D1  | 單一 Worker：Hono API + 前端 assets + PiAgent DO 同包                                            | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS               |
+| D1  | 單一 Worker：Hono API + 前端 assets + Chat/ReportRunner DO 同包                                            | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS               |
 | D2  | App 資料放 **D1**；Pi transcript 留在 DO 自己的 SQLite（`pi_*` 表）                              | 共享關聯資料 vs agent 私有狀態，各放各的                       |
 | D3  | 對話執行緒 = 一個 DO instance（`idFromName(scope:id)`）                                          | 天然序列化、互不干擾、Pi inbox 排隊                            |
 | D4  | 對話走 WebSocket（`/agents/chat/:name`，view＋chord ops），SSE 已於 web-next 重建時退役          | 單一真相在 pi transcript；前端 applyImmutable 套件             |
@@ -89,8 +89,7 @@ socrates-classroom/
 │       │   │   ├── routing-schema.ts   # zod schema（YAML 的型別）
 │       │   │   ├── config.gen.ts       # build-time 產出（scripts/gen-config.mjs）
 │       │   │   ├── ledger.ts           # (provider, model, credential) 記帳＋cooldown
-│       │   │   ├── router.ts           # traffic class 鏈走訪＋fallback legs 構建
-│       │   │   └── oneshot.ts          # 單發呼叫（JSON/prose）
+│       │   │   └── router.ts           # traffic class 鏈走訪（teacher legs 前置合併）
 │       │   ├── prompts/            # LLM 組的 prompt 資產（build-time ?raw）
 │       │   │   ├── socrates.md / class-report.md / student-report.md
 │       │   ├── ws/                 # transport glue（protocol + sockets）
@@ -169,9 +168,9 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `routing-schema.ts` | YAML 的 zod schema：provider 實例（endpoint+model）×credential 分離；classifiers；availability（priority/maxConcurrency）；trafficClasses |
 | `config.gen.ts`     | `scripts/gen-config.mjs` 產出（Workers 無檔案系統）                                                                                       |
-| `ledger.ts`         | (provider, model, credential) 記帳＋cooldown（LiteLLM 語意：429/timeout 60s、401/403 dead、連續 5 error 開、ok 重置、過期自然回無 probe） |
-| `router.ts`         | traffic class 鏈走訪（priority 排序＋cooldown/dead/maxConcurrency 過濾）→ pick → fallback legs 構建（交給 pi 原生執行）                   |
-| `oneshot.ts`        | 單發呼叫（JSON/prose；traffic class 預設 batch）                                                                                          |
+| `ledger.ts`         | (provider, model, credential) 記帳＋cooldown（pi 無結構化錯誤狀態→只記 ok/error；連續 5 error 開 60s、ok 重置、過期自然回無 probe） |
+| `router.ts`         | traffic class 鏈走訪（priority 排序＋cooldown/maxConcurrency 過濾、teacher legs 前置）→ pick；isolate 生命週期（getRouter WeakMap）       |
+
 
 **請求層 vs 決策層**：fallback legs 的試錯、retry 退避由 pi 原生（`streamWithFallback`／`settings.retry`）；routing 只決定「誰該拿到哪條 legs、誰的錢、記誰的帳」。調查過 LiteLLM Router／pi-router／pi-fallback-provider（#98 留言，2026-11-06）——結論：不引入，pi 原生＋三個小件已涵蓋。
 
@@ -201,23 +200,24 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 ## 8. CI/CD（.github/workflows）
 
 ```yaml
-# ci.yml（PR）：build 一次 + 全部閘門，不需要 secrets
-- uses: actions/setup-node@v6 (node 22, cache npm)
-- run: npm ci
-- run: npm run typecheck # tsc -b（web/server/shared）
-- run: npm test # vitest（單元 + pool 邏輯）
-- run: npm run build -w apps/web
-- run: npx cf build && npx cf deploy --prebuilt --mode production --dry-run
-# （可選）npx cf previews deploy → PR 預覽網址
+# ci.yml（PR + push main）：全部閘門，不需要 secrets
+- uses: pnpm/action-setup + actions/setup-node@v6 (node 26, cache pnpm)
+- run: pnpm install --frozen-lockfile
+- run: pnpm lint            # biome
+- run: yamllint .           # workflows / pnpm-workspace
+- run: pnpm typecheck       # server build:types → web tsc（RpcApi 宣告先產出）
+- run: pnpm test            # pnpm -r test：server（workerd 真runtime）+ web
+- run: pnpm exec cf build    # apps/web：client assets + worker bundle
+- run: pnpm exec cf deploy --prebuilt --mode production --dry-run
 
 # deploy.yml（push main）：同一產物部署
-- run: npx cf build
-- run: npx cf d1 migrations apply <DB_ID> --dir apps/server/migrations
-- run: npx cf deploy --prebuilt --mode production # 唯一拿 secrets 的 step
+- run: pnpm exec cf build
+- run: pnpm exec cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations
+- run: pnpm exec cf deploy --prebuilt --mode production   # 唯一拿 secrets 的 step
 ```
 
-- staging：`--mode staging` + `cloudflare.config.ts` 的 `switch (ctx.mode)`（獨立 D1/R2/DO 與網域）；手動 `workflow_dispatch` 觸發
-- secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`；runtime keys 用 `cf deploy --secrets-file`（OPENCODE_API_KEY、OPENROUTER_API_KEY、BYOK_ENC_KEY；ZAI_API_KEY 僅 dev/staging）
+- secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`；runtime secrets 走 `cf deploy` 環境注入（`AUTH_SECRET`、`BYOK_ENC_KEY`、`DGX_BASE_URL` 等，見 `apps/server/.env.example`）
+- **D1 migration 重置決策（2026-11-08）**：從未部署過（所有 deploy run 都在 migration step 因缺 `D1_DATABASE_ID` 失敗），`001_init.sql` 原地重寫為 v4 schema（10 表）——不做前向 migration。本地若殘留 v3 D1：刪掉 `.cloudflare/state`（或對應 persist 目錄）重來即可；`d1_migrations` 狀態與新 001 不相容是預期行為
 - wrangler 僅存於 devDependencies（cf 的建置後端 + `wrangler tail`）
 
 ## 9. 測試策略（vitest-pool-workers）
@@ -228,7 +228,8 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 | `tests/avatar.test.ts`    | 情緒 entry 形狀、文字零污染                                                       |
 | `tests/judgment.test.ts`  | tool 註冊、agent 自報 entry                                                       |
 | `tests/websearch.test.ts` | 三 tool 註冊、SSRF 矩陣、cache、store/find/slice                                  |
-| `tests/profiles.test.ts`  | profile 表零 model hardcode、runProfile 全路徑                                    |
+| `tests/profiles.test.ts`  | profile 表零 model hardcode、真 prompt 資產接線、runProfile 全路徑                |
+| `tests/migrations.ts`     | 測試用 migration runner（001–004 全套）                                           |
 | `tests/routing.test.ts`   | cooldown 語意矩陣、config 形狀、分開記帳                                          |
 | `tests/rest.test.ts`      | 真 Worker 入口：seed guard/ToS join/歷史/finish→report/授權矩陣/teacher keys CRUD |
 
@@ -240,8 +241,8 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | R0–R5（v3）                 | monorepo、D1 介面、PiAgent DO、provider pool——已被 web-next 重建取代                                                                                         |
 | web-next 重建（2026-11-06） | 兩大原則重構：Chat DO＋PiHarness、extensions（avatar/judgment/websearch）、agent profiles、routing（YAML＋ledger）、ReportRunner、teacher_keys、WS transport |
-| R6 剩餘                     | web 端 `hc<RpcApp>` 改寫（`apps/web/src/api`）                                                                                                               |
-| R7                          | 已由 WS transport 涵蓋（watch resume）                                                                                                                       |
+| R6/R7 收尾（2026-11-08）    | `hc<RpcApi>` 全面接上（web types.ts 退役）；WS transport 上線（watch resume、逐訊授權閘門）                                                                  |
+| prompt 接線＋teacher keys（2026-11-09） | profiles instructions 接真資產（§7 報告可生產）；teacher keys 服務（ToS 責任移轉、老師鏈前平台鏈後）                                              |
 
 ## 11. ADR 摘要
 
@@ -260,7 +261,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 | 自架 Tunnel 延遲                                                                                | 爆發期實測 P95；不行就把自架降為「教室內網直連 + 雲端走 opencode-go/OpenRouter」                 |
 | opencode-go 條款灰域                                                                            | 上線前 email 官方；未確認前它不是唯一依賴（有 OpenRouter/Workers AI 兜底）                       |
 | Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）                                          | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                       |
-| module 級狀態（rate-limit 的 Map、pool 的 degraded/gate、acquireLock）隨 isolate 分散且重啟歸零 | 定位為 best-effort；跨請求一致的併發守衛在 PiAgent DO 的 busy flag。多 isolate 佈局後限流改走 DO |
+| module 級狀態（rate-limit 的 Map）隨 isolate 分散且重啟歸零 | 定位為 best-effort；跨請求一致的併發守衛在 Chat DO 的 whenBusy reject。多 isolate 佈局後限流改走 DO |
 
 ## 13. Scale design v2（D9–D13）——10k 併發作為 code quality bar
 
@@ -300,7 +301,7 @@ v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78�
 - **catalog（資料，非程式）**：每個 provider 一份 descriptor——quota model（concurrency／sliding window／RPM／balance／neurons）、成本、ZDR、traffic class、affinity 提示
 - **parallel multi-provider**：所有 healthy 且有餘量的 provider 同時參與 scoring 收新 thread；系統 throughput＝各 provider capacity 之和，不是 chain head 的 max。assignment 偏好：cost-first＋免費容量保留 burst buffer
 - **Coordinator DO**（每 provider／每 BYOK namespace 一個 instance）：全域 concurrency gate＋usage ledger＋affinity map＋circuit breaker（closed/open/half-open）。acquire/release 是 in-memory 操作＋input gate batching，單 DO 可達數千 rps（D1 本身即以 DO 建成，為 throughput 量級佐證）
-- **affinity（thread 級）**：thread 誕生時 scoring 一次、落點 cache 在 PiAgent DO storage——per-turn 零 coordinator 讀取；affinity map 記 `home／current／since`。opencode 的 `x-opencode-session` 以 per-thread header 注入（providers.md 客戶端要求）
+- **affinity（thread 級）**：thread 誕生時 scoring 一次、落點 cache 在 Chat DO storage——per-turn 零 coordinator 讀取；affinity map 記 `home／current／since`。opencode 的 `x-opencode-session` 以 per-thread header 注入（providers.md 客戶端要求）
 - **failover 階梯**：transient error（單輪 429/timeout）→ 該輪 failover 到別廠、home 不變；hard failure（breaker open）→ 該 thread reassign＋home 改寫＋provider 自 scoring pool evict。**failback＝re-admission，不 recall 既有 thread**（不打斷 prompt cache／語氣連續，避免 flapping），並加 recovery 觀察窗
 - **usage ledger**：每輪一筆 Analytics Engine data point（provider／tokens／latency／outcome／class），cron 彙總寫 D1 rollup——#80 面板、#81 警示、#63 停損 kill-switch 的同源資料；kill-switch 是 router 的 enforcement point（額度見底→該 namespace score 歸零）
 - **BYOK namespace**（#82：老師／單人）：namespace＝key 擁有者。老師 key 承載全班＝單一 quota ledger 被全班 thread 併發計量——全域計量是必要條件

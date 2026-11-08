@@ -146,11 +146,11 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 
 ---
 
-1. **學生流量鏈**：自架（4 併發 + CF Tunnel + 佇列）→ opencode-go（鎖 `glm-5.3-flash`）→ OpenRouter（強制 `zdr:true`、鎖 `z-ai/glm-5.3-flash`）→ Workers AI。四段全 ZDR。
-2. **學生 BYOK**：有 key 的學生優先走自己的 OpenRouter key（帳戶隔離、無共享條款問題）；班級 pool 只當公用 fallback。
-3. **模型白名單**（可進 fallback 的）：GLM-5.3-Flash、GLM-5.3、GLM-5.2、Kimi／Qwen／MiniMax／MiMo 等 0-day retention 模型。禁入：Muse Spark、Iceman（會訓練）、Grok／GPT Luna／Claude Haiku（30 天）。
+1. **學生流量（平台鏈）**：`providers.config.yaml` 的 availability 鏈（dgx-spark → workers-ai ×2）；平台 credential 的段落全部 ZDR（自架＝團隊機房、Workers AI＝官方 ZDR），這是平台能保證的部分。
+2. **Teacher keys**（2026-11-09 定案）：老師可存**任意 pi builtin provider** 的 key＋自選 model；其教室流量**老師鏈在前、平台鏈墊後**。provider×model 是無窮空間，平台不逐一審查——資料責任由 **ToS 移轉**給教師（設定頁有責任條款文案）；平台僅保證 fallback 到的平台鏈 ZDR。
+3. **平台鏈模型白名單**（可進 fallback 的）：GLM-5.3-Flash、GLM-5.3、GLM-5.2、Kimi／Qwen／MiniMax／MiMo 等 0-day retention 模型。禁入：Muse Spark、Iceman（會訓練）、Grok／GPT Luna／Claude Haiku（30 天）。
 4. **開發流量**：Coding Plan 優先（額度大、離峰五折），任何 provider 皆可。
-5. **應用層限流**：保留每人 20 req/min（`server/src/services/dialogue.ts`）；併發閘對自架 = 4、對未公布併發的雲端 provider 以 429 為準自動 fallback。
+5. **應用層記帳**：ledger 以 (provider, model, credential) 記帳——teacher leg 用 `teacher:<userId>` credential 獨立記；連續 5 次 error 開 60s cooldown（pi 不提供結構化錯誤狀態，無法分類 429/401，誠實只記 ok/error）。
 
 ## 待辦 / 未定
 
@@ -158,6 +158,7 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 - [ ] Cloudflare Tunnel 設定（團隊自建）——記得套 Access policy 限制僅自家 Worker 可呼叫
 - [ ] opencode-go 的實際併發實測（官方無數字）
 - [x] BYOK 定案（2026-11-06，#82）：teacher keys（一 provider 一把 key，D1 AES-GCM）；**學生無 BYOK 入口**
+- [x] teacher keys 服務定案（2026-11-09）：任意 pi builtin provider、ToS 責任移轉、老師鏈前平台鏈後（`docs/api-contract.md` §9）
 - [x] runtime 設定層：已定案 `providers.config.yaml`（build-time 編譯，provider×credential×priority×traffic class；2026-11-06）——whitelist/pool.ts 退役，准入由 YAML providers 節把關
 - [x] server-side TTS 選型查證：**已定案 `@cf/myshell-ai/melotts`**（ZDR yes、$0.000205/audio-min、zh 支援；2026-11-05 官方目錄查證＋實測閉環，見 §4 語音模型；自架 DGX 已出局）
 - [x] #55 Clef／Clef-flash ZDR 查證：**已完成**（官方明文零保留／不訓練；例外、約束與資料位置見 §7.1；2026-11-08）

@@ -4,7 +4,7 @@ We use pi. pi **really** handles everything: transcript, admission, runs, retrie
 
 Everything is an extension. All behavior — prompts, tools, hooks, tasks — lives in pi extensions installed on the registry. DOs only host; transport only moves. If logic isn't in an extension, it's in the wrong place. When a change is needed, the first attempt is an extension; only genuinely non-behavioral work (data plumbing, pure SQL/REST) goes in routes, DOs, or transport.
 
-Non-negotiables: no queue feature (`whenBusy: "reject"` — a busy thread refuses, never queues); ZDR whitelist for providers (`docs/providers.md`); version-pair lock `agents` 0.33 ↔ pi 1.5 (`docs/pi.md`); tests are real DO + real WebSocket + faux model (`tests/chat.test.ts` is the pattern); no hardcoded model ids — everything routes through `providers.config.yaml`; files over ~200 lines mean you are re-implementing pi.
+Non-negotiables: no queue feature (`whenBusy: "reject"` — a busy thread refuses, never queues); platform-credential traffic only on the ZDR-reviewed chain, teacher-keyed legs are ToS-shifted to the teacher (`docs/providers.md`); version-pair lock `agents` 0.33 ↔ pi 1.5 (`docs/pi.md`); tests are real DO + real WebSocket + faux model (`tests/chat.test.ts` is the pattern); no hardcoded model ids — everything routes through `providers.config.yaml`; files over ~200 lines mean you are re-implementing pi.
 
 ## Module map
 
@@ -15,10 +15,10 @@ Non-negotiables: no queue feature (`whenBusy: "reject"` — a busy thread refuse
 | `routes/`                                                     | REST endpoints: zod validation + authorization + thin orchestration; errors only via `fail()`; dialogue has no POST (WS is the only write path)           |
 | `do/chat.ts`                                                  | Chat DO (thread-level): hosts PiHarness + per-object registry + models with fallback legs                                                                 |
 | `do/report-runner.ts`                                         | ReportRunner DO (activity-level): alarm-driven report generation, parallel per-student + class report → D1                                                |
-| `pi/models.ts`                                                | pi-ai Models registry assembly; fallback legs bound to head model object; zero model ids                                                                  |
+| `pi/models.ts` + `pi/credentials.ts`                         | Models registry assembly (all pi builtin providers + dgx createProvider + binding fallback product); teacher-key D1 credential store + Workers AuthContext |
 | `pi/agents/profiles.ts`                                       | Agent profiles (role fields only, never model) + `runProfile` driver; models/registry/env injected by caller                                              |
 | `pi/extensions/`                                              | All behavior: `socrates` (prompt), `avatar` (emotion entry), `judgment` (violation task + self-report tool), `websearch` (3 tools)                        |
-| `routing/`                                                    | Provider policy: YAML schema + build-time config, ledger (cooldown + accounting), chain walk, oneshot                                                     |
+| `routing/`                                                    | Provider policy: YAML schema + build-time config, ledger (ok/error accounting + consecutive-error cooldown), chain walk (teacher legs first, platform fallback) |
 | `ws/`                                                         | Transport glue: typed protocol + watch/submit/entries over the harness's public API                                                                       |
 | `prompts/`                                                    | LLM team's prompt assets (`?raw` build-time injection)                                                                                                    |
 | `auth.ts` + `auth-crypto.ts`                                  | HMAC session cookie, PBKDF2 passwords, AES-GCM key encryption                                                                                             |

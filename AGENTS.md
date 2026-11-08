@@ -52,7 +52,7 @@ pnpm lint && pnpm typecheck         # must be green before any PR
 
 ## Boundaries
 
-- **Never** route student traffic to models outside the whitelist (ZDR rules — see `apps/server/AGENTS.md`)
+- **Platform-credential traffic stays on the ZDR-reviewed chain** (`providers.config.yaml`); teacher-keyed legs are the teacher's contractual responsibility (ToS shift, 2026-11-09 — see `docs/providers.md`)
 - **Never** enable logging/caching on AI Gateway (it would retain student dialogue content, breaking ZDR)
 - **Never** put any API key under `apps/web` (bundled into the browser)
 - **Ask first** before: changing API shapes covered by `docs/api-contract.md`, adding Cloudflare bindings, touching `PiHarness` settings

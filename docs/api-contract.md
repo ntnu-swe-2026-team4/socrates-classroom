@@ -104,7 +104,7 @@ type ServerMessage =
 
 ## 6. 老師即時面板（#73；本輪不實作，資料源已調查）
 
-- `GET /api/activities/:id/live` → `StudentLive[]`（SQL 聚合：messages/violations，indexed；前端輪詢）——實作時依 #73 留言的調查結果拍板
+- `GET /api/activities/:id/live` → `StudentLive[]`——gate 到 #73：資料源為 Chat DO 的 pi transcript 聚合（`messages`/`violations` 表已隨 v3 退役，migration 003 drop；pi transcript 是唯一真相），實作前不佔端點
 - `StudentLive`：`{id, name, status, rounds, flagged, flagReason?, lastUtterance}`
 
 ## 7. 活動結束與報告（#74/#78/#79/#72）
@@ -157,7 +157,7 @@ interface ViolationSlice {
 - **學生不拿 classReport**（設計決策）：學生報告只有自己的 analysis＋violations＋pseudonym；全班視角是老師專屬
 - **`ClassReport.students[].id`／`positions[].id`＝pseudonym**（LLM prompt 餵的就是 pseudonym；嚴禁放 studentId——全班互見會洩漏真實 id，#72）
 - transcript 來源：Chat DO `onRequest("/transcript")`（DO→DO，`PiSession.entries` 全量）；violations 同源自 `app.violation` entries——**pi transcript 是唯一真相，violations 不落第二份儲存**
-- 逐生分析與 transcript 抓取以 CONCURRENCY=8 批次進行（10k 班級的生成時間與供應端限流考量）
+- 逐生分析與 transcript 抓取以 Router budget 批次進行（`budget("batch")`＝鏈上各 leg maxConcurrency 總和；10k 班級的生成時間與供應端限流考量）
 - hexagon（#78 六角圖）與星座圖（#79）不在本契約——前端圖表從 classReport 的 `at`/`end` 映射，屆時更新本節
 
 ## 8. 語音（#69）
@@ -172,12 +172,15 @@ interface ViolationSlice {
 | Operation                                                              | 說明                                                                                                                                       |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `POST /api/lookup` `{term}` → `{term, markdown}`                       | #76 獨立查詢功能（lookup profile：agent 自主 search/fetch）；**不落庫不計輪**。失敗 → mock。termHistory 由前端 localStorage 持久化，無端點 |
-| `GET /api/settings/keys` → `{provider, last4, sortOrder}[]`            | #82 teacher keys；**一 provider 一把 key**（帳戶級）；key 明文永不回傳                                                                     |
-| `PUT /api/settings/keys/:provider` `{key}` → `{provider, last4}`       | 冪等 upsert；非法 provider → 422 `byok_provider_invalid`                                                                                   |
+| `GET /api/settings/keys` → `{provider, model, last4, sortOrder}[]`     | #82 teacher keys；**一 provider 一把 key**（帳戶級）；key 明文永不回傳                                                                     |
+| `PUT /api/settings/keys/:provider` `{provider, model, key}` → `{provider, model, last4}` | 冪等 upsert；provider＝任意 pi builtin（api-key 類）；model 不在該 provider catalog → 422；非法 provider → 422 `byok_provider_invalid` |
 | `DELETE /api/settings/keys/:provider` → `204`                          |                                                                                                                                            |
-| `PUT /api/settings/keys/order` `{providers: string[]}` → `{providers}` | 拖曳排序＝routing 的 provider 鏈序（#98）                                                                                                  |
+| `PUT /api/settings/keys/order` `{providers: string[]}` → `{providers}` | 排序＝routing 的 teacher legs 鏈序（#98）                                                                                                  |
+| `GET /api/settings/keys/providers` → `{id, name}[]`                   | 可選 provider 清單（pi builtin catalog，api-key 類）                                                                                      |
+| `GET /api/settings/keys/providers/:provider/models` → `{id, name}[]`   | 該 provider 的 model catalog（設定頁選單）                                                                                                 |
 
 - **學生無 BYOK 入口**（#82 定案）
+- **teacher keys 服務語意**（2026-11-09 定案）：老師 keys 的教室流量**老師鏈在前、平台鏈墊後**；teacher leg 的 provider/model 資料責任由 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；ledger 以 `teacher:<userId>` credential 獨立記帳；within-turn fallback 僅存在於平台 binding 鏈（pi 機制限制），跨輪失敗由 ledger cooldown 接手
 
 ## 10. 錯誤碼
 
