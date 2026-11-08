@@ -104,14 +104,17 @@ export function classroomsRoutes() {
           code,
         });
         if (clash) continue;
-        await run(
-          c.env.DB,
-          "INSERT INTO classrooms (id, name, teacher_id, join_code, current_activity_id, created_at) VALUES ($id, $name, $tid, $code, NULL, $at)",
-          { id, name: input.name, tid: user.id, code, at },
-        );
+        try {
+          await run(
+            c.env.DB,
+            "INSERT INTO classrooms (id, name, teacher_id, join_code, current_activity_id, created_at) VALUES ($id, $name, $tid, $code, NULL, $at)",
+            { id, name: input.name, tid: user.id, code, at },
+          );
+        } catch {
+          continue;
+        }
         const activityId = await createActivity(c.env.DB, id, input.topicId);
         const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") ?? "";
-        void id;
         return c.json({ classroomId: id, code, url: `${base}/join/${code}`, activityId }, 201);
       }
       fail(500, "internal_error");

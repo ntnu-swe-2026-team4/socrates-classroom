@@ -67,12 +67,19 @@ export async function enforceIpLimit(c: Ctx, scope: string, limit = 30): Promise
 }
 
 const ipHits = new Map<string, number[]>();
+const IP_TRACK_MAX = 10_000;
 
 async function allowIp(ip: string, scope: string, limit: number): Promise<boolean> {
   const key = `${scope}:${ip}`;
   const now = Date.now();
   const window = 60_000;
   const hits = (ipHits.get(key) ?? []).filter((t) => now - t < window);
+  if (ipHits.size >= IP_TRACK_MAX) {
+    for (const [k, v] of ipHits) {
+      if (v.every((t) => now - t >= window)) ipHits.delete(k);
+      if (ipHits.size < IP_TRACK_MAX) break;
+    }
+  }
   if (hits.length >= limit) {
     ipHits.set(key, hits);
     return false;

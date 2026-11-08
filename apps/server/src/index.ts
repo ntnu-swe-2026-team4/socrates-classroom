@@ -17,7 +17,7 @@ export default {
       return (await routeAgentRequest(request, env, { cors: true })) ?? new Response("Not found", { status: 404 });
     } catch (error) {
       console.error("chat request failed", error);
-      return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+      return Response.json({ error: "internal_error" }, { status: 500 });
     }
   },
 } satisfies ExportedHandler<Env>;

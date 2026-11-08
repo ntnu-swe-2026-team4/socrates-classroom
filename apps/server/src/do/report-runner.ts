@@ -111,7 +111,7 @@ export class ReportRunner extends DurableObject<Env> {
         "SELECT pseudonym FROM pseudonyms WHERE activity_id = $aid AND student_id = $sid",
         { aid: activityId, sid: member.user_id },
       );
-      const pseudonym = existing?.pseudonym ?? `${report.pseudonymPrefix}${String.fromCharCode(65 + (index % 26))}`;
+      const pseudonym = existing?.pseudonym ?? `${report.pseudonymPrefix}${index + 1}`;
       pseudonyms.set(member.user_id, pseudonym);
       if (!existing) {
         await run(db, "INSERT INTO pseudonyms (activity_id, student_id, pseudonym) VALUES ($aid, $sid, $p)", {
@@ -189,7 +189,7 @@ export class ReportRunner extends DurableObject<Env> {
 
   private batchSize(memberCount: number): number {
     const budget = this.router.budget("batch");
-    return budget > 0 ? budget : memberCount;
+    return budget > 0 ? Math.min(budget, memberCount) : Math.min(8, memberCount);
   }
 
   private async transcriptOf(
