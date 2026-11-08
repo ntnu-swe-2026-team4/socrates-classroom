@@ -1,26 +1,28 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RouterProvider } from "@tanstack/react-router";
-import { ThemeProvider } from "@/app/theme";
-import { LangProvider } from "@/i18n";
-import { router } from "./router";
+import { createRouter, RouterProvider } from "@tanstack/react-router";
+import "@fontsource-variable/noto-sans-tc";
+import "@fontsource-variable/noto-serif-tc";
 import "./index.css";
-import { AudioProvider } from "./lib/AudioContext";
+import { routeTree } from "./routeTree.gen";
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { refetchOnWindowFocus: false, refetchOnReconnect: false, staleTime: 30_000, retry: 1 } },
+});
+
+const router = createRouter({ routeTree, context: { queryClient } });
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <LangProvider>
-      <ThemeProvider>
-        <QueryClientProvider client={queryClient}>
-          {/* 🌟 用 AudioProvider 把路由套件包起來 */}
-          <AudioProvider>
-            <RouterProvider router={router} context={{ queryClient }} />
-          </AudioProvider>
-        </QueryClientProvider>
-      </ThemeProvider>
-    </LangProvider>
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   </StrictMode>,
 );
