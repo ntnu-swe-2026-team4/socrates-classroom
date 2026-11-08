@@ -52,7 +52,8 @@ test("S01: successful logout removes private reports from the shared client", as
         </AppShell>
       </QueryClientProvider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Teacher · Sign out" }));
+    fireEvent.click(screen.getByRole("button", { name: "Account" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(calls.navigate).toHaveBeenCalled());
     expect(client.getQueryData(["report", "activity-1"])).toBeUndefined();
   } finally {

@@ -1,407 +1,233 @@
 import { useEffect, useState } from "react";
+import { onOpenAccountSheet } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ChartNoAxesColumn,
-  Globe,
-  MessageSquare,
-  Moon,
-  PanelLeft,
-  Plus,
-  Search,
-  Settings,
-  SquareActivity,
-  Sun,
-  User,
-} from "lucide-react";
+import { CircleUserRound, GraduationCap, Home, KeyRound, Menu, Moon, Sun, X } from "lucide-react";
 import { api } from "@/api";
-import { readActivityId, readTermHistory } from "@/api/local";
-import { cn } from "@/components/ui";
-import { locales, setLocale, useI18n, type Locale } from "@/i18n";
+import { Initial, cn } from "@/components/ui";
+import { LANGS, setLocale, useI18n, type Locale } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
 
-const SLOTS_COLLAPSED_ROW =
-  "flex h-9 w-9 items-center justify-center rounded-xl text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink";
-const DRAWER_ROW =
-  "flex h-9 items-center gap-2.5 rounded-xl px-2.5 text-[13.5px] text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink";
-const ROW_ACTIVE = "bg-paper-deep text-ink";
+const BARE_ROUTES = [/^\/$/, /^\/login\/?$/];
+
+const NAV_BTN =
+  "flex w-[72px] flex-col items-center gap-1 rounded-md py-2.5 text-[11.5px] text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink-soft";
+const NAV_ACTIVE = "bg-ember-wash text-ember hover:bg-ember-wash hover:text-ember";
+
+const NAV = [
+  { to: "/home", label: "nav_home", icon: Home, match: ["/home"] },
+  {
+    to: "/classrooms",
+    label: "nav_classrooms",
+    icon: GraduationCap,
+    match: ["/classrooms", "/join", "/dialogue", "/t/", "/report"],
+  },
+] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  if (BARE_ROUTES.some((re) => re.test(pathname))) return <>{children}</>;
+  return <RailShell pathname={pathname}>{children}</RailShell>;
+}
+
+function RailShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const { t, locale } = useI18n();
   const theme = useTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [expanded, setExpanded] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [localeOpen, setLocaleOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
-  const termHistory = useQuery({ queryKey: ["termHistory"], queryFn: () => readTermHistory() });
   const logout = useMutation({
     mutationFn: () => api.logout(),
     onSuccess: async () => {
+      setAccountOpen(false);
+      queryClient.clear();
       queryClient.setQueryData(["me"], null);
-      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "me" });
       await navigate({ to: "/" });
     },
   });
-
   const isTeacher = me.data?.role === "teacher";
-  const [currentActivityId, setCurrentActivityId] = useState<string | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read on every navigation (mock localStorage semantics; becomes server-backed with the http client)
+  useEffect(() => onOpenAccountSheet(() => setAccountOpen(true)), []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: close overlays on every navigation
   useEffect(() => {
-    setCurrentActivityId(readActivityId());
+    setDrawerOpen(false);
+    setAccountOpen(false);
   }, [pathname]);
 
-  const actions = [
-    {
-      to: "/dialogue",
-      match: "/dialogue",
-      label: t("nav_dialogue"),
-      icon: <MessageSquare size={17} strokeWidth={1.6} />,
-    },
-    ...(currentActivityId
-      ? [
-          {
-            to: "/report/$id",
-            params: { id: currentActivityId },
-            match: "/report",
-            label: t("nav_reports"),
-            icon: <ChartNoAxesColumn size={17} strokeWidth={1.6} />,
-          },
-        ]
-      : []),
-    ...(isTeacher
-      ? [
-          { to: "/t/setup", match: "/t/setup", label: t("nav_setup"), icon: <Plus size={17} strokeWidth={1.6} /> },
-          ...(currentActivityId
-            ? [
-                {
-                  to: "/t/live/$id",
-                  params: { id: currentActivityId },
-                  match: "/t/live",
-                  label: t("nav_live"),
-                  icon: <SquareActivity size={17} strokeWidth={1.6} />,
-                },
-              ]
-            : []),
-        ]
-      : []),
-    ...(isTeacher
-      ? [
-          {
-            to: "/settings",
-            match: "/settings",
-            label: t("nav_settings"),
-            icon: <Settings size={17} strokeWidth={1.6} />,
-          },
-        ]
-      : []),
-  ];
+  const themeTip = t("theme_toggle");
 
-  const terms = termHistory.data ?? [];
-  const q = search.trim().toLowerCase();
-  const matchedTerms = q ? terms.filter((item) => item.term.toLowerCase().includes(q)) : terms;
-
-  function navLink(item: (typeof actions)[number], collapsed: boolean) {
-    const active = pathname === item.match || pathname.startsWith(`${item.match}/`);
-    return (
-      <Link
-        key={item.match}
-        to={item.to}
-        params={"params" in item ? item.params : undefined}
-        aria-label={item.label}
-        title={item.label}
-        onClick={() => setDrawerOpen(false)}
-        className={cn(collapsed ? SLOTS_COLLAPSED_ROW : DRAWER_ROW, active && ROW_ACTIVE)}
+  const rail = (
+    <nav className="flex h-full w-24 flex-col items-center gap-1 border-r border-line bg-card pb-5">
+      <button
+        type="button"
+        onClick={() => setAccountOpen(true)}
+        title={me.data?.name}
+        className="mb-5 flex h-topbar w-full shrink-0 cursor-pointer flex-col items-center justify-center gap-1.5 border-b border-line px-2"
       >
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center">{item.icon}</span>
-        {!collapsed && <span className="truncate">{item.label}</span>}
-      </Link>
-    );
-  }
+        <Initial name={me.data?.name ?? "詰"} />
+        <span className="line-clamp-2 max-w-full break-all text-center font-serif text-[12.5px] leading-snug tracking-[.04em] text-ink-soft">
+          {me.data?.name}
+        </span>
+      </button>
 
-  function sessionList() {
-    const empty = matchedTerms.length === 0;
-    if (empty) return <p className="px-2.5 text-[12.5px] text-ink-faint">{t("search_none")}</p>;
-    return (
-      <ul className="flex flex-col gap-0.5">
-        {matchedTerms.map((item) => (
-          <li key={item.at}>
-            <Link
-              to="/dialogue"
-              search={(prev) => ({ ...prev, term: item.term })}
-              onClick={() => setDrawerOpen(false)}
-              className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] text-ink-soft hover:bg-paper-deep hover:text-ink"
-            >
-              <Search size={14} strokeWidth={1.6} className="shrink-0" />
-              <span className="min-w-0 flex-1 truncate">{item.term}</span>
-              <span className="shrink-0 text-[11px] text-ink-faint">
-                {new Date(item.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    );
-  }
+      {NAV.map((item) => {
+        const active = item.match.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
+        const Icon = item.icon;
+        return (
+          <Link key={item.to} to={item.to} className={cn(NAV_BTN, active && NAV_ACTIVE)}>
+            <Icon className="size-5" />
+            <span>{t(item.label)}</span>
+          </Link>
+        );
+      })}
 
-  function footerCluster(collapsed: boolean) {
-    return (
-      <div
-        className={cn("flex items-center justify-between gap-2 border-t border-line/60 p-3", collapsed && "flex-col")}
+      <div className="flex-1" />
+
+      <button
+        type="button"
+        onClick={toggleTheme}
+        aria-label={themeTip}
+        title={themeTip}
+        className="mb-2 flex size-10 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-paper-deep text-ink-soft transition-colors hover:border-ember hover:text-ember"
       >
-        {me.data ? (
-          collapsed ? (
-            <button
-              type="button"
-              onClick={() => logout.mutate()}
-              title={`${me.data.name} · ${t("account_logout")}`}
-              aria-label={`${me.data.name} · ${t("account_logout")}`}
-              className="flex h-9 w-9 items-center justify-center"
-            >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-ember-wash font-serif text-[13px] text-ember">
-                {me.data.name.slice(0, 1)}
-              </span>
-            </button>
-          ) : (
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ember-wash font-serif text-[13px] text-ember">
-                {me.data.name.slice(0, 1)}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{me.data.name}</span>
-              <button
-                type="button"
-                onClick={() => logout.mutate()}
-                className="shrink-0 rounded-lg px-2 py-1 text-[12px] text-ink-faint hover:bg-paper-deep hover:text-ink"
-              >
-                {t("account_logout")}
-              </button>
-            </div>
-          )
-        ) : collapsed ? (
-          <Link to="/login" aria-label={t("login_title")} title={t("login_title")} className={SLOTS_COLLAPSED_ROW}>
-            <User size={18} strokeWidth={1.6} />
-          </Link>
-        ) : (
-          <Link to="/login" onClick={() => setDrawerOpen(false)} className={DRAWER_ROW}>
-            <User size={17} strokeWidth={1.6} />
-            <span>{t("login_title")}</span>
-          </Link>
-        )}
-
-        <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setLocaleOpen((v) => !v)}
-              aria-label={t("settings_lang")}
-              title={`${t("settings_lang")} · ${locale.toUpperCase()}`}
-              className={cn(
-                collapsed ? SLOTS_COLLAPSED_ROW : DRAWER_ROW,
-                "w-9 justify-center",
-                localeOpen && ROW_ACTIVE,
-              )}
-            >
-              <Globe size={17} strokeWidth={1.6} />
-            </button>
-            {localeOpen && (
-              <div
-                role="listbox"
-                className="absolute bottom-11 left-0 z-50 flex flex-col rounded-xl border border-line bg-card p-1 shadow-sm"
-              >
-                {locales.map((l: Locale) => (
-                  <button
-                    key={l}
-                    type="button"
-                    role="option"
-                    aria-selected={l === locale}
-                    onClick={() => {
-                      setLocale(l);
-                      setLocaleOpen(false);
-                    }}
-                    className={cn(
-                      "rounded-lg px-4 py-1.5 text-left text-[13px]",
-                      l === locale ? "bg-paper-deep font-medium text-ink" : "text-ink-soft",
-                    )}
-                  >
-                    {l === "zh-TW" ? "繁體中文" : l === "en" ? "English" : "Español"}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label={t("theme_toggle")}
-            title={t("theme_toggle")}
-            className={cn(collapsed ? SLOTS_COLLAPSED_ROW : DRAWER_ROW, "w-9 justify-center")}
-          >
-            {theme === "dark" ? <Sun size={17} strokeWidth={1.6} /> : <Moon size={17} strokeWidth={1.6} />}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  function searchBox(expand: boolean) {
-    if (!expand) {
-      return (
-        <button
-          type="button"
-          aria-label={t("nav_search")}
-          title={t("nav_search")}
-          onClick={() => {
-            setExpanded(true);
-            setDrawerOpen(false);
-          }}
-          className={SLOTS_COLLAPSED_ROW}
-        >
-          <Search size={18} strokeWidth={1.6} />
-        </button>
-      );
-    }
-    return (
-      <div className="relative px-3">
-        <Search size={15} strokeWidth={1.6} className="absolute top-1/2 left-5.5 -translate-y-1/2 text-ink-faint" />
-        <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder={t("search_placeholder")}
-          className="h-9 w-full rounded-xl border border-line bg-card pr-8 pl-9 text-[13px] text-ink placeholder:text-ink-faint focus:border-ember focus:outline-none"
-        />
-        {search && (
-          <button
-            type="button"
-            aria-label={t("common_clear")}
-            onClick={() => setSearch("")}
-            className="absolute top-1/2 right-5 -translate-y-1/2 text-ink-faint hover:text-ink"
-          >
-            <svg
-              viewBox="0 0 14 14"
-              className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.6]"
-              strokeLinecap="round"
-              aria-hidden
-            >
-              <path d="m3 3 8 8M11 3l-8 8" />
-            </svg>
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  function drawerBody() {
-    return (
-      <>
-        <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-          <Link to="/" className="flex h-9 items-center gap-2">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink font-serif text-[15px] font-semibold text-paper">
-              詰
-            </span>
-            <span className="font-serif text-[15px] font-semibold text-ink">{t("app_name")}</span>
-          </Link>
-          <button
-            type="button"
-            aria-label={t("menu_open")}
-            onClick={() => setExpanded(false)}
-            className="ml-auto flex h-9 w-9 items-center justify-center rounded-xl text-ink-faint hover:bg-paper-deep hover:text-ink"
-          >
-            <PanelLeft size={18} strokeWidth={1.6} />
-          </button>
-        </div>
-
-        <nav className="flex flex-col gap-0.5 px-3">{actions.map((item) => navLink(item, false))}</nav>
-
-        <div className="mt-4 flex min-h-0 flex-1 flex-col">
-          <div className="px-3 pb-2">{searchBox(true)}</div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-3">{sessionList()}</div>
-        </div>
-
-        {footerCluster(false)}
-      </>
-    );
-  }
-
-  function railCollapsed() {
-    return (
-      <>
-        <button
-          type="button"
-          aria-label={t("menu_open")}
-          title={t("menu_open")}
-          onClick={() => setExpanded(true)}
-          className={cn(SLOTS_COLLAPSED_ROW, "text-ink-faint")}
-        >
-          <PanelLeft size={18} strokeWidth={1.6} />
-        </button>
-
-        <Link
-          to="/"
-          aria-label={t("app_name")}
-          title={t("app_name")}
-          className="mt-2 flex h-9 w-9 items-center justify-center"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink font-serif text-[15px] font-semibold text-paper">
-            詰
-          </span>
-        </Link>
-
-        <nav className="mt-4 flex flex-col items-center gap-1">{actions.map((item) => navLink(item, true))}</nav>
-
-        <div className="mt-auto flex flex-col items-center gap-1 pb-4">
-          <button
-            type="button"
-            aria-label={t("nav_search")}
-            title={t("nav_search")}
-            onClick={() => {
-              setExpanded(true);
-              setDrawerOpen(false);
-            }}
-            className={SLOTS_COLLAPSED_ROW}
-          >
-            <Search size={18} strokeWidth={1.6} />
-          </button>
-
-          {footerCluster(true)}
-        </div>
-      </>
-    );
-  }
+        {theme === "dark" ? <Moon className="size-[19px]" /> : <Sun className="size-[19px]" />}
+      </button>
+      <button
+        type="button"
+        onClick={() => setAccountOpen(true)}
+        className="flex w-[72px] cursor-pointer flex-col items-center gap-1 rounded-md border border-line-strong py-2 text-[10.5px] text-ink-faint hover:text-ink-soft"
+      >
+        <CircleUserRound className="size-[15px]" />
+        <span>{t("account_title")}</span>
+      </button>
+    </nav>
+  );
 
   return (
-    <div className="flex min-h-dvh bg-paper">
-      <aside
-        className={cn(
-          "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-line/60 bg-paper transition-[width] duration-200 md:flex",
-          expanded ? "w-72" : "w-16 items-center py-3",
-        )}
-      >
-        {expanded ? drawerBody() : railCollapsed()}
-      </aside>
+    <div className="flex h-dvh bg-paper text-ink">
+      <aside className="relative hidden h-dvh shrink-0 md:block">{rail}</aside>
 
       <button
         type="button"
         aria-label={t("menu_open")}
         onClick={() => setDrawerOpen(true)}
-        className="fixed left-3 top-3 z-40 flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-card/90 text-ink-soft backdrop-blur md:hidden"
+        className="fixed top-6 left-3 z-40 flex size-10 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-card text-ink-soft md:hidden"
       >
-        <PanelLeft size={18} strokeWidth={1.6} />
+        <Menu className="size-[18px]" />
       </button>
 
       {drawerOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" onClick={() => setDrawerOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-72 flex-col border-r border-line bg-paper">
-            <div className="flex min-h-0 flex-1 flex-col">{drawerBody()}</div>
-          </aside>
+          <div className="anim-fade absolute inset-0 bg-black/40" onClick={() => setDrawerOpen(false)} />
+          <aside className="absolute inset-y-0 left-0">{rail}</aside>
         </div>
       )}
 
-      <main className="min-w-0 flex-1">{children}</main>
+      <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
+
+      {accountOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="anim-fade absolute inset-0 bg-black/40" onClick={() => setAccountOpen(false)} />
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="account-title"
+            className="anim-sheet absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-paper p-6 shadow-xl"
+          >
+            <button
+              type="button"
+              aria-label={t("common_back")}
+              onClick={() => setAccountOpen(false)}
+              className="absolute top-4 right-4 flex size-8 cursor-pointer items-center justify-center rounded-full text-ink-faint hover:bg-paper-deep hover:text-ink"
+            >
+              <X className="size-4" />
+            </button>
+            <h2 id="account-title" className="font-serif text-lg">
+              {t("account_title")}
+            </h2>
+            <p className="mb-5 text-[13px] text-ink-faint">{t("app_sub")}</p>
+
+            {me.data && (
+              <div className="mb-4 flex items-center gap-4 rounded-2xl bg-paper-deep px-4 py-3">
+                <Initial name={me.data.name} className="size-12 text-lg" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-serif text-[15px]">{me.data.name}</div>
+                  <div className="text-[12.5px] text-ink-faint">
+                    {t("account_role")} · {isTeacher ? t("role_teacher") : t("role_student")}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {me.data && <NameDisplay key={me.data.id} name={me.data.name} />}
+
+            <div className="mb-4 rounded-2xl bg-paper-deep px-4 py-3 text-sm">
+              <div className="mb-2" id="account-lang">
+                {t("settings_lang")}
+              </div>
+              <div
+                role="radiogroup"
+                aria-labelledby="account-lang"
+                className="inline-flex gap-0.5 rounded-full border border-line-strong bg-card p-0.5"
+              >
+                {LANGS.map((l) => (
+                  // biome-ignore lint/a11y/useSemanticElements: language switch is a button-based radio group
+                  <button
+                    key={l.code}
+                    type="button"
+                    role="radio"
+                    aria-checked={locale === l.code}
+                    lang={l.code}
+                    onClick={() => setLocale(l.code as Locale)}
+                    className={cn(
+                      "cursor-pointer rounded-full px-4 py-1.5 text-[13px]",
+                      locale === l.code ? "bg-ember font-semibold text-on-ember" : "text-ink-soft hover:text-ink",
+                    )}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {isTeacher && (
+              <Link
+                to="/settings"
+                className="mb-4 flex items-center gap-3 rounded-2xl bg-paper-deep px-4 py-3 text-sm hover:text-ember"
+              >
+                <KeyRound className="size-4" />
+                <span className="flex-1">{t("settings_byok")}</span>
+                <span aria-hidden="true">›</span>
+              </Link>
+            )}
+
+            <button
+              type="button"
+              onClick={() => logout.mutate()}
+              disabled={logout.isPending}
+              className="mt-auto h-10 w-full cursor-pointer rounded-full bg-paper-deep text-sm font-medium text-flag transition-colors hover:bg-flag-wash"
+            >
+              {t("account_logout")}
+            </button>
+          </aside>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NameDisplay({ name }: { name: string }) {
+  const { t } = useI18n();
+  return (
+    <div className="mb-4 flex items-center gap-4 rounded-2xl bg-paper-deep px-4 py-3">
+      <Initial name={name} className="size-12 text-lg" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-serif text-[15px]">{name}</div>
+        <div className="text-[12.5px] text-ink-faint">{t("account_name_hint")}</div>
+      </div>
     </div>
   );
 }

@@ -11,9 +11,12 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DialogueRouteImport } from './routes/dialogue'
+import { Route as HomeRouteImport } from './routes/home'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ClassroomsIndexRouteImport } from './routes/classrooms.index'
+import { Route as ClassroomsClassroomIdRouteImport } from './routes/classrooms.$classroomId'
 import { Route as JoinIndexRouteImport } from './routes/join.index'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as ReportIdRouteImport } from './routes/report.$id'
@@ -30,6 +33,11 @@ const DialogueRoute = DialogueRouteImport.update({
   path: '/dialogue',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HomeRoute = HomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const JoinRoute = JoinRouteImport.update({
   id: '/join',
   path: '/join',
@@ -43,6 +51,16 @@ const LoginRoute = LoginRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClassroomsIndexRoute = ClassroomsIndexRouteImport.update({
+  id: '/classrooms/',
+  path: '/classrooms/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClassroomsClassroomIdRoute = ClassroomsClassroomIdRouteImport.update({
+  id: '/classrooms/$classroomId',
+  path: '/classrooms/$classroomId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JoinIndexRoute = JoinIndexRouteImport.update({
@@ -74,23 +92,29 @@ const TLiveIdRoute = TLiveIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dialogue': typeof DialogueRoute
+  '/home': typeof HomeRoute
   '/join': typeof JoinRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
   '/t/setup': typeof TSetupRoute
+  '/classrooms/': typeof ClassroomsIndexRoute
   '/join/': typeof JoinIndexRoute
   '/t/live/$id': typeof TLiveIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dialogue': typeof DialogueRoute
+  '/home': typeof HomeRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
   '/t/setup': typeof TSetupRoute
+  '/classrooms': typeof ClassroomsIndexRoute
   '/join': typeof JoinIndexRoute
   '/t/live/$id': typeof TLiveIdRoute
 }
@@ -98,12 +122,15 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dialogue': typeof DialogueRoute
+  '/home': typeof HomeRoute
   '/join': typeof JoinRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
   '/t/setup': typeof TSetupRoute
+  '/classrooms/': typeof ClassroomsIndexRoute
   '/join/': typeof JoinIndexRoute
   '/t/live/$id': typeof TLiveIdRoute
 }
@@ -112,35 +139,44 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dialogue'
+    | '/home'
     | '/join'
     | '/login'
     | '/settings'
+    | '/classrooms/$classroomId'
     | '/join/$code'
     | '/report/$id'
     | '/t/setup'
+    | '/classrooms/'
     | '/join/'
     | '/t/live/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/dialogue'
+    | '/home'
     | '/login'
     | '/settings'
+    | '/classrooms/$classroomId'
     | '/join/$code'
     | '/report/$id'
     | '/t/setup'
+    | '/classrooms'
     | '/join'
     | '/t/live/$id'
   id:
     | '__root__'
     | '/'
     | '/dialogue'
+    | '/home'
     | '/join'
     | '/login'
     | '/settings'
+    | '/classrooms/$classroomId'
     | '/join/$code'
     | '/report/$id'
     | '/t/setup'
+    | '/classrooms/'
     | '/join/'
     | '/t/live/$id'
   fileRoutesById: FileRoutesById
@@ -148,11 +184,14 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DialogueRoute: typeof DialogueRoute
+  HomeRoute: typeof HomeRoute
   JoinRoute: typeof JoinRouteWithChildren
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
+  ClassroomsClassroomIdRoute: typeof ClassroomsClassroomIdRoute
   ReportIdRoute: typeof ReportIdRoute
   TSetupRoute: typeof TSetupRoute
+  ClassroomsIndexRoute: typeof ClassroomsIndexRoute
   TLiveIdRoute: typeof TLiveIdRoute
 }
 
@@ -170,6 +209,13 @@ declare module '@tanstack/react-router' {
       path: '/dialogue'
       fullPath: '/dialogue'
       preLoaderRoute: typeof DialogueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/home': {
+      id: '/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof HomeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/join': {
@@ -191,6 +237,20 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/classrooms/': {
+      id: '/classrooms/'
+      path: '/classrooms'
+      fullPath: '/classrooms/'
+      preLoaderRoute: typeof ClassroomsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/classrooms/$classroomId': {
+      id: '/classrooms/$classroomId'
+      path: '/classrooms/$classroomId'
+      fullPath: '/classrooms/$classroomId'
+      preLoaderRoute: typeof ClassroomsClassroomIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/join/': {
@@ -246,11 +306,14 @@ const JoinRouteWithChildren = JoinRoute._addFileChildren(JoinRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DialogueRoute: DialogueRoute,
+  HomeRoute: HomeRoute,
   JoinRoute: JoinRouteWithChildren,
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
+  ClassroomsClassroomIdRoute: ClassroomsClassroomIdRoute,
   ReportIdRoute: ReportIdRoute,
   TSetupRoute: TSetupRoute,
+  ClassroomsIndexRoute: ClassroomsIndexRoute,
   TLiveIdRoute: TLiveIdRoute,
 }
 export const routeTree = rootRouteImport
