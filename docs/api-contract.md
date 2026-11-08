@@ -15,7 +15,7 @@
 | 錯誤     | `{ "message": string, "code": string }`；`code` 為 shared 的 `ErrorCode` literal union（§10），`message` 已本地化                                                    |
 | 輸入邊界 | zod 強制：`name` ≤80、對話 `text` ≤2000、`term` 1–30、`direction` ≤200、STT 音檔 ≤60s；超界 `422 validation`                                                         |
 | 授權     | 預設 deny——見 §1.1；未列者一律需登入且屬教室成員                                                                                                                     |
-| 限流     | per-user（#103）；未登入可打的端點（§1.1 訪客欄 ✅ 者）加 per-IP tier；超限 `429`                                                                                    |
+| 限流     | 現行：login/register/join per-IP（isolate-local sliding window）；LLM 成本端點的 per-user 限流為 #103 待辦，非現行行為                                               |
 | 冪等     | 自然鍵冪等：重複 `POST /api/join`（同身分）＝200 冪等、`finish` 重試安全、`PUT settings/*` 天然冪等                                                                  |
 | 版本     | `/api` 無版本前綴（單一消費者）；外部消費者出現時才評版本化＋OpenAPI                                                                                                 |
 | 型別共享 | `RpcApp = ReturnType<typeof createApp>`＋`RpcApi = ReturnType<typeof createApi>`（`apps/server/src/app.ts`）；web 端消費 declaration 產物 `hc<RpcApi>("/api")`（R6） |
@@ -31,8 +31,8 @@
 | `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —    | ❌ 403                | ✅               |
 | `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —    | —                     | ✅               |
 | `GET /activities/:id`、`GET /report`                                                                    | —    | 需教室成員            | 需教室成員       |
-| **WS** `/agents/chat/:name`                                                                             | —    | 需教室成員            | ❌（對話僅學生） |
-| `GET /activities/:id/live`、`POST …/finish`                                                             | —    | ❌ 403                | 需教室成員       |
+| **WS** `/agents/chat/:name`                                                                             | —    | 僅本人 thread         | ✅（可觀察全班） |
+| `POST /activities/:id/finish`                                                                           | —    | ❌ 403                | 需教室成員       |
 
 ## 2. 身分（雙軌：訪客即玩＋帳號選用，#67）
 

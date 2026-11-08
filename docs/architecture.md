@@ -10,10 +10,10 @@
 | D1  | 單一 Worker：Hono API + 前端 assets + PiAgent DO 同包                                            | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS               |
 | D2  | App 資料放 **D1**；Pi transcript 留在 DO 自己的 SQLite（`pi_*` 表）                              | 共享關聯資料 vs agent 私有狀態，各放各的                       |
 | D3  | 對話執行緒 = 一個 DO instance（`idFromName(scope:id)`）                                          | 天然序列化、互不干擾、Pi inbox 排隊                            |
-| D4  | 前端契約不變：DO 內把 `session.events()` 轉回現有 SSE（`delta/emotion/done/error`）              | 前端零改動上線；WebSocket + steer 列 Phase 3                   |
+| D4  | 對話走 WebSocket（`/agents/chat/:name`，view＋chord ops），SSE 已於 web-next 重建時退役          | 單一真相在 pi transcript；前端 applyImmutable 套件             |
 | D5  | 全 Node 化（npm workspaces + vitest）；cf 指令走 Node ≥22.23                                     | `cf` 載 `cloudflare.config.ts` 不支援 Bun；server 已無 Bun API |
 | D6  | Provider pool：自架(CF Tunnel) → opencode-go → OpenRouter → Workers AI，**全 ZDR、鎖模型白名單** | 學生資料不落地；Coding Plan 只開發用                           |
-| D7  | 產品級 BYOK：學生可填自己的 OpenRouter key（加密存 D1，強制 `zdr`）                              | 一人一帳號，共享條款問題消失                                   |
+| D7  | Teacher keys：老師一 provider 一把 key（#82），學生無 BYOK 入口，byok 端點已退役                 | 學生流量一律走平台鏈，ZDR 責任單一                             |
 | D8  | CI/CD：GitHub Actions 官方 cf 範本（build once → dry-run → `--prebuilt` deploy）                 | cf 無官方 action，純 steps 是欽定方式                          |
 
 ## 1. 系統拓撲
@@ -30,7 +30,7 @@ flowchart TD
 
         HONO --> AUTH["auth：HMAC cookie＋PBKDF2（auth.ts）"]
         HONO --> ROUTES["routes/：auth／join／topics／classrooms／activity／voice／lookup／teacher-keys"]
-        ROUTES --> DB[("D1：users／classrooms／topics／activities／members／messages／violations／reports／pseudonyms／teacher_keys")]
+        ROUTES --> DB[("D1：users／classrooms／topics／activities／members／reports／pseudonyms／teacher_keys")]
         HONO --> VOICE["voice：whisper STT／melotts TTS（AI binding）"]
         HONO --> LOOKUP["lookup：runProfile(lookup)"]
         HONO --> GEN["topics/generate：runProfile(topic-gen)"]
@@ -156,10 +156,10 @@ startReport → pending 標記 → alarm → generate：
   transcriptOf（AI：…/學生（n）：… 編號＋假名冪等）
   → Promise.all 平行 per-student studentReport（重試 2）
   → classReport（立場軸/落點/分群）
-  → persist（D1 reports：teacher_report=classReport、student_reports=analysis+violations）
+  → persist（D1 reports：teacher_report=classReport、student_reports=analysis+violations-from-transcript）
 ```
 
-模型呼叫經 `runProfile("report-analyst")`（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片讀 violations 表（PR #109 設計保留）。
+模型呼叫經 `runProfile("report-analyst")`（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片從 pi transcript 抽取（`/transcript` 端點，不落第二份儲存）。
 
 ## 5. Routing（apps/server/src/routing/）
 
@@ -183,10 +183,10 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 
 ## 6. 資料層
 
-- **D1 schema**：`docs/api-contract.md` 契約不變。新增：`byok_keys(user_id PK, provider, key_encrypted, created_at)`（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`）；`files.path` 改存 R2 key
-- **R2**：`UPLOADS.put(id, stream)`；下載走 Worker 串流（權限檢查在 Hono 層，不開公開 bucket）
+- **D1 schema**：users／classrooms／topics／activities／members／reports／pseudonyms／teacher_keys（`migrations/001-003`）。`messages`／`violations` 死表已於 003 退役——pi transcript 是對話與違規的唯一真相
+- **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 routing 的 provider 鏈序（#82）
 - **DO SQLite**：只有 pi 自己的 `pi_*` 表，應用程式不讀寫——agent 狀態與產品資料分離（D2）
-- **保留政策**：對話文字存 D1（產品功能）；AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容
+- **保留政策**：AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容（judgment sink 只記 type/source）
 
 ## 7. 型別共享（packages/shared + Hono RPC）
 
@@ -247,9 +247,9 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 - **單 Worker**（D1）：對課堂規模，部署與心智負擔最小化優先於微服務彈性
 - **D1 vs DO SQLite**（D2）：D1 有 SQL 檔遷移、查詢分析、跨 DO 共享；pi 私有狀態本來就自帶 schema 管理
-- **SSE adapter 先行**（D4）：契約不變 = 前端與 API 測試零改動；WebSocket 的收益（斷線續傳快照）留給 Phase 3 一次拿
+- **WS 直上**（D4）：SSE adapter 於 web-next 重建時退役——pi transcript 是唯一真相，view＋chord ops 的快照恢復（斷線重連）原生免實作
 - **鎖模型而非鎖 provider**（D6）：ZDR 是模型級承諾（opencode-go 表內混有 30 天/會訓練的模型）
-- **BYOK 加密**（D7）：`BYOK_ENC_KEY` AES-GCM；key 永不進 log、永不回前端明文
+- **Teacher keys 加密**（D7）：`BYOK_ENC_KEY` AES-GCM；key 永不進 log、永不回前端明文；學生無 BYOK 入口（#82 定案）
 
 ## 12. 風險與對策
 

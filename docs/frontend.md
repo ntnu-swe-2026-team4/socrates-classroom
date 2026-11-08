@@ -25,7 +25,7 @@ flowchart LR
         F --> G["/report/:id　報告頁"]
     end
     D --> G
-    C --> H["/settings　BYOK/語言"]
+    C --> H["/settings　語言"]
     subgraph rail[rail 可達（PR #108 收編）]
         J["/home　首頁"] --> K["/classrooms　教室列表"]
         K --> L["/classrooms/:id　教室詳情"]
@@ -43,9 +43,9 @@ flowchart LR
 | 3   | `/login`          | 帳號登入             | 老師／回訪者         | email＋密碼。訪客不經此頁                                                                              | #67                |
 | 4   | `/t/setup`        | 開課（教室＋主題集） | 老師                 | 建教室→主題集三來源（既有／自訂／AI 生成）→連結/QR。零配置可直開                                       | #77、#66           |
 | 5   | `/dialogue`       | 對話頁 ★             | 學生                 | 主題標題＋對話流＋按住說話＋文字框＋頭像（DialogueView 元件：頭像側欄可收合）；查詢／STT／TTS 內嵌於此 | #68、#69、#76      |
-| 6   | `/t/live/:id`     | 即時面板             | 老師                 | 每生一列：狀態／輪數／違規標記（WS），需關注者置頂                                                     | #73、#101          |
+| 6   | `/t/live/:id`     | 即時面板             | 老師                 | 資料源（#73）尚未接線——頁面顯示待上線提示；結束活動按鈕可用                                            | #73、#101          |
 | 7   | `/report/:id`     | 報告頁               | 老師＋學生（看自己） | 群體：維度漸展星圖＋分群；單人：論點總結＋六角圖；同頁兩視角、去識別化                                 | #74、#78、#79、#72 |
-| 8   | `/settings`       | 設定                 | 老師                 | BYOK key（顯示 last4）＋介面語言。學生經 account sheet（名字顯示＋登出），無此頁入口                   | #82                |
+| 8   | `/settings`       | 設定                 | 老師                 | 介面語言。學生經 account sheet（名字顯示＋登出），無此頁入口                                           | —                  |
 | 9   | `/home`           | 首頁                 | 所有人（rail）       | greeting＋教室統計/動態；solo 提問表單未收（待設計拍板）                                               | PR #108            |
 | 10  | `/classrooms`     | 教室列表             | 所有人（rail）       | 我的教室（`GET /classrooms`；老師見 code/QR，學生見成員視角）                                          | PR #108            |
 | 11  | `/classrooms/:id` | 教室詳情             | 成員                 | 當前活動（進對話/面板/報告）＋老師：QR 邀請＋重開活動（`startActivity`）；資料以列表 select 過濾       | PR #108            |

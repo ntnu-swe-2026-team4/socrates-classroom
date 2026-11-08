@@ -2,6 +2,29 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-09 — 深度審查修復（10 項 blocking＋MINOR，`experiment/web-next`）
+
+### Fixed
+
+- no queue 非談判項 server 端強制：`#dispatch` 寫死 `whenBusy: "reject"`，protocol 移除客户端欄位（#110）
+- Secrets fail-fast：`AUTH_SECRET`／`BYOK_ENC_KEY` 移除 `"socrates-dev-secret"` 回退，缺 secret 即 throw；偽造 cookie 不再 500
+- teacher-keys：`sort_order` off-by-one（`COALESCE(MAX,-1)+1`）＋重複 `PUT /order` 刪除＋改走 `db/d1.ts` batch
+- STT 不再偽造轉寫：mock 值限 `LLM_PROVIDER=mock`；生產缺 binding／失敗 → 502 `llm_unavailable`；result-body log 刪除；judgment sink 只記 type/source（ZDR）
+- Routing ledger 生命週期：`getRouter(env)`（WeakMap，isolate 級共享）——cooldown/dead 跨請求生效；`pick()` 加 `canServe` 謂詞（只挑 models registry 可解析的 provider，記帳不再錯配）；`oneshot.ts` 零呼叫者退役
+- Websearch：`ResponseStore` 改 per-extension instance（10k 併發下跨 thread 不互逐）；`fetch_content` 逐 hop 重驗 redirect（SSRF）、`::ffff:` IPv4-mapped IPv6、串流限量讀取＋20s timeout
+- WS 斷線復原：`onConnectionError` 接線（清 pending、回 idle、呈現錯誤）；重連 `view` 快照偵測孤兒 run 完成併收斂；`reattach` 迴圈全部 sockets
+- byok 退役：端點／`byok_keys` 表／settings 頁接線／i18n keys 全數移除（#82 學生無 BYOK 定案）
+- login 開放學生（register 建的帳號可登入）；register user＋member 改 batch 原子寫入；新增 register→login 測試
+- 10k 併發：report 批次寬度 mock fallback 8（原全班無界並行）；pseudonym 改 `prefix＋序號`（原 %26 撞名）；transcript 取最新 1000 筆（原取最舊）；ipHits 有界清理
+- `pnpm seed` 修復（apps/server 補 seed script）；CI `pnpm -r test`（web 測試 34 條首次進 CI）；`frontend-review-tests/` scaffolding 刪除
+- `/t/live/:id` gate 到 #73：頁面顯示待上線提示（原每 2.5s 輪詢不存在的端點）；`liveStudents` 客户端方法退役
+- 報告頁 `report_pending` 輪詢耗盡後改手動重試（原無限 spinner）；AudioContext 錄音啟動失敗路徑 close（Chrome 上限洩漏）
+
+### Changed
+
+- Docs SSOT 對齊：README（產品段/結構樹/SSE→WS/R2 移除）、feature.md 全文重寫（v3 四階段/題庫/社群/檔案 → v4 現況 25 端點）、architecture（D4/D7 決策更新、violations 表投影移除）、api-contract（§1.1 WS 老師可觀察、限流標為 #103 待辦）、providers（BYOK 三層次標 #82 定案）
+- Migration 003：`byok_keys`／`messages`／`violations` 死表退役（pi transcript 唯一真相）
+
 ## 2026-11-09 — 後端依 pi 兩原則重建＋前端對齊（`experiment/web-next`）
 
 ### Added

@@ -1,6 +1,6 @@
 # AGENTS.md — Socrates Classroom (詰問 · 蘇格拉底對話教室)
 
-A classroom debate platform: Socratic one-on-one dialogue, four-stage classroom debates, multi-student discussions, and a stance star-map — running on **Cloudflare Workers** (Hono API + React SPA as static assets) with D1, R2, and a Pi Durable dialogue engine.
+A classroom debate platform: Socratic one-on-one dialogue, teacher-run classrooms with per-student reports, and a stance star-map — running on **Cloudflare Workers** (Hono API + React SPA as static assets) with D1 and a Pi Durable dialogue engine.
 
 ## Language
 
@@ -16,7 +16,7 @@ A classroom debate platform: Socratic one-on-one dialogue, four-stage classroom 
 ```bash
 pnpm install                        # pnpm ≥ 12, Node ≥ 26.12 (the cf CLI does not support Bun)
 prek install                        # git pre-commit hooks (biome / yamllint / whitespace); needs prek
-pnpm dev                        # full-stack dev (vite + workerd + local D1/R2) → http://localhost:5173
+pnpm dev                        # full-stack dev (vite + workerd + local D1) → http://localhost:5173
 pnpm test                           # vitest-pool-workers (real Worker runtime, mock LLM)
 pnpm lint && pnpm typecheck         # must be green before any PR
 ```
@@ -30,7 +30,7 @@ pnpm lint && pnpm typecheck         # must be green before any PR
 - `packages/shared` — API contract types (single source of truth; changing a type means syncing server and web)
 - `apps/server/src/prompts/` — prompt assets (`socrates.md` injected at build time as the system prompt; edit → redeploy takes effect); provider config lives in `apps/server/providers.config.yaml` (build-time compiled)
 - `.agents/skills/` — third-party Agent Skills (sources pinned in `skills-lock.json`; update with `npx skills update`, add with `npx skills add … -p`). Project-specific knowledge belongs in `docs/` and the AGENTS.md files — not new skills
-- Data: D1 (`apps/server/migrations/`), uploads in R2
+- Data: D1 (`apps/server/migrations/`)
 
 ## Engineering priorities
 
@@ -46,7 +46,7 @@ pnpm lint && pnpm typecheck         # must be green before any PR
 
 ## Testing
 
-- `pnpm test` = vitest-pool-workers (real runtime + local D1/R2/DO; LLM mocked)
+- `pnpm test` = vitest-pool-workers (real runtime + local D1/DO; LLM mocked)
 - The WebSocket dialogue protocol (`ws/protocol.ts`: view + chord ops) asserted in `tests/chat.test.ts` must never break; REST shapes follow `docs/api-contract.md`
 - Single test: `pnpm --filter @socrates/server exec vitest run -t "<name>"`
 
