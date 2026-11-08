@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { JoinInputSchema } from "@socrates/shared";
-import { one, run } from "../db/d1";
+import { batch, one, run } from "../db/d1";
 import { startSession } from "../auth";
 import { enforceIpLimit, fail, newId, nowIso, parseBody, type AppEnv } from "../http";
 import { topicOf, type ClassroomRow } from "../services/members";
@@ -55,22 +55,31 @@ export function joinRoutes() {
         );
         if (clash) fail(409, "name_taken");
         const id = newId("u_");
-        await run(c.env.DB, "INSERT INTO users (id, name, role, created_at) VALUES ($id, $name, 'student', $at)", {
-          id,
-          name,
-          at,
-        });
+        try {
+          await batch(c.env.DB, [
+            {
+              sql: "INSERT INTO users (id, name, role, created_at) VALUES ($id, $name, 'student', $at)",
+              params: { id, name, at },
+            },
+            {
+              sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
+              params: { cid: classroom.id, uid: id, name, at },
+            },
+          ]);
+        } catch {
+          fail(409, "name_taken");
+        }
         sessionUser = { id, name, role: "student" as const };
         await startSession(c, sessionUser);
-      } else {
-        const clash = await one<{ user_id: string }>(
-          c.env.DB,
-          "SELECT user_id FROM members WHERE classroom_id = $cid AND name = $name",
-          { cid: classroom.id, name: sessionUser.name },
-        );
-        if (clash && clash.user_id !== sessionUser.id) fail(409, "name_taken");
+        return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
       }
 
+      const clash = await one<{ user_id: string }>(
+        c.env.DB,
+        "SELECT user_id FROM members WHERE classroom_id = $cid AND name = $name",
+        { cid: classroom.id, name: sessionUser.name },
+      );
+      if (clash && clash.user_id !== sessionUser.id) fail(409, "name_taken");
       try {
         await run(
           c.env.DB,
