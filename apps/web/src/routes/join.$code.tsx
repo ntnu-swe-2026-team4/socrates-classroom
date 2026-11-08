@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api";
-import { Button, Checkbox, Field, Input, Spinner } from "@/components/ui";
+import { Button, Card, Checkbox, Field, Input, PageHeader, Spinner } from "@/components/ui";
 import { useT } from "@/i18n";
+import { normalizeJoinCode } from "@/lib/joinCode";
 
 export const Route = createFileRoute("/join/$code")({
   validateSearch: (search: Record<string, unknown>): { draft?: string } => ({
@@ -13,7 +14,8 @@ export const Route = createFileRoute("/join/$code")({
 });
 
 function JoinPage() {
-  const { code } = Route.useParams();
+  const { code: rawCode } = Route.useParams();
+  const code = normalizeJoinCode(rawCode);
   const { draft } = Route.useSearch();
   const t = useT();
   const navigate = useNavigate();
@@ -28,28 +30,11 @@ function JoinPage() {
     fetch("/socrates.glb", { priority: "low" }).catch(() => {});
   }, []);
 
-  if (info.isPending) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Spinner className="h-6 w-6" />
-      </div>
-    );
-  }
-  if (info.isError || !info.data) {
-    return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
-        <p className="text-[15px] text-ink-soft">{t("join_invalid")}</p>
-        <Button variant="outline" onClick={() => navigate({ to: "/" })}>
-          {t("common_back")}
-        </Button>
-      </div>
-    );
-  }
-
-  const topic = info.data.topic;
+  const topic = info.data?.topic;
   const ready = name.trim().length > 0 && tos && !submitting;
 
   async function start() {
+    if (!topic) return;
     setSubmitting(true);
     setFailed(false);
     try {
@@ -67,26 +52,46 @@ function JoinPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-14">
-      <p className="text-[13px] font-medium tracking-widest text-ink-faint">{t("join_title")}</p>
-      <h1 className="mt-3 font-serif text-3xl font-semibold text-ink">{topic.title}</h1>
-      <p className="mt-4 rounded-2xl border border-line bg-card p-4 text-[14.5px] leading-[1.85] text-ink-soft">
-        {topic.summary}
-      </p>
-      <div className="mt-8 flex flex-col gap-5">
-        {failed && <p className="text-[13px] text-ember">{t("join_failed")}</p>}
-        <Field label={t("join_name_label")}>
-          <Input
-            value={name}
-            placeholder={t("join_name_placeholder")}
-            maxLength={24}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </Field>
-        <Checkbox label={t("join_tos")} checked={tos} onCheckedChange={setTos} />
-        <Button size="lg" disabled={!ready} onClick={start} className="mt-2 w-full">
-          {submitting ? <Spinner /> : t("join_start")}
-        </Button>
+    <div className="flex min-h-full flex-col">
+      <PageHeader width="max-w-xl" eyebrow={t("hero_chip_join")} title={info.data?.classroomName ?? t("join_title")} />
+      <div className="mx-auto w-full max-w-xl px-6 py-8">
+        <Card className="p-7">
+          {info.isPending ? (
+            <div className="flex justify-center py-8">
+              <Spinner className="h-6 w-6" />
+            </div>
+          ) : info.isError || !topic ? (
+            <div className="flex flex-col items-start gap-4">
+              <p className="text-[15px] text-ink-soft">{t("join_invalid")}</p>
+              <Button variant="outline" onClick={() => void navigate({ to: "/" })}>
+                {t("common_back")}
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-5">
+              <div>
+                <p className="text-xs tracking-wider text-ink-faint">{t("join_title")}</p>
+                <h2 className="mt-1 font-serif text-2xl leading-snug">{topic.title}</h2>
+                <p className="mt-4 border-l-2 border-ember-deep pl-4 font-serif text-[15px] leading-8 text-ink-soft">
+                  {topic.summary ?? topic.statement}
+                </p>
+              </div>
+              {failed && <p className="text-[13px] text-flag">{t("join_failed")}</p>}
+              <Field label={t("join_name_label")}>
+                <Input
+                  value={name}
+                  placeholder={t("join_name_placeholder")}
+                  maxLength={24}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </Field>
+              <Checkbox label={t("join_tos")} checked={tos} onCheckedChange={setTos} />
+              <Button size="lg" disabled={!ready} onClick={() => void start()}>
+                {submitting ? <Spinner /> : t("join_start")}
+              </Button>
+            </div>
+          )}
+        </Card>
       </div>
     </div>
   );
