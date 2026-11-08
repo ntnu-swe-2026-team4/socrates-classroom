@@ -15,6 +15,8 @@
     "FAUX_TOKENS_PER_SECOND": "4",
     "PUBLIC_BASE_URL": "",
     "COOKIE_SECURE": "false",
-    "SEED_TOKEN": "dev-seed-token"
+    "SEED_TOKEN": "dev-seed-token",
+    "AUTH_SECRET": "test-auth-secret",
+    "BYOK_ENC_KEY": "test-byok-enc-key"
   }
 }

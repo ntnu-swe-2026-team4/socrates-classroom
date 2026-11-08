@@ -1,15 +1,8 @@
 import type { Env } from "./env";
 
-const ALLOWED = ["openrouter", "opencode-go"] as const;
-export type ByokProvider = (typeof ALLOWED)[number];
-
-export function isAllowedProvider(provider: string): provider is ByokProvider {
-  return (ALLOWED as readonly string[]).includes(provider);
-}
-
 async function aesKey(env: Env): Promise<CryptoKey> {
-  const secret = env.BYOK_ENC_KEY ?? "socrates-dev-secret";
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+  if (!env.BYOK_ENC_KEY) throw new Error("BYOK_ENC_KEY is not set");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(env.BYOK_ENC_KEY));
   return crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 

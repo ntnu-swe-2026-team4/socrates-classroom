@@ -27,8 +27,10 @@ function hmacKey(secret: string): Promise<CryptoKey> {
   return key;
 }
 
-function secretOf(ctx: { env: { AUTH_SECRET?: string; BYOK_ENC_KEY?: string } }): string {
-  return ctx.env.AUTH_SECRET ?? ctx.env.BYOK_ENC_KEY ?? "socrates-dev-secret";
+function secretOf(ctx: { env: { AUTH_SECRET?: string } }): string {
+  const secret = ctx.env.AUTH_SECRET;
+  if (!secret) throw new Error("AUTH_SECRET is not set");
+  return secret;
 }
 
 function b64url(bytes: Uint8Array): string {
@@ -49,10 +51,7 @@ async function sign(payload: string, secret: string): Promise<string> {
   return b64url(new Uint8Array(mac));
 }
 
-export async function issueSessionToken(
-  ctx: { env: { AUTH_SECRET?: string; BYOK_ENC_KEY?: string } },
-  user: User,
-): Promise<string> {
+export async function issueSessionToken(ctx: { env: { AUTH_SECRET?: string } }, user: User): Promise<string> {
   const claims: TokenClaims = {
     uid: user.id,
     name: user.name,
@@ -65,20 +64,20 @@ export async function issueSessionToken(
 }
 
 export async function userFromSessionToken(
-  ctx: { env: { AUTH_SECRET?: string; BYOK_ENC_KEY?: string } },
+  ctx: { env: { AUTH_SECRET?: string } },
   token: string | undefined,
 ): Promise<User | null> {
   if (!token) return null;
-  const [payload, sig] = token.split(".");
-  if (!payload || !sig) return null;
-  const expected = await sign(payload, secretOf(ctx));
-  if (expected.length !== sig.length) return null;
-  const a = fromB64url(sig);
-  const b = fromB64url(expected);
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a[i]! ^ b[i]!;
-  if (diff !== 0) return null;
   try {
+    const [payload, sig] = token.split(".");
+    if (!payload || !sig) return null;
+    const expected = await sign(payload, secretOf(ctx));
+    if (expected.length !== sig.length) return null;
+    const a = fromB64url(sig);
+    const b = fromB64url(expected);
+    let diff = 0;
+    for (let i = 0; i < a.length; i += 1) diff |= a[i]! ^ b[i]!;
+    if (diff !== 0) return null;
     const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as TokenClaims;
     if (claims.exp < Date.now()) return null;
     return { id: claims.uid, name: claims.name, role: claims.role };
