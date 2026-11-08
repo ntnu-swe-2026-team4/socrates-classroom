@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * 對本機 dev server（pnpm dev，預設 http://localhost:5173）灌示範資料。
- * SEED_TOKEN 讀取順序：環境變數 → apps/web/.env.local → apps/web/.env（與 Worker 的 var 同源）。
+ * Seeds demo data into the local dev server (pnpm dev, http://localhost:5173
+ * by default). SEED_TOKEN resolution: env var, then apps/web/.env.local,
+ * then apps/web/.env (same source as the Worker's vars).
  */
 import { readFileSync } from "node:fs";
 

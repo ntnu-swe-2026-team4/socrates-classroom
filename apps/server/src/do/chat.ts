@@ -136,7 +136,8 @@ export class Chat extends DurableObject<Env> {
   }
 
   async onRequest(request: Request): Promise<Response> {
-    if (new URL(request.url).pathname !== "/transcript") return new Response("Not found", { status: 404 });
+    const { pathname } = new URL(request.url);
+    if (pathname !== "/transcript") return new Response("Not found", { status: 404 });
     return Response.json(await this.transcript());
   }
 

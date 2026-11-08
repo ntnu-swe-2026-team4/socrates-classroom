@@ -119,6 +119,8 @@ export async function hashPassword(password: string): Promise<string> {
   return `pbkdf2$${PBKDF2_ITERATIONS}$${b64url(salt)}$${hash}`;
 }
 
+export const DUMMY_HASH = "pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
 export async function verifyPassword(password: string, stored: string | null): Promise<boolean> {
   if (!stored) return false;
   const [scheme, iterations, salt, hash] = stored.split("$");
@@ -130,5 +132,12 @@ export async function verifyPassword(password: string, stored: string | null): P
     256,
   );
   const computed = b64url(new Uint8Array(bits));
-  return computed.length === hash.length && computed === hash;
+  return timingSafeEqual(computed, hash);
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }

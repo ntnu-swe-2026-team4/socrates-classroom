@@ -69,7 +69,7 @@ export function topicsRoutes() {
           await teacherLegs,
         );
         const parsed = TopicGenSchema.safeParse(JSON.parse(text));
-        if (!parsed.success) throw new Error(`schema_mismatch: ${text.slice(0, 160)}`);
+        if (!parsed.success) throw new Error("schema_mismatch");
         return c.json(
           parsed.data.topics.map((topic, index) => ({
             id: `gen_${Date.now()}_${index}`,

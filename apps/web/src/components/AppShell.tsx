@@ -122,7 +122,16 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       {drawerOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="anim-fade absolute inset-0 bg-black/40" onClick={() => setDrawerOpen(false)} />
-          <aside className="absolute inset-y-0 left-0">{rail}</aside>
+          <aside
+            role="dialog"
+            aria-modal="true"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setDrawerOpen(false);
+            }}
+            className="absolute inset-y-0 left-0"
+          >
+            {rail}
+          </aside>
         </div>
       )}
 
@@ -135,6 +144,9 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
             role="dialog"
             aria-modal="true"
             aria-labelledby="account-title"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setAccountOpen(false);
+            }}
             className="anim-sheet absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-paper p-6 shadow-xl"
           >
             <button

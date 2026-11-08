@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { TtsInputSchema } from "@socrates/shared";
-import { fail, parseBody, requireUser, type AppEnv } from "../http";
+import { fail, langOf, parseBody, requireUser, type AppEnv } from "../http";
 import { routingConfig } from "../routing/config.gen";
 
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
@@ -75,7 +75,7 @@ export function voiceRoutes() {
       for (let offset = 0; offset < bytes.length; offset += 0x8000) {
         binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
       }
-      const input = { audio: btoa(binary), language: "zh" };
+      const input = { audio: btoa(binary), language: langOf(c) };
       try {
         const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
         const result = (await ai.run(routingConfig.voice.stt, input)) as { text?: string };

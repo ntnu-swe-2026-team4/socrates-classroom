@@ -25,7 +25,7 @@ pnpm lint && pnpm typecheck         # must be green before any PR
 
 ## Structure & data flow
 
-- `apps/web` — **the deployable full-stack project**: React SPA + `cloudflare.config.ts` + Vite config; `cf dev/build/deploy` run from here (dev secrets in `apps/web/.dev.vars`)
+- `apps/web` — **the deployable full-stack project**: React SPA + `cloudflare.config.ts` + Vite config; `cf dev/build/deploy` run from here (dev secrets in `apps/web/.env.local`)
 - `apps/server` — Worker source (Hono REST + Chat/ReportRunner Durable Objects + pi-durable extensions + routing) and the vitest setup (`wrangler.vitest.jsonc`); bundled by the build in `apps/web` via `entrypoint: ../server/src/index.ts`
 - `packages/shared` — API contract types (single source of truth; changing a type means syncing server and web)
 - `apps/server/src/prompts/` — prompt assets (`socrates.md` injected at build time as the system prompt; edit → redeploy takes effect); provider config lives in `apps/server/providers.config.yaml` (build-time compiled)

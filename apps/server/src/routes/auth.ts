@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { LoginInputSchema, RegisterInputSchema } from "@socrates/shared";
 import { all, batch, one } from "../db/d1";
-import { endSession, hashPassword, startSession, verifyPassword } from "../auth";
+import { DUMMY_HASH, endSession, hashPassword, startSession, verifyPassword } from "../auth";
 import { enforceIpLimit, fail, newId, nowIso, parseBody, type AppEnv } from "../http";
 
 interface UserRow {
@@ -10,6 +10,10 @@ interface UserRow {
   role: "student" | "teacher";
   email: string | null;
   password_hash: string | null;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("UNIQUE constraint failed");
 }
 
 export function authRoutes() {
@@ -21,7 +25,7 @@ export function authRoutes() {
       const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE email = $email", {
         email: input.email,
       });
-      const ok = row ? await verifyPassword(input.password, row.password_hash) : false;
+      const ok = await verifyPassword(input.password, row?.password_hash ?? DUMMY_HASH);
       if (!row || !ok) fail(401, "unauthorized");
       const user = { id: row.id, name: row.name, role: row.role };
       await startSession(c, user);
@@ -58,8 +62,8 @@ export function authRoutes() {
             params: { cid: classroom.id, uid: id, name: input.name, at },
           },
         ]);
-      } catch {
-        fail(409, "conflict");
+      } catch (error) {
+        fail(409, isUniqueViolation(error) ? "name_taken" : "conflict");
       }
       const user = { id, name: input.name, role: "student" as const };
       await startSession(c, user);

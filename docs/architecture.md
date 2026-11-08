@@ -7,7 +7,7 @@
 
 | #   | 決策                                                                                             | 理由                                                           |
 | --- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| D1  | 單一 Worker：Hono API + 前端 assets + Chat/ReportRunner DO 同包                                            | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS               |
+| D1  | 單一 Worker：Hono API + 前端 assets + Chat/ReportRunner DO 同包                                  | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS               |
 | D2  | App 資料放 **D1**；Pi transcript 留在 DO 自己的 SQLite（`pi_*` 表）                              | 共享關聯資料 vs agent 私有狀態，各放各的                       |
 | D3  | 對話執行緒 = 一個 DO instance（`idFromName(scope:id)`）                                          | 天然序列化、互不干擾、Pi inbox 排隊                            |
 | D4  | 對話走 WebSocket（`/agents/chat/:name`，view＋chord ops），SSE 已於 web-next 重建時退役          | 單一真相在 pi transcript；前端 applyImmutable 套件             |
@@ -168,7 +168,7 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `routing-schema.ts` | YAML 的 zod schema：provider 實例（endpoint+model）×credential 分離；classifiers；availability（priority/maxConcurrency）；trafficClasses |
 | `config.gen.ts`     | `scripts/gen-config.mjs` 產出（Workers 無檔案系統）                                                                                       |
-| `ledger.ts`         | (provider, model, credential) 記帳＋cooldown（pi 無結構化錯誤狀態→只記 ok/error；連續 5 error 開 60s、ok 重置、過期自然回無 probe） |
+| `ledger.ts`         | (provider, model, credential) 記帳＋cooldown（pi 無結構化錯誤狀態→只記 ok/error；連續 5 error 開 60s、ok 重置、過期自然回無 probe）       |
 | `router.ts`         | traffic class 鏈走訪（priority 排序＋cooldown/maxConcurrency 過濾、teacher legs 前置）→ pick；isolate 生命週期（getRouter WeakMap）       |
 
 
@@ -203,17 +203,17 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 # ci.yml（PR + push main）：全部閘門，不需要 secrets
 - uses: pnpm/action-setup + actions/setup-node@v6 (node 26, cache pnpm)
 - run: pnpm install --frozen-lockfile
-- run: pnpm lint            # biome
-- run: yamllint .           # workflows / pnpm-workspace
-- run: pnpm typecheck       # server build:types → web tsc（RpcApi 宣告先產出）
-- run: pnpm test            # pnpm -r test：server（workerd 真runtime）+ web
-- run: pnpm exec cf build    # apps/web：client assets + worker bundle
+- run: pnpm lint # biome
+- run: yamllint . # workflows / pnpm-workspace
+- run: pnpm typecheck # server build:types → web tsc（RpcApi 宣告先產出）
+- run: pnpm test # pnpm -r test：server（workerd 真runtime）+ web
+- run: pnpm exec cf build # apps/web：client assets + worker bundle
 - run: pnpm exec cf deploy --prebuilt --mode production --dry-run
 
 # deploy.yml（push main）：同一產物部署
 - run: pnpm exec cf build
 - run: pnpm exec cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations
-- run: pnpm exec cf deploy --prebuilt --mode production   # 唯一拿 secrets 的 step
+- run: pnpm exec cf deploy --prebuilt --mode production # 唯一拿 secrets 的 step
 ```
 
 - secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`；runtime secrets 走 `cf deploy` 環境注入（`AUTH_SECRET`、`BYOK_ENC_KEY`、`DGX_BASE_URL` 等，見 `apps/server/.env.example`）
@@ -237,12 +237,12 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 10. 實作歷程（v3 → 現況）
 
-| 里程碑                      | 內容                                                                                                                                                         |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| R0–R5（v3）                 | monorepo、D1 介面、PiAgent DO、provider pool——已被 web-next 重建取代                                                                                         |
-| web-next 重建（2026-11-06） | 兩大原則重構：Chat DO＋PiHarness、extensions（avatar/judgment/websearch）、agent profiles、routing（YAML＋ledger）、ReportRunner、teacher_keys、WS transport |
-| R6/R7 收尾（2026-11-08）    | `hc<RpcApi>` 全面接上（web types.ts 退役）；WS transport 上線（watch resume、逐訊授權閘門）                                                                  |
-| prompt 接線＋teacher keys（2026-11-09） | profiles instructions 接真資產（§7 報告可生產）；teacher keys 服務（ToS 責任移轉、老師鏈前平台鏈後）                                              |
+| 里程碑                                  | 內容                                                                                                                                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| R0–R5（v3）                             | monorepo、D1 介面、PiAgent DO、provider pool——已被 web-next 重建取代                                                                                         |
+| web-next 重建（2026-11-06）             | 兩大原則重構：Chat DO＋PiHarness、extensions（avatar/judgment/websearch）、agent profiles、routing（YAML＋ledger）、ReportRunner、teacher_keys、WS transport |
+| R6/R7 收尾（2026-11-08）                | `hc<RpcApi>` 全面接上（web types.ts 退役）；WS transport 上線（watch resume、逐訊授權閘門）                                                                  |
+| prompt 接線＋teacher keys（2026-11-09） | profiles instructions 接真資產（§7 報告可生產）；teacher keys 服務（ToS 責任移轉、老師鏈前平台鏈後）                                                         |
 
 ## 11. ADR 摘要
 
@@ -254,13 +254,13 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 12. 風險與對策
 
-| 風險                                                                                            | 對策                                                                                             |
-| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| D1 無互動式交易，tx→batch 語意差異                                                              | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                 |
-| cf beta 格式變動                                                                                | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                             |
-| 自架 Tunnel 延遲                                                                                | 爆發期實測 P95；不行就把自架降為「教室內網直連 + 雲端走 opencode-go/OpenRouter」                 |
-| opencode-go 條款灰域                                                                            | 上線前 email 官方；未確認前它不是唯一依賴（有 OpenRouter/Workers AI 兜底）                       |
-| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）                                          | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                       |
+| 風險                                                        | 對策                                                                                                |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| D1 無互動式交易，tx→batch 語意差異                          | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                    |
+| cf beta 格式變動                                            | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                                |
+| 自架 Tunnel 延遲                                            | 爆發期實測 P95；不行就把自架降為「教室內網直連 + 雲端走 opencode-go/OpenRouter」                    |
+| opencode-go 條款灰域                                        | 上線前 email 官方；未確認前它不是唯一依賴（有 OpenRouter/Workers AI 兜底）                          |
+| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）      | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                          |
 | module 級狀態（rate-limit 的 Map）隨 isolate 分散且重啟歸零 | 定位為 best-effort；跨請求一致的併發守衛在 Chat DO 的 whenBusy reject。多 isolate 佈局後限流改走 DO |
 
 ## 13. Scale design v2（D9–D13）——10k 併發作為 code quality bar

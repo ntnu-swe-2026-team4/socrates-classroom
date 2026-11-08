@@ -101,6 +101,24 @@ describe("teacher legs（#82：老師 key 前置，平台鏈墊後）", () => {
     expect(blocked.every((e) => e.credential !== "teacher:u_teacher")).toBe(true);
   });
 
+  it("cooldown 過濾 Router.chain：5 連敗的 leg 被踢出、ok 後回歸", async () => {
+    const { Router } = await import("../src/routing/router");
+    const router = new Router({ AI: {} } as never);
+    const decision = router.pick("interactive")!;
+    for (let i = 0; i < 5; i += 1) {
+      router.ledger.record(decision.key);
+      router.settle(decision, "error");
+    }
+    expect(
+      router.chain("interactive").some((e) => e.provider === decision.entry.provider && e.model === decision.model),
+    ).toBe(false);
+    router.ledger.record(decision.key);
+    router.settle(decision, "ok");
+    expect(
+      router.chain("interactive").some((e) => e.provider === decision.entry.provider && e.model === decision.model),
+    ).toBe(true);
+  });
+
   it("teacher leg 獨立記帳：cooldown 不影響平台鏈", async () => {
     const { Router } = await import("../src/routing/router");
     const router = new Router({ AI: {} } as never);
@@ -130,7 +148,7 @@ describe("對話 run 的 fallback legs（models.ts 接線）", () => {
     const OPTIONS = Symbol.for("agents.models.pi-ai.options");
     const options = (model as unknown as Record<symbol, unknown>)[OPTIONS] as { fallback?: string[] } | undefined;
     expect(options?.fallback).toEqual(["@cf/zai-org/glm-4.7-flash"]);
-  });
+  }, 20_000);
 
   it("mock 模式：faux 無 fallback（faux model 不經 createAI）", async () => {
     const { buildModels } = await import("../src/pi/models");

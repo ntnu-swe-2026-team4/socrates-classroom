@@ -206,6 +206,18 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     asPeer.close();
   });
 
+  it("transcript 防線：agents-routed 外部路徑 → 404（DO onRequest 只認內部短路徑）", async () => {
+    const student = await joinStudent("逐字稿本人");
+    const thread = `${activityId}:${student.userId}`;
+    const res = await routeAgentRequest(
+      new Request(`https://example.com/agents/chat/${thread}/transcript`, {
+        headers: { Cookie: student.cookie },
+      }),
+      env,
+    );
+    expect(res?.status).toBe(404);
+  });
+
   it("授權 race：拒絕後 close 前逕送 watch → 不給 view（逐訊閘門）", async () => {
     const owner = await joinStudent("賽窗本人");
     const thread = `${activityId}:${owner.userId}`;

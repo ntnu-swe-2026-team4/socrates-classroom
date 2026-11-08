@@ -33,7 +33,7 @@ export function activityRoutes() {
     })
     .get("/activities/:id/report", async (c) => {
       const user = requireUser(c);
-      const { activity, classroom, isTeacher } = await requireMembership(c.env.DB, c.req.param("id"), user);
+      const { activity, isTeacher } = await requireMembership(c.env.DB, c.req.param("id"), user);
       const row = await one<{ status: string; teacher_report: string | null; student_reports: string | null }>(
         c.env.DB,
         "SELECT status, teacher_report, student_reports FROM reports WHERE activity_id = $id",
@@ -51,7 +51,7 @@ export function activityRoutes() {
             { pseudonym: string; analysis: StudentAnalysis | null; violations: ViolationSlice[] }
           >)
         : {};
-      if (isTeacher || user.id === classroom.teacher_id) {
+      if (isTeacher) {
         const report: TeacherReport = {
           topicTitle: stored.topicTitle,
           classReport: stored.classReport,

@@ -24,6 +24,10 @@ jobs:
         run: |
           pip install yamllint
           yamllint .
+      - name: Config drift (regen config.gen.ts and diff)
+        run: |
+          pnpm --filter @socrates/server run gen-config
+          git diff --exit-code -- apps/server/src/routing/config.gen.ts
       - name: Typecheck
         run: pnpm typecheck
       - name: "Test (server: workerd real runtime, LLM_PROVIDER=mock / web: vitest)"

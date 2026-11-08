@@ -1,6 +1,6 @@
 # 功能總覽（Feature Inventory）
 
-> 最後更新：2026-11-09 ｜ 對應 `apps/server/src/routes`（25 個端點）與 `apps/web/src/routes`
+> 最後更新：2026-11-09 ｜ 對應 `apps/server/src/routes` 與 `apps/web/src/routes`
 > API 細節見 [`api-contract.md`](./api-contract.md)；架構見 [`architecture.md`](./architecture.md)
 
 ## 目錄
@@ -24,7 +24,7 @@
 | 教室清單 | 老師見自己開的教室（含 code/url）；學生見加入中的教室            | `GET /api/classrooms`・`/classrooms`                |
 | 建立教室 | 老師從議題建立教室，自動產生邀請碼與第一個活動                   | `POST /api/classrooms`・`/t/setup`                  |
 | 重開活動 | 同教室換議題開新活動                                             | `POST /api/classrooms/:id/activities`               |
-| 議題     | 內建議題列表；AI 生成（方向 → 六題）                             | `GET/POST /api/topics`・`POST /api/topics/generate` |
+| 議題     | 內建議題列表；AI 生成（方向 → 三題）                             | `GET/POST /api/topics`・`POST /api/topics/generate` |
 
 ## 單人：與蘇格拉底對話
 

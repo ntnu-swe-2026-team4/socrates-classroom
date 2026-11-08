@@ -84,7 +84,8 @@ test("trace", async () => {
     "recorder.onstop set?",
     Recorder.latest.onstop !== null,
   );
-  expect(true).toBe(true);
+  expect(Recorder.latest.ondataavailable).not.toBeNull();
+  expect(Recorder.latest.onstop).not.toBeNull();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });

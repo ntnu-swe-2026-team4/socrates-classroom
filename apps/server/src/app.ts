@@ -39,7 +39,8 @@ export function createApp() {
     .get("/health", (c) => c.json({ ok: true }))
     .post("/api/dev/seed", async (c) => {
       const token = c.req.header("x-seed-token") ?? "";
-      if (!c.env.SEED_TOKEN || token !== c.env.SEED_TOKEN) {
+      const allowed = c.env.LLM_PROVIDER === "mock" && !!c.env.SEED_TOKEN && timingSafeEqual(token, c.env.SEED_TOKEN);
+      if (!allowed) {
         return c.json(
           { message: localize("not_found", normalizeLang(c.req.header("Accept-Language"))), code: "not_found" },
           404,
@@ -63,3 +64,10 @@ export function createApp() {
 }
 
 export type RpcApp = ReturnType<typeof createApp>;
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}

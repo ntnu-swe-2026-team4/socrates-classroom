@@ -153,13 +153,25 @@ describe("useDialogue（WS：view/ops 推導）", () => {
     expect(result.current.emotion).toMatchObject({ emotion: "curious", confidence: 0.9 });
   });
 
-  it("retryLast：從 view 找最後一個 pi.user 重新送出", () => {
+  it("retryLast：重送失敗的輸入（非 scraping view——孤兒 run 後不重複舊回合）", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
-    emit(viewFrame([userEntry(1, "失敗的問題"), assistantEntry(2, "回答")]));
+    act(() => result.current.send("被打拒的問題"));
+    const submitted = agent.sent.filter((raw) => raw.includes("submit"));
+    expect(submitted).toHaveLength(1);
+    emit({ type: "error", id: JSON.parse(submitted[0]!).id, message: "ConversationBusy" });
     act(() => result.current.retryLast());
-    expect(agent.sent.filter((raw) => raw.includes("submit"))).toHaveLength(1);
-    expect(JSON.parse(agent.sent.filter((raw) => raw.includes("submit"))[0]!)).toMatchObject({
-      input: "失敗的問題",
+    const resent = agent.sent.filter((raw) => raw.includes("submit"));
+    expect(resent).toHaveLength(2);
+    expect(JSON.parse(resent[1]!)).toMatchObject({ input: "被打拒的問題" });
+  });
+
+  it("retryLast：成功回答後清空——不再殘留舊輸入", () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    act(() => result.current.send("成功的問題"));
+    emit(viewFrame([userEntry(1, "成功的問題"), assistantEntry(2, "回答")]));
+    act(() => {
+      result.current.retryLast();
     });
+    expect(agent.sent.filter((raw) => raw.includes("submit"))).toHaveLength(1);
   });
 });

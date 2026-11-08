@@ -2,15 +2,7 @@ import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { arr, int, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import type { Ai } from "@cloudflare/workers-types";
 import { createWebSearch, formatAnswer, type SearchHit } from "./search";
-import {
-  createResponseStore,
-  findPassages,
-  getCachedFetch,
-  putCachedFetch,
-  serialize,
-  slicePage,
-  type StoredSearch,
-} from "./store";
+import { createResponseStore, findPassages, serialize, slicePage, type StoredSearch } from "./store";
 import { fetchPage } from "./fetch";
 
 export interface WebSearchConfig {
@@ -117,13 +109,13 @@ export function createWebSearchExtension(ai: Ai | undefined, config: WebSearchCo
     replay: "safe",
     async execute(args) {
       const mode = args.mode ?? "readable";
-      const cached = getCachedFetch(args.url, mode);
+      const cached = responses.getCachedFetch(args.url, mode);
       let outcome: { url: string; title: string; content: string; error: string | null };
       if (cached) {
         outcome = { url: args.url, title: cached.title, content: cached.content, error: null };
       } else {
         outcome = await fetchPage(args.url, mode, ai?.toMarkdown);
-        if (!outcome.error) putCachedFetch(args.url, mode, outcome.content, outcome.title);
+        if (!outcome.error) responses.putCachedFetch(args.url, mode, outcome.content, outcome.title);
       }
       if (outcome.error) {
         return { output: [{ type: "text", text: `Error fetching ${args.url}: ${outcome.error}` }] };

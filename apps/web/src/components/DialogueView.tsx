@@ -229,6 +229,7 @@ export function DialogueView({
               onScroll={onScroll}
               className="stream-scroll min-h-0 flex-1 overflow-y-auto px-4 sm:px-6"
               aria-busy={busy}
+              aria-live="polite"
             >
               <div className="mx-auto flex max-w-3xl flex-col gap-4 py-5">
                 {messages.length === 0 && statement && (
@@ -309,6 +310,14 @@ export function DialogueView({
                       }}
                       onPointerUp={() => void voice.stop()}
                       onPointerLeave={() => voice.state === "listening" && void voice.stop()}
+                      onKeyDown={(event) => {
+                        if (event.key === " " || event.key === "Enter") {
+                          event.preventDefault();
+                          void voice.start();
+                        }
+                      }}
+                      onKeyUp={() => voice.state === "listening" && void voice.stop()}
+                      onBlur={() => voice.state === "listening" && void voice.stop()}
                       style={{ touchAction: "none" }}
                       className={cn(
                         "flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors disabled:opacity-50",

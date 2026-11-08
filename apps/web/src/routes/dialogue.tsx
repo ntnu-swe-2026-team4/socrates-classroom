@@ -22,7 +22,8 @@ export const Route = createFileRoute("/dialogue")({
       staleTime: Infinity,
     });
     if (me?.role === "teacher") throw redirect({ to: "/t/setup" });
-    if (!me && !(search.activityId || readActivityId())) throw redirect({ to: "/join" });
+    if (!me) throw redirect({ to: "/join" });
+    if (!(search.activityId || readActivityId())) throw redirect({ to: "/home" });
   },
   component: DialoguePage,
 });

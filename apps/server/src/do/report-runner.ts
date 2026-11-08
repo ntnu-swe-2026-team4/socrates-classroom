@@ -42,7 +42,9 @@ export class ReportRunner extends DurableObject<Env> {
     if (!row) {
       await run(
         db,
-        "INSERT INTO reports (activity_id, status, created_at, updated_at) VALUES ($id, 'pending', $at, $at)",
+        `INSERT INTO reports (activity_id, status, created_at, updated_at)
+         VALUES ($id, 'pending', $at, $at)
+         ON CONFLICT(activity_id) DO UPDATE SET status = 'pending', updated_at = $at`,
         {
           id: input.activityId,
           at: nowIso(),
@@ -78,7 +80,7 @@ export class ReportRunner extends DurableObject<Env> {
     try {
       await this.generate(activityId);
     } catch (error) {
-      console.error("[report] generation failed", error);
+      console.error("[report] generation failed", error instanceof Error ? error.name : typeof error);
       await this.ctx.storage.setAlarm(Date.now() + attempts * report.alarmBackoffMs);
     }
   }
@@ -155,7 +157,11 @@ export class ReportRunner extends DurableObject<Env> {
             try {
               studentAnalyses.set(member.user_id, StudentAnalysisSchema.parse(JSON.parse(text)));
               break;
-            } catch {
+            } catch (error) {
+              console.error(
+                "[report] student analysis parse failed",
+                error instanceof Error ? error.name : typeof error,
+              );
               if (attempt === report.studentAttempts - 1) studentAnalyses.set(member.user_id, null);
             }
           }
@@ -165,7 +171,13 @@ export class ReportRunner extends DurableObject<Env> {
 
     const classInput = this.classReportPrompt(activity, members, transcripts, pseudonyms);
     const { text: classText } = await this.runAgent(harness, "class-report", classInput, legs);
-    const classReport = ClassReportSchema.parse(JSON.parse(classText));
+    let classReport: ClassReport;
+    try {
+      classReport = ClassReportSchema.parse(JSON.parse(classText));
+    } catch (error) {
+      console.error("[report] class report parse failed", error instanceof Error ? error.name : typeof error);
+      throw new Error("class_report_parse_failed");
+    }
 
     await this.persist(activityId, activity.title, classReport, studentAnalyses, pseudonyms, transcripts);
   }
@@ -241,7 +253,9 @@ export class ReportRunner extends DurableObject<Env> {
     const pseudonym = pseudonyms.get(studentId) ?? studentId;
     const text = data.messages
       .map((message) =>
-        message.role === "user" ? `${pseudonym}（${message.turn}）：${message.text}` : `AI：${message.text}`,
+        message.role === "user"
+          ? `${pseudonym}（${message.turn}）：${indentedContinuations(message.text)}`
+          : `AI：${message.text}`,
       )
       .join("\n");
     return {
@@ -343,4 +357,11 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
       tension: null,
     }),
   );
+}
+
+function indentedContinuations(text: string): string {
+  return text
+    .split("\n")
+    .map((line, index) => (index === 0 ? line : `  ${line}`))
+    .join("\n");
 }

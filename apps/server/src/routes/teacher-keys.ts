@@ -66,15 +66,20 @@ export function teacherKeyRoutes() {
       );
       const ownedProviders = new Set(owned.map((row) => row.provider_id));
       if (input.providers.some((pid) => !ownedProviders.has(pid))) fail(422, "validation");
-      if (input.providers.length > 0) {
-        await batch(
-          c.env.DB,
-          input.providers.map((pid, index) => ({
+      const ordered = new Set(input.providers);
+      let unlisted = 0;
+      await batch(
+        c.env.DB,
+        owned.map((row) => {
+          const order = ordered.has(row.provider_id)
+            ? input.providers.indexOf(row.provider_id)
+            : input.providers.length + unlisted++;
+          return {
             sql: "UPDATE teacher_keys SET sort_order = $order WHERE user_id = $uid AND provider_id = $pid",
-            params: { order: index, uid: user.id, pid },
-          })),
-        );
-      }
+            params: { order, uid: user.id, pid: row.provider_id },
+          };
+        }),
+      );
       return c.json({ providers: input.providers });
     })
     .put("/settings/keys/:provider", async (c) => {

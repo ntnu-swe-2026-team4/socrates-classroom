@@ -120,7 +120,10 @@ async function raw(path: string, init: RequestInit & { json?: unknown } = {}): P
 async function playTts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void> {
   const input = TtsInputSchema.parse({ text, lang: langHeaders()["Accept-Language"] });
   const res = await client.tts.$post({ json: input }, { init: { signal } });
-  if (!res.ok) throw new ApiError("internal_error" as ErrorCode, res.statusText);
+  if (!res.ok) {
+    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+    throw new ApiError((payload?.code ?? "internal_error") as ErrorCode, payload?.message ?? res.statusText);
+  }
   const bytes = await res.arrayBuffer();
   const AudioContextCtor =
     window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;

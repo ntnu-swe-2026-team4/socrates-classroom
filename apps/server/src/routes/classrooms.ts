@@ -5,26 +5,35 @@ import {
   type ClassroomSummary,
   type User,
 } from "@socrates/shared";
-import { all, one, run } from "../db/d1";
+import { all, batch, one, run } from "../db/d1";
 import { fail, newId, nowIso, parseBody, requireTeacher, requireUser, type AppEnv } from "../http";
 import type { ClassroomRow } from "../services/members";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+const CODE_MAX = 256 - (256 % CODE_ALPHABET.length);
 
 function newCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(6));
-  return Array.from(bytes, (byte) => CODE_ALPHABET[byte % CODE_ALPHABET.length]!).join("");
+  let code = "";
+  while (code.length < 6) {
+    const [byte] = crypto.getRandomValues(new Uint8Array(1));
+    if (byte === undefined || byte >= CODE_MAX) continue;
+    code += CODE_ALPHABET[byte % CODE_ALPHABET.length]!;
+  }
+  return code;
 }
 
 async function createActivity(db: D1Database, classroomId: string, topicId: string): Promise<string> {
   const id = newId("a_");
-  await run(db, "INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ($id, $cid, $tid, $at)", {
-    id,
-    cid: classroomId,
-    tid: topicId,
-    at: nowIso(),
-  });
-  await run(db, "UPDATE classrooms SET current_activity_id = $aid WHERE id = $cid", { aid: id, cid: classroomId });
+  await batch(db, [
+    {
+      sql: "INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ($id, $cid, $tid, $at)",
+      params: { id, cid: classroomId, tid: topicId, at: nowIso() },
+    },
+    {
+      sql: "UPDATE classrooms SET current_activity_id = $aid WHERE id = $cid",
+      params: { aid: id, cid: classroomId },
+    },
+  ]);
   return id;
 }
 

@@ -23,43 +23,45 @@ export const ViolationEntry: Entry<{ [key: string]: never }> = defineEntry("app.
 
 type ViolationSink = (violation: ViolationData) => Promise<void>;
 
-let sink: ViolationSink | null = null;
-let classifier: ReturnType<typeof createClefViolationClassifier> | null = null;
-
-const ViolationTask = defineTask<{ latest: string }, { phase: "classify" }, null>({
-  name: "app.violation",
-  version: 1,
-  initial: () => ({ phase: "classify" }),
-  phases: {
-    classify: async (task, runtime, context) => {
-      if (!classifier) {
-        await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
-        return;
-      }
-      const judgment: ViolationJudgment | null = await classifier(task.input.latest);
-      await runtime.memo("judgment", JSON.stringify(judgment) as string, context);
-      if (judgment && judgment.type !== "on_topic" && sink) {
-        const handle = (await runtime.conversation(runtime.conversationId, context))!;
-        const data: ViolationData = {
-          type: judgment.type,
-          probability: judgment.probability,
-          excerpt: task.input.latest.slice(0, 200),
-          source: "classifier",
-        };
-        await runtime.commit(async (tx) => {
-          await handle.submit(tx, { type: "write", entry: { kind: "app.violation", data: data as never } });
-        }, context);
-      }
-      await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
-    },
-  },
-  abort: (_task, runtime, context) =>
-    runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context),
-});
-
 export function createJudgmentExtension(ai: Ai | undefined, reportViolation: ViolationSink) {
-  sink = reportViolation;
-  classifier = ai ? createClefViolationClassifier(ai) : null;
+  const sink = reportViolation;
+  const classifier = ai ? createClefViolationClassifier(ai) : null;
+  const ViolationTask = defineTask<{ latest: string }, { phase: "classify" }, null>({
+    name: "app.violation",
+    version: 1,
+    initial: () => ({ phase: "classify" }),
+    phases: {
+      classify: async (task, runtime, context) => {
+        if (!classifier) {
+          await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
+          return;
+        }
+        const recorded = await runtime.memo<string>("judgment", context);
+        if (recorded !== undefined) {
+          await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
+          return;
+        }
+        const judgment: ViolationJudgment | null = await classifier(task.input.latest);
+        await runtime.memo("judgment", JSON.stringify(judgment), context);
+        if (judgment && judgment.type !== "on_topic") {
+          const handle = (await runtime.conversation(runtime.conversationId, context))!;
+          const data: ViolationData = {
+            type: judgment.type,
+            probability: judgment.probability,
+            excerpt: task.input.latest.slice(0, 200),
+            source: "classifier",
+          };
+          await runtime.commit(async (tx) => {
+            await handle.submit(tx, { type: "write", entry: { kind: "app.violation", data: data as never } });
+          }, context);
+        }
+        await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
+      },
+    },
+    abort: (_task, runtime, context) =>
+      runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context),
+  });
+
   return defineExtension({
     name: "judgment",
     tools: [

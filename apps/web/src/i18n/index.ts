@@ -124,7 +124,8 @@ const messages = {
     settings_lang: "介面語言",
     settings_keys_title: "API keys（自備金鑰）",
     settings_keys_desc: "為教室對話與報告接上你自己的 provider 金鑰；排序即為使用順序，你的金鑰優先、平台墊後。",
-    settings_keys_responsibility: "你選擇的 provider 之資料處理慣例（留存、訓練用途）由你自行確認並承擔；平台僅保證自身鏈路的零資料留存。",
+    settings_keys_responsibility:
+      "你選擇的 provider 之資料處理慣例（留存、訓練用途）由你自行確認並承擔；平台僅保證自身鏈路的零資料留存。",
     settings_keys_provider: "Provider",
     settings_keys_pick_provider: "選擇 provider",
     settings_keys_model: "模型",
@@ -292,8 +293,10 @@ const messages = {
     settings_title: "Settings",
     settings_lang: "Language",
     settings_keys_title: "API keys (bring your own)",
-    settings_keys_desc: "Attach your own provider keys for classroom dialogue and reports; the order is the usage order — your keys first, the platform pool as fallback.",
-    settings_keys_responsibility: "You are responsible for the data practices (retention, training use) of the providers you choose; the platform guarantees zero data retention only on its own chain.",
+    settings_keys_desc:
+      "Attach your own provider keys for classroom dialogue and reports; the order is the usage order — your keys first, the platform pool as fallback.",
+    settings_keys_responsibility:
+      "You are responsible for the data practices (retention, training use) of the providers you choose; the platform guarantees zero data retention only on its own chain.",
     settings_keys_provider: "Provider",
     settings_keys_pick_provider: "Pick a provider",
     settings_keys_model: "Model",
@@ -490,8 +493,10 @@ const messages = {
     settings_title: "Ajustes",
     settings_lang: "Idioma",
     settings_keys_title: "Claves API (propias)",
-    settings_keys_desc: "Conecta tus propias claves de proveedor para el diálogo y los informes del aula; el orden es el de uso — primero tus claves, la plataforma como respaldo.",
-    settings_keys_responsibility: "Tú eres responsable de las prácticas de datos (retención, uso en entrenamiento) de los proveedores que elijas; la plataforma solo garantiza cero retención en su propia cadena.",
+    settings_keys_desc:
+      "Conecta tus propias claves de proveedor para el diálogo y los informes del aula; el orden es el de uso — primero tus claves, la plataforma como respaldo.",
+    settings_keys_responsibility:
+      "Tú eres responsable de las prácticas de datos (retención, uso en entrenamiento) de los proveedores que elijas; la plataforma solo garantiza cero retención en su propia cadena.",
     settings_keys_provider: "Proveedor",
     settings_keys_pick_provider: "Elige un proveedor",
     settings_keys_model: "Modelo",

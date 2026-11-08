@@ -58,6 +58,7 @@ export function useDialogue(activityId: string, userId: string) {
   const [error, setError] = useState<DialogueError>(null);
   const viewRef = useRef<ConversationView | null>(null);
   const pendingRef = useRef<string | null>(null);
+  const failedInputRef = useRef<string | null>(null);
   const ttsRef = useRef<AbortController | null>(null);
 
   useEffect(
@@ -82,6 +83,7 @@ export function useDialogue(activityId: string, userId: string) {
 
   const completePending = useCallback(() => {
     pendingRef.current = null;
+    failedInputRef.current = null;
     const text = lastAssistantText(viewRef.current);
     if (text) {
       setPhase("speaking");
@@ -166,6 +168,7 @@ export function useDialogue(activityId: string, userId: string) {
       if (!trimmed || pendingRef.current) return;
       const id = crypto.randomUUID();
       pendingRef.current = id;
+      failedInputRef.current = trimmed;
       setError(null);
       setPhase("thinking");
       socket.send(JSON.stringify({ type: "submit", id, input: trimmed } satisfies ClientMessage));
@@ -175,9 +178,9 @@ export function useDialogue(activityId: string, userId: string) {
 
   const retryLast = useCallback(() => {
     if (pendingRef.current) return;
-    const failed = [...(viewRef.current?.entries ?? [])].reverse().find((entry) => entry.kind === "pi.user");
-    if (!failed) return;
-    send(textOf(failed.model?.[0]));
+    const text = failedInputRef.current;
+    if (!text) return;
+    send(text);
   }, [send]);
 
   const replay = useCallback(() => {

@@ -169,7 +169,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
           if (kind === "aborted" || kind === "no-speech") return;
           stopEverything();
           setState("idle");
-          setError("failed");
+          setError(kind === "not-allowed" || kind === "service-not-allowed" ? "denied" : "failed");
         };
         recognition.start();
         session0.recognition = recognition;

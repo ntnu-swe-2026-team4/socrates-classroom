@@ -21,13 +21,10 @@ export interface EmotionJudgment {
   confidence: number;
 }
 
-export type EmotionData = EmotionJudgment & { text: string };
-
 export const EmotionEntry: Entry<{
   emotion: string;
   probabilities: { [key: string]: number };
   confidence: number;
-  text: string;
 }> = defineEntry("app.emotion");
 
 const EMOTION_MODEL = routingConfig.classifiers.emotion;
@@ -82,37 +79,35 @@ function answerOf(run: RunSummary, api: HookApi, context: Context): Promise<stri
     );
 }
 
-let classifier: ((text: string) => Promise<EmotionJudgment | null>) | null = null;
-
-const EmotionTask = defineTask<{ text: string }, { phase: "record" }, null>({
-  name: "app.emotion",
-  version: 1,
-  initial: () => ({ phase: "record" }),
-  phases: {
-    record: async (task, runtime, context) => {
-      if (!classifier) {
-        await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
-        return;
-      }
-      const judgment = await classifier(task.input.text);
-      if (judgment) {
-        const handle = (await runtime.conversation(runtime.conversationId, context))!;
-        await runtime.commit(async (tx) => {
-          await handle.submit(tx, {
-            type: "write",
-            entry: { kind: "app.emotion", data: { ...judgment, text: task.input.text } },
-          });
-        }, context);
-      }
-      await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
-    },
-  },
-  abort: (_task, runtime, context) =>
-    runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context),
-});
-
 export function createAvatarExtension(ai: Ai | undefined) {
-  classifier = ai ? (text) => classify(ai, text) : null;
+  const classifier = ai ? (text: string) => classify(ai, text) : null;
+  const EmotionTask = defineTask<{ text: string }, { phase: "record" }, null>({
+    name: "app.emotion",
+    version: 1,
+    initial: () => ({ phase: "record" }),
+    phases: {
+      record: async (task, runtime, context) => {
+        if (!classifier) {
+          await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
+          return;
+        }
+        const judgment = await classifier(task.input.text);
+        if (judgment) {
+          const handle = (await runtime.conversation(runtime.conversationId, context))!;
+          await runtime.commit(async (tx) => {
+            await handle.submit(tx, {
+              type: "write",
+              entry: { kind: "app.emotion", data: { ...judgment } },
+            });
+          }, context);
+        }
+        await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
+      },
+    },
+    abort: (_task, runtime, context) =>
+      runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context),
+  });
+
   return defineExtension({
     name: "avatar",
     tasks: [EmotionTask],
