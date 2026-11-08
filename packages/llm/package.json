@@ -1,7 +1,0 @@
-{
-  "name": "@socrates/llm",
-  "private": true,
-  "type": "module",
-  "version": "0.1.0",
-  "description": "提示詞與 provider 設定層（zero-code）：改檔後重新部署即生效"
-}
