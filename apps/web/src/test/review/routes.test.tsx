@@ -126,8 +126,8 @@ test("F03: real dialogue route restores the user bubble rather than an assistant
     emitView(history);
     const question = await screen.findByText("My saved question");
     await screen.findByText("The saved reply");
-    await waitFor(() => expect(question.closest(".justify-end")).not.toBeNull());
-    expect(screen.getByText("The saved reply").closest(".justify-end")).toBeNull();
+    await waitFor(() => expect(question.closest(".flex-row-reverse")).not.toBeNull());
+    expect(screen.getByText("The saved reply").closest(".flex-row-reverse")).toBeNull();
   } finally {
     dispose();
   }

@@ -76,7 +76,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
     <aside
       inert={!open}
       className={cn(
-        "flex shrink-0 flex-col overflow-hidden border-line bg-paper transition-[width] duration-200",
+        "flex shrink-0 flex-col overflow-hidden border-line bg-paper transition-[width] duration-200 max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:max-w-full max-md:shadow-xl",
         open ? "w-88 border-l" : "w-0 border-l-0",
       )}
       aria-hidden={!open}
