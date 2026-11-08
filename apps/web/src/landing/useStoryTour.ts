@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { STORY_SCENES } from "./story";
 
 type TourPhase = "moving" | "playing" | "paused" | "leaving";
-type StoryTour = { scene: number; phase: TourPhase; session: number };
+export type StoryTour = { scene: number; phase: TourPhase; session: number };
+export type TourApi = ReturnType<typeof useStoryTour>;
 
 export function useStoryTour(
   scroller: RefObject<HTMLDivElement | null>,
@@ -16,21 +17,21 @@ export function useStoryTour(
   const ready = Boolean(scene?.animations.every((n) => n in animationDurations));
   const sceneKey = tour ? `${tour.session}:${tour.scene}` : "";
 
-  const goToLogin = useCallback(() => {
+  const goToEnd = useCallback(() => {
     setTour(null);
     const root = scroller.current;
-    const login = root?.querySelector<HTMLElement>("#login-screen");
-    if (root && login) {
-      const top = root.scrollTop + login.getBoundingClientRect().top - root.getBoundingClientRect().top;
+    const end = root?.querySelector<HTMLElement>("#story-end");
+    if (root && end) {
+      const top = root.scrollTop + end.getBoundingClientRect().top - root.getBoundingClientRect().top;
       root.scrollTo({ top, behavior: reducedMotion ? "instant" : "smooth" });
-      root.querySelector<HTMLElement>("#login-title")?.focus({ preventScroll: true });
+      root.querySelector<HTMLElement>("#story-end-cta")?.focus({ preventScroll: true });
     }
   }, [scroller, reducedMotion]);
 
   const goToTop = useCallback(() => {
     setTour(null);
     scroller.current?.scrollTo({ top: 0, behavior: reducedMotion ? "instant" : "smooth" });
-    scroller.current?.querySelector<HTMLElement>(".hero-enter")?.focus({ preventScroll: true });
+    scroller.current?.querySelector<HTMLElement>("[data-story-start]")?.focus({ preventScroll: true });
   }, [scroller, reducedMotion]);
 
   const startTour = useCallback(() => {
@@ -104,7 +105,7 @@ export function useStoryTour(
     const currentTour = tour;
     const timer = window.setTimeout(
       () => {
-        if (currentTour.scene === STORY_SCENES.length - 1) goToLogin();
+        if (currentTour.scene === STORY_SCENES.length - 1) goToEnd();
         else
           setTour((current) =>
             current?.session === currentTour.session &&
@@ -117,7 +118,7 @@ export function useStoryTour(
       reducedMotion ? 0 : 260,
     );
     return () => window.clearTimeout(timer);
-  }, [tour?.scene, tour?.phase, tour?.session, goToLogin, reducedMotion, tour]);
+  }, [tour?.scene, tour?.phase, tour?.session, goToEnd, reducedMotion, tour]);
 
   useEffect(() => {
     const root = scroller.current;
@@ -153,5 +154,5 @@ export function useStoryTour(
     };
   }, [scroller, tour]);
 
-  return { tour, ready, startTour, goToLogin, goToTop, togglePause, nextScene };
+  return { tour, ready, startTour, goToEnd, goToTop, togglePause, nextScene };
 }
