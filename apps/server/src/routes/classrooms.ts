@@ -1,7 +1,12 @@
 import { Hono } from "hono";
-import { ClassroomCreateInputSchema } from "@socrates/shared";
-import { one, run } from "../db/d1";
-import { fail, newId, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
+import {
+  ActivityStartInputSchema,
+  ClassroomCreateInputSchema,
+  type ClassroomSummary,
+  type User,
+} from "@socrates/shared";
+import { all, one, run } from "../db/d1";
+import { fail, newId, nowIso, parseBody, requireTeacher, requireUser, type AppEnv } from "../http";
 import type { ClassroomRow } from "../services/members";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -23,8 +28,67 @@ async function createActivity(db: D1Database, classroomId: string, topicId: stri
   return id;
 }
 
+interface SummaryRow {
+  id: string;
+  name: string;
+  teacher_id: string;
+  teacher_name: string;
+  join_code: string;
+  created_at: string;
+  member_count: number;
+  activity_id: string | null;
+  finished_at: string | null;
+  topic_id: string | null;
+  topic_title: string | null;
+  topic_statement: string | null;
+}
+
+const SUMMARY_SQL = `SELECT c.id, c.name, c.teacher_id, u.name AS teacher_name, c.join_code, c.created_at,
+  (SELECT COUNT(*) FROM members mm WHERE mm.classroom_id = c.id) AS member_count,
+  a.id AS activity_id, a.finished_at, t.id AS topic_id, t.title AS topic_title, t.statement AS topic_statement
+  FROM classrooms c
+  JOIN users u ON u.id = c.teacher_id
+  LEFT JOIN activities a ON a.id = c.current_activity_id
+  LEFT JOIN topics t ON t.id = a.topic_id`;
+
+function toSummary(row: SummaryRow, user: User, base: string): ClassroomSummary {
+  const owner = row.teacher_id === user.id;
+  return {
+    id: row.id,
+    name: row.name,
+    role: owner ? "teacher" : "student",
+    teacherName: row.teacher_name,
+    memberCount: Number(row.member_count ?? 0),
+    code: owner ? row.join_code : null,
+    url: owner ? `${base}/join/${row.join_code}` : null,
+    current:
+      row.activity_id && row.topic_id
+        ? {
+            activityId: row.activity_id,
+            topicId: row.topic_id,
+            topicTitle: row.topic_title ?? "",
+            topicStatement: row.topic_statement ?? "",
+            finished: Boolean(row.finished_at),
+          }
+        : null,
+    createdAt: row.created_at,
+  };
+}
+
 export function classroomsRoutes() {
   return new Hono<AppEnv>()
+    .get("/classrooms", async (c) => {
+      const user = requireUser(c);
+      const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") ?? "";
+      const scope =
+        user.role === "teacher"
+          ? "c.teacher_id = $uid"
+          : "EXISTS (SELECT 1 FROM members m WHERE m.classroom_id = c.id AND m.user_id = $uid)";
+      const rows = await all<SummaryRow>(c.env.DB, `${SUMMARY_SQL} WHERE ${scope} ORDER BY c.created_at DESC`, {
+        uid: user.id,
+      });
+      return c.json(rows.map((row) => toSummary(row, user, base)));
+    })
     .post("/classrooms", async (c) => {
       const user = requireTeacher(c);
       const input = await parseBody(c, ClassroomCreateInputSchema);
@@ -54,7 +118,7 @@ export function classroomsRoutes() {
     })
     .post("/classrooms/:id/activities", async (c) => {
       const user = requireTeacher(c);
-      const input = await parseBody(c, ClassroomCreateInputSchema);
+      const input = await parseBody(c, ActivityStartInputSchema);
       const classroom = await one<ClassroomRow>(c.env.DB, "SELECT * FROM classrooms WHERE id = $id", {
         id: c.req.param("id"),
       });

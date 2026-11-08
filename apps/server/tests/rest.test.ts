@@ -77,6 +77,69 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     expect(((await noTos.json()) as { code: string }).code).toBe("tos_required");
   });
 
+  test("GET /classrooms——角色視角列表；code/url 只給老師", async () => {
+    const unauthorized = await call("/api/classrooms");
+    expect(unauthorized.status).toBe(401);
+
+    const teacherList = (await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+      role: string;
+      code: string | null;
+      current: { activityId: string } | null;
+    }>;
+    const own = teacherList.find((entry) => entry.current?.activityId === activityId);
+    expect(own).toBeDefined();
+    expect(own!.role).toBe("teacher");
+    expect(own!.code).not.toBeNull();
+
+    const joined = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, name: "R6生C", tosAccepted: true }),
+    });
+    const student = cookieOf(joined);
+    const studentList = (await (await call("/api/classrooms", { headers: { Cookie: student } })).json()) as Array<{
+      role: string;
+      code: string | null;
+      teacherName: string;
+      memberCount: number;
+      current: { activityId: string } | null;
+    }>;
+    const member = studentList.find((entry) => entry.current?.activityId === activityId);
+    expect(member).toBeDefined();
+    expect(member!.role).toBe("student");
+    expect(member!.code).toBeNull();
+    expect(member!.teacherName).toBeTruthy();
+    expect(member!.memberCount).toBeGreaterThan(0);
+  });
+
+  test("startActivity——重開活動（{topicId} 契約 shape；同 code 新 activityId）", async () => {
+    const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+    }>;
+    const restarted = await call("/api/classrooms/c_missing/activities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ topicId: topics[0]!.id }),
+    });
+    expect(restarted.status).toBe(404);
+
+    const classrooms = (await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+      current: { activityId: string } | null;
+    }>;
+    const own = classrooms.find((entry) => entry.current?.activityId === activityId);
+    const res = await call(`/api/classrooms/${own!.id}/activities`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ topicId: topics[0]!.id }),
+    });
+    expect(res.status).toBe(201);
+    const payload = (await res.json()) as { activityId: string; code: string };
+    expect(payload.activityId).not.toBe(activityId);
+    expect(payload.code).toBe(code);
+  });
+
   test("finish→report 語意（pending → 404 report_pending）", async () => {
     const report0 = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: teacher } });
     expect(report0.status).toBe(404);

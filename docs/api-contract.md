@@ -56,13 +56,14 @@ interface User {
 
 ## 4. 老師：主題集與開課（#77）
 
-| Operation                                                                                | 說明                                                                                           |
-| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `GET /api/topics` → `Topic[]`                                                            | 系統題＋自建題                                                                                 |
-| `POST /api/topics` `{title, statement, prompts}` → `Topic`（201）                        | 手動出題                                                                                       |
-| `POST /api/topics/generate` `{direction}` → `Topic[]`                                    | agent 生成（topic-gen profile，#77/#113）；結果進老師端編輯器，不自動投放。失敗 → mock（不擋） |
-| `POST /api/classrooms` `{name, topicId}` → `{classroomId, code, url, activityId}`（201） | 建教室＋首活動；`url` 為 `PUBLIC_BASE_URL/join/:code`                                          |
-| `POST /api/classrooms/:id/activities` `{topicId}` → 同上（201）                          | 重開活動（同 code、新 activityId）                                                             |
+| Operation                                                                                | 說明                                                                                                                                           |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/topics` → `Topic[]`                                                            | 系統題＋自建題                                                                                                                                 |
+| `POST /api/topics` `{title, statement, prompts}` → `Topic`（201）                        | 手動出題                                                                                                                                       |
+| `POST /api/topics/generate` `{direction}` → `Topic[]`                                    | agent 生成（topic-gen profile，#77/#113）；結果進老師端編輯器，不自動投放。失敗 → mock（不擋）                                                 |
+| `POST /api/classrooms` `{name, topicId}` → `{classroomId, code, url, activityId}`（201） | 建教室＋首活動；`url` 為 `PUBLIC_BASE_URL/join/:code`                                                                                          |
+| `POST /api/classrooms/:id/activities` `{topicId}` → 同上（201）                          | 重開活動（同 code、新 activityId）                                                                                                             |
+| `GET /api/classrooms` → `ClassroomSummary[]`（登入者）                                   | 老師：自己開的教室；學生：已加入的教室。`code/url` 只回給老師；`current` 嵌入當前活動（topic＋finished）。教室單筆不另設端點——前端以本列表過濾 |
 
 ## 5. 對話（WebSocket，核心；R7）
 
