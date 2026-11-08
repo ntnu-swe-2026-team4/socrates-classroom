@@ -39,4 +39,4 @@ export type ServerMessage =
       readonly id: string;
       readonly result: PiReceipt | PiOperationResult | Page<EntryRecord, Cursor> | boolean | null;
     }
-  | { readonly type: "error"; readonly id?: string; readonly message: string };
+  | { readonly type: "error"; readonly id?: string; readonly message: string; readonly code?: string };

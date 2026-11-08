@@ -24,15 +24,15 @@
 
 > 「訪客」＝未持 session；訪客入場後取得 guest user（有 session），權利視同學生。
 
-| Operation                                                                                               | 訪客 | 學生（含 guest user） | 老師                                  |
-| ------------------------------------------------------------------------------------------------------- | ---- | --------------------- | ------------------------------------- |
-| `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅   | ✅                    | ✅                                    |
-| `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —    | ✅                    | ✅                                    |
-| `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —    | ❌ 403                | ✅                                    |
-| `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —    | —                     | ✅                                    |
-| `GET /activities/:id`、`GET /report`                                                                    | —    | 需教室成員            | 需教室成員                            |
-| **WS** `/agents/chat/:name`                                                                             | —    | 需教室成員            | ❌（對話僅學生）                      |
-| `GET /activities/:id/live`、`POST …/finish`                                                             | —    | ❌ 403                | 需教室成員                            |
+| Operation                                                                                               | 訪客 | 學生（含 guest user） | 老師             |
+| ------------------------------------------------------------------------------------------------------- | ---- | --------------------- | ---------------- |
+| `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅   | ✅                    | ✅               |
+| `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —    | ✅                    | ✅               |
+| `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —    | ❌ 403                | ✅               |
+| `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —    | —                     | ✅               |
+| `GET /activities/:id`、`GET /report`                                                                    | —    | 需教室成員            | 需教室成員       |
+| **WS** `/agents/chat/:name`                                                                             | —    | 需教室成員            | ❌（對話僅學生） |
+| `GET /activities/:id/live`、`POST …/finish`                                                             | —    | ❌ 403                | 需教室成員       |
 
 ## 2. 身分（雙軌：訪客即玩＋帳號選用，#67）
 
@@ -68,9 +68,10 @@ interface User {
 
 ### 5.1 通道
 
-- `GET /agents/chat/:name`（WebSocket 升級；`name`＝thread id）——**對話唯一通道**（先前的 SSE 端點已退役）
-- 授權：`socrates_session` cookie（升級請求帶 cookie；未登入 → 401 before upgrade）
-- 一條連線跟一個 session（root）；重連後重新 `watch`
+- `GET /agents/chat/:name`（WebSocket 升級）——**對話唯一通道**（先前的 SSE 端點已退役）
+- thread name 協定：`{activityId}:{userId}`（一人一 thread；DO name 即路由鍵）
+- 授權：`socrates_session` cookie（升級請求帶 cookie）——onConnect 驗 session＋membership：學生限本人 thread，老師可觀察全班；未通過 → close 1008（無 hello）
+- 一條連線跟一個 session（root）；重連後重新 `watch`（partysocket 自動重連，客戶端端 onOpen 重送）
 
 ### 5.2 Client → Server
 
@@ -92,7 +93,7 @@ type ServerMessage =
   | { type: "view"; view: ConversationView }                              // watch 附掛時整份視圖
   | { type: "ops"; ops: Op[] }                                            // 之後每次變更的 chord 增量
   | { type: "result"; id: string; result: ... }                           // 對帶 id 指令的回覆
-  | { type: "error"; id?: string; message: string };                      // 指令失敗（含 ConversationBusy）
+  | { type: "error"; id?: string; message: string; code?: string };      // 指令失敗；code＝pi 錯誤名（如 ConversationBusy）
 ```
 
 - **客戶端以 `applyImmutable`（`@earendil-works/chord/delta`）套用 ops**——禁止手寫 delta applier

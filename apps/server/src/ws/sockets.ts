@@ -160,6 +160,7 @@ export class ChatSockets {
         type: "error",
         ...(message.id === undefined ? {} : { id: message.id }),
         message: error instanceof Error ? error.message : String(error),
+        ...(error instanceof Error && error.name !== "Error" ? { code: error.name } : {}),
       });
     }
   }
