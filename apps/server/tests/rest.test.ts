@@ -1,10 +1,11 @@
 import { env } from "cloudflare:workers";
-import { beforeAll, describe, expect, test } from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 import worker from "../src/index";
 import { run } from "../src/db/d1";
 import { seedDemo } from "../src/seed";
 import migrationSql from "../migrations/001_init.sql";
 import keysMigration from "../migrations/002_teacher_keys.sql";
+import dropDeadTables from "../migrations/003_drop_dead_tables.sql";
 
 async function call(path: string, init: RequestInit = {}): Promise<Response> {
   return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(
@@ -23,7 +24,7 @@ let code: string;
 let activityId: string;
 
 beforeAll(async () => {
-  for (const statement of [...migrationSql.split(";"), ...keysMigration.split(";")]) {
+  for (const statement of [...migrationSql.split(";"), ...keysMigration.split(";"), ...dropDeadTables.split(";")]) {
     if (statement.trim()) await run(env.DB, statement.trim());
   }
   await seedDemo(env.DB);
@@ -140,7 +141,14 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     expect(payload.code).toBe(code);
   });
 
-  test("finish→report 語意（pending → 404 report_pending）", async () => {
+  test("finish→report 語意（pending → 404 report_pending；學生 IDOR 只見自己）", async () => {
+    const joined = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, name: "R6生報", tosAccepted: true }),
+    });
+    const student = cookieOf(joined);
+
     const report0 = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: teacher } });
     expect(report0.status).toBe(404);
     expect(((await report0.json()) as { code: string }).code).toBe("report_pending");
@@ -149,7 +157,22 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     expect(finish.status).toBe(204);
     const again = await call(`/api/activities/${activityId}/finish`, { method: "POST", headers: { Cookie: teacher } });
     expect(again.status).toBe(204);
-  });
+
+    await vi.waitFor(
+      async () => {
+        const res = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: teacher } });
+        expect(res.status).toBe(200);
+      },
+      { timeout: 30_000 },
+    );
+
+    const mine = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: student } });
+    expect(mine.status).toBe(200);
+    const mineData = (await mine.json()) as Record<string, unknown>;
+    expect("students" in mineData).toBe(false);
+    expect("classReport" in mineData).toBe(false);
+    expect(typeof mineData.pseudonym).toBe("string");
+  }, 60_000);
 
   test("授權矩陣抽檢：outsider 403／teacher-only 403", async () => {
     const outsiderLogin = await call("/api/auth/login", {
@@ -170,8 +193,6 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     const student = cookieOf(joined);
     const finish = await call(`/api/activities/${activityId}/finish`, { method: "POST", headers: { Cookie: student } });
     expect(finish.status).toBe(403);
-    const live = await call(`/api/activities/${activityId}/live`, { headers: { Cookie: student } });
-    expect(live.status).toBe(404);
   });
 
   test("teacher keys CRUD：PUT 冪等、order、只回 last4、teacher-only", async () => {
@@ -227,6 +248,26 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
 
     const del = await call("/api/settings/keys/openrouter", { method: "DELETE", headers: { Cookie: teacher } });
     expect(del.status).toBe(204);
+  });
+
+  test("register→login 學生雙軌：註冊即成員，同 email 密碼可登入", async () => {
+    const email = `reg-${Date.now()}@socrates.tw`;
+    const registered = await call("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, email, password: "student-pass-1", name: "註冊生A" }),
+    });
+    expect(registered.status).toBe(200);
+    expect(((await registered.json()) as { role: string }).role).toBe("student");
+
+    const login = await call("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: "student-pass-1" }),
+    });
+    expect(login.status).toBe(200);
+    const me = await call("/api/me", { headers: { Cookie: cookieOf(login) } });
+    expect(((await me.json()) as { role: string }).role).toBe("student");
   });
 
   test("lookup mock：websearch 缺 binding → fallback 文字（prose mock）", async () => {

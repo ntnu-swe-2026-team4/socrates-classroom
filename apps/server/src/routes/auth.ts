@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { LoginInputSchema, RegisterInputSchema } from "@socrates/shared";
-import { all, one, run } from "../db/d1";
+import { all, batch, one } from "../db/d1";
 import { endSession, hashPassword, startSession, verifyPassword } from "../auth";
 import { enforceIpLimit, fail, newId, nowIso, parseBody, type AppEnv } from "../http";
 
@@ -18,12 +18,12 @@ export function authRoutes() {
     .post("/auth/login", async (c) => {
       await enforceIpLimit(c, "login", 30);
       const input = await parseBody(c, LoginInputSchema);
-      const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE email = $email AND role = 'teacher'", {
+      const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE email = $email", {
         email: input.email,
       });
       const ok = row ? await verifyPassword(input.password, row.password_hash) : false;
       if (!row || !ok) fail(401, "unauthorized");
-      const user = { id: row.id, name: row.name, role: row.role as "teacher" };
+      const user = { id: row.id, name: row.name, role: row.role };
       await startSession(c, user);
       return c.json(user);
     })
@@ -48,19 +48,19 @@ export function authRoutes() {
       const at = nowIso();
       const hash = await hashPassword(input.password);
       try {
-        await run(
-          c.env.DB,
-          "INSERT INTO users (id, name, role, email, password_hash, created_at) VALUES ($id, $name, 'student', $email, $hash, $at)",
-          { id, name: input.name, email: input.email, hash, at },
-        );
+        await batch(c.env.DB, [
+          {
+            sql: "INSERT INTO users (id, name, role, email, password_hash, created_at) VALUES ($id, $name, 'student', $email, $hash, $at)",
+            params: { id, name: input.name, email: input.email, hash, at },
+          },
+          {
+            sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
+            params: { cid: classroom.id, uid: id, name: input.name, at },
+          },
+        ]);
       } catch {
         fail(409, "conflict");
       }
-      await run(
-        c.env.DB,
-        "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
-        { cid: classroom.id, uid: id, name: input.name, at },
-      );
       const user = { id, name: input.name, role: "student" as const };
       await startSession(c, user);
       return c.json(user);
