@@ -7,7 +7,7 @@ import { TextSearch } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
 import { readActivityId } from "@/api/local";
-import { SocratesStage, type SocratesHandle } from "@/components/SocratesStage";
+import { SocratesStage, type SocratesExpression, type SocratesHandle } from "@/components/SocratesStage";
 import { useDialogue } from "@/hooks/useDialogue";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { cn } from "@/components/ui";
@@ -62,13 +62,23 @@ function DialogueBody({ userId }: { userId: string }) {
     [topicQuery.data, topicId],
   );
 
-  const { messages, draft, phase, error, send, retryLast, interrupt } = useDialogue(activityId, userId);
+  const { messages, draft, phase, error, emotion, send, retryLast, interrupt } = useDialogue(activityId, userId);
 
   const stageRef = useRef<SocratesHandle>(null);
+  const appliedExpressionRef = useRef<string | null>(null);
   useEffect(() => {
-    if (phase === "thinking") stageRef.current?.setExpression("Confused", { loop: true });
-    else stageRef.current?.setExpression(null);
-  }, [phase]);
+    const transient = phase === "thinking" || phase === "streaming";
+    const key = transient ? "__thinking" : (emotion?.emotion ?? "neutral");
+    if (appliedExpressionRef.current === key) return;
+    appliedExpressionRef.current = key;
+    if (transient) {
+      stageRef.current?.setExpression("Confused", { loop: true });
+      return;
+    }
+    const map: Record<string, SocratesExpression> = { happy: "Happy", angry: "Angry", confused: "Confused" };
+    const name = emotion ? map[emotion.emotion] : undefined;
+    stageRef.current?.setExpression(name ?? null, name === undefined ? undefined : { loop: true });
+  }, [phase, emotion]);
 
   const [panelOpen, setPanelOpen] = useState(false);
   const panelRef = useRef<TermPanelHandle>(null);

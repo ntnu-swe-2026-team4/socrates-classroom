@@ -8,7 +8,15 @@ import { setLocale } from "@/i18n";
 
 vi.mock("@/components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
 vi.mock("@/landing/LandAnimation", () => ({ LandAnimation: () => null }));
-vi.mock("@/components/SocratesStage", () => ({ SocratesStage: () => null }));
+const stage = vi.hoisted(() => ({ setExpression: vi.fn() }));
+vi.mock("@/components/SocratesStage", () => ({
+  SocratesStage: ({ ref }: { ref?: { current: unknown } }) => {
+    if (ref && typeof ref === "object" && "current" in ref) {
+      ref.current = { setExpression: stage.setExpression };
+    }
+    return null;
+  },
+}));
 vi.mock("@/components/constellation/Scene3D", () => ({ default: () => null, CLUSTER_PALETTE: [] }));
 
 const agent = vi.hoisted(() => ({ options: null as null | { onMessage?: (event: { data: unknown }) => void } }));
@@ -50,6 +58,7 @@ const history = [
 beforeEach(() => {
   localStorage.clear();
   setLocale("en");
+  stage.setExpression.mockReset();
   vi.stubGlobal("scrollTo", vi.fn());
   vi.stubGlobal(
     "fetch",
@@ -119,6 +128,26 @@ test("F03: real dialogue route restores the user bubble rather than an assistant
     await screen.findByText("The saved reply");
     await waitFor(() => expect(question.closest(".justify-end")).not.toBeNull());
     expect(screen.getByText("The saved reply").closest(".justify-end")).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test("#90: emotion entry maps to SocratesStage expression (happy → Happy, neutral → null)", async () => {
+  const dispose = await mountRoute("/dialogue?activityId=activity-1");
+  try {
+    await waitFor(() => expect(agent.options).not.toBeNull());
+    emitView([
+      ...history,
+      {
+        id: 3,
+        conversationId: "c1",
+        kind: "app.emotion",
+        data: { emotion: "happy", confidence: 0.9, probabilities: { happy: 0.9 }, text: "The saved reply" },
+      },
+    ]);
+    await screen.findByText("The saved reply");
+    await waitFor(() => expect(stage.setExpression).toHaveBeenCalledWith("Happy", { loop: true }));
   } finally {
     dispose();
   }
