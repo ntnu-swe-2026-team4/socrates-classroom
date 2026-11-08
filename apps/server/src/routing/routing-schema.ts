@@ -19,7 +19,7 @@ export const AvailabilityEntrySchema = z.object({
 });
 
 export const TrafficClassSchema = z.object({
-  availability: z.string(),
+  availability: z.literal("defaults"),
 });
 
 export const RoutingConfigSchema = z.object({

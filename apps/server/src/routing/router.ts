@@ -15,6 +15,17 @@ export interface RouteDecision {
   baseUrl: string | undefined;
 }
 
+const sharedByEnv = new WeakMap<Env, Router>();
+
+export function getRouter(env: Env): Router {
+  let router = sharedByEnv.get(env);
+  if (!router) {
+    router = new Router(env);
+    sharedByEnv.set(env, router);
+  }
+  return router;
+}
+
 export class Router {
   readonly #ledger = new RoutingLedger();
   readonly #env: Env;
@@ -27,9 +38,9 @@ export class Router {
     return this.#ledger;
   }
 
-  chain(trafficClass: TrafficClass): AvailabilityEntry[] {
-    const className = routingConfig.trafficClasses[trafficClass]?.availability ?? "defaults";
-    const list = className === "defaults" ? routingConfig.defaults.availability : routingConfig.defaults.availability;
+  chain(trafficClass: TrafficClass, canServe?: (entry: AvailabilityEntry) => boolean): AvailabilityEntry[] {
+    const availability = routingConfig.trafficClasses[trafficClass]?.availability ?? "defaults";
+    const list = availability === "defaults" ? routingConfig.defaults.availability : [];
     return [...list]
       .sort((a, b) => a.priority - b.priority)
       .filter((entry) => {
@@ -40,6 +51,7 @@ export class Router {
           if (!entry.model && !def.model) return false;
           if (def.baseUrlEnv && !this.#env[def.baseUrlEnv as keyof Env]) return false;
         }
+        if (canServe && !canServe(entry)) return false;
         const key = this.keyOf(entry, def);
         return (
           !this.#ledger.inCooldown(key) &&
@@ -49,8 +61,8 @@ export class Router {
       });
   }
 
-  pick(trafficClass: TrafficClass): RouteDecision | null {
-    const entry = this.chain(trafficClass)[0];
+  pick(trafficClass: TrafficClass, canServe?: (entry: AvailabilityEntry) => boolean): RouteDecision | null {
+    const entry = this.chain(trafficClass, canServe)[0];
     if (!entry) return null;
     const def = routingConfig.providers[entry.provider]!;
     const key = this.keyOf(entry, def);
