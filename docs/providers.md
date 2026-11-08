@@ -1,6 +1,6 @@
 # LLM Providers 紀錄
 
-> 查證日期：2026-11 ｜ 狀態：供 LLM 組與後端共用的 provider 參考
+> 查證日期：2026-11-03（providers.md 首版；後續查證見各節標注）｜ 狀態：供 LLM 組與後端共用的 provider 參考
 > 配套文件：[`cf.md`](./cf.md)（Cloudflare CLI）、[`pi.md`](./pi.md)（Pi Durable）
 
 ## Pool 定位
@@ -20,14 +20,15 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 
 ## 1. 自架 DGX Spark ×2（生產主力）
 
-- **端點**（來源：`~/.pi/agent/models.json` 的 `dgx-spark-x2`）：
-  - `http://100.102.84.36:8888/v1` — 2× DGX Spark，GLM-5.3-Flash EXL3，1M ctx（Tailscale IP）
-  - `http://192.168.101.70:8888/v1` — 1× DGX Spark，DeepSeek V4 Flash，384k ctx（內網 IP）
+- **端點**（來源：`~/.pi/agent/models.json` 的 `dgx-spark-x2`；對外一律經 **Cloudflare Tunnel** 暴露，原文 IP 已移除，內網位址見 team 內部紀錄）：
+  - 2× DGX Spark — GLM-5.3-Flash EXL3，1M ctx（僅此一組，無其他 Spark）
 - **協定**：`openai-completions`、`apiKey: none`
 - **compat 設定**（必抄）：`supportsDeveloperRole: false`、`supportsReasoningEffort: false`、`maxTokensField: "max_tokens"`
 - **併發 4**（團隊實測）、token 無上限、ZDR 本質成立
 - ✅ **外部連通已定案：Cloudflare Tunnel**（團隊確認會把自架推理服務掛上 Tunnel）。設定時注意：(1) 用 Access policy 限制只有自家 Worker 能呼叫；(2) Tunnel 會多一跳（學生 → CF edge → tunnel → 實驗室網路 → Spark），爆發期延遲要實測；(3) 自架端點的 prompt cache 策略由推理伺服器決定，與 `x-opencode-session` 式親和無關。
 - 容量估算：4 併發 × 短回覆（≤3 句）≈ 60–120 輪/分鐘，一班爆發期學生排隊數秒。
+- **Serving stack**：[MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold)（engine：[ashhart/TensorFold](https://github.com/ashhart/TensorFold)，Zig、CUDA backend；recipe 跑 TensorFold v0.6.0＋96 patches）——2× DGX Spark（GB10 128GB，CX7 互連 TP=2）、4 concurrent、完整 1,048,576-token context、kept-state pool（NVMe spill tier，shared system prompt 跨對話保狀態）
+- ⚠️ **容量狀態（2026-11-04，team lead 回報）**：大部分時間 **memory ~95% 滿載**——既有推理（GLM-5.3-Flash EXL3，2× Spark TP=2）已占滿，**不可再加 self-hosted 工作負載**：whisper STT、Clef 判斷模型、TTS 的「自架 DGX」選項全部出局（#55、#56 的自架評估項視同關閉）。自架擴容＝加機器（新 catalog entry），不在現有 DGX 加載。
 
 ## 2. OpenCode Go（第一溢位）
 
@@ -48,13 +49,19 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 - **用量**：5 小時 + 每週雙窗口。credits 制：Lite 2,000/5h・10,000/週、Pro 12,000・60,000、Max 28,000・140,000；離峰五折，峰時（週一～五 14:00–18:00 UTC+8）Flash 0.4×／5.3 為 1.2×／3×。對話用量用不完
 - **併發**：官方不公布數字（只說 Max > Pro > Lite、動態調整）；社群實測 Lite/Pro ≈ **1**、Max 動態約 30，且有 5→2→1 收緊前例（zai-org/GLM-4 #802）
 - **條款**：⚠️ 「限官方支援工具與產品環境」（ZCode／Claude Code／Cline／Roo Code／Kilo／Goose／OpenCode…）＋「禁止帳號共享／多用戶」→ **不可當課堂產品後端**，僅開發與老師個人助理
-- 錯誤碼對照（分類見 `apps/server/src/providers/pool.ts`）：1302/1305 限流過載、1308/1310/1316/1317 窗口用盡、1313 公平使用限速、1309 訂閱過期
+- 錯誤碼對照（cooldown 分類見 `apps/server/src/routing/ledger.ts`）：1302/1305 限流過載、1308/1310/1316/1317 窗口用盡、1313 公平使用限速、1309 訂閱過期
 
 ## 4. CF Workers AI（壓底）
 
-- **接入**：`AI` binding（`agents/models/pi-ai` 的 `createAI` 或直接 `env.AI.run`）
-- **模型**：`@cf/zai-org/glm-4.7-flash`（約 $0.0605/M input、$0.40/M output）；`@cf/zai-org/glm-5.3`（1M ctx，需 Workers 付費方案）
-- **速率**：文字生成預設 **300 req/min**；需付費方案的模型：標準計費 **20 req/min**、預付 AI Gateway credits **50 req/min**（每帳號每模型）——整班爆發期要吃預付 credits
+- **接入**：`AI` binding——`agents/models/pi-ai` 的 `createAI({ binding, id })`（回 pi-ai Provider，id `cloudflare`，靜態清單＝全部 Workers AI id）；直接 `env.AI.run` 亦可
+- **免費額度（2026-11-05 官方 pricing/limits 查證）**：**10,000 Neurons/day**（Free 與 Paid 方案皆有，00:00 UTC 重置）；超過按 **$0.011/1k Neurons**（需 Workers Paid）。⚠️ **local dev（wrangler/vite remote）的推論也計入 limits**
+- **付費模型清單**（需 Workers Paid **或** 預付 AI Gateway credits）：`@cf/zai-org/glm-5.2`／`glm-5.3`／**`glm-5.3-flash`**、`@cf/moonshotai/kimi-k2.6`／`kimi-k2.7-code`、`@cf/deepseek-ai/deepseek-v4*`——**注意：`@cf/zai-org/glm-4.7-flash` 不在清單（免費 neurons 可用）**
+- **速率**：文字生成預設 **300 req/min**；付費清單模型：標準計費 **20 req/min**、預付 credits **50 req/min**（每帳號每模型）
+- **壓底策略（同模型不換腦）**：`@cf/zai-org/glm-5.3-flash`＝與自架頭部同模型（failover 語氣連續）→ 排第一，402/403（未付費）由 breaker 降級 → `glm-4.7-flash`（免費 neurons、300 rpm）收尾。5.3-flash 是否可用取決於帳號方案，catalog 兩個都列
+- **AI Gateway credits（2026-11-05 官方 Unified Billing）**：**純預付、無免費月度額度**，購買收 5% 手續費（僅信用卡）；推論價格 pass-through。Web Search API（ceramic $0.25/1k）與付費清單模型都吃這個——**402 web_search_payment_required＝credits 為零**，載入後即通
+- **語音模型（#56/#69，2026-11-05 官方目錄查證）**：
+  - STT：`@cf/openai/whisper-large-v3-turbo`（ZDR yes、$0.000513/audio-min）；binding 輸入＝base64 字串（schema `audio: string｜{body,contentType}`）
+  - TTS：`@cf/myshell-ai/melotts`（ZDR yes、$0.000205/audio-min、zh 支援）；binding 參數 `prompt`＋`lang`，回 base64 WAV 文字流——**已實測**（216KB WAV→whisper 閉環轉錄）
 - **ZDR**：官方明文「Zero data retention」+「No training」；⚠️ 例外：**AI Gateway 開 logging/caching 會存內容**——學生流量不要開
 
 ## 5. OpenRouter（聚合器／BYOK 路由）
@@ -86,8 +93,9 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 - [ ] 上線前 email OpenCode 確認 Go 用於非 coding-agent 產品後端的立場
 - [ ] Cloudflare Tunnel 設定（團隊自建）——記得套 Access policy 限制僅自家 Worker 可呼叫
 - [ ] opencode-go 的實際併發實測（官方無數字）
-- [ ] 產品級 BYOK：學生 key 的加密儲存（D1）與 `zdr` 強制路由設計
-- [ ] `CLASS_POOL`（`apps/server/src/providers/whitelist.ts`）之外是否需要更多 runtime 設定層（模型/併發目前寫死在 pool.ts）
+- [x] BYOK 定案（2026-11-06，#82）：teacher keys（一 provider 一把 key，D1 AES-GCM）；**學生無 BYOK 入口**
+- [x] runtime 設定層：已定案 `providers.config.yaml`（build-time 編譯，provider×credential×priority×traffic class；2026-11-06）——whitelist/pool.ts 退役，准入由 YAML providers 節把關
+- [x] server-side TTS 選型查證：**已定案 `@cf/myshell-ai/melotts`**（ZDR yes、$0.000205/audio-min、zh 支援；2026-11-05 官方目錄查證＋實測閉環，見 §4 語音模型；自架 DGX 已出局）
 
 ## 來源
 
