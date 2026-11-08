@@ -31,7 +31,6 @@
 | `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —    | ❌ 403                | ✅                                    |
 | `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —    | —                     | ✅                                    |
 | `GET /activities/:id`、`GET /report`                                                                    | —    | 需教室成員            | 需教室成員                            |
-| `GET /activities/:id/dialogue`                                                                          | —    | 需教室成員（僅自己）  | 需教室成員（任意學生，`?studentId=`） |
 | **WS** `/agents/chat/:name`                                                                             | —    | 需教室成員            | ❌（對話僅學生）                      |
 | `GET /activities/:id/live`、`POST …/finish`                                                             | —    | ❌ 403                | 需教室成員                            |
 
@@ -99,22 +98,7 @@ type ServerMessage =
 - **客戶端以 `applyImmutable`（`@earendil-works/chord/delta`）套用 ops**——禁止手寫 delta applier
 - **情緒**：`view.entries` 的 `app.emotion` entry（`{emotion, probabilities, confidence, text}`，#111）——UI 依機率驅動表情，文字零污染
 - **違規**：`app.violation` entry（`{type, probability, excerpt, source}`，#71）——老師面板讀 D1（#73 輪詢），學生端不消費
-- **歷史**：`GET /api/activities/:id/dialogue`（REST，§5.4）或 WS `entries` 指令
-
-### 5.4 歷史（REST 讀）
-
-| Operation                                                | 說明                                                                                                                                                |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/activities/:id/dialogue` → `DialogueMessage[]` | D1 歷史（舊→新）。老師帶 `?studentId=` 覆盤任意學生；學生不帶＝自己，帶非自身 `studentId` → 403。**寫入只經 WS**（pi transcript 為真相，D1 為投影） |
-
-```ts
-interface DialogueMessage {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  at: string;
-}
-```
+- **歷史**：WS `watch` 首個 view（window 預設最新 50 則 entries）或 `entries` 指令；pi transcript（DO storage）為唯一真相
 
 ## 6. 老師即時面板（#73；本輪不實作，資料源已調查）
 

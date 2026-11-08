@@ -77,24 +77,6 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     expect(((await noTos.json()) as { code: string }).code).toBe("tos_required");
   });
 
-  test("dialogue 歷史（REST 讀、WS 寫）", async () => {
-    const student = cookieOf(
-      await call("/api/join", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, name: "R6生C", tosAccepted: true }),
-      }),
-    );
-    const history = await call(`/api/activities/${activityId}/dialogue`, { headers: { Cookie: student } });
-    expect(history.status).toBe(200);
-    expect(await history.json()).toEqual([]);
-
-    const teacherAsk = await call(`/api/activities/${activityId}/dialogue`, {
-      headers: { Cookie: teacher },
-    });
-    expect(teacherAsk.status).toBe(422);
-  });
-
   test("finish→report 語意（pending → 404 report_pending）", async () => {
     const report0 = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: teacher } });
     expect(report0.status).toBe(404);
