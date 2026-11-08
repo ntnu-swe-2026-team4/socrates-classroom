@@ -1,126 +1,176 @@
 # Pi Durable（PiHarness）參考
 
-> 本專案的對話引擎。pi 負責 agent 迴圈的一切：transcript、輸入排程（follow-up/steer）、模型呼叫、工具、重試、崩潰恢復；本專案只負責「把請求送進去、把事件接出來、把結果寫回 D1」。
-> 上游：pi（https://pi.dev）由 Earendil 開發；Workers 整合由 Cloudflare Agents SDK 提供（`agents/harness/pi`）。
+本專案的對話引擎。pi 負責 agent 迴圈的一切：transcript、input admission、模型呼叫、工具、重試、崩潰恢復。我們只寫 transport glue 與政策（extensions、routing）。
 
-## 目錄
+上游：pi（https://pi.dev）由 Earendil 開發；Durable Object 宿主由 Cloudflare Agents SDK 提供（`agents/harness/pi`）。查證日期 2026-11-06（pi 1.5.0 / agents 0.33.0，以 node_modules 原始碼為準）。
 
-- [版本配對鎖（重要）](#版本配對鎖重要)
-- [在本專案的架構位置](#在本專案的架構位置)
-- [核心模型：session / submit / events / wait](#核心模型session--submit--events--wait)
-- [順序陷阱：先掛事件再 submit](#順序陷阱先掛事件再-submit)
-- [設定（settings）](#設定settings)
-- [模型（models）與 provider](#模型models與-provider)
-- [恢復與崩潰](#恢復與崩潰)
-- [測試（faux provider）](#測試faux-provider)
-- [已知限制](#已知限制)
-- [來源](#來源)
+## 版本配對鎖
 
-## 版本配對鎖（重要）
+`agents` 每個版本只對應一個 pi minor。本專案錨定 `agents ^0.33.0` 與 `@earendil-works/pi-durable` / `pi-ai` / `chord` / `pi-schema` `~1.5.0`。
 
-**`agents` 的每個版本只對應一個 pi minor 版本。** 本專案錨定：
+- pi-durable 是 experimental，minor 升級可能改 API
+- 儲存格式跨 minor 不相容：pi 1.5 寫入的 conversation，退回 1.4 的 Worker 讀不了。升級是單向門，出錯只能 roll forward
+- 升級時 `agents` 與 `@earendil-works/pi-*` 必須一起評估
 
-| 套件                                             | 版本      |
-| ------------------------------------------------ | --------- |
-| `agents`                                         | `^0.32.0` |
-| `@earendil-works/pi-durable` / `pi-ai` / `chord` | `~1.4.0`  |
+## 兩大原則
 
-升級時兩邊必須一起評估（pi 1.5 已發布，但 agents 尚未跟進——**不要單獨升 pi**）。
+1. **pi handles everything**。agent 語意全在 pi-durable；寫 server 邏輯前先查 `node_modules/@earendil-works/pi-durable/dist/harness/types.d.ts`，不憑記憶。
+2. **everything is an extension**。行為全在 extension（prompts / tools / hooks / tasks），裝在 registry。DO 只負責 host 與 install，transport 只搬運 view。
 
-## 在本專案的架構位置
+細節規範在 `apps/server/AGENTS.md`，此處不重複。
 
+## 架構位置
+
+```mermaid
+flowchart TB
+    subgraph Worker["Worker"]
+        API["/api/* — Hono REST"]
+        AG["/agents/chat/:name — WebSocket"]
+        RR["ReportRunner DO"]
+    end
+    subgraph Chat["Chat DO（一個對話執行緒一個 instance）"]
+        WS["ws/sockets.ts"]
+        PH["PiHarness"]
+        REG["registry"]
+        M["models registry"]
+    end
+    AG --> WS --> PH
+    PH --- REG
+    PH --- M
+    API -->|"finish 觸發"| RR
+    API -->|"歷史讀取"| DB[("D1")]
+    PH --- DB
 ```
-apps/server/src/do/pi-agent.ts   # PiAgent Durable Object
-├─ PiHarness                     # pi 的本體：storage 用 DO 自己的 SQLite（pi_* 表）
-├─ registry                      # extension：system prompt（packages/llm/prompts/socrates.md）
-├─ providers/pool.ts             # models registry（白名單 fallback 鏈）
-└─ dialogue()                    # 本專案的 RPC 入口：SSE 轉換 + D1 寫回
-```
 
-- 一個對話執行緒 = 一個 DO instance：`env.PiAgent.idFromName(`${scope}:${id}`)`
-- pi 的資料放在 DO SQLite 的 `pi_*` 表——與 D1 的產品資料（對話記錄、成績）**分離**
-- DO 建構時 `buildPool(env)` 組出 models registry；`defaults.model` = 鏈首，每輪再用 `session.setModel()` 指到當前健康的 provider
+- 一個對話執行緒是一個 Chat DO instance；root session id 為 `"1"`（`ROOT_SESSION`）
+- pi 的資料在 DO SQLite 的 `pi_*` 表，與 D1 的產品資料分離
+- ReportRunner DO 負責報告生成（activity 級，alarm 驅動）
 
-## 核心模型：session / submit / events / wait
+## 兩層 API，不要混淆
+
+實際上有兩層 API，介面相似但不同：
+
+| 層                           | 取得方式                                                                   | 方法                                                                     | 用途                                                                                              |
+| ---------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `PiSession`（agents）        | `harness.session(id)`                                                      | `submit` / `wait` / `watch` / `busy` / `messages` / `setModel` / `abort` | 對話執行緒的日常驅動；`wait` 的結果帶 `text`                                                      |
+| `Conversation`（pi-durable） | `harness.createConversation` / `harness.conversation(id)` / `harness.root` | `submit` / `wait` / `watch` / `configure` / `entries` / `commit`         | 建立新 conversation（含 agent profile）；`wait` 的結果**沒有** `text`，最終全文從 answer entry 取 |
+
+`PiOperationResult.text` 只存在於 agents 層；pi-durable 的 `SettledSubmissionRecord` 沒有 text，要從 `conversation.entries({ maxEntryId: settled.answer })` 拿回答。
+
+## 對話的驅動順序
+
+watch 的首個值只含附掛當下的視窗；先 submit 再 `start()` 會漏掉瞬時完成的 run。順序：
 
 ```ts
-const session = harness.session(); // root session（id "1"）
-const stream = await session.events(); // AgentEventStream：snapshot + 每 commit 一批
-const receipt = await session.submit(text); // durably 入隊（回 operationId）
-const result = await session.wait(receipt.operationId); // { status: "done" | "unanswered", ... }
-const entries = await session.messages(); // EntryRecord[]（最終真相）
+const stream = await session.watch(); // 先拿 watch
+stream.start(listener); // 先開始消費
+const receipt = await session.submit(text); // 再送出
+const result = await session.wait(receipt.operationId);
 ```
 
-- `submit` 先落盤再執行——同一 session 的後續輸入自動排隊（`whenBusy: "queue"`），`steer()` 則插進當前回合
-- `wait()` 回覆 `{ status: "done" | "unanswered", reason? }`；`unanswered` 代表模型失敗且重試用盡（例如 `no_model`、`model_error`）
-- `session.setModel(model)` 可在 submit 前換模型（本專案用它做健康優先選路）
-- `session.messages()` 回 `EntryRecord[]`：`kind`（如 `pi.user` / `pi.assistant`）+ `model?: Message[]`——**最終文字從這裡拿**，delta 只是串流 UX
+串流內容：首個 `view`（整份 `ConversationView`），之後每次變更是 chord `ops`。客戶端用 `applyImmutable`（`@earendil-works/chord/delta`）套用；不要自己寫 delta applier——chord 的 op 語意比直覺複雜，我們踩過。
 
-## 順序陷阱：先掛事件再 submit
+in-flight 回覆的累計全文在 `view.docs["pi.live"].generation.message`。
 
-`session.events()` 的串流**不重播歷史**。若先 `submit` 再 `start()` 監聽，瞬時完成的 run（mock、快取命中）會什麼都收不到——本專案踩過。正確順序：
+### no queue
 
-```
-events = await session.events()      // ① 先拿串流
-stream.start(handleBatches)          // ② 先開始消費
-receipt = await session.submit(...)  // ③ 再送出
-result  = await session.wait(...)    // ④ 等結算
-// ⑤ 收尾前再讀一次 messages() 補齐最終文字
-```
+submit 一律帶 `whenBusy: "reject"`：run 進行中第二發被 `ConversationBusy` 拒絕，不排隊。這是產品決定（#110）。
 
-`AgentEvent` 的文字增量在 `message_update.changes[]` 的 `{ type: "text_delta", delta }`。
+### 重連
 
-## 設定（settings）
+watch 沒有 event cursor；重連以 `watch({ from: newestEntryId + 1 })` 讓 window 從客戶端已有的最新 entry 之後開始。這是官方設計（pi 的 NOTES.md：「Events have no cursor」）。
 
-`Harness.open()` 的 `settings`（見 `do/pi-agent.ts`）：
+## Extensions
 
-| 鍵               | 本專案值                                              | 意義                                                              |
-| ---------------- | ----------------------------------------------------- | ----------------------------------------------------------------- |
-| `retry`          | `{ enabled: true, maxRetries: 5, baseDelayMs: 1000 }` | 模型請求指數退避：1/2/4/8/16 秒                                   |
-| `afterFailedRun` | `"continue"`                                          | run 失敗後，排隊中的輸入接續執行（`keep`／`withdraw` 為其他選項） |
+行為的唯一載體。官方支援三種形狀（pi.dev/docs/latest/extensions）：單檔 `extensions/<name>.ts`（小）、目錄 `extensions/<name>/index.ts`（多檔）、`package.json` 的 `pi.extensions` manifest（帶 npm 依賴）。
 
-睡覺中的任務（退避等待）靠 `onWake` 喚醒——`PiHarness` 把它接上 DO 的 alarm，物件其他時間可休眠。
+本專案已裝：
 
-## 模型（models）與 provider
+- `socrates`（單檔）：preamble section，內容為 `apps/server/src/prompts/socrates.md`
+- `avatar`（目錄，#111）：afterRun hook → Clef choice 題 → 寫 `app.emotion` entry（`{emotion, probabilities, confidence, text}`）
+- `judgment`（目錄，#71）：afterRun 分類 task＋`report_violation` tool → 寫 `app.violation` entry
+- `websearch`（目錄，#112）：`web_search` / `fetch_content` / `get_search_content` 三 tool（形制參考 pi-web-access，裁剪至 Workers 環境）
 
-- `models = createModels()` + `models.setProvider(provider)`：pi-ai 內建 40+ provider 目錄（`getBuiltinModel(provider, id)`）
-- 本專案的 registry 組合見 `apps/server/src/providers/pool.ts`（白名單 fallback 鏈）
-- 自訂 OpenAI 相容端點（自架 DGX Spark）：`createProvider({ api: openAICompletionsApi(), auth: { apiKey: { resolve: async () => ({ auth: { apiKey: key } }) } } })`
-- **BYOK**：`@earendil-works/pi-ai/providers/all` 的 builtin 目錄 + 學生 key 組出 per-request provider（`getBuiltinModels(providerId)` 提供完整模型清單；API-key 類 provider 皆可，OAuth 類除外）
+寫 extension 的要點：
 
-## 恢復與崩潰
+- custom entry 用 `defineEntry("app.xxx")`：不進 model context，隨 transcript 與 view 流動。情緒與違規走這個，不污染對話文字
+- afterRun hook 拿到的 `HookApi` **沒有 `commit`**；要寫 entry 就回 `runEndTask(Task, input)`，在 task phase 的 `runtime.commit` 裡寫。task 由 pi 管理，crash 後恢復，`runtime.memo()` 做冪等
+- tool 用 `defineTool` + `pi-schema`（`obj` / `str` / `oneOf`）；`replay: "safe"` 的 tool 在 crash 後會重跑，其他回中斷結果
 
-- DO 被驅逐／崩潰／重新部署 → 鬧鐘重啟物件 → pi 從最後 checkpoint 續跑
-- 模型串流中斷：保留已收到的部分、重新呼叫
-- `replay: "safe"` 的工具可安全重跑；其餘工具回「中斷結果」給模型自行決定
-- 連續崩潰 `restartLimit`（預設 5）次 → 任務 **parked**：`pending()` 顯示 parked，`session.retry()` 重跑
-- `onReport` 會收到 pi 的內部報告（本專案 `console.warn` 出去）
+## Agent profile
 
-## 測試（faux provider）
+每個 conversation 自帶 `AgentState`：`model` / `extensions` / `tools` / `instructions` / `maxTurns`。`createConversation` / `fork` / `root` 都接受 `agent: AgentChange`。
 
-`LLM_PROVIDER=mock` 時 `pool.ts` 註冊 pi-ai 的 faux provider：
+本專案的四個 profile（`pi/agents/profiles.ts`）：
+
+- `socrates`：學生對話（root），extensions 全開
+- `lookup`（#76）：查詢，websearch tools，maxTurns 3
+- `topic-gen`（#77）：出題，websearch tools，maxTurns 6
+- `report-analyst`（#74）：報告，無 tool，maxTurns 4
+
+準則：功能升格為 agent（有工具迴圈或長任務）；單發的分類（violation / 情緒）用 oneshot。profile 不寫 model——model 由 routing 依 traffic class 解析（`apps/server/providers.config.yaml`，#98）。
+
+驅動（`runProfile`）：`router.pick(trafficClass)` → `conversation.configure({ model })` → `submit` → `wait` → 從 answer entry 取文。models 與 registry 由呼叫端傳入，必須與 harness 同一實例——registry 訂閱與 faux 狀態都是 per-instance，另建一份拿不到（踩過）。
+
+## Fallback legs
+
+`createAI` 的 model options 原生支援 fallback 鏈：
 
 ```ts
-const handle = fauxProvider({});
-models.setProvider(handle.provider);
-handle.setResponses([() => fauxAssistantMessage([fauxText("[neutral] …")])]);
+const model = ai(head, { fallback: [leg1, leg2] });
 ```
 
-測試斷言只驗形狀（done / emotion / 非空文字），不驗內容。
+行為（`agents/dist/models/pi-ai/models/fallback.js` 源碼）：
+
+- legs 陣列無上限，依序嘗試
+- leg 在**吐出任何內容之前**以 error 結束 → 換下一 leg；已吐內容 → committed，之後的 error 直接往上拋（不重複輸出）
+- `start` / `text_start` 等只宣告不帶內容的事件不算產出（held back），換腿乾淨
+- 被放棄的 legs 記錄在回答的 `cloudflare-fallback` diagnostic
+
+綁定機制（本專案實證）：options 存在 model object 的 `MODEL_OPTIONS` symbol。pi generation 經 `Models.getModel(ref)` 取得 provider catalog 的原物件（引用，非拷貝），symbol 保留，provider 層的 `streamWithFallback` 就會生效。所以 `pi/models.ts` 包裝 provider 的 `getModels`，把鏈首換成帶 legs 的版本。鏈的順序來自 `providers.config.yaml`，程式碼裡沒有模型 id。
+
+## 設定與恢復
+
+`Harness.open` 的 `settings`：`retry: { enabled: true, maxRetries: 5, baseDelayMs: 1000 }`（指數退避 1/2/4/8/16 秒）、`afterFailedRun: "continue"`。
+
+睡覺中的任務靠 `onWake` 喚醒，`PiHarness` 把它接上 DO alarm（`Lifecycle.install(this).use(this.harness)`），物件其他時間可休眠。
+
+恢復：DO 被驅逐或崩潰 → alarm 重啟 → pi 從最後 checkpoint 續跑。模型串流中斷保留已收到的部分，計入 retry。`replay: "safe"` 的 tool 重跑，其他回中斷結果。連續崩潰 `restartLimit`（預設 5）次 → 任務 parked，`onReport` 收到 `task_interrupted`。
+
+孤兒 run（設計決定，#110）：WS 斷線時 run 繼續跑完，回應照樣進 transcript——學生回來看得到完整回答。佔用秒級（回覆 ≤3 句），不取消。
+
+registry 必須是 DO 的 instance field：pi 對 registry 的訂閱持續到 Harness 關閉，而 evicted object 永不關閉，module scope 的 registry 會跨實例洩漏（官方文件明言）。
+
+## 測試
+
+`LLM_PROVIDER=mock` 或無 `AI` binding 時註冊 faux provider：
+
+```ts
+const faux = fauxProvider({ tokensPerSecond }); // FAUX_TOKENS_PER_SECOND 控制時序
+faux.setResponses([fauxAssistantMessage([fauxText("…")])]);
+```
+
+- 斷言只驗形狀（entry kind / 角色 / 非空文字），不驗內容
+- faux 的 response factory 裡不能 `require()`——workerd 模組解析失敗，要用頂層 import（踩過）
+- responses 耗盡後 faux 回 error（`No more faux responses queued`），測試要設足夠的 responses
+- WebSocket 測試用真 DO＋真升級（`routeAgentRequest`）；首幀是 SDK 的 `cf_agent_identity`，斷言用 `frames.some(...)` 而非 `frames[0]`
+- eviction 測試：`evictDurableObject(stub)`，傳 stub 而非 `(namespace, id)`
 
 ## 已知限制
 
-| 限制                          | 對本專案的影響               |
-| ----------------------------- | ---------------------------- |
-| 單次 alarm 最長 15 分鐘       | 回覆 ≤3 句，無虞             |
-| 無 tool approval 機制         | 目前未開寫入類工具           |
-| event stream 無 cursor 續傳   | 重連靠 snapshot（官方設計）  |
-| DO 內背景任務最多晚 30 秒察覺 | 可接受                       |
-| 無刪除對話 API                | 以 `reset()` + D1 開新檔取代 |
+| 項目                          | 影響                                                                                                                  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| watch 無 event cursor         | 重連靠 `from`（window 起點），官方設計                                                                                |
+| 自訂 doc 不 mount `view.docs` | view 只 mount 內建 doc（`MOUNTED` 列表寫死）；自訂狀態走 custom entry，或 `harness.watchDoc`（per-address watch）     |
+| doc / commit 不跨 DO          | `Session` 綁 storage，`observeCommits` 只見本 DO 的 conversation——跨 DO 聚合（例如老師面板）不能靠 pi doc（#73 調查） |
+| 儲存格式跨 minor 不相容       | 升級單向門                                                                                                            |
 
 ## 來源
 
 - Pi harness（Agents SDK）：https://developers.cloudflare.com/agents/harnesses/pi/
-- pi 官方文件（models / providers / custom provider）：https://pi.dev/docs/latest/models
-- pi-ai（library）：npm `@earendil-works/pi-ai`（`providers/all`、`compat` 的 API 實作）
-- 官方完整範例：https://github.com/cloudflare/agents/tree/main/examples/next/harnesses/pi
+- Models for pi-ai（fallback / byokAlias / sessionAffinity）：https://developers.cloudflare.com/ai-gateway/integrations/pi-ai/
+- Extensions / Packages：https://pi.dev/docs/latest/extensions 、 https://pi.dev/docs/latest/packages
+- pi-durable README（hooks / tasks / docs 的權威）：https://github.com/earendil-works/pi/tree/main/packages/durable
+- pi-ai README（providers / classify / cross-provider handoffs）：https://github.com/earendil-works/pi/tree/main/packages/ai
+- 官方範例（sockets / view / mirror 模式）：https://github.com/cloudflare/agents/tree/main/examples/next/harnesses/pi
+- pi-router / pi-fallback-provider（routing 參考）：https://pi.dev/packages/pi-router 、 https://pi.dev/packages/pi-fallback-provider
