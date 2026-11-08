@@ -42,7 +42,6 @@ export class ChatSockets {
   readonly #getWebSockets: (tag?: string) => WebSocket[];
   readonly #authorize?: (request: Request) => Promise<boolean>;
   readonly #watches = new Map<WebSocket, ConversationWatch>();
-  #closed = false;
 
   constructor(
     harness: PiHarness,
@@ -68,8 +67,9 @@ export class ChatSockets {
   }
 
   async reattach(): Promise<void> {
-    if (this.#getWebSockets().length === 0) return;
-    await this.#watchOrClose(this.#getWebSockets()[0]!);
+    for (const socket of this.#getWebSockets()) {
+      await this.#watchOrClose(socket);
+    }
   }
 
   async #onConnect(connection: Connection, ctx: ConnectionContext): Promise<void> {
@@ -92,7 +92,7 @@ export class ChatSockets {
 
   async #watch(socket: WebSocket, window: ConversationWindow = {}): Promise<void> {
     const watch = await this.#harness.session(ROOT_SESSION).watch(window);
-    if (this.#closed || socket.readyState !== OPEN) {
+    if (socket.readyState !== OPEN) {
       await watch.stop();
       return;
     }
@@ -117,7 +117,7 @@ export class ChatSockets {
     if (end.kind === "stopped" || end.kind === "aborted") return;
     if (this.#watches.get(socket) !== watch) return;
     this.#watches.delete(socket);
-    if (this.#closed || socket.readyState !== OPEN) return;
+    if (socket.readyState !== OPEN) return;
     await this.#watchOrClose(socket, resumeAfter(last));
   }
 
@@ -171,7 +171,7 @@ export class ChatSockets {
       case "submit":
         return await handle.submit(message.input, {
           ...(message.operationId ? { operationId: message.operationId } : {}),
-          ...(message.whenBusy ? { whenBusy: message.whenBusy } : {}),
+          whenBusy: "reject",
         });
       case "abort":
         return await handle.abort();

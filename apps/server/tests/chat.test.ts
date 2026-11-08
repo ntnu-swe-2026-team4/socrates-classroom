@@ -183,7 +183,7 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     socket.send(JSON.stringify({ type: "watch" }));
     await rx.until((f) => f.some((m) => m.type === "view"));
     socket.send(JSON.stringify({ type: "submit", id: "a", input: "問題 A" }));
-    socket.send(JSON.stringify({ type: "submit", id: "b", input: "問題 B", whenBusy: "reject" }));
+    socket.send(JSON.stringify({ type: "submit", id: "b", input: "問題 B" }));
     await rx.until((f) => f.some((m) => m.type === "error" && m.id === "b"));
     await rx.until((f) => f.some((m) => m.type === "result" && m.id === "a"));
     expect(socket.readyState).toBe(WebSocket.OPEN);

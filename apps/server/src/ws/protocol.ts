@@ -8,7 +8,7 @@ import type {
   Cursor,
   UserInput,
 } from "@earendil-works/pi-durable";
-import type { PiOperationResult, PiReceipt, PiWhenBusy } from "agents/harness/pi";
+import type { PiOperationResult, PiReceipt } from "agents/harness/pi";
 
 export type ClientMessage =
   | {
@@ -16,7 +16,6 @@ export type ClientMessage =
       readonly id?: string;
       readonly input: UserInput;
       readonly operationId?: string;
-      readonly whenBusy?: PiWhenBusy;
     }
   | { readonly type: "abort"; readonly id?: string }
   | { readonly type: "watch"; readonly id?: string; readonly from?: EntryId }
