@@ -1,5 +1,5 @@
 /*
- * cf CLI (beta) config: single Worker (API + web assets + PiAgent DO).
+ * cf CLI (beta) config: single Worker (API + web assets + Chat/ReportRunner DOs).
  * Lives in apps/web (vite root, plugin reads it here); Worker source is apps/server.
  * dev (vite dev) reads .env* via loadEnv to override text bindings; build/deploy (production) use fallback.
  */
@@ -22,27 +22,21 @@ export default defineConfig(({ mode }) => {
         ...(local.CF_REMOTE_AI === "true" || process.env.CF_REMOTE_AI === "true"
           ? { AI: bindings.ai({ dev: { remote: true } }) }
           : { AI: bindings.ai({}) }),
-        PiAgent: bindings.durableObject({ worker: "socrates-classroom", exportName: "PiAgent" }),
-        ActivityEvents: bindings.durableObject({ worker: "socrates-classroom", exportName: "ActivityEvents" }),
-        Coordinator: bindings.durableObject({ worker: "socrates-classroom", exportName: "Coordinator" }),
-        ReportJob: bindings.durableObject({ worker: "socrates-classroom", exportName: "ReportJob" }),
+        Chat: bindings.durableObject({ worker: "socrates-classroom", exportName: "Chat" }),
+        ReportRunner: bindings.durableObject({ worker: "socrates-classroom", exportName: "ReportRunner" }),
         PUBLIC_BASE_URL: text("PUBLIC_BASE_URL", ""),
         COOKIE_SECURE: text("COOKIE_SECURE", "true"),
-        LLM_PROVIDER: text("LLM_PROVIDER", "pool"),
+        LLM_PROVIDER: text("LLM_PROVIDER", "mock"),
         DGX_BASE_URL: text("DGX_BASE_URL", ""),
         SEED_TOKEN: bindings.secret(),
         TTS_MODEL: text("TTS_MODEL", "@cf/myshell-ai/melotts"),
-        OPENCODE_API_KEY: bindings.secret(),
-        OPENROUTER_API_KEY: bindings.secret(),
         AUTH_SECRET: bindings.secret(),
         BYOK_ENC_KEY: bindings.secret(),
       },
       assets: { notFoundHandling: "single-page-application" },
       exports: {
-        PiAgent: exports.durableObject({ storage: "sqlite" }),
-        ActivityEvents: exports.durableObject({ storage: "sqlite" }),
-        Coordinator: exports.durableObject({ storage: "sqlite" }),
-        ReportJob: exports.durableObject({ storage: "sqlite" }),
+        Chat: exports.durableObject({ storage: "sqlite" }),
+        ReportRunner: exports.durableObject({ storage: "sqlite" }),
       },
     },
   };
