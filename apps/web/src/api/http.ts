@@ -32,6 +32,24 @@ export class ApiError extends Error {
   }
 }
 
+export interface TeacherKeyEntry {
+  provider: string;
+  model: string;
+  last4: string;
+  sortOrder: number;
+  updatedAt: string;
+}
+
+export interface KeyProviderInfo {
+  id: string;
+  name: string;
+}
+
+export interface KeyModelInfo {
+  id: string;
+  name: string;
+}
+
 export interface Api {
   me(): Promise<User | null>;
   login(email: string, password: string): Promise<User>;
@@ -50,6 +68,12 @@ export interface Api {
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
   lookupTerm(term: string): Promise<TermExplanation>;
+  listTeacherKeys(): Promise<TeacherKeyEntry[]>;
+  listKeyProviders(): Promise<KeyProviderInfo[]>;
+  listKeyProviderModels(provider: string): Promise<KeyModelInfo[]>;
+  putTeacherKey(provider: string, model: string, key: string): Promise<{ provider: string; last4: string }>;
+  deleteTeacherKey(provider: string): Promise<void>;
+  orderTeacherKeys(providers: string[]): Promise<void>;
 }
 
 const client = hc<RpcApi>("/api", {
@@ -221,5 +245,31 @@ export const httpApi: Api = {
     const data = await unwrap(await client.lookup.$post({ json: input }));
     recordTerm(data.term);
     return data;
+  },
+  async listTeacherKeys() {
+    return unwrap(await client.settings.keys.$get());
+  },
+  async listKeyProviders() {
+    return unwrap(await client.settings.keys.providers.$get());
+  },
+  async listKeyProviderModels(provider) {
+    return unwrap(await client.settings.keys.providers[":provider"].models.$get({ param: { provider } }));
+  },
+  async putTeacherKey(provider, model, key) {
+    const res = await raw(`/settings/keys/${encodeURIComponent(provider)}`, {
+      method: "PUT",
+      json: { provider, model, key },
+    });
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+      throw new ApiError((payload?.code ?? "internal_error") as ErrorCode, payload?.message ?? res.statusText);
+    }
+    return (await res.json()) as { provider: string; last4: string };
+  },
+  async deleteTeacherKey(provider) {
+    await unwrap(await client.settings.keys[":provider"].$delete({ param: { provider } }));
+  },
+  async orderTeacherKeys(providers) {
+    await unwrap(await client.settings.keys.order.$put({ json: { providers } }));
   },
 };
