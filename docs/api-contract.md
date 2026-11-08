@@ -6,19 +6,19 @@
 
 ## 1. 慣例
 
-| 項目     | 規範                                                                                                                           |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| 部署     | 單一 Worker：static assets + `/api/*`（Hono）+ `/agents/*`（WebSocket），同源無 CORS                                           |
-| Auth     | httpOnly cookie `socrates_session`（`SameSite=Lax`＋prod 恆 `Secure`）；前端 `credentials: "include"`；**任何 key 永不進前端** |
-| 語言     | `Accept-Language` → `Lang`（`zh-*→"zh"`、`en→"en"`、`es→"es"`）——錯誤訊息依此三語                                              |
-| JSON     | camelCase；id 為字串；時間 ISO 8601                                                                                            |
-| 錯誤     | `{ "message": string, "code": string }`；`code` 為 shared 的 `ErrorCode` literal union（§10），`message` 已本地化              |
-| 輸入邊界 | zod 強制：`name` ≤80、對話 `text` ≤2000、`term` 1–30、`direction` ≤200、STT 音檔 ≤60s；超界 `422 validation`                   |
-| 授權     | 預設 deny——見 §1.1；未列者一律需登入且屬教室成員                                                                               |
-| 限流     | per-user（#103）；未登入可打的端點（§1.1 訪客欄 ✅ 者）加 per-IP tier；超限 `429`                                              |
-| 冪等     | 自然鍵冪等：重複 `POST /api/join`（同身分）＝200 冪等、`finish` 重試安全、`PUT settings/*` 天然冪等                            |
-| 版本     | `/api` 無版本前綴（單一消費者）；外部消費者出現時才評版本化＋OpenAPI                                                           |
-| 型別共享 | `export type RpcApp = ReturnType<typeof createApp>`（`apps/server/src/app.ts`）；web 端 `hc<RpcApp>("/api")`（R6）             |
+| 項目     | 規範                                                                                                                                                                 |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 部署     | 單一 Worker：static assets + `/api/*`（Hono）+ `/agents/*`（WebSocket），同源無 CORS                                                                                 |
+| Auth     | httpOnly cookie `socrates_session`（`SameSite=Lax`＋prod 恆 `Secure`）；前端 `credentials: "include"`；**任何 key 永不進前端**                                       |
+| 語言     | `Accept-Language` → `Lang`（`zh-*→"zh"`、`en→"en"`、`es→"es"`）——錯誤訊息依此三語                                                                                    |
+| JSON     | camelCase；id 為字串；時間 ISO 8601                                                                                                                                  |
+| 錯誤     | `{ "message": string, "code": string }`；`code` 為 shared 的 `ErrorCode` literal union（§10），`message` 已本地化                                                    |
+| 輸入邊界 | zod 強制：`name` ≤80、對話 `text` ≤2000、`term` 1–30、`direction` ≤200、STT 音檔 ≤60s；超界 `422 validation`                                                         |
+| 授權     | 預設 deny——見 §1.1；未列者一律需登入且屬教室成員                                                                                                                     |
+| 限流     | per-user（#103）；未登入可打的端點（§1.1 訪客欄 ✅ 者）加 per-IP tier；超限 `429`                                                                                    |
+| 冪等     | 自然鍵冪等：重複 `POST /api/join`（同身分）＝200 冪等、`finish` 重試安全、`PUT settings/*` 天然冪等                                                                  |
+| 版本     | `/api` 無版本前綴（單一消費者）；外部消費者出現時才評版本化＋OpenAPI                                                                                                 |
+| 型別共享 | `RpcApp = ReturnType<typeof createApp>`＋`RpcApi = ReturnType<typeof createApi>`（`apps/server/src/app.ts`）；web 端消費 declaration 產物 `hc<RpcApi>("/api")`（R6） |
 
 ### 1.1 授權矩陣
 

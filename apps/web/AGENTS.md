@@ -17,7 +17,7 @@ pnpm typecheck
 ## Deltas & boundaries
 
 - The API layer is only `src/api/` (`httpApi` — the real backend; the v3 mock mode is retired, server-side `LLM_PROVIDER=mock` covers offline dev)
-- The dialogue transport is **WebSocket** (`/agents/chat/:name`): message types in `apps/server/src/ws/protocol.ts`, mechanics in `docs/pi.md`; client applies chord ops with `applyImmutable` — never hand-roll a delta applier; REST shapes come from `hc<RpcApp>` (R6) — any contract change lands in `docs/api-contract.md` + `packages/shared`
+- The dialogue transport is **WebSocket** (`/agents/chat/:name`): message types in `apps/server/src/ws/protocol.ts`, mechanics in `docs/pi.md`; client applies chord ops with `applyImmutable` — never hand-roll a delta applier; REST shapes come from `hc<RpcApi>` (R6; server declarations via `pnpm --filter @socrates/server run build:types` → `dist/types`, consumed through the `@server/*` tsconfig path) — any contract change lands in `docs/api-contract.md` + `packages/shared`
 - Styling is Tailwind v4 utilities; theme colors are CSS variables (`@theme` in `src/index.css`) — never hardcode color values
 - `src/landing/` is a prototype-port zone: the Biome linter is off for this directory, keep it tidy yourself
 - **Never** put any key into a `VITE_*` variable (bundled into the browser)
