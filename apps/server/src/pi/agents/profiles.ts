@@ -13,7 +13,8 @@ import { socratesExtension } from "../extensions/socrates";
 import { createAvatarExtension } from "../extensions/avatar";
 import { createJudgmentExtension } from "../extensions/judgment";
 import { createWebSearchExtension } from "../extensions/websearch";
-import { Router, type TrafficClass } from "../../routing/router";
+import { routingConfig } from "../../routing/config.gen";
+import { getRouter, type TrafficClass } from "../../routing/router";
 
 export type ProfileName = "socrates" | "topic-gen" | "report-analyst" | "lookup";
 
@@ -63,7 +64,7 @@ function _registryFor(profile: AgentProfile, env: Env): Registry {
   if (profile.extensions.includes("judgment")) {
     registry.install(
       createJudgmentExtension(env.AI, async (violation) => {
-        console.warn("[judgment:sink]", JSON.stringify(violation));
+        console.warn("[judgment:sink]", violation.type, violation.source);
       }),
     );
   }
@@ -99,8 +100,13 @@ export async function runProfile(
     { ownership: { kind: "ownerless" }, agent: agentChangeFor(profile) },
     BACKGROUND_CONTEXT,
   );
-  const router = new Router(runtime.env);
-  const decision = router.pick(profile.trafficClass);
+  const router = getRouter(runtime.env);
+  const canServe = (entry: { provider: string; model?: string }): boolean => {
+    const def = routingConfig.providers[entry.provider];
+    const modelId = entry.model ?? def?.model ?? "";
+    return runtime.models.models.getModel(entry.provider, modelId) !== undefined;
+  };
+  const decision = router.pick(profile.trafficClass, canServe);
   const model = decision
     ? (runtime.models.models.getModel(decision.entry.provider, decision.model) ?? runtime.models.default)
     : runtime.models.default;

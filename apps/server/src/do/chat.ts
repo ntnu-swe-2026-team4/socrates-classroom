@@ -33,7 +33,7 @@ export class Chat extends DurableObject<Env> {
       this.registry.install(createAvatarExtension(this.env.AI));
       this.registry.install(
         createJudgmentExtension(this.env.AI, async (violation) => {
-          console.warn("[judgment:sink]", JSON.stringify(violation));
+          console.warn("[judgment:sink]", violation.type, violation.source);
         }),
       );
       this.registry.install(createWebSearchExtension(this.env.AI));
@@ -85,8 +85,8 @@ export class Chat extends DurableObject<Env> {
     messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
     violations: Array<{ turn: number; type: string; excerpt: string }>;
   }> {
-    const entries = await this.harness.session(ROOT_SESSION).entries({ order: "ascending" }, TRANSCRIPT_MAX_ENTRIES);
-    const items = entries.items;
+    const entries = await this.harness.session(ROOT_SESSION).entries({ order: "descending" }, TRANSCRIPT_MAX_ENTRIES);
+    const items = [...entries.items].reverse();
     const messages: Array<{ role: "user" | "assistant"; turn: number; text: string }> = [];
     const violations: Array<{ turn: number; type: string; excerpt: string }> = [];
     let turn = 0;

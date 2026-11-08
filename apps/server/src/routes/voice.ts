@@ -6,6 +6,10 @@ import { routingConfig } from "../routing/config.gen";
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
 const SAMPLE_RATE = 22050;
 
+function mockTranscript(): string {
+  return "正義是什麼？請說說你的看法。";
+}
+
 function wavBytes(samples: Float32Array): Uint8Array {
   const buffer = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buffer);
@@ -62,9 +66,10 @@ export function voiceRoutes() {
       const audio = form?.get("audio");
       if (!(audio instanceof File) || audio.size === 0) fail(422, "validation");
       if (audio.size > MAX_AUDIO_BYTES) fail(422, "validation");
-      if (!c.env.AI) {
-        return c.json({ text: "正義是什麼？請說說你的看法。" });
+      if (c.env.LLM_PROVIDER === "mock") {
+        return c.json({ text: mockTranscript() });
       }
+      if (!c.env.AI) fail(502, "llm_unavailable");
       const bytes = new Uint8Array(await audio.arrayBuffer());
       let binary = "";
       for (let offset = 0; offset < bytes.length; offset += 0x8000) {
@@ -74,16 +79,15 @@ export function voiceRoutes() {
       try {
         const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
         const result = (await ai.run(routingConfig.voice.stt, input)) as { text?: string };
-        console.error("[stt] result keys", Object.keys(result ?? {}), JSON.stringify(result).slice(0, 200));
         if (result?.text) return c.json({ text: result.text });
+        fail(502, "llm_unavailable");
       } catch (error) {
         console.error("[stt] binding failed", error);
+        fail(502, "llm_unavailable");
       }
-      return c.json({ text: "正義是什麼？請說說你的看法。" });
     })
     .post("/tts", async (c) => {
-      const user = requireUser(c);
-      void user;
+      requireUser(c);
       const input = await parseBody(c, TtsInputSchema);
       const ttsModel = c.env.TTS_MODEL ?? routingConfig.voice.tts;
       if (c.env.AI && ttsModel) {
