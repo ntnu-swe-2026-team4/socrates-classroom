@@ -80,6 +80,22 @@ export function useDialogue(activityId: string, userId: string) {
     return api.tts(text, NO_AMPLITUDE, controller.signal);
   }, []);
 
+  const completePending = useCallback(() => {
+    pendingRef.current = null;
+    const text = lastAssistantText(viewRef.current);
+    if (text) {
+      setPhase("speaking");
+      speak(text)
+        .catch(() => {})
+        .finally(() => {
+          ttsRef.current = null;
+          setPhase("idle");
+        });
+    } else {
+      setPhase("idle");
+    }
+  }, [speak]);
+
   const onFrame = useCallback(
     (raw: unknown) => {
       if (typeof raw !== "string") return;
@@ -90,9 +106,12 @@ export function useDialogue(activityId: string, userId: string) {
         return;
       }
       switch (frame.type) {
-        case "view":
+        case "view": {
           adopt(frame.view);
+          const last = frame.view.entries.at(-1);
+          if (pendingRef.current && last?.kind === "pi.assistant") completePending();
           return;
+        }
         case "ops": {
           const base = viewRef.current;
           if (!base) return;
@@ -104,19 +123,7 @@ export function useDialogue(activityId: string, userId: string) {
         }
         case "result": {
           if (frame.id !== pendingRef.current) return;
-          pendingRef.current = null;
-          const text = lastAssistantText(viewRef.current);
-          if (text) {
-            setPhase("speaking");
-            speak(text)
-              .catch(() => {})
-              .finally(() => {
-                ttsRef.current = null;
-                setPhase("idle");
-              });
-          } else {
-            setPhase("idle");
-          }
+          completePending();
           return;
         }
         case "error": {
@@ -128,7 +135,7 @@ export function useDialogue(activityId: string, userId: string) {
         }
       }
     },
-    [adopt, speak],
+    [adopt, completePending],
   );
 
   const socket = useAgent({
@@ -138,6 +145,13 @@ export function useDialogue(activityId: string, userId: string) {
       (event.target as WebSocket).send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
     },
     onMessage: (event) => onFrame(event.data),
+    onConnectionError: () => {
+      pendingRef.current = null;
+      ttsRef.current?.abort();
+      ttsRef.current = null;
+      setPhase("idle");
+      setError({ code: "llm_unavailable" });
+    },
   });
 
   useEffect(() => {
