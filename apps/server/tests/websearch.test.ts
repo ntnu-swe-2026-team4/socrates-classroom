@@ -1,11 +1,33 @@
 import { env } from "cloudflare:workers";
 import { routeAgentRequest } from "agents";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import worker from "../src/index";
+import { run } from "../src/db/d1";
+import { seedDemo } from "../src/seed";
+import migrationSql from "../migrations/001_init.sql";
+import keysMigration from "../migrations/002_teacher_keys.sql";
 import type { ServerMessage } from "../src/ws/protocol";
+
+let thread: string;
+let cookie: string;
+
+async function call(path: string, init: RequestInit = {}): Promise<Response> {
+  return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(
+    new Request(`http://worker.test${path}`, init),
+    env,
+    { waitUntil: () => {} },
+  );
+}
+
+function cookieOf(res: Response): string {
+  return (res.headers.getSetCookie?.()[0] ?? "").split(";")[0]!;
+}
 
 async function connect(name: string): Promise<WebSocket> {
   const response = await routeAgentRequest(
-    new Request(`https://example.com/agents/chat/${name}`, { headers: { Upgrade: "websocket" } }),
+    new Request(`https://example.com/agents/chat/${name}`, {
+      headers: { Upgrade: "websocket", Cookie: cookie },
+    }),
     env,
   );
   expect(response?.status).toBe(101);
@@ -13,6 +35,35 @@ async function connect(name: string): Promise<WebSocket> {
   socket.accept();
   return socket;
 }
+
+beforeAll(async () => {
+  for (const statement of [...migrationSql.split(";"), ...keysMigration.split(";")]) {
+    if (statement.trim()) await run(env.DB, statement.trim());
+  }
+  await seedDemo(env.DB);
+  const login = await call("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "demo@socrates.tw", password: "demo-demo" }),
+  });
+  const teacher = cookieOf(login);
+  const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>;
+  const created = (await (
+    await call("/api/classrooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ name: "班", topicId: topics[0]!.id }),
+    })
+  ).json()) as { code: string; activityId: string };
+  const joined = await call("/api/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: created.code, name: "同學", tosAccepted: true }),
+  });
+  const { user } = (await joined.json()) as { user: { id: string } };
+  cookie = cookieOf(joined);
+  thread = `${created.activityId}:${user.id}`;
+});
 
 function frames(socket: WebSocket): {
   list: ServerMessage[];
@@ -38,7 +89,7 @@ function frames(socket: WebSocket): {
 
 describe("websearch extension（web_search + get_search_content）", () => {
   it("無 AI binding：tool 註冊、呼叫回明確錯誤、不炸", async () => {
-    const socket = await connect("t-websearch");
+    const socket = await connect(thread);
     const rx = frames(socket);
     await rx.until((f) => {
       const hello = f.find((m) => m.type === "hello");
