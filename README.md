@@ -43,7 +43,7 @@ cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations
 cf deploy --prebuilt                # 用同一份建置產物部署
 ```
 
-CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) PR 檢查 + dry-run、[`deploy.yml`](.github/workflows/deploy.yml) main 自動部署）。Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`；runtime secrets（`AUTH_SECRET`、`BYOK_ENC_KEY`——teacher keys 的 AES-GCM 金鑰）用 `cf deploy --secrets-file` 或 `wrangler secret put`。
+CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) PR 檢查 + dry-run、[`deploy.yml`](.github/workflows/deploy.yml) push main 自動部署）。Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`；runtime secrets（`AUTH_SECRET`、`BYOK_ENC_KEY`、`SEED_TOKEN`——詳見 [`docs/cf.md`](docs/cf.md) §Secrets）走 `cf deploy --secrets-file`。
 
 ## 開發
 

@@ -20,7 +20,7 @@
 ## 安裝與登入
 
 ```bash
-npm install -g cf      # 需要 Node ≥ 26.12（本專案 engines 已釘）
+npm install -g cf      # 需要 Node ≥ 26.12（devEngines 使 pnpm 指令自動用 Node 26；cf 本身不吃 Bun）
 cf auth login          # 瀏覽器授權；與 wrangler login 的憑證互相獨立
 cf --version
 ```
@@ -47,16 +47,15 @@ cf --version
 
 `apps/web/cloudflare.config.ts`——TypeScript 設定，取代 `wrangler.jsonc`。本專案使用的鍵：
 
-| 鍵                                    | 本專案值                                                                        |
-| ------------------------------------- | ------------------------------------------------------------------------------- |
-| `worker.entrypoint`                   | `./src/index.ts`                                                                |
-| `worker.compatibilityDate / Flags`    | `2026-11-01` / `nodejs_compat`                                                  |
-| `worker.env.DB`                       | `bindings.d1({ name: "socrates" })`                                             |
-| `worker.env.UPLOADS`                  | `bindings.r2({ name: "socrates-uploads" })`                                     |
-| `worker.env.AI`                       | `bindings.ai({ dev: { remote: true } })`                                        |
-| `worker.env.PiAgent / ActivityEvents` | `bindings.durableObject({ worker, exportName })`                                |
-| `worker.exports`                      | `exports.durableObject({ storage: "sqlite" })`——**取代 wrangler 的 migrations** |
-| `worker.env.*`（text/secret）         | vars 與 secrets 宣告                                                            |
+| 鍵                                 | 本專案值                                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------- |
+| `worker.entrypoint`                | `../server/src/index.ts`（Worker 原始碼在 apps/server）                         |
+| `worker.compatibilityDate / Flags` | `2026-11-01` / `nodejs_compat`                                                  |
+| `worker.env.DB`                    | `bindings.d1({ name: "socrates", id: <固定 UUID> })`                            |
+| `worker.env.AI`                    | `bindings.ai({})`（dev 設 `CF_REMOTE_AI=true` 時 `dev.remote: true`）           |
+| `worker.env.Chat / ReportRunner`   | `bindings.durableObject({ worker, exportName })`                                |
+| `worker.exports`                   | `exports.durableObject({ storage: "sqlite" })`——**取代 wrangler 的 migrations** |
+| `worker.env.*`（text/secret）      | vars 與 secrets 宣告（dev 用 `loadEnv` 讀 `.env.local` override）               |
 
 注意：
 
@@ -73,36 +72,48 @@ cf --version
 
 ## 建置與部署
 
-官方「建置一次、部署同一產物」流程（也是本專案 CI 的做法）：
+官方「建置一次、部署同一產物」流程（也是本專案 CI 的做法）。指令一律在 `apps/web/` 下執行（`pnpm deploy` ＝ `pnpm --filter @socrates/web deploy` 等價）：
 
 ```bash
-npx cf build                                   # 產出 .cloudflare/output/v0/
-npx cf deploy --prebuilt --mode production --dry-run   # 驗證（免憑證）
-npx cf deploy --prebuilt --mode production     # 真正部署
+cf auth login                                  # 一次性（CI 用 API token，見下）
+cf build                                       # 產出 .cloudflare/output（client assets + worker bundle）
+cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations   # 遠端 D1（未套過才需要）
+cf deploy --prebuilt --mode production --secrets-file .env.production.local
 ```
 
 - `--mode` 配 `cloudflare.config.ts` 的 `switch (ctx.mode)`：staging／production 各自的資源
+- `--secrets-file`（dotenv 格式）是 secrets 的唯一通道——首次部署**必須**先備妥（見下方 Secrets），否則 `AUTH_SECRET` 未設，登入/對話全部 500
+- dry-run 驗證（免憑證，fork PR 安全）：`cf deploy --prebuilt --mode production --dry-run`
 - 前端是同一 Worker 的 Static Assets——不需要另外的靜態部署
+- 團隊日常部署走 CI（push main）；手動 deploy 僅用於緊急修補——先確認本地 HEAD 與 main 一致
 
 ## D1 migrations
 
 ```bash
-# 本機（cf dev 的本地 D1）
-npx cf d1 migrations apply socrates --dir migrations --local
+# 本機（dev server 的本地 D1；pnpm dev 已自動套）
+pnpm migrate     # = cf d1 migrations apply <固定 DB_ID> --local --persist-to .cloudflare/state
 # 遠端（production；CI 的 deploy.yml 會做）
-npx cf d1 migrations apply socrates --dir migrations
+cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations   # 在 apps/web/ 下執行
 ```
+
+Schema 的 SSOT 是 `apps/server/migrations/*.sql`（目前單一 `001_init.sql`）；本地與遠端由同一批檔案驅動。
 
 ## Secrets
 
+本專案 secrets（`cloudflare.config.ts` 宣告為 `bindings.secret()`）：
+
+| Secret         | 用途                                                 | 產生方式                  |
+| -------------- | ---------------------------------------------------- | ------------------------- |
+| `AUTH_SECRET`  | HMAC session cookie 簽章（必填，缺了 fail-fast）     | `openssl rand -base64 32` |
+| `BYOK_ENC_KEY` | teacher keys 的 AES-GCM 金鑰（必填，缺了 fail-fast） | `openssl rand -base64 32` |
+| `SEED_TOKEN`   | `POST /api/dev/seed` 閘門（production 留空即可禁用） | 任意亂數                  |
+
 ```bash
-# 單一 secret（cf 尚未支援，暫用 wrangler）
-npx wrangler secret put OPENCODE_API_KEY
-# 或一次上傳（dotenv 格式；.env.production.local 不會進 dev）
-npx cf deploy --prebuilt --mode production --secrets-file .env.production.local
+# 一次上傳（dotenv 格式；.env.production.local 不會進 dev/git）
+cf deploy --prebuilt --mode production --secrets-file .env.production.local
 ```
 
-本專案 secrets：`OPENCODE_API_KEY`、`OPENROUTER_API_KEY`、`ZAI_API_KEY`（dev 用）、`BYOK_ENC_KEY`。
+平台 LLM 憑證不在 secrets——provider 憑證走 `providers.config.yaml` 宣告的 env 名（`workersAuthContext` 只解析 YAML 裡宣告的名字）；teacher keys 是老師自填、加密落 D1。
 
 ## workspaces 限制（重要）
 
@@ -117,11 +128,13 @@ cf（beta）在 **npm/pnpm workspace 子目錄**的依賴解析有限：「Worke
 - `wrangler.jsonc` / `wrangler.toml` **不再使用**；設定一律寫在 `cloudflare.config.ts`
 - wrangler 仍是 devDependency，角色有二：
   1. cf 在「非 Vite 專案」的內建打包後端（本專案已改走 Vite，不經此路）
-  2. `npx wrangler tail socrates-server`（cf 尚無法看即時 log）與單一 secret 的備用通道
+  2. `npx wrangler tail socrates-classroom`（cf 尚無法看即時 log）
+
+secrets 管理一律走 `cf deploy --secrets-file`（見上方 Secrets）——wrangler 的 `secret put` 是備用通道。
 
 ## CI/CD
 
-見 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)（PR：lint → test → build → dry-run，免憑證）與 [`deploy.yml`](../.github/workflows/deploy.yml)（main：build once → D1 migrations → deploy，只有部署步驟拿 secrets）。
+見 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)（PR：lint → yamllint → config-drift → typecheck → test → build → dry-run，免憑證）與 [`deploy.yml`](../.github/workflows/deploy.yml)（push main：全閘門 → build once → D1 migrations → deploy；只有 migrations/deploy 兩步拿 `CLOUDFLARE_API_TOKEN`/`ACCOUNT_ID`/`D1_DATABASE_ID`）。Secrets 注入走 deploy 指令的 `--secrets-file`——CI 端即上表三個 secrets，由 repo secrets 或環境管理。
 
 ## 疑難排解
 
