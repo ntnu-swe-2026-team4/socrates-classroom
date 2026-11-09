@@ -36,10 +36,10 @@ describe("agent profiles（#113：角色定義，model 由 routing 解析）", (
   });
 
   it("runProfile（lookup profile）：faux 全路徑——conversation 建立、submit、wait、text 回傳", async () => {
-    const { models } = buildFauxModels();
+    const { models, faux } = buildFauxModels();
     const harness = await Harness.open(new MemoryStorage(), { models, registry: createRegistry() }, BACKGROUND_CONTEXT);
     const runtime = {
-      models: { models, default: models.getModel("faux", "faux-1") as never },
+      models: { models, default: models.getModel("faux", "faux-1") as never, faux: faux as never },
       registry: createRegistry(),
       env: env as never,
     };

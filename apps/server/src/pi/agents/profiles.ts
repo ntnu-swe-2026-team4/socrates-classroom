@@ -156,15 +156,18 @@ export async function runProfile(
   const canServe = (entry: { provider: string; model: string }): boolean =>
     runtime.models.models.getModel(entry.provider, entry.model) !== undefined;
   const decision = router.pick(profile.trafficClass, canServe, teacherLegs);
+  if (!decision && !runtime.models.faux) throw new Error("no_available_model");
   const model = decision
-    ? (runtime.models.models.getModel(decision.entry.provider, decision.model) ?? runtime.models.default)
+    ? runtime.models.models.getModel(decision.entry.provider, decision.model)
     : runtime.models.default;
+  if (!model) throw new Error("model_not_resolvable");
   let kind: SettleKind = "error";
   try {
     await conversation.configure({ model: { provider: model.provider, modelId: model.id } }, BACKGROUND_CONTEXT);
     const submission: Submission = await conversation.submit({ type: "input", content: input }, BACKGROUND_CONTEXT);
     const settled = await submission.wait(BACKGROUND_CONTEXT);
     if (settled.status !== "done" || settled.type !== "input") {
+      kind = settled.status === "unanswered" && settled.reason === "aborted" ? "ok" : "error";
       return { text: "", conversation };
     }
     const answer = await conversation.entries(
