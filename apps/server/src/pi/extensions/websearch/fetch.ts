@@ -106,9 +106,15 @@ function sameSite(from: URL, to: URL): boolean {
   return registrableLabels(from.hostname) === registrableLabels(to.hostname);
 }
 
-async function fetchFollowingRedirects(startUrl: URL): Promise<{ response: Response; url: URL }> {
+async function fetchFollowingRedirects(
+  startUrl: URL,
+  permitHop?: (from: URL, to: URL) => boolean,
+): Promise<{ response: Response; url: URL }> {
   let url = startUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    if (hop > 0 && permitHop && !permitHop(startUrl, url)) {
+      throw new Error(`Blocked redirect target: ${url.hostname}`);
+    }
     const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
@@ -129,10 +135,11 @@ export async function fetchPage(
 ): Promise<FetchOutcome> {
   try {
     const url = validateUrl(rawUrl);
-    const { response, url: finalUrl } = await fetchFollowingRedirects(url);
-    if (permitTarget && !sameSite(url, finalUrl) && !permitTarget(finalUrl)) {
-      throw new Error(`Blocked redirect target: ${finalUrl.hostname}`);
-    }
+    const permitted = (from: URL, to: URL) => sameSite(from, to) || !permitTarget || permitTarget(to);
+    const { response, url: finalUrl } = await fetchFollowingRedirects(
+      url,
+      permitTarget ? (from, to) => permitted(from, to) : undefined,
+    );
     if (!response.ok) {
       return { url: rawUrl, title: "", content: "", error: `HTTP ${response.status}` };
     }

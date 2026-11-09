@@ -44,7 +44,7 @@ export const TrafficClassSchema = z.object({
   availability: z.literal("defaults"),
 });
 
-const BindingModelSchema = z
+export const BindingModelSchema = z
   .string()
   .min(1)
   .regex(/^@cf\/[a-z0-9-]+\/[a-z0-9._-]+$/i, "must be a Workers AI binding model id like @cf/org/model");

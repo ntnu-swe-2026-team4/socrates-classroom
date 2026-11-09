@@ -154,7 +154,12 @@ export class ReportRunner extends DurableObject<Env> {
         "SELECT pseudonym FROM pseudonyms WHERE activity_id = $aid AND student_id = $sid",
         { aid: activityId, sid: member.user_id },
       );
-      const pseudonym = existing?.pseudonym ?? `${report.pseudonymPrefix}${index + 1}`;
+      let pseudonym = existing?.pseudonym ?? "";
+      if (!pseudonym) {
+        let serial = index + 1;
+        while ([...pseudonyms.values()].includes(`${report.pseudonymPrefix}${serial}`)) serial += 1;
+        pseudonym = `${report.pseudonymPrefix}${serial}`;
+      }
       pseudonyms.set(member.user_id, pseudonym);
       if (!existing) {
         await run(
@@ -176,7 +181,11 @@ export class ReportRunner extends DurableObject<Env> {
     for (let i = 0; i < members.length; i += batch) {
       await Promise.all(
         members.slice(i, i + batch).map(async (member) => {
-          transcripts.set(member.user_id, await this.transcriptOf(activityId, member.user_id, pseudonyms));
+          try {
+            transcripts.set(member.user_id, await this.transcriptOf(activityId, member.user_id, pseudonyms));
+          } catch (error) {
+            console.error("[report] transcript fetch failed", error instanceof Error ? error.name : typeof error);
+          }
         }),
       );
     }
@@ -191,24 +200,29 @@ export class ReportRunner extends DurableObject<Env> {
             studentAnalyses.set(member.user_id, null);
             return;
           }
-          for (let attempt = 0; attempt < report.studentAttempts; attempt += 1) {
-            const { text, payload } = await this.runAgent(
-              harness,
-              "student-report",
-              this.studentReportPrompt(activity, transcript),
-              legs,
-              { lang: member.lang, submitTool: SUBMIT_STUDENT_ANALYSIS },
-            );
-            try {
-              studentAnalyses.set(member.user_id, StudentAnalysisSchema.parse(payloadOf(text, payload, "report")));
-              break;
-            } catch (error) {
-              console.error(
-                "[report] student analysis parse failed",
-                error instanceof Error ? error.name : typeof error,
+          try {
+            for (let attempt = 0; attempt < report.studentAttempts; attempt += 1) {
+              const { text, payload } = await this.runAgent(
+                harness,
+                "student-report",
+                this.studentReportPrompt(activity, transcript),
+                legs,
+                { lang: member.lang, submitTool: SUBMIT_STUDENT_ANALYSIS },
               );
-              if (attempt === report.studentAttempts - 1) studentAnalyses.set(member.user_id, null);
+              try {
+                studentAnalyses.set(member.user_id, StudentAnalysisSchema.parse(payloadOf(text, payload, "report")));
+                break;
+              } catch (error) {
+                console.error(
+                  "[report] student analysis parse failed",
+                  error instanceof Error ? error.name : typeof error,
+                );
+                if (attempt === report.studentAttempts - 1) studentAnalyses.set(member.user_id, null);
+              }
             }
+          } catch (error) {
+            console.error("[report] student analysis failed", error instanceof Error ? error.name : typeof error);
+            studentAnalyses.set(member.user_id, null);
           }
         }),
       );

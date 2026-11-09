@@ -160,9 +160,16 @@ function toolCallPayload(entry: { model?: readonly unknown[] }, toolName: string
     if (Array.isArray(candidate.content)) {
       for (const part of candidate.content) {
         const block = part as { type?: string; name?: string; arguments?: unknown };
-        if (block.type === "toolCall" && block.name === toolName && typeof block.arguments === "object") {
-          return block.arguments as JsonObject;
+        if (block.type !== "toolCall" || block.name !== toolName) continue;
+        let args: unknown = block.arguments;
+        if (typeof args === "string") {
+          try {
+            args = JSON.parse(args);
+          } catch {
+            continue;
+          }
         }
+        if (args && typeof args === "object" && !Array.isArray(args)) return args as JsonObject;
       }
     }
   }

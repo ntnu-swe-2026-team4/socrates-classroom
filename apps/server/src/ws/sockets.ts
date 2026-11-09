@@ -15,7 +15,8 @@ import { DialogueInputSchema } from "@socrates/shared";
 import type { ClientMessage, ServerMessage } from "./protocol";
 
 export type Authorize = (request: Request) => Promise<string | null>;
-export type Reverify = (userId: string) => Promise<boolean>;
+export type ReverifyOutcome = "member" | "revoked" | "error";
+export type Reverify = (userId: string) => Promise<ReverifyOutcome>;
 export type CanSubmit = (userId: string) => boolean;
 export type SubmitRoute = (handle: PiSession, input: UserInput, options: PiSubmitOptions) => Promise<PiReceipt>;
 
@@ -90,12 +91,27 @@ export class ChatSockets {
   async reattach(connections: Iterable<Connection>, reverify?: Reverify): Promise<void> {
     for (const connection of connections) {
       const auth = (connection.state as { auth?: string } | null)?.auth;
-      if (!auth || (reverify && !(await reverify(auth)))) {
+      const outcome = !auth ? "revoked" : reverify ? await reverify(auth) : "member";
+      if (outcome === "revoked") {
         this.#refuse(connection);
         continue;
       }
-      this.#authorized.set(connection, auth);
+      if (outcome === "error") {
+        this.#unavailable(connection);
+        continue;
+      }
+      this.#authorized.set(connection, auth!);
       await this.#watchOrClose(connection);
+    }
+  }
+
+  #unavailable(socket: WebSocket): void {
+    this.#authorized.delete(socket);
+    this.#unwatch(socket);
+    try {
+      socket.close(1011, "verification unavailable");
+    } catch {
+      // Already closed.
     }
   }
 

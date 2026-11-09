@@ -26,6 +26,7 @@ import { buildModels } from "../pi/models";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import { one } from "../db/d1";
 import { getRouter } from "../routing/router";
+import { ApiError } from "@socrates/shared";
 import { ChatSockets } from "../ws/sockets";
 
 class ActivityFinishedError extends Error {
@@ -187,18 +188,18 @@ export class Chat extends DurableObject<Env> {
     }
   }
 
-  private async reverify(userId: string): Promise<boolean> {
+  private async reverify(userId: string): Promise<"member" | "revoked" | "error"> {
     const [activityId, studentId] = this.ctx.id.name?.split(":") ?? [];
-    if (!activityId) return false;
+    if (!activityId) return "revoked";
     try {
       const { isTeacher } = await requireMembership(this.env.DB, activityId, {
         id: userId,
         name: "",
         role: "student",
       });
-      return isTeacher || userId === studentId;
-    } catch {
-      return false;
+      return isTeacher || userId === studentId ? "member" : "revoked";
+    } catch (error) {
+      return error instanceof ApiError ? "revoked" : "error";
     }
   }
 }

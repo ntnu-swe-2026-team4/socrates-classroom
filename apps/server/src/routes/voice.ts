@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { TtsInputSchema } from "@socrates/shared";
 import { enforceIpLimit, fail, langOf, parseBody, requireUser, type AppEnv } from "../http";
 import { routingConfig } from "../routing/config.gen";
+import { BindingModelSchema } from "../routing/routing-schema";
 
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
 const SAMPLE_RATE = 22050;
@@ -91,6 +92,9 @@ export function voiceRoutes() {
       requireUser(c);
       await enforceIpLimit(c, "tts", 30);
       const input = await parseBody(c, TtsInputSchema);
+      if (c.env.TTS_MODEL && !BindingModelSchema.safeParse(c.env.TTS_MODEL).success) {
+        fail(500, "internal_error");
+      }
       const ttsModel = c.env.TTS_MODEL ?? routingConfig.voice.tts;
       if (c.env.AI && ttsModel) {
         try {
