@@ -136,6 +136,7 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
   const AudioContextCtor =
     window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const context = new AudioContextCtor();
+  if (context.state === "suspended") await context.resume().catch(() => {});
   const source = context.createBufferSource();
   const stopEarly = () => {
     void context.close().catch(() => {});

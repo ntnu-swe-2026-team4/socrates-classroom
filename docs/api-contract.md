@@ -207,7 +207,7 @@ interface ViolationSlice {
 ## 11. 端點外的既存通道
 
 - `GET /health` → `{ok: true}`（無需 session；deploy 後煙霧測試用）
-- `POST /api/dev/seed`（僅 `LLM_PROVIDER=mock` 下生效；需 `SEED_TOKEN`）——demo 資料播種，非產品功能
+- `POST /api/dev/seed`（`LLM_PROVIDER=mock` 或已設 `DGX_BASE_URL` 時生效；需 `SEED_TOKEN`）——demo 資料播種，非產品功能；非 mock 模式密碼隨機產生並隨回應回傳
 
 ## 12. 範圍外（明確不在 v1 契約）
 

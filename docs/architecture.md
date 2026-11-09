@@ -5,16 +5,16 @@
 
 ## 0. 已定決策（本文的約束條件）
 
-| #   | 決策                                                                                             | 理由                                                                                     |
-| --- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| D1  | 單一 Worker：Hono API + 前端 assets + Chat/ReportRunner DO 同包                                  | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS                                         |
-| D2  | App 資料放 **D1**；Pi transcript 留在 DO 自己的 SQLite（`pi_*` 表）                              | 共享關聯資料 vs agent 私有狀態，各放各的                                                 |
-| D3  | 對話執行緒 = 一個 DO instance（`idFromName(scope:id)`）                                          | 天然序列化、互不干擾、Pi inbox 排隊                                                      |
-| D4  | 對話走 WebSocket（`/agents/chat/:name`，view＋chord ops），SSE 已於 web-next 重建時退役          | 單一真相在 pi transcript；前端 applyImmutable 套件                                       |
-| D5  | 全 Node 化（npm workspaces + vitest）；cf 指令走 Node ≥26.12                                     | `cf` 載 `cloudflare.config.ts` 不支援 Bun；Node 版本對齊 root AGENTS.md 與 CI（node 26） |
-| D6  | Provider pool：自架(CF Tunnel) → opencode-go → OpenRouter → Workers AI，**全 ZDR、鎖模型白名單** | 學生資料不落地；Coding Plan 只開發用                                                     |
-| D7  | Teacher keys：老師一 provider 一把 key（#82），學生無 BYOK 入口，byok 端點已退役                 | 學生流量一律走平台鏈，ZDR 責任單一                                                       |
-| D8  | CI/CD：GitHub Actions 官方 cf 範本（build once → dry-run → `--prebuilt` deploy）                 | cf 無官方 action，純 steps 是欽定方式                                                    |
+| #   | 決策                                                                                                                        | 理由                                                                                     |
+| --- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| D1  | 單一 Worker：Hono API + 前端 assets + Chat/ReportRunner DO 同包                                                             | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS                                         |
+| D2  | App 資料放 **D1**；Pi transcript 留在 DO 自己的 SQLite（`pi_*` 表）                                                         | 共享關聯資料 vs agent 私有狀態，各放各的                                                 |
+| D3  | 對話執行緒 = 一個 DO instance（`idFromName(scope:id)`）                                                                     | 天然序列化、互不干擾、Pi inbox 排隊                                                      |
+| D4  | 對話走 WebSocket（`/agents/chat/:name`，view＋chord ops），SSE 已於 web-next 重建時退役                                     | 單一真相在 pi transcript；前端 applyImmutable 套件                                       |
+| D5  | 全 Node 化（pnpm workspaces + vitest）；cf 指令走 Node ≥26.12                                                               | `cf` 載 `cloudflare.config.ts` 不支援 Bun；Node 版本對齊 root AGENTS.md 與 CI（node 26） |
+| D6  | Platform chain（providers.config.yaml）：dgx-spark → workers-ai；teacher keys（任意 pi builtin provider）排鏈首，平台鏈墊底 | 平台鏈全 ZDR；teacher keyed 流量 ToS 移轉老師（2026-11-09）                              |
+| D7  | Teacher keys：老師一 provider 一把 key（#82），學生無 BYOK 入口，byok 端點已退役                                            | 學生流量一律走平台鏈，ZDR 責任單一                                                       |
+| D8  | CI/CD：GitHub Actions 官方 cf 範本（build once → dry-run → `--prebuilt` deploy）                                            | cf 無官方 action，純 steps 是欽定方式                                                    |
 
 ## 1. 系統拓撲
 
@@ -253,7 +253,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 - **單 Worker**（D1）：對課堂規模，部署與心智負擔最小化優先於微服務彈性
 - **D1 vs DO SQLite**（D2）：D1 有 SQL 檔遷移、查詢分析、跨 DO 共享；pi 私有狀態本來就自帶 schema 管理
 - **WS 直上**（D4）：SSE adapter 於 web-next 重建時退役——pi transcript 是唯一真相，view＋chord ops 的快照恢復（斷線重連）原生免實作
-- **鎖模型而非鎖 provider**（D6）：ZDR 是模型級承諾（opencode-go 表內混有 30 天/會訓練的模型）
+- **Teacher keys 一 provider 一 key**（D6/D7）：teacher keyed 流量 ToS 移轉老師——平台無法稽核任意 provider×model 空間（2026-11-09 拍板）
 - **Teacher keys 加密**（D7）：`BYOK_ENC_KEY` AES-GCM；key 永不進 log、永不回前端明文；學生無 BYOK 入口（#82 定案）
 
 ## 12. 風險與對策
@@ -262,8 +262,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | D1 無互動式交易，tx→batch 語意差異                          | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                    |
 | cf beta 格式變動                                            | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                                |
-| 自架 Tunnel 延遲                                            | 爆發期實測 P95；不行就把自架降為「教室內網直連 + 雲端走 opencode-go/OpenRouter」                    |
-| opencode-go 條款灰域                                        | 上線前 email 官方；未確認前它不是唯一依賴（有 OpenRouter/Workers AI 兜底）                          |
+| dgx-spark 腿延遲                                            | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                      |
 | Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）      | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                          |
 | module 級狀態（rate-limit 的 Map）隨 isolate 分散且重啟歸零 | 定位為 best-effort；跨請求一致的併發守衛在 Chat DO 的 whenBusy reject。多 isolate 佈局後限流改走 DO |
 

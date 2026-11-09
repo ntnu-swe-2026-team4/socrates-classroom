@@ -71,10 +71,10 @@ export function DialogueView({
   const panelRef = useRef<TermPanelHandle>(null);
 
   const autoSent = useRef(false);
-  const termHandled = useRef(false);
+  const lastTerm = useRef<string | null>(null);
   useEffect(() => {
-    if (openTerm && !termHandled.current) {
-      termHandled.current = true;
+    if (openTerm && openTerm !== lastTerm.current) {
+      lastTerm.current = openTerm;
       setPanelOpen(true);
       panelRef.current?.openTerm(openTerm);
       onTermOpened?.();

@@ -42,6 +42,7 @@ function DialoguePage() {
 
   return (
     <DialogueView
+      key={activityId}
       activityId={activityId}
       userId={me.data.id}
       eyebrow={topic?.title ? t("dlg_topic_eyebrow") : t("dlg_title")}
