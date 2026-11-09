@@ -113,7 +113,7 @@ Schema 的 SSOT 是 `apps/server/migrations/*.sql`（目前單一 `001_init.sql`
 cf deploy --prebuilt --mode production --secrets-file .env.production.local
 ```
 
-平台 LLM 憑證不在 secrets——provider 憑證走 `providers.config.yaml` 宣告的 env 名（`workersAuthContext` 只解析 YAML 裡宣告的名字）；teacher keys 是老師自填、加密落 D1。
+平台 LLM 憑證不在 secrets——provider 憑證走 `providers.config.yaml` 宣告的 env 名（`workersAuthContext` 只解析 YAML 裡宣告的名字）；teacher keys 是老師自填、加密落 D1。**注意**：`--secrets-file` 只上傳 secrets，不設 text bindings——`DGX_BASE_URL` 等 text bindings 的 production 值來自 config 本身（預設空＝該腿跳過）。完整規則與新增 provider 腿的步驟見 [`providers.md`](./providers.md) §設定與運維。
 
 ## workspaces 限制（重要）
 

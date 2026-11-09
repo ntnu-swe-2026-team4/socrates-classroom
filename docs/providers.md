@@ -151,6 +151,39 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
 4. **開發流量**：Coding Plan 優先（額度大、離峰五折），任何 provider 皆可。
 5. **應用層記帳**：ledger 以 (provider, model, credential) 記帳——teacher leg 用 `teacher:<userId>` credential 獨立記；連續 5 次 error 開 60s cooldown（pi 不提供結構化錯誤狀態，無法分類 429/401，誠實只記 ok/error）。settle 由 run 完成回呼驅動（fire-and-forget）：DO 在 run 中途被 evict 時該次不結帳，inFlight 計數洩漏至 isolate 結束為止——cooldown 因此「保守慢」而非即時；ledger 生命週期＝isolate 生命週期，後果有界。
 
+## 設定與運維
+
+### 平台 provider 鏈修改
+
+唯一配置點：[`apps/server/providers.config.yaml`](../apps/server/providers.config.yaml)。修改流程：
+
+```bash
+# 1. 改 YAML
+# 2. 重新產生 build-time 模組（Workers 無檔案系統，runtime 不讀 YAML）
+pnpm --filter @socrates/server run gen-config
+# 3. YAML 與 src/gateway/config.gen.ts 一起 commit
+#    （CI 有 drift check：gen-config 沒跑會直接紅）
+```
+
+改動生效範圍：對話 legs（interactive/batch traffic class）、classifiers（emotion/violation）、voice stt/tts、report 參數——程式碼零模型 id，改 YAML 即全部生效。
+
+### 平台憑證（platform credentials）
+
+| 事實              | 內容                                                                                                                                                                                                        |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 憑證宣告          | YAML 的 `credential: platform`＋`baseUrlEnv`（目前唯一：`DGX_BASE_URL`）                                                                                                                                    |
+| 解析範圍          | `workersAuthContext` **只解析 YAML 宣告的 env 名**——pi builtin keys（`OPENROUTER_API_KEY` 等）一律 undefined：teacher key 缺失時誠實失敗，不靜默吃平台 key                                                  |
+| production 值     | text bindings 的值來自 config 本身（`loadEnv` 只在 dev 生效）；**`cf deploy --secrets-file` 只上傳 secrets，不設 text bindings**（cf CLI 驗證，2026-11-09）。`DGX_BASE_URL` production 預設空＝該腿自動跳過 |
+| secrets           | `AUTH_SECRET`／`BYOK_ENC_KEY`／`SEED_TOKEN`（`bindings.secret()`）走 `--secrets-file`——見 [`cf.md`](./cf.md) §Secrets                                                                                       |
+| 新增 api-key 腿時 | YAML 宣告 provider＋credential env 名 → `cloudflare.config.ts` 加 `bindings.secret()` → secrets-file 餵值 → `defaults.availability`（或 traffic class）加入該腿                                             |
+
+### Teacher keys（老師自帶 key）
+
+- **設定入口**：老師登入 → `/settings` → Teacher keys 卡片——選 provider（pi builtin catalog）→ 選 model（該 provider 的 model 清單）→ 貼 key；一 provider 一把 key，上下拖曳排序（`sort_order`＝teacher legs 鏈序，老師鏈在前、平台鏈墕後）
+- **儲存**：D1 AES-GCM（金鑰 `BYOK_ENC_KEY`）；明文永不回傳（只回 last4）
+- **責任**：老師鏈流量 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；學生無 BYOK 入口（#82）
+- API 形狀見 [`api-contract.md`](./api-contract.md) §9
+
 ## 待辦 / 未定
 
 - [ ] 上線前 email OpenCode 確認 Go 用於非 coding-agent 產品後端的立場
