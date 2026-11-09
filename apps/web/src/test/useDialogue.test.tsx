@@ -247,10 +247,30 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
     act(() => result.current.send("成功的問題"));
-    emit(viewFrame([userEntry(1, "成功的問題"), assistantEntry(2, "回答")]));
+    emit(viewFrame([userEntry(1, "成功的問題"), assistantEntry(2, "回答") ]));
     act(() => {
       result.current.retryLast();
     });
     expect(agent.sent.filter((raw) => raw.includes("submit"))).toHaveLength(1);
+  });
+
+  it("sliding window: the baseline entry is spliced out mid-run — the answer still completes", () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答")]));
+    act(() => result.current.send("長對話中的問題"));
+    emit(opsFrame([userEntry(3, "長對話中的問題")]));
+    expect(result.current.phase).toBe("thinking");
+    emit(opsFrame([userEntry(3, "長對話中的問題"), assistantEntry(4, "跨過 splice 的回答")]));
+    expect(result.current.phase).toBe("speaking");
+    expect(tts.mock.calls[0]![0]).toBe("跨過 splice 的回答");
+  });
+
+  it("sliding window: reconnect view spliced past the baseline — not-admitted verdict still works", () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答")]));
+    act(() => result.current.send("未被受理的問題"));
+    emit(viewFrame([emotionEntry(3)]));
+    expect(result.current.phase).toBe("idle");
+    expect(result.current.error).toEqual({ code: "llm_unavailable" });
   });
 });

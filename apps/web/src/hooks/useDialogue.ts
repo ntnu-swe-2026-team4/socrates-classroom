@@ -121,10 +121,11 @@ export function useDialogue(activityId: string, userId: string) {
   }, []);
 
   const arbitrate = useCallback(
-    (entries: readonly { kind: string }[], full: boolean) => {
+    (entries: readonly { id: number; kind: string }[], full: boolean) => {
       if (pendingRef.current === null) return;
-      const baseline = baselineRef.current ?? entries.length;
-      const tail = entries.slice(baseline);
+      const baseline = baselineRef.current;
+      const index = baseline === null ? -1 : entries.findIndex((entry) => entry.id === baseline);
+      const tail = index === -1 ? entries : entries.slice(index + 1);
       if (tail.some((entry) => entry.kind === "pi.assistant")) {
         completePending();
       } else if (full && !tail.some((entry) => entry.kind === "pi.user")) {
@@ -197,7 +198,7 @@ export function useDialogue(activityId: string, userId: string) {
       ttsRef.current = null;
       const id = crypto.randomUUID();
       pendingRef.current = id;
-      baselineRef.current = viewRef.current.entries.length;
+      baselineRef.current = viewRef.current.entries.at(-1)?.id ?? null;
       failedInputRef.current = trimmed;
       setError(null);
       setTtsFailed(false);
