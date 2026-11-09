@@ -6,34 +6,34 @@
 
 ## 1. 慣例
 
-| 項目     | 規範                                                                                                                                                                 |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 部署     | 單一 Worker：static assets + `/api/*`（Hono）+ `/agents/*`（WebSocket），同源無 CORS                                                                                 |
-| Auth     | httpOnly cookie `socrates_session`（`SameSite=Lax`＋prod 恆 `Secure`）；前端 `credentials: "include"`；**任何 key 永不進前端**                                       |
-| 語言     | `Accept-Language` → `Lang`（`zh-*→"zh"`、`en→"en"`、`es→"es"`）——錯誤訊息依此三語                                                                                    |
-| JSON     | camelCase；id 為字串；時間 ISO 8601                                                                                                                                  |
-| 錯誤     | `{ "message": string, "code": string }`；`code` 為 shared 的 `ErrorCode` literal union（§10），`message` 已本地化                                                    |
-| 輸入邊界 | zod 強制：`name` ≤80、對話 `text` ≤2000、`term` 1–30、`direction` ≤200、STT 音檔 ≤15MB（位元組上限，非時長）；超界 `422 validation`                                  |
-| 授權     | 預設 deny——見 §1.1；未列者一律需登入且屬教室成員                                                                                                                     |
-| 限流     | 現行：login/register/join per-IP（isolate-local sliding window）；LLM 成本端點的 per-user 限流為 #103 待辦，非現行行為                                               |
-| 冪等     | 自然鍵冪等：重複 `POST /api/join`（同身分）＝200 冪等、`finish` 重試安全、`PUT settings/*` 天然冪等                                                                  |
-| 版本     | `/api` 無版本前綴（單一消費者）；外部消費者出現時才評版本化＋OpenAPI                                                                                                 |
-| 型別共享 | `RpcApp = ReturnType<typeof createApp>`＋`RpcApi = ReturnType<typeof createApi>`（`apps/server/src/app.ts`）；web 端消費 declaration 產物 `hc<RpcApi>("/api")`（R6） |
+| 項目     | 規範                                                                                                                                                                                                                                            |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 部署     | 單一 Worker：static assets + `/api/*`（Hono）+ `/agents/*`（WebSocket），同源無 CORS                                                                                                                                                            |
+| Auth     | httpOnly cookie `socrates_session`（`SameSite=Lax`＋prod 恆 `Secure`）；前端 `credentials: "include"`；**任何 key 永不進前端**。30 天 HMAC token **不可撤銷**（logout 僅清 cookie；membership 撤銷會在 WS 喚醒時 re-verify，REST 仍有效至過期） |
+| 語言     | `Accept-Language` → `Lang`（`zh-*→"zh"`、`en→"en"`、`es→"es"`）——錯誤訊息依此三語                                                                                                                                                               |
+| JSON     | camelCase；id 為字串；時間 ISO 8601                                                                                                                                                                                                             |
+| 錯誤     | `{ "message": string, "code": string }`；`code` 為 shared 的 `ErrorCode` literal union（§10），`message` 已本地化                                                                                                                               |
+| 輸入邊界 | zod 強制：`name` ≤80、對話 `text` ≤2000、`term` 1–30、`direction` ≤200、STT 音檔 ≤15MB（位元組上限，非時長）；超界 `422 validation`                                                                                                             |
+| 授權     | 預設 deny——見 §1.1；未列者一律需登入且屬教室成員                                                                                                                                                                                                |
+| 限流     | 現行 per-IP stopgaps（isolate-local sliding window，跨 isolate 不保證、eviction 即重置）：login/register 30、join-code 60、join 30、lookup 20、topics-generate 10、stt 20、tts 30；集中式 per-user 限流為 #103 待辦，非現行行為                 |
+| 冪等     | 自然鍵冪等：重複 `POST /api/join`（同身分）＝200 冪等、`finish` 重試安全、`PUT settings/*` 天然冪等                                                                                                                                             |
+| 版本     | `/api` 無版本前綴（單一消費者）；外部消費者出現時才評版本化＋OpenAPI                                                                                                                                                                            |
+| 型別共享 | `RpcApp = ReturnType<typeof createApp>`＋`RpcApi = ReturnType<typeof createApi>`（`apps/server/src/app.ts`）；web 端消費 declaration 產物 `hc<RpcApi>("/api")`（R6）                                                                            |
 
 ### 1.1 授權矩陣
 
 > 「訪客」＝未持 session；訪客入場後取得 guest user（有 session），權利視同學生。
 
-| Operation                                                                                               | 訪客 | 學生（含 guest user） | 老師             |
-| ------------------------------------------------------------------------------------------------------- | ---- | --------------------- | ---------------- |
-| `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅   | ✅                    | ✅               |
-| `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —    | ✅                    | ✅               |
-| `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —    | ❌ 403                | ✅               |
-| `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —    | —                     | ✅               |
-| `GET /activities/:id`、`GET /report`                                                                    | —    | 需教室成員            | 需教室成員       |
-| **WS** `/agents/chat/:name`（watch/entries/abort）                                                                   | —    | 僅本人 thread         | ✅（可觀察全班） |
+| Operation                                                                                               | 訪客 | 學生（含 guest user） | 老師                 |
+| ------------------------------------------------------------------------------------------------------- | ---- | --------------------- | -------------------- |
+| `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅   | ✅                    | ✅                   |
+| `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —    | ✅                    | ✅                   |
+| `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —    | ❌ 403                | ✅                   |
+| `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —    | —                     | ✅                   |
+| `GET /activities/:id`、`GET /report`                                                                    | —    | 需教室成員            | 需教室成員           |
+| **WS** `/agents/chat/:name`（watch/entries/abort）                                                      | —    | 僅本人 thread         | ✅（可觀察全班）     |
 | **WS** `submit` op                                                                                      | —    | 僅本人 thread         | ❌ `SubmitForbidden` |
-| `POST /activities/:id/finish`                                                                           | —    | ❌ 403                | 需教室成員       |
+| `POST /activities/:id/finish`                                                                           | —    | ❌ 403                | 需教室成員           |
 
 ## 2. 身分（雙軌：訪客即玩＋帳號選用，#67）
 
@@ -61,7 +61,7 @@ interface User {
 | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/topics` → `Topic[]`                                                            | 系統題＋自建題                                                                                                                                 |
 | `POST /api/topics` `{title, statement, prompts}` → `Topic`（201）                        | 手動出題                                                                                                                                       |
-| `POST /api/topics/generate` `{direction}` → `Topic[]`                                    | agent 生成（topic-gen profile，#77/#113）；結果進老師端編輯器，不自動投放。失敗 → mock（不擋）                                                 |
+| `POST /api/topics/generate` `{direction}` → `Topic[]`                                    | agent 生成（topic-gen profile，#77/#113）；結果進老師端編輯器，不自動投放。失敗 → mock（不擋，回應帶 X-Socrates-Fallback: mock）               |
 | `POST /api/classrooms` `{name, topicId}` → `{classroomId, code, url, activityId}`（201） | 建教室＋首活動；`url` 為 `PUBLIC_BASE_URL/join/:code`                                                                                          |
 | `POST /api/classrooms/:id/activities` `{topicId}` → 同上（201）                          | 重開活動（同 code、新 activityId）                                                                                                             |
 | `GET /api/classrooms` → `ClassroomSummary[]`（登入者）                                   | 老師：自己開的教室；學生：已加入的教室。`code/url` 只回給老師；`current` 嵌入當前活動（topic＋finished）。教室單筆不另設端點——前端以本列表過濾 |
@@ -72,7 +72,7 @@ interface User {
 
 - `GET /agents/chat/:name`（WebSocket 升級）——**對話唯一通道**（先前的 SSE 端點已退役）
 - thread name 協定：`{activityId}:{userId}`（一人一 thread；DO name 即路由鍵）
-- 授權：`socrates_session` cookie（升級請求帶 cookie）——onConnect 驗 session＋membership：學生限本人 thread，老師可觀察全班（watch/entries/abort；**submit 僅限該 thread 的學生本人**——老師代打 → error frame code `SubmitForbidden`）；未通過 → close 1008（無 hello）
+- 授權：`socrates_session` cookie（升級請求帶 cookie）——onConnect 驗 session＋membership：學生限本人 thread，老師可觀察全班（watch/entries/abort；**submit 僅限該 thread 的學生本人**——老師代打 → error frame code `SubmitForbidden`）；未通過 → close 1008（無 hello）；hibernation 喚醒後 reverify 失敗亦 1008；watch 遺失（session 驅逐）→ close 1011
 - 一條連線跟一個 session（root）；重連後重新 `watch`（partysocket 自動重連，客戶端端 onOpen 重送）
 
 ### 5.2 Client → Server
@@ -177,15 +177,15 @@ interface ViolationSlice {
 
 ## 9. 查詢與 teacher keys
 
-| Operation                                                                                | 說明                                                                                                                                       |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `POST /api/lookup` `{term}` → `{term, markdown}`                                         | #76 獨立查詢功能（lookup profile：agent 自主 search/fetch）；**不落庫不計輪**。失敗 → mock。termHistory 由前端 localStorage 持久化，無端點 |
-| `GET /api/settings/keys` → `{provider, model, last4, sortOrder}[]`                       | #82 teacher keys；**一 provider 一把 key**（帳戶級）；key 明文永不回傳                                                                     |
-| `PUT /api/settings/keys/:provider` `{provider, model, key}` → `{provider, model, last4}` | 冪等 upsert；provider＝任意 pi builtin（api-key 類）；model 不在該 provider catalog → 422；非法 provider → 422 `byok_provider_invalid`     |
-| `DELETE /api/settings/keys/:provider` → `204`                                            |                                                                                                                                            |
-| `PUT /api/settings/keys/order` `{providers: string[]}` → `{providers}`                   | 排序＝routing 的 teacher legs 鏈序（#98）                                                                                                  |
-| `GET /api/settings/keys/providers` → `{id, name}[]`                                      | 可選 provider 清單（pi builtin catalog，api-key 類）                                                                                       |
-| `GET /api/settings/keys/providers/:provider/models` → `{id, name}[]`                     | 該 provider 的 model catalog（設定頁選單）                                                                                                 |
+| Operation                                                                                | 說明                                                                                                                                                                                       |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/lookup` `{term}` → `{term, markdown}`                                         | #76 獨立查詢功能（lookup profile：agent 自主 search/fetch）；**不落庫不計輪**。失敗 → mock（回應帶 `X-Socrates-Fallback: mock`）。termHistory 由前端 localStorage 持久化，無端點           |
+| `GET /api/settings/keys` → `{provider, model, last4, sortOrder, updatedAt}[]`            | #82 teacher keys；**一 provider 一把 key**（帳戶級）；key 明文永不回傳                                                                                                                     |
+| `PUT /api/settings/keys/:provider` `{provider, model, key}` → `{provider, model, last4}` | 冪等 upsert；body `provider` 須等於 path provider（不符 → 422）；provider＝任意 pi builtin（api-key 類）；model 不在該 provider catalog → 422；非法 provider → 422 `byok_provider_invalid` |
+| `DELETE /api/settings/keys/:provider` → `204`；無該 key → `404 not_found`                |                                                                                                                                                                                            |
+| `PUT /api/settings/keys/order` `{providers: string[]}` → `{providers}`                   | 排序＝routing 的 teacher legs 鏈序（#98）                                                                                                                                                  |
+| `GET /api/settings/keys/providers` → `{id, name}[]`                                      | 可選 provider 清單（pi builtin catalog，api-key 類）                                                                                                                                       |
+| `GET /api/settings/keys/providers/:provider/models` → `{id, name}[]`                     | 該 provider 的 model catalog（設定頁選單）                                                                                                                                                 |
 
 - **學生無 BYOK 入口**（#82 定案）
 - **teacher keys 服務語意**（2026-11-09 定案）：老師 keys 的教室流量**老師鏈在前、平台鏈墊後**；teacher leg 的 provider/model 資料責任由 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；ledger 以 `teacher:<userId>` credential 獨立記帳；within-turn fallback 僅存在於平台 binding 鏈（pi 機制限制），跨輪失敗由 ledger cooldown 接手
@@ -194,15 +194,22 @@ interface ViolationSlice {
 
 `code` 為 shared 的 `ErrorCode` literal union＋`ApiError`（帶型別 `code`），呼叫端 switch 窮舉有編譯期檢查。
 
-| 層                     | code                                                                                                            | HTTP                        |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| 通用                   | `unauthorized` / `forbidden` / `not_found` / `conflict` / `validation` / `rate_limited` / `internal_error`      | 401/403/404/409/422/429/500 |
-| 入場                   | `join_code_invalid` / `tos_required` / `name_taken` / `only_student`                                            | 404/422/409/403             |
-| 對話（WS error frame） | pi 錯誤名（`ConversationBusy`…）作 code；內部錯誤只回 generic 訊息不洩細節；`activity_finished`＝活動已結束拒寫 | —                           |
-| 報告                   | `report_pending` / `report_failed`                                                                              | 404 / 500                   |
-| BYOK / teacher keys    | `byok_provider_invalid`                                                                                         | 422                         |
+| 層                     | code                                                                                                                                                           | HTTP                        |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| 通用                   | `unauthorized` / `forbidden` / `not_found` / `conflict` / `validation` / `rate_limited` / `internal_error`                                                     | 401/403/404/409/422/429/500 |
+| 入場                   | `join_code_invalid` / `tos_required` / `name_taken` / `only_student`                                                                                           | 404/422/409/403             |
+| 對話（WS error frame） | pi 錯誤名作 code（`ConversationBusy`＝忙線拒寫、`ActivityFinished`＝活動已結束拒寫、`SubmitForbidden`＝非本人 thread 代打）；內部錯誤只回 generic 訊息不洩細節 | —                           |
+| 報告                   | `report_pending` / `report_failed`                                                                                                                             | 404 / 500                   |
+| 語音／LLM              | `llm_unavailable` / `llm_rate_limited` / `llm_timeout`（binding 或上游失敗；mock 降級不丟這些碼）                                                              | 502 / 429 / 504             |
+| 對話入場               | `already_streaming`（歷史碼，保留給舊客戶端 switch 窮舉）                                                                                                      | 409                         |
+| BYOK / teacher keys    | `byok_provider_invalid`                                                                                                                                        | 422                         |
 
-## 11. 範圍外（明確不在 v1 契約）
+## 11. 端點外的既存通道
+
+- `GET /health` → `{ok: true}`（無需 session；deploy 後煙霧測試用）
+- `POST /api/dev/seed`（僅 `LLM_PROVIDER=mock` 下生效；需 `SEED_TOKEN`）——demo 資料播種，非產品功能
+
+## 12. 範圍外（明確不在 v1 契約）
 
 - `/admin` 運維 dashboard（P1，#80/#81/#97）
 - 單人模式的個人對話 scope（前端未實作，屆時拍板）

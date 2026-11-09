@@ -6,9 +6,7 @@ import { DialogueView } from "@/components/DialogueView";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/dialogue")({
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { activityId?: string; q?: string; term?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { activityId?: string; q?: string; term?: string } => ({
     activityId: typeof search.activityId === "string" ? search.activityId : undefined,
     q: typeof search.q === "string" ? search.q : undefined,
     term: typeof search.term === "string" ? search.term : undefined,

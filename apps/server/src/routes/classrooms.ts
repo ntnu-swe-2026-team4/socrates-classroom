@@ -5,7 +5,7 @@ import {
   type ClassroomSummary,
   type User,
 } from "@socrates/shared";
-import { all, batch, one, run } from "../db/d1";
+import { all, batch, one } from "../db/d1";
 import { fail, newId, nowIso, parseBody, requireTeacher, requireUser, type AppEnv } from "../http";
 import type { ClassroomRow } from "../services/members";
 

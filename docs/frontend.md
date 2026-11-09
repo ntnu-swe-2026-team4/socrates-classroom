@@ -1,7 +1,7 @@
 # 前端架構（web-next）
 
 > 日期：2026-11-05 ｜ 更新：2026-11-09（PR #108 UI 收編）｜ 分支：`experiment/web-next` ｜ 狀態：定案
-> 前端 SSOT：頁面集合、route map、stack、契約層。功能存在性見 `feature.md`，產品定義見 spec v3（Outline）。
+> 前端 SSOT：頁面集合、route map、stack、契約層。功能存在性見 `feature.md`，API 契約見 `api-contract.md`。
 
 ## 1. 產品形態
 

@@ -5,16 +5,16 @@
 
 ## 0. 已定決策（本文的約束條件）
 
-| #   | 決策                                                                                             | 理由                                                           |
-| --- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| D1  | 單一 Worker：Hono API + 前端 assets + Chat/ReportRunner DO 同包                                  | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS               |
-| D2  | App 資料放 **D1**；Pi transcript 留在 DO 自己的 SQLite（`pi_*` 表）                              | 共享關聯資料 vs agent 私有狀態，各放各的                       |
-| D3  | 對話執行緒 = 一個 DO instance（`idFromName(scope:id)`）                                          | 天然序列化、互不干擾、Pi inbox 排隊                            |
-| D4  | 對話走 WebSocket（`/agents/chat/:name`，view＋chord ops），SSE 已於 web-next 重建時退役          | 單一真相在 pi transcript；前端 applyImmutable 套件             |
-| D5  | 全 Node 化（npm workspaces + vitest）；cf 指令走 Node ≥22.23                                     | `cf` 載 `cloudflare.config.ts` 不支援 Bun；server 已無 Bun API |
-| D6  | Provider pool：自架(CF Tunnel) → opencode-go → OpenRouter → Workers AI，**全 ZDR、鎖模型白名單** | 學生資料不落地；Coding Plan 只開發用                           |
-| D7  | Teacher keys：老師一 provider 一把 key（#82），學生無 BYOK 入口，byok 端點已退役                 | 學生流量一律走平台鏈，ZDR 責任單一                             |
-| D8  | CI/CD：GitHub Actions 官方 cf 範本（build once → dry-run → `--prebuilt` deploy）                 | cf 無官方 action，純 steps 是欽定方式                          |
+| #   | 決策                                                                                             | 理由                                                                                     |
+| --- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| D1  | 單一 Worker：Hono API + 前端 assets + Chat/ReportRunner DO 同包                                  | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS                                         |
+| D2  | App 資料放 **D1**；Pi transcript 留在 DO 自己的 SQLite（`pi_*` 表）                              | 共享關聯資料 vs agent 私有狀態，各放各的                                                 |
+| D3  | 對話執行緒 = 一個 DO instance（`idFromName(scope:id)`）                                          | 天然序列化、互不干擾、Pi inbox 排隊                                                      |
+| D4  | 對話走 WebSocket（`/agents/chat/:name`，view＋chord ops），SSE 已於 web-next 重建時退役          | 單一真相在 pi transcript；前端 applyImmutable 套件                                       |
+| D5  | 全 Node 化（npm workspaces + vitest）；cf 指令走 Node ≥26.12                                     | `cf` 載 `cloudflare.config.ts` 不支援 Bun；Node 版本對齊 root AGENTS.md 與 CI（node 26） |
+| D6  | Provider pool：自架(CF Tunnel) → opencode-go → OpenRouter → Workers AI，**全 ZDR、鎖模型白名單** | 學生資料不落地；Coding Plan 只開發用                                                     |
+| D7  | Teacher keys：老師一 provider 一把 key（#82），學生無 BYOK 入口，byok 端點已退役                 | 學生流量一律走平台鏈，ZDR 責任單一                                                       |
+| D8  | CI/CD：GitHub Actions 官方 cf 範本（build once → dry-run → `--prebuilt` deploy）                 | cf 無官方 action，純 steps 是欽定方式                                                    |
 
 ## 1. 系統拓撲
 
@@ -275,7 +275,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 | generation plane（對話輪/秒）            | ~220                      | ~1,000                    |
 | judgment plane（choice/秒）              | ~220                      | ~1,000                    |
 | STT（音檔/秒）                           | ~220                      | ~1,000                    |
-| SSE/WS 連線（學生＋教師面板）            | ~10,400                   | —                         |
+| WS 連線（學生對話＋教師觀察）            | ~10,400                   | —                         |
 | 原始寫入（輪＋violation＋event＋ledger） | ~700/s                    | ~3,000/s                  |
 | 讀取（auth／面板／歷史）                 | ~5,000/s                  | —                         |
 
@@ -319,7 +319,7 @@ v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78�
 
 ### 13.5 D13 event layer
 
-ActivityEvents DO：SSE-in-DO → **WebSocket hibernation API**（hibernate 時零記憶體、eviction 不掉線）＋ ring buffer（最後 N 事件）＋ Last-Event-ID replay——#73 的「即時」在斷線重連下成立。
+v3 設計為 ActivityEvents DO（SSE-in-DO＋ring buffer＋Last-Event-ID replay）；**已隨 web-next 退役**（SSE 對話改 Chat DO 的 WS hibernation，見 §4）。老師即時面板的資料源改道：#73 調查選擇輪詢 SQL 聚合（待拍板），無獨立 event DO。
 
 ### 13.6 與 v3 實作的 gap（2026-11-06 web-next 重建後的狀態）
 

@@ -290,7 +290,9 @@ export function DialogueView({
                     role="alert"
                     className="flex items-center gap-2 rounded-2xl border border-line bg-card px-4 py-2 text-[13px] text-ink-soft"
                   >
-                    <span className="min-w-0 flex-1 truncate">{t(error.code === "ActivityFinished" ? "dlg_err_finished" : "dlg_error")}</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {t(error.code === "ActivityFinished" ? "dlg_err_finished" : "dlg_error")}
+                    </span>
                     <button
                       type="button"
                       onClick={retryLast}

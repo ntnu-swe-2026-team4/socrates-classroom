@@ -70,7 +70,11 @@ export interface Api {
   listTeacherKeys(): Promise<TeacherKeyStatus[]>;
   listKeyProviders(): Promise<KeyProviderInfo[]>;
   listKeyProviderModels(provider: string): Promise<KeyModelInfo[]>;
-  putTeacherKey(provider: string, model: string, key: string): Promise<{ provider: string; model: string; last4: string }>;
+  putTeacherKey(
+    provider: string,
+    model: string,
+    key: string,
+  ): Promise<{ provider: string; model: string; last4: string }>;
   deleteTeacherKey(provider: string): Promise<void>;
   orderTeacherKeys(providers: string[]): Promise<void>;
 }

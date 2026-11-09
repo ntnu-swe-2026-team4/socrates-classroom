@@ -396,10 +396,9 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
   const prompt = last?.role === "user" ? textOf(last.content) : "";
   if (prompt.includes("## Roster:")) {
     if (prompt.includes(FAUX_CLASS_FAILURE_MARKER)) {
-      return fauxAssistantMessage(
-        [fauxToolCall(SUBMIT_CLASS_REPORT, { students: "schema-mismatch-on-purpose" })],
-        { stopReason: "toolUse" },
-      );
+      return fauxAssistantMessage([fauxToolCall(SUBMIT_CLASS_REPORT, { students: "schema-mismatch-on-purpose" })], {
+        stopReason: "toolUse",
+      });
     }
     return fauxAssistantMessage(
       [
