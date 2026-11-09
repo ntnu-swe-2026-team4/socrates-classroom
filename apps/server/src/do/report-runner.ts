@@ -48,12 +48,12 @@ export class ReportRunner extends DurableObject<Env> {
 
   async startReport(input: { activityId: string }): Promise<"started" | "ready"> {
     const db = this.env.DB;
-    await this.ctx.storage.setAlarm(Date.now() + 50);
-    await this.ctx.storage.put("attempts", 0);
     const row = await one<{ status: string }>(db, "SELECT status FROM reports WHERE activity_id = $id", {
       id: input.activityId,
     });
     if (row?.status === "ready") return "ready";
+    await this.ctx.storage.setAlarm(Date.now() + 50);
+    await this.ctx.storage.put("attempts", 0);
     if (!row) {
       await run(
         db,
@@ -85,7 +85,7 @@ export class ReportRunner extends DurableObject<Env> {
     const row = await one<{ status: string }>(db, "SELECT status FROM reports WHERE activity_id = $id", {
       id: activityId,
     });
-    if (row?.status === "ready" || row?.status === "failed") return;
+    if (row?.status === "ready" || row?.status === "partial" || row?.status === "failed") return;
     if (!row) {
       await run(
         db,
