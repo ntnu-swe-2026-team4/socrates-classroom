@@ -115,5 +115,3 @@ export const ledgerKey = (entry: AvailabilityEntry, providerDef: z.infer<typeof 
   model: entry.model ?? providerModelOf(providerDef),
   credential: entry.credential,
 });
-
-export const ledgerKeyId = (key: LedgerKey): string => `${key.provider}|${key.model}|${key.credential}`;

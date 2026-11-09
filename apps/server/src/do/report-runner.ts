@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
-import { createRegistry, type Harness } from "@earendil-works/pi-durable";
+import { createRegistry, Harness } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import type { JsonObject } from "@earendil-works/pi-durable";
 import {
   fauxAssistantMessage,
@@ -10,6 +11,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { Env } from "../env";
 import { buildModels } from "../pi/models";
+import { runProfile } from "../pi/agents/profiles";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import { reportSubmitExtension, SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../pi/extensions/report-submit";
 import { all, one, run } from "../db/d1";
@@ -231,13 +233,7 @@ export class ReportRunner extends DurableObject<Env> {
   }
 
   private async openHarness(): Promise<Harness> {
-    const { Harness: HarnessCtor } = (await import("@earendil-works/pi-durable")) as unknown as {
-      Harness: { open: (storage: unknown, options: unknown, context: unknown) => Promise<Harness> };
-    };
-    const { MemoryStorage } = (await import("@earendil-works/pi-durable/storage/memory")) as unknown as {
-      MemoryStorage: new () => unknown;
-    };
-    return HarnessCtor.open(
+    return Harness.open(
       new MemoryStorage(),
       { models: this.models.models, registry: this.registry },
       BACKGROUND_CONTEXT,
@@ -251,16 +247,6 @@ export class ReportRunner extends DurableObject<Env> {
     legs: TeacherLeg[],
     options: { lang: Lang; submitTool: string },
   ): Promise<{ text: string; payload: JsonObject | null }> {
-    const { runProfile } = (await import("../pi/agents/profiles")) as unknown as {
-      runProfile: (
-        h: Harness,
-        r: unknown,
-        p: "student-report" | "class-report",
-        i: string,
-        l: TeacherLeg[],
-        o: { lang: Lang; submitTool: string },
-      ) => Promise<{ text: string; payload: JsonObject | null }>;
-    };
     return runProfile(
       harness,
       { models: this.models, registry: this.registry, env: this.env },

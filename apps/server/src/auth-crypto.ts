@@ -48,7 +48,12 @@ export async function encryptKey(env: Env, plaintext: string): Promise<string> {
 
 export async function decryptKey(env: Env, stored: string): Promise<string | null> {
   const [version, ivPart, dataPart] = stored.split(".");
-  if (version !== KEY_VERSION || !ivPart || !dataPart) return null;
+  if (version !== KEY_VERSION || !ivPart || !dataPart) {
+    if (version !== undefined && version !== KEY_VERSION) {
+      console.warn("[auth-crypto] refusing ciphertext of unknown version", version);
+    }
+    return null;
+  }
   try {
     const key = await aesKey(env);
     const plain = await crypto.subtle.decrypt(

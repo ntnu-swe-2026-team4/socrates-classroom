@@ -12,6 +12,11 @@ export function prepare(sql: string, params?: Record<string, unknown>): { sql: s
   for (let i = 0; i < sql.length; i += 1) {
     const char = sql[i]!;
     if (char === "'") {
+      if (quoted && sql[i + 1] === "'") {
+        out += "''";
+        i += 1;
+        continue;
+      }
       quoted = !quoted;
       out += char;
       continue;
