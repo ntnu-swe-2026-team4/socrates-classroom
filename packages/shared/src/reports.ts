@@ -51,9 +51,9 @@ export const TopicGenSchema = z.object({
   topics: z
     .array(
       z.object({
-        title: z.string(),
-        statement: z.string(),
-        prompts: z.array(z.string()).min(1).max(6),
+        title: z.string().max(120),
+        statement: z.string().max(2000),
+        prompts: z.array(z.string().max(160)).min(1).max(6),
       }),
     )
     .min(1)

@@ -57,9 +57,17 @@ interface WindowedEntry {
   model?: readonly unknown[];
 }
 
+function abortedPartial(entry: WindowedEntry): boolean {
+  const message = entry.model?.[0] as { stopReason?: string } | undefined;
+  return message?.stopReason === "aborted";
+}
+
 function answered(entries: readonly WindowedEntry[]): boolean {
   return entries.some(
-    (entry) => entry.kind === "pi.assistant" && textOf(entry.model?.[0] as Message | undefined).trim() !== "",
+    (entry) =>
+      entry.kind === "pi.assistant" &&
+      !abortedPartial(entry) &&
+      textOf(entry.model?.[0] as Message | undefined).trim() !== "",
   );
 }
 
@@ -81,6 +89,8 @@ export function useDialogue(activityId: string, userId: string) {
   const baselineRef = useRef<number | null>(null);
   const failedInputRef = useRef<string | null>(null);
   const ttsRef = useRef<AbortController | null>(null);
+  const entriesWaiters = useRef(new Map<string, (entries: readonly WindowedEntry[]) => void>());
+  const [older, setOlder] = useState<readonly WindowedEntry[]>([]);
 
   useEffect(
     () => () => {
@@ -169,10 +179,13 @@ export function useDialogue(activityId: string, userId: string) {
       if (answered(tail)) {
         completePending();
       } else if (full) {
-        if (tail.some((entry) => entry.kind === "pi.assistant")) {
+        if (tail.some((entry) => entry.kind === "pi.assistant" && !abortedPartial(entry))) {
           completePending();
         } else if (!tail.some((entry) => entry.kind === "pi.user")) {
           failPending("llm_unavailable");
+        } else {
+          const live = viewRef.current?.docs["pi.live"] as { runFailure?: unknown } | undefined;
+          if (live?.runFailure) failPending("llm_unavailable");
         }
       }
     },
@@ -203,6 +216,15 @@ export function useDialogue(activityId: string, userId: string) {
           if (frame.ops.length > 0 && pendingRef.current && liveTextOf(next)) {
             setPhase((current) => (current === "thinking" ? "streaming" : current));
           }
+          return;
+        }
+        case "result": {
+          const waiter = entriesWaiters.current.get(frame.id);
+          if (waiter === undefined) return;
+          entriesWaiters.current.delete(frame.id);
+          const page = frame.result as { items?: unknown[] } | null;
+          const items = Array.isArray(page?.items) ? (page!.items as WindowedEntry[]) : [];
+          waiter(items);
           return;
         }
         case "error": {
@@ -299,13 +321,38 @@ export function useDialogue(activityId: string, userId: string) {
     setPhase("idle");
   }, [socket]);
 
+  const loadEarlier = useCallback(() => {
+    const before = viewRef.current?.before;
+    if (before === undefined || socket.readyState !== WebSocket.OPEN) return;
+    const id = crypto.randomUUID();
+    const delivered = (entries: readonly WindowedEntry[]) => {
+      const page = entries.filter((entry) => entry.kind === "pi.user" || entry.kind === "pi.assistant");
+      setOlder((current) => {
+        const known = new Set([...current, ...(viewRef.current?.entries ?? [])].map((entry) => entry.id));
+        return [...current, ...page.filter((entry) => !known.has(entry.id))];
+      });
+    };
+    entriesWaiters.current.set(id, delivered);
+    socket.send(
+      JSON.stringify({
+        type: "entries",
+        id,
+        query: { order: "ascending", maxEntryId: before },
+        limit: 50,
+      } satisfies ClientMessage),
+    );
+  }, [socket]);
+
   const { messages, draft } = useMemo(() => {
     const result = { messages: [] as DialogueMessage[], draft: "" };
     if (!view) return result;
-    const visible = view.entries.filter((entry) => entry.kind === "pi.user" || entry.kind === "pi.assistant");
-    visible.forEach((entry, index) => {
-      const text = textOf(entry.model?.[0]);
-      const streaming = index === visible.length - 1 && (phase === "thinking" || phase === "streaming");
+    const visible = [...older, ...view.entries].filter(
+      (entry) => entry.kind === "pi.user" || entry.kind === "pi.assistant",
+    );
+    visible.forEach((entry: WindowedEntry, index) => {
+      const text = textOf((entry.model?.[0] ?? undefined) as Message | undefined);
+      const ours = index === visible.length - 1 && entry.id > (baselineRef.current ?? Number.MAX_SAFE_INTEGER);
+      const streaming = ours && (phase === "thinking" || phase === "streaming");
       if (entry.kind === "pi.assistant" && streaming) {
         result.draft = text;
         return;
@@ -314,7 +361,7 @@ export function useDialogue(activityId: string, userId: string) {
     });
     if (!result.draft) result.draft = liveTextOf(view);
     return result;
-  }, [view, phase]);
+  }, [older, view, phase]);
 
   const emotion = useMemo(() => emotionOf(view), [view]);
 
@@ -327,6 +374,8 @@ export function useDialogue(activityId: string, userId: string) {
     ttsFailed,
     pending: pendingView,
     viewReady: view !== null,
+    canLoadEarlier: view?.before !== undefined,
+    loadEarlier,
     send,
     retryLast,
     replay,

@@ -82,7 +82,7 @@ cf deploy --prebuilt --mode production --secrets-file .env.production.local
 ```
 
 - `--mode` 配 `cloudflare.config.ts` 的 `switch (ctx.mode)`：staging／production 各自的資源
-- `--secrets-file`（dotenv 格式）是 secrets 的唯一通道——首次部署**必須**先備妥（見下方 Secrets），否則 `AUTH_SECRET` 未設，登入/對話全部 500
+- `--secrets-file`（dotenv 格式）是 secrets 的唯一通道——首次部署**必須**先備妥（見下方 Secrets），否則 `AUTH_SECRET` 未設，登入/對話全部 500；cf 會對值做 `$VAR`/`${VAR}` 環境變數展開，secret 值請避免含 `$`
 - dry-run 驗證（免憑證，fork PR 安全）：`cf deploy --prebuilt --mode production --dry-run`
 - 前端是同一 Worker 的 Static Assets——不需要另外的靜態部署
 - 團隊日常部署走 CI（push main）；手動 deploy 僅用於緊急修補——先確認本地 HEAD 與 main 一致

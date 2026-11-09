@@ -1,5 +1,5 @@
 import type { Db } from "./db/d1";
-import { all, one, run } from "./db/d1";
+import { all, batch, one, run } from "./db/d1";
 import { hashPassword } from "./auth";
 import { newId, nowIso } from "./http";
 
@@ -45,12 +45,14 @@ export interface DemoClassroom {
   topicId: string;
 }
 
-export async function seedDemo(db: Db, teacherPassword = DEMO_TEACHER.password): Promise<void> {
+export async function seedDemo(db: Db, teacherPassword = DEMO_TEACHER.password): Promise<{ teacherCreated: boolean }> {
   const at = nowIso();
   let teacherId = (
     await one<{ id: string }>(db, "SELECT id FROM users WHERE email = $email", { email: DEMO_TEACHER.email })
   )?.id;
+  let teacherCreated = false;
   if (!teacherId) {
+    teacherCreated = true;
     teacherId = newId("u_");
     const hash = await hashPassword(teacherPassword);
     await run(
@@ -87,16 +89,16 @@ export async function seedDemo(db: Db, teacherPassword = DEMO_TEACHER.password):
     const classroomId = newId("c_");
     const activityId = newId("a_");
     const code = newCode();
-    await run(
-      db,
-      "INSERT INTO classrooms (id, name, teacher_id, join_code, current_activity_id, created_at) VALUES ($id, $name, $tid, $code, $aid, $at)",
-      { id: classroomId, name, tid: teacherId, code, aid: activityId, at },
-    );
-    await run(db, "INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ($id, $cid, $tid, $at)", {
-      id: activityId,
-      cid: classroomId,
-      tid: topic.id,
-      at,
-    });
+    await batch(db, [
+      {
+        sql: "INSERT INTO classrooms (id, name, teacher_id, join_code, current_activity_id, created_at) VALUES ($id, $name, $tid, $code, $aid, $at)",
+        params: { id: classroomId, name, tid: teacherId, code, aid: activityId, at },
+      },
+      {
+        sql: "INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ($id, $cid, $tid, $at)",
+        params: { id: activityId, cid: classroomId, tid: topic.id, at },
+      },
+    ]);
   }
+  return { teacherCreated };
 }

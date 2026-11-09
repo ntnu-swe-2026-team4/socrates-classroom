@@ -66,7 +66,7 @@ function emotionEntry(id: number): EntryRecord {
     id,
     conversationId: "c1",
     kind: "app.emotion",
-    data: { emotion: "curious", confidence: 0.9, probabilities: { curious: 0.9 }, text: "回答" },
+    data: { emotion: "curious", confidence: 0.9, probabilities: { curious: 0.9 } },
   });
 }
 

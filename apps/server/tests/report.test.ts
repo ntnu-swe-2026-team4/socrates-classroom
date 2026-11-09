@@ -3,6 +3,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
+import { run } from "../src/db/d1";
 import { seedDemo } from "../src/seed";
 import { reportAlarmPlan } from "../src/do/report-runner";
 import { call, cookieOf, frames, latestAssistantText } from "./helpers";
@@ -243,4 +244,28 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(ownReport.analysis?.stated).toBe(true);
     expect(ownReport.positions).toEqual([]);
   }, 60_000);
+});
+
+describe("stored report read-back validation", () => {
+  it("a corrupted stored row → 500 report_failed, not an off-contract shape", async () => {
+    const topics = (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{
+      id: string;
+    }>;
+    const created = (await (
+      await call("/api/classrooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacherCookie },
+        body: JSON.stringify({ name: "損壞列班", topicId: topics[0]!.id }),
+      })
+    ).json()) as { activityId: string };
+    await run(
+      env.DB,
+      `INSERT INTO reports (activity_id, status, teacher_report, student_reports, created_at, updated_at)
+       VALUES ($id, 'ready', '{"nope":1}', '{}', $at, $at) ON CONFLICT(activity_id) DO UPDATE SET status = 'ready', teacher_report = '{"nope":1}'`,
+      { id: created.activityId, at: new Date().toISOString() },
+    );
+    const res = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacherCookie } });
+    expect(res.status).toBe(500);
+    expect(((await res.json()) as { code?: string }).code).toBe("report_failed");
+  });
 });

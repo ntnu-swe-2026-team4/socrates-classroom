@@ -45,3 +45,4 @@
 - **seed 失敗「找不到 SEED_TOKEN」** → `.env.local` 不存在或沒有 `SEED_TOKEN` 行；**改了 `.env.local` 要重啟 dev**（server 只在啟動時載入）
 - **seed「連不上」** → dev server 沒起來（`pnpm dev` 先跑）；或 seed 跑在 dev 前面
 - **改 config 後資料不見** → 見上「Persistence scope 陷阱」
+- **報告部分成功變成 failed（本地）** → 舊版五支 migration 時代的本地 DB 還留著舊 CHECK（cf 以檔名記帳，合併後的 `001_init.sql` 會被跳過）；刪除 `apps/web/.cloudflare/state/` 重來即可。production 不受影響（從未用舊 migration 建過）

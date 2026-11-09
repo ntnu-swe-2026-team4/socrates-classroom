@@ -125,7 +125,10 @@ function SetupPage() {
                         <Button
                           variant="outline"
                           disabled={!direction.trim() || generated.isPending || Boolean(created)}
-                          onClick={() => generated.mutate()}
+                          onClick={() => {
+                            setPicked(null);
+                            generated.mutate();
+                          }}
                         >
                           {generated.isPending ? <Spinner /> : t("setup_topic_generate")}
                         </Button>

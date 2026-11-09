@@ -177,6 +177,8 @@ describe("fetch_content (readable/raw + cache + SSRF)", () => {
       "http://[::ffff:0:127.0.0.1]/x",
       "http://[::ffff:0:192.168.1.1]/x",
       "http://[::ffff:0:0:127.0.0.1]/x",
+      "http://[::127.0.0.1]/x",
+      "http://[2002::7f00:1]/x",
       "http://224.0.0.1/x",
       "http://239.255.255.250/x",
       "http://[ff02::1]/x",
@@ -184,6 +186,8 @@ describe("fetch_content (readable/raw + cache + SSRF)", () => {
     ];
     for (const url of blocked) expect(() => validateUrl(url), url).toThrow("internal");
     expect(validateUrl("http://[::ffff:8.8.8.8]/x").hostname).toBe("[::ffff:808:808]");
+    expect(validateUrl("http://[2001:db8:ffff::1]/x").hostname).toBe("[2001:db8:ffff::1]");
+    expect(validateUrl("http://[2001:db8:0:ffff::1]/x").hostname).toBe("[2001:db8:0:ffff::1]");
     expect(validateUrl("http://1.1.1.1/x").hostname).toBe("1.1.1.1");
   });
 

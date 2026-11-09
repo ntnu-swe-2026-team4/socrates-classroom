@@ -186,7 +186,7 @@ export class ChatSockets {
     try {
       await this.#watch(socket, window);
     } catch (error) {
-      console.warn("chat watch lost", error);
+      console.warn("chat watch lost", error instanceof Error ? error.name : typeof error);
       try {
         socket.close(1011, "Lost the session watch");
       } catch {

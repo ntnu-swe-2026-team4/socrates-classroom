@@ -1,9 +1,20 @@
 import { Hono } from "hono";
+import type { ZodType } from "zod";
 import type { StudentReport, TeacherReport, ViolationType } from "@socrates/shared";
 import { StoredStudentReportsSchema, StoredTeacherReportSchema } from "@socrates/shared";
 import { one, run } from "../db/d1";
 import { enforceIpLimit, fail, requireUser, type AppEnv } from "../http";
 import { requireMembership, topicOf } from "../services/members";
+
+function storedReport<T>(raw: string | null, schema: ZodType<T>): T | undefined {
+  if (raw === null) return undefined;
+  try {
+    const parsed = schema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export function activityRoutes() {
   return new Hono<AppEnv>()
@@ -45,16 +56,9 @@ export function activityRoutes() {
       if (!row || row.status === "pending") fail(404, "report_pending");
       if (row.status === "failed") fail(500, "report_failed");
       const topic = await topicOf(c.env.DB, activity.topic_id);
-      const storedParse = row.teacher_report
-        ? StoredTeacherReportSchema.safeParse(JSON.parse(row.teacher_report))
-        : null;
-      if (!storedParse?.success) fail(500, "report_failed");
-      const stored = storedParse.data;
-      const studentsParse = row.student_reports
-        ? StoredStudentReportsSchema.safeParse(JSON.parse(row.student_reports))
-        : null;
-      if (!studentsParse?.success) fail(500, "report_failed");
-      const students = studentsParse.data;
+      const stored = storedReport(row.teacher_report, StoredTeacherReportSchema);
+      const students = storedReport(row.student_reports, StoredStudentReportsSchema);
+      if (stored === undefined || students === undefined) fail(500, "report_failed");
       if (isTeacher) {
         const report: TeacherReport = {
           topicTitle: topic.title,

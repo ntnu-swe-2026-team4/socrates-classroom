@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, type ReportPosition, type StudentAnalysis, type ViolationSlice } from "@/api";
 import { Segmented, Spinner, cn } from "@/components/ui";
@@ -17,6 +17,7 @@ function ReportPage() {
   const t = useT();
   const { id } = Route.useParams();
   const [view, setView] = useState<"group" | "individual">("group");
+  const navigate = useNavigate();
   const [studentIdx, setStudentIdx] = useState(0);
   const report = useQuery({
     queryKey: ["report", id],
@@ -33,17 +34,29 @@ function ReportPage() {
     );
   }
   if (report.isError) {
-    const pending = report.error instanceof ApiError && report.error.code === "report_pending";
+    const err = report.error instanceof ApiError ? report.error : null;
+    const pending = err?.code === "report_pending";
+    const failed = err?.code === "report_failed";
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-[15px] text-ink-soft">
-        <p>{pending ? t("report_generating") : t("common_error")}</p>
-        <button
-          type="button"
-          onClick={() => report.refetch()}
-          className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
-        >
-          {t("report_retry")}
-        </button>
+        <p>{pending ? t("report_generating") : (err?.message ?? t("common_error"))}</p>
+        {failed ? (
+          <button
+            type="button"
+            onClick={() => void navigate({ to: "/t/live/$id", params: { id } })}
+            className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
+          >
+            {t("report_refinish")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => report.refetch()}
+            className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
+          >
+            {t("report_retry")}
+          </button>
+        )}
       </div>
     );
   }

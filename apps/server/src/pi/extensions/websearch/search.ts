@@ -47,7 +47,7 @@ export function createWebSearch(ai: Ai, allowlist: string[] = DOMAIN_ALLOWLIST) 
       }
       return { hits, error: null };
     } catch (cause) {
-      return { hits: [], error: cause instanceof Error ? cause.message : String(cause) };
+      return { hits: [], error: cause instanceof Error ? cause.name : String(cause) };
     }
   };
 }

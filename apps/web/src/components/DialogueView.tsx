@@ -26,6 +26,7 @@ export interface DialogueViewProps {
   prompts?: string[];
   autoSend?: string;
   onAutoSent?: () => void;
+  onActivityFinished?: () => void;
   openTerm?: string;
   onTermOpened?: () => void;
   headerActions?: ReactNode;
@@ -41,14 +42,29 @@ export function DialogueView({
   prompts = [],
   autoSend,
   onAutoSent,
+  onActivityFinished,
   openTerm,
   onTermOpened,
   headerActions,
   closedNotice,
 }: DialogueViewProps) {
   const t = useT();
-  const { messages, draft, phase, error, emotion, ttsFailed, ready, viewReady, send, retryLast, replay, interrupt } =
-    useDialogue(activityId, userId);
+  const {
+    messages,
+    draft,
+    phase,
+    error,
+    emotion,
+    ttsFailed,
+    ready,
+    viewReady,
+    canLoadEarlier,
+    loadEarlier,
+    send,
+    retryLast,
+    replay,
+    interrupt,
+  } = useDialogue(activityId, userId);
 
   const stageRef = useRef<SocratesHandle>(null);
   const [socratesOpen, setSocratesOpen] = usePersistentFlag("socrates_dialogue_panel", true);
@@ -70,7 +86,7 @@ export function DialogueView({
   const [panelOpen, setPanelOpen] = useState(false);
   const panelRef = useRef<TermPanelHandle>(null);
 
-  const autoSent = useRef(false);
+  const autoSent = useRef<string | null>(null);
   const lastTerm = useRef<string | null>(null);
   useEffect(() => {
     if (openTerm && openTerm !== lastTerm.current) {
@@ -81,16 +97,23 @@ export function DialogueView({
     }
   }, [openTerm, onTermOpened]);
   useEffect(() => {
-    if (autoSend && !autoSent.current && phase === "idle" && ready && viewReady) {
+    if (autoSend && autoSent.current !== autoSend && phase === "idle" && ready && viewReady) {
       if (send(autoSend)) {
-        autoSent.current = true;
+        autoSent.current = autoSend;
         onAutoSent?.();
       }
     }
   }, [autoSend, phase, ready, viewReady, send, onAutoSent]);
 
-  const onVoiceFinal = useCallback((text: string) => void send(text), [send]);
+  useEffect(() => {
+    if (error?.code === "ActivityFinished") onActivityFinished?.();
+  }, [error, onActivityFinished]);
+
+  const onVoiceFinal = useCallback((text: string) => void send(text.slice(0, 2000)), [send]);
   const voice = useVoiceInput(onVoiceFinal, onAmplitudeNoop);
+  useEffect(() => {
+    if (!ready && voice.state === "listening") void voice.stop();
+  }, [ready, voice.state, voice.stop]);
 
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -242,7 +265,7 @@ export function DialogueView({
                         <button
                           type="button"
                           key={prompt}
-                          disabled={busy}
+                          disabled={busy || !viewReady}
                           onClick={() => void send(prompt)}
                           className="cursor-pointer rounded-full border border-line-strong px-4 py-1.5 text-[13px] text-ink-soft transition-colors hover:border-ember hover:text-ink disabled:opacity-50"
                         >
@@ -251,6 +274,15 @@ export function DialogueView({
                       ))}
                     </div>
                   </>
+                )}
+                {canLoadEarlier && (
+                  <button
+                    type="button"
+                    onClick={loadEarlier}
+                    className="mx-auto cursor-pointer rounded-full border border-line-strong px-3 py-1 text-[12.5px] text-ink-soft transition-colors hover:text-ink"
+                  >
+                    {t("dlg_load_earlier")}
+                  </button>
                 )}
                 {messages.map((message) => (
                   <Bubble key={message.id} speaker={message.role} text={message.text} />
@@ -294,13 +326,15 @@ export function DialogueView({
                     <span className="min-w-0 flex-1 truncate">
                       {t(error.code === "ActivityFinished" ? "dlg_err_finished" : "dlg_error")}
                     </span>
-                    <button
-                      type="button"
-                      onClick={retryLast}
-                      className="shrink-0 cursor-pointer rounded-full border border-line-strong px-3 py-1 text-[12.5px] text-ember transition-colors hover:border-ember"
-                    >
-                      {t("dlg_retry")}
-                    </button>
+                    {error.code !== "ActivityFinished" && (
+                      <button
+                        type="button"
+                        onClick={retryLast}
+                        className="shrink-0 cursor-pointer rounded-full border border-line-strong px-3 py-1 text-[12.5px] text-ember transition-colors hover:border-ember"
+                      >
+                        {t("dlg_retry")}
+                      </button>
+                    )}
                   </div>
                 )}
                 {ttsFailed && !error && (
@@ -366,6 +400,7 @@ export function DialogueView({
                       aria-label={t("dlg_input_placeholder")}
                       placeholder={t("dlg_input_placeholder")}
                       disabled={!viewReady}
+                      maxLength={2000}
                       onChange={(event) => setText(event.target.value)}
                       onKeyDown={(event) => {
                         if (event.nativeEvent.isComposing || event.keyCode === 229) return;

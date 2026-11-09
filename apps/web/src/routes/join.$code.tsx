@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api";
 import { Button, Card, Checkbox, Field, Input, PageHeader, Spinner } from "@/components/ui";
-import { ApiError } from "@socrates/shared";
+import { ApiError } from "@/api";
 import { useT } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
 
@@ -70,7 +70,13 @@ function JoinPage() {
             </div>
           ) : info.isError || !topic ? (
             <div className="flex flex-col items-start gap-4">
-              <p className="text-[15px] text-ink-soft">{t("join_invalid")}</p>
+              <p className="text-[15px] text-ink-soft">
+                {info.error instanceof ApiError && info.error.code === "rate_limited"
+                  ? t("join_failed")
+                  : info.error instanceof ApiError && info.error.code === "only_student"
+                    ? t("join_only_student")
+                    : t("join_invalid")}
+              </p>
               <Button variant="outline" onClick={() => void navigate({ to: "/" })}>
                 {t("common_back")}
               </Button>

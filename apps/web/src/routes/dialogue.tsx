@@ -53,6 +53,7 @@ function DialoguePage() {
         activityQuery.isError ? t("common_error") : activityQuery.data?.finishedAt ? t("dlg_err_finished") : undefined
       }
       autoSend={q}
+      onActivityFinished={() => void activityQuery.refetch()}
       onAutoSent={() =>
         void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, q: undefined }), replace: true })
       }

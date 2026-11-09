@@ -74,17 +74,21 @@ export class ReportRunner extends DurableObject<Env> {
         db,
         `INSERT INTO reports (activity_id, status, created_at, updated_at)
          VALUES ($id, 'pending', $at, $at)
-         ON CONFLICT(activity_id) DO UPDATE SET status = 'pending', updated_at = $at`,
+         ON CONFLICT(activity_id) DO UPDATE SET status = 'pending', teacher_report = NULL, student_reports = NULL, updated_at = $at`,
         {
           id: input.activityId,
           at: nowIso(),
         },
       );
     } else {
-      await run(db, "UPDATE reports SET status = 'pending', updated_at = $at WHERE activity_id = $id", {
-        id: input.activityId,
-        at: nowIso(),
-      });
+      await run(
+        db,
+        "UPDATE reports SET status = 'pending', teacher_report = NULL, student_reports = NULL, updated_at = $at WHERE activity_id = $id",
+        {
+          id: input.activityId,
+          at: nowIso(),
+        },
+      );
     }
     if (!this.#inFlight) await this.ctx.storage.put("attempts", 0);
     await this.ctx.storage.setAlarm(Date.now() + 50);

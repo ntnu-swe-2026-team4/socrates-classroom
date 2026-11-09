@@ -148,7 +148,7 @@ test("#90: emotion entry maps to SocratesStage expression (happy → Happy, neut
         id: 3,
         conversationId: "c1",
         kind: "app.emotion",
-        data: { emotion: "happy", confidence: 0.9, probabilities: { happy: 0.9 }, text: "The saved reply" },
+        data: { emotion: "happy", confidence: 0.9, probabilities: { happy: 0.9 } },
       },
     ]);
     await screen.findByText("The saved reply");
@@ -210,6 +210,43 @@ test("t.setup: picking an AI-generated topic persists it before creating the cla
     );
     expect(calls[1]!.body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
     expect(calls[2]!.body).toMatchObject({ topicId: "topic-persisted" });
+  } finally {
+    dispose();
+  }
+});
+
+test("join error surfaces the code-specific message (ApiError from @/api, not shared)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (path === "/api/me") {
+        return new Response("null", { headers: { "Content-Type": "application/json" } });
+      }
+      if (path === "/api/join/abcdef") {
+        return new Response(JSON.stringify({ code: "abcdef", classroomName: "Class", topic }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path === "/api/join" && init?.method === "POST") {
+        return new Response(JSON.stringify({ message: "name_taken", code: "name_taken" }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+  const dispose = await mountRoute("/join/abcdef");
+  try {
+    const name = await screen.findByRole("textbox", { name: "Your name" });
+    fireEvent.change(name, { target: { value: "Late Joiner" } });
+    const consent = screen.getByRole("checkbox");
+    fireEvent.click(consent);
+    const submit = screen.getByRole("button", { name: "Start the dialogue" });
+    await waitFor(() => expect(submit).toHaveProperty("disabled", false));
+    fireEvent.click(submit);
+    expect(await screen.findByText(/already taken/)).toBeTruthy();
   } finally {
     dispose();
   }

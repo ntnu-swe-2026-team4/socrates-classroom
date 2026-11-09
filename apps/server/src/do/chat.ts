@@ -62,7 +62,8 @@ export class Chat extends DurableObject<Env> {
             retry: { enabled: true, maxRetries: 5, baseDelayMs: 1000 },
             afterFailedRun: "continue",
           },
-          onReport: (report) => console.warn("[pi]", report),
+          onReport: (report) =>
+            console.warn("[pi]", report.kind, report.error instanceof Error ? report.error.name : typeof report.error),
         },
         context,
       );

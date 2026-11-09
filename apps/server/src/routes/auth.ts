@@ -69,6 +69,7 @@ export function authRoutes() {
         ]);
       } catch (error) {
         const pairs = uniqueViolationColumns(error);
+        if (pairs.length === 0) throw error;
         if (pairs.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
         fail(409, "conflict");
       }

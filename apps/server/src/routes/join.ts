@@ -98,9 +98,10 @@ export function joinRoutes() {
           { cid: classroom.id, uid: sessionUser.id, name: sessionUser.name, at },
         );
       } catch (error) {
-        const taken = uniqueViolationColumns(error).some(([table, column]) => table === "members" && column === "name");
-        if (taken) fail(409, "name_taken");
-        throw error;
+        const pairs = uniqueViolationColumns(error);
+        if (pairs.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
+        const racedRejoin = pairs.some(([table, column]) => table === "members" && column === "user_id");
+        if (!racedRejoin) throw error;
       }
       return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
     });

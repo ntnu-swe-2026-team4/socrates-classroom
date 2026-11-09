@@ -39,6 +39,12 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
   test("health / seed guard", async () => {
     expect((await call("/health")).status).toBe(200);
     expect((await call("/api/dev/seed", { method: "POST" })).status).toBe(404);
+
+    const seeded = await call("/api/dev/seed", { method: "POST", headers: { "x-seed-token": "dev-seed-token" } });
+    expect(seeded.status).toBe(200);
+    const seedBody = (await seeded.json()) as { seeded: boolean; password?: string };
+    expect(seedBody.seeded).toBe(true);
+    expect(seedBody.password).toBeUndefined();
   });
 
   test("me / guest join (ToS) → activity resolves", async () => {
@@ -438,4 +444,68 @@ describe("report (#74: finish → pending → ready → GET)", () => {
     expect(typeof studentReport.pseudonym).toBe("string");
     expect("analysis" in studentReport).toBe(true);
   }, 40_000);
+});
+
+describe("rate limiting + register gate (round-6 restores)", () => {
+  test("activity finish: calls 1-6 → 204, the 7th inside one minute → 429 rate_limited", async () => {
+    const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+    }>;
+    const created = (await (
+      await call("/api/classrooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({ name: "限流班", topicId: topics[0]!.id }),
+      })
+    ).json()) as { activityId: string };
+    const ip = "198.51.100.30";
+    let last: Response | null = null;
+    for (let i = 0; i < 7; i += 1) {
+      last = await call(`/api/activities/${created.activityId}/finish`, {
+        method: "POST",
+        headers: { Cookie: teacher, "CF-Connecting-IP": ip },
+      });
+      if (i < 6) expect(last?.status).toBe(204);
+    }
+    expect(last?.status).toBe(429);
+    const body = (await last?.json()) as { code?: string };
+    expect(body?.code).toBe("rate_limited");
+
+    const noHeader = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacher },
+    });
+    expect(noHeader.status).not.toBe(429);
+  });
+
+  test("register after the classroom activity finished → 409 activity_finished (mirrors join)", async () => {
+    const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+    }>;
+    const created = (await (
+      await call("/api/classrooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({ name: "註冊截止班", topicId: topics[0]!.id }),
+      })
+    ).json()) as { code: string; activityId: string };
+    const finish = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacher, "CF-Connecting-IP": "198.51.100.31" },
+    });
+    expect(finish.status).toBe(204);
+    const registered = await call("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: created.code,
+        email: `late-${Date.now()}@socrates.tw`,
+        password: "student-pass-1",
+        name: "遲到註冊",
+        tosAccepted: true,
+      }),
+    });
+    expect(registered.status).toBe(409);
+    expect(((await registered.json()) as { code?: string }).code).toBe("activity_finished");
+  });
 });
