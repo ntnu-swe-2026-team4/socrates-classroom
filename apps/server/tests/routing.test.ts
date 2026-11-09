@@ -302,3 +302,18 @@ describe("Router.withRoute (admission → settle lifecycle; ConversationBusy mus
     expect(router.ledger.inFlight(key)).toBe(0);
   });
 });
+
+describe("workersAuthContext (platform env backs only config-declared provider names)", () => {
+  it("resolves a config-declared env name; refuses pi builtin keys and platform secrets", async () => {
+    const { workersAuthContext } = await import("../src/pi/credentials");
+    const ctx = workersAuthContext({
+      DGX_BASE_URL: "http://spark:8888/v1",
+      OPENROUTER_API_KEY: "platform-secret",
+      AUTH_SECRET: "auth-secret",
+    } as never);
+    await expect(ctx.env("DGX_BASE_URL")).resolves.toBe("http://spark:8888/v1");
+    await expect(ctx.env("OPENROUTER_API_KEY")).resolves.toBeUndefined();
+    await expect(ctx.env("AUTH_SECRET")).resolves.toBeUndefined();
+    await expect(ctx.fileExists("~/.aws/credentials")).resolves.toBe(false);
+  });
+});

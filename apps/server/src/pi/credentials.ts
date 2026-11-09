@@ -44,11 +44,16 @@ export function teacherCredentialStore(env: Env, teacherOf: () => Promise<string
   };
 }
 
-// An explicit allowlist cannot work here: teacher legs may use any pi builtin
-// provider, whose env names live in pi's catalog (AWS/GCP/token variants), not
-// ours. The Worker env is a closed set we declare, so refusing our own secrets
-// by name is exact.
-const PLATFORM_SECRETS = new Set(["AUTH_SECRET", "BYOK_ENC_KEY", "SEED_TOKEN"]);
+// Teacher legs run on the teacher's own keys. pi resolves request auth as
+// `credential.key ?? env(name)`, so a missing teacher key would fall back to
+// whatever this context resolves — platform env secrets must never back
+// teacher traffic. Only env names our own providers declare in
+// providers.config.yaml resolve here; everything else (pi builtin provider
+// keys like OPENROUTER_API_KEY included) is undefined, making a missing
+// teacher key an honest leg failure instead of a silent platform fallback.
+const PROVIDER_ENV_NAMES = new Set(
+  Object.values(routingConfig.providers).flatMap((def) => (def.baseUrlEnv ? [def.baseUrlEnv] : [])),
+);
 
 export function workersAuthContext(env: Env): {
   env(name: string): Promise<string | undefined>;
@@ -57,8 +62,7 @@ export function workersAuthContext(env: Env): {
   const record = env as unknown as Record<string, unknown>;
   return {
     env: async (name) => {
-      if (PLATFORM_SECRETS.has(name)) return undefined;
-      if (!/^[A-Z0-9_]*(API_KEY|TOKEN)$/.test(name)) return undefined;
+      if (!PROVIDER_ENV_NAMES.has(name)) return undefined;
       const value = record[name];
       return typeof value === "string" ? value : undefined;
     },
