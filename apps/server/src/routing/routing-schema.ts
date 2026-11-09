@@ -44,26 +44,49 @@ export const TrafficClassSchema = z.object({
   availability: z.literal("defaults"),
 });
 
-export const RoutingConfigSchema = z.object({
-  providers: z.record(z.string(), ProviderSchema),
-  classifiers: z.record(z.string(), z.string().min(1)),
-  voice: z.object({
-    stt: z.string().min(1),
-    tts: z.string().min(1),
-  }),
-  report: z.object({
-    studentAttempts: z.number().int().min(1),
-    alarmAttempts: z.number().int().min(1),
-    alarmBackoffMs: z.number().int().min(0),
-    alarmTimeoutMs: z.number().int().min(1000),
-    pseudonymPrefix: z.string().min(1),
-  }),
-  teacherChain: z.object({
-    maxConcurrency: z.number().int().min(1).max(100),
-  }),
-  defaults: z.object({ availability: z.array(AvailabilityEntrySchema) }),
-  trafficClasses: z.record(z.string(), TrafficClassSchema),
-});
+export const RoutingConfigSchema = z
+  .object({
+    providers: z.record(z.string(), ProviderSchema),
+    classifiers: z.record(z.string(), z.string().min(1)),
+    voice: z.object({
+      stt: z.string().min(1),
+      tts: z.string().min(1),
+    }),
+    report: z.object({
+      studentAttempts: z.number().int().min(1),
+      alarmAttempts: z.number().int().min(1),
+      alarmBackoffMs: z.number().int().min(0),
+      alarmTimeoutMs: z.number().int().min(1000),
+      pseudonymPrefix: z.string().min(1),
+    }),
+    teacherChain: z.object({
+      maxConcurrency: z.number().int().min(1).max(100),
+    }),
+    defaults: z.object({ availability: z.array(AvailabilityEntrySchema) }),
+    trafficClasses: z.record(z.string(), TrafficClassSchema),
+  })
+  .superRefine((config, ctx) => {
+    config.defaults.availability.forEach((entry, index) => {
+      const def = config.providers[entry.provider];
+      if (!def) {
+        ctx.addIssue({
+          code: "custom",
+          message: `availability[${index}] references unknown provider "${entry.provider}"`,
+          path: ["defaults", "availability", index, "provider"],
+        });
+        return;
+      }
+      const model = entry.model ?? providerModelOf(def);
+      const known = def.model ? [def.model, ...(def.models?.map((m) => m.id) ?? [])] : (def.models?.map((m) => m.id) ?? []);
+      if (!model || !known.includes(model)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `availability[${index}] model "${model}" is not offered by provider "${entry.provider}"`,
+          path: ["defaults", "availability", index, "model"],
+        });
+      }
+    });
+  });
 
 export type RoutingConfig = z.infer<typeof RoutingConfigSchema>;
 export type AvailabilityEntry = z.infer<typeof AvailabilityEntrySchema>;

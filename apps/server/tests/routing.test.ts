@@ -170,3 +170,51 @@ describe("對話 run 的 fallback legs（models.ts 接線）", () => {
     expect(model).toBeDefined();
   });
 });
+
+describe("routing schema（availability 引用驗證——打錯字 fail-fast 不靜默掉 leg）", () => {
+  const base = {
+    providers: {
+      "workers-ai": { kind: "binding", models: [{ id: "@cf/zai-org/glm-4.7-flash" }] },
+    },
+    classifiers: {},
+    voice: { stt: "s", tts: "t" },
+    report: { studentAttempts: 2, alarmAttempts: 3, alarmBackoffMs: 4000, alarmTimeoutMs: 300000, pseudonymPrefix: "學生" },
+    teacherChain: { maxConcurrency: 4 },
+    trafficClasses: {},
+  };
+
+  it("引用不存在的 provider → parse 拒絕", async () => {
+    const { RoutingConfigSchema } = await import("../src/routing/routing-schema");
+    const result = RoutingConfigSchema.safeParse({
+      ...base,
+      defaults: { availability: [{ provider: "typo-name", credential: "platform", maxConcurrency: 1, priority: 1 }] },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("引用 provider 未提供的 model → parse 拒絕", async () => {
+    const { RoutingConfigSchema } = await import("../src/routing/routing-schema");
+    const result = RoutingConfigSchema.safeParse({
+      ...base,
+      defaults: {
+        availability: [
+          { provider: "workers-ai", model: "@cf/zai-org/nonexistent", credential: "platform", maxConcurrency: 1, priority: 1 },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("合法引用 → parse 通過", async () => {
+    const { RoutingConfigSchema } = await import("../src/routing/routing-schema");
+    const result = RoutingConfigSchema.safeParse({
+      ...base,
+      defaults: {
+        availability: [
+          { provider: "workers-ai", model: "@cf/zai-org/glm-4.7-flash", credential: "platform", maxConcurrency: 1, priority: 1 },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+});
