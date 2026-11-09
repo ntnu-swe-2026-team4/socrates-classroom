@@ -44,6 +44,12 @@ export function teacherCredentialStore(env: Env, teacherOf: () => Promise<string
   };
 }
 
+// An explicit allowlist cannot work here: teacher legs may use any pi builtin
+// provider, whose env names live in pi's catalog (AWS/GCP/token variants), not
+// ours. The Worker env is a closed set we declare, so refusing our own secrets
+// by name is exact.
+const PLATFORM_SECRETS = new Set(["AUTH_SECRET", "BYOK_ENC_KEY", "SEED_TOKEN"]);
+
 export function workersAuthContext(env: Env): {
   env(name: string): Promise<string | undefined>;
   fileExists(): Promise<boolean>;
@@ -51,6 +57,7 @@ export function workersAuthContext(env: Env): {
   const record = env as unknown as Record<string, unknown>;
   return {
     env: async (name) => {
+      if (PLATFORM_SECRETS.has(name)) return undefined;
       if (!/^[A-Z0-9_]*(API_KEY|TOKEN)$/.test(name)) return undefined;
       const value = record[name];
       return typeof value === "string" ? value : undefined;
