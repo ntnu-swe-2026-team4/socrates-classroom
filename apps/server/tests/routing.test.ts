@@ -176,8 +176,8 @@ describe("routing schema (availability reference validation — typos fail fast 
     providers: {
       "workers-ai": { kind: "binding", models: [{ id: "@cf/zai-org/glm-4.7-flash" }] },
     },
-    classifiers: {},
-    voice: { stt: "s", tts: "t" },
+    classifiers: { emotion: "@cf/cloudflare/clef-flash", violation: "@cf/cloudflare/clef-flash" },
+    voice: { stt: "@cf/openai/whisper-large-v3-turbo", tts: "@cf/myshell-ai/melotts" },
     report: {
       studentAttempts: 2,
       alarmAttempts: 3,
@@ -215,6 +215,20 @@ describe("routing schema (availability reference validation — typos fail fast 
       },
     });
     expect(result.success).toBe(false);
+  });
+
+  it("classifier/voice binding ids: typo or missing key fails fast", async () => {
+    const { RoutingConfigSchema } = await import("../src/routing/routing-schema");
+    const typoed = RoutingConfigSchema.safeParse({
+      ...base,
+      classifiers: { emotion: "clef-flash", violation: "@cf/cloudflare/clef-flash" },
+    });
+    expect(typoed.success).toBe(false);
+    const missing = RoutingConfigSchema.safeParse({
+      ...base,
+      classifiers: { emotion: "@cf/cloudflare/clef-flash" },
+    });
+    expect(missing.success).toBe(false);
   });
 
   it("valid references → parse passes", async () => {

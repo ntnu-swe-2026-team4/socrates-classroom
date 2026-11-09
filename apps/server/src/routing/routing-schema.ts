@@ -44,13 +44,21 @@ export const TrafficClassSchema = z.object({
   availability: z.literal("defaults"),
 });
 
+const BindingModelSchema = z
+  .string()
+  .min(1)
+  .regex(/^@cf\/[a-z0-9-]+\/[a-z0-9._-]+$/i, "must be a Workers AI binding model id like @cf/org/model");
+
 export const RoutingConfigSchema = z
   .object({
     providers: z.record(z.string(), ProviderSchema),
-    classifiers: z.record(z.string(), z.string().min(1)),
+    classifiers: z.object({
+      emotion: BindingModelSchema,
+      violation: BindingModelSchema,
+    }),
     voice: z.object({
-      stt: z.string().min(1),
-      tts: z.string().min(1),
+      stt: BindingModelSchema,
+      tts: BindingModelSchema,
     }),
     report: z.object({
       studentAttempts: z.number().int().min(1),
