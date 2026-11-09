@@ -49,8 +49,17 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
       - name: cf deploy (same build artifact)
-        run: pnpm exec cf deploy --prebuilt --mode production
+        run: |
+          if [ -z "$PROD_SECRETS_FILE" ]; then
+            echo "::error::PROD_SECRETS_FILE repo secret is not set"
+            echo "::error::secrets ride only via --secrets-file (docs/cf.md §Secrets); deploying without AUTH_SECRET ships a broken production"
+            exit 1
+          fi
+          printf '%s' "$PROD_SECRETS_FILE" > .env.production.local
+          pnpm exec cf deploy --prebuilt --mode production --secrets-file .env.production.local
+          rm -f .env.production.local
         working-directory: apps/web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROD_SECRETS_FILE: ${{ secrets.PROD_SECRETS_FILE }}
