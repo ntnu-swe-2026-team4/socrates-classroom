@@ -1,5 +1,12 @@
 import { Hono } from "hono";
-import type { ClassReport, StudentAnalysis, StudentReport, TeacherReport, ViolationSlice } from "@socrates/shared";
+import type {
+  ClassReport,
+  ReportPosition,
+  StudentAnalysis,
+  StudentReport,
+  TeacherReport,
+  ViolationSlice,
+} from "@socrates/shared";
 import { one, run } from "../db/d1";
 import { fail, requireUser, type AppEnv } from "../http";
 import { requireMembership, topicOf } from "../services/members";
@@ -41,25 +48,31 @@ export function activityRoutes() {
       );
       if (!row || row.status === "pending") fail(404, "report_pending");
       if (row.status === "failed") fail(500, "report_failed");
+      const topic = await topicOf(c.env.DB, activity.topic_id);
       const stored = row.teacher_report
-        ? (JSON.parse(row.teacher_report) as { topicTitle: string; classReport: ClassReport })
+        ? (JSON.parse(row.teacher_report) as { topicTitle: string; classReport: ClassReport | null })
         : null;
-      if (!stored) fail(500, "report_failed");
       const students = row.student_reports
         ? (JSON.parse(row.student_reports) as Record<
             string,
-            { pseudonym: string; analysis: StudentAnalysis | null; violations: ViolationSlice[] }
+            {
+              pseudonym: string;
+              analysis: StudentAnalysis | null;
+              violations: ViolationSlice[];
+              positions: ReportPosition[];
+            }
           >)
         : {};
       if (isTeacher) {
         const report: TeacherReport = {
-          topicTitle: stored.topicTitle,
-          classReport: stored.classReport,
+          topicTitle: topic.title,
+          classReport: stored?.classReport ?? null,
           students: Object.entries(students).map(([studentId, own]) => ({
             studentId,
             pseudonym: own.pseudonym,
             analysis: own.analysis,
             violations: own.violations,
+            positions: own.positions ?? [],
           })),
         };
         return c.json(report);
@@ -67,10 +80,11 @@ export function activityRoutes() {
       const own = students[user.id];
       if (!own) fail(404, "not_found");
       const report: StudentReport = {
-        topicTitle: stored.topicTitle,
+        topicTitle: topic.title,
         pseudonym: own.pseudonym,
         analysis: own.analysis,
         violations: own.violations,
+        positions: own.positions ?? [],
       };
       return c.json(report);
     });

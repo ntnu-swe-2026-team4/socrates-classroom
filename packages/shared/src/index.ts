@@ -65,15 +65,25 @@ export interface ViolationSlice {
   excerpt: string;
 }
 
+export interface ReportPosition {
+  axis: string;
+  view: string;
+  end: "low" | "middle" | "high";
+  at: number;
+}
+
+export interface StudentReportEntry {
+  studentId: string;
+  pseudonym: string;
+  analysis: StudentAnalysis | null;
+  violations: ViolationSlice[];
+  positions: ReportPosition[];
+}
+
 export interface TeacherReport {
   topicTitle: string;
-  classReport: ClassReport;
-  students: Array<{
-    studentId: string;
-    pseudonym: string;
-    analysis: StudentAnalysis | null;
-    violations: ViolationSlice[];
-  }>;
+  classReport: ClassReport | null;
+  students: StudentReportEntry[];
 }
 
 export interface StudentReport {
@@ -81,6 +91,7 @@ export interface StudentReport {
   pseudonym: string;
   analysis: StudentAnalysis | null;
   violations: ViolationSlice[];
+  positions: ReportPosition[];
 }
 export type Report = TeacherReport | StudentReport;
 

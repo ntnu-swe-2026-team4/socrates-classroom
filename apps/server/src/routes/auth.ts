@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { LoginInputSchema, RegisterInputSchema } from "@socrates/shared";
 import { all, batch, one } from "../db/d1";
 import { DUMMY_HASH, endSession, hashPassword, startSession, verifyPassword } from "../auth";
-import { enforceIpLimit, fail, newId, nowIso, parseBody, type AppEnv } from "../http";
+import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, type AppEnv } from "../http";
 
 interface UserRow {
   id: string;
@@ -57,8 +57,8 @@ export function authRoutes() {
       try {
         await batch(c.env.DB, [
           {
-            sql: "INSERT INTO users (id, name, role, email, password_hash, created_at) VALUES ($id, $name, 'student', $email, $hash, $at)",
-            params: { id, name: input.name, email: input.email, hash, at },
+            sql: "INSERT INTO users (id, name, role, email, password_hash, lang, created_at) VALUES ($id, $name, 'student', $email, $hash, $lang, $at)",
+            params: { id, name: input.name, email: input.email, hash, at, lang: langOf(c) },
           },
           {
             sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",

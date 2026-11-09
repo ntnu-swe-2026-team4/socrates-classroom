@@ -21,6 +21,7 @@ Summary: understand their thinking and write it in one to three steps; each step
 ## Position axes
 
 The fewer axes the better, but students who think differently must be separated:
+- If the class has no disagreement (nobody stated a position, or everyone who did stands at the same place), write axes as an empty array and say so plainly in the class overview (for example: nobody stated a position; everyone took the same side)
 - First set one: the main disagreement in this class
 - Then check: are there students in about the same place on the existing axes whose thinking is clearly different (different reasons, caring about different things)? Only if so, add an axis to separate them; otherwise stop
 - If students' positions on two axes always move together (high on one, high on the other), it is the same disagreement; merge them into one

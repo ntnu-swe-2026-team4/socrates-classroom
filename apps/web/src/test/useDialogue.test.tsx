@@ -247,7 +247,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
     act(() => result.current.send("成功的問題"));
-    emit(viewFrame([userEntry(1, "成功的問題"), assistantEntry(2, "回答") ]));
+    emit(viewFrame([userEntry(1, "成功的問題"), assistantEntry(2, "回答")]));
     act(() => {
       result.current.retryLast();
     });

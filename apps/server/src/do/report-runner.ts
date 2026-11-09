@@ -1,16 +1,25 @@
 import { DurableObject } from "cloudflare:workers";
 import { createRegistry, type Harness } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { fauxAssistantMessage, type AssistantMessage, type TranscriptContext } from "@earendil-works/pi-ai";
+import type { JsonObject } from "@earendil-works/pi-durable";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+  type AssistantMessage,
+  type TranscriptContext,
+} from "@earendil-works/pi-ai";
 import type { Env } from "../env";
 import { buildModels } from "../pi/models";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
+import { reportSubmitExtension, SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../pi/extensions/report-submit";
 import { all, one, run } from "../db/d1";
 import { nowIso } from "../http";
 import {
   ClassReportSchema,
   StudentAnalysisSchema,
   type ClassReport,
+  type Lang,
+  type ReportPosition,
   type StudentAnalysis,
   type ViolationSlice,
   type ViolationType,
@@ -28,6 +37,7 @@ export class ReportRunner extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.registry.install(reportSubmitExtension);
     if (this.models.faux) {
       this.models.faux.setResponses([fauxReportScript]);
       this.registry.install(fauxReplayExtension(this.models.faux, fauxReportScript));
@@ -86,10 +96,11 @@ export class ReportRunner extends DurableObject<Env> {
     const attempts = ((await this.ctx.storage.get<number>("attempts")) ?? 0) + 1;
     await this.ctx.storage.put("attempts", attempts);
     if (attempts > report.alarmAttempts) {
-      await run(db, "UPDATE reports SET status = 'failed', updated_at = $at WHERE activity_id = $id", {
-        id: activityId,
-        at: nowIso(),
-      });
+      await run(
+        db,
+        "UPDATE reports SET status = CASE WHEN student_reports IS NOT NULL THEN 'partial' ELSE 'failed' END, updated_at = $at WHERE activity_id = $id",
+        { id: activityId, at: nowIso() },
+      );
       return;
     }
     this.#inFlight = this.generate(activityId).finally(() => {
@@ -125,9 +136,9 @@ export class ReportRunner extends DurableObject<Env> {
       { id: activityId },
     );
     if (!activity) throw new Error("activity_missing");
-    const members = await all<{ user_id: string; name: string }>(
+    const members = await all<{ user_id: string; name: string; lang: "zh" | "en" | "es" }>(
       db,
-      "SELECT user_id, name FROM members WHERE classroom_id = $cid ORDER BY joined_at, user_id",
+      "SELECT m.user_id, m.name, u.lang FROM members m JOIN users u ON u.id = m.user_id WHERE m.classroom_id = $cid ORDER BY m.joined_at, m.user_id",
       { cid: activity.classroom_id },
     );
 
@@ -154,6 +165,7 @@ export class ReportRunner extends DurableObject<Env> {
     }
 
     const legs = await this.teacherLegs();
+    const teacherLang = await this.teacherLanguage();
     const batch = this.batchSize(members.length, legs);
     const transcripts = new Map<string, { text: string; violations: ViolationSlice[] }>();
     for (let i = 0; i < members.length; i += batch) {
@@ -175,14 +187,15 @@ export class ReportRunner extends DurableObject<Env> {
             return;
           }
           for (let attempt = 0; attempt < report.studentAttempts; attempt += 1) {
-            const { text } = await this.runAgent(
+            const { text, payload } = await this.runAgent(
               harness,
               "student-report",
               this.studentReportPrompt(activity, transcript),
               legs,
+              { lang: member.lang, submitTool: SUBMIT_STUDENT_ANALYSIS },
             );
             try {
-              studentAnalyses.set(member.user_id, StudentAnalysisSchema.parse(JSON.parse(text)));
+              studentAnalyses.set(member.user_id, StudentAnalysisSchema.parse(payloadOf(text, payload, "report")));
               break;
             } catch (error) {
               console.error(
@@ -197,16 +210,21 @@ export class ReportRunner extends DurableObject<Env> {
     }
 
     const classInput = this.classReportPrompt(activity, members, transcripts, pseudonyms);
-    const { text: classText } = await this.runAgent(harness, "class-report", classInput, legs);
-    let classReport: ClassReport;
     try {
-      classReport = ClassReportSchema.parse(JSON.parse(classText));
+      const { text: classText, payload: classPayload } = await this.runAgent(
+        harness,
+        "class-report",
+        classInput,
+        legs,
+        { lang: teacherLang, submitTool: SUBMIT_CLASS_REPORT },
+      );
+      const classReport = ClassReportSchema.parse(payloadOf(classText, classPayload));
+      await this.persist(activityId, activity.title, classReport, studentAnalyses, pseudonyms, transcripts);
     } catch (error) {
-      console.error("[report] class report parse failed", error instanceof Error ? error.name : typeof error);
-      throw new Error("class_report_parse_failed");
+      console.error("[report] class report failed", error instanceof Error ? error.name : typeof error);
+      await this.persist(activityId, activity.title, null, studentAnalyses, pseudonyms, transcripts);
+      throw error;
     }
-
-    await this.persist(activityId, activity.title, classReport, studentAnalyses, pseudonyms, transcripts);
   }
 
   private async openHarness(): Promise<Harness> {
@@ -228,7 +246,8 @@ export class ReportRunner extends DurableObject<Env> {
     profile: "student-report" | "class-report",
     input: string,
     legs: TeacherLeg[],
-  ): Promise<{ text: string }> {
+    options: { lang: Lang; submitTool: string },
+  ): Promise<{ text: string; payload: JsonObject | null }> {
     const { runProfile } = (await import("../pi/agents/profiles")) as unknown as {
       runProfile: (
         h: Harness,
@@ -236,9 +255,26 @@ export class ReportRunner extends DurableObject<Env> {
         p: "student-report" | "class-report",
         i: string,
         l: TeacherLeg[],
-      ) => Promise<{ text: string }>;
+        o: { lang: Lang; submitTool: string },
+      ) => Promise<{ text: string; payload: JsonObject | null }>;
     };
-    return runProfile(harness, { models: this.models, registry: this.registry, env: this.env }, profile, input, legs);
+    return runProfile(
+      harness,
+      { models: this.models, registry: this.registry, env: this.env },
+      profile,
+      input,
+      legs,
+      options,
+    );
+  }
+
+  private async teacherLanguage(): Promise<Lang> {
+    const teacherId = await teacherOfActivity(this.env, this.ctx.id.name ?? "");
+    if (!teacherId) return "zh";
+    const row = await one<{ lang: Lang }>(this.env.DB, "SELECT lang FROM users WHERE id = $id", {
+      id: teacherId,
+    });
+    return row?.lang ?? "zh";
   }
 
   private batchSize(memberCount: number, legs: TeacherLeg[]): number {
@@ -295,33 +331,65 @@ export class ReportRunner extends DurableObject<Env> {
   private async persist(
     activityId: string,
     topicTitle: string,
-    classReport: ClassReport,
+    classReport: ClassReport | null,
     studentAnalyses: Map<string, StudentAnalysis | null>,
     pseudonyms: Map<string, string>,
     transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
   ): Promise<void> {
     const students: Record<string, unknown> = {};
     for (const [studentId, analysis] of studentAnalyses) {
+      const pseudonym = pseudonyms.get(studentId) ?? studentId;
       students[studentId] = {
-        pseudonym: pseudonyms.get(studentId) ?? studentId,
+        pseudonym,
         analysis,
         violations: transcripts.get(studentId)?.violations ?? [],
+        positions: positionsOf(classReport, pseudonym),
       };
     }
 
     await run(
       this.env.DB,
-      `UPDATE reports SET status = 'ready',
+      `UPDATE reports SET status = $status,
         teacher_report = $teacher, student_reports = $students, updated_at = $at
        WHERE activity_id = $id`,
       {
         id: activityId,
+        status: classReport ? "ready" : "partial",
         teacher: JSON.stringify({ topicTitle, classReport }),
         students: JSON.stringify(students),
         at: nowIso(),
       },
     );
   }
+}
+
+function positionsOf(classReport: ClassReport | null, pseudonym: string): ReportPosition[] {
+  if (!classReport) return [];
+  const positions: ReportPosition[] = [];
+  for (const axis of classReport.axes) {
+    for (const position of axis.positions) {
+      if (position.id === pseudonym) {
+        positions.push({ axis: axis.name, view: position.view, end: position.end, at: position.at });
+      }
+    }
+  }
+  return positions;
+}
+
+function payloadOf(text: string, payload: JsonObject | null, key?: string): unknown {
+  if (payload !== null) {
+    const value = key === undefined ? payload : payload[key];
+    if (value === undefined) throw new Error("tool_payload_missing_key");
+    return value;
+  }
+  const stripped = text
+    .replace(/^\s*```(?:json)?\s*/i, "")
+    .replace(/```\s*$/, "")
+    .trim();
+  const start = stripped.indexOf("{");
+  const end = stripped.lastIndexOf("}");
+  if (start === -1 || end <= start) throw new Error("no_json_object_in_text");
+  return JSON.parse(stripped.slice(start, end + 1));
 }
 
 function textOf(content: string | readonly unknown[]): string {
@@ -337,32 +405,40 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
   const prompt = last?.role === "user" ? textOf(last.content) : "";
   if (prompt.includes("## Roster:")) {
     return fauxAssistantMessage(
-      JSON.stringify({
-        students: [{ id: "學生A", summary: [{ step: "提出直覺判斷並被追問理由", turns: [1] }] }],
-        unstated: [],
-        axes: [
-          {
-            name: "契約與承諾",
-            low: "契約至上",
-            high: "人情優先",
-            positions: [
-              { id: "學生A", turns: [1], view: "先守約再談情", end: "middle", at: 50 },
-              { id: "學生B", turns: [1], view: "契約就是契約", end: "low", at: 10 },
-            ],
-            why: "全班多數先守約，但接受例外",
-          },
-        ],
-        overview: ["全班集中在契約與人情的取捨"],
-      }),
+      [
+        fauxToolCall(SUBMIT_CLASS_REPORT, {
+          students: [{ id: "學生A", summary: [{ step: "提出直覺判斷並被追問理由", turns: [1] }] }],
+          unstated: [],
+          axes: [
+            {
+              name: "契約與承諾",
+              low: "契約至上",
+              high: "人情優先",
+              positions: [
+                { id: "學生A", turns: [1], view: "先守約再談情", end: "middle", at: 50 },
+                { id: "學生B", turns: [1], view: "契約就是契約", end: "low", at: 10 },
+              ],
+              why: "全班多數先守約，但接受例外",
+            },
+          ],
+          overview: ["全班集中在契約與人情的取捨"],
+        }),
+      ],
+      { stopReason: "toolUse" },
     );
   }
   return fauxAssistantMessage(
-    JSON.stringify({
-      stated: true,
-      claim: { text: "契約應該被遵守", turns: [1] },
-      reasons: { text: "因為雙方事先同意", turns: [1] },
-      tension: null,
-    }),
+    [
+      fauxToolCall(SUBMIT_STUDENT_ANALYSIS, {
+        report: {
+          stated: true,
+          claim: { text: "契約應該被遵守", turns: [1] },
+          reasons: { text: "因為雙方事先同意", turns: [1] },
+          tension: null,
+        },
+      }),
+    ],
+    { stopReason: "toolUse" },
   );
 }
 

@@ -98,7 +98,7 @@ type ServerMessage =
 ```
 
 - **客戶端以 `applyImmutable`（`@earendil-works/chord/delta`）套用 ops**——禁止手寫 delta applier
-- **回合完成判定**：submit 後記 baseline（當時 entry 數），view/ops 中 baseline 之後出現 `pi.assistant` entry 即完成（admission receipt 不代表完成；串流中的 partial 寫在 `pi.live` doc，不會誤觸）；reconnect 後全量 view 仲裁——無本輪 `pi.user` entry＝未被 admission，清 pending 報錯（防 double-submit）
+- **回合完成判定**：submit 後記 baseline（當時最後一個 entry id，sliding window splice 安全），view/ops 中 baseline 之後出現 `pi.assistant` entry 即完成（admission receipt 不代表完成；串流中的 partial 寫在 `pi.live` doc，不會誤觸）；reconnect 後全量 view 仲裁——無本輪 `pi.user` entry＝未被 admission，清 pending 報錯（防 double-submit）
 - **情緒**：`view.entries` 的 `app.emotion` entry（`{emotion, probabilities, confidence, text}`，#111）——UI 依機率驅動表情，文字零污染
 - **違規**：`app.violation` entry（`{type, probability, excerpt, source}`，#71）——老師面板讀 D1（#73 輪詢），學生端不消費
 - **歷史**：WS `watch` 首個 view（window 預設最新 50 則 entries）或 `entries` 指令；pi transcript（DO storage）為唯一真相
@@ -113,7 +113,7 @@ type ServerMessage =
 | Operation                                                           | 說明                                                                                                                                                            |
 | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /api/activities/:id/finish` → `204`                           | 老師結束活動 → ReportRunner DO `startReport`（alarm 驅動，非同步）。冪等；老師專屬                                                                              |
-| `GET /api/activities/:id/report` → `TeacherReport \| StudentReport` | 生成中 404 `report_pending`（前端輪詢至 200）；失敗 500 `report_failed`（重打 `finish` 可重觸發）。**角色分流**：老師見全班＋個人；學生見自己（無 classReport） |
+| `GET /api/activities/:id/report` → `TeacherReport \| StudentReport` | 生成中 404 `report_pending`（前端輪詢至 200）；失敗 500 `report_failed`（重打 `finish` 可重觸發）；**partial**＝群體生成重試耗盡但個別報告已存——200 回應，`classReport: null`、`positions: []`（重打 `finish` 可重觸發全量）。**角色分流**：老師見全班＋個人；學生見自己（無 classReport） |
 
 **報告形狀（#74，PR #109 的分析為核心；`pseudonym` 生成一次存 D1，活動內穩定；#72 全去識別化）**：
 
@@ -125,21 +125,26 @@ interface StudentAnalysis {
   stated: false; doing: {text; turns};   // 未表態：做了什麼（離題/早退…）
 }
 interface ClassReport {
-  students: {id; summary: {step; turns}[]}[];   // 逐生摘要（cause → result 步驟＋出處行號）
+  students: {id; summary: {step; turns}[]}[];   // 逐生摘要（cause → result 步驟＋出處行號）；空陣列＝全班未表態
   unstated: string[];                            // 未表態者
-  axes: {name; low; high; positions: {id; turns; view; end: "low"|"middle"|"high"; at: 0-100}[]; why}[];  // 立場軸＋落點
+  axes: {name; low; high; positions: {id; turns; view; end: "low"|"middle"|"high"; at: 0-100}[]; why}[];  // 立場軸＋落點；空陣列＝無分歧（overview 照實寫）
   overview: string[];                            // 全班整理
+}
+
+interface ReportPosition {                       // 單人落點：從 classReport.axes[].positions 以 pseudonym 對出（不經 LLM，與全班報告一致）
+  axis: string; view: string; end: "low"|"middle"|"high"; at: number;
 }
 
 // API 回應（組合層）
 interface TeacherReport {
   topicTitle: string;
-  classReport: ClassReport;                      // 群體：軸/落點/整理
+  classReport: ClassReport | null;               // null＝partial（群體生成重試耗盡，個別報告仍可用）
   students: Array<{                              // array 保序（joined_at）；10k 班級下回應體積上限由生成端併發與輪詢分頁另議
     studentId: string;                           // 真實 id——僅老師可見
     pseudonym: string;
     analysis: StudentAnalysis | null;            // 論點總結（claim/reasons/tension＋turns 出處）
     violations: ViolationSlice[];                 // 違規切片（不經 LLM）
+    positions: ReportPosition[];                 // 每位學生自己的落點（partial 時為空）
   }>;
 }
 interface StudentReport {
@@ -147,6 +152,7 @@ interface StudentReport {
   pseudonym: string;                             // 學生在 classReport 中的定位線索（老師版可對照）
   analysis: StudentAnalysis | null;              // 自己的
   violations: ViolationSlice[];
+  positions: ReportPosition[];                   // 自己在每條軸上的落點
 }
 interface ViolationSlice {
   turn: number;                                  // transcript 行號＝「學生（n）」的 n（app.violation entry 抽取時計算）

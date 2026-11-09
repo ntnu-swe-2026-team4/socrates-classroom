@@ -9,6 +9,7 @@ export type {
   ClassroomSummary,
   JoinInfo,
   Report,
+  ReportPosition,
   StudentAnalysis,
   StudentLive,
   TeacherReport,

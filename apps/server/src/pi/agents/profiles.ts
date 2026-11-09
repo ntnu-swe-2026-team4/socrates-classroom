@@ -9,6 +9,7 @@ import {
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
+import { LANG_NAMES, type Lang } from "@socrates/shared";
 import STUDENT_REPORT_RAW from "../../prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../../prompts/class-report.md?raw";
 import LOOKUP_RAW from "../../prompts/lookup.md?raw";
@@ -22,29 +23,27 @@ import { createWebSearchExtension } from "../extensions/websearch";
 import { getRouter, type TrafficClass } from "../../routing/router";
 import type { SettleKind } from "../../routing/ledger";
 import { teacherLegsOf, type TeacherLeg } from "../credentials";
+import { reportSubmitExtension, SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../extensions/report-submit";
+import type { JsonObject } from "@earendil-works/pi-durable";
 
 export type ProfileName = "socrates" | "topic-gen" | "student-report" | "class-report" | "lookup";
 
 const ROLE_USER_MARKER = '{{role "user"}}';
 const LOCALE_BLOCK = "{{#if locale}}{{locale}}{{else}}繁體中文{{/if}}";
 
-const STUDENT_REPORT_SHAPE = `Respond with only JSON, no markdown fences.
-If they stated a position:
-{"stated": true, "claim": {"text": "...", "turns": [2]}, "reasons": {"text": "...", "turns": [3]}, "tension": {"text": "...", "turns": [4]}}
-tension is null when there is none.
-If they never stated a position:
-{"stated": false, "doing": {"text": "...", "turns": [1]}}
-turns are the student's line numbers in the conversation, each at least 1.`;
+const STUDENT_REPORT_SHAPE = `Submit the report by calling ${SUBMIT_STUDENT_ANALYSIS} as your final action; do not also write it as text.
+turns are the student's line numbers in the conversation, each at least 1.
+tension is null when there is none.`;
 
-const CLASS_REPORT_SHAPE = `Respond with only JSON, no markdown fences:
-{"students": [{"id": "...", "summary": [{"step": "cause → result", "turns": [2, 3]}]}], "unstated": ["..."], "axes": [{"name": "...", "low": "...", "high": "...", "positions": [{"id": "...", "turns": [2], "view": "...", "end": "low", "at": 25}], "why": "..."}], "overview": ["..."]}
+const CLASS_REPORT_SHAPE = `Submit the report by calling ${SUBMIT_CLASS_REPORT} as your final action; do not also write it as text.
 - students: every student who stated a position, in roster order; summary has 1-3 steps
+- when the class has no disagreement, axes is an empty array and the overview says so plainly
 - end is "low", "middle", or "high"; at is 0-100 (low 0-49, middle 50, high 51-100)
 - overview: 3-5 lines`;
 
 function instructionsOf(asset: string, outputShape?: string): string {
   const [instructions] = asset.split(ROLE_USER_MARKER);
-  const body = instructions.replaceAll(LOCALE_BLOCK, "繁體中文").trim();
+  const body = instructions.trim();
   return outputShape ? `${body}\n\n${outputShape}` : body;
 }
 
@@ -77,7 +76,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
   "student-report": {
     name: "student-report",
     instructions: instructionsOf(STUDENT_REPORT_RAW, STUDENT_REPORT_SHAPE),
-    extensions: [],
+    extensions: ["report-submit"],
     maxTurns: 4,
     trafficClass: "batch",
     thinkingLevel: "high",
@@ -85,7 +84,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
   "class-report": {
     name: "class-report",
     instructions: instructionsOf(CLASS_REPORT_RAW, CLASS_REPORT_SHAPE),
-    extensions: [],
+    extensions: ["report-submit"],
     maxTurns: 4,
     trafficClass: "batch",
     thinkingLevel: "high",
@@ -112,12 +111,13 @@ export function profileRegistry(profile: AgentProfile, env: Env): Registry {
     );
   }
   if (profile.extensions.includes("websearch")) registry.install(createWebSearchExtension(env.AI));
+  if (profile.extensions.includes("report-submit")) registry.install(reportSubmitExtension);
   return registry;
 }
 
-function agentChangeFor(profile: AgentProfile): AgentChange {
+function agentChangeFor(profile: AgentProfile, lang: Lang): AgentChange {
   return {
-    instructions: profile.instructions || undefined,
+    instructions: (profile.instructions || undefined)?.replaceAll(LOCALE_BLOCK, LANG_NAMES[lang]),
     ...(profile.maxTurns !== undefined ? { maxTurns: profile.maxTurns } : {}),
     thinkingLevel: profile.thinkingLevel,
   };
@@ -148,16 +148,38 @@ export async function openProfileHarness(
   };
 }
 
+export interface RunProfileOptions {
+  lang?: Lang;
+  submitTool?: string;
+}
+
+function toolCallPayload(entry: { model?: readonly unknown[] }, toolName: string): JsonObject | null {
+  for (const message of entry.model ?? []) {
+    const candidate = message as { role?: string; content?: unknown };
+    if (candidate.role !== "assistant" || typeof candidate.content !== "object" || candidate.content === null) continue;
+    if (Array.isArray(candidate.content)) {
+      for (const part of candidate.content) {
+        const block = part as { type?: string; name?: string; arguments?: unknown };
+        if (block.type === "toolCall" && block.name === toolName && typeof block.arguments === "object") {
+          return block.arguments as JsonObject;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export async function runProfile(
   harness: Harness,
   runtime: ProfileRuntime,
   profileName: Exclude<ProfileName, "socrates">,
   input: string,
   teacherLegs?: TeacherLeg[],
-): Promise<{ text: string; conversation: Conversation }> {
+  options: RunProfileOptions = {},
+): Promise<{ text: string; payload: JsonObject | null; conversation: Conversation }> {
   const profile = PROFILES[profileName];
   const conversation = await harness.createConversation(
-    { ownership: { kind: "ownerless" }, agent: agentChangeFor(profile) },
+    { ownership: { kind: "ownerless" }, agent: agentChangeFor(profile, options.lang ?? "zh") },
     BACKGROUND_CONTEXT,
   );
   const router = getRouter(runtime.env);
@@ -176,14 +198,23 @@ export async function runProfile(
     const settled = await submission.wait(BACKGROUND_CONTEXT);
     if (settled.status !== "done" || settled.type !== "input") {
       kind = settled.status === "unanswered" && settled.reason === "aborted" ? "ok" : "error";
-      return { text: "", conversation };
+      return { text: "", payload: null, conversation };
     }
     const answer = await conversation.entries(
       { maxEntryId: settled.answer, order: "descending" },
-      1,
+      20,
       undefined,
       BACKGROUND_CONTEXT,
     );
+    if (options.submitTool) {
+      for (const entry of answer.items) {
+        const payload = toolCallPayload(entry, options.submitTool);
+        if (payload) {
+          kind = "ok";
+          return { text: "", payload, conversation };
+        }
+      }
+    }
     const message = answer.items[0]?.model?.[0];
     const text =
       message?.role === "assistant"
@@ -192,7 +223,7 @@ export async function runProfile(
           : message.content.map((part) => (part.type === "text" ? (part.text ?? "") : "")).join("")
         : "";
     kind = "ok";
-    return { text, conversation };
+    return { text, payload: null, conversation };
   } finally {
     if (decision) router.settle(decision, kind);
   }

@@ -2,37 +2,31 @@ import { z } from "zod";
 
 const turns = z.array(z.number().int().min(1)).min(1);
 
+const position = z.object({
+  id: z.string(),
+  turns,
+  view: z.string(),
+  end: z.enum(["low", "middle", "high"]),
+  at: z.number().int().min(0).max(100),
+});
+
 export const ClassReportSchema = z.object({
-  students: z
-    .array(
-      z.object({
-        id: z.string(),
-        summary: z.array(z.object({ step: z.string(), turns })).min(1),
-      }),
-    )
-    .min(1),
+  students: z.array(
+    z.object({
+      id: z.string(),
+      summary: z.array(z.object({ step: z.string(), turns })).min(1),
+    }),
+  ),
   unstated: z.array(z.string()),
-  axes: z
-    .array(
-      z.object({
-        name: z.string(),
-        low: z.string(),
-        high: z.string(),
-        positions: z
-          .array(
-            z.object({
-              id: z.string(),
-              turns,
-              view: z.string(),
-              end: z.enum(["low", "middle", "high"]),
-              at: z.number().int().min(0).max(100),
-            }),
-          )
-          .min(2),
-        why: z.string(),
-      }),
-    )
-    .min(1),
+  axes: z.array(
+    z.object({
+      name: z.string(),
+      low: z.string(),
+      high: z.string(),
+      positions: z.array(position).min(1),
+      why: z.string(),
+    }),
+  ),
   overview: z.array(z.string()).min(1),
 });
 

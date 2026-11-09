@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { JoinInputSchema } from "@socrates/shared";
 import { batch, one, run } from "../db/d1";
 import { startSession } from "../auth";
-import { enforceIpLimit, fail, newId, nowIso, parseBody, type AppEnv } from "../http";
+import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, type AppEnv } from "../http";
 import { topicOf, type ClassroomRow } from "../services/members";
 
 export function joinRoutes() {
@@ -58,8 +58,8 @@ export function joinRoutes() {
         try {
           await batch(c.env.DB, [
             {
-              sql: "INSERT INTO users (id, name, role, created_at) VALUES ($id, $name, 'student', $at)",
-              params: { id, name, at },
+              sql: "INSERT INTO users (id, name, role, lang, created_at) VALUES ($id, $name, 'student', $lang, $at)",
+              params: { id, name, at, lang: langOf(c) },
             },
             {
               sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { api, ApiError, type StudentAnalysis, type ViolationSlice } from "@/api";
+import { api, ApiError, type ReportPosition, type StudentAnalysis, type ViolationSlice } from "@/api";
 import { Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
@@ -75,46 +75,55 @@ function ReportPage() {
       {!isTeacherView && (
         <section className="mt-6 flex flex-col gap-6">
           <p className="text-[14px] text-ink-soft">{person.pseudonym}</p>
+          <Positions positions={person.positions} />
           <Analysis analysis={person.analysis} violations={person.violations} />
         </section>
       )}
 
       {isTeacherView && view === "group" && (
         <section className="mt-6 flex flex-col gap-8">
-          <div className="flex flex-col gap-2">
-            <h2 className="font-serif text-lg font-semibold text-ink">{t("report_overview")}</h2>
-            {data.classReport.overview.map((line) => (
-              <p key={line} className="text-[14.5px] leading-relaxed text-ink-soft">
-                {line}
-              </p>
-            ))}
-          </div>
-
-          <div className="flex flex-col gap-4">
-            <h2 className="font-serif text-lg font-semibold text-ink">{t("report_axes")}</h2>
-            {data.classReport.axes.map((axis) => (
-              <div key={axis.name} className="rounded-2xl border border-line bg-card p-5">
-                <p className="text-[15px] font-medium text-ink">
-                  {axis.name}：{axis.low} ↔ {axis.high}
-                </p>
-                <ul className="mt-3 flex flex-col gap-1.5">
-                  {axis.positions.map((position) => (
-                    <li key={`${axis.name}-${position.id}`} className="text-[13.5px] text-ink-soft">
-                      <span className="font-medium text-ink">{position.id}</span>
-                      <span className="text-ink-faint"> · {t("report_position", { at: position.at })}</span>
-                      <span> — {position.view}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">{axis.why}</p>
+          {data.classReport ? (
+            <>
+              <div className="flex flex-col gap-2">
+                <h2 className="font-serif text-lg font-semibold text-ink">{t("report_overview")}</h2>
+                {data.classReport.overview.map((line) => (
+                  <p key={line} className="text-[14.5px] leading-relaxed text-ink-soft">
+                    {line}
+                  </p>
+                ))}
               </div>
-            ))}
-          </div>
 
-          {data.classReport.unstated.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <h2 className="font-serif text-lg font-semibold text-ink">{t("report_unstated")}</h2>
-              <p className="text-[14px] text-ink-soft">{data.classReport.unstated.join("、")}</p>
+              <div className="flex flex-col gap-4">
+                <h2 className="font-serif text-lg font-semibold text-ink">{t("report_axes")}</h2>
+                {data.classReport.axes.map((axis) => (
+                  <div key={axis.name} className="rounded-2xl border border-line bg-card p-5">
+                    <p className="text-[15px] font-medium text-ink">
+                      {axis.name}：{axis.low} ↔ {axis.high}
+                    </p>
+                    <ul className="mt-3 flex flex-col gap-1.5">
+                      {axis.positions.map((position) => (
+                        <li key={`${axis.name}-${position.id}`} className="text-[13.5px] text-ink-soft">
+                          <span className="font-medium text-ink">{position.id}</span>
+                          <span className="text-ink-faint"> · {t("report_position", { at: position.at })}</span>
+                          <span> — {position.view}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">{axis.why}</p>
+                  </div>
+                ))}
+              </div>
+
+              {data.classReport.unstated.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <h2 className="font-serif text-lg font-semibold text-ink">{t("report_unstated")}</h2>
+                  <p className="text-[14px] text-ink-soft">{data.classReport.unstated.join("、")}</p>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="rounded-2xl border border-line bg-card p-5">
+              <p className="text-[14px] text-ink-soft">{t("report_partial")}</p>
             </div>
           )}
         </section>
@@ -139,9 +148,29 @@ function ReportPage() {
               </button>
             ))}
           </div>
+          <Positions positions={person.positions} />
           <Analysis analysis={person.analysis} violations={person.violations} />
         </section>
       )}
+    </div>
+  );
+}
+
+function Positions({ positions }: { positions: ReportPosition[] }) {
+  const t = useT();
+  if (positions.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="font-serif text-lg font-semibold text-ink">{t("report_positions")}</h2>
+      <ul className="flex max-w-2xl flex-col gap-2">
+        {positions.map((position) => (
+          <li key={position.axis} className="rounded-2xl border border-line bg-card px-4 py-3 text-[14px] text-ink">
+            <span className="font-medium">{position.axis}</span>
+            <span className="text-ink-faint"> · {t("report_position", { at: position.at })}</span>
+            <p className="mt-1 text-[13.5px] text-ink-soft">{position.view}</p>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
