@@ -6,6 +6,8 @@ Everything is an extension. All behavior — prompts, tools, hooks, tasks — li
 
 Non-negotiables: no queue feature (`whenBusy: "reject"` — a busy thread refuses, never queues); platform-credential traffic only on the ZDR-reviewed chain, teacher-keyed legs are ToS-shifted to the teacher (`docs/providers.md`); version-pair lock `agents` 0.33 ↔ pi 1.5 (`docs/pi.md`); tests are real DO + real WebSocket + faux model (`tests/chat.test.ts` is the pattern); no hardcoded model ids — everything routes through `providers.config.yaml`; files over ~200 lines mean you are re-implementing pi.
 
+Find all of the implicit state machines in the code.
+
 ## Module map
 
 | Module                                                        | Responsibility                                                                                                                                                            |
