@@ -142,7 +142,7 @@ function CurrentTopic({ room }: { room: ClassroomSummary }) {
                   onClick={() =>
                     void navigate({
                       to: "/dialogue",
-                      search: { activityId: current.activityId, topic: current.topicId },
+                      search: { activityId: current.activityId },
                     })
                   }
                 >

@@ -42,7 +42,7 @@ function JoinPage() {
       queryClient.setQueryData(["me"], user);
       await navigate({
         to: "/dialogue",
-        search: { activityId, topic: topic.id, ...(draft ? { q: draft } : {}) },
+        search: { activityId, ...(draft ? { q: draft } : {}) },
       });
     } catch {
       setFailed(true);
