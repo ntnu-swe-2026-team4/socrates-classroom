@@ -30,10 +30,22 @@ function SetupPage() {
   const generated = useMutation({ mutationFn: () => api.generateTopics(direction) });
   const create = useMutation({
     mutationFn: async () => {
-      const topicId =
-        source === "custom"
-          ? (await api.createTopic({ title: customTitle.trim(), statement: customStatement.trim(), prompts: [] })).id
+      let topicId: string;
+      if (source === "custom") {
+        topicId = (await api.createTopic({ title: customTitle.trim(), statement: customStatement.trim(), prompts: [] }))
+          .id;
+      } else {
+        const generatedTopic = (generated.data ?? []).find((topic) => topic.id === picked);
+        topicId = generatedTopic
+          ? (
+              await api.createTopic({
+                title: generatedTopic.title,
+                statement: generatedTopic.statement,
+                prompts: generatedTopic.prompts,
+              })
+            ).id
           : picked!;
+      }
       return api.createClassroom(classroomName.trim(), topicId);
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["classrooms"] }),
@@ -210,6 +222,11 @@ function SetupPage() {
           ) : (
             <Card className="flex flex-col items-center gap-4 bg-gradient-to-br from-ember-wash to-transparent p-6 text-center">
               <p className="text-[13px] leading-relaxed text-ink-soft">{t("setup_share_hint")}</p>
+              {create.isError && (
+                <p role="alert" className="text-[13px] text-flag">
+                  {t("common_error")}
+                </p>
+              )}
               <Button className="w-full" disabled={!ready || create.isPending} onClick={() => create.mutate()}>
                 {create.isPending ? <Spinner /> : t("setup_create")}
               </Button>

@@ -171,7 +171,7 @@ function TeacherKeysCard() {
           />
         </label>
         {error ? (
-          <p role="alert" className="text-[13px] text-danger">
+          <p role="alert" className="text-[13px] text-flag">
             {error}
           </p>
         ) : null}
@@ -217,7 +217,7 @@ function TeacherKeysCard() {
                   type="button"
                   onClick={() => remove(entry)}
                   aria-label={t("settings_keys_delete")}
-                  className="cursor-pointer rounded-md px-2 py-1 text-ink-soft hover:text-danger"
+                  className="cursor-pointer rounded-md px-2 py-1 text-ink-soft hover:text-flag"
                 >
                   ✕
                 </button>

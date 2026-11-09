@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -153,6 +153,63 @@ test("#90: emotion entry maps to SocratesStage expression (happy → Happy, neut
     ]);
     await screen.findByText("The saved reply");
     await waitFor(() => expect(stage.setExpression).toHaveBeenCalledWith("Happy", { loop: true }));
+  } finally {
+    dispose();
+  }
+});
+
+test("t.setup: picking an AI-generated topic persists it before creating the classroom", async () => {
+  const generatedTopic = {
+    id: "gen_123_0",
+    title: "Generated topic",
+    statement: "A generated dilemma",
+    prompts: ["Why?"],
+  };
+  const persisted = { ...generatedTopic, id: "topic-persisted" };
+  const calls: Array<{ path: string; body: unknown }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (
+        init?.method === "POST" &&
+        (path === "/api/topics" || path === "/api/topics/generate" || path === "/api/classrooms")
+      ) {
+        calls.push({ path, body: JSON.parse(String(init.body)) });
+      }
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "teacher-1", name: "Teacher", role: "teacher" },
+        "/api/topics": [topic],
+        "/api/topics/generate": [generatedTopic],
+        "/api/classrooms": {
+          classroomId: "class-9",
+          code: "code999",
+          url: "http://localhost/join/code999",
+          activityId: "activity-9",
+        },
+      };
+      if (path === "/api/topics" && calls.some((call) => call.path === "/api/topics"))
+        return new Response(JSON.stringify(persisted), { headers: { "Content-Type": "application/json" } });
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/t/setup");
+  try {
+    fireEvent.click(await screen.findByRole("tab", { name: "AI generate" }));
+    const direction = await screen.findByPlaceholderText("Topic direction");
+    fireEvent.change(direction, { target: { value: "justice" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Generated topic/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Classroom name" }), { target: { value: "My class" } });
+    const createButton = screen.getByRole("button", { name: "Create classroom & invite" });
+    await waitFor(() => expect(createButton).toHaveProperty("disabled", false));
+    fireEvent.click(createButton);
+    await waitFor(() =>
+      expect(calls.map((call) => call.path)).toEqual(["/api/topics/generate", "/api/topics", "/api/classrooms"]),
+    );
+    expect(calls[1]!.body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
+    expect(calls[2]!.body).toMatchObject({ topicId: "topic-persisted" });
   } finally {
     dispose();
   }

@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api";
 import { Button, Card, Checkbox, Field, Input, PageHeader, Spinner } from "@/components/ui";
+import { ApiError } from "@socrates/shared";
 import { useT } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
 
@@ -23,7 +24,7 @@ function JoinPage() {
   const [name, setName] = useState("");
   const [tos, setTos] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const info = useQuery({ queryKey: ["join", code], queryFn: () => api.joinByCode(code) });
 
   useEffect(() => {
@@ -36,7 +37,7 @@ function JoinPage() {
   async function start() {
     if (!topic) return;
     setSubmitting(true);
-    setFailed(false);
+    setFailed(null);
     try {
       const { activityId, user } = await api.joinAsGuest(code, name.trim());
       queryClient.setQueryData(["me"], user);
@@ -44,8 +45,15 @@ function JoinPage() {
         to: "/dialogue",
         search: { activityId, ...(draft ? { q: draft } : {}) },
       });
-    } catch {
-      setFailed(true);
+    } catch (error) {
+      const code = error instanceof ApiError ? error.code : null;
+      setFailed(
+        code === "name_taken"
+          ? t("join_err_name_taken")
+          : code === "activity_finished"
+            ? t("join_err_finished")
+            : t("join_failed"),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -76,7 +84,11 @@ function JoinPage() {
                   {topic.summary ?? topic.statement}
                 </p>
               </div>
-              {failed && <p className="text-[13px] text-flag">{t("join_failed")}</p>}
+              {failed && (
+                <p role="alert" className="text-[13px] text-flag">
+                  {failed}
+                </p>
+              )}
               <Field label={t("join_name_label")}>
                 <Input
                   value={name}

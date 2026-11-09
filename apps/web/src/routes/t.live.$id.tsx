@@ -22,7 +22,11 @@ function LivePage() {
 
   async function finishAndReport() {
     if (finish.isPending) return;
-    await finish.mutateAsync().catch(() => {});
+    try {
+      await finish.mutateAsync();
+    } catch {
+      return;
+    }
     await navigate({ to: "/report/$id", params: { id } });
   }
 
@@ -40,6 +44,11 @@ function LivePage() {
       />
 
       <div className="mx-auto w-full max-w-5xl px-6 py-6">
+        {finish.isError && (
+          <p role="alert" className="mx-auto mb-4 w-full max-w-5xl text-[13px] text-flag">
+            {t("common_error")}
+          </p>
+        )}
         <Card className="flex flex-col items-center gap-3 p-10 text-center">
           <p className="font-serif text-[15.5px] text-ink">{t("live_pending_title")}</p>
           <p className="max-w-md text-[12.5px] leading-relaxed text-ink-faint">{t("live_pending_body")}</p>
