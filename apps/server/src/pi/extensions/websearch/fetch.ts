@@ -83,7 +83,7 @@ function titleOf(html: string, fallback: string): string {
 
 async function readBounded(response: Response): Promise<string> {
   const reader = response.body?.getReader();
-  if (!reader) return response.text();
+  if (!reader) return (await response.text()).slice(0, MAX_CONTENT_CHARS);
   const decoder = new TextDecoder();
   let text = "";
   while (text.length < MAX_CONTENT_CHARS) {

@@ -41,7 +41,7 @@ export function createResponseStore(): ResponseStore {
     for (const [id, data] of map) {
       if (now - data.storedAt >= RESULT_TTL_MS) map.delete(id);
     }
-    while (map.size > MAX_STORED_RESULTS) {
+    while (map.size >= MAX_STORED_RESULTS) {
       const oldest = [...map.entries()].sort((a, b) => a[1].storedAt - b[1].storedAt)[0];
       if (!oldest) break;
       map.delete(oldest[0]);
@@ -94,7 +94,7 @@ export function createResponseStore(): ResponseStore {
   }
 
   function putCachedFetch(url: string, mode: string, content: string, title: string): void {
-    if (fetchCache.size > FETCH_CACHE_MAX) {
+    if (fetchCache.size >= FETCH_CACHE_MAX) {
       const oldest = [...fetchCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
       if (oldest) fetchCache.delete(oldest[0]);
     }

@@ -51,6 +51,7 @@ export function workersAuthContext(env: Env): {
   const record = env as unknown as Record<string, unknown>;
   return {
     env: async (name) => {
+      if (!/^[A-Z0-9_]*(API_KEY|TOKEN)$/.test(name)) return undefined;
       const value = record[name];
       return typeof value === "string" ? value : undefined;
     },
