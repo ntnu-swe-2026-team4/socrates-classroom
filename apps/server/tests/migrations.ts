@@ -7,6 +7,7 @@ import { run } from "../src/db/d1";
 const MIGRATIONS = [migration001, migration002, migration003, migration004];
 
 export async function applyMigrations(db: Parameters<typeof run>[0]): Promise<void> {
+  // Naive split: migrations must not contain semicolons inside string literals or trigger bodies.
   for (const migration of MIGRATIONS) {
     for (const statement of migration.split(";")) {
       const sql = statement.trim();
