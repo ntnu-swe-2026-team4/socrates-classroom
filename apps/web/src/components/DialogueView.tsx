@@ -47,7 +47,7 @@ export function DialogueView({
   closedNotice,
 }: DialogueViewProps) {
   const t = useT();
-  const { messages, draft, phase, error, emotion, ttsFailed, send, retryLast, replay, interrupt } = useDialogue(
+  const { messages, draft, phase, error, emotion, ttsFailed, ready, send, retryLast, replay, interrupt } = useDialogue(
     activityId,
     userId,
   );
@@ -83,13 +83,13 @@ export function DialogueView({
     }
   }, [openTerm, onTermOpened]);
   useEffect(() => {
-    if (autoSend && !autoSent.current && phase === "idle") {
+    if (autoSend && !autoSent.current && phase === "idle" && ready) {
       if (send(autoSend)) {
         autoSent.current = true;
         onAutoSent?.();
       }
     }
-  }, [autoSend, phase, send, onAutoSent]);
+  }, [autoSend, phase, ready, send, onAutoSent]);
 
   const onVoiceFinal = useCallback((text: string) => void send(text), [send]);
   const voice = useVoiceInput(onVoiceFinal, onAmplitudeNoop);

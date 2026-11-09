@@ -17,11 +17,20 @@ const agent = vi.hoisted(() => ({
 vi.mock("agents/react", () => ({
   useAgent: (options: AgentOptions) => {
     agent.options = options;
+    const listeners = new Map<string, Set<() => void>>();
     const socket = {
       send: (data: string) => {
         agent.sent.push(data);
       },
       readyState: WebSocket.OPEN,
+      OPEN: WebSocket.OPEN,
+      addEventListener: (type: string, notify: () => void) => {
+        const set = listeners.get(type) ?? listeners.set(type, new Set()).get(type)!;
+        set.add(notify);
+      },
+      removeEventListener: (type: string, notify: () => void) => {
+        listeners.get(type)?.delete(notify);
+      },
     };
     options.onOpen?.({ target: socket });
     return socket;

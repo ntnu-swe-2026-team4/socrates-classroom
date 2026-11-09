@@ -182,7 +182,7 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 
 ## 6. 資料層
 
-- **D1 schema**：users／classrooms／topics／activities／members／reports／pseudonyms／teacher_keys（`migrations/001-003`）。`messages`／`violations` 死表已於 003 退役——pi transcript 是對話與違規的唯一真相
+- **D1 schema**：users／classrooms／topics／activities／members／reports／pseudonyms／teacher_keys（`migrations/001_init.sql` 單檔）。pi transcript 是對話與違規的唯一真相，無第二份儲存
 - **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 provider 鏈序（#82）
 - **DO SQLite**：只有 pi 自己的 `pi_*` 表，應用程式不讀寫——agent 狀態與產品資料分離（D2）
 - **保留政策**：AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容（judgment sink 只記 type/source）
@@ -218,7 +218,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 ```
 
 - secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`；runtime secrets 走 `cf deploy` 環境注入（`AUTH_SECRET`、`BYOK_ENC_KEY`、`DGX_BASE_URL` 等，見 `apps/web/.env.example`）
-- **D1 migration 重置決策（2026-11-08）**：從未部署過（所有 deploy run 都在 migration step 因缺 `D1_DATABASE_ID` 失敗），`001_init.sql` 原地重寫為 v4 schema（10 表）——不做前向 migration。本地若殘留 v3 D1：刪掉 `.cloudflare/state`（或對應 persist 目錄）重來即可；`d1_migrations` 狀態與新 001 不相容是預期行為
+- **D1 migration 重置決策（2026-11-08）**：從未部署過（所有 deploy run 都在 migration step 因缺 `D1_DATABASE_ID` 失敗），`001_init.sql` 原地重寫為 v4 schema（8 表，2026-11-10 併入 001-005 為單檔）——不做前向 migration。本地若殘留 v3 D1：刪掉 `.cloudflare/state`（或對應 persist 目錄）重來即可；`d1_migrations` 狀態與新 001 不相容是預期行為
 - wrangler 僅存於 devDependencies（cf 的建置後端 + `wrangler tail`）
 
 ## 9. 測試策略（vitest-pool-workers）

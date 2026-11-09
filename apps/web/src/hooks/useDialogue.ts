@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useAgent } from "agents/react";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import type { ConversationView } from "@earendil-works/pi-durable";
@@ -212,6 +212,19 @@ export function useDialogue(activityId: string, userId: string) {
     },
   });
 
+  const socketReady = useSyncExternalStore(
+    (notify) => {
+      socket.addEventListener("open", notify);
+      socket.addEventListener("close", notify);
+      return () => {
+        socket.removeEventListener("open", notify);
+        socket.removeEventListener("close", notify);
+      };
+    },
+    () => socket.readyState === socket.OPEN,
+    () => false,
+  );
+
   useEffect(() => {
     if (socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
@@ -295,5 +308,6 @@ export function useDialogue(activityId: string, userId: string) {
     retryLast,
     replay,
     interrupt,
+    ready: socketReady,
   };
 }

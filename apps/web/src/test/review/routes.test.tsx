@@ -22,7 +22,13 @@ const agent = vi.hoisted(() => ({ options: null as null | { onMessage?: (event: 
 vi.mock("agents/react", () => ({
   useAgent: (options: { onMessage?: (event: { data: unknown }) => void }) => {
     agent.options = options;
-    return { send: () => {}, readyState: 0 };
+    return {
+      send: () => {},
+      readyState: 0,
+      OPEN: 1,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    };
   },
 }));
 
