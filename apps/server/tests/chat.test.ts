@@ -330,3 +330,26 @@ describe("teacher thread access: observe and abort yes, submit no (SubmitForbidd
     socket.close();
   }, 20_000);
 });
+
+describe("activity_finished reaches the client as a named error code", () => {
+  it("submit after finish → error frame code ActivityFinished (not generic Request failed)", async () => {
+    const student = await joinStudent("下課本人");
+    const thread = `${activityId}:${student.userId}`;
+    const socket = await connect(thread, student.cookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.some((m) => m.type === "view"));
+    const finish = await call(`/api/activities/${activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacherCookie },
+    });
+    expect(finish.status).toBe(204);
+    socket.send(JSON.stringify({ type: "submit", id: "late", input: "遲來的訊息" }));
+    await rx.until((f) => f.some((m) => m.type === "error" && m.id === "late"));
+    const frame = rx.list.find((m) => m.type === "error" && m.id === "late");
+    expect(frame).toMatchObject({ code: "ActivityFinished", message: "activity_finished" });
+    expect(latestView(rx.list)?.entries.some((entry) => entry.kind === "pi.user")).toBe(false);
+    socket.close();
+  }, 20_000);
+});

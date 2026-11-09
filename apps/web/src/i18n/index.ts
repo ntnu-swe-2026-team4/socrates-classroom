@@ -142,6 +142,7 @@ const messages = {
     common_error: "出了點問題",
     common_send: "送出",
     dlg_error: "回應中斷了，請再試一次。",
+    dlg_err_finished: "活動已結束，對話已關閉。",
     dlg_tts_failed: "語音播放失敗。",
     dlg_replay: "重播",
 
@@ -345,6 +346,7 @@ const messages = {
     "但他從不直接回答，只用一個又一個提問，領著你走向自己的答案。":
       "But he never answers directly; question after question, he leads you toward your own answer.",
     dlg_error: "The response was interrupted. Please try again.",
+    dlg_err_finished: "The activity has ended; the dialogue is closed.",
     dlg_tts_failed: "Audio playback failed.",
     dlg_replay: "Replay",
 
@@ -551,6 +553,7 @@ const messages = {
     "但他從不直接回答，只用一個又一個提問，領著你走向自己的答案。":
       "Pero nunca responde directamente: pregunta tras pregunta te conduce hacia tu propia respuesta.",
     dlg_error: "La respuesta se interrumpió. Inténtalo de nuevo.",
+    dlg_err_finished: "La actividad ha terminado; el diálogo está cerrado.",
     dlg_tts_failed: "Error al reproducir el audio.",
     dlg_replay: "Reproducir",
 

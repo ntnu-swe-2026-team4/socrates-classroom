@@ -28,6 +28,13 @@ import { one } from "../db/d1";
 import { getRouter } from "../routing/router";
 import { ChatSockets } from "../ws/sockets";
 
+class ActivityFinishedError extends Error {
+  constructor() {
+    super("activity_finished");
+    this.name = "ActivityFinished";
+  }
+}
+
 export class Chat extends DurableObject<Env> {
   readonly registry = createRegistry();
   readonly models = buildModels(this.env, { teacherOf: () => this.teacherId() });
@@ -104,7 +111,7 @@ export class Chat extends DurableObject<Env> {
       "SELECT finished_at FROM activities WHERE id = $id",
       { id: activityId },
     );
-    if (activity?.finished_at) throw new Error("activity_finished");
+    if (activity?.finished_at) throw new ActivityFinishedError();
     const router = getRouter(this.env);
     const canServe = (entry: { provider: string; model: string }): boolean =>
       this.models.models.getModel(entry.provider, entry.model) !== undefined;
