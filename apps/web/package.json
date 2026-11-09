@@ -10,7 +10,7 @@
     "test": "vitest run",
     "preview": "vite preview",
     "deploy": "cf deploy",
-    "migrate": "cf d1 migrations apply d1db0ca1-1111-4000-8000-000000000001 --local --persist-to .cloudflare/state --dir ../server/migrations"
+    "migrate": "cf d1 migrations apply 722c35f0-eceb-4ce4-9fea-a265852d71ac --local --persist-to .cloudflare/state --dir ../server/migrations"
   },
   "dependencies": {
     "@fontsource-variable/noto-sans-tc": "^5.2.5",

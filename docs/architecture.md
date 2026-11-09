@@ -5,16 +5,16 @@
 
 ## 0. 已定決策（本文的約束條件）
 
-| #   | 決策                                                                                                                        | 理由                                                                                     |
-| --- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| D1  | 單一 Worker：Hono API + 前端 assets + Chat/ReportRunner DO 同包                                                             | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS                                         |
-| D2  | App 資料放 **D1**；Pi transcript 留在 DO 自己的 SQLite（`pi_*` 表）                                                         | 共享關聯資料 vs agent 私有狀態，各放各的                                                 |
-| D3  | 對話執行緒 = 一個 DO instance（`idFromName(scope:id)`）                                                                     | 天然序列化、互不干擾、Pi inbox 排隊                                                      |
-| D4  | 對話走 WebSocket（`/agents/chat/:name`，view＋chord ops），SSE 已於 web-next 重建時退役                                     | 單一真相在 pi transcript；前端 applyImmutable 套件                                       |
-| D5  | 全 Node 化（pnpm workspaces + vitest）；cf 指令走 Node ≥26.12                                                               | `cf` 載 `cloudflare.config.ts` 不支援 Bun；Node 版本對齊 root AGENTS.md 與 CI（node 26） |
-| D6  | Platform chain（providers.config.yaml）：dgx-spark → workers-ai；teacher keys（任意 pi builtin provider）排鏈首，平台鏈墊底 | 平台鏈全 ZDR；teacher keyed 流量 ToS 移轉老師（2026-11-09）                              |
-| D7  | Teacher keys：老師一 provider 一把 key（#82），學生無 BYOK 入口，byok 端點已退役                                            | 學生流量一律走平台鏈，ZDR 責任單一                                                       |
-| D8  | CI/CD：GitHub Actions 官方 cf 範本（build once → dry-run → `--prebuilt` deploy）                                            | cf 無官方 action，純 steps 是欽定方式                                                    |
+| #   | 決策                                                                                                                                                                                        | 理由                                                                                     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| D1  | 單一 Worker：Hono API + 前端 assets + Chat/ReportRunner DO 同包                                                                                                                             | 部署單位最小、DO 不跨 Worker、`/api` 同源免 CORS                                         |
+| D2  | App 資料放 **D1**；Pi transcript 留在 DO 自己的 SQLite（`pi_*` 表）                                                                                                                         | 共享關聯資料 vs agent 私有狀態，各放各的                                                 |
+| D3  | 對話執行緒 = 一個 DO instance（`idFromName(scope:id)`）                                                                                                                                     | 天然序列化、互不干擾、Pi inbox 排隊                                                      |
+| D4  | 對話走 WebSocket（`/agents/chat/:name`，view＋chord ops），SSE 已於 web-next 重建時退役                                                                                                     | 單一真相在 pi transcript；前端 applyImmutable 套件                                       |
+| D5  | 全 Node 化（pnpm workspaces + vitest）；cf 指令走 Node ≥26.12                                                                                                                               | `cf` 載 `cloudflare.config.ts` 不支援 Bun；Node 版本對齊 root AGENTS.md 與 CI（node 26） |
+| D6  | Platform chain（providers.config.yaml）：workers-ai（單 provider，全 CF）；teacher keys（任意 pi builtin provider）排鏈首，平台鏈墊底。自架 DGX Spark 腿暫時移除（等 Tunnel＋key 管控回歸） | 平台鏈全 ZDR；teacher keyed 流量 ToS 移轉老師（2026-11-09）                              |
+| D7  | Teacher keys：老師一 provider 一把 key（#82），學生無 BYOK 入口，byok 端點已退役                                                                                                            | 學生流量一律走平台鏈，ZDR 責任單一                                                       |
+| D8  | CI/CD：GitHub Actions 官方 cf 範本（build once → dry-run → `--prebuilt` deploy）                                                                                                            | cf 無官方 action，純 steps 是欽定方式                                                    |
 
 ## 1. 系統拓撲
 
@@ -52,7 +52,7 @@ flowchart TD
     end
 
     MODELS -->|"createAI binding"| WAI["Workers AI（glm-5.3-flash → glm-4.7-flash legs）"]
-    ROUTER -->|"openai-completions"| DGX["自架 DGX Spark（Tunnel）"]
+
     ROUTER -->|"openrouter"| OR["OpenRouter（teacher key）"]
     VOICE --> WAI
 ```

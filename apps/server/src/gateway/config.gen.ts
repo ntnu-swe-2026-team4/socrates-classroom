@@ -3,29 +3,6 @@ import { GatewayConfigSchema, type GatewayConfig } from "./gateway-schema";
 // Generated from providers.config.yaml (build time); rerun scripts/gen-config.mjs after editing the YAML
 const CONFIG = {
   "providers": {
-    "dgx-spark": {
-      "kind": "openai-completions",
-      "baseUrlEnv": "DGX_BASE_URL",
-      "compat": {
-        "supportsDeveloperRole": false,
-        "supportsReasoningEffort": true,
-        "thinkingFormat": "openai",
-        "maxTokensField": "max_tokens"
-      },
-      "models": [
-        {
-          "id": "GLM-5.3-Flash",
-          "reasoning": true,
-          "input": [
-            "text",
-            "image"
-          ],
-          "contextWindow": 1048576,
-          "maxTokens": 32768,
-          "cost": "free"
-        }
-      ]
-    },
     "workers-ai": {
       "kind": "binding",
       "models": [
@@ -91,24 +68,18 @@ const CONFIG = {
   "defaults": {
     "availability": [
       {
-        "provider": "dgx-spark",
-        "credential": "platform",
-        "maxConcurrency": 4,
-        "priority": 1
-      },
-      {
         "provider": "workers-ai",
         "model": "@cf/zai-org/glm-5.3-flash",
         "credential": "platform",
         "maxConcurrency": 20,
-        "priority": 2
+        "priority": 1
       },
       {
         "provider": "workers-ai",
         "model": "@cf/zai-org/glm-4.7-flash",
         "credential": "platform",
         "maxConcurrency": 50,
-        "priority": 3
+        "priority": 2
       }
     ]
   },

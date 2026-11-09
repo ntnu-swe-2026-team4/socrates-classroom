@@ -16,7 +16,7 @@
 預設情況（`CF_REMOTE_AI` 未設）**整個開發流程不需要 CF 帳號**：
 
 - D1 / R2 / Durable Objects 都是本地模擬，資料存在 `apps/web/.cloudflare/state/`
-- 對話功能在 `.env.local` 設 `DGX_BASE_URL=http://100.102.84.36:8888/v1` 即可用自架 DGX Spark（純 HTTP，不經 CF）
+- 對話功能：`CF_REMOTE_AI=true`＋非 mock `LLM_PROVIDER` ＋ `cf auth login` → 本地 workerd 的 AI binding 打真實 Workers AI（ZDR ✓）
 
 只有 `CF_REMOTE_AI=true`（用 Workers AI 作對話 fallback）時才需要 `cf login`。
 
@@ -31,13 +31,13 @@
 
 `.env.local`（gitignored，範本見 `.env.example`；僅 dev 讀取——build/deploy 用 config 預設，生產設定走 `cf deploy --secrets-file`）。預設 `LLM_PROVIDER=mock`（離線 faux 模型，零帳號）——要真對話，三選一：
 
-| 方式           | 設定                                        | 費用                            |
-| -------------- | ------------------------------------------- | ------------------------------- |
-| 離線 mock      | 預設（`LLM_PROVIDER=mock`，無需設定）       | 0 元（faux 腳本回覆，非真 LLM） |
-| 自架 DGX Spark | `DGX_BASE_URL=http://100.102.84.36:8888/v1` | 0 元（團隊硬體，Tailscale 內）  |
-| Workers AI     | `CF_REMOTE_AI=true` ＋ `cf login`           | 免費 Neurons 額度               |
+| 方式          | 設定                                      | 費用                            |
+| ------------- | ----------------------------------------- | ------------------------------- |
+| 離線 mock     | 預設（`LLM_PROVIDER=mock`，無需設定）     | 0 元（faux 腳本回覆，非真 LLM） |
+| CF Workers AI | `CF_REMOTE_AI=true`（需 `cf auth login`） | Workers AI 計費（neurons）      |
+| Workers AI    | `CF_REMOTE_AI=true` ＋ `cf login`         | 免費 Neurons 額度               |
 
-都不設真 LLM 時用 mock；`pnpm seed` 在 mock 和 DGX 模式下都可用。
+都不設真 LLM 時用 mock；`pnpm seed` 在 mock 和 DGX 模式下都可用（`DGX_BASE_URL` 目前僅開 seed 閘門——dgx 腿已隨 provider block 暫時移除，設定 URL 不會註冊模型腿）。
 
 ## 常見問題
 

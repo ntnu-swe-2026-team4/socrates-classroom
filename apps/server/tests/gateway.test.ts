@@ -72,8 +72,8 @@ describe("router chain walk (config-driven, cooldown-filtered)", () => {
     const router = new Router({ AI: {} } as never);
     const cfg = (await import("../src/gateway/config.gen")).gatewayConfig;
     const def = cfg.providers["workers-ai"]!;
-    const flash = ledgerKey(cfg.defaults.availability[1]!, def);
-    const free = ledgerKey(cfg.defaults.availability[2]!, def);
+    const flash = ledgerKey(cfg.defaults.availability[0]!, def);
+    const free = ledgerKey(cfg.defaults.availability[1]!, def);
     router.ledger.record(flash);
     router.ledger.record(flash);
     expect(router.ledger.status(flash).requests).toBe(2);
@@ -95,7 +95,7 @@ describe("teacher legs (#82: teacher keys first, platform chain as fallback)", (
     const router = new Router({ AI: {}, DGX_BASE_URL: "http://spark:8888/v1" } as never);
     const chain = router.chain("interactive", undefined, [teacherLeg]);
     expect(chain[0]).toMatchObject({ provider: "openrouter", credential: "teacher:u_teacher" });
-    expect(chain[1]!.provider).toBe("dgx-spark");
+    expect(chain[1]!.provider).toBe("workers-ai");
 
     const blocked = router.chain("interactive", () => false, [teacherLeg]);
     expect(blocked.every((e) => e.credential !== "teacher:u_teacher")).toBe(true);
@@ -118,18 +118,6 @@ describe("teacher legs (#82: teacher keys first, platform chain as fallback)", (
       router.chain("interactive").some((e) => e.provider === decision.entry.provider && e.model === decision.model),
     ).toBe(true);
   });
-
-  it("dgx leg survives: def-level model resolves before canServe (priority-1 not filtered when DGX_BASE_URL is set)", async () => {
-    const { Router } = await import("../src/gateway/router");
-    const { buildModels } = await import("../src/pi/models");
-    const fakeAi = { run: async () => ({}), toMarkdown: async () => ({ format: "markdown", markdown: "" }) };
-    const env = { AI: fakeAi, DGX_BASE_URL: "http://spark:8888/v1" } as never;
-    const { models } = buildModels(env);
-    const router = new Router(env);
-    const decision = router.pick("interactive", (entry) => models.getModel(entry.provider, entry.model) !== undefined)!;
-    expect(decision.entry.provider).toBe("dgx-spark");
-    expect(decision.model).toBe("GLM-5.3-Flash");
-  }, 20_000);
 
   it("teacher leg is accounted independently: its cooldown does not affect the platform chain", async () => {
     const { Router } = await import("../src/gateway/router");
@@ -311,7 +299,8 @@ describe("workersAuthContext (platform env backs only config-declared provider n
       OPENROUTER_API_KEY: "platform-secret",
       AUTH_SECRET: "auth-secret",
     } as never);
-    await expect(ctx.env("DGX_BASE_URL")).resolves.toBe("http://spark:8888/v1");
+    // dgx-spark 退出 config：其 baseUrlEnv 不再被宣告，env 解析拒絕（tunnel 回歸時隨 provider block 恢復）
+    await expect(ctx.env("DGX_BASE_URL")).resolves.toBeUndefined();
     await expect(ctx.env("OPENROUTER_API_KEY")).resolves.toBeUndefined();
     await expect(ctx.env("AUTH_SECRET")).resolves.toBeUndefined();
     await expect(ctx.fileExists("~/.aws/credentials")).resolves.toBe(false);

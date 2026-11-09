@@ -66,7 +66,8 @@ function registerDgx(env: Env, models: MutableModels): void {
     auth: {
       apiKey: {
         name: "DGX (team-hosted, keyless)",
-        resolve: async () => ({ auth: {}, source: "keyless" }),
+        // pi-ai refuses to send without a non-empty apiKey; the DGX server ignores the header entirely
+        resolve: async () => ({ auth: { apiKey: "keyless" }, source: "keyless" }),
       },
     },
     models: [

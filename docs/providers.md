@@ -5,19 +5,20 @@
 
 ## Pool 定位
 
-| 角色                   | Provider                        | 模型                               | ZDR                                        |
-| ---------------------- | ------------------------------- | ---------------------------------- | ------------------------------------------ |
-| 開發專用               | GLM Coding Plan Global（`zai`） | GLM-5.3 / GLM-5.3-Flash            | ✗（且條款禁產品後端）                      |
-| 生產主力（priority 1） | 自架 DGX Spark                  | GLM-5.3-Flash（1M ctx、reasoning） | ✓（資料不出門）                            |
-| 第一溢位（priority 2） | CF Workers AI（`AI` binding）   | `@cf/zai-org/glm-5.3-flash`        | ✓（官方明文 Zero retention + No training） |
-| 壓底（priority 3）     | CF Workers AI（`AI` binding）   | `@cf/zai-org/glm-4.7-flash`        | ✓（同上）                                  |
+| 角色                   | Provider                        | 模型                        | ZDR                                        |
+| ---------------------- | ------------------------------- | --------------------------- | ------------------------------------------ |
+| 開發專用               | GLM Coding Plan Global（`zai`） | GLM-5.3 / GLM-5.3-Flash     | ✗（且條款禁產品後端）                      |
+| 生產主力（priority 1） | CF Workers AI（`AI` binding）   | `@cf/zai-org/glm-5.3-flash` | ✓（官方明文 Zero retention + No training） |
+| 壓底（priority 2）     | CF Workers AI（`AI` binding）   | `@cf/zai-org/glm-4.7-flash` | ✓（同上）                                  |
 
-**學生流量（生產鏈）只走後三段（全 ZDR）；Coding Plan 不碰學生資料。**
-fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），不能只鎖 provider。
+**學生流量（生產鏈）全 ZDR；Coding Plan 不碰學生資料。**
+
+> 2026-11-10：自架 DGX Spark 腿**暫時移除**（等 Cloudflare Tunnel 上線＋key 管控後回歸，回歸 = 把 provider block 加回 `providers.config.yaml`，零程式碼變更）。移除期間平台鏈單一 provider（全 Cloudflare），排查單純。
+> fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），不能只鎖 provider。
 
 ---
 
-## 1. 自架 DGX Spark ×2（生產主力）
+## 1. 自架 DGX Spark ×2（暫時移除，2026-11-10）
 
 - **端點**（來源：`~/.pi/agent/models.json` 的 `dgx-spark-x2`；對外一律經 **Cloudflare Tunnel** 暴露，原文 IP 已移除，內網位址見 team 內部紀錄）：
   - 2× DGX Spark — GLM-5.3-Flash EXL3，1M ctx（僅此一組，無其他 Spark）
