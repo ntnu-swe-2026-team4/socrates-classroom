@@ -68,6 +68,7 @@ export class Chat extends DurableObject<Env> {
     (tag) => this.ctx.getWebSockets(tag),
     (request) => this.authorize(request),
     (handle, input, options) => this.routeSubmit(handle, input, options),
+    (userId) => userId === this.studentId,
   );
   readonly webSockets = new WebSockets(this.sockets.options());
   readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.harness);
@@ -153,6 +154,10 @@ export class Chat extends DurableObject<Env> {
       }
     }
     return { messages, violations };
+  }
+
+  private get studentId(): string {
+    return this.ctx.id.name?.split(":")[1] ?? "";
   }
 
   private async authorize(request: Request): Promise<string | null> {

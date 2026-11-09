@@ -309,3 +309,24 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     socket.close();
   });
 });
+
+describe("teacher thread access: observe and abort yes, submit no (SubmitForbidden)", () => {
+  it("teacher submit on a student thread is rejected with code SubmitForbidden; abort still allowed", async () => {
+    const student = await joinStudent("代打對象");
+    const thread = `${activityId}:${student.userId}`;
+    const socket = await connect(thread, teacherCookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.some((m) => m.type === "view"));
+    socket.send(JSON.stringify({ type: "submit", id: "t1", input: "老師代打" }));
+    await rx.until((f) => f.some((m) => m.type === "error" && m.id === "t1"));
+    const forbidden = rx.list.find((m) => m.type === "error" && m.id === "t1");
+    expect(forbidden).toMatchObject({ code: "SubmitForbidden" });
+    expect(latestView(rx.list)?.entries.some((entry) => entry.kind === "pi.user")).toBe(false);
+    socket.send(JSON.stringify({ type: "abort", id: "t2" }));
+    await rx.until((f) => f.some((m) => m.type === "result" && m.id === "t2"));
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+    socket.close();
+  }, 20_000);
+});

@@ -31,7 +31,8 @@
 | `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —    | ❌ 403                | ✅               |
 | `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —    | —                     | ✅               |
 | `GET /activities/:id`、`GET /report`                                                                    | —    | 需教室成員            | 需教室成員       |
-| **WS** `/agents/chat/:name`                                                                             | —    | 僅本人 thread         | ✅（可觀察全班） |
+| **WS** `/agents/chat/:name`（watch/entries/abort）                                                                   | —    | 僅本人 thread         | ✅（可觀察全班） |
+| **WS** `submit` op                                                                                      | —    | 僅本人 thread         | ❌ `SubmitForbidden` |
 | `POST /activities/:id/finish`                                                                           | —    | ❌ 403                | 需教室成員       |
 
 ## 2. 身分（雙軌：訪客即玩＋帳號選用，#67）
@@ -71,7 +72,7 @@ interface User {
 
 - `GET /agents/chat/:name`（WebSocket 升級）——**對話唯一通道**（先前的 SSE 端點已退役）
 - thread name 協定：`{activityId}:{userId}`（一人一 thread；DO name 即路由鍵）
-- 授權：`socrates_session` cookie（升級請求帶 cookie）——onConnect 驗 session＋membership：學生限本人 thread，老師可觀察全班；未通過 → close 1008（無 hello）
+- 授權：`socrates_session` cookie（升級請求帶 cookie）——onConnect 驗 session＋membership：學生限本人 thread，老師可觀察全班（watch/entries/abort；**submit 僅限該 thread 的學生本人**——老師代打 → error frame code `SubmitForbidden`）；未通過 → close 1008（無 hello）
 - 一條連線跟一個 session（root）；重連後重新 `watch`（partysocket 自動重連，客戶端端 onOpen 重送）
 
 ### 5.2 Client → Server

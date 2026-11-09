@@ -16,7 +16,15 @@ import type { ClientMessage, ServerMessage } from "./protocol";
 
 export type Authorize = (request: Request) => Promise<string | null>;
 export type Reverify = (userId: string) => Promise<boolean>;
+export type CanSubmit = (userId: string) => boolean;
 export type SubmitRoute = (handle: PiSession, input: UserInput, options: PiSubmitOptions) => Promise<PiReceipt>;
+
+export class SubmitForbiddenError extends Error {
+  constructor() {
+    super("Only the thread's student may submit");
+    this.name = "SubmitForbidden";
+  }
+}
 
 const OPEN = 1;
 
@@ -48,8 +56,9 @@ export class ChatSockets {
   readonly #getWebSockets: (tag?: string) => WebSocket[];
   readonly #authorize?: Authorize;
   readonly #submitRoute?: SubmitRoute;
+  readonly #canSubmit?: CanSubmit;
   readonly #watches = new Map<WebSocket, ConversationWatch>();
-  readonly #authorized = new Set<WebSocket>();
+  readonly #authorized = new Map<WebSocket, string>();
 
   constructor(
     harness: PiHarness,
@@ -57,12 +66,14 @@ export class ChatSockets {
     getWebSockets: (tag?: string) => WebSocket[],
     authorize?: Authorize,
     submitRoute?: SubmitRoute,
+    canSubmit?: CanSubmit,
   ) {
     this.#harness = harness;
     this.#registry = registry;
     this.#getWebSockets = getWebSockets;
     this.#authorize = authorize;
     this.#submitRoute = submitRoute;
+    this.#canSubmit = canSubmit;
   }
 
   options(): WebSocketsOptions {
@@ -83,7 +94,7 @@ export class ChatSockets {
         this.#refuse(connection);
         continue;
       }
-      this.#authorized.add(connection);
+      this.#authorized.set(connection, auth);
       await this.#watchOrClose(connection);
     }
   }
@@ -111,8 +122,8 @@ export class ChatSockets {
         return;
       }
       connection.setState({ auth: userId });
+      this.#authorized.set(connection, userId);
     }
-    this.#authorized.add(connection);
     send(connection, {
       type: "hello",
       tools: this.#registry
@@ -209,6 +220,10 @@ export class ChatSockets {
     switch (message.type) {
       case "submit": {
         if (typeof message.input !== "string") throw new Error("Invalid input");
+        const userId = this.#authorized.get(socket);
+        if (userId === undefined || (this.#canSubmit && !this.#canSubmit(userId))) {
+          throw new SubmitForbiddenError();
+        }
         const input = DialogueInputSchema.parse({ text: message.input });
         return this.#submitRoute
           ? await this.#submitRoute(handle, input.text, {
