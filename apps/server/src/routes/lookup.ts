@@ -16,7 +16,9 @@ export function lookupRoutes() {
     const input = await parseBody(c, LookupInputSchema);
     const lang = c.get("lang");
     if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {
-      return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) });
+      return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) }, 200, {
+        "X-Socrates-Fallback": "mock",
+      });
     }
     try {
       const { harness, runtime } = await openProfileHarness(c.env, "lookup");
@@ -27,11 +29,17 @@ export function lookupRoutes() {
         `${input.term}\n\nWrite in ${LANG_NAMES[c.get("lang") as Lang]}.`,
       );
       const markdown = text.trim();
-      if (!markdown) return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) });
+      if (!markdown) {
+        return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) }, 200, {
+          "X-Socrates-Fallback": "mock",
+        });
+      }
       return c.json({ term: input.term, markdown });
     } catch (error) {
       console.error("[lookup] pipeline failed", error);
-      return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) });
+      return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) }, 200, {
+        "X-Socrates-Fallback": "mock",
+      });
     }
   });
 }

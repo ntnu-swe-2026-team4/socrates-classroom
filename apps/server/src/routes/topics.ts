@@ -48,7 +48,6 @@ export function topicsRoutes() {
       return c.json(parsePrompts(row), 201);
     })
     .post("/topics/generate", async (c) => {
-      requireTeacher(c);
       await enforceIpLimit(c, "topics-generate", 10);
       const input = await parseBody(c, GenerateTopicsInputSchema);
       if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {
@@ -57,6 +56,8 @@ export function topicsRoutes() {
             id: `gen_${Date.now()}_${index}`,
             ...topic,
           })),
+          200,
+          { "X-Socrates-Fallback": "mock" },
         );
       }
       try {
@@ -84,6 +85,8 @@ export function topicsRoutes() {
             id: `gen_${Date.now()}_${index}`,
             ...topic,
           })),
+          200,
+          { "X-Socrates-Fallback": "mock" },
         );
       }
     });

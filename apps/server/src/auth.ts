@@ -102,6 +102,9 @@ export function endSession(c: Ctx): void {
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
 }
 
+// OWASP recommends 600k PBKDF2-SHA256 iterations; Workers CPU limits make
+// that cost prohibitive per login. 100k with per-user salt is the deliberate
+// compromise — revisit if Workers CPU budgets change.
 const PBKDF2_ITERATIONS = 100_000;
 
 async function pbkdf2(password: string, salt: Uint8Array): Promise<string> {

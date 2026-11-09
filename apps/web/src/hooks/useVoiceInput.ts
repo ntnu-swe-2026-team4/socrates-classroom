@@ -192,6 +192,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
       session0.ctx = ctx;
       session0.startedAt = Date.now();
       if (stopRequestedRef.current) {
+        session0.recognition?.stop();
         session0.stream.getTracks().forEach((track) => {
           track.stop();
         });
