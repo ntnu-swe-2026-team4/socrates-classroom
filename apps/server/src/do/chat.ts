@@ -108,33 +108,31 @@ export class Chat extends DurableObject<Env> {
     const canServe = (entry: { provider: string; model: string }): boolean =>
       this.models.models.getModel(entry.provider, entry.model) !== undefined;
     const decision = router.pick("interactive", canServe, await this.teacherLegs());
-    if (decision) {
-      const model = this.models.models.getModel(decision.entry.provider, decision.model);
+    if (!decision && !this.models.faux) throw new Error("no_available_model");
+    if (!decision) return handle.submit(input, options);
+    const model = this.models.models.getModel(decision.entry.provider, decision.model);
+    let receipt: PiReceipt;
+    try {
       if (model && (this.#sessionModel?.provider !== model.provider || this.#sessionModel?.id !== model.id)) {
         await handle.setModel({ provider: model.provider, id: model.id });
         this.#sessionModel = { provider: model.provider, id: model.id };
       }
-    }
-    let receipt: PiReceipt;
-    try {
       receipt = await handle.submit(input, options);
     } catch (error) {
-      if (decision) router.settle(decision, "error");
+      if (!(error instanceof Error && error.name === "ConversationBusy")) router.settle(decision, "error");
       throw error;
     }
-    if (decision) {
-      void handle
-        .wait(receipt.operationId)
-        .then((result) => {
-          const ok = result.status === "done" || (result.status === "unanswered" && result.reason === "aborted");
-          router.settle(decision, ok ? "ok" : "error");
-          if (!ok) this.sockets.notifyRunFailure();
-        })
-        .catch(() => {
-          if (router.ledger.inFlight(decision.key) > 0) router.settle(decision, "error");
-          this.sockets.notifyRunFailure();
-        });
-    }
+    void handle
+      .wait(receipt.operationId)
+      .then((result) => {
+        const ok = result.status === "done" || (result.status === "unanswered" && result.reason === "aborted");
+        router.settle(decision, ok ? "ok" : "error");
+        if (!ok) this.sockets.notifyRunFailure();
+      })
+      .catch(() => {
+        if (router.ledger.inFlight(decision.key) > 0) router.settle(decision, "error");
+        this.sockets.notifyRunFailure();
+      });
     return receipt;
   }
 
