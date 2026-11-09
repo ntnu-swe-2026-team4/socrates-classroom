@@ -37,7 +37,7 @@ function isPrivateIpv4(a: number, b: number): boolean {
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 192 && b === 168) return true;
   if (a === 198 && (b === 18 || b === 19)) return true;
-  if (a >= 240) return true;
+  if (a >= 224) return true;
   return false;
 }
 
@@ -54,9 +54,20 @@ function isPrivateIp(host: string): boolean {
   if (groups[0]! >= 0xfe80 && groups[0]! <= 0xfebf) return true;
   if (groups[0]! >= 0xfc00 && groups[0]! <= 0xfdff) return true;
   if (groups[0]! >= 0xff00) return true;
-  if (groups[0] === 0x0064 && groups[1] === 0xff9b && groups.slice(2, 6).every((group) => group === 0)) return true;
-  if (groups.slice(0, 5).every((group) => group === 0) && (groups[5] === 0xffff || groups[5] === 0)) {
-    return isPrivateIpv4(groups[6]! >> 8, groups[6]! & 0xff);
+  if (groups[0] === 0x0064 && groups[1] === 0xff9b) return true;
+  if (groups[0] === 0x2002) return true;
+  if (groups.slice(0, 6).every((group) => group === 0)) {
+    return isPrivateIpv4(groups[6]! >> 8, groups[6]! & 0xff) || isPrivateIpv4(groups[7]! >> 8, groups[7]! & 0xff);
+  }
+  const ffff = groups.indexOf(0xffff);
+  if (ffff !== -1 && ffff <= 5) {
+    const before = groups.slice(0, ffff);
+    const rest = groups.slice(ffff + 1);
+    const ipv4 = rest.slice(-2);
+    const middle = rest.slice(0, -2);
+    if (before.every((group) => group === 0) && middle.every((group) => group === 0)) {
+      return isPrivateIpv4(ipv4[0]! >> 8, ipv4[0]! & 0xff) || isPrivateIpv4(ipv4[1]! >> 8, ipv4[1]! & 0xff);
+    }
   }
   return false;
 }

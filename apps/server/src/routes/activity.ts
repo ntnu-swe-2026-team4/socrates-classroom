@@ -1,12 +1,6 @@
 import { Hono } from "hono";
-import type {
-  ClassReport,
-  ReportPosition,
-  StudentAnalysis,
-  StudentReport,
-  TeacherReport,
-  ViolationSlice,
-} from "@socrates/shared";
+import type { StudentReport, TeacherReport, ViolationType } from "@socrates/shared";
+import { StoredStudentReportsSchema, StoredTeacherReportSchema } from "@socrates/shared";
 import { one, run } from "../db/d1";
 import { enforceIpLimit, fail, requireUser, type AppEnv } from "../http";
 import { requireMembership, topicOf } from "../services/members";
@@ -40,6 +34,7 @@ export function activityRoutes() {
       return c.body(null, 204);
     })
     .get("/activities/:id/report", async (c) => {
+      c.header("Cache-Control", "no-store");
       const user = requireUser(c);
       const { activity, isTeacher } = await requireMembership(c.env.DB, c.req.param("id"), user);
       const row = await one<{ status: string; teacher_report: string | null; student_reports: string | null }>(
@@ -50,20 +45,16 @@ export function activityRoutes() {
       if (!row || row.status === "pending") fail(404, "report_pending");
       if (row.status === "failed") fail(500, "report_failed");
       const topic = await topicOf(c.env.DB, activity.topic_id);
-      const stored = row.teacher_report
-        ? (JSON.parse(row.teacher_report) as { topicTitle: string; classReport: ClassReport | null })
+      const storedParse = row.teacher_report
+        ? StoredTeacherReportSchema.safeParse(JSON.parse(row.teacher_report))
         : null;
-      const students = row.student_reports
-        ? (JSON.parse(row.student_reports) as Record<
-            string,
-            {
-              pseudonym: string;
-              analysis: StudentAnalysis | null;
-              violations: ViolationSlice[];
-              positions: ReportPosition[];
-            }
-          >)
-        : {};
+      if (!storedParse?.success) fail(500, "report_failed");
+      const stored = storedParse.data;
+      const studentsParse = row.student_reports
+        ? StoredStudentReportsSchema.safeParse(JSON.parse(row.student_reports))
+        : null;
+      if (!studentsParse?.success) fail(500, "report_failed");
+      const students = studentsParse.data;
       if (isTeacher) {
         const report: TeacherReport = {
           topicTitle: topic.title,
@@ -72,7 +63,7 @@ export function activityRoutes() {
             studentId,
             pseudonym: own.pseudonym,
             analysis: own.analysis,
-            violations: own.violations,
+            violations: own.violations.map((violation) => ({ ...violation, type: violation.type as ViolationType })),
             positions: own.positions ?? [],
           })),
         };
@@ -84,7 +75,7 @@ export function activityRoutes() {
         topicTitle: topic.title,
         pseudonym: own.pseudonym,
         analysis: own.analysis,
-        violations: own.violations,
+        violations: own.violations.map((violation) => ({ ...violation, type: violation.type as ViolationType })),
         positions: own.positions ?? [],
       };
       return c.json(report);

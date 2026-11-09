@@ -36,7 +36,7 @@ export function lookupRoutes() {
       }
       return c.json({ term: input.term, markdown });
     } catch (error) {
-      console.error("[lookup] pipeline failed", error);
+      console.error("[lookup] pipeline failed", error instanceof Error ? error.name : typeof error);
       return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) }, 200, {
         "X-Socrates-Fallback": "mock",
       });

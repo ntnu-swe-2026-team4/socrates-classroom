@@ -69,8 +69,6 @@ export class ReportRunner extends DurableObject<Env> {
       id: input.activityId,
     });
     if (row?.status === "ready") return "ready";
-    await this.ctx.storage.setAlarm(Date.now() + 50);
-    if (!this.#inFlight) await this.ctx.storage.put("attempts", 0);
     if (!row) {
       await run(
         db,
@@ -88,6 +86,8 @@ export class ReportRunner extends DurableObject<Env> {
         at: nowIso(),
       });
     }
+    if (!this.#inFlight) await this.ctx.storage.put("attempts", 0);
+    await this.ctx.storage.setAlarm(Date.now() + 50);
     return "started";
   }
 

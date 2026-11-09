@@ -1,4 +1,4 @@
-import type { ViolationType } from "@socrates/shared";
+import { VIOLATION_TYPES, type ViolationType } from "@socrates/shared";
 import type { Ai } from "@cloudflare/workers-types";
 import { gatewayConfig } from "../../../gateway/config.gen";
 
@@ -38,8 +38,10 @@ export function createClefViolationClassifier(ai: Ai): ViolationClassifier {
         },
       })) as ClefRunResult;
       const answer = raw.answers?.violation;
-      if (answer?.choice === undefined) return null;
-      return { type: answer.choice as ViolationType, probability: answer.probabilities?.[answer.choice] ?? 0 };
+      const choice = answer?.choice;
+      if (answer === undefined || choice === undefined || !VIOLATION_TYPES.includes(choice as ViolationType))
+        return null;
+      return { type: choice as ViolationType, probability: answer.probabilities?.[choice] ?? 0 };
     } catch {
       return null;
     }

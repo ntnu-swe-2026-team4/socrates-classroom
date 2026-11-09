@@ -84,7 +84,7 @@ export function voiceRoutes() {
         if (result?.text) return c.json({ text: result.text });
         fail(502, "llm_unavailable");
       } catch (error) {
-        console.error("[stt] binding failed", error);
+        console.error("[stt] binding failed", error instanceof Error ? error.name : typeof error);
         fail(502, "llm_unavailable");
       }
     })
@@ -130,7 +130,7 @@ export function voiceRoutes() {
           }
           console.error("[tts] unexpected binding result", typeof result);
         } catch (error) {
-          console.error("[tts] binding failed", error);
+          console.error("[tts] binding failed", error instanceof Error ? error.name : typeof error);
         }
         fail(502, "llm_unavailable");
       }

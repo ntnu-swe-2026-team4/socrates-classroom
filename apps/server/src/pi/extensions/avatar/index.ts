@@ -15,6 +15,8 @@ import type { Ai } from "@cloudflare/workers-types";
 
 export type Emotion = "happy" | "angry" | "confused" | "neutral";
 
+const EMOTIONS: readonly Emotion[] = ["happy", "angry", "confused", "neutral"];
+
 export interface EmotionJudgment {
   emotion: Emotion;
   probabilities: { [key: string]: number };
@@ -65,9 +67,10 @@ async function classify(ai: Ai, text: string): Promise<EmotionJudgment | null> {
 
 export function emotionOf(raw: ClefRunResult): EmotionJudgment | null {
   const answer = raw.answers?.emotion;
-  if (answer?.choice === undefined) return null;
-  const choice = answer.choice as Emotion;
-  return { emotion: choice, probabilities: answer.probabilities ?? {}, confidence: answer.confidence ?? 0 };
+  const choice = answer?.choice;
+  if (answer === undefined || choice === undefined || !EMOTIONS.includes(choice as Emotion)) return null;
+  const emotion = choice as Emotion;
+  return { emotion, probabilities: answer.probabilities ?? {}, confidence: answer.confidence ?? 0 };
 }
 
 function lastStudentTextOf(run: RunSummary, api: HookApi, context: Context): Promise<string> {

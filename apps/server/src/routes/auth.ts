@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { LoginInputSchema, RegisterInputSchema } from "@socrates/shared";
 import { batch, one } from "../db/d1";
 import { DUMMY_HASH, endSession, hashPassword, startSession, verifyPassword } from "../auth";
-import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, type AppEnv } from "../http";
+import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, uniqueViolationColumns, type AppEnv } from "../http";
 
 interface UserRow {
   id: string;
@@ -10,12 +10,6 @@ interface UserRow {
   role: "student" | "teacher";
   email: string | null;
   password_hash: string | null;
-}
-
-function uniqueViolationColumn(error: unknown): string | null {
-  if (!(error instanceof Error)) return null;
-  const match = error.message.match(/UNIQUE constraint failed: (?:\w+\.)?(\w+)/);
-  return match ? match[1] : null;
 }
 
 export function authRoutes() {
@@ -37,10 +31,19 @@ export function authRoutes() {
       await enforceIpLimit(c, "register", 30);
       const input = await parseBody(c, RegisterInputSchema);
       if (!input.tosAccepted) fail(422, "tos_required");
-      const classroom = await one<{ id: string }>(c.env.DB, "SELECT id FROM classrooms WHERE join_code = $code", {
-        code: input.code,
-      });
-      if (!classroom) fail(404, "join_code_invalid");
+      const classroom = await one<{ id: string; current_activity_id: string | null }>(
+        c.env.DB,
+        "SELECT id, current_activity_id FROM classrooms WHERE join_code = $code",
+        { code: input.code },
+      );
+      if (!classroom?.current_activity_id) fail(404, "join_code_invalid");
+      const activity = await one<{ finished_at: string | null }>(
+        c.env.DB,
+        "SELECT finished_at FROM activities WHERE id = $id",
+        { id: classroom.current_activity_id },
+      );
+      if (activity?.finished_at) fail(409, "activity_finished");
+      const hash = await hashPassword(input.password);
       const clash = await one<{ id: string }>(
         c.env.DB,
         "SELECT user_id AS id FROM members WHERE classroom_id = $cid AND name = $name",
@@ -53,7 +56,6 @@ export function authRoutes() {
       if (emailTaken) fail(409, "conflict");
       const id = newId("u_");
       const at = nowIso();
-      const hash = await hashPassword(input.password);
       try {
         await batch(c.env.DB, [
           {
@@ -66,10 +68,9 @@ export function authRoutes() {
           },
         ]);
       } catch (error) {
-        const column = uniqueViolationColumn(error);
-        if (column === "name") fail(409, "name_taken");
-        else if (column === "email") fail(409, "conflict");
-        else fail(409, "conflict");
+        const pairs = uniqueViolationColumns(error);
+        if (pairs.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
+        fail(409, "conflict");
       }
       const user = { id, name: input.name, role: "student" as const };
       await startSession(c, user);

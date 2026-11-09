@@ -87,7 +87,7 @@ export function topicsRoutes() {
         );
       } catch (error) {
         if (error instanceof ApiError) throw error;
-        console.error("[topics/generate] failed", error);
+        console.error("[topics/generate] failed", error instanceof Error ? error.name : typeof error);
         return c.json(
           mockTopics(input.direction).topics.map((topic, index) => ({
             id: `gen_${Date.now()}_${index}`,

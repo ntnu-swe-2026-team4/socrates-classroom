@@ -45,14 +45,14 @@ export interface DemoClassroom {
   topicId: string;
 }
 
-export async function seedDemo(db: Db): Promise<void> {
+export async function seedDemo(db: Db, teacherPassword = DEMO_TEACHER.password): Promise<void> {
   const at = nowIso();
   let teacherId = (
     await one<{ id: string }>(db, "SELECT id FROM users WHERE email = $email", { email: DEMO_TEACHER.email })
   )?.id;
   if (!teacherId) {
     teacherId = newId("u_");
-    const hash = await hashPassword(DEMO_TEACHER.password);
+    const hash = await hashPassword(teacherPassword);
     await run(
       db,
       "INSERT INTO users (id, name, role, email, password_hash, created_at) VALUES ($id, $name, 'teacher', $email, $hash, $at)",

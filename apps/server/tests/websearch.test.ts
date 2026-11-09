@@ -172,6 +172,13 @@ describe("fetch_content (readable/raw + cache + SSRF)", () => {
       "http://sub.localhost./x",
       "http://[64:ff9b::127.0.0.1]/x",
       "http://[64:ff9b::8.8.8.8]/x",
+      "http://[64:ff9b:1::127.0.0.1]/x",
+      "http://[64:ff9b:1::8.8.8.8]/x",
+      "http://[::ffff:0:127.0.0.1]/x",
+      "http://[::ffff:0:192.168.1.1]/x",
+      "http://[::ffff:0:0:127.0.0.1]/x",
+      "http://224.0.0.1/x",
+      "http://239.255.255.250/x",
       "http://[ff02::1]/x",
       "http://[ff00::42]/x",
     ];

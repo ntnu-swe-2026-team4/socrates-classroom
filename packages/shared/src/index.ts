@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ClassReport, StudentAnalysis } from "./reports";
+import { ClassReportSchema, StudentAnalysisSchema, type ClassReport, type StudentAnalysis } from "./reports";
 
 export type Lang = "zh" | "en" | "es";
 export const LANG_NAMES: Record<Lang, string> = {
@@ -59,11 +59,38 @@ export const StudentLiveSchema = z.object({
 });
 export type StudentLive = z.infer<typeof StudentLiveSchema>;
 
+export const ViolationSliceSchema = z.object({
+  turn: z.number().int(),
+  type: z.string(),
+  excerpt: z.string(),
+});
+
 export interface ViolationSlice {
   turn: number;
   type: ViolationType;
   excerpt: string;
 }
+
+export const ReportPositionSchema = z.object({
+  axis: z.string(),
+  view: z.string(),
+  end: z.enum(["low", "middle", "high"]),
+  at: z.number().int().min(0).max(100),
+});
+
+export const StudentReportEntrySchema = z.object({
+  pseudonym: z.string(),
+  analysis: StudentAnalysisSchema.nullable(),
+  violations: z.array(ViolationSliceSchema),
+  positions: z.array(ReportPositionSchema),
+});
+
+export const StoredTeacherReportSchema = z.object({
+  topicTitle: z.string(),
+  classReport: ClassReportSchema.nullable(),
+});
+
+export const StoredStudentReportsSchema = z.record(z.string(), StudentReportEntrySchema);
 
 export interface ReportPosition {
   axis: string;
@@ -163,7 +190,7 @@ export type TeacherKeyStatus = z.infer<typeof TeacherKeyStatusSchema>;
 export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
 export type ViolationType = (typeof VIOLATION_TYPES)[number];
 export const ViolationChoiceSchema = z.object({
-  type: z.enum(VIOLATION_TYPES),
+  type: z.string(),
   probability: z.number().min(0).max(1),
 });
 

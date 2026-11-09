@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { JoinInputSchema } from "@socrates/shared";
 import { batch, one, run } from "../db/d1";
 import { startSession } from "../auth";
-import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, type AppEnv } from "../http";
+import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, uniqueViolationColumns, type AppEnv } from "../http";
 import { topicOf, type ClassroomRow } from "../services/members";
 
 export function joinRoutes() {
@@ -74,9 +74,10 @@ export function joinRoutes() {
             },
           ]);
         } catch (error) {
-          if (error instanceof Error && error.message.includes("UNIQUE constraint failed: members.name")) {
-            fail(409, "name_taken");
-          }
+          const taken = uniqueViolationColumns(error).some(
+            ([table, column]) => table === "members" && column === "name",
+          );
+          if (taken) fail(409, "name_taken");
           throw error;
         }
         sessionUser = { id, name, role: "student" as const };
@@ -97,9 +98,8 @@ export function joinRoutes() {
           { cid: classroom.id, uid: sessionUser.id, name: sessionUser.name, at },
         );
       } catch (error) {
-        if (error instanceof Error && error.message.includes("UNIQUE constraint failed: members.name")) {
-          fail(409, "name_taken");
-        }
+        const taken = uniqueViolationColumns(error).some(([table, column]) => table === "members" && column === "name");
+        if (taken) fail(409, "name_taken");
         throw error;
       }
       return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });

@@ -27,8 +27,7 @@ export function createWebSearch(ai: Ai, allowlist: string[] = DOMAIN_ALLOWLIST) 
         limit: numResults,
       });
       if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        return { hits: [], error: `websearch_${response.status}: ${body.slice(0, 200)}` };
+        return { hits: [], error: `websearch_${response.status}` };
       }
       const raw = (await response.json()) as WebsearchResponse;
       const hits: SearchHit[] = [];

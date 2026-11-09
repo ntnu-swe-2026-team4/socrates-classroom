@@ -55,6 +55,17 @@ export function requireUser(c: Ctx): User {
   return user;
 }
 
+export function uniqueViolationColumns(error: unknown): Array<[string, string]> {
+  if (!(error instanceof Error)) return [];
+  const match = error.message.match(/^UNIQUE constraint failed: (.+)$/);
+  if (!match) return [];
+  return match[1]!
+    .split(",")
+    .map((pair) => pair.trim().split("."))
+    .filter((parts): parts is [string, string] => parts.length === 2)
+    .map(([table, column]) => [table, column] as [string, string]);
+}
+
 export function requireTeacher(c: Ctx): User {
   const user = requireUser(c);
   if (user.role !== "teacher") fail(403, "forbidden");
@@ -62,7 +73,8 @@ export function requireTeacher(c: Ctx): User {
 }
 
 export async function enforceIpLimit(c: Ctx, scope: string, limit = 30): Promise<void> {
-  const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+  const ip = c.req.header("CF-Connecting-IP");
+  if (!ip) return;
   if (!(await allowIp(ip, scope, limit))) fail(429, "rate_limited");
 }
 
