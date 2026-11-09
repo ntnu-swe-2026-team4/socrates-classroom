@@ -6,7 +6,6 @@ export interface Env {
   ReportRunner: DurableObjectNamespace<import("./do/report-runner").ReportRunner>;
   AI?: Ai;
   PUBLIC_BASE_URL?: string;
-  COOKIE_SECURE?: string;
   AUTH_SECRET?: string;
   LLM_PROVIDER?: string;
   DGX_BASE_URL?: string;

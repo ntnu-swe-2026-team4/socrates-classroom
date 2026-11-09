@@ -94,7 +94,7 @@ export async function startSession(c: Ctx, user: User): Promise<void> {
     sameSite: "Lax",
     path: "/",
     maxAge: SESSION_DAYS * 86400,
-    secure: c.env.COOKIE_SECURE !== "false",
+    secure: true,
   });
 }
 

@@ -48,8 +48,8 @@ export function topicsRoutes() {
       return c.json(parsePrompts(row), 201);
     })
     .post("/topics/generate", async (c) => {
-      await enforceIpLimit(c, "topics-generate", 10);
       requireTeacher(c);
+      await enforceIpLimit(c, "topics-generate", 10);
       const input = await parseBody(c, GenerateTopicsInputSchema);
       if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {
         return c.json(

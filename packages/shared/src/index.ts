@@ -87,10 +87,12 @@ export type Report = TeacherReport | StudentReport;
 export const TermExplanationSchema = z.object({ term: z.string(), markdown: z.string() });
 export type TermExplanation = z.infer<typeof TermExplanationSchema>;
 
-export const LoginInputSchema = z.object({ email: z.email(), password: z.string().min(8).max(128) });
+const emailField = z.email().transform((value) => value.toLowerCase());
+
+export const LoginInputSchema = z.object({ email: emailField, password: z.string().min(8).max(128) });
 export const RegisterInputSchema = z.object({
   code: z.string().min(4).max(32),
-  email: z.email(),
+  email: emailField,
   password: z.string().min(8).max(128),
   name: z.string().trim().min(1).max(80),
   tosAccepted: z.boolean(),

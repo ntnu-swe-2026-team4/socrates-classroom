@@ -101,9 +101,11 @@ export function classroomsRoutes() {
     .post("/classrooms", async (c) => {
       const user = requireTeacher(c);
       const input = await parseBody(c, ClassroomCreateInputSchema);
-      const topic = await one<{ id: string }>(c.env.DB, "SELECT id FROM topics WHERE id = $id", {
-        id: input.topicId,
-      });
+      const topic = await one<{ id: string }>(
+        c.env.DB,
+        "SELECT id FROM topics WHERE id = $id AND (owner_id IS NULL OR owner_id = $uid)",
+        { id: input.topicId, uid: user.id },
+      );
       if (!topic) fail(404, "not_found");
       const id = newId("c_");
       const at = nowIso();
@@ -136,9 +138,11 @@ export function classroomsRoutes() {
       });
       if (!classroom) fail(404, "not_found");
       if (classroom.teacher_id !== user.id) fail(403, "forbidden");
-      const topic = await one<{ id: string }>(c.env.DB, "SELECT id FROM topics WHERE id = $id", {
-        id: input.topicId,
-      });
+      const topic = await one<{ id: string }>(
+        c.env.DB,
+        "SELECT id FROM topics WHERE id = $id AND (owner_id IS NULL OR owner_id = $uid)",
+        { id: input.topicId, uid: user.id },
+      );
       if (!topic) fail(404, "not_found");
       const activityId = await createActivity(c.env.DB, classroom.id, input.topicId);
       const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") ?? "";

@@ -325,9 +325,10 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
 });
 
 describe("report（#74：finish→pending→ready→GET）", () => {
-  test("finish 觸發 ReportRunner：pending 狀態立即可讀", async () => {
+  test("finish 觸發 ReportRunner：pending→ready→角色分流報告", async () => {
     const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
       id: string;
+      title: string;
     }>;
     const created = (await (
       await call("/api/classrooms", {
@@ -354,6 +355,22 @@ describe("report（#74：finish→pending→ready→GET）", () => {
     if (report.status === 404) {
       expect(((await report.json()) as { code: string }).code).toBe("report_pending");
     }
-    void student;
-  });
+
+    const settled = await vi.waitFor(
+      async () => {
+        const res = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacher } });
+        expect(res.status).toBe(200);
+        return (await res.json()) as { topicTitle: string; classReport: unknown; students: unknown[] };
+      },
+      { timeout: 30_000, interval: 500 },
+    );
+    expect(settled.topicTitle).toBe(topics[0]!.title);
+    expect(Array.isArray(settled.students)).toBe(true);
+
+    const asStudent = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: student } });
+    expect(asStudent.status).toBe(200);
+    const studentReport = (await asStudent.json()) as { pseudonym: string; analysis: unknown };
+    expect(typeof studentReport.pseudonym).toBe("string");
+    expect("analysis" in studentReport).toBe(true);
+  }, 40_000);
 });
