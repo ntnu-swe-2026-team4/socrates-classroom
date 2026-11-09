@@ -172,6 +172,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     );
     expect(result.current.pending).toBe(true);
     expect(result.current.phase).toBe("thinking");
+    expect(result.current.draft).toBe("");
     expect(tts).not.toHaveBeenCalled();
 
     emit(
