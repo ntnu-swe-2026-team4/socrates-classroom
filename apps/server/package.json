@@ -7,7 +7,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "gen-config": "node scripts/gen-config.mjs",
-    "build:types": "tsc -p tsconfig.types.json",
+    "build:types": "rm -rf dist/types && tsc -p tsconfig.types.json",
     "seed": "node scripts/seed.mjs"
   },
   "dependencies": {

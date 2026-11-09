@@ -73,7 +73,7 @@ beforeAll(async () => {
 
   const finish = await call(`/api/activities/${activityId}/finish`, {
     method: "POST",
-    headers: { Cookie: teacherCookie },
+    headers: { Cookie: teacherCookie, "CF-Connecting-IP": "198.51.100.20" },
   });
   expect(finish.status).toBe(204);
 });
@@ -82,8 +82,14 @@ describe("reportAlarmPlan", () => {
   const base = { cap: 3, timeoutMs: 300_000, backoffMs: 4_000 };
 
   it("generates under the cap; backoff scales with post-increment attempts", () => {
-    expect(reportAlarmPlan({ ...base, attempts: 1, inFlight: false })).toEqual({ action: "generate", backoffMs: 4_000 });
-    expect(reportAlarmPlan({ ...base, attempts: 3, inFlight: false })).toEqual({ action: "generate", backoffMs: 12_000 });
+    expect(reportAlarmPlan({ ...base, attempts: 1, inFlight: false })).toEqual({
+      action: "generate",
+      backoffMs: 4_000,
+    });
+    expect(reportAlarmPlan({ ...base, attempts: 3, inFlight: false })).toEqual({
+      action: "generate",
+      backoffMs: 12_000,
+    });
   });
 
   it("re-arms at the timeout interval while a run is still in flight", () => {
@@ -169,7 +175,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     ).json()) as { activityId: string };
     const finish = await call(`/api/activities/${created.activityId}/finish`, {
       method: "POST",
-      headers: { Cookie: teacherCookie },
+      headers: { Cookie: teacherCookie, "CF-Connecting-IP": "198.51.100.21" },
     });
     expect(finish.status).toBe(204);
 
@@ -183,7 +189,8 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     }
     expect(sawPending).toBe(true);
     expect(last?.status).toBe(500);
-    expect(((await last?.clone().json()) as { code?: string }).code).toBe("report_failed");
+    const body = (await last?.json()) as { code?: string };
+    expect(body?.code).toBe("report_failed");
   }, 60_000);
 
   it("class-report failure with student analyses stored → partial per §7 (200, classReport null, positions empty)", async () => {
@@ -210,7 +217,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
 
     const finish = await call(`/api/activities/${created.activityId}/finish`, {
       method: "POST",
-      headers: { Cookie: teacherCookie },
+      headers: { Cookie: teacherCookie, "CF-Connecting-IP": "198.51.100.22" },
     });
     expect(finish.status).toBe(204);
 

@@ -4,6 +4,7 @@ extends: default
 ignore: |
   pnpm-lock.yaml
   node_modules/
+  .playwright-cli/
 
 rules:
   # GitHub Actions' `on:` key is flagged by the truthy rule

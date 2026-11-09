@@ -40,9 +40,11 @@ export const AvailabilityEntrySchema = z
   })
   .strict();
 
-export const TrafficClassSchema = z.object({
-  availability: z.literal("defaults"),
-});
+export const TrafficClassSchema = z
+  .object({
+    availability: z.literal("defaults"),
+  })
+  .strict();
 
 export const BindingModelSchema = z
   .string()
@@ -73,6 +75,7 @@ export const GatewayConfigSchema = z
     defaults: z.object({ availability: z.array(AvailabilityEntrySchema) }),
     trafficClasses: z.record(z.string(), TrafficClassSchema),
   })
+  .strict()
   .superRefine((config, ctx) => {
     config.defaults.availability.forEach((entry, index) => {
       const def = config.providers[entry.provider];
