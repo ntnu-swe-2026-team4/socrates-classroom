@@ -77,7 +77,9 @@ export const RoutingConfigSchema = z
         return;
       }
       const model = entry.model ?? providerModelOf(def);
-      const known = def.model ? [def.model, ...(def.models?.map((m) => m.id) ?? [])] : (def.models?.map((m) => m.id) ?? []);
+      const known = def.model
+        ? [def.model, ...(def.models?.map((m) => m.id) ?? [])]
+        : (def.models?.map((m) => m.id) ?? []);
       if (!model || !known.includes(model)) {
         ctx.addIssue({
           code: "custom",

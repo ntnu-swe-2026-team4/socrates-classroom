@@ -135,4 +135,3 @@ export async function verifyPassword(password: string, stored: string | null): P
   const computed = b64url(new Uint8Array(bits));
   return timingSafeEqual(computed, hash);
 }
-

@@ -178,7 +178,13 @@ describe("routing schema（availability 引用驗證——打錯字 fail-fast �
     },
     classifiers: {},
     voice: { stt: "s", tts: "t" },
-    report: { studentAttempts: 2, alarmAttempts: 3, alarmBackoffMs: 4000, alarmTimeoutMs: 300000, pseudonymPrefix: "學生" },
+    report: {
+      studentAttempts: 2,
+      alarmAttempts: 3,
+      alarmBackoffMs: 4000,
+      alarmTimeoutMs: 300000,
+      pseudonymPrefix: "學生",
+    },
     teacherChain: { maxConcurrency: 4 },
     trafficClasses: {},
   };
@@ -198,7 +204,13 @@ describe("routing schema（availability 引用驗證——打錯字 fail-fast �
       ...base,
       defaults: {
         availability: [
-          { provider: "workers-ai", model: "@cf/zai-org/nonexistent", credential: "platform", maxConcurrency: 1, priority: 1 },
+          {
+            provider: "workers-ai",
+            model: "@cf/zai-org/nonexistent",
+            credential: "platform",
+            maxConcurrency: 1,
+            priority: 1,
+          },
         ],
       },
     });
@@ -211,7 +223,13 @@ describe("routing schema（availability 引用驗證——打錯字 fail-fast �
       ...base,
       defaults: {
         availability: [
-          { provider: "workers-ai", model: "@cf/zai-org/glm-4.7-flash", credential: "platform", maxConcurrency: 1, priority: 1 },
+          {
+            provider: "workers-ai",
+            model: "@cf/zai-org/glm-4.7-flash",
+            credential: "platform",
+            maxConcurrency: 1,
+            priority: 1,
+          },
         ],
       },
     });

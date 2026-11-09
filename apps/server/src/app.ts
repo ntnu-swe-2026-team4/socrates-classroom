@@ -65,4 +65,3 @@ export function createApp() {
 }
 
 export type RpcApp = ReturnType<typeof createApp>;
-

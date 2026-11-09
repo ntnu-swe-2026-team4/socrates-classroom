@@ -16,7 +16,11 @@ async function aesKey(env: Env): Promise<CryptoKey> {
   const secret = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.BYOK_ENC_KEY), "HKDF", false, [
     "deriveBits",
   ]);
-  const bits = await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: HKDF_SALT, info: HKDF_INFO }, secret, 256);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt: HKDF_SALT, info: HKDF_INFO },
+    secret,
+    256,
+  );
   return crypto.subtle.importKey("raw", bits, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 

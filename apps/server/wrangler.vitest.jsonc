@@ -11,6 +11,7 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Chat", "ReportRunner"] }],
   "vars": {
+    // Test-only fixtures sharing names with production secrets; never real credentials.
     "LLM_PROVIDER": "mock",
     "FAUX_TOKENS_PER_SECOND": "4",
     "PUBLIC_BASE_URL": "",

@@ -7,12 +7,29 @@ export type Db = D1Database;
 
 export function prepare(sql: string, params?: Record<string, unknown>): { sql: string; values: unknown[] } {
   const values: unknown[] = [];
-  const out = sql.replace(/\$(\w+)/g, (_match, name: string) => {
-    if (!params || !(name in params)) throw new Error(`d1: missing bind param $${name}`);
-    const value = params[name];
-    values.push(value === undefined ? null : value);
-    return "?";
-  });
+  let out = "";
+  let quoted = false;
+  for (let i = 0; i < sql.length; i += 1) {
+    const char = sql[i]!;
+    if (char === "'") {
+      quoted = !quoted;
+      out += char;
+      continue;
+    }
+    if (!quoted && char === "$") {
+      const match = /^\$(\w+)/.exec(sql.slice(i));
+      if (match) {
+        const name = match[1]!;
+        if (!params || !(name in params)) throw new Error(`d1: missing bind param $${name}`);
+        const value = params[name];
+        values.push(value === undefined ? null : value);
+        out += "?";
+        i += match[0].length - 1;
+        continue;
+      }
+    }
+    out += char;
+  }
   return { sql: out, values };
 }
 
