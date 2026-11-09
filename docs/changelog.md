@@ -2,6 +2,37 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-09 — 第三波深度審查修復（8 blocking＋MINOR 批次，`experiment/web-next`）
+
+### Fixed
+
+- **dgx 死腿**：Router.chain 先解析 def 級 model 再過 canServe（原 priority-1 免費主力被 `getModel("dgx-spark", "")` 永遠過濾）；DGX_BASE_URL 回歸測試
+- **inFlight 洩漏**：routeSubmit submit 包 try/catch → settle＋rethrow（ConversationBusy 常態路徑原每次洩一格）；abort 結算 ok（學生中斷不助攻 cooldown）
+- **hibernate 授權**：reattach() 恢復 #authorized（evict 後第一個 frame 原被 1008）；跨 evict 重用測試
+- **input 邊界**：WS submit 走 DialogueInputSchema（contract §1 的 2000 字上限原是死碼）；空字串/超長測試
+- **fetch_content 收斂（B 定案）**：只准本對話 web_search 結果 URL（store.isSearchHit）——匿名代理與二階 prompt-injection 面收斂；isPrivateIp 補真 IPv6 解析（mapped/fe80::/10 全段/CGNAT/240.0.0.0/4）＋bypass 語料庫測試
+- **register ToS**：RegisterInputSchema 加 tosAccepted＋members insert 前閘（原公開端點偽造同意存證）
+- **activity_finished 實裝**：routeSubmit 檢查 finished_at（原死碼——結束後對話繼續燒 LLM 且不進報告）
+- dgx provider 定義對齊 team lead 的 pi config（model GLM-5.3-Flash、reasoning、compat thinkingFormat: openai 進 YAML，registerDgx 讀定義不再 hardcode）
+
+### Changed
+
+- WS error frame：pi 錯誤名作 code；內部錯誤只回 generic 訊息（不洩 D1/secret 細節）
+- YAML schema strict（未知鍵即敗）；openai-completions 必須帶 baseUrl/baseUrlEnv；死鍵 params 移除
+- teacherLegs SQL 收斂 credentials.ts（原三份 byte 相同複本）；TeacherKeyStatus 進 shared（server/web/contract 三份手抄收斂）
+- buildModels：mock 只認 LLM_PROVIDER=mock（缺 AI binding 原靜默 fallback faux——生產 misconfig 會演假對話，現 fail-fast）
+- runProfile：完成即 ok（退化空輸出不再計入 provider 失敗）；ipHits 真正強制上限；register/join 區分 email vs name 違規
+- Rate limit stopgap：lookup 20/min、topics-generate 10/min、stt 20/min、tts 30/min（#103 前的過渡）
+- Report alarm watchdog：alarmTimeoutMs 5 分鐘（generate 卡死原永遠 pending）
+- settings remove/move 錯誤處理（帳單活躍資源不再靜默失敗）；TrapDialog 焦點圈＋還原＋容器級 Escape
+- playTts decodeAudioData 失敗關閉 AudioContext；speak 重疊競態（stale finally 不再吃掉新 controller）；query 錯誤與空教室狀態分流；useSelectionPopover 改掛 ref 不再掃全域 class
+- `@ts-nocheck` 移除：avatar.ts/scene.ts 完整型別（159 個錯誤清零）
+- DialogueMessageSchema 死型別退役
+
+### Docs
+
+- providers.md 池表對齊實際鏈（dgx→workers-ai×2；opencode-go/OpenRouter 不再是學生鏈）；oneshot 死連結移除；STT 15MB 位元組上限（原寫 60s）；roadmap 已完成項勾選；frontend.md 元件庫實況；CODEOWNERS 移除已刪路徑；deploy gate 補 lint＋typecheck；architecture .env.example 路徑
+
 ## 2026-11-09 — 第二波深度審查修復＋teacher keys 服務（`experiment/web-next`）
 
 ### Added

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { TtsInputSchema } from "@socrates/shared";
-import { fail, langOf, parseBody, requireUser, type AppEnv } from "../http";
+import { enforceIpLimit, fail, langOf, parseBody, requireUser, type AppEnv } from "../http";
 import { routingConfig } from "../routing/config.gen";
 
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
@@ -61,6 +61,7 @@ function synthWav(text: string, lang: string): Uint8Array {
 export function voiceRoutes() {
   return new Hono<AppEnv>()
     .post("/stt", async (c) => {
+      await enforceIpLimit(c, "stt", 20);
       requireUser(c);
       const form = await c.req.formData().catch(() => null);
       const audio = form?.get("audio");
@@ -87,6 +88,7 @@ export function voiceRoutes() {
       }
     })
     .post("/tts", async (c) => {
+      await enforceIpLimit(c, "tts", 30);
       requireUser(c);
       const input = await parseBody(c, TtsInputSchema);
       const ttsModel = c.env.TTS_MODEL ?? routingConfig.voice.tts;

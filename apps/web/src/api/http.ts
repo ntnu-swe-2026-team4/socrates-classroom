@@ -5,6 +5,7 @@ import type {
   ClassroomSummary,
   JoinInfo,
   Report,
+  TeacherKeyStatus,
   TermExplanation,
   Topic,
   User,
@@ -30,14 +31,6 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
-}
-
-export interface TeacherKeyEntry {
-  provider: string;
-  model: string;
-  last4: string;
-  sortOrder: number;
-  updatedAt: string;
 }
 
 export interface KeyProviderInfo {
@@ -68,7 +61,7 @@ export interface Api {
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
   lookupTerm(term: string): Promise<TermExplanation>;
-  listTeacherKeys(): Promise<TeacherKeyEntry[]>;
+  listTeacherKeys(): Promise<TeacherKeyStatus[]>;
   listKeyProviders(): Promise<KeyProviderInfo[]>;
   listKeyProviderModels(provider: string): Promise<KeyModelInfo[]>;
   putTeacherKey(provider: string, model: string, key: string): Promise<{ provider: string; last4: string }>;
@@ -140,6 +133,9 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
   signal?.addEventListener("abort", onAbortDuringDecode, { once: true });
   try {
     source.buffer = await context.decodeAudioData(bytes);
+  } catch (error) {
+    stopEarly();
+    throw error;
   } finally {
     signal?.removeEventListener("abort", onAbortDuringDecode);
   }

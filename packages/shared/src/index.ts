@@ -48,14 +48,6 @@ export const ActivityInfoSchema = z.object({
 });
 export type ActivityInfo = z.infer<typeof ActivityInfoSchema>;
 
-export const DialogueMessageSchema = z.object({
-  id: z.string(),
-  role: z.enum(["user", "assistant"]),
-  text: z.string(),
-  at: z.string(),
-});
-export type DialogueMessage = z.infer<typeof DialogueMessageSchema>;
-
 export const StudentLiveSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -145,6 +137,15 @@ export const ClassroomSummarySchema = z.object({
   createdAt: z.string(),
 });
 export type ClassroomSummary = z.infer<typeof ClassroomSummarySchema>;
+
+export const TeacherKeyStatusSchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  last4: z.string(),
+  sortOrder: z.number(),
+  updatedAt: z.string(),
+});
+export type TeacherKeyStatus = z.infer<typeof TeacherKeyStatusSchema>;
 
 export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
 export type ViolationType = (typeof VIOLATION_TYPES)[number];

@@ -66,8 +66,11 @@ export function joinRoutes() {
               params: { cid: classroom.id, uid: id, name, at },
             },
           ]);
-        } catch {
-          fail(409, "name_taken");
+        } catch (error) {
+          if (error instanceof Error && error.message.includes("UNIQUE constraint failed: members.name")) {
+            fail(409, "name_taken");
+          }
+          throw error;
         }
         sessionUser = { id, name, role: "student" as const };
         await startSession(c, sessionUser);
@@ -86,8 +89,11 @@ export function joinRoutes() {
           "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
           { cid: classroom.id, uid: sessionUser.id, name: sessionUser.name, at },
         );
-      } catch {
-        fail(409, "name_taken");
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("UNIQUE constraint failed: members.name")) {
+          fail(409, "name_taken");
+        }
+        throw error;
       }
       return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
     });

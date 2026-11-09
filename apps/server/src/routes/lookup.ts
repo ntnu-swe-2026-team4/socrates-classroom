@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { LookupInputSchema, LANG_NAMES, type Lang } from "@socrates/shared";
-import { parseBody, requireUser, type AppEnv } from "../http";
+import { enforceIpLimit, parseBody, requireUser, type AppEnv } from "../http";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
 function mockMarkdown(term: string, lang: string): string {
@@ -11,6 +11,7 @@ function mockMarkdown(term: string, lang: string): string {
 
 export function lookupRoutes() {
   return new Hono<AppEnv>().post("/lookup", async (c) => {
+    await enforceIpLimit(c, "lookup", 20);
     requireUser(c);
     const input = await parseBody(c, LookupInputSchema);
     const lang = c.get("lang");

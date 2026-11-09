@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import type { TeacherKeyStatus } from "@socrates/shared";
 import { all, batch, one, run } from "../db/d1";
 import { fail, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
 import { encryptKey } from "../auth-crypto";
@@ -36,15 +37,14 @@ export function teacherKeyRoutes() {
         "SELECT provider_id, model, last4, sort_order, updated_at FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
         { uid: user.id },
       );
-      return c.json(
-        rows.map((row) => ({
-          provider: row.provider_id,
-          model: row.model,
-          last4: row.last4,
-          sortOrder: row.sort_order,
-          updatedAt: row.updated_at,
-        })),
-      );
+      const keys: TeacherKeyStatus[] = rows.map((row) => ({
+        provider: row.provider_id,
+        model: row.model,
+        last4: row.last4,
+        sortOrder: row.sort_order,
+        updatedAt: row.updated_at,
+      }));
+      return c.json(keys);
     })
     .get("/settings/keys/providers", async (c) => {
       requireTeacher(c);

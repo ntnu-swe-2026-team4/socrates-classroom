@@ -1,6 +1,7 @@
 import type { Env } from "../env";
-import type { AvailabilityEntry, LedgerKey } from "./routing-schema";
+import { providerModelOf, type ProviderSchema, type AvailabilityEntry, type LedgerKey } from "./routing-schema";
 import { routingConfig } from "./config.gen";
+import type { z } from "zod";
 import { RoutingLedger, type SettleKind } from "./ledger";
 
 export type TrafficClass = "interactive" | "judgment" | "batch";
@@ -56,7 +57,7 @@ export class Router {
       .sort((a, b) => a.priority - b.priority)
       .map((entry) => {
         const def = routingConfig.providers[entry.provider] ?? {};
-        return { entry, def, model: entry.model ?? def.model ?? "" };
+        return { entry, def, model: entry.model ?? providerModelOf(def) };
       })
       .filter((leg) => {
         if (canServe && !canServe({ provider: leg.entry.provider, model: leg.model })) return false;
@@ -98,7 +99,7 @@ export class Router {
     this.#ledger.settle(decision.key, kind);
   }
 
-  private keyOf(entry: AvailabilityEntry, def: { model?: string }): LedgerKey {
-    return { provider: entry.provider, model: entry.model ?? def.model ?? "", credential: entry.credential };
+  private keyOf(entry: AvailabilityEntry, def: z.infer<typeof ProviderSchema>): LedgerKey {
+    return { provider: entry.provider, model: entry.model ?? providerModelOf(def), credential: entry.credential };
   }
 }

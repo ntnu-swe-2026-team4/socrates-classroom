@@ -63,7 +63,7 @@ Journey：學生 `1→2→5→7`；老師 `1→3→4→6→7`；回訪 `9/10→5
 | Build        | **Vite 8**（Rolldown）                                         | 8.0（2026-03-12；Rolldown 1.0 2026-05-07）                   | 單一 Rust bundler；與 `@cloudflare/vite-plugin` 相容                  |
 | Router       | **TanStack Router**（file-based）                              | 1.170.46（2026-10-22）                                       | 型別安全 search params（入場碼、報告視角）                            |
 | Server state | **TanStack Query**                                             | 5.104.5（2026-10-19）                                        | route loader + `ensureQueryData` 沿用現有模式                         |
-| Components   | **Base UI**（`@base-ui/react`）                                | 1.9.0（2026-10-09）                                          | shadcn 預設底層（2026-07 起）；`render` prop 取代 `asChild`           |
+| Components   | 手寫 primitives（`components/ui.tsx`，cva＋tailwind-merge）    | —                                                            | 無第三方元件庫依賴；shadcn 目錄已隨 v3 退役                           |
 | Styling      | Tailwind CSS 4                                                 | 既有                                                         | `@tailwindcss/vite` 已在用                                            |
 | API client   | **Hono RPC `hc<RpcApp>`**                                      | hono 4.13.16                                                 | client ~2KB＝typed fetch；見 §4                                       |
 | i18n         | 手寫 typed dictionary（`Record<MessageKey,string>`＋`useT()`） | —                                                            | in-place 語言切換（不換頁、保留 React state）已實測；三語編譯期完整性 |

@@ -5,8 +5,7 @@
 /apps/server/ @ntnu-swe-2026-team4/backend @minstrike520
 
 /apps/server/src/do/            @ntnu-swe-2026-team4/llm @ntnu-swe-2026-team4/backend @shiraga1094 @alifestone @minstrike520
-/apps/server/src/providers/     @ntnu-swe-2026-team4/llm @ntnu-swe-2026-team4/backend @shiraga1094 @alifestone @minstrike520
-/apps/server/cloudflare.config.ts @ntnu-swe-2026-team4/backend @minstrike520 @ccohongrui
+/apps/web/cloudflare.config.ts @ntnu-swe-2026-team4/backend @minstrike520 @ccohongrui
 /apps/server/migrations/        @ntnu-swe-2026-team4/backend @minstrike520
 
 /packages/shared/ @ntnu-swe-2026-team4/backend @ntnu-swe-2026-team4/frontend @minstrike520 @ccohongrui

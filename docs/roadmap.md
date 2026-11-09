@@ -62,9 +62,9 @@
 
 ## 第一週查證清單（11 月第一週完成，否則下游卡住）
 
-- [ ] #56 STT 服務選型（retention／價格／zh-TW）
+- [x] #56 STT 服務選型（2026-11-06 拍板：`@cf/openai/whisper-large-v3-turbo`，ZDR yes，見 `providers.md` §5）
 - [x] #55 偵測模型 Clef／Jev ZDR 查證（2026-11-08 拍板：Clef-flash 主力、Clef 備選、Jev 不採用，見 `providers.md` §7）
-- [ ] #65 search provider retention 查證
+- [x] #65 search provider retention 查證（2026-11-06 拍板：Ceramic via Workers AI websearch binding，見 `providers.md`）
 - [ ] #63 停損水位定義
 - [ ] #54 衝突機制拍板
 - [ ] #57 去識別化程度拍板

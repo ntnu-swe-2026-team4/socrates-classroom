@@ -74,10 +74,27 @@ async function allowIp(ip: string, scope: string, limit: number): Promise<boolea
   const now = Date.now();
   const window = 60_000;
   const hits = (ipHits.get(key) ?? []).filter((t) => now - t < window);
-  if (ipHits.size >= IP_TRACK_MAX) {
+  while (ipHits.size >= IP_TRACK_MAX) {
+    let reclaimed = false;
     for (const [k, v] of ipHits) {
-      if (v.every((t) => now - t >= window)) ipHits.delete(k);
-      if (ipHits.size < IP_TRACK_MAX) break;
+      if (v.every((t) => now - t >= window)) {
+        ipHits.delete(k);
+        reclaimed = true;
+        if (ipHits.size < IP_TRACK_MAX) break;
+      }
+    }
+    if (!reclaimed) {
+      let oldestKey: string | null = null;
+      let oldestAt = Number.POSITIVE_INFINITY;
+      for (const [k, v] of ipHits) {
+        const at = v[0] ?? Number.POSITIVE_INFINITY;
+        if (at < oldestAt) {
+          oldestAt = at;
+          oldestKey = k;
+        }
+      }
+      if (oldestKey === null) break;
+      ipHits.delete(oldestKey);
     }
   }
   if (hits.length >= limit) {

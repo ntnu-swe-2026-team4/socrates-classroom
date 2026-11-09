@@ -1,5 +1,6 @@
 import type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
 import { all, one } from "../db/d1";
+import { routingConfig } from "../routing/config.gen";
 import { decryptKey } from "../auth-crypto";
 import type { Env } from "../env";
 
@@ -77,4 +78,23 @@ export interface TeacherLeg {
 export interface TeacherLegRow {
   provider_id: string;
   model: string;
+}
+
+export async function teacherLegsOf(env: Env, teacherId: string | null): Promise<TeacherLeg[]> {
+  const maxConcurrency = routingConfig.teacherChain.maxConcurrency;
+  if (!teacherId) return [];
+  const rows = await all<TeacherLegRow>(
+    env.DB,
+    "SELECT provider_id, model FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
+    { uid: teacherId },
+  );
+  return rows
+    .filter((row) => row.model)
+    .map((row) => ({
+      provider: row.provider_id,
+      model: row.model,
+      credential: `teacher:${teacherId}`,
+      maxConcurrency,
+      priority: 0,
+    }));
 }

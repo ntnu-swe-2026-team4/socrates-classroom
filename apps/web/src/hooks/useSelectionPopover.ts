@@ -35,13 +35,14 @@ export function useSelectionPopover(containerRef: React.RefObject<HTMLElement | 
     };
     const onScroll = () => setSelection(null);
 
+    const host = containerRef.current;
     document.addEventListener("selectionchange", onSelectionChange);
     document.addEventListener("pointerup", onSelectionChange);
-    for (const el of document.querySelectorAll(".stream-scroll")) el.addEventListener("scroll", onScroll);
+    host?.addEventListener("scroll", onScroll);
     return () => {
       document.removeEventListener("selectionchange", onSelectionChange);
       document.removeEventListener("pointerup", onSelectionChange);
-      for (const el of document.querySelectorAll(".stream-scroll")) el.removeEventListener("scroll", onScroll);
+      host?.removeEventListener("scroll", onScroll);
     };
   }, [containerRef]);
 

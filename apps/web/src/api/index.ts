@@ -2,7 +2,7 @@ import { httpApi, type Api } from "./http";
 
 export const api: Api = httpApi;
 export { ApiError } from "./http";
-export type { Api, TeacherKeyEntry } from "./http";
+export type { Api } from "./http";
 export type {
   ActivityInfo,
   ClassroomCreated,
@@ -12,7 +12,6 @@ export type {
   StudentAnalysis,
   StudentLive,
   TeacherReport,
-  DialogueMessage,
   TermExplanation,
   Topic,
   User,

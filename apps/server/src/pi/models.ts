@@ -19,7 +19,8 @@ export interface BuildModelsOptions {
 }
 
 export function buildModels(env: Env, options: BuildModelsOptions = {}): ModelsBundle {
-  if (!env.AI || env.LLM_PROVIDER === "mock") return fauxBundle(env);
+  if (env.LLM_PROVIDER === "mock") return fauxBundle(env);
+  if (!env.AI) throw new Error("AI binding is not configured; set LLM_PROVIDER=mock for offline dev");
 
   const models = builtinModels({
     credentials: teacherCredentialStore(env, options.teacherOf ?? (async () => null)),
@@ -50,8 +51,8 @@ function registerDgx(env: Env, models: MutableModels): void {
   const def = routingConfig.providers["dgx-spark"];
   const baseUrl = env.DGX_BASE_URL;
   if (def?.kind !== "openai-completions" || !baseUrl) return;
-  const modelId = def.model ?? def.models?.[0]?.id ?? "";
-  if (!modelId) return;
+  const model = def.models?.[0];
+  if (!model) return;
   const provider = createProvider({
     id: "dgx-spark",
     name: "dgx-spark",
@@ -64,14 +65,17 @@ function registerDgx(env: Env, models: MutableModels): void {
     },
     models: [
       {
-        id: modelId,
-        name: modelId,
+        id: model.id,
+        name: model.id,
         api: "openai-completions",
         provider: "dgx-spark",
         baseUrl,
-        input: ["text"],
+        reasoning: model.reasoning ?? false,
+        input: model.input ?? ["text"],
+        ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
+        ...(model.maxTokens !== undefined ? { maxTokens: model.maxTokens } : {}),
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        compat: { supportsDeveloperRole: false, supportsReasoningEffort: false, maxTokensField: "max_tokens" },
+        ...(def.compat ? { compat: def.compat } : {}),
       } as never,
     ],
     api: { "openai-completions": openAICompletionsApi() },

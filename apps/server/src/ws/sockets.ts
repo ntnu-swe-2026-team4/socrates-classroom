@@ -175,11 +175,13 @@ export class ChatSockets {
         send(connection, { type: "result", id: message.id, result });
       }
     } catch (error) {
+      const name = error instanceof Error ? error.name : "Error";
+      const piError = name !== "Error";
       send(connection, {
         type: "error",
         ...(message.id === undefined ? {} : { id: message.id }),
-        message: error instanceof Error ? error.message : String(error),
-        ...(error instanceof Error && error.name !== "Error" ? { code: error.name } : {}),
+        message: piError && error instanceof Error ? error.message : "Request failed",
+        ...(piError ? { code: name } : {}),
       });
     }
   }

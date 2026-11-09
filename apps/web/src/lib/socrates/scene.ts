@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
@@ -7,13 +6,23 @@ import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Avatar } from "./avatar";
 
-const modelCache = new Map();
+import type { Avatar as AvatarType } from "./avatar";
 
-export function createSocratesScene(canvas, stage, opts = {}) {
+type GLTF = { scene: THREE.Object3D; animations: THREE.AnimationClip[] };
+const modelCache = new Map<string, Promise<GLTF>>();
+
+export interface SceneOptions {
+  mini?: boolean;
+  onHologram?: (on: boolean) => void;
+  onReady?: () => void;
+  onError?: () => void;
+}
+
+export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElement, opts: SceneOptions = {}) {
   let speaking = false;
-  let avatar = null;
+  let avatar: AvatarType | null = null;
   const FAKE_VISEMES = ["viseme_aa", "viseme_E", "viseme_O", "viseme_PP", "viseme_FF", "viseme_kk", "viseme_I"];
-  function fakeVisemeSample(t) {
+  function fakeVisemeSample(t: number) {
     const idx = Math.floor(t * 8) % FAKE_VISEMES.length;
     return { viseme: FAKE_VISEMES[idx], weight: 0.4 + 0.4 * Math.abs(Math.sin(t * 13)) };
   }
@@ -25,11 +34,9 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   renderer.toneMappingExposure = 1.0;
 
   const scene = new THREE.Scene();
-  const _STAGE_DARK = new THREE.Color(0x2b2d33);
-  const _STAGE_LIGHT = new THREE.Color(0xdcdad3);
   scene.background = null;
   renderer.setClearColor(0x000000, 0);
-  const setTheme = (_light) => {};
+  const setTheme = (_light: boolean) => {};
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.35;
@@ -81,7 +88,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   const ro = new ResizeObserver(() => resize());
   ro.observe(stage);
 
-  function buildHybridMaterial(baseMap, fallbackColor) {
+  function buildHybridMaterial(baseMap: THREE.Texture | null, fallbackColor: THREE.Color | null) {
     const uniforms = {
       map: { value: baseMap || null },
       uHasMap: { value: baseMap ? 1.0 : 0.0 },
@@ -99,7 +106,6 @@ export function createSocratesScene(canvas, stage, opts = {}) {
 
     const material = new THREE.ShaderMaterial({
       uniforms,
-      morphTargets: true,
       vertexShader: `
         #include <morphtarget_pars_vertex>
         varying vec3 vWorldPos;
@@ -168,17 +174,18 @@ export function createSocratesScene(canvas, stage, opts = {}) {
         }
       `,
     });
+    (material as unknown as { morphTargets: boolean }).morphTargets = true;
     return material;
   }
 
   let hologramOn = false;
   let transitioning = false;
-  const hybridMaterials = [];
+  const hybridMaterials: THREE.ShaderMaterial[] = [];
   let maxDist = 1;
   let bandMinY = -1,
     bandMaxY = 1;
 
-  function startTransition(clickPointWorld) {
+  function startTransition(clickPointWorld: THREE.Vector3) {
     if (!hybridMaterials.length || transitioning) return;
     transitioning = true;
     const prevState = hologramOn ? 1 : 0;
@@ -192,7 +199,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
 
     const duration = 900;
     const start = performance.now();
-    function step(now) {
+    function step(now: number) {
       const t = Math.min((now - start) / duration, 1);
       const eased = 1 - (1 - t) ** 2;
       hybridMaterials.forEach((m) => {
@@ -211,10 +218,10 @@ export function createSocratesScene(canvas, stage, opts = {}) {
 
   const raycaster = new THREE.Raycaster();
   const pointerNdc = new THREE.Vector2();
-  let downPos = null;
-  let avatarRootRef = null;
+  let downPos: { x: number; y: number } | null = null;
+  let avatarRootRef: THREE.Object3D | null = null;
 
-  function getPointer(e) {
+  function getPointer(e: PointerEvent) {
     const rect = canvas.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, h: rect.height };
   }
@@ -234,7 +241,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     if (hits.length > 0) startTransition(hits[0].point);
   });
 
-  const loadModel = (url) => {
+  const loadModel = (url: string) => {
     const cached = modelCache.get(url);
     if (cached) return cached.then((g) => ({ model: cloneSkinned(g.scene), clips: g.animations }));
     const load = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url);
@@ -248,7 +255,7 @@ export function createSocratesScene(canvas, stage, opts = {}) {
     }));
   };
 
-  let pendingExpression = null;
+  let pendingExpression: [string, { loop?: boolean }] | null = null;
   let disposed = false;
   loadModel("/socrates.glb")
     .then(({ model, clips }) => {
@@ -258,12 +265,14 @@ export function createSocratesScene(canvas, stage, opts = {}) {
       avatarRootRef = avatar.root;
       scene.add(avatar.root);
 
-      model.traverse((o) => {
-        if (o.isMesh) {
-          const baseMap = o.material?.map || null;
-          const fallback = o.material?.color ? o.material.color.clone() : null;
+      model.traverse((o: THREE.Object3D) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) {
+          const src = mesh.material as THREE.MeshStandardMaterial | null;
+          const baseMap = src?.map ?? null;
+          const fallback = src?.color ? src.color.clone() : null;
           const mat = buildHybridMaterial(baseMap, fallback);
-          o.material = mat;
+          mesh.material = mat;
           hybridMaterials.push(mat);
         }
       });
@@ -282,7 +291,6 @@ export function createSocratesScene(canvas, stage, opts = {}) {
       });
 
       resize();
-      _loaded = true;
       opts.onReady?.();
       kick();
     })
@@ -293,12 +301,11 @@ export function createSocratesScene(canvas, stage, opts = {}) {
 
   const clock = new THREE.Clock();
   let raf = 0;
-  let _loaded = false;
   let visible = true;
   const FRAME_MS = mini ? 1000 / 30 : 0;
   let last = 0;
   const busy = () => true;
-  function frame(now) {
+  function frame(now: number) {
     if (disposed) return;
     raf = 0;
     if (!visible || document.hidden) return;
@@ -339,17 +346,17 @@ export function createSocratesScene(canvas, stage, opts = {}) {
   kick();
 
   return {
-    setSpeaking(on) {
+    setSpeaking(on: boolean) {
       speaking = on;
       if (!on && avatar) avatar.setViseme(null, 0);
       kick();
     },
-    setExpression(name, options) {
+    setExpression(name: string | null, options?: { loop?: boolean }) {
       if (avatar) avatar.setExpression(name, options);
-      else pendingExpression = [name, options];
+      else pendingExpression = name ? [name, options ?? {}] : null;
       kick();
     },
-    setTheme(light) {
+    setTheme(light: boolean) {
       setTheme(light);
       kick();
     },

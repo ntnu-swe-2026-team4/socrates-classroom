@@ -20,9 +20,7 @@ import { createJudgmentExtension } from "../extensions/judgment";
 import { createWebSearchExtension } from "../extensions/websearch";
 import { getRouter, type TrafficClass } from "../../routing/router";
 import type { SettleKind } from "../../routing/ledger";
-import { routingConfig } from "../../routing/config.gen";
-import type { TeacherLeg } from "../credentials";
-import { all } from "../../db/d1";
+import { teacherLegsOf, type TeacherLeg } from "../credentials";
 
 export type ProfileName = "socrates" | "topic-gen" | "student-report" | "class-report" | "lookup";
 
@@ -138,27 +136,8 @@ export async function openProfileHarness(
   return {
     harness,
     runtime: { models, registry, env },
-    teacherLegs: teacherOf ? teacherLegsOf(env, teacherOf) : Promise.resolve([]),
+    teacherLegs: teacherOf ? teacherLegsOf(env, await teacherOf()) : Promise.resolve([]),
   };
-}
-
-export async function teacherLegsOf(env: Env, teacherOf: () => Promise<string | null>): Promise<TeacherLeg[]> {
-  const teacherId = await teacherOf();
-  if (!teacherId) return [];
-  const rows = await all<{ provider_id: string; model: string }>(
-    env.DB,
-    "SELECT provider_id, model FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
-    { uid: teacherId },
-  );
-  return rows
-    .filter((row) => row.model)
-    .map((row) => ({
-      provider: row.provider_id,
-      model: row.model,
-      credential: `teacher:${teacherId}`,
-      maxConcurrency: routingConfig.teacherChain.maxConcurrency,
-      priority: 0,
-    }));
 }
 
 export async function runProfile(
@@ -201,7 +180,7 @@ export async function runProfile(
           ? message.content
           : message.content.map((part) => (part.type === "text" ? (part.text ?? "") : "")).join("")
         : "";
-    kind = text ? "ok" : "error";
+    kind = "ok";
     return { text, conversation };
   } finally {
     if (decision) router.settle(decision, kind);

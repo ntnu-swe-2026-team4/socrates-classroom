@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { RoutingLedger } from "../src/routing/ledger";
 
 describe("routing ledger（pi 無結構化錯誤狀態 → 只記 ok/error；連續錯誤 cooldown）", () => {
-  const key = { provider: "dgx-spark", model: "GLM-5.3-Flash-EXL3", credential: "platform" };
+  const key = { provider: "dgx-spark", model: "GLM-5.3-Flash", credential: "platform" };
 
   it("cooldown 過期自然回（無 probe）", () => {
     const ledger = new RoutingLedger();
@@ -128,7 +128,7 @@ describe("teacher legs（#82：老師 key 前置，平台鏈墊後）", () => {
     const router = new Router(env);
     const decision = router.pick("interactive", (entry) => models.getModel(entry.provider, entry.model) !== undefined)!;
     expect(decision.entry.provider).toBe("dgx-spark");
-    expect(decision.model).toBe("GLM-5.3-Flash-EXL3");
+    expect(decision.model).toBe("GLM-5.3-Flash");
   }, 20_000);
 
   it("teacher leg 獨立記帳：cooldown 不影響平台鏈", async () => {

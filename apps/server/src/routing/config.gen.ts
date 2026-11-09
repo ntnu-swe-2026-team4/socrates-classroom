@@ -5,9 +5,26 @@ const CONFIG = {
   "providers": {
     "dgx-spark": {
       "kind": "openai-completions",
-      "model": "GLM-5.3-Flash-EXL3",
       "baseUrlEnv": "DGX_BASE_URL",
-      "cost": "free"
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": true,
+        "thinkingFormat": "openai",
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        {
+          "id": "GLM-5.3-Flash",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1048576,
+          "maxTokens": 32768,
+          "cost": "free"
+        }
+      ]
     },
     "workers-ai": {
       "kind": "binding",
@@ -50,12 +67,7 @@ const CONFIG = {
           "id": "glm-4.5-air",
           "cost": "paid"
         }
-      ],
-      "params": {
-        "thinking": {
-          "type": "disabled"
-        }
-      }
+      ]
     }
   },
   "classifiers": {
@@ -70,6 +82,7 @@ const CONFIG = {
     "studentAttempts": 2,
     "alarmAttempts": 3,
     "alarmBackoffMs": 4000,
+    "alarmTimeoutMs": 300000,
     "pseudonymPrefix": "學生"
   },
   "teacherChain": {

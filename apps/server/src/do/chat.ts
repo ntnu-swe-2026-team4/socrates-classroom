@@ -22,10 +22,9 @@ import { createWebSearchExtension } from "../pi/extensions/websearch";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 import { socratesExtension } from "../pi/extensions/socrates";
 import { buildModels } from "../pi/models";
-import { teacherOfActivity, type TeacherLeg, type TeacherLegRow } from "../pi/credentials";
+import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
+import { one } from "../db/d1";
 import { getRouter } from "../routing/router";
-import { routingConfig } from "../routing/config.gen";
-import { all } from "../db/d1";
 import { ChatSockets } from "../ws/sockets";
 
 export class Chat extends DurableObject<Env> {
@@ -93,25 +92,17 @@ export class Chat extends DurableObject<Env> {
   }
 
   private async teacherLegs(): Promise<TeacherLeg[]> {
-    const teacherId = await this.teacherId();
-    if (!teacherId) return [];
-    const rows = await all<TeacherLegRow>(
-      this.env.DB,
-      "SELECT provider_id, model FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
-      { uid: teacherId },
-    );
-    return rows
-      .filter((row) => row.model)
-      .map((row) => ({
-        provider: row.provider_id,
-        model: row.model,
-        credential: `teacher:${teacherId}`,
-        maxConcurrency: routingConfig.teacherChain.maxConcurrency,
-        priority: 0,
-      }));
+    return teacherLegsOf(this.env, await this.teacherId());
   }
 
   private async routeSubmit(handle: PiSession, input: UserInput, options: PiSubmitOptions): Promise<PiReceipt> {
+    const activityId = this.ctx.id.name?.split(":")[0] ?? "";
+    const activity = await one<{ finished_at: string | null }>(
+      this.env.DB,
+      "SELECT finished_at FROM activities WHERE id = $id",
+      { id: activityId },
+    );
+    if (activity?.finished_at) throw new Error("activity_finished");
     const router = getRouter(this.env);
     const canServe = (entry: { provider: string; model: string }): boolean =>
       this.models.models.getModel(entry.provider, entry.model) !== undefined;

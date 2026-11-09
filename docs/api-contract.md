@@ -13,7 +13,7 @@
 | 語言     | `Accept-Language` → `Lang`（`zh-*→"zh"`、`en→"en"`、`es→"es"`）——錯誤訊息依此三語                                                                                    |
 | JSON     | camelCase；id 為字串；時間 ISO 8601                                                                                                                                  |
 | 錯誤     | `{ "message": string, "code": string }`；`code` 為 shared 的 `ErrorCode` literal union（§10），`message` 已本地化                                                    |
-| 輸入邊界 | zod 強制：`name` ≤80、對話 `text` ≤2000、`term` 1–30、`direction` ≤200、STT 音檔 ≤60s；超界 `422 validation`                                                         |
+| 輸入邊界 | zod 強制：`name` ≤80、對話 `text` ≤2000、`term` 1–30、`direction` ≤200、STT 音檔 ≤15MB（位元組上限，非時長）；超界 `422 validation`                                  |
 | 授權     | 預設 deny——見 §1.1；未列者一律需登入且屬教室成員                                                                                                                     |
 | 限流     | 現行：login/register/join per-IP（isolate-local sliding window）；LLM 成本端點的 per-user 限流為 #103 待辦，非現行行為                                               |
 | 冪等     | 自然鍵冪等：重複 `POST /api/join`（同身分）＝200 冪等、`finish` 重試安全、`PUT settings/*` 天然冪等                                                                  |
@@ -162,10 +162,10 @@ interface ViolationSlice {
 
 ## 8. 語音（#69）
 
-| Operation                                         | 說明                                                                                                     |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `POST /api/stt`（multipart audio ≤60s）→ `{text}` | 供無 Web Speech API 的瀏覽器（Firefox）；支援者前端自走原生                                              |
-| `POST /api/tts` `{text, lang}` → audio stream     | server-side 為保證路徑；**無 char boundary**——嘴型驅動用 amplitude：`Api.tts(text, onAmplitude, signal)` |
+| Operation                                          | 說明                                                                                                     |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `POST /api/stt`（multipart audio ≤15MB）→ `{text}` | 供無 Web Speech API 的瀏覽器（Firefox）；支援者前端自走原生                                              |
+| `POST /api/tts` `{text, lang}` → audio stream      | server-side 為保證路徑；**無 char boundary**——嘴型驅動用 amplitude：`Api.tts(text, onAmplitude, signal)` |
 
 ## 9. 查詢與 teacher keys
 
@@ -186,13 +186,13 @@ interface ViolationSlice {
 
 `code` 為 shared 的 `ErrorCode` literal union＋`ApiError`（帶型別 `code`），呼叫端 switch 窮舉有編譯期檢查。
 
-| 層                     | code                                                                                                       | HTTP                        |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------- |
-| 通用                   | `unauthorized` / `forbidden` / `not_found` / `conflict` / `validation` / `rate_limited` / `internal_error` | 401/403/404/409/422/429/500 |
-| 入場                   | `join_code_invalid` / `tos_required` / `name_taken` / `only_student`                                       | 404/422/409/403             |
-| 對話（WS error frame） | `ConversationBusy`（busy 第二發）與 pi 的錯誤訊息；`llm_*` 碼保留給 oneshot 端點                           | —                           |
-| 報告                   | `report_pending` / `report_failed`                                                                         | 404 / 500                   |
-| BYOK / teacher keys    | `byok_provider_invalid`                                                                                    | 422                         |
+| 層                     | code                                                                                                            | HTTP                        |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| 通用                   | `unauthorized` / `forbidden` / `not_found` / `conflict` / `validation` / `rate_limited` / `internal_error`      | 401/403/404/409/422/429/500 |
+| 入場                   | `join_code_invalid` / `tos_required` / `name_taken` / `only_student`                                            | 404/422/409/403             |
+| 對話（WS error frame） | pi 錯誤名（`ConversationBusy`…）作 code；內部錯誤只回 generic 訊息不洩細節；`activity_finished`＝活動已結束拒寫 | —                           |
+| 報告                   | `report_pending` / `report_failed`                                                                              | 404 / 500                   |
+| BYOK / teacher keys    | `byok_provider_invalid`                                                                                         | 422                         |
 
 ## 11. 範圍外（明確不在 v1 契約）
 

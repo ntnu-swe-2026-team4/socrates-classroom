@@ -5,13 +5,12 @@
 
 ## Pool 定位
 
-| 角色               | Provider                        | 模型                                                | ZDR                                        |
-| ------------------ | ------------------------------- | --------------------------------------------------- | ------------------------------------------ |
-| 開發專用           | GLM Coding Plan Global（`zai`） | GLM-5.3 / GLM-5.3-Flash                             | ✗（且條款禁產品後端）                      |
-| 生產主力           | 自架 DGX Spark ×2               | GLM-5.3-Flash EXL3（1M ctx）                        | ✓（資料不出門）                            |
-| 第一溢位           | OpenCode Go（`opencode-go`）    | **鎖 GLM-5.3-Flash**                                | ✓（官方每模型表：0 days）                  |
-| 壓底               | CF Workers AI（`AI` binding）   | `@cf/zai-org/glm-4.7-flash`                         | ✓（官方明文 Zero retention + No training） |
-| 雲端 fallback 通道 | OpenRouter（`openrouter`）      | `z-ai/glm-5.3-flash`（$0.0285/M in・$0.0923/M out） | ✓（帳戶強制 `zdr` + 官方不留資料）         |
+| 角色                   | Provider                        | 模型                               | ZDR                                        |
+| ---------------------- | ------------------------------- | ---------------------------------- | ------------------------------------------ |
+| 開發專用               | GLM Coding Plan Global（`zai`） | GLM-5.3 / GLM-5.3-Flash            | ✗（且條款禁產品後端）                      |
+| 生產主力（priority 1） | 自架 DGX Spark                  | GLM-5.3-Flash（1M ctx、reasoning） | ✓（資料不出門）                            |
+| 第一溢位（priority 2） | CF Workers AI（`AI` binding）   | `@cf/zai-org/glm-5.3-flash`        | ✓（官方明文 Zero retention + No training） |
+| 壓底（priority 3）     | CF Workers AI（`AI` binding）   | `@cf/zai-org/glm-4.7-flash`        | ✓（同上）                                  |
 
 **學生流量（生產鏈）只走後三段（全 ZDR）；Coding Plan 不碰學生資料。**
 fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），不能只鎖 provider。
@@ -121,7 +120,7 @@ fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），�
   - 模型頁：`clef`、`clef-flash`、`clef-omni` 皆標「Zero data retention: Yes」（[clef](https://developers.cloudflare.com/workers-ai/models/clef/)、[clef-flash](https://developers.cloudflare.com/workers-ai/models/clef-flash/)、[clef-omni](https://developers.cloudflare.com/workers-ai/models/clef-omni/)；2026-11-08 查證）
   - 發布文：「we don’t read, store, or train on your requests or responses (unless you want to use our fine-tuning product, which we go into below)」（[發布文](https://blog.cloudflare.com/clef-decision-models/)；2026-11-08 查證）
   - Data usage 頁（2026-10-16 更新）：「For standard inference requests that do not invoke a stateful feature, Cloudflare does not retain inputs or outputs after they are no longer needed to process the request and deliver the response, subject to the limited exceptions below」，並寫「No training: Cloudflare does not use Customer Content processed by Workers AI to train AI models」。⚠️ 承諾不排除由你指示的儲存：使用 R2／KV／Durable Objects／Vectorize、在 AI Gateway 開 logging 或 caching、把內容寫進應用程式日誌、使用 asynchronous 或 batch 功能、上傳檔案或 adapters、其他 stateful 功能時，Customer Content 可能被儲存。另可能保留 operational metadata（account 與 model identifiers、timestamps、request 與 response sizes、token 或 neuron 數、latency、request source、normalized status 或 error codes），不含 Customer Content；為履行法律義務而分析或保留的內容不用於訓練（[Data usage](https://developers.cloudflare.com/workers-ai/platform/data-usage/)；2026-11-08 查證）
-- **Clef 約束**：⚠️ 呼叫不得經 AI Gateway（binding 或 REST 皆同，會落入 logging／caching 例外，見 §4 ZDR）；report 批次評分不得使用 Workers AI 的 asynchronous 或 batch 功能。現況：`classify.ts`、`avatar/index.ts` 以 `ai.run` 直呼、未指定 gateway；`apps/server/src` 未找到 asynchronous／batch 呼叫（唯一的 `gatewayId` 在 `websearch` 的網頁搜尋，不是 Clef 呼叫），`oneshot` 的 traffic class `batch` 是 router 內部分類（2026-11-08 檢查：[`classify.ts`](../apps/server/src/pi/extensions/judgment/classify.ts)、[`oneshot.ts`](../apps/server/src/routing/oneshot.ts)；例外依據：[Data usage](https://developers.cloudflare.com/workers-ai/platform/data-usage/)）
+- **Clef 約束**：⚠️ 呼叫不得經 AI Gateway（binding 或 REST 皆同，會落入 logging／caching 例外，見 §4 ZDR）；report 批次評分不得使用 Workers AI 的 asynchronous 或 batch 功能。現況：`classify.ts`、`avatar/index.ts` 以 `ai.run` 直呼、未指定 gateway；`apps/server/src` 未找到 asynchronous／batch 呼叫（唯一的 `gatewayId` 在 `websearch` 的網頁搜尋，不是 Clef 呼叫）（2026-11-09 檢查：[`classify.ts`](../apps/server/src/pi/extensions/judgment/classify.ts)；例外依據：[Data usage](https://developers.cloudflare.com/workers-ai/platform/data-usage/)）
 - **Clef 資料位置**：⚠️ 發布文與 Data usage 頁沒有 region／data residency 的說明；changelog 只寫「Requests run on GPUs across Cloudflare's network, running close to your users」（[發布文](https://blog.cloudflare.com/clef-decision-models/)、[Data usage](https://developers.cloudflare.com/workers-ai/platform/data-usage/)、[changelog](https://developers.cloudflare.com/changelog/post/2026-10-01-clef-workers-ai/)；2026-11-08 查證）。學生可能為未成年人，資料位置屬未決風險，與 #57（去識別化）、#70（ToS）一併決定
 - **Clef-omni（非候選）**：30B MoE（3B active），可讀 audio（最多 4 段，每段 8 MiB 且 300 秒）與 video（最多 2 段，每段 16 MiB 且 60 秒）；$0.15/M、13,636 neurons/M；ZDR 標「Yes」；本專案只處理文字，不列入候選（[clef-omni](https://developers.cloudflare.com/workers-ai/models/clef-omni/)、[定價](https://developers.cloudflare.com/workers-ai/platform/pricing/)；2026-11-08 查證）
 

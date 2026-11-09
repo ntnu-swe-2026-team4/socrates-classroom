@@ -12,8 +12,10 @@ interface UserRow {
   password_hash: string | null;
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  return error instanceof Error && error.message.includes("UNIQUE constraint failed");
+function uniqueViolationColumn(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+  const match = error.message.match(/UNIQUE constraint failed: (?:\w+\.)?(\w+)/);
+  return match ? match[1] : null;
 }
 
 export function authRoutes() {
@@ -64,7 +66,10 @@ export function authRoutes() {
           },
         ]);
       } catch (error) {
-        fail(409, isUniqueViolation(error) ? "name_taken" : "conflict");
+        const column = uniqueViolationColumn(error);
+        if (column === "name") fail(409, "name_taken");
+        else if (column === "email") fail(409, "conflict");
+        else fail(409, "conflict");
       }
       const user = { id, name: input.name, role: "student" as const };
       await startSession(c, user);

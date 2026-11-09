@@ -69,7 +69,12 @@ function ClassroomsPage() {
             <ClassroomCard key={room.id} room={room} />
           ))}
         </div>
-        {!classrooms.isPending && !list.length && (
+        {classrooms.isError && (
+          <div role="alert" className="rounded-3xl border border-line-strong px-6 py-14 text-center text-sm text-flag">
+            {t("common_error")}
+          </div>
+        )}
+        {!classrooms.isPending && !classrooms.isError && !list.length && (
           <div className="rounded-3xl border border-dashed border-line-strong px-6 py-14 text-center text-sm text-ink-faint">
             {teacher ? t("classrooms_empty_teacher") : t("classrooms_empty_student")}
           </div>

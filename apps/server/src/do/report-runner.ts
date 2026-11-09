@@ -4,7 +4,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { fauxAssistantMessage, type AssistantMessage, type TranscriptContext } from "@earendil-works/pi-ai";
 import type { Env } from "../env";
 import { buildModels } from "../pi/models";
-import { teacherOfActivity, type TeacherLeg } from "../pi/credentials";
+import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import { all, one, run } from "../db/d1";
 import { nowIso } from "../http";
 import {
@@ -78,7 +78,12 @@ export class ReportRunner extends DurableObject<Env> {
       return;
     }
     try {
-      await this.generate(activityId);
+      await Promise.race([
+        this.generate(activityId),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("report_generation_timeout")), report.alarmTimeoutMs);
+        }),
+      ]);
     } catch (error) {
       console.error("[report] generation failed", error instanceof Error ? error.name : typeof error);
       await this.ctx.storage.setAlarm(Date.now() + attempts * report.alarmBackoffMs);
@@ -220,22 +225,7 @@ export class ReportRunner extends DurableObject<Env> {
   }
 
   private async teacherLegs(): Promise<TeacherLeg[]> {
-    const teacherId = await teacherOfActivity(this.env, this.ctx.id.name ?? "");
-    if (!teacherId) return [];
-    const rows = await all<{ provider_id: string; model: string }>(
-      this.env.DB,
-      "SELECT provider_id, model FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
-      { uid: teacherId },
-    );
-    return rows
-      .filter((row) => row.model)
-      .map((row) => ({
-        provider: row.provider_id,
-        model: row.model,
-        credential: `teacher:${teacherId}`,
-        maxConcurrency: routingConfig.teacherChain.maxConcurrency,
-        priority: 0,
-      }));
+    return teacherLegsOf(this.env, await teacherOfActivity(this.env, this.ctx.id.name ?? ""));
   }
 
   private async transcriptOf(
@@ -245,7 +235,10 @@ export class ReportRunner extends DurableObject<Env> {
   ): Promise<{ text: string; violations: ViolationSlice[] }> {
     const stub = this.env.Chat.get(this.env.Chat.idFromName(`${activityId}:${studentId}`));
     const res = await stub.fetch("https://chat/transcript");
-    if (!res.ok) return { text: "", violations: [] };
+    if (!res.ok) {
+      console.error("[report] transcript fetch failed", res.status);
+      return { text: "", violations: [] };
+    }
     const data = (await res.json()) as {
       messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
       violations: Array<{ turn: number; type: string; excerpt: string }>;

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { GenerateTopicsInputSchema, TopicCreateInputSchema, LANG_NAMES, TopicGenSchema } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
-import { fail, langOf, newId, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
+import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
 import { parsePrompts, type TopicRow } from "../services/members";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
@@ -48,6 +48,7 @@ export function topicsRoutes() {
       return c.json(parsePrompts(row), 201);
     })
     .post("/topics/generate", async (c) => {
+      await enforceIpLimit(c, "topics-generate", 10);
       requireTeacher(c);
       const input = await parseBody(c, GenerateTopicsInputSchema);
       if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {

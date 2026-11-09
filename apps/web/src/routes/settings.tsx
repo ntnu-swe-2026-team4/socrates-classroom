@@ -1,7 +1,8 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { TeacherKeyStatus } from "@socrates/shared";
 import { useState } from "react";
-import { api, type TeacherKeyEntry } from "@/api";
+import { api } from "@/api";
 import { Card, PageHeader } from "@/components/ui";
 import { locales, setLocale, useI18n, useT, type Locale } from "@/i18n";
 import { cn } from "@/components/ui";
@@ -96,7 +97,7 @@ function TeacherKeysCard() {
     }
   };
 
-  const remove = (entry: TeacherKeyEntry) =>
+  const remove = (entry: TeacherKeyStatus) =>
     run(async () => {
       await api.deleteTeacherKey(entry.provider);
     });

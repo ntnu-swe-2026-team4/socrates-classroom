@@ -87,9 +87,12 @@ export function useDialogue(activityId: string, userId: string) {
     const text = lastAssistantText(viewRef.current);
     if (text) {
       setPhase("speaking");
-      speak(text)
+      const speaking = speak(text);
+      const controller = ttsRef.current;
+      speaking
         .catch(() => {})
         .finally(() => {
+          if (ttsRef.current !== controller) return;
           ttsRef.current = null;
           setPhase("idle");
         });
@@ -188,11 +191,12 @@ export function useDialogue(activityId: string, userId: string) {
     const last = lastAssistantText(viewRef.current);
     if (!last) return;
     setPhase("speaking");
-    speak(last)
-      .catch(() => {
-        ttsRef.current = null;
-      })
+    const speaking = speak(last);
+    const controller = ttsRef.current;
+    speaking
+      .catch(() => {})
       .finally(() => {
+        if (ttsRef.current !== controller) return;
         ttsRef.current = null;
         setPhase("idle");
       });

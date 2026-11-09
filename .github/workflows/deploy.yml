@@ -21,8 +21,11 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Test (final gate before deploy)
-        run: pnpm test
+      - name: Lint + Typecheck + Test (final gate before deploy)
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
       - name: cf build (client + worker, built once)
         run: pnpm exec cf build
         working-directory: apps/web

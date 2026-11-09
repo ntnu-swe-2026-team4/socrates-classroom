@@ -28,9 +28,10 @@ export function SocratesStage({
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
+    if (!box.current) return;
     const cv = document.createElement("canvas");
     cv.className = "block size-full";
-    box.current?.prepend(cv);
+    box.current.prepend(cv);
     let s: ReturnType<typeof createSocratesScene>;
     try {
       s = createSocratesScene(cv, box.current, {
