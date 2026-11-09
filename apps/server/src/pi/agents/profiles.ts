@@ -176,6 +176,13 @@ function toolCallPayload(entry: { model?: readonly unknown[] }, toolName: string
   return null;
 }
 
+export class NoAvailableModelError extends Error {
+  constructor() {
+    super("no_available_model");
+    this.name = "no_available_model";
+  }
+}
+
 export async function runProfile(
   harness: Harness,
   runtime: ProfileRuntime,
@@ -193,7 +200,7 @@ export async function runProfile(
   const canServe = (entry: { provider: string; model: string }): boolean =>
     runtime.models.models.getModel(entry.provider, entry.model) !== undefined;
   const decision = router.pick(profile.trafficClass, canServe, teacherLegs);
-  if (!decision && !runtime.models.faux) throw new Error("no_available_model");
+  if (!decision && !runtime.models.faux) throw new NoAvailableModelError();
   let kind: SettleKind = "error";
   try {
     const model = decision

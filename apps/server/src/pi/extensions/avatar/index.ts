@@ -41,6 +41,10 @@ interface ClefRunResult {
   answers?: Record<string, { choice?: string; probabilities?: Record<string, number>; confidence?: number }>;
 }
 
+export function createEmotionClassifier(ai: Ai): (text: string) => Promise<EmotionJudgment | null> {
+  return (text) => classify(ai, text);
+}
+
 async function classify(ai: Ai, text: string): Promise<EmotionJudgment | null> {
   try {
     const raw = (await (ai as unknown as { run: (m: string, i: unknown) => Promise<unknown> }).run(EMOTION_MODEL, {
@@ -53,34 +57,40 @@ async function classify(ai: Ai, text: string): Promise<EmotionJudgment | null> {
         },
       },
     })) as ClefRunResult;
-    const answer = raw.answers?.emotion;
-    if (answer?.choice === undefined) return null;
-    const choice = answer.choice as Emotion;
-    return { emotion: choice, probabilities: answer.probabilities ?? {}, confidence: answer.confidence ?? 0 };
+    return emotionOf(raw);
   } catch {
     return null;
   }
 }
 
-function answerOf(run: RunSummary, api: HookApi, context: Context): Promise<string> {
+export function emotionOf(raw: ClefRunResult): EmotionJudgment | null {
+  const answer = raw.answers?.emotion;
+  if (answer?.choice === undefined) return null;
+  const choice = answer.choice as Emotion;
+  return { emotion: choice, probabilities: answer.probabilities ?? {}, confidence: answer.confidence ?? 0 };
+}
+
+function lastStudentTextOf(run: RunSummary, api: HookApi, context: Context): Promise<string> {
   return api
     .entries({ minEntryId: run.first, maxEntryId: run.last, order: "ascending" }, 1000, undefined, context)
-    .then(({ items }) =>
-      items
-        .filter((entry) => entry.kind === "pi.assistant")
-        .flatMap((entry) => entry.model ?? [])
-        .map((message) => {
-          if (message.role !== "assistant") return "";
-          const content = message.content;
-          if (typeof content === "string") return content;
-          return content.map((part) => (part.type === "text" ? part.text : "")).join("");
-        })
-        .join(""),
+    .then(
+      ({ items }) =>
+        items
+          .filter((entry) => entry.kind === "pi.user")
+          .flatMap((entry) => entry.model ?? [])
+          .map((message) => {
+            if (message.role !== "user") return "";
+            const content = message.content;
+            if (typeof content === "string") return content;
+            return content.map((part) => (part.type === "text" ? part.text : "")).join("");
+          })
+          .filter(Boolean)
+          .at(-1) ?? "",
     );
 }
 
 export function createAvatarExtension(ai: Ai | undefined) {
-  const classifier = ai ? (text: string) => classify(ai, text) : null;
+  const classifier = ai ? createEmotionClassifier(ai) : null;
   const EmotionTask = defineTask<{ text: string }, { phase: "record" }, null>({
     name: "app.emotion",
     version: 1,
@@ -115,7 +125,7 @@ export function createAvatarExtension(ai: Ai | undefined) {
       hook(GenerationTask, {
         afterRun: async (run, api, context) => {
           if (!classifier || run.reason !== "answer") return undefined;
-          const text = await answerOf(run, api, context);
+          const text = await lastStudentTextOf(run, api, context);
           if (!text.trim()) return undefined;
           return { tasks: [runEndTask(EmotionTask, { text })] };
         },

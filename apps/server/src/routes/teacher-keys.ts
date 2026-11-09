@@ -88,7 +88,7 @@ export function teacherKeyRoutes() {
       const input = await parseBody(c, KeyInputSchema);
       const def = provider !== input.provider ? undefined : keyableProvider(provider);
       if (!def) fail(422, "byok_provider_invalid");
-      if (!def.getModels().some((model) => model.id === input.model)) fail(422, "validation");
+      if (!def.getModels().some((model) => model.id === input.model)) fail(422, "byok_provider_invalid");
       const enc = await encryptKey(c.env, input.key);
       const existing = await one<{ n: number }>(
         c.env.DB,

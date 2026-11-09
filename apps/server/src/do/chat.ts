@@ -21,7 +21,7 @@ import { createJudgmentExtension } from "../pi/extensions/judgment";
 import { createWebSearchExtension } from "../pi/extensions/websearch";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 import { socratesExtension } from "../pi/extensions/socrates";
-import { PROFILES } from "../pi/agents/profiles";
+import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
 import { buildModels } from "../pi/models";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import { one } from "../db/d1";
@@ -117,7 +117,7 @@ export class Chat extends DurableObject<Env> {
     const canServe = (entry: { provider: string; model: string }): boolean =>
       this.models.models.getModel(entry.provider, entry.model) !== undefined;
     const decision = router.pick("interactive", canServe, await this.teacherLegs());
-    if (!decision && !this.models.faux) throw new Error("no_available_model");
+    if (!decision && !this.models.faux) throw new NoAvailableModelError();
     if (!decision) return handle.submit(input, options);
     const model = this.models.models.getModel(decision.entry.provider, decision.model);
     const receipt = await router.withRoute(decision, async () => {
