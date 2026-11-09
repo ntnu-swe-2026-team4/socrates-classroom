@@ -2,14 +2,12 @@ import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { evictDurableObject } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
-import { applyImmutable } from "@earendil-works/chord/delta";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
-import type { ConversationView } from "@earendil-works/pi-durable";
 import worker from "../src/index";
 import { seedDemo } from "../src/seed";
 import { run } from "../src/db/d1";
-import type { ServerMessage } from "../src/ws/protocol";
+import { assistantText, frames, latestView } from "./helpers";
 
 let teacherCookie: string;
 let classroomCode: string;
@@ -49,50 +47,6 @@ async function connect(thread: string, cookie?: string): Promise<WebSocket> {
   const socket = response!.webSocket as WebSocket;
   socket.accept();
   return socket;
-}
-
-function frames(socket: WebSocket): {
-  list: ServerMessage[];
-  until: (check: (frames: ServerMessage[]) => boolean) => Promise<void>;
-} {
-  const list: ServerMessage[] = [];
-  const waiters: Array<() => void> = [];
-  socket.addEventListener("message", (event) => {
-    if (typeof event.data !== "string") return;
-    list.push(JSON.parse(event.data) as ServerMessage);
-    for (const waiter of waiters.splice(0)) waiter();
-  });
-  socket.addEventListener("close", () => {
-    for (const waiter of waiters.splice(0)) waiter();
-  });
-  return {
-    list,
-    until: async (check) => {
-      for (let i = 0; i < 500 && !check(list); i++) {
-        await new Promise<void>((resolve) => waiters.push(resolve));
-      }
-      expect(check(list)).toBe(true);
-    },
-  };
-}
-
-function assistantText(view: ConversationView): string {
-  return view.entries
-    .flatMap((entry) => entry.model ?? [])
-    .filter((message) => message.role === "assistant")
-    .flatMap((message) => message.content)
-    .filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("");
-}
-
-function latestView(list: ServerMessage[]): ConversationView | undefined {
-  let view: ConversationView | undefined;
-  for (const frame of list) {
-    if (frame.type === "view") view = frame.view;
-    if (frame.type === "ops" && view) view = applyImmutable(view, frame.ops);
-  }
-  return view;
 }
 
 const migrations = inject("d1Migrations");

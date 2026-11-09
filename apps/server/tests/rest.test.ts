@@ -197,8 +197,9 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       headers: { "Content-Type": "application/json", Cookie: teacher },
       body: JSON.stringify({
         name: "R6 他班",
-        topicId: ((await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>)[0]!
-          .id,
+        topicId: (
+          (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>
+        )[0]!.id,
       }),
     });
     expect(otherClassroom.status).toBe(201);
