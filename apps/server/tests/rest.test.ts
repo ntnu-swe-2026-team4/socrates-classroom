@@ -2,20 +2,8 @@ import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { inject } from "vitest";
-import worker from "../src/index";
 import { seedDemo } from "../src/seed";
-
-async function call(path: string, init: RequestInit = {}): Promise<Response> {
-  return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(
-    new Request(`http://worker.test${path}`, init),
-    env,
-    { waitUntil: () => {} },
-  );
-}
-
-function cookieOf(res: Response): string {
-  return (res.headers.getSetCookie?.()[0] ?? "").split(";")[0]!;
-}
+import { call, cookieOf } from "./helpers";
 
 let teacher: string;
 let code: string;
@@ -216,6 +204,20 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
 
     const topics = await call("/api/topics");
     expect(topics.status).toBe(401);
+
+    const studentCookie = cookieOf(
+      await call("/api/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: "R6生G", tosAccepted: true }),
+      }),
+    );
+    const genAsStudent = await call("/api/topics/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: studentCookie },
+      body: JSON.stringify({ direction: "測試" }),
+    });
+    expect(genAsStudent.status).toBe(403);
 
     const joined = await call("/api/join", {
       method: "POST",

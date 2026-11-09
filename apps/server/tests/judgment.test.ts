@@ -4,24 +4,11 @@ import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import type { ConversationView } from "@earendil-works/pi-durable";
-import worker from "../src/index";
 import { seedDemo } from "../src/seed";
-import { frames, latestView } from "./helpers";
+import { call, cookieOf, frames, latestView } from "./helpers";
 
 let threads: string[];
 let cookies: string[];
-
-async function call(path: string, init: RequestInit = {}): Promise<Response> {
-  return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(
-    new Request(`http://worker.test${path}`, init),
-    env,
-    { waitUntil: () => {} },
-  );
-}
-
-function cookieOf(res: Response): string {
-  return (res.headers.getSetCookie?.()[0] ?? "").split(";")[0]!;
-}
 
 async function connect(name: string, index = 0): Promise<WebSocket> {
   const response = await routeAgentRequest(

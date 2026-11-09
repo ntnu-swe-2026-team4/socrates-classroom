@@ -9,7 +9,7 @@
 - [單人：與蘇格拉底對話](#單人與蘇格拉底對話)
 - [活動與報告](#活動與報告)
 - [對話引擎（Pi Durable）](#對話引擎pi-durable)
-- [LLM Gateway 與 Teacher Keys](#llm-routing-與-teacher-keys)
+- [LLM Gateway 與 Teacher Keys](#llm-gateway-與-teacher-keys)
 - [平台與基礎建設](#平台與基礎建設)
 
 ---

@@ -6,6 +6,8 @@
 
 完整 quickstart（安裝 → seed → 登入）見 [README](../README.md#quickstart)。本文件記 dev 專屬細節：
 
+- Node 26 由 `devEngines`（root `package.json`）保證：`pnpm install` 自動下載對應 runtime；shell 互動（`node`／`cf` 直呼）用 [fnm](https://github.com/Schniz/fnm) 等 version manager（`eval "$(fnm env --use-on-cd --shell zsh)"`）
+
 - `pnpm dev` 啟動時**自動套用 D1 migrations**（vite `configureServer` 跑 `pnpm migrate`，冪等約 1s）；手動 `pnpm migrate` 等價
 - `pnpm seed` 需要 **dev server 運行中**；SEED_TOKEN 自動讀 `apps/web/.env.local`（或環境變數）。在 `LLM_PROVIDER=mock`（預設）或設了 `DGX_BASE_URL` 時可用；灌入老師帳號＋兩間含進行中活動的教室
 

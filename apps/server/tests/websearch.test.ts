@@ -3,24 +3,11 @@ import { applyD1Migrations } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
-import worker from "../src/index";
 import { seedDemo } from "../src/seed";
-import { frames } from "./helpers";
+import { call, cookieOf, frames } from "./helpers";
 
 let thread: string;
 let cookie: string;
-
-async function call(path: string, init: RequestInit = {}): Promise<Response> {
-  return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(
-    new Request(`http://worker.test${path}`, init),
-    env,
-    { waitUntil: () => {} },
-  );
-}
-
-function cookieOf(res: Response): string {
-  return (res.headers.getSetCookie?.()[0] ?? "").split(";")[0]!;
-}
 
 async function connect(name: string): Promise<WebSocket> {
   const response = await routeAgentRequest(
@@ -166,6 +153,10 @@ describe("fetch_content (readable/raw + cache + SSRF)", () => {
       "http://[::]/x",
       "http://[::ffff:127.0.0.1]/x",
       "http://[::ffff:7f00:1]/x",
+      "http://[::ffff:192.168.1.1]/x",
+      "http://[::ffff:172.16.0.1]/x",
+      "http://[::ffff:169.254.169.254]/x",
+      "http://[::ffff:10.0.0.1]/x",
       "http://[fe80::1]/x",
       "http://[fe90::1]/x",
       "http://[fc00::1]/x",

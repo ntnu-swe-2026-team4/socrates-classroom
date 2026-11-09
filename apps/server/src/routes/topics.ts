@@ -1,5 +1,11 @@
 import { Hono } from "hono";
-import { GenerateTopicsInputSchema, TopicCreateInputSchema, LANG_NAMES, TopicGenSchema } from "@socrates/shared";
+import {
+  GenerateTopicsInputSchema,
+  TopicCreateInputSchema,
+  LANG_NAMES,
+  TopicGenSchema,
+  ApiError,
+} from "@socrates/shared";
 import { all, one, run } from "../db/d1";
 import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
 import { parsePrompts, type TopicRow } from "../services/members";
@@ -50,6 +56,7 @@ export function topicsRoutes() {
     .post("/topics/generate", async (c) => {
       await enforceIpLimit(c, "topics-generate", 10);
       const input = await parseBody(c, GenerateTopicsInputSchema);
+      requireTeacher(c);
       if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {
         return c.json(
           mockTopics(input.direction).topics.map((topic, index) => ({
@@ -79,6 +86,7 @@ export function topicsRoutes() {
           })),
         );
       } catch (error) {
+        if (error instanceof ApiError) throw error;
         console.error("[topics/generate] failed", error);
         return c.json(
           mockTopics(input.direction).topics.map((topic, index) => ({

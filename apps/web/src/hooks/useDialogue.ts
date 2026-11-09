@@ -156,8 +156,12 @@ export function useDialogue(activityId: string, userId: string) {
       const tail = index === -1 ? entries : entries.slice(index + 1);
       if (answered(tail)) {
         completePending();
-      } else if (full && !tail.some((entry) => entry.kind === "pi.user")) {
-        failPending("llm_unavailable");
+      } else if (full) {
+        if (tail.some((entry) => entry.kind === "pi.assistant")) {
+          completePending();
+        } else if (!tail.some((entry) => entry.kind === "pi.user")) {
+          failPending("llm_unavailable");
+        }
       }
     },
     [completePending, failPending],

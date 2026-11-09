@@ -8,7 +8,7 @@ import type {
   ViolationSlice,
 } from "@socrates/shared";
 import { one, run } from "../db/d1";
-import { fail, requireUser, type AppEnv } from "../http";
+import { enforceIpLimit, fail, requireUser, type AppEnv } from "../http";
 import { requireMembership, topicOf } from "../services/members";
 
 export function activityRoutes() {
@@ -26,6 +26,7 @@ export function activityRoutes() {
       });
     })
     .post("/activities/:id/finish", async (c) => {
+      await enforceIpLimit(c, "activity-finish", 6);
       const user = requireUser(c);
       const { activity, classroom } = await requireMembership(c.env.DB, c.req.param("id"), user);
       if (classroom.teacher_id !== user.id) fail(403, "forbidden");

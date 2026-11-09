@@ -1,4 +1,6 @@
+import { env } from "cloudflare:workers";
 import { expect } from "vitest";
+import worker from "../src/index";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import type { ServerMessage } from "../src/ws/protocol";
@@ -50,4 +52,16 @@ export function latestView(list: ServerMessage[]): ConversationView | undefined 
 export function latestAssistantText(list: ServerMessage[]): string {
   const view = latestView(list);
   return view ? assistantText(view) : "";
+}
+
+export async function call(path: string, init: RequestInit = {}): Promise<Response> {
+  return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(
+    new Request(`http://worker.test${path}`, init),
+    env,
+    { waitUntil: () => {} },
+  );
+}
+
+export function cookieOf(res: Response): string {
+  return (res.headers.getSetCookie?.()[0] ?? "").split(";")[0]!;
 }

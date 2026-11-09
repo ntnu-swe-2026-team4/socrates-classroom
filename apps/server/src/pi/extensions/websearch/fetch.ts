@@ -56,7 +56,7 @@ function isPrivateIp(host: string): boolean {
   if (groups[0]! >= 0xff00) return true;
   if (groups[0] === 0x0064 && groups[1] === 0xff9b && groups.slice(2, 6).every((group) => group === 0)) return true;
   if (groups.slice(0, 5).every((group) => group === 0) && (groups[5] === 0xffff || groups[5] === 0)) {
-    return isPrivateIpv4(groups[6]! >> 8, groups[7]! >> 8);
+    return isPrivateIpv4(groups[6]! >> 8, groups[6]! & 0xff);
   }
   return false;
 }

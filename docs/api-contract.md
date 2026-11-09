@@ -6,19 +6,19 @@
 
 ## 1. 慣例
 
-| 項目     | 規範                                                                                                                                                                                                                                            |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 部署     | 單一 Worker：static assets + `/api/*`（Hono）+ `/agents/*`（WebSocket），同源無 CORS                                                                                                                                                            |
-| Auth     | httpOnly cookie `socrates_session`（`SameSite=Lax`＋prod 恆 `Secure`）；前端 `credentials: "include"`；**任何 key 永不進前端**。30 天 HMAC token **不可撤銷**（logout 僅清 cookie；membership 撤銷會在 WS 喚醒時 re-verify，REST 仍有效至過期） |
-| 語言     | `Accept-Language` → `Lang`（`zh-*→"zh"`、`en→"en"`、`es→"es"`）——錯誤訊息依此三語                                                                                                                                                               |
-| JSON     | camelCase；id 為字串；時間 ISO 8601                                                                                                                                                                                                             |
-| 錯誤     | `{ "message": string, "code": string }`；`code` 為 shared 的 `ErrorCode` literal union（§10），`message` 已本地化                                                                                                                               |
-| 輸入邊界 | zod 強制：`name` ≤80、對話 `text` ≤2000、`term` 1–30、`direction` ≤200、STT 音檔 ≤15MB（位元組上限，非時長）；超界 `422 validation`                                                                                                             |
-| 授權     | 預設 deny——見 §1.1；未列者一律需登入且屬教室成員                                                                                                                                                                                                |
-| 限流     | 現行 per-IP stopgaps（isolate-local sliding window，跨 isolate 不保證、eviction 即重置）：login/register 30、join-code 60、join 30、lookup 20、topics-generate 10、stt 20、tts 30；集中式 per-user 限流為 #103 待辦，非現行行為                 |
-| 冪等     | 自然鍵冪等：重複 `POST /api/join`（同身分）＝200 冪等、`finish` 重試安全、`PUT settings/*` 天然冪等                                                                                                                                             |
-| 版本     | `/api` 無版本前綴（單一消費者）；外部消費者出現時才評版本化＋OpenAPI                                                                                                                                                                            |
-| 型別共享 | `RpcApp = ReturnType<typeof createApp>`＋`RpcApi = ReturnType<typeof createApi>`（`apps/server/src/app.ts`）；web 端消費 declaration 產物 `hc<RpcApi>("/api")`（R6）                                                                            |
+| 項目     | 規範                                                                                                                                                                                                                                               |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 部署     | 單一 Worker：static assets + `/api/*`（Hono）+ `/agents/*`（WebSocket），同源無 CORS                                                                                                                                                               |
+| Auth     | httpOnly cookie `socrates_session`（`SameSite=Lax`＋prod 恆 `Secure`）；前端 `credentials: "include"`；**任何 key 永不進前端**。30 天 HMAC token **不可撤銷**（logout 僅清 cookie；membership 撤銷會在 WS 喚醒時 re-verify，REST 仍有效至過期）    |
+| 語言     | `Accept-Language` → `Lang`（`zh-*→"zh"`、`en→"en"`、`es→"es"`）——錯誤訊息依此三語                                                                                                                                                                  |
+| JSON     | camelCase；id 為字串；時間 ISO 8601                                                                                                                                                                                                                |
+| 錯誤     | `{ "message": string, "code": string }`；`code` 為 shared 的 `ErrorCode` literal union（§10），`message` 已本地化                                                                                                                                  |
+| 輸入邊界 | zod 強制：`name` ≤80、對話 `text` ≤2000、`term` 1–30、`direction` ≤200、STT 音檔 ≤15MB（位元組上限，非時長）；超界 `422 validation`                                                                                                                |
+| 授權     | 預設 deny——見 §1.1；未列者一律需登入且屬教室成員                                                                                                                                                                                                   |
+| 限流     | 現行 per-IP stopgaps（isolate-local sliding window，跨 isolate 不保證、eviction 即重置）：login/register 30、join-code 60、join 30、lookup 20、topics-generate 10、stt 20、tts 30、activity-finish 6；集中式 per-user 限流為 #103 待辦，非現行行為 |
+| 冪等     | 自然鍵冪等：重複 `POST /api/join`（同身分）＝200 冪等、`finish` 重試安全、`PUT settings/*` 天然冪等                                                                                                                                                |
+| 版本     | `/api` 無版本前綴（單一消費者）；外部消費者出現時才評版本化＋OpenAPI                                                                                                                                                                               |
+| 型別共享 | `RpcApp = ReturnType<typeof createApp>`＋`RpcApi = ReturnType<typeof createApi>`（`apps/server/src/app.ts`）；web 端消費 declaration 產物 `hc<RpcApi>("/api")`（R6）                                                                               |
 
 ### 1.1 授權矩陣
 
@@ -80,7 +80,7 @@ interface User {
 ```ts
 type ClientMessage =
   | { type: "watch"; id?: string; from?: EntryId }                       // 附掛（重連帶 from 續看）
-  | { type: "submit"; id?: string; input: UserInput; operationId?: string } // 發言（input＝pi UserInput：string 或 content parts；冪等鍵可選）
+  | { type: "submit"; id?: string; input: string; operationId?: string } // 發言（input＝string；pi 的 content parts 形狀未開放；冪等鍵可選）
   | { type: "abort"; id?: string }
   | { type: "entries"; id: string; query: {...}; limit: number };        // 分頁載入歷史（query 必填；上限 100）
 ```
@@ -111,10 +111,10 @@ type ServerMessage =
 
 ## 7. 活動結束與報告（#74/#78/#79/#72）
 
-| Operation                                                           | 說明                                                                                                                                                                                                                                                                                       |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `POST /api/activities/:id/finish` → `204`                           | 老師結束活動 → ReportRunner DO `startReport`（alarm 驅動，非同步）。冪等；老師專屬                                                                                                                                                                                                         |
-| `GET /api/activities/:id/report` → `TeacherReport \| StudentReport` | 生成中 404 `report_pending`（前端輪詢至 200）；失敗 500 `report_failed`（重打 `finish` 可重觸發）；**partial**＝群體生成重試耗盡但個別報告已存——200 回應，`classReport: null`、`positions: []`（重打 `finish` 可重觸發全量）。**角色分流**：老師見全班＋個人；學生見自己（無 classReport） |
+| Operation                                                           | 說明                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/activities/:id/finish` → `204`                           | 老師結束活動 → ReportRunner DO `startReport`（alarm 驅動，非同步）。冪等；老師專屬                                                                                                                                                                                                                                                                |
+| `GET /api/activities/:id/report` → `TeacherReport \| StudentReport` | 生成中 404 `report_pending`（前端輪詢至 200）；失敗 500 `report_failed`（重打 `finish` 可重觸發）；**partial**＝群體生成重試耗盡但個別報告已存——200 回應，`classReport: null`、`positions: []`（重打 `finish` 可重觸發全量）。**角色分流**：老師見全班＋個人；學生見自己（無 classReport）；學生的報告不存在（無 transcript 等）→ 404 `not_found` |
 
 **報告形狀（#74，PR #109 的分析為核心；`pseudonym` 生成一次存 D1，活動內穩定；#72 全去識別化）**：
 
@@ -177,15 +177,15 @@ interface ViolationSlice {
 
 ## 9. 查詢與 teacher keys
 
-| Operation                                                                                | 說明                                                                                                                                                                                       |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `POST /api/lookup` `{term}` → `{term, markdown}`                                         | #76 獨立查詢功能（lookup profile：agent 自主 search/fetch）；**不落庫不計輪**。失敗 → mock（回應帶 `X-Socrates-Fallback: mock`）。termHistory 由前端 localStorage 持久化，無端點           |
-| `GET /api/settings/keys` → `{provider, model, last4, sortOrder, updatedAt}[]`            | #82 teacher keys；**一 provider 一把 key**（帳戶級）；key 明文永不回傳                                                                                                                     |
-| `PUT /api/settings/keys/:provider` `{provider, model, key}` → `{provider, model, last4}` | 冪等 upsert；body `provider` 須等於 path provider（不符 → 422）；provider＝任意 pi builtin（api-key 類）；model 不在該 provider catalog → 422；非法 provider → 422 `byok_provider_invalid` |
-| `DELETE /api/settings/keys/:provider` → `204`；無該 key → `404 not_found`                |                                                                                                                                                                                            |
-| `PUT /api/settings/keys/order` `{providers: string[]}` → `{providers}`                   | 排序＝gateway 的 teacher legs 鏈序（#98）                                                                                                                                                  |
-| `GET /api/settings/keys/providers` → `{id, name}[]`                                      | 可選 provider 清單（pi builtin catalog，api-key 類）                                                                                                                                       |
-| `GET /api/settings/keys/providers/:provider/models` → `{id, name}[]`                     | 該 provider 的 model catalog（設定頁選單）                                                                                                                                                 |
+| Operation                                                                                | 說明                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/lookup` `{term}` → `{term, markdown}`                                         | #76 獨立查詢功能（lookup profile：agent 自主 search/fetch）；**不落庫不計輪**。失敗 → mock（回應帶 `X-Socrates-Fallback: mock`）。termHistory 由前端 localStorage 持久化，無端點                                    |
+| `GET /api/settings/keys` → `{provider, model, last4, sortOrder, updatedAt}[]`            | #82 teacher keys；**一 provider 一把 key**（帳戶級）；key 明文永不回傳                                                                                                                                              |
+| `PUT /api/settings/keys/:provider` `{provider, model, key}` → `{provider, model, last4}` | 冪等 upsert；body `provider` 須等於 path provider（不符 → 422 `byok_provider_invalid`，與非法 provider 同碼）；provider＝任意 pi builtin（api-key 類）；model 不在該 provider catalog → 422 `byok_provider_invalid` |
+| `DELETE /api/settings/keys/:provider` → `204`；無該 key → `404 not_found`                |                                                                                                                                                                                                                     |
+| `PUT /api/settings/keys/order` `{providers: string[]}` → `{providers}`                   | 排序＝gateway 的 teacher legs 鏈序（#98）                                                                                                                                                                           |
+| `GET /api/settings/keys/providers` → `{id, name}[]`                                      | 可選 provider 清單（pi builtin catalog，api-key 類）                                                                                                                                                                |
+| `GET /api/settings/keys/providers/:provider/models` → `{id, name}[]`                     | 該 provider 的 model catalog（設定頁選單）                                                                                                                                                                          |
 
 - **學生無 BYOK 入口**（#82 定案）
 - **teacher keys 服務語意**（2026-11-09 定案）：老師 keys 的教室流量**老師鏈在前、平台鏈墊後**；teacher leg 的 provider/model 資料責任由 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；ledger 以 `teacher:<userId>` credential 獨立記帳；within-turn fallback 僅存在於平台 binding 鏈（pi 機制限制），跨輪失敗由 ledger cooldown 接手

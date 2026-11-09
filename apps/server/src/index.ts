@@ -14,7 +14,7 @@ export default {
       return createApp().fetch(request, env);
     }
     try {
-      return (await routeAgentRequest(request, env, { cors: true })) ?? new Response("Not found", { status: 404 });
+      return (await routeAgentRequest(request, env, { cors: false })) ?? new Response("Not found", { status: 404 });
     } catch (error) {
       console.error("chat request failed", error);
       return Response.json({ error: "internal_error" }, { status: 500 });

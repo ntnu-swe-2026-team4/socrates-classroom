@@ -29,6 +29,8 @@ export class SubmitForbiddenError extends Error {
 
 const OPEN = 1;
 
+const KNOWN_ERROR_NAMES = new Set(["ConversationBusy", "ActivityFinished", "SubmitForbidden", "no_available_model"]);
+
 function resumeAfter(view: ConversationView): ConversationWindow {
   const newest = view.entries.at(-1)?.id ?? view.before;
   return newest === undefined ? {} : { from: (newest + 1) as EntryId };
@@ -221,12 +223,12 @@ export class ChatSockets {
       }
     } catch (error) {
       const name = error instanceof Error ? error.name : "Error";
-      const piError = name !== "Error" && name !== "ZodError";
+      const known = KNOWN_ERROR_NAMES.has(name) && error instanceof Error;
       send(connection, {
         type: "error",
         ...(message.id === undefined ? {} : { id: message.id }),
-        message: piError && error instanceof Error ? error.message : "Request failed",
-        ...(piError ? { code: name } : {}),
+        message: known ? error.message : "Request failed",
+        ...(known ? { code: name } : {}),
       });
     }
   }

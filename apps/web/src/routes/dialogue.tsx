@@ -48,6 +48,9 @@ function DialoguePage() {
       title={topic?.title ?? t("dlg_title")}
       statement={topic?.statement}
       prompts={topic?.prompts}
+      closedNotice={
+        activityQuery.isError ? t("common_error") : activityQuery.data?.finishedAt ? t("dlg_err_finished") : undefined
+      }
       autoSend={q}
       onAutoSent={() =>
         void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, q: undefined }), replace: true })

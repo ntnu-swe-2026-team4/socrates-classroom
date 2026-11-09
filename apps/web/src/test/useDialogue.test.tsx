@@ -322,4 +322,17 @@ describe("lain round-3: reconnect rollover + empty assistant entries", () => {
     await waitFor(() => expect(result.current.pending).toBe(false));
     expect(tts).toHaveBeenCalledWith("真正的回答", expect.anything(), expect.anything());
   });
+
+  it("reconnect full view with a trailing empty assistant entry completes the round (idle, no TTS)", async () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([]));
+    act(() => {
+      result.current.send("問題");
+    });
+    emit(viewFrame([userEntry(1, "問題"), assistantEntry(2, "")]));
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    expect(result.current.phase).toBe("idle");
+    expect(tts).not.toHaveBeenCalled();
+    expect(result.current.error).toBeNull();
+  });
 });

@@ -77,11 +77,17 @@ export class ReportRunner extends DurableObject<Env> {
   async alarm(): Promise<void> {
     const { report } = gatewayConfig;
     const activityId = this.ctx.id.name ?? "";
+    const db = this.env.DB;
     if (this.#inFlight) {
+      const attempts = ((await this.ctx.storage.get<number>("attempts")) ?? 0) + 1;
+      await this.ctx.storage.put("attempts", attempts);
+      if (attempts > report.alarmAttempts) {
+        await this.#markTerminal(db, activityId);
+        return;
+      }
       await this.ctx.storage.setAlarm(Date.now() + report.alarmTimeoutMs);
       return;
     }
-    const db = this.env.DB;
     const row = await one<{ status: string }>(db, "SELECT status FROM reports WHERE activity_id = $id", {
       id: activityId,
     });
@@ -98,11 +104,7 @@ export class ReportRunner extends DurableObject<Env> {
     const attempts = ((await this.ctx.storage.get<number>("attempts")) ?? 0) + 1;
     await this.ctx.storage.put("attempts", attempts);
     if (attempts > report.alarmAttempts) {
-      await run(
-        db,
-        "UPDATE reports SET status = CASE WHEN student_reports IS NOT NULL THEN 'partial' ELSE 'failed' END, updated_at = $at WHERE activity_id = $id",
-        { id: activityId, at: nowIso() },
-      );
+      await this.#markTerminal(db, activityId);
       return;
     }
     this.#inFlight = this.generate(activityId).finally(() => {
@@ -122,6 +124,14 @@ export class ReportRunner extends DurableObject<Env> {
     } finally {
       clearTimeout(watchdog);
     }
+  }
+
+  async #markTerminal(db: D1Database, activityId: string): Promise<void> {
+    await run(
+      db,
+      "UPDATE reports SET status = CASE WHEN student_reports IS NOT NULL THEN 'partial' ELSE 'failed' END, updated_at = $at WHERE activity_id = $id",
+      { id: activityId, at: nowIso() },
+    );
   }
 
   async status(activityId: string): Promise<{ status: string }> {
@@ -238,10 +248,10 @@ export class ReportRunner extends DurableObject<Env> {
         { lang: teacherLang, submitTool: SUBMIT_CLASS_REPORT },
       );
       const classReport = ClassReportSchema.parse(payloadOf(classText, classPayload));
-      await this.persist(activityId, activity.title, classReport, studentAnalyses, pseudonyms, transcripts);
+      await this.persist(activityId, activity.title, classReport, members, studentAnalyses, pseudonyms, transcripts);
     } catch (error) {
       console.error("[report] class report failed", error instanceof Error ? error.name : typeof error);
-      await this.persist(activityId, activity.title, null, studentAnalyses, pseudonyms, transcripts);
+      await this.persist(activityId, activity.title, null, members, studentAnalyses, pseudonyms, transcripts);
       throw error;
     }
   }
@@ -335,12 +345,15 @@ export class ReportRunner extends DurableObject<Env> {
     activityId: string,
     topicTitle: string,
     classReport: ClassReport | null,
+    members: Array<{ user_id: string }>,
     studentAnalyses: Map<string, StudentAnalysis | null>,
     pseudonyms: Map<string, string>,
     transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
   ): Promise<void> {
     const students: Record<string, unknown> = {};
-    for (const [studentId, analysis] of studentAnalyses) {
+    for (const member of members) {
+      const studentId = member.user_id;
+      const analysis = studentAnalyses.get(studentId) ?? null;
       const pseudonym = pseudonyms.get(studentId) ?? studentId;
       students[studentId] = {
         pseudonym,

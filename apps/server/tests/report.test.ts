@@ -3,21 +3,8 @@ import { applyD1Migrations } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
-import worker from "../src/index";
 import { seedDemo } from "../src/seed";
-import { frames, latestAssistantText } from "./helpers";
-
-async function call(path: string, init: RequestInit = {}): Promise<Response> {
-  return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(
-    new Request(`http://worker.test${path}`, init),
-    env,
-    { waitUntil: () => {} },
-  );
-}
-
-function cookieOf(res: Response): string {
-  return (res.headers.getSetCookie?.()[0] ?? "").split(";")[0]!;
-}
+import { call, cookieOf, frames, latestAssistantText } from "./helpers";
 
 async function speak(thread: string, cookie: string, question: string): Promise<void> {
   const socket = await routeAgentRequest(

@@ -171,6 +171,10 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
           setState("idle");
           setError(kind === "not-allowed" || kind === "service-not-allowed" ? "denied" : "failed");
         };
+        recognition.onend = () => {
+          if (session.current?.recognition !== recognition || stopRequestedRef.current) return;
+          void stopRef.current?.();
+        };
         recognition.start();
         session0.recognition = recognition;
       } else if (typeof MediaRecorder === "undefined") {
@@ -232,7 +236,6 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
 
     const hasRecognition = Boolean(s.recognition);
     const capturedFinal = s.liveText;
-    const elapsedMs = Date.now() - s.startedAt;
 
     let chunks: Blob[] = [];
     if (s.recorder) {
@@ -258,7 +261,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     try {
       if (hasRecognition && capturedFinal) {
         onFinalRef.current(capturedFinal);
-      } else if (chunks.length > 0 && elapsedMs <= 60_000) {
+      } else if (chunks.length > 0) {
         const blob = new Blob(chunks, { type: chunks[0]!.type });
         try {
           const text = await api.stt(blob);
@@ -266,8 +269,6 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
         } catch {
           setError("failed");
         }
-      } else if (chunks.length > 0) {
-        setError("failed");
       }
     } finally {
       setState("idle");

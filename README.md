@@ -2,7 +2,7 @@
 
 以蘇格拉底式詰問為核心的課堂平台：學生與 AI 蘇格拉底一對一對話，老師開課堂、發議題、看逐人與全班報告，立場星圖視覺化。
 
-**執行在 Cloudflare Workers 上**：一個 Worker（Hono API + React 靜態資產）、D1（SQLite）、Durable Object（**Pi Durable** 對話引擎）。對話模型走 routing（`providers.config.yaml` 定義的 provider 鏈：自架 DGX 端點（GLM-5.3-Flash）→ Workers AI 託管 GLM，全 ZDR；老師 key 可插自有 provider；詳見 [`docs/providers.md`](docs/providers.md)）。
+**執行在 Cloudflare Workers 上**：一個 Worker（Hono API + React 靜態資產）、D1（SQLite）、Durable Object（**Pi Durable** 對話引擎）。對話模型走 gateway（`providers.config.yaml` 定義的 provider 鏈：自架 DGX 端點（GLM-5.3-Flash）→ Workers AI 託管 GLM，全 ZDR；老師 key 可插自有 provider；詳見 [`docs/providers.md`](docs/providers.md)）。
 
 ## Quickstart
 
