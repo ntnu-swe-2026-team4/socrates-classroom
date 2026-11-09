@@ -254,7 +254,7 @@ export function DialogueView({
                 {messages.map((message) => (
                   <Bubble key={message.id} speaker={message.role} text={message.text} />
                 ))}
-                {draft && <Bubble speaker="assistant" text={draft} caret={streaming} />}
+                <div aria-live="polite">{draft && <Bubble speaker="assistant" text={draft} caret={streaming} />}</div>
               </div>
             </div>
 
@@ -278,12 +278,18 @@ export function DialogueView({
                   </p>
                 )}
                 {voice.error && (
-                  <p className="truncate rounded-full bg-flag-wash px-4 py-1.5 text-center text-[13px] text-flag">
+                  <p
+                    role="alert"
+                    className="truncate rounded-full bg-flag-wash px-4 py-1.5 text-center text-[13px] text-flag"
+                  >
                     {t(VOICE_ERROR_KEY[voice.error])}
                   </p>
                 )}
                 {error && (
-                  <div className="flex items-center gap-2 rounded-2xl border border-line bg-card px-4 py-2 text-[13px] text-ink-soft">
+                  <div
+                    role="alert"
+                    className="flex items-center gap-2 rounded-2xl border border-line bg-card px-4 py-2 text-[13px] text-ink-soft"
+                  >
                     <span className="min-w-0 flex-1 truncate">{t("dlg_error")}</span>
                     <button
                       type="button"
@@ -295,7 +301,10 @@ export function DialogueView({
                   </div>
                 )}
                 {ttsFailed && !error && (
-                  <div className="flex items-center gap-2 rounded-2xl border border-line bg-card px-4 py-2 text-[13px] text-ink-soft">
+                  <div
+                    role="alert"
+                    className="flex items-center gap-2 rounded-2xl border border-line bg-card px-4 py-2 text-[13px] text-ink-soft"
+                  >
                     <span className="min-w-0 flex-1 truncate">{t("dlg_tts_failed")}</span>
                     <button
                       type="button"

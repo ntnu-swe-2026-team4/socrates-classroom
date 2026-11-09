@@ -21,7 +21,7 @@ vi.mock("agents/react", () => ({
       send: (data: string) => {
         agent.sent.push(data);
       },
-      readyState: 0,
+      readyState: WebSocket.OPEN,
     };
     options.onOpen?.({ target: socket });
     return socket;

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ChartNoAxesColumn, GraduationCap, MessageSquare, SquareActivity, Users } from "lucide-react";
 import { api } from "@/api";
@@ -9,6 +9,10 @@ import { Button, Card, SectionTitle, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/classrooms/$classroomId")({
+  beforeLoad: async ({ context }) => {
+    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    if (!me) throw redirect({ to: "/login" });
+  },
   component: ClassroomPage,
 });
 

@@ -59,6 +59,7 @@ export function useDialogue(activityId: string, userId: string) {
   const [ttsFailed, setTtsFailed] = useState(false);
   const viewRef = useRef<ConversationView | null>(null);
   const pendingRef = useRef<string | null>(null);
+  const [pendingView, setPendingView] = useState(false);
   const baselineRef = useRef<number | null>(null);
   const failedInputRef = useRef<string | null>(null);
   const ttsRef = useRef<AbortController | null>(null);
@@ -103,6 +104,7 @@ export function useDialogue(activityId: string, userId: string) {
 
   const completePending = useCallback(() => {
     pendingRef.current = null;
+    setPendingView(false);
     baselineRef.current = null;
     failedInputRef.current = null;
     const text = lastAssistantText(viewRef.current);
@@ -115,6 +117,7 @@ export function useDialogue(activityId: string, userId: string) {
 
   const failPending = useCallback((code: string) => {
     pendingRef.current = null;
+    setPendingView(false);
     baselineRef.current = null;
     setPhase("idle");
     setError({ code });
@@ -194,10 +197,12 @@ export function useDialogue(activityId: string, userId: string) {
     (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || pendingRef.current || !viewRef.current) return false;
+      if (socket.readyState !== WebSocket.OPEN) return false;
       ttsRef.current?.abort();
       ttsRef.current = null;
       const id = crypto.randomUUID();
       pendingRef.current = id;
+      setPendingView(true);
       baselineRef.current = viewRef.current.entries.at(-1)?.id ?? null;
       failedInputRef.current = trimmed;
       setError(null);
@@ -227,6 +232,7 @@ export function useDialogue(activityId: string, userId: string) {
     if (pendingRef.current) {
       socket.send(JSON.stringify({ type: "abort", id: pendingRef.current } satisfies ClientMessage));
       pendingRef.current = null;
+      setPendingView(false);
       baselineRef.current = null;
     }
     ttsRef.current?.abort();
@@ -259,7 +265,7 @@ export function useDialogue(activityId: string, userId: string) {
     error,
     emotion,
     ttsFailed,
-    pending: pendingRef.current !== null,
+    pending: pendingView,
     send,
     retryLast,
     replay,

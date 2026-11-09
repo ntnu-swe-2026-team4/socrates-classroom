@@ -43,6 +43,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
   const [interim, setInterim] = useState("");
   const [error, setError] = useState<VoiceError | null>(null);
   const session = useRef<VoiceSession | null>(null);
+  const startingRef = useRef(false);
 
   const onFinalRef = useRef(onFinal);
   const onAmplitudeRef = useRef(onAmplitude);
@@ -89,8 +90,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     [],
   );
 
-  const start = useCallback(async () => {
-    if (session.current) return;
+  const beginSession = useCallback(async () => {
     setInterim("");
     setError(null);
     setState("listening");
@@ -213,6 +213,16 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
       setError("failed");
     }
   }, [stopEverything]);
+
+  const start = useCallback(async () => {
+    if (session.current || startingRef.current) return;
+    startingRef.current = true;
+    try {
+      await beginSession();
+    } finally {
+      startingRef.current = false;
+    }
+  }, [beginSession]);
 
   const stop = useCallback(async () => {
     stopRequestedRef.current = true;
