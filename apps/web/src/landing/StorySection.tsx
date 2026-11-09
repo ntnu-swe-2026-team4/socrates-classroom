@@ -144,7 +144,7 @@ export function StorySection({
     if (!tour) return;
     const frame = requestAnimationFrame(() => storyPlayer.current?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
-  }, [tour?.session, tour]);
+  }, [tour?.session]);
 
   return (
     <>

@@ -56,6 +56,7 @@ export function useDialogue(activityId: string, userId: string) {
   const [view, setView] = useState<ConversationView | null>(null);
   const [phase, setPhase] = useState<DialoguePhase>("idle");
   const [error, setError] = useState<DialogueError>(null);
+  const [ttsFailed, setTtsFailed] = useState(false);
   const viewRef = useRef<ConversationView | null>(null);
   const pendingRef = useRef<string | null>(null);
   const baselineRef = useRef<number | null>(null);
@@ -83,26 +84,34 @@ export function useDialogue(activityId: string, userId: string) {
     return api.tts(text, NO_AMPLITUDE, controller.signal);
   }, []);
 
+  const speakAnswer = useCallback(
+    (text: string) => {
+      setPhase("speaking");
+      setTtsFailed(false);
+      const speaking = speak(text);
+      const controller = ttsRef.current;
+      speaking
+        .catch(() => setTtsFailed(true))
+        .finally(() => {
+          if (ttsRef.current !== controller) return;
+          ttsRef.current = null;
+          setPhase("idle");
+        });
+    },
+    [speak],
+  );
+
   const completePending = useCallback(() => {
     pendingRef.current = null;
     baselineRef.current = null;
     failedInputRef.current = null;
     const text = lastAssistantText(viewRef.current);
     if (text) {
-      setPhase("speaking");
-      const speaking = speak(text);
-      const controller = ttsRef.current;
-      speaking
-        .catch(() => {})
-        .finally(() => {
-          if (ttsRef.current !== controller) return;
-          ttsRef.current = null;
-          setPhase("idle");
-        });
+      speakAnswer(text);
     } else {
       setPhase("idle");
     }
-  }, [speak]);
+  }, [speakAnswer]);
 
   const failPending = useCallback((code: string) => {
     pendingRef.current = null;
@@ -191,6 +200,7 @@ export function useDialogue(activityId: string, userId: string) {
       baselineRef.current = viewRef.current.entries.length;
       failedInputRef.current = trimmed;
       setError(null);
+      setTtsFailed(false);
       setPhase("thinking");
       socket.send(JSON.stringify({ type: "submit", id, input: trimmed } satisfies ClientMessage));
       return true;
@@ -209,17 +219,8 @@ export function useDialogue(activityId: string, userId: string) {
     if (pendingRef.current) return;
     const last = lastAssistantText(viewRef.current);
     if (!last) return;
-    setPhase("speaking");
-    const speaking = speak(last);
-    const controller = ttsRef.current;
-    speaking
-      .catch(() => {})
-      .finally(() => {
-        if (ttsRef.current !== controller) return;
-        ttsRef.current = null;
-        setPhase("idle");
-      });
-  }, [speak]);
+    speakAnswer(last);
+  }, [speakAnswer]);
 
   const interrupt = useCallback(() => {
     if (pendingRef.current) {
@@ -256,6 +257,7 @@ export function useDialogue(activityId: string, userId: string) {
     phase,
     error,
     emotion,
+    ttsFailed,
     pending: pendingRef.current !== null,
     send,
     retryLast,

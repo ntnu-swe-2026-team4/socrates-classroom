@@ -13,12 +13,14 @@ import type {
 import {
   ActivityStartInputSchema,
   ClassroomCreateInputSchema,
+  ERROR_CODES,
+  GenerateTopicsInputSchema,
   JoinInputSchema,
   LoginInputSchema,
   LookupInputSchema,
-  TtsInputSchema,
+  SttResultSchema,
   TopicCreateInputSchema,
-  GenerateTopicsInputSchema,
+  TtsInputSchema,
   type ErrorCode,
 } from "@socrates/shared";
 import type { RpcApi } from "@server/app";
@@ -31,6 +33,10 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
+}
+
+function toErrorCode(raw: string | undefined): ErrorCode {
+  return (ERROR_CODES as readonly string[]).includes(raw ?? "") ? (raw as ErrorCode) : "internal_error";
 }
 
 export interface KeyProviderInfo {
@@ -91,14 +97,14 @@ async function unwrap<R extends JsonLike>(res: R): Promise<Awaited<ReturnType<R[
   if (res.status === 204) return undefined as Awaited<ReturnType<R["json"]>>;
   if (!res.ok) {
     const error = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new ApiError((error?.code ?? "internal_error") as ErrorCode, error?.message ?? res.statusText);
+    throw new ApiError(toErrorCode(error?.code), error?.message ?? res.statusText);
   }
   return res.json() as Promise<Awaited<ReturnType<R["json"]>>>;
 }
 
-async function raw(path: string, init: RequestInit & { json?: unknown } = {}): Promise<Response> {
+async function raw<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, ...rest } = init;
-  return fetch(`/api${path}`, {
+  const res = await fetch(`/api${path}`, {
     credentials: "include",
     headers: {
       ...langHeaders(),
@@ -108,6 +114,11 @@ async function raw(path: string, init: RequestInit & { json?: unknown } = {}): P
     ...rest,
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
+  if (!res.ok) {
+    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+    throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
+  }
+  return (await res.json()) as T;
 }
 
 async function playTts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void> {
@@ -115,7 +126,7 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
   const res = await client.tts.$post({ json: input }, { init: { signal } });
   if (!res.ok) {
     const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new ApiError((payload?.code ?? "internal_error") as ErrorCode, payload?.message ?? res.statusText);
+    throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
   }
   const bytes = await res.arrayBuffer();
   const AudioContextCtor =
@@ -215,19 +226,16 @@ export const httpApi: Api = {
   },
   async startActivity(classroomId, topicId) {
     const input = ActivityStartInputSchema.parse({ topicId });
-    const res = await raw(`/classrooms/${classroomId}/activities`, { method: "POST", json: input });
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-      throw new ApiError((payload?.code ?? "internal_error") as ErrorCode, payload?.message ?? res.statusText);
-    }
-    return res.json();
+    return raw<ClassroomCreated>(`/classrooms/${classroomId}/activities`, { method: "POST", json: input });
   },
   async stt(audio) {
     const file = audio instanceof File ? audio : new File([audio], "speech.webm", { type: audio.type });
     const res = await client.stt.$post({ form: { audio: file } });
-    if (!res.ok) throw new ApiError("internal_error" as ErrorCode, res.statusText);
-    const payload = (await res.json()) as { text: string };
-    return payload.text;
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+      throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
+    }
+    return SttResultSchema.parse(await res.json()).text;
   },
   tts: playTts,
   async activityInfo(activityId) {
@@ -255,15 +263,10 @@ export const httpApi: Api = {
     return unwrap(await client.settings.keys.providers[":provider"].models.$get({ param: { provider } }));
   },
   async putTeacherKey(provider, model, key) {
-    const res = await raw(`/settings/keys/${encodeURIComponent(provider)}`, {
+    return raw<TeacherKeyStatus>(`/settings/keys/${encodeURIComponent(provider)}`, {
       method: "PUT",
       json: { provider, model, key },
     });
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-      throw new ApiError((payload?.code ?? "internal_error") as ErrorCode, payload?.message ?? res.statusText);
-    }
-    return (await res.json()) as { provider: string; last4: string };
   },
   async deleteTeacherKey(provider) {
     await unwrap(await client.settings.keys[":provider"].$delete({ param: { provider } }));

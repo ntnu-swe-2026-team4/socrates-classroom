@@ -47,7 +47,10 @@ export function DialogueView({
   closedNotice,
 }: DialogueViewProps) {
   const t = useT();
-  const { messages, draft, phase, error, emotion, send, retryLast, interrupt } = useDialogue(activityId, userId);
+  const { messages, draft, phase, error, emotion, ttsFailed, send, retryLast, replay, interrupt } = useDialogue(
+    activityId,
+    userId,
+  );
 
   const stageRef = useRef<SocratesHandle>(null);
   const [socratesOpen, setSocratesOpen] = usePersistentFlag("socrates_dialogue_panel", true);
@@ -228,7 +231,6 @@ export function DialogueView({
               onScroll={onScroll}
               className="stream-scroll min-h-0 flex-1 overflow-y-auto px-4 sm:px-6"
               aria-busy={busy}
-              aria-live="polite"
             >
               <div className="mx-auto flex max-w-3xl flex-col gap-4 py-5">
                 {messages.length === 0 && statement && (
@@ -292,6 +294,18 @@ export function DialogueView({
                     </button>
                   </div>
                 )}
+                {ttsFailed && !error && (
+                  <div className="flex items-center gap-2 rounded-2xl border border-line bg-card px-4 py-2 text-[13px] text-ink-soft">
+                    <span className="min-w-0 flex-1 truncate">{t("dlg_tts_failed")}</span>
+                    <button
+                      type="button"
+                      onClick={replay}
+                      className="shrink-0 cursor-pointer rounded-full border border-line-strong px-3 py-1 text-[12.5px] text-ember transition-colors hover:border-ember"
+                    >
+                      {t("dlg_replay")}
+                    </button>
+                  </div>
+                )}
                 {closedNotice ? (
                   <div className="rounded-2xl border border-line bg-card px-4 py-3 text-center text-[13px] text-ink-soft">
                     {closedNotice}
@@ -308,6 +322,7 @@ export function DialogueView({
                         void voice.start();
                       }}
                       onPointerUp={() => void voice.stop()}
+                      onPointerCancel={() => void voice.stop()}
                       onPointerLeave={() => voice.state === "listening" && void voice.stop()}
                       onKeyDown={(event) => {
                         if (event.key === " " || event.key === "Enter") {

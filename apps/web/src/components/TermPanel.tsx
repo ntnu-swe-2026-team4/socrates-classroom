@@ -31,6 +31,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
   const [stack, setStack] = useState<StackEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const entrySeq = useRef(0);
+  const inFlight = useRef(new Set<string>());
   const bodyRef = useRef<HTMLDivElement>(null);
   const { selection, clear } = useSelectionPopover(bodyRef);
   const history = useQuery({ queryKey: ["termHistory"], queryFn: () => readTermHistory(), enabled: open });
@@ -44,11 +45,13 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
   async function lookup(term: string, force = false) {
     const trimmed = term.trim().slice(0, 30);
     if (!trimmed) return;
+    if (inFlight.current.has(trimmed)) return;
     const existing = force ? -1 : stack.findIndex((entry) => entry.term === trimmed);
     if (existing >= 0) {
       setStack((prev) => prev.slice(0, existing + 1));
       return;
     }
+    inFlight.current.add(trimmed);
     setStack((prev) => [...prev, { id: ++entrySeq.current, term: trimmed, status: "loading" }]);
     try {
       const explanation = await api.lookupTerm(trimmed);
@@ -66,6 +69,8 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
         if (index >= 0) next[index] = { ...next[index], status: "error" };
         return next;
       });
+    } finally {
+      inFlight.current.delete(trimmed);
     }
   }
 

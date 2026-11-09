@@ -17,7 +17,6 @@ vi.mock("@/components/SocratesStage", () => ({
     return null;
   },
 }));
-vi.mock("@/components/constellation/Scene3D", () => ({ default: () => null, CLUSTER_PALETTE: [] }));
 
 const agent = vi.hoisted(() => ({ options: null as null | { onMessage?: (event: { data: unknown }) => void } }));
 vi.mock("agents/react", () => ({

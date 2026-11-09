@@ -156,6 +156,9 @@ export const ViolationChoiceSchema = z.object({
   probability: z.number().min(0).max(1),
 });
 
+export const SttResultSchema = z.object({ text: z.string() });
+export type SttResult = z.infer<typeof SttResultSchema>;
+
 export const ERROR_CODES = [
   "unauthorized",
   "forbidden",

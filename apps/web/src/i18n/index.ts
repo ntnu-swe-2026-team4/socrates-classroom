@@ -140,6 +140,9 @@ const messages = {
     common_error: "出了點問題",
     common_send: "送出",
     dlg_error: "回應中斷了，請再試一次。",
+    dlg_tts_failed: "語音播放失敗。",
+    dlg_replay: "重播",
+
     dlg_retry: "重試",
     voice_denied: "沒有麥克風權限——請在瀏覽器設定允許。",
     voice_unsupported: "此瀏覽器不支援語音輸入。",
@@ -338,6 +341,9 @@ const messages = {
     "但他從不直接回答，只用一個又一個提問，領著你走向自己的答案。":
       "But he never answers directly; question after question, he leads you toward your own answer.",
     dlg_error: "The response was interrupted. Please try again.",
+    dlg_tts_failed: "Audio playback failed.",
+    dlg_replay: "Replay",
+
     dlg_retry: "Retry",
     voice_denied: "Microphone permission denied — allow it in your browser settings.",
     voice_unsupported: "Voice input is not supported in this browser.",
@@ -538,6 +544,9 @@ const messages = {
     "但他從不直接回答，只用一個又一個提問，領著你走向自己的答案。":
       "Pero nunca responde directamente: pregunta tras pregunta te conduce hacia tu propia respuesta.",
     dlg_error: "La respuesta se interrumpió. Inténtalo de nuevo.",
+    dlg_tts_failed: "Error al reproducir el audio.",
+    dlg_replay: "Reproducir",
+
     dlg_retry: "Reintentar",
     voice_denied: "Permiso de micrófono denegado; permítelo en la configuración del navegador.",
     voice_unsupported: "Este navegador no admite la entrada de voz.",

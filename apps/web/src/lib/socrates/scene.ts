@@ -36,7 +36,6 @@ export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElemen
   const scene = new THREE.Scene();
   scene.background = null;
   renderer.setClearColor(0x000000, 0);
-  const setTheme = (_light: boolean) => {};
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.35;
@@ -354,10 +353,6 @@ export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElemen
     setExpression(name: string | null, options?: { loop?: boolean }) {
       if (avatar) avatar.setExpression(name, options);
       else pendingExpression = name ? [name, options ?? {}] : null;
-      kick();
-    },
-    setTheme(light: boolean) {
-      setTheme(light);
       kick();
     },
     dispose() {
