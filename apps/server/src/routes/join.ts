@@ -43,6 +43,13 @@ export function joinRoutes() {
         return c.json({ user, activityId: classroom.current_activity_id! });
       }
 
+      const activity = await one<{ finished_at: string | null }>(
+        c.env.DB,
+        "SELECT finished_at FROM activities WHERE id = $id",
+        { id: classroom.current_activity_id },
+      );
+      if (activity?.finished_at) fail(409, "activity_finished");
+
       const at = nowIso();
       let sessionUser = user;
       if (!sessionUser) {

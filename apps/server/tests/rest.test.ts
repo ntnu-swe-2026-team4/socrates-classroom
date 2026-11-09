@@ -140,31 +140,65 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
   });
 
   test("finish → report semantics (pending → 404 report_pending; student IDOR sees only their own)", async () => {
+    const created = (await (
+      await call("/api/classrooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({
+          name: "R6 報告班",
+          topicId: (
+            (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>
+          )[0]!.id,
+        }),
+      })
+    ).json()) as { code: string; activityId: string };
     const joined = await call("/api/join", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, name: "R6生報", tosAccepted: true }),
+      body: JSON.stringify({ code: created.code, name: "R6生報", tosAccepted: true }),
     });
     const student = cookieOf(joined);
 
-    const report0 = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: teacher } });
+    const report0 = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacher } });
     expect(report0.status).toBe(404);
     expect(((await report0.json()) as { code: string }).code).toBe("report_pending");
 
-    const finish = await call(`/api/activities/${activityId}/finish`, { method: "POST", headers: { Cookie: teacher } });
+    const finish = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacher },
+    });
     expect(finish.status).toBe(204);
-    const again = await call(`/api/activities/${activityId}/finish`, { method: "POST", headers: { Cookie: teacher } });
+    const again = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacher },
+    });
     expect(again.status).toBe(204);
+
+    const lateJoin = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: created.code, name: "R6遲到生", tosAccepted: true }),
+    });
+    expect(lateJoin.status).toBe(409);
+    expect(((await lateJoin.json()) as { code: string }).code).toBe("activity_finished");
+
+    const rejoin = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: student },
+      body: JSON.stringify({ code: created.code, tosAccepted: true }),
+    });
+    expect(rejoin.status).toBe(200);
+    expect(((await rejoin.json()) as { activityId: string }).activityId).toBe(created.activityId);
 
     await vi.waitFor(
       async () => {
-        const res = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: teacher } });
+        const res = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacher } });
         expect(res.status).toBe(200);
       },
       { timeout: 30_000 },
     );
 
-    const mine = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: student } });
+    const mine = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: student } });
     expect(mine.status).toBe(200);
     const mineData = (await mine.json()) as Record<string, unknown>;
     expect("students" in mineData).toBe(false);

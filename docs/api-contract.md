@@ -53,7 +53,7 @@ interface User {
 | Operation                                                            | 說明                                                                                                                                                                                                                          |
 | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/join/:code` → `{code, classroomName, topic}`               | 直達 URL 載入用（刷新不丟）；無效碼 404 `join_code_invalid`                                                                                                                                                                   |
-| `POST /api/join` `{code, name?, tosAccepted}` → `{user, activityId}` | 一次完成：身分（無 session 建 guest user）＋ToS 同意存證＋加入教室。**冪等**：同身分重 join → 200。錯誤：`tosAccepted` 非 true → 422 `tos_required`；`name` 教室內唯一（409 `name_taken`）；老師 session → 403 `only_student` |
+| `POST /api/join` `{code, name?, tosAccepted}` → `{user, activityId}` | 一次完成：身分（無 session 建 guest user）＋ToS 同意存證＋加入教室。**冪等**：同身分重 join → 200（活動結束後仍可 rejoin，供 session 修復與報告回看）。錯誤：`tosAccepted` 非 true → 422 `tos_required`；`name` 教室內唯一（409 `name_taken`）；老師 session → 403 `only_student`；活動已結束 → 409 `activity_finished`（僅攔新成員） |
 
 ## 4. 老師：主題集與開課（#77）
 
@@ -197,7 +197,7 @@ interface ViolationSlice {
 | 層                     | code                                                                                                                                                           | HTTP                        |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
 | 通用                   | `unauthorized` / `forbidden` / `not_found` / `conflict` / `validation` / `rate_limited` / `internal_error`                                                     | 401/403/404/409/422/429/500 |
-| 入場                   | `join_code_invalid` / `tos_required` / `name_taken` / `only_student`                                                                                           | 404/422/409/403             |
+| 入場                   | `join_code_invalid` / `tos_required` / `name_taken` / `only_student` / `activity_finished`（新成員加入已結束活動）                                          | 404/422/409/403/409         |
 | 對話（WS error frame） | pi 錯誤名作 code（`ConversationBusy`＝忙線拒寫、`ActivityFinished`＝活動已結束拒寫、`SubmitForbidden`＝非本人 thread 代打）；內部錯誤只回 generic 訊息不洩細節 | —                           |
 | 報告                   | `report_pending` / `report_failed`                                                                                                                             | 404 / 500                   |
 | 語音／LLM              | `llm_unavailable` / `llm_rate_limited` / `llm_timeout`（binding 或上游失敗；mock 降級不丟這些碼）                                                              | 502 / 429 / 504             |
