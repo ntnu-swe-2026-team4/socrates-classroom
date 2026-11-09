@@ -28,7 +28,7 @@ jobs:
           pnpm test
       - name: YAML lint (yamllint)
         run: |
-          pip install yamllint
+          pip install "yamllint==1.38.0"
           yamllint .
       - name: Config drift (regen config.gen.ts and diff)
         run: |

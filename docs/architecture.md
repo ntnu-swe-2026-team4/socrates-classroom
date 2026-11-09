@@ -204,9 +204,10 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 - uses: pnpm/action-setup + actions/setup-node@v6 (node 26, cache pnpm)
 - run: pnpm install --frozen-lockfile
 - run: pnpm lint # biome
-- run: yamllint . # workflows / pnpm-workspace
+- run: yamllint . # workflows / pnpm-workspace（版本鎖 yamllint==1.38.0）
+- run: pnpm --filter @socrates/server run gen-config && git diff --exit-code # config.gen 漂移檢查
 - run: pnpm typecheck # server build:types → web tsc（RpcApi 宣告先產出）
-- run: pnpm test # pnpm -r test：server（workerd 真runtime）+ web
+- run: pnpm test # pnpm -r test：server（workerd 真runtime，hookTimeout 120s）+ web
 - run: pnpm exec cf build # apps/web：client assets + worker bundle
 - run: pnpm exec cf deploy --prebuilt --mode production --dry-run
 
@@ -229,7 +230,6 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 | `tests/judgment.test.ts`  | tool 註冊、agent 自報 entry                                                       |
 | `tests/websearch.test.ts` | 三 tool 註冊、SSRF 矩陣、cache、store/find/slice                                  |
 | `tests/profiles.test.ts`  | profile 表零 model hardcode、真 prompt 資產接線、runProfile 全路徑                |
-| `tests/migrations.ts`     | 測試用 migration runner（001–004 全套）                                           |
 | `tests/routing.test.ts`   | cooldown 語意矩陣、config 形狀、分開記帳                                          |
 | `tests/rest.test.ts`      | 真 Worker 入口：seed guard/ToS join/歷史/finish→report/授權矩陣/teacher keys CRUD |
 
