@@ -3,11 +3,12 @@ import { ChevronDown, ChevronUp, Mic, PanelLeftClose, PanelLeftOpen, Send, TextS
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { SocratesStage, type SocratesExpression, type SocratesHandle } from "@/components/SocratesStage";
 import { TopBar, cn } from "@/components/ui";
-import { useDialogue } from "@/hooks/useDialogue";
+import { textOf, useDialogue } from "@/hooks/useDialogue";
 import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useT, type MessageKey } from "@/i18n";
+import type { Message } from "@earendil-works/pi-ai";
 
 const VOICE_ERROR_KEY: Record<"denied" | "unsupported" | "failed", MessageKey> = {
   denied: "voice_denied",
@@ -303,15 +304,8 @@ export function DialogueView({
                   if (item.kind !== "entry") return null;
                   const entry = item.entry;
                   if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") return null;
-                  const message = entry.model?.[0] as
-                    | { content?: string | readonly { type: string; text?: string }[] }
-                    | undefined;
-                  const text =
-                    typeof message?.content === "string"
-                      ? message.content
-                      : (message?.content ?? [])
-                          .map((part) => (part.type === "text" ? (part.text ?? "") : ""))
-                          .join("");
+                  const text = textOf((entry.model?.[0] ?? undefined) as Message | undefined);
+                  if (text === "") return null;
                   return (
                     <Bubble
                       key={`e${entry.id}`}

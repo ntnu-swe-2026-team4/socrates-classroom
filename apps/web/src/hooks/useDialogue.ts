@@ -32,7 +32,7 @@ export interface DialogueMessage {
 
 const NO_AMPLITUDE = () => {};
 
-function textOf(message: Message | undefined): string {
+export function textOf(message: Message | undefined): string {
   if (!message) return "";
   if (typeof message.content === "string") return message.content;
   return message.content
@@ -44,7 +44,7 @@ function textOf(message: Message | undefined): string {
 function lastAssistantText(view: ConversationView | null): string {
   if (!view) return "";
   for (const entry of [...view.entries].reverse()) {
-    if (entry.kind !== "pi.assistant") continue;
+    if (entry.kind !== "pi.assistant" || intermediateAssistant(entry)) continue;
     const text = textOf(entry.model?.[0]);
     return text;
   }
@@ -87,7 +87,7 @@ export function useDialogue(activityId: string, userId: string) {
   const [error, setError] = useState<DialogueError>(null);
   const [ttsFailed, setTtsFailed] = useState(false);
   const viewRef = useRef<ConversationView | null>(null);
-  const socketRef = useRef<{ send: (data: string) => void } | null>(null);
+  const socketRef = useRef<{ send: (data: string) => void; readyState: number; OPEN: number } | null>(null);
   const pendingRef = useRef<string | null>(null);
   const [pendingView, setPendingView] = useState(false);
   const baselineRef = useRef<number | null>(null);
@@ -99,9 +99,13 @@ export function useDialogue(activityId: string, userId: string) {
   const loader = useCallback(
     (query: { minEntryId?: EntryId; maxEntryId?: EntryId; order?: "ascending" | "descending" }, limit: number) => {
       return new Promise<Page<EntryRecord, Cursor>>((resolve, reject) => {
+        if (socketRef.current === null || socketRef.current.readyState !== socketRef.current.OPEN) {
+          reject(new Error("socket_closed"));
+          return;
+        }
         const id = crypto.randomUUID();
         entriesWaiters.current.set(id, { resolve, reject });
-        socketRef.current?.send(JSON.stringify({ type: "entries", id, query, limit } satisfies ClientMessage));
+        socketRef.current.send(JSON.stringify({ type: "entries", id, query, limit } satisfies ClientMessage));
       });
     },
     [],
@@ -401,7 +405,12 @@ export function useDialogue(activityId: string, userId: string) {
     if (live) return live;
     const baseline = baselineRef.current;
     const tail = view.entries.at(-1);
-    if (tail && tail.kind === "pi.assistant" && tail.id > (baseline ?? Number.MAX_SAFE_INTEGER)) {
+    if (
+      tail &&
+      tail.kind === "pi.assistant" &&
+      !intermediateAssistant(tail) &&
+      tail.id > (baseline ?? Number.MAX_SAFE_INTEGER)
+    ) {
       return textOf((tail.model?.[0] ?? undefined) as Message | undefined);
     }
     return "";

@@ -353,6 +353,14 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     expect(registered.status).toBe(200);
     expect(((await registered.json()) as { role: string }).role).toBe("student");
 
+    const teacherJoin = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ code, tosAccepted: true }),
+    });
+    expect(teacherJoin.status).toBe(403);
+    expect(((await teacherJoin.json()) as { code?: string }).code).toBe("only_student");
+
     const noConsent = await call("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
