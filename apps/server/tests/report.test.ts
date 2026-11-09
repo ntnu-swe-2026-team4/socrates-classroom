@@ -4,6 +4,7 @@ import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { seedDemo } from "../src/seed";
+import { reportAlarmPlan } from "../src/do/report-runner";
 import { call, cookieOf, frames, latestAssistantText } from "./helpers";
 
 async function speak(thread: string, cookie: string, question: string): Promise<void> {
@@ -77,6 +78,27 @@ beforeAll(async () => {
   expect(finish.status).toBe(204);
 });
 
+describe("reportAlarmPlan", () => {
+  const base = { cap: 3, timeoutMs: 300_000, backoffMs: 4_000 };
+
+  it("generates under the cap; backoff scales with post-increment attempts", () => {
+    expect(reportAlarmPlan({ ...base, attempts: 1, inFlight: false })).toEqual({ action: "generate", backoffMs: 4_000 });
+    expect(reportAlarmPlan({ ...base, attempts: 3, inFlight: false })).toEqual({ action: "generate", backoffMs: 12_000 });
+  });
+
+  it("re-arms at the timeout interval while a run is still in flight", () => {
+    expect(reportAlarmPlan({ ...base, attempts: 1, inFlight: true })).toEqual({ action: "rearm", delayMs: 300_000 });
+    expect(reportAlarmPlan({ ...base, attempts: 3, inFlight: true })).toEqual({ action: "rearm", delayMs: 300_000 });
+  });
+
+  it("cap boundary: attempts == cap still acts, cap+1 is terminal on both paths", () => {
+    expect(reportAlarmPlan({ ...base, attempts: 3, inFlight: false }).action).toBe("generate");
+    expect(reportAlarmPlan({ ...base, attempts: 3, inFlight: true }).action).toBe("rearm");
+    expect(reportAlarmPlan({ ...base, attempts: 4, inFlight: false })).toEqual({ action: "terminal" });
+    expect(reportAlarmPlan({ ...base, attempts: 4, inFlight: true })).toEqual({ action: "terminal" });
+  });
+});
+
 describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shape)", () => {
   it("finish → alarm generates → ready; teacher sees the whole class, student sees their own, shape matches §7", async () => {
     let report: Response | null = null;
@@ -124,6 +146,44 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(studentReport.pseudonym).toBe(speaker.pseudonym);
     expect(studentReport.analysis?.stated).toBe(true);
     expect("classReport" in studentReport).toBe(false);
+  }, 60_000);
+
+  it("generate failing every attempt → retries, then terminal failed (500 report_failed)", async () => {
+    const topic = (await (
+      await call("/api/topics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacherCookie },
+        body: JSON.stringify({
+          title: "重試班題目",
+          statement: "契約的界線在哪？FORCE-REPORT-GENERATE-FAILURE",
+          prompts: ["請舉例"],
+        }),
+      })
+    ).json()) as { id: string };
+    const created = (await (
+      await call("/api/classrooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacherCookie },
+        body: JSON.stringify({ name: "重試班", topicId: topic.id }),
+      })
+    ).json()) as { activityId: string };
+    const finish = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacherCookie },
+    });
+    expect(finish.status).toBe(204);
+
+    let sawPending = false;
+    let last: Response | null = null;
+    for (let i = 0; i < 45; i += 1) {
+      last = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacherCookie } });
+      if (last.status === 404) sawPending = true;
+      if (last.status === 500) break;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+    expect(sawPending).toBe(true);
+    expect(last?.status).toBe(500);
+    expect(((await last?.clone().json()) as { code?: string }).code).toBe("report_failed");
   }, 60_000);
 
   it("class-report failure with student analyses stored → partial per §7 (200, classReport null, positions empty)", async () => {

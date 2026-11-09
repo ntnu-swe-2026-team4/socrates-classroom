@@ -30,6 +30,23 @@ import { getRouter } from "../gateway/router";
 import { gatewayConfig } from "../gateway/config.gen";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 
+export type ReportAlarmPlan =
+  | { action: "terminal" }
+  | { action: "rearm"; delayMs: number }
+  | { action: "generate"; backoffMs: number };
+
+export function reportAlarmPlan(input: {
+  attempts: number;
+  cap: number;
+  inFlight: boolean;
+  timeoutMs: number;
+  backoffMs: number;
+}): ReportAlarmPlan {
+  if (input.attempts > input.cap) return { action: "terminal" };
+  if (input.inFlight) return { action: "rearm", delayMs: input.timeoutMs };
+  return { action: "generate", backoffMs: input.attempts * input.backoffMs };
+}
+
 export class ReportRunner extends DurableObject<Env> {
   #inFlight: Promise<void> | null = null;
   readonly models = buildModels(this.env, {
@@ -81,11 +98,18 @@ export class ReportRunner extends DurableObject<Env> {
     if (this.#inFlight) {
       const attempts = ((await this.ctx.storage.get<number>("attempts")) ?? 0) + 1;
       await this.ctx.storage.put("attempts", attempts);
-      if (attempts > report.alarmAttempts) {
+      const plan = reportAlarmPlan({
+        attempts,
+        cap: report.alarmAttempts,
+        inFlight: true,
+        timeoutMs: report.alarmTimeoutMs,
+        backoffMs: report.alarmBackoffMs,
+      });
+      if (plan.action === "terminal") {
         await this.#markTerminal(db, activityId);
         return;
       }
-      await this.ctx.storage.setAlarm(Date.now() + report.alarmTimeoutMs);
+      await this.ctx.storage.setAlarm(Date.now() + plan.delayMs);
       return;
     }
     const row = await one<{ status: string }>(db, "SELECT status FROM reports WHERE activity_id = $id", {
@@ -103,7 +127,14 @@ export class ReportRunner extends DurableObject<Env> {
     }
     const attempts = ((await this.ctx.storage.get<number>("attempts")) ?? 0) + 1;
     await this.ctx.storage.put("attempts", attempts);
-    if (attempts > report.alarmAttempts) {
+    const plan = reportAlarmPlan({
+      attempts,
+      cap: report.alarmAttempts,
+      inFlight: false,
+      timeoutMs: report.alarmTimeoutMs,
+      backoffMs: report.alarmBackoffMs,
+    });
+    if (plan.action === "terminal") {
       await this.#markTerminal(db, activityId);
       return;
     }
@@ -120,7 +151,7 @@ export class ReportRunner extends DurableObject<Env> {
       ]);
     } catch (error) {
       console.error("[report] generation failed", error instanceof Error ? error.name : typeof error);
-      await this.ctx.storage.setAlarm(Date.now() + attempts * report.alarmBackoffMs);
+      await this.ctx.storage.setAlarm(Date.now() + plan.backoffMs);
     } finally {
       clearTimeout(watchdog);
     }
@@ -151,6 +182,9 @@ export class ReportRunner extends DurableObject<Env> {
       { id: activityId },
     );
     if (!activity) throw new Error("activity_missing");
+    if (this.models.faux && activity.statement.includes(FAUX_GENERATE_FAILURE_MARKER)) {
+      throw new Error("faux_report_generate_failure");
+    }
     const members = await all<{ user_id: string; name: string; lang: "zh" | "en" | "es" }>(
       db,
       "SELECT m.user_id, m.name, u.lang FROM members m JOIN users u ON u.id = m.user_id WHERE m.classroom_id = $cid ORDER BY m.joined_at, m.user_id",
@@ -417,6 +451,7 @@ function textOf(content: string | readonly unknown[]): string {
 }
 
 const FAUX_CLASS_FAILURE_MARKER = "FORCE-CLASS-REPORT-FAILURE";
+const FAUX_GENERATE_FAILURE_MARKER = "FORCE-REPORT-GENERATE-FAILURE";
 
 function fauxReportScript(context: TranscriptContext): AssistantMessage {
   const last = context.messages.filter((message) => message.role !== "system").at(-1);
