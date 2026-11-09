@@ -115,16 +115,25 @@ export function classroomsRoutes() {
           code,
         });
         if (clash) continue;
+        const activityId = newId("a_");
         try {
-          await run(
-            c.env.DB,
-            "INSERT INTO classrooms (id, name, teacher_id, join_code, current_activity_id, created_at) VALUES ($id, $name, $tid, $code, NULL, $at)",
-            { id, name: input.name, tid: user.id, code, at },
-          );
+          await batch(c.env.DB, [
+            {
+              sql: "INSERT INTO classrooms (id, name, teacher_id, join_code, current_activity_id, created_at) VALUES ($id, $name, $tid, $code, NULL, $at)",
+              params: { id, name: input.name, tid: user.id, code, at },
+            },
+            {
+              sql: "INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ($aid, $cid, $tid2, $at2)",
+              params: { aid: activityId, cid: id, tid2: input.topicId, at2: at },
+            },
+            {
+              sql: "UPDATE classrooms SET current_activity_id = $aid WHERE id = $cid",
+              params: { aid: activityId, cid: id },
+            },
+          ]);
         } catch {
           continue;
         }
-        const activityId = await createActivity(c.env.DB, id, input.topicId);
         const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") ?? "";
         return c.json({ classroomId: id, code, url: `${base}/join/${code}`, activityId }, 201);
       }

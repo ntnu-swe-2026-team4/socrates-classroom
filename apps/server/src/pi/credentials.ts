@@ -57,7 +57,7 @@ const PROVIDER_ENV_NAMES = new Set(
 
 export function workersAuthContext(env: Env): {
   env(name: string): Promise<string | undefined>;
-  fileExists(): Promise<boolean>;
+  fileExists(path: string): Promise<boolean>;
 } {
   const record = env as unknown as Record<string, unknown>;
   return {
