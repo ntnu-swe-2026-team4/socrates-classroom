@@ -153,12 +153,12 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
 
     const finish = await call(`/api/activities/${created.activityId}/finish`, {
       method: "POST",
-      headers: { Cookie: teacher },
+      headers: { Cookie: teacher, "CF-Connecting-IP": "198.51.100.10" },
     });
     expect(finish.status).toBe(204);
     const again = await call(`/api/activities/${created.activityId}/finish`, {
       method: "POST",
-      headers: { Cookie: teacher },
+      headers: { Cookie: teacher, "CF-Connecting-IP": "198.51.100.11" },
     });
     expect(again.status).toBe(204);
 
@@ -225,7 +225,10 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       body: JSON.stringify({ code, name: "R6生D", tosAccepted: true }),
     });
     const student = cookieOf(joined);
-    const finish = await call(`/api/activities/${activityId}/finish`, { method: "POST", headers: { Cookie: student } });
+    const finish = await call(`/api/activities/${activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: student, "CF-Connecting-IP": "198.51.100.12" },
+    });
     expect(finish.status).toBe(403);
 
     const otherClassroom = await call("/api/classrooms", {

@@ -340,3 +340,44 @@ describe("activity_finished reaches the client as a named error code", () => {
     socket.close();
   }, 20_000);
 });
+
+describe("WS error-frame hygiene + worker entry CORS", () => {
+  it("non-whitelisted error (ZodError from oversized input) yields a generic frame: no code, id echoed", async () => {
+    const topics = (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{
+      id: string;
+    }>;
+    const created = (await (
+      await call("/api/classrooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacherCookie },
+        body: JSON.stringify({ name: "錯誤框架班", topicId: topics[0]!.id }),
+      })
+    ).json()) as { code: string; activityId: string };
+    const joined = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: created.code, name: "超長訊息", tosAccepted: true }),
+    });
+    expect(joined.status).toBe(200);
+    const { user } = (await joined.json()) as { user: { id: string } };
+    const cookie = cookieOf(joined);
+    const socket = await connect(`${created.activityId}:${user.id}`, cookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.some((m) => m.type === "view"));
+    socket.send(JSON.stringify({ type: "submit", id: "big", input: "字".repeat(2001) }));
+    await rx.until((f) => f.some((m) => m.type === "error" && m.id === "big"));
+    const frame = rx.list.find((m) => m.type === "error" && m.id === "big") as { code?: string; message: string };
+    expect(frame.message).toBe("Request failed");
+    expect(frame.code).toBeUndefined();
+    socket.close();
+  }, 20_000);
+
+  it("worker entry serves /agents/* and /api/* without CORS headers (cors: false)", async () => {
+    const preflight = await call("/agents/chat/whatever", { method: "OPTIONS" });
+    expect(preflight.headers.get("access-control-allow-origin")).toBeNull();
+    const api = await call("/api/me");
+    expect(api.headers.get("access-control-allow-origin")).toBeNull();
+  });
+});
