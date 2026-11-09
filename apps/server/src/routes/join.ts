@@ -98,10 +98,16 @@ export function joinRoutes() {
           { cid: classroom.id, uid: sessionUser.id, name: sessionUser.name, at },
         );
       } catch (error) {
-        const pairs = uniqueViolationColumns(error);
-        if (pairs.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
-        const racedRejoin = pairs.some(([table, column]) => table === "members" && column === "user_id");
-        if (!racedRejoin) throw error;
+        if (uniqueViolationColumns(error).some(([table, column]) => table === "members" && column === "name")) {
+          const raced = await one<{ user_id: string }>(
+            c.env.DB,
+            "SELECT user_id FROM members WHERE classroom_id = $cid AND user_id = $uid",
+            { cid: classroom.id, uid: sessionUser.id },
+          );
+          if (raced) return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
+          fail(409, "name_taken");
+        }
+        throw error;
       }
       return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
     });

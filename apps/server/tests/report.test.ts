@@ -141,6 +141,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     const coder = teacherReport.students.find((s) => s.studentId === students[1]!.userId)!;
     expect(coder.violations.length).toBeGreaterThan(0);
     expect(coder.violations[0]!.type).toBe("coding");
+    expect(coder.violations[0]!.turn).toBe(1);
 
     const own = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: students[0]!.cookie } });
     expect(own.status).toBe(200);

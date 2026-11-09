@@ -83,18 +83,21 @@ export function createWebSearchExtension(ai: Ai | undefined, config: WebSearchCo
       if (args.findMode !== undefined && args.findText === undefined) {
         return { output: [{ type: "text", text: "findMode requires findText; provide findText or omit findMode." }] };
       }
-      const stored = responses.getStored(args.responseId);
-      if (!stored) {
+      const searchRecord = responses.getStored(args.responseId);
+      const fetchRecord = searchRecord ? null : responses.getStoredFetch(args.responseId);
+      if (!searchRecord && !fetchRecord) {
         return {
           output: [
             {
               type: "text",
-              text: `Error: No stored results for responseId ${args.responseId}. Use a responseId returned by web_search.`,
+              text: `Error: No stored results for responseId ${args.responseId}. Use a responseId returned by web_search or fetch_content.`,
             },
           ],
         };
       }
-      const content = serialize(stored);
+      const content = searchRecord
+        ? serialize(searchRecord)
+        : fetchRecord!.urls.map((url) => `## ${url.title || url.url}\n${url.content}`).join("\n\n") || "";
       if (args.findText !== undefined) {
         const queries = args.query ? [...args.findText, args.query] : args.findText;
         return {

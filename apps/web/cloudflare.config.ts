@@ -18,13 +18,13 @@ export default defineConfig(({ mode }) => {
       compatibilityFlags: ["nodejs_compat"],
       observability: { enabled: true },
       env: {
-        DB: bindings.d1({ name: "socrates", id: "d1db0ca1-1111-4000-8000-000000000001" }),
+        DB: bindings.d1({ name: "socrates", id: "722c35f0-eceb-4ce4-9fea-a265852d71ac" }),
         ...(local.CF_REMOTE_AI === "true" || process.env.CF_REMOTE_AI === "true"
           ? { AI: bindings.ai({ dev: { remote: true } }) }
           : { AI: bindings.ai({}) }),
         Chat: bindings.durableObject({ worker: "socrates-classroom", exportName: "Chat" }),
         ReportRunner: bindings.durableObject({ worker: "socrates-classroom", exportName: "ReportRunner" }),
-        PUBLIC_BASE_URL: text("PUBLIC_BASE_URL", ""),
+        PUBLIC_BASE_URL: text("PUBLIC_BASE_URL", "https://socrates.g36maid.dev"),
         LLM_PROVIDER: bindings.text(local.LLM_PROVIDER ?? (mode === "development" ? "mock" : "")),
         DGX_BASE_URL: text("DGX_BASE_URL", ""),
         SEED_TOKEN: bindings.secret(),
@@ -33,6 +33,7 @@ export default defineConfig(({ mode }) => {
         BYOK_ENC_KEY: bindings.secret(),
       },
       assets: { notFoundHandling: "single-page-application" },
+      domains: ["socrates.g36maid.dev"],
       exports: {
         Chat: exports.durableObject({ storage: "sqlite" }),
         ReportRunner: exports.durableObject({ storage: "sqlite" }),

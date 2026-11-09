@@ -509,3 +509,22 @@ describe("rate limiting + register gate (round-6 restores)", () => {
     expect(((await registered.json()) as { code?: string }).code).toBe("activity_finished");
   });
 });
+
+describe("uniqueViolationColumns (real D1 error envelope)", () => {
+  test("parses the Miniflare envelope (D1_ERROR prefix, SQLITE_CONSTRAINT suffix, cause chain) and the bare raw message", async () => {
+    const { uniqueViolationColumns } = await import("../src/http");
+    const causeMessage =
+      "UNIQUE constraint failed: members.classroom_id, members.name: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)";
+    const envelope = new Error(`D1_ERROR: ${causeMessage}`, { cause: new Error(causeMessage) });
+    expect(uniqueViolationColumns(envelope)).toEqual([
+      ["members", "classroom_id"],
+      ["members", "name"],
+    ]);
+    expect(uniqueViolationColumns(envelope.cause as Error)).toEqual([
+      ["members", "classroom_id"],
+      ["members", "name"],
+    ]);
+    expect(uniqueViolationColumns(new Error("UNIQUE constraint failed: users.email"))).toEqual([["users", "email"]]);
+    expect(uniqueViolationColumns(new Error("FOREIGN KEY constraint failed"))).toEqual([]);
+  });
+});

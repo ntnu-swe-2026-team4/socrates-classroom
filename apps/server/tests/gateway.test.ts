@@ -317,3 +317,21 @@ describe("workersAuthContext (platform env backs only config-declared provider n
     await expect(ctx.fileExists("~/.aws/credentials")).resolves.toBe(false);
   });
 });
+
+describe("AI-only production registry (F1 regression: YAML provider id vs createAI id)", () => {
+  it("pick resolves the workers-ai legs through the real models registry without DGX or teacher keys", async () => {
+    const { buildModels } = await import("../src/pi/models");
+    const { Router } = await import("../src/gateway/router");
+    const fakeAi = { run: async () => ({}), toMarkdown: async () => ({ format: "markdown", markdown: "" }) };
+    const env = { AI: fakeAi } as never;
+    const { models, default: fallback } = buildModels(env);
+    const router = new Router(env);
+    const canServe = (entry: { provider: string; model: string }): boolean =>
+      models.getModel(entry.provider, entry.model) !== undefined;
+    const decision = router.pick("interactive", canServe)!;
+    expect(decision).not.toBeNull();
+    expect(decision.entry.provider).toBe("workers-ai");
+    expect(decision.model).toBe("@cf/zai-org/glm-5.3-flash");
+    expect(fallback).toBeDefined();
+  });
+});

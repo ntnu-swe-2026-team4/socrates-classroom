@@ -52,12 +52,12 @@ function userEntry(id: number, text: string): EntryRecord {
   return asEntry({ id, conversationId: "c1", kind: "pi.user", model: [{ role: "user", content: text }] });
 }
 
-function assistantEntry(id: number, text: string): EntryRecord {
+function assistantEntry(id: number, text: string, stopReason?: string): EntryRecord {
   return asEntry({
     id,
     conversationId: "c1",
     kind: "pi.assistant",
-    model: [{ role: "assistant", content: [{ type: "text", text }] }],
+    model: [{ role: "assistant", content: [{ type: "text", text }], ...(stopReason ? { stopReason } : {}) }],
   });
 }
 
@@ -138,6 +138,57 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     await waitFor(() => expect(result.current.phase).toBe("idle"));
     expect(tts).toHaveBeenCalledTimes(1);
     expect(tts.mock.calls[0]![0]).toBe("你的直覺");
+  });
+
+  it("F2: a tool-round assistant entry does not complete pending, speak, or unlock input", async () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答")]));
+
+    act(() => {
+      expect(result.current.send("幫我查資料")).toBe(true);
+    });
+
+    emit(
+      opsFrame([
+        userEntry(1, "舊問題"),
+        assistantEntry(2, "舊回答"),
+        userEntry(3, "幫我查資料"),
+        assistantEntry(4, "Let me search.", "toolUse"),
+      ]),
+    );
+    expect(result.current.pending).toBe(true);
+    expect(result.current.phase).toBe("thinking");
+    expect(tts).not.toHaveBeenCalled();
+
+    emit(
+      opsFrame([
+        userEntry(1, "舊問題"),
+        assistantEntry(2, "舊回答"),
+        userEntry(3, "幫我查資料"),
+        assistantEntry(4, "你的直覺"),
+      ]),
+    );
+    expect(result.current.phase).toBe("speaking");
+    await waitFor(() => expect(result.current.phase).toBe("idle"));
+  });
+
+  it("load earlier: sends the entries op, prepends the page, clears the earlier marker", async () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答")], 3));
+    expect(result.current.canLoadEarlier).toBe(true);
+
+    act(() => {
+      void result.current.loadEarlier();
+    });
+    await act(async () => {});
+    const op = agent.sent
+      .map((raw) => JSON.parse(raw) as { type: string; id?: string; query?: unknown })
+      .find((frame) => frame.type === "entries");
+    expect(op).toMatchObject({ type: "entries", query: { maxEntryId: 3 } });
+
+    emit({ type: "result", id: op!.id!, result: { items: [userEntry(0, "更早")] } } as unknown as ServerMessage);
+    await waitFor(() => expect(result.current.messages[0]).toEqual({ id: "e0", role: "user", text: "更早" }));
+    expect(result.current.canLoadEarlier).toBe(false);
   });
 
   it("F22: synchronous consecutive sends admit only one submit (the second returns false)", () => {

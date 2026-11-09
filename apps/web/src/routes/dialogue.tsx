@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
@@ -36,6 +37,7 @@ function DialoguePage() {
     enabled: activityId !== "",
     staleTime: Infinity,
   });
+  const activityRefetch = useCallback(() => void activityQuery.refetch(), [activityQuery.refetch]);
   const topic = activityQuery.data?.topic;
 
   if (!me.data) return <div className="h-dvh" aria-busy="true" />;
@@ -53,7 +55,7 @@ function DialoguePage() {
         activityQuery.isError ? t("common_error") : activityQuery.data?.finishedAt ? t("dlg_err_finished") : undefined
       }
       autoSend={q}
-      onActivityFinished={() => void activityQuery.refetch()}
+      onActivityFinished={activityRefetch}
       onAutoSent={() =>
         void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, q: undefined }), replace: true })
       }

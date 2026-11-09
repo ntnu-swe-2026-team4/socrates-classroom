@@ -16,8 +16,10 @@ export const Route = createFileRoute("/report/$id")({
 function ReportPage() {
   const t = useT();
   const { id } = Route.useParams();
-  const [view, setView] = useState<"group" | "individual">("group");
   const navigate = useNavigate();
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity, enabled: false });
+  const isTeacher = me.data?.role === "teacher";
+  const [view, setView] = useState<"group" | "individual">("group");
   const [studentIdx, setStudentIdx] = useState(0);
   const report = useQuery({
     queryKey: ["report", id],
@@ -41,13 +43,17 @@ function ReportPage() {
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-[15px] text-ink-soft">
         <p>{pending ? t("report_generating") : (err?.message ?? t("common_error"))}</p>
         {failed ? (
-          <button
-            type="button"
-            onClick={() => void navigate({ to: "/t/live/$id", params: { id } })}
-            className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
-          >
-            {t("report_refinish")}
-          </button>
+          isTeacher ? (
+            <button
+              type="button"
+              onClick={() => void navigate({ to: "/t/live/$id", params: { id } })}
+              className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
+            >
+              {t("report_refinish")}
+            </button>
+          ) : (
+            <p className="text-[13px] text-ink-faint">{t("report_failed_student")}</p>
+          )
         ) : (
           <button
             type="button"

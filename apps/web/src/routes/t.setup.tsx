@@ -48,7 +48,10 @@ function SetupPage() {
       }
       return api.createClassroom(classroomName.trim(), topicId);
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["classrooms"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+      void queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
   });
   const created = create.data ?? null;
   const [copied, setCopied] = useState(false);

@@ -40,8 +40,14 @@ export function buildModels(env: Env, options: BuildModelsOptions = {}): ModelsB
       getModels: () =>
         (ai.provider.getModels() as unknown as AnyModel[]).map((model) => (model.id === head ? primary : model)),
     };
+    for (const [id, def] of Object.entries(gatewayConfig.providers)) {
+      if (def.kind === "binding") models.setProvider({ ...wrapped, id, name: `${wrapped.name} (${id})` } as never);
+    }
     models.setProvider(wrapped as never);
-    fallbackHead = models.getModel(ai.provider.id, head) as AnyModel | undefined;
+    const headEntry = [...gatewayConfig.defaults.availability]
+      .sort((a, b) => a.priority - b.priority)
+      .find((entry) => bindingModelOf(entry) === head);
+    fallbackHead = headEntry ? (models.getModel(headEntry.provider, head) as AnyModel | undefined) : undefined;
   }
   registerDgx(env, models);
   return { models, default: fallbackHead ?? firstResolvable(models) ?? fauxBundle(env).default };

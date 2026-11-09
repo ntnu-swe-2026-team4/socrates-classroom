@@ -133,6 +133,55 @@ describe("websearch extension (web_search + get_search_content)", () => {
       globalThis.fetch = origFetch;
     }
   });
+
+  it("redirect hops are gated by the search-hit allowlist (302 to a non-hit host rejected; hit host allowed)", async () => {
+    const { createWebSearchExtension } = await import("../src/pi/extensions/websearch");
+    const fakeAi = {
+      websearch: async () =>
+        new Response(
+          JSON.stringify({
+            items: [
+              { url: "https://zh.wikipedia.org/wiki/Justice", title: "Justice", description: "d" },
+              { url: "https://en.wikipedia.org/wiki/Contract", title: "Contract", description: "d" },
+            ],
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    };
+    const extension = createWebSearchExtension(fakeAi as never);
+    type Tool = {
+      name: string;
+      execute: (args: Record<string, unknown>) => Promise<{ output: Array<{ type: string; text: string }> }>;
+    };
+    const tools = (extension.tools ?? []) as unknown as Tool[];
+    await tools.find((tool) => tool.name === "web_search")!.execute({ query: "justice" });
+    const fetchTool = tools.find((tool) => tool.name === "fetch_content")!;
+
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.hostname === "attacker.example") throw new Error("attacker host must never be fetched");
+      if (url.pathname === "/wiki/Justice") {
+        return new Response(null, { status: 302, headers: { location: "https://attacker.example/evil" } });
+      }
+      if (url.hostname === "en.wikipedia.org") {
+        return new Response("<html><body>contract body</body></html>", {
+          headers: { "content-type": "text/html" },
+        });
+      }
+      return new Response("<html><body>justice body</body></html>", { headers: { "content-type": "text/html" } });
+    }) as typeof fetch;
+    try {
+      const hijack = await fetchTool.execute({ url: "https://zh.wikipedia.org/wiki/Justice", mode: "raw" });
+      expect(hijack.output[0]!.text).toContain("Blocked redirect target");
+      expect(hijack.output[0]!.text).toContain("attacker.example");
+
+      const chain = await fetchTool.execute({ url: "https://en.wikipedia.org/wiki/Contract", mode: "raw" });
+      expect(chain.output[0]!.text).toContain("contract body");
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
 });
 
 describe("fetch_content (readable/raw + cache + SSRF)", () => {
@@ -217,5 +266,59 @@ describe("fetch_content (readable/raw + cache + SSRF)", () => {
     } finally {
       globalThis.fetch = origFetch;
     }
+  });
+});
+
+describe("get_search_content for fetch records + paging continuity", () => {
+  it("a fetch_content responseId is readable via get_search_content beyond the inline preview", async () => {
+    const { createWebSearchExtension } = await import("../src/pi/extensions/websearch");
+    const longBody = `<html><body>${"y".repeat(25_000)}</body></html>`;
+    const fakeAi = {
+      websearch: async () =>
+        new Response(
+          JSON.stringify({
+            items: [{ url: "https://en.wikipedia.org/wiki/Contract", title: "Contract", description: "d" }],
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    };
+    const extension = createWebSearchExtension(fakeAi as never);
+    type Tool = {
+      name: string;
+      execute: (args: Record<string, unknown>) => Promise<{ output: Array<{ type: string; text: string }> }>;
+    };
+    const tools = (extension.tools ?? []) as unknown as Tool[];
+    await tools.find((tool) => tool.name === "web_search")!.execute({ query: "contract" });
+    const fetchTool = tools.find((tool) => tool.name === "fetch_content")!;
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(longBody, { headers: { "content-type": "text/html" } })) as typeof fetch;
+    try {
+      const fetched = await fetchTool.execute({ url: "https://en.wikipedia.org/wiki/Contract", mode: "raw" });
+      const responseId = /responseId: ([\w-]+)/.exec(fetched.output[0]!.text)?.[1];
+      expect(responseId).toBeDefined();
+
+      const retrieval = tools.find((tool) => tool.name === "get_search_content")!;
+      const tail = await retrieval.execute({ responseId, offset: 8_000, limit: 20_000 });
+      expect(tail.output[0]!.text).toContain("yyyy");
+      const head = await retrieval.execute({ responseId, offset: 0, limit: 20_000 });
+      expect(head.output[0]!.text).toContain("responseId");
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("slicePage hint offsets follow the delivered length — concatenating pages reproduces the original", async () => {
+    const { slicePage } = await import("../src/pi/extensions/websearch/store");
+    const content = "x".repeat(30_000);
+    let offset = 0;
+    const delivered: string[] = [];
+    for (let guard = 0; offset < content.length && guard < 10; guard += 1) {
+      const page = slicePage(content, offset, 20_000, "example");
+      delivered.push(page.text.split("\n\n---\n")[0]!);
+      expect(page.endOffset).toBe(offset + delivered.at(-1)!.length);
+      offset = page.endOffset;
+    }
+    expect(delivered.join("")).toBe(content);
   });
 });

@@ -56,14 +56,23 @@ export function requireUser(c: Ctx): User {
 }
 
 export function uniqueViolationColumns(error: unknown): Array<[string, string]> {
-  if (!(error instanceof Error)) return [];
-  const match = error.message.match(/^UNIQUE constraint failed: (.+)$/);
-  if (!match) return [];
-  return match[1]!
-    .split(",")
-    .map((pair) => pair.trim().split("."))
-    .filter((parts): parts is [string, string] => parts.length === 2)
-    .map(([table, column]) => [table, column] as [string, string]);
+  const messages: string[] = [];
+  if (error instanceof Error) {
+    messages.push(error.message);
+    if (error.cause instanceof Error) messages.push(error.cause.message);
+  }
+  for (const message of messages) {
+    // Miniflare/D1 envelopes the raw SQLite message: `D1_ERROR: UNIQUE constraint failed: t.c, t.c2: SQLITE_CONSTRAINT (extended: …)`
+    const normalized = message.replace(/^D1_ERROR:\s*/, "");
+    const match = normalized.match(/^UNIQUE constraint failed: (.+?)(?:: SQLITE_CONSTRAINT\b.*)?$/);
+    if (!match) continue;
+    return match[1]!
+      .split(",")
+      .map((pair) => pair.trim().split("."))
+      .filter((parts): parts is [string, string] => parts.length === 2)
+      .map(([table, column]) => [table, column] as [string, string]);
+  }
+  return [];
 }
 
 export function requireTeacher(c: Ctx): User {

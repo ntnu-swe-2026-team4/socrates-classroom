@@ -38,3 +38,18 @@ describe("Clef choice decoders (classifiers.emotion / classifiers.violation)", (
     expect(await classify("hello")).toBeNull();
   });
 });
+
+describe("Clef choice enum rejection", () => {
+  it("judgment: a choice outside VIOLATION_TYPES records nothing", async () => {
+    const classify = createClefViolationClassifier(
+      clefAi({ answers: { violation: { choice: "hacker", probabilities: { hacker: 0.9 } } } }) as never,
+    );
+    expect(await classify("let me hack this")).toBeNull();
+  });
+
+  it("avatar: a choice outside the emotion set records nothing", () => {
+    expect(
+      emotionOf({ answers: { emotion: { choice: "smug", probabilities: { smug: 0.9 }, confidence: 0.9 } } }),
+    ).toBeNull();
+  });
+});

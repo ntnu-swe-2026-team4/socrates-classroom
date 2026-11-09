@@ -50,7 +50,7 @@ export function DialogueView({
 }: DialogueViewProps) {
   const t = useT();
   const {
-    messages,
+    items,
     draft,
     phase,
     error,
@@ -60,7 +60,6 @@ export function DialogueView({
     viewReady,
     canLoadEarlier,
     loadEarlier,
-    gaps,
     fillGap,
     send,
     retryLast,
@@ -100,10 +99,12 @@ export function DialogueView({
   }, [openTerm, onTermOpened]);
   useEffect(() => {
     if (autoSend && autoSent.current !== autoSend && phase === "idle" && ready && viewReady) {
-      if (send(autoSend)) {
+      if (send(autoSend.slice(0, 2000))) {
         autoSent.current = autoSend;
         onAutoSent?.();
       }
+    } else if (!autoSend) {
+      autoSent.current = null;
     }
   }, [autoSend, phase, ready, viewReady, send, onAutoSent]);
 
@@ -259,7 +260,7 @@ export function DialogueView({
               aria-busy={busy}
             >
               <div className="mx-auto flex max-w-3xl flex-col gap-4 py-5">
-                {messages.length === 0 && statement && (
+                {items.every((item) => item.kind !== "entry") && statement && (
                   <>
                     <Bubble speaker="assistant" text={statement} />
                     <div className="flex flex-wrap gap-2 pl-11">
@@ -286,19 +287,39 @@ export function DialogueView({
                     {t("dlg_load_earlier")}
                   </button>
                 )}
-                {gaps.map((gap) => (
-                  <button
-                    type="button"
-                    key={`${gap.after}-${gap.upTo}`}
-                    onClick={() => void fillGap(gap)}
-                    className="mx-auto cursor-pointer rounded-full border border-line-strong px-3 py-1 text-[12.5px] text-ink-soft transition-colors hover:text-ink"
-                  >
-                    {t("dlg_load_earlier")}
-                  </button>
-                ))}
-                {messages.map((message) => (
-                  <Bubble key={message.id} speaker={message.role} text={message.text} />
-                ))}
+                {items.map((item) => {
+                  if (item.kind === "gap") {
+                    return (
+                      <button
+                        type="button"
+                        key={`gap-${item.after}-${item.upTo}`}
+                        onClick={() => void fillGap(item)}
+                        className="mx-auto cursor-pointer rounded-full border border-line-strong px-3 py-1 text-[12.5px] text-ink-soft transition-colors hover:text-ink"
+                      >
+                        {t("dlg_load_missing")}
+                      </button>
+                    );
+                  }
+                  if (item.kind !== "entry") return null;
+                  const entry = item.entry;
+                  if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") return null;
+                  const message = entry.model?.[0] as
+                    | { content?: string | readonly { type: string; text?: string }[] }
+                    | undefined;
+                  const text =
+                    typeof message?.content === "string"
+                      ? message.content
+                      : (message?.content ?? [])
+                          .map((part) => (part.type === "text" ? (part.text ?? "") : ""))
+                          .join("");
+                  return (
+                    <Bubble
+                      key={`e${entry.id}`}
+                      speaker={entry.kind === "pi.user" ? "user" : "assistant"}
+                      text={text}
+                    />
+                  );
+                })}
                 <div aria-live="polite">{draft && <Bubble speaker="assistant" text={draft} caret={streaming} />}</div>
               </div>
             </div>

@@ -146,11 +146,7 @@ export class Chat extends DurableObject<Env> {
     messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
     violations: Array<{ turn: number; type: string; excerpt: string }>;
   }> {
-    const entries = await this.harness.session(ROOT_SESSION).entries({ order: "descending" }, TRANSCRIPT_MAX_ENTRIES);
-    if (entries.next) {
-      console.warn("[transcript] truncated at", TRANSCRIPT_MAX_ENTRIES, "entries");
-    }
-    const items = [...entries.items].reverse();
+    const items = await this.harness.session(ROOT_SESSION).messages();
     const messages: Array<{ role: "user" | "assistant"; turn: number; text: string }> = [];
     const violations: Array<{ turn: number; type: string; excerpt: string }> = [];
     let turn = 0;
@@ -225,8 +221,6 @@ function fauxSocraticScript(context: TranscriptContext): AssistantMessage {
   }
   return fauxAssistantMessage([fauxText(`你提到「${said}」。先別急著找標準答案——你的直覺判斷是什麼？為什麼？`)]);
 }
-
-const TRANSCRIPT_MAX_ENTRIES = 1000;
 
 function textOf(content: Message["content"]): string {
   if (typeof content === "string") return content;

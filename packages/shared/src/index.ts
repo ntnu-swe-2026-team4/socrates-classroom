@@ -59,9 +59,12 @@ export const StudentLiveSchema = z.object({
 });
 export type StudentLive = z.infer<typeof StudentLiveSchema>;
 
+export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
+export type ViolationType = (typeof VIOLATION_TYPES)[number];
+
 export const ViolationSliceSchema = z.object({
   turn: z.number().int(),
-  type: z.string(),
+  type: z.enum(VIOLATION_TYPES),
   excerpt: z.string(),
 });
 
@@ -187,8 +190,6 @@ export const TeacherKeyStatusSchema = z.object({
 });
 export type TeacherKeyStatus = z.infer<typeof TeacherKeyStatusSchema>;
 
-export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
-export type ViolationType = (typeof VIOLATION_TYPES)[number];
 export const ViolationChoiceSchema = z.object({
   type: z.string(),
   probability: z.number().min(0).max(1),

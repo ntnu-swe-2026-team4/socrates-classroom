@@ -52,7 +52,9 @@ function JoinPage() {
           ? t("join_err_name_taken")
           : code === "activity_finished"
             ? t("join_err_finished")
-            : t("join_failed"),
+            : code === "only_student"
+              ? t("join_only_student")
+              : t("join_failed"),
       );
     } finally {
       setSubmitting(false);

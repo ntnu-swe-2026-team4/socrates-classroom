@@ -57,16 +57,19 @@ interface WindowedEntry {
   model?: readonly unknown[];
 }
 
-function abortedPartial(entry: WindowedEntry): boolean {
+const ANSWER_STOP_REASONS = new Set(["stop", "length"]);
+
+function intermediateAssistant(entry: WindowedEntry): boolean {
   const message = entry.model?.[0] as { stopReason?: string } | undefined;
-  return message?.stopReason === "aborted";
+  if (message?.stopReason === undefined) return false;
+  return !ANSWER_STOP_REASONS.has(message.stopReason);
 }
 
 function answered(entries: readonly WindowedEntry[]): boolean {
   return entries.some(
     (entry) =>
       entry.kind === "pi.assistant" &&
-      !abortedPartial(entry) &&
+      !intermediateAssistant(entry) &&
       textOf(entry.model?.[0] as Message | undefined).trim() !== "",
   );
 }
@@ -90,12 +93,14 @@ export function useDialogue(activityId: string, userId: string) {
   const baselineRef = useRef<number | null>(null);
   const failedInputRef = useRef<string | null>(null);
   const ttsRef = useRef<AbortController | null>(null);
-  const entriesWaiters = useRef(new Map<string, (page: Page<EntryRecord, Cursor>) => void>());
+  const entriesWaiters = useRef(
+    new Map<string, { resolve: (page: Page<EntryRecord, Cursor>) => void; reject: (reason: Error) => void }>(),
+  );
   const loader = useCallback(
     (query: { minEntryId?: EntryId; maxEntryId?: EntryId; order?: "ascending" | "descending" }, limit: number) => {
-      return new Promise<Page<EntryRecord, Cursor>>((resolve) => {
+      return new Promise<Page<EntryRecord, Cursor>>((resolve, reject) => {
         const id = crypto.randomUUID();
-        entriesWaiters.current.set(id, resolve);
+        entriesWaiters.current.set(id, { resolve, reject });
         socketRef.current?.send(JSON.stringify({ type: "entries", id, query, limit } satisfies ClientMessage));
       });
     },
@@ -192,7 +197,7 @@ export function useDialogue(activityId: string, userId: string) {
       if (answered(tail)) {
         completePending();
       } else if (full) {
-        if (tail.some((entry) => entry.kind === "pi.assistant" && !abortedPartial(entry))) {
+        if (tail.some((entry) => entry.kind === "pi.assistant" && !intermediateAssistant(entry))) {
           completePending();
         } else if (!tail.some((entry) => entry.kind === "pi.user")) {
           failPending("llm_unavailable");
@@ -242,13 +247,19 @@ export function useDialogue(activityId: string, userId: string) {
           if (waiter === undefined) return;
           entriesWaiters.current.delete(frame.id);
           if (frame.result && typeof frame.result === "object" && "items" in frame.result) {
-            waiter(frame.result as Page<EntryRecord, Cursor>);
-            return;
+            waiter.resolve(frame.result as Page<EntryRecord, Cursor>);
+          } else {
+            waiter.reject(new Error("entries_result_invalid"));
           }
-          waiter({ items: [] });
           return;
         }
         case "error": {
+          const waiter = frame.id !== undefined ? entriesWaiters.current.get(frame.id) : undefined;
+          if (waiter !== undefined) {
+            entriesWaiters.current.delete(frame.id!);
+            waiter.reject(new Error("entries_failed"));
+            return;
+          }
           if (frame.id !== undefined && frame.id !== pendingRef.current) return;
           if (frame.id === undefined && pendingRef.current === null) return;
           failPending(frame.code ?? "llm_unavailable");
@@ -289,6 +300,15 @@ export function useDialogue(activityId: string, userId: string) {
     () => socket.readyState === socket.OPEN,
     () => false,
   );
+
+  useEffect(() => {
+    const flush = () => {
+      for (const waiter of entriesWaiters.current.values()) waiter.reject(new Error("socket_closed"));
+      entriesWaiters.current.clear();
+    };
+    socket.addEventListener("close", flush);
+    return () => socket.removeEventListener("close", flush);
+  }, [socket]);
 
   useEffect(() => {
     if (socket.readyState === WebSocket.OPEN) {
@@ -345,11 +365,19 @@ export function useDialogue(activityId: string, userId: string) {
 
   const loadEarlier = useCallback(async () => {
     if (!socketRef.current) return;
-    setTranscriptView(await transcriptRef.current.loadEarlier(BACKGROUND_CONTEXT));
+    try {
+      setTranscriptView(await transcriptRef.current.loadEarlier(BACKGROUND_CONTEXT));
+    } catch {
+      /* retryable — the transcript clears its in-flight load when the loader settles */
+    }
   }, []);
 
   const fillGap = useCallback(async (gap: Extract<TranscriptItem, { kind: "gap" }>) => {
-    setTranscriptView(await transcriptRef.current.fillGap(gap, BACKGROUND_CONTEXT));
+    try {
+      setTranscriptView(await transcriptRef.current.fillGap(gap, BACKGROUND_CONTEXT));
+    } catch {
+      /* retryable */
+    }
   }, []);
 
   const messages = useMemo(() => {
@@ -399,6 +427,7 @@ export function useDialogue(activityId: string, userId: string) {
 
   return {
     messages,
+    items: (transcriptView?.items ?? []) as TranscriptItem[],
     draft,
     phase,
     error,

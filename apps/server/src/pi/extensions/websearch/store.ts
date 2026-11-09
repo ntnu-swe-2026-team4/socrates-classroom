@@ -138,11 +138,18 @@ export function slicePage(
 ): { text: string; endOffset: number } {
   const endOffset = Math.min(offset + limit, content.length);
   let text = content.slice(offset, endOffset);
+  let deliveredEnd = endOffset;
   if (endOffset < content.length) {
-    const hint = `\n\n---\nShowing chars ${offset}-${endOffset} of ${content.length}. Use get_search_content({ responseId: "${id}", offset: ${endOffset}, limit: ${limit} }) for the next slice.`;
-    const overflow = text.length + hint.length - MAX_INLINE_CHARS;
-    if (overflow > 0) text = text.slice(0, text.length - overflow);
-    text += hint;
+    const hint = (next: number) =>
+      `\n\n---\nShowing chars ${offset}-${next} of ${content.length}. Use get_search_content({ responseId: "${id}", offset: ${next}, limit: ${limit} }) for the next slice.`;
+    let rendered = text + hint(deliveredEnd);
+    const overflow = rendered.length - MAX_INLINE_CHARS;
+    if (overflow > 0) {
+      text = text.slice(0, Math.max(0, text.length - overflow));
+      deliveredEnd = offset + text.length;
+      rendered = text + hint(deliveredEnd);
+    }
+    text = rendered;
   }
-  return { text, endOffset };
+  return { text, endOffset: deliveredEnd };
 }
