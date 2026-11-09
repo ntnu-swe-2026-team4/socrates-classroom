@@ -225,7 +225,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 | 檔案                      | 內容                                                                              |
 | ------------------------- | --------------------------------------------------------------------------------- |
-| `tests/chat.test.ts`      | 黃金流程（WS 升級→hello→watch→submit→回答）、evict 重連恢復、ConversationBusy     |
+| `tests/chat.test.ts`      | 主流程（WS 升級→hello→watch→submit→回答）、evict 重連恢復、ConversationBusy     |
 | `tests/avatar.test.ts`    | 情緒 entry 形狀、文字零污染                                                       |
 | `tests/judgment.test.ts`  | tool 註冊、agent 自報 entry                                                       |
 | `tests/websearch.test.ts` | 三 tool 註冊、SSRF 矩陣、cache、store/find/slice                                  |

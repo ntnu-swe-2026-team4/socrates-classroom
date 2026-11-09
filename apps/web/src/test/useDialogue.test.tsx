@@ -90,7 +90,7 @@ beforeEach(() => {
 });
 
 describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
-  it("golden flow: result=admission does not complete; the assistant entry landing moves speaking → idle", async () => {
+  it("main flow: result=admission does not complete; the assistant entry landing moves speaking → idle", async () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     expect(JSON.parse(agent.sent[0]!)).toMatchObject({ type: "watch" });
 

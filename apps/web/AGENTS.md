@@ -25,7 +25,7 @@ pnpm typecheck
 
 ## Quality gates (run before merging — each has caught real bugs in this branch)
 
-1. **Golden flow**: student `/ → /join/:code (name+ToS) → /dialogue?activityId=…`; teacher `/login → /t/setup → /t/live/:id → /report/:id`; guards redirect on direct URL hits. Mock identity dies on reload — navigate in-app
+1. **Critical user paths**: student `/ → /join/:code (name+ToS) → /dialogue?activityId=…`; teacher `/login → /t/setup → /t/live/:id → /report/:id`; guards redirect on direct URL hits. Mock identity dies on reload — navigate in-app
 2. **RWD**: 2560/1280/768/390 × every route, zero horizontal overflow; visual check at 2560 and 390 (page titles vs the global ☰)
 3. **i18n**: `tsc` enforces en/es completeness; every string incl. aria-labels via `t()`; no hardcoded strings; `<html lang>` synced
 4. **A11y + dark mode**: keyboard pass, focus, `aria-busy`/`aria-live`, `prefers-reduced-motion`, dark contrast — audit with the `a11y` skill
