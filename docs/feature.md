@@ -9,7 +9,7 @@
 - [單人：與蘇格拉底對話](#單人與蘇格拉底對話)
 - [活動與報告](#活動與報告)
 - [對話引擎（Pi Durable）](#對話引擎pi-durable)
-- [LLM Routing 與 Teacher Keys](#llm-routing-與-teacher-keys)
+- [LLM Gateway 與 Teacher Keys](#llm-routing-與-teacher-keys)
 - [平台與基礎建設](#平台與基礎建設)
 
 ---
@@ -57,17 +57,17 @@
 | 情緒協議       | avatar extension：Clef choice 題 → `app.emotion` entry（機率）；文字零污染（#111）                    | `apps/server/src/pi/extensions/avatar/`    |
 | 違規偵測       | judgment extension：逐輪 Clef 分類＋`report_violation` 自報 tool → `app.violation` entry（#71）       | `apps/server/src/pi/extensions/judgment/`  |
 | 網路搜尋       | websearch extension：`web_search`／`fetch_content`／`get_search_content`（allowlist＋SSRF 防護）      | `apps/server/src/pi/extensions/websearch/` |
-| Agent profiles | socrates／lookup／topic-gen／report-analyst——角色欄位，model 由 routing 依 traffic class 解析（#113） | `apps/server/src/pi/agents/profiles.ts`    |
+| Agent profiles | socrates／lookup／topic-gen／report-analyst——角色欄位，model 由 gateway 依 traffic class 解析（#113） | `apps/server/src/pi/agents/profiles.ts`    |
 | 供 mock 測試   | pi-ai faux provider（`LLM_PROVIDER=mock`）                                                            | `apps/server/src/pi/models.ts`             |
 
 詳細：[`pi.md`](./pi.md)
 
-## LLM Routing 與 Teacher Keys
+## LLM Gateway 與 Teacher Keys
 
 | 能力         | 說明                                                                                                                   |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | 配置化路由   | `providers.config.yaml`（build-time 編譯）：provider 實例×credential×priority×traffic class；程式碼零模型 id           |
-| fallback     | pi 原生 legs（鏈首綁 symbol）＋`settings.retry` 指數退避；routing 只做決策（cooldown/記帳）                            |
+| fallback     | pi 原生 legs（鏈首綁 symbol）＋`settings.retry` 指數退避；gateway 只做決策（cooldown/記帳）                            |
 | cooldown     | (provider, model, credential) 記帳；429/timeout 60s、401/403 dead、過期自然回；ledger 生命週期＝isolate（`getRouter`） |
 | Teacher keys | 一 provider 一把 key（D1 AES-GCM，回 last4）；`sort_order`＝provider 鏈序；學生無 BYOK（#82，byok 端點已退役）         |
 | Mock         | `LLM_PROVIDER=mock`：離線 faux 模型（測試預設）                                                                        |

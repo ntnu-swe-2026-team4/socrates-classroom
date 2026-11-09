@@ -2,6 +2,12 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-09 — routing/ 更名 gateway/（`experiment/web-next`）
+
+### Changed
+
+- `apps/server/src/routing/` → `apps/server/src/gateway/`——與業界用語對齊（LLM Gateway／Model Router：LiteLLM、Portkey、Cloudflare AI Gateway 皆稱 gateway），並與 URL routing（Hono/TanStack routes）劃清界線；`routing-schema.ts` → `gateway-schema.ts`、`RoutingLedger` → `GatewayLedger`、`routingConfig` → `gatewayConfig`、`tests/routing.test.ts` → `tests/gateway.test.ts`；docs 對應更新（architecture §5、feature、pi、providers、api-contract、AGENTS.md）；CI/deploy config-drift 路徑跟隨
+
 ## 2026-11-09 — 第三波深度審查修復（8 blocking＋MINOR 批次，`experiment/web-next`）
 
 ### Fixed
@@ -88,7 +94,7 @@
 - Routing：`providers.config.yaml`（唯一配置點，build-time 編譯）＋ledger cooldown（LiteLLM 語意）＋Router traffic class 鏈走訪＋oneshot；程式碼零 hardcoded model id
 - Agent profiles（socrates／lookup／topic-gen／report-analyst，#113）——角色欄位，model 依 traffic class 解析
 - ReportRunner DO（activity 級，#74）：alarm 驅動（crash-safe，attempts 上限）；Chat DO `/transcript`（pi transcript 唯一真相，violations 不落第二份儲存）
-- teacher keys（#82）：一 provider 一把 key（AES-GCM）；PUT order＝routing provider 鏈序
+- teacher keys（#82）：一 provider 一把 key（AES-GCM）；PUT order＝gateway provider 鏈序
 - `GET /api/classrooms`：角色視角教室列表（code/url 只回老師；PR #108 UI 收編）
 - 前端：TanStack file routes、三分頁 AppShell rail、DialogueView（頭像側欄可收合）、教室列表/詳情/首頁、i18n 單一 typed dictionary（tsc 强制三語）
 - 契約層 `hc<RpcApi>`：server declarations（`build:types`）→ `@server/*` path；手寫 `types.ts` 退役

@@ -45,7 +45,7 @@ flowchart TD
 
         LOOKUP --> RP["runProfile（一次性 Harness）"]
         GEN --> RP
-        RP --> ROUTER["Router（routing/：config.gen＋ledger cooldown）"]
+        RP --> ROUTER["Router（gateway/：config.gen＋ledger cooldown）"]
         ROUTER --> CFG[["providers.config.yaml（build-time 編譯）"]]
         FINISH --> RR["ReportRunner：平行 per-student studentReport → classReport → D1"]
         RR --> ROUTER
@@ -85,8 +85,8 @@ socrates-classroom/
 │       │   │   ├── models.ts       # models registry 組裝（fallback legs 綁 model object）
 │       │   │   ├── agents/profiles.ts  # agent profile（角色定義）+ runProfile 驅動
 │       │   │   └── extensions/     # 行為載體：socrates／avatar／judgment／websearch
-│       │   ├── routing/            # provider 政策（名實相符）
-│       │   │   ├── routing-schema.ts   # zod schema（YAML 的型別）
+│       │   ├── gateway/            # provider 政策（gateway：config＋ledger＋router）
+│       │   │   ├── gateway-schema.ts   # zod schema（YAML 的型別）
 │       │   │   ├── config.gen.ts       # build-time 產出（scripts/gen-config.mjs）
 │       │   │   ├── ledger.ts           # (provider, model, credential) 記帳＋cooldown
 │       │   │   └── router.ts           # traffic class 鏈走訪（teacher legs 前置合併）
@@ -110,7 +110,7 @@ socrates-classroom/
 
 ## 3. Worker 分層（apps/server）
 
-**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `routing/config.gen.ts`）。
+**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。
 
 **Worker 入口（index.ts）**：`/api/*` → Hono；`/agents/*` → `routeAgentRequest`（WebSocket）；其餘 → static assets。
 
@@ -160,19 +160,19 @@ startReport → pending 標記 → alarm → generate：
 
 模型呼叫經 `runProfile("report-analyst")`（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片從 pi transcript 抽取（`/transcript` 端點，不落第二份儲存）。
 
-## 5. Routing（apps/server/src/routing/）
+## 5. Gateway（apps/server/src/gateway/）
 
 provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點**：`providers.config.yaml`（build-time 編譯成 zod 驗證的 `config.gen.ts`）。
 
 | 檔案                | 職責                                                                                                                                      |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `routing-schema.ts` | YAML 的 zod schema：provider 實例（endpoint+model）×credential 分離；classifiers；availability（priority/maxConcurrency）；trafficClasses |
+| `gateway-schema.ts` | YAML 的 zod schema：provider 實例（endpoint+model）×credential 分離；classifiers；availability（priority/maxConcurrency）；trafficClasses |
 | `config.gen.ts`     | `scripts/gen-config.mjs` 產出（Workers 無檔案系統）                                                                                       |
 | `ledger.ts`         | (provider, model, credential) 記帳＋cooldown（pi 無結構化錯誤狀態→只記 ok/error；連續 5 error 開 60s、ok 重置、過期自然回無 probe）       |
 | `router.ts`         | traffic class 鏈走訪（priority 排序＋cooldown/maxConcurrency 過濾、teacher legs 前置）→ pick；isolate 生命週期（getRouter WeakMap）       |
 
 
-**請求層 vs 決策層**：fallback legs 的試錯、retry 退避由 pi 原生（`streamWithFallback`／`settings.retry`）；routing 只決定「誰該拿到哪條 legs、誰的錢、記誰的帳」。調查過 LiteLLM Router／pi-router／pi-fallback-provider（#98 留言，2026-11-06）——結論：不引入，pi 原生＋三個小件已涵蓋。
+**請求層 vs 決策層**：fallback legs 的試錯、retry 退避由 pi 原生（`streamWithFallback`／`settings.retry`）；gateway 只決定「誰該拿到哪條 legs、誰的錢、記誰的帳」。調查過 LiteLLM Router／pi-router／pi-fallback-provider（#98 留言，2026-11-06）——結論：不引入，pi 原生＋三個小件已涵蓋。
 
 **credential**：`platform`（env）／`teacher:{user_id}`（D1 `teacher_keys`，一 provider 一把 key，AES-GCM）。學生無 BYOK（#82 定案）。teacher key 設定頁是前端配套（#82）。
 
@@ -183,7 +183,7 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 ## 6. 資料層
 
 - **D1 schema**：users／classrooms／topics／activities／members／reports／pseudonyms／teacher_keys（`migrations/001-003`）。`messages`／`violations` 死表已於 003 退役——pi transcript 是對話與違規的唯一真相
-- **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 routing 的 provider 鏈序（#82）
+- **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 provider 鏈序（#82）
 - **DO SQLite**：只有 pi 自己的 `pi_*` 表，應用程式不讀寫——agent 狀態與產品資料分離（D2）
 - **保留政策**：AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容（judgment sink 只記 type/source）
 
@@ -230,7 +230,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 | `tests/judgment.test.ts`    | tool 註冊、agent 自報 entry                                                       |
 | `tests/websearch.test.ts`   | 三 tool 註冊、SSRF 矩陣、cache、store/find/slice                                  |
 | `tests/profiles.test.ts`    | profile 表零 model hardcode、真 prompt 資產接線、runProfile 全路徑                |
-| `tests/routing.test.ts`     | cooldown 語意矩陣、config 形狀、分開記帳                                          |
+| `tests/gateway.test.ts`     | cooldown 語意矩陣、config 形狀、分開記帳                                          |
 | `tests/rest.test.ts`        | 真 Worker 入口：seed guard/ToS join/歷史/finish→report/授權矩陣/teacher keys CRUD |
 | `tests/report.test.ts`      | 報告管線端到端：ready/partial 形狀（§7）、pseudonym integrity、IDOR               |
 | `tests/auth-crypto.test.ts` | AES-GCM/HKDF 加密、版本前綴、timing-safe 比對                                     |
@@ -244,7 +244,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 | 里程碑                                  | 內容                                                                                                                                                         |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | R0–R5（v3）                             | monorepo、D1 介面、PiAgent DO、provider pool——已被 web-next 重建取代                                                                                         |
-| web-next 重建（2026-11-06）             | 兩大原則重構：Chat DO＋PiHarness、extensions（avatar/judgment/websearch）、agent profiles、routing（YAML＋ledger）、ReportRunner、teacher_keys、WS transport |
+| web-next 重建（2026-11-06）             | 兩大原則重構：Chat DO＋PiHarness、extensions（avatar/judgment/websearch）、agent profiles、gateway（YAML＋ledger）、ReportRunner、teacher_keys、WS transport |
 | R6/R7 收尾（2026-11-08）                | `hc<RpcApi>` 全面接上（web types.ts 退役）；WS transport 上線（watch resume、逐訊授權閘門）                                                                  |
 | prompt 接線＋teacher keys（2026-11-09） | profiles instructions 接真資產（§7 報告可生產）；teacher keys 服務（ToS 責任移轉、老師鏈前平台鏈後）                                                         |
 
@@ -291,7 +291,7 @@ v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78�
 
 - gateway＝**stateless function**（isolate 內直呼，不經 DO）：輸入＝transcript 片段＋prompt 題型；輸出＝structured choice／評分。題型：逐輪 violation choice（#71）、intent 分類（#76）、report 分析（#74）、表情 choice（#90 之後）
 - 逐輪 judgment 走 async：turn commit → enqueue（D10）→ judgment → violations 批次寫入 → publish 到 event layer → 面板；latency budget ≤30s，不擋對話主迴圈
-- judgment 模型也進 router catalog（#55 已拍板：Clef-flash 主力、Clef 備選；Jev 不採用——ZDR 未過、自架 DGX 出局——容量）：Workers AI 的 daily quota 在 220 rps 下數小時耗盡——judgment 與 generation 共用 D11 的 multi-provider routing（不同 traffic class）
+- judgment 模型也進 router catalog（#55 已拍板：Clef-flash 主力、Clef 備選；Jev 不採用——ZDR 未過、自架 DGX 出局——容量）：Workers AI 的 daily quota 在 220 rps 下數小時耗盡——judgment 與 generation 共用 D11 的 multi-provider routing（不同 traffic class，D11 保留慣用語）
 - 模型可替換（#55 既定）：題型 schema 放 shared，模型是 catalog 一行設定
 
 ### 13.2 D10 background jobs plane（Queues + Workflows）
@@ -300,7 +300,7 @@ v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78�
 - 報告生成（#74）→ **CF Workflows** 編排：activity finish → fan-out 單人分析（經 Queues parallel）→ aggregate（立場軸/落點/分群）→ 寫 D1 → 通知。50 生 parallel ≈ <2 分鐘，滿足 #74「幾分鐘內可讀」
 - 訊息不可丟：DLQ＋retention replay；consumer 必須 idempotent（以 turn id 去重）
 
-### 13.3 D11 routing plane（parallel multi-provider，取代 §5 的 fallback chain）
+### 13.3 D11 gateway plane（parallel multi-provider，取代 §5 的 fallback chain）
 
 - **catalog（資料，非程式）**：每個 provider 一份 descriptor——quota model（concurrency／sliding window／RPM／balance／neurons）、成本、ZDR、traffic class、affinity 提示
 - **parallel multi-provider**：所有 healthy 且有餘量的 provider 同時參與 scoring 收新 thread；系統 throughput＝各 provider capacity 之和，不是 chain head 的 max。assignment 偏好：cost-first＋免費容量保留 burst buffer
@@ -334,7 +334,7 @@ v3 設計為 ActivityEvents DO（SSE-in-DO＋ring buffer＋Last-Event-ID replay�
 | 3   | violations／usage event stream → Queues＋batch | 未做（judgment 走 entry＋D1）                              |
 | 4   | 報告生成 → Workflows 編排                      | 部分：ReportRunner DO alarm（crash-safe）；Workflows 待評  |
 | 5   | ActivityEvents → WS hibernation＋ring buffer   | 改道：#73 調查選輪詢 SQL 聚合（待拍板）；ring buffer 退役  |
-| 6   | pool.ts → routing（config／ledger／cooldown）  | ✅ 已做（§5）；Coordinator DO 未建（ledger 在 isolate 內） |
+| 6   | pool.ts → gateway（config／ledger／cooldown）  | ✅ 已做（§5）；Coordinator DO 未建（ledger 在 isolate 內） |
 | 7   | agents 0.33＋pi 1.5                            | ✅ 已做                                                    |
 | 8   | AE data point＋cron rollup                     | 未做（#80/#81/#63，本輪不做）                              |
 

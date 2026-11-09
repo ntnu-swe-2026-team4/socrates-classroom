@@ -49,7 +49,7 @@ export const BindingModelSchema = z
   .min(1)
   .regex(/^@cf\/[a-z0-9-]+\/[a-z0-9._-]+$/i, "must be a Workers AI binding model id like @cf/org/model");
 
-export const RoutingConfigSchema = z
+export const GatewayConfigSchema = z
   .object({
     providers: z.record(z.string(), ProviderSchema),
     classifiers: z.object({
@@ -98,7 +98,7 @@ export const RoutingConfigSchema = z
     });
   });
 
-export type RoutingConfig = z.infer<typeof RoutingConfigSchema>;
+export type GatewayConfig = z.infer<typeof GatewayConfigSchema>;
 export type AvailabilityEntry = z.infer<typeof AvailabilityEntrySchema>;
 
 export interface LedgerKey {

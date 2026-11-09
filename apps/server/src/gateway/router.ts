@@ -1,8 +1,8 @@
 import type { Env } from "../env";
-import { providerModelOf, type ProviderSchema, type AvailabilityEntry, type LedgerKey } from "./routing-schema";
-import { routingConfig } from "./config.gen";
+import { providerModelOf, type ProviderSchema, type AvailabilityEntry, type LedgerKey } from "./gateway-schema";
+import { gatewayConfig } from "./config.gen";
 import type { z } from "zod";
-import { RoutingLedger, type SettleKind } from "./ledger";
+import { GatewayLedger, type SettleKind } from "./ledger";
 
 export type TrafficClass = "interactive" | "judgment" | "batch";
 
@@ -35,14 +35,14 @@ export function getRouter(env: Env): Router {
 }
 
 export class Router {
-  readonly #ledger = new RoutingLedger();
+  readonly #ledger = new GatewayLedger();
   readonly #env: Env;
 
   constructor(env: Env) {
     this.#env = env;
   }
 
-  get ledger(): RoutingLedger {
+  get ledger(): GatewayLedger {
     return this.#ledger;
   }
 
@@ -51,12 +51,12 @@ export class Router {
     canServe?: (entry: ResolvedLeg) => boolean,
     teacherLegs?: AvailabilityEntry[],
   ): AvailabilityEntry[] {
-    const availability = routingConfig.trafficClasses[trafficClass]?.availability ?? "defaults";
-    const platform = availability === "defaults" ? routingConfig.defaults.availability : [];
+    const availability = gatewayConfig.trafficClasses[trafficClass]?.availability ?? "defaults";
+    const platform = availability === "defaults" ? gatewayConfig.defaults.availability : [];
     return [...(teacherLegs ?? []), ...platform]
       .sort((a, b) => a.priority - b.priority)
       .map((entry) => {
-        const def = routingConfig.providers[entry.provider] ?? {};
+        const def = gatewayConfig.providers[entry.provider] ?? {};
         return { entry, def, model: entry.model ?? providerModelOf(def) };
       })
       .filter((leg) => {
@@ -84,7 +84,7 @@ export class Router {
   ): RouteDecision | null {
     const entry = this.chain(trafficClass, canServe, teacherLegs)[0];
     if (!entry) return null;
-    const def = routingConfig.providers[entry.provider] ?? {};
+    const def = gatewayConfig.providers[entry.provider] ?? {};
     const key = this.keyOf(entry, def);
     this.#ledger.record(key);
     this.#ledger.begin(key);

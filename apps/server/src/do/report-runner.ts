@@ -26,8 +26,8 @@ import {
   type ViolationSlice,
   type ViolationType,
 } from "@socrates/shared";
-import { getRouter } from "../routing/router";
-import { routingConfig } from "../routing/config.gen";
+import { getRouter } from "../gateway/router";
+import { gatewayConfig } from "../gateway/config.gen";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 
 export class ReportRunner extends DurableObject<Env> {
@@ -75,7 +75,7 @@ export class ReportRunner extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
-    const { report } = routingConfig;
+    const { report } = gatewayConfig;
     const activityId = this.ctx.id.name ?? "";
     if (this.#inFlight) {
       await this.ctx.storage.setAlarm(Date.now() + report.alarmTimeoutMs);
@@ -132,7 +132,7 @@ export class ReportRunner extends DurableObject<Env> {
   }
 
   async generate(activityId: string): Promise<void> {
-    const { report } = routingConfig;
+    const { report } = gatewayConfig;
     const db = this.env.DB;
     const activity = await one<{ title: string; statement: string; classroom_id: string }>(
       db,

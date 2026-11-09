@@ -25,7 +25,7 @@ import { PROFILES } from "../pi/agents/profiles";
 import { buildModels } from "../pi/models";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import { one } from "../db/d1";
-import { getRouter } from "../routing/router";
+import { getRouter } from "../gateway/router";
 import { ApiError } from "@socrates/shared";
 import { ChatSockets } from "../ws/sockets";
 

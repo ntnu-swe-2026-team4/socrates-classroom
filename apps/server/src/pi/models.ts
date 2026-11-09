@@ -4,8 +4,8 @@ import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { createModels, type MutableModels } from "@earendil-works/pi-ai/models";
 import { createAI } from "agents/models/pi-ai";
 import type { Env } from "../env";
-import type { AvailabilityEntry } from "../routing/routing-schema";
-import { routingConfig } from "../routing/config.gen";
+import type { AvailabilityEntry } from "../gateway/gateway-schema";
+import { gatewayConfig } from "../gateway/config.gen";
 import { teacherCredentialStore, workersAuthContext } from "./credentials";
 
 export interface ModelsBundle {
@@ -27,7 +27,7 @@ export function buildModels(env: Env, options: BuildModelsOptions = {}): ModelsB
     authContext: workersAuthContext(env),
   });
   const ai = createAI({ binding: env.AI });
-  const [head, ...legs] = [...routingConfig.defaults.availability]
+  const [head, ...legs] = [...gatewayConfig.defaults.availability]
     .sort((a, b) => a.priority - b.priority)
     .map((entry) => bindingModelOf(entry))
     .filter((id): id is string => id !== undefined);
@@ -48,7 +48,7 @@ export function buildModels(env: Env, options: BuildModelsOptions = {}): ModelsB
 }
 
 function registerDgx(env: Env, models: MutableModels): void {
-  const def = routingConfig.providers["dgx-spark"];
+  const def = gatewayConfig.providers["dgx-spark"];
   const baseUrl = env.DGX_BASE_URL;
   if (def?.kind !== "openai-completions" || !baseUrl) return;
   const model = def.models?.[0];
@@ -84,7 +84,7 @@ function registerDgx(env: Env, models: MutableModels): void {
 }
 
 function bindingModelOf(entry: AvailabilityEntry): string | undefined {
-  const def = routingConfig.providers[entry.provider];
+  const def = gatewayConfig.providers[entry.provider];
   if (def?.kind !== "binding") return undefined;
   return entry.model ?? def.models?.[0]?.id;
 }

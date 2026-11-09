@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { TtsInputSchema } from "@socrates/shared";
 import { enforceIpLimit, fail, langOf, parseBody, requireUser, type AppEnv } from "../http";
-import { routingConfig } from "../routing/config.gen";
-import { BindingModelSchema } from "../routing/routing-schema";
+import { gatewayConfig } from "../gateway/config.gen";
+import { BindingModelSchema } from "../gateway/gateway-schema";
 
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
 const SAMPLE_RATE = 22050;
@@ -80,7 +80,7 @@ export function voiceRoutes() {
       const input = { audio: btoa(binary), language: langOf(c) };
       try {
         const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
-        const result = (await ai.run(routingConfig.voice.stt, input)) as { text?: string };
+        const result = (await ai.run(gatewayConfig.voice.stt, input)) as { text?: string };
         if (result?.text) return c.json({ text: result.text });
         fail(502, "llm_unavailable");
       } catch (error) {
@@ -95,7 +95,7 @@ export function voiceRoutes() {
       if (c.env.TTS_MODEL && !BindingModelSchema.safeParse(c.env.TTS_MODEL).success) {
         fail(500, "internal_error");
       }
-      const ttsModel = c.env.TTS_MODEL ?? routingConfig.voice.tts;
+      const ttsModel = c.env.TTS_MODEL ?? gatewayConfig.voice.tts;
       if (c.env.AI && ttsModel) {
         try {
           const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };

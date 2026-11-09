@@ -1,4 +1,4 @@
-import type { LedgerKey } from "./routing-schema";
+import type { LedgerKey } from "./gateway-schema";
 
 export type SettleKind = "ok" | "error";
 
@@ -16,7 +16,7 @@ const MAX_FAILURES_FOR_COOLDOWN = 5;
  * pi surfaces no structured error status (only message strings), so the
  * ledger accounts ok/error only; cooldown comes from consecutive errors.
  */
-export class RoutingLedger {
+export class GatewayLedger {
   readonly #ledger = new Map<string, LedgerEntry>();
   readonly #cooldown = new Map<string, number>();
   readonly #inFlight = new Map<string, number>();

@@ -10,7 +10,7 @@ import {
   type RunSummary,
 } from "@earendil-works/pi-durable";
 import type { Context } from "@earendil-works/chord/context";
-import { routingConfig } from "../../../routing/config.gen";
+import { gatewayConfig } from "../../../gateway/config.gen";
 import type { Ai } from "@cloudflare/workers-types";
 
 export type Emotion = "happy" | "angry" | "confused" | "neutral";
@@ -27,7 +27,7 @@ export const EmotionEntry: Entry<{
   confidence: number;
 }> = defineEntry("app.emotion");
 
-const EMOTION_MODEL = routingConfig.classifiers.emotion;
+const EMOTION_MODEL = gatewayConfig.classifiers.emotion;
 
 const EMOTION_CRITERIA = {
   happy:

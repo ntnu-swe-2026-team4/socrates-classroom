@@ -1,6 +1,6 @@
 import type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
 import { all, one } from "../db/d1";
-import { routingConfig } from "../routing/config.gen";
+import { gatewayConfig } from "../gateway/config.gen";
 import { decryptKey } from "../auth-crypto";
 import type { Env } from "../env";
 
@@ -52,7 +52,7 @@ export function teacherCredentialStore(env: Env, teacherOf: () => Promise<string
 // keys like OPENROUTER_API_KEY included) is undefined, making a missing
 // teacher key an honest leg failure instead of a silent platform fallback.
 const PROVIDER_ENV_NAMES = new Set(
-  Object.values(routingConfig.providers).flatMap((def) => (def.baseUrlEnv ? [def.baseUrlEnv] : [])),
+  Object.values(gatewayConfig.providers).flatMap((def) => (def.baseUrlEnv ? [def.baseUrlEnv] : [])),
 );
 
 export function workersAuthContext(env: Env): {
@@ -93,7 +93,7 @@ export interface TeacherLegRow {
 }
 
 export async function teacherLegsOf(env: Env, teacherId: string | null): Promise<TeacherLeg[]> {
-  const maxConcurrency = routingConfig.teacherChain.maxConcurrency;
+  const maxConcurrency = gatewayConfig.teacherChain.maxConcurrency;
   if (!teacherId) return [];
   const rows = await all<TeacherLegRow>(
     env.DB,

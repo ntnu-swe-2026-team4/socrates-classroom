@@ -8,7 +8,7 @@ import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import { runProfile, PROFILES, profileRegistry } from "../src/pi/agents/profiles";
 import { SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../src/pi/extensions/report-submit";
 
-describe("agent profiles (#113: role definitions, models resolved by routing)", () => {
+describe("agent profiles (#113: role definitions, models resolved by gateway)", () => {
   it("profiles table: role fields correct (zero model hardcode)", () => {
     expect(PROFILES.lookup.trafficClass).toBe("interactive");
     expect(PROFILES.lookup.maxTurns).toBe(3);

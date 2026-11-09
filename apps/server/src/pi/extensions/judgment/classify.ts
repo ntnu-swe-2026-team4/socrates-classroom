@@ -1,13 +1,13 @@
 import type { ViolationType } from "@socrates/shared";
 import type { Ai } from "@cloudflare/workers-types";
-import { routingConfig } from "../../../routing/config.gen";
+import { gatewayConfig } from "../../../gateway/config.gen";
 
 export interface ViolationJudgment {
   type: ViolationType;
   probability: number;
 }
 
-const VIOLATION_MODEL = routingConfig.classifiers.violation;
+const VIOLATION_MODEL = gatewayConfig.classifiers.violation;
 
 const VIOLATION_CRITERIA = {
   on_topic: "Philosophical dialogue: ethics, justice, arguments, dilemmas, or Socratic questioning",

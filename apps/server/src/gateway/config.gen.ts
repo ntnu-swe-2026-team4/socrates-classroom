@@ -1,4 +1,4 @@
-import { RoutingConfigSchema, type RoutingConfig } from "./routing-schema";
+import { GatewayConfigSchema, type GatewayConfig } from "./gateway-schema";
 
 // Generated from providers.config.yaml (build time); rerun scripts/gen-config.mjs after editing the YAML
 const CONFIG = {
@@ -125,4 +125,4 @@ const CONFIG = {
   }
 } as unknown;
 
-export const routingConfig: RoutingConfig = RoutingConfigSchema.parse(CONFIG);
+export const gatewayConfig: GatewayConfig = GatewayConfigSchema.parse(CONFIG);

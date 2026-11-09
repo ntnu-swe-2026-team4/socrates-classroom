@@ -1,6 +1,6 @@
 # Pi Durable（PiHarness）參考
 
-本專案的對話引擎。pi 負責 agent 迴圈的一切：transcript、input admission、模型呼叫、工具、重試、崩潰恢復。我們只寫 transport glue 與政策（extensions、routing）。
+本專案的對話引擎。pi 負責 agent 迴圈的一切：transcript、input admission、模型呼叫、工具、重試、崩潰恢復。我們只寫 transport glue 與政策（extensions、gateway）。
 
 上游：pi（https://pi.dev）由 Earendil 開發；Durable Object 宿主由 Cloudflare Agents SDK 提供（`agents/harness/pi`）。查證日期 2026-11-06（pi 1.5.0 / agents 0.33.0，以 node_modules 原始碼為準）。
 
@@ -108,7 +108,7 @@ watch 沒有 event cursor；重連以 `watch({ from: newestEntryId + 1 })` 讓 w
 - `topic-gen`（#77）：出題，websearch tools，maxTurns 6
 - `report-analyst`（#74）：報告，無 tool，maxTurns 4
 
-準則：功能升格為 agent（有工具迴圈或長任務）；單發的分類（violation / 情緒）用 oneshot。profile 不寫 model——model 由 routing 依 traffic class 解析（`apps/server/providers.config.yaml`，#98）。
+準則：功能升格為 agent（有工具迴圈或長任務）；單發的分類（violation / 情緒）用 oneshot。profile 不寫 model——model 由 gateway 依 traffic class 解析（`apps/server/providers.config.yaml`，#98）。
 
 驅動（`runProfile`）：`router.pick(trafficClass)` → `conversation.configure({ model })` → `submit` → `wait` → 從 answer entry 取文。models 與 registry 由呼叫端傳入，必須與 harness 同一實例——registry 訂閱與 faux 狀態都是 per-instance，另建一份拿不到（踩過）。
 
@@ -175,4 +175,4 @@ faux.setResponses([fauxAssistantMessage([fauxText("…")])]);
 - pi-durable README（hooks / tasks / docs 的權威）：https://github.com/earendil-works/pi/tree/main/packages/durable
 - pi-ai README（providers / classify / cross-provider handoffs）：https://github.com/earendil-works/pi/tree/main/packages/ai
 - 官方範例（sockets / view / mirror 模式）：https://github.com/cloudflare/agents/tree/main/examples/next/harnesses/pi
-- pi-router / pi-fallback-provider（routing 參考）：https://pi.dev/packages/pi-router 、 https://pi.dev/packages/pi-fallback-provider
+- pi-router / pi-fallback-provider（gateway 參考）：https://pi.dev/packages/pi-router 、 https://pi.dev/packages/pi-fallback-provider

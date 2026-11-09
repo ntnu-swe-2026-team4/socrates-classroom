@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { RoutingLedger } from "../src/routing/ledger";
+import { GatewayLedger } from "../src/gateway/ledger";
 
-describe("routing ledger (pi has no structured error state → records ok/error only; consecutive errors trigger cooldown)", () => {
+describe("gateway ledger (pi has no structured error state → records ok/error only; consecutive errors trigger cooldown)", () => {
   const key = { provider: "dgx-spark", model: "GLM-5.3-Flash", credential: "platform" };
 
   it("cooldown expires naturally without probing", () => {
-    const ledger = new RoutingLedger();
+    const ledger = new GatewayLedger();
     for (let i = 0; i < 5; i += 1) {
       ledger.record(key);
       ledger.settle(key, "error");
@@ -15,14 +15,14 @@ describe("routing ledger (pi has no structured error state → records ok/error 
   });
 
   it("five consecutive errors open a cooldown; ok resets the failure count", () => {
-    const ledger = new RoutingLedger();
+    const ledger = new GatewayLedger();
     for (let i = 0; i < 5; i += 1) {
       ledger.record(key);
       ledger.settle(key, "error");
     }
     expect(ledger.inCooldown(key)).toBe(true);
 
-    const ledger2 = new RoutingLedger();
+    const ledger2 = new GatewayLedger();
     for (let i = 0; i < 4; i += 1) {
       ledger2.record(key);
       ledger2.settle(key, "error");
@@ -37,7 +37,7 @@ describe("routing ledger (pi has no structured error state → records ok/error 
   });
 
   it("begin/end bracket inFlight; settle decrements the concurrency count", () => {
-    const ledger = new RoutingLedger();
+    const ledger = new GatewayLedger();
     ledger.begin(key);
     ledger.begin(key);
     expect(ledger.inFlight(key)).toBe(2);
@@ -50,27 +50,27 @@ describe("routing ledger (pi has no structured error state → records ok/error 
 
 describe("router chain walk (config-driven, cooldown-filtered)", () => {
   it("mock env (no AI binding, no DGX URL): empty chain → pick returns null", async () => {
-    const { Router } = await import("../src/routing/router");
+    const { Router } = await import("../src/gateway/router");
     const env = { LLM_PROVIDER: "mock" } as never;
     const router = new Router(env);
     expect(router.pick("interactive")).toBeNull();
   });
 
   it("config: workers-ai is one provider with two model entries, priority ordering correct", async () => {
-    const { routingConfig } = await import("../src/routing/config.gen");
-    const wa = routingConfig.providers["workers-ai"];
+    const { gatewayConfig } = await import("../src/gateway/config.gen");
+    const wa = gatewayConfig.providers["workers-ai"];
     expect(wa?.kind).toBe("binding");
     expect(wa?.models?.map((m) => m.id)).toEqual(["@cf/zai-org/glm-5.3-flash", "@cf/zai-org/glm-4.7-flash"]);
-    const waEntries = routingConfig.defaults.availability.filter((e) => e.provider === "workers-ai");
+    const waEntries = gatewayConfig.defaults.availability.filter((e) => e.provider === "workers-ai");
     expect(waEntries.map((e) => e.model)).toEqual(["@cf/zai-org/glm-5.3-flash", "@cf/zai-org/glm-4.7-flash"]);
     expect(waEntries[0]!.priority).toBeLessThan(waEntries[1]!.priority);
   });
 
   it("ledger unit = (provider, model, credential) — same provider, different models, accounted separately", async () => {
-    const { Router } = await import("../src/routing/router");
-    const { ledgerKey } = await import("../src/routing/routing-schema");
+    const { Router } = await import("../src/gateway/router");
+    const { ledgerKey } = await import("../src/gateway/gateway-schema");
     const router = new Router({ AI: {} } as never);
-    const cfg = (await import("../src/routing/config.gen")).routingConfig;
+    const cfg = (await import("../src/gateway/config.gen")).gatewayConfig;
     const def = cfg.providers["workers-ai"]!;
     const flash = ledgerKey(cfg.defaults.availability[1]!, def);
     const free = ledgerKey(cfg.defaults.availability[2]!, def);
@@ -91,7 +91,7 @@ describe("teacher legs (#82: teacher keys first, platform chain as fallback)", (
   };
 
   it("teacher leg precedes the platform chain; canServe rejection falls through to the platform chain", async () => {
-    const { Router } = await import("../src/routing/router");
+    const { Router } = await import("../src/gateway/router");
     const router = new Router({ AI: {}, DGX_BASE_URL: "http://spark:8888/v1" } as never);
     const chain = router.chain("interactive", undefined, [teacherLeg]);
     expect(chain[0]).toMatchObject({ provider: "openrouter", credential: "teacher:u_teacher" });
@@ -102,7 +102,7 @@ describe("teacher legs (#82: teacher keys first, platform chain as fallback)", (
   });
 
   it("cooldown filters Router.chain: a leg with five straight failures is evicted and returns after ok", async () => {
-    const { Router } = await import("../src/routing/router");
+    const { Router } = await import("../src/gateway/router");
     const router = new Router({ AI: {} } as never);
     const decision = router.pick("interactive")!;
     for (let i = 0; i < 5; i += 1) {
@@ -120,7 +120,7 @@ describe("teacher legs (#82: teacher keys first, platform chain as fallback)", (
   });
 
   it("dgx leg survives: def-level model resolves before canServe (priority-1 not filtered when DGX_BASE_URL is set)", async () => {
-    const { Router } = await import("../src/routing/router");
+    const { Router } = await import("../src/gateway/router");
     const { buildModels } = await import("../src/pi/models");
     const fakeAi = { run: async () => ({}), toMarkdown: async () => ({ format: "markdown", markdown: "" }) };
     const env = { AI: fakeAi, DGX_BASE_URL: "http://spark:8888/v1" } as never;
@@ -132,7 +132,7 @@ describe("teacher legs (#82: teacher keys first, platform chain as fallback)", (
   }, 20_000);
 
   it("teacher leg is accounted independently: its cooldown does not affect the platform chain", async () => {
-    const { Router } = await import("../src/routing/router");
+    const { Router } = await import("../src/gateway/router");
     const router = new Router({ AI: {} } as never);
     const decision = router.pick("interactive", undefined, [teacherLeg])!;
     expect(decision.key.credential).toBe("teacher:u_teacher");
@@ -171,7 +171,7 @@ describe("dialogue run fallback legs (models.ts wiring)", () => {
   });
 });
 
-describe("routing schema (availability reference validation — typos fail fast instead of silently dropping a leg)", () => {
+describe("gateway schema (availability reference validation — typos fail fast instead of silently dropping a leg)", () => {
   const base = {
     providers: {
       "workers-ai": { kind: "binding", models: [{ id: "@cf/zai-org/glm-4.7-flash" }] },
@@ -190,8 +190,8 @@ describe("routing schema (availability reference validation — typos fail fast 
   };
 
   it("reference to a nonexistent provider → parse rejects", async () => {
-    const { RoutingConfigSchema } = await import("../src/routing/routing-schema");
-    const result = RoutingConfigSchema.safeParse({
+    const { GatewayConfigSchema } = await import("../src/gateway/gateway-schema");
+    const result = GatewayConfigSchema.safeParse({
       ...base,
       defaults: { availability: [{ provider: "typo-name", credential: "platform", maxConcurrency: 1, priority: 1 }] },
     });
@@ -199,8 +199,8 @@ describe("routing schema (availability reference validation — typos fail fast 
   });
 
   it("reference to a model the provider does not offer → parse rejects", async () => {
-    const { RoutingConfigSchema } = await import("../src/routing/routing-schema");
-    const result = RoutingConfigSchema.safeParse({
+    const { GatewayConfigSchema } = await import("../src/gateway/gateway-schema");
+    const result = GatewayConfigSchema.safeParse({
       ...base,
       defaults: {
         availability: [
@@ -218,13 +218,13 @@ describe("routing schema (availability reference validation — typos fail fast 
   });
 
   it("classifier/voice binding ids: typo or missing key fails fast", async () => {
-    const { RoutingConfigSchema } = await import("../src/routing/routing-schema");
-    const typoed = RoutingConfigSchema.safeParse({
+    const { GatewayConfigSchema } = await import("../src/gateway/gateway-schema");
+    const typoed = GatewayConfigSchema.safeParse({
       ...base,
       classifiers: { emotion: "clef-flash", violation: "@cf/cloudflare/clef-flash" },
     });
     expect(typoed.success).toBe(false);
-    const missing = RoutingConfigSchema.safeParse({
+    const missing = GatewayConfigSchema.safeParse({
       ...base,
       classifiers: { emotion: "@cf/cloudflare/clef-flash" },
     });
@@ -232,8 +232,8 @@ describe("routing schema (availability reference validation — typos fail fast 
   });
 
   it("valid references → parse passes", async () => {
-    const { RoutingConfigSchema } = await import("../src/routing/routing-schema");
-    const result = RoutingConfigSchema.safeParse({
+    const { GatewayConfigSchema } = await import("../src/gateway/gateway-schema");
+    const result = GatewayConfigSchema.safeParse({
       ...base,
       defaults: {
         availability: [
@@ -266,7 +266,7 @@ describe("Router.withRoute (admission → settle lifecycle; ConversationBusy mus
   };
 
   it("ConversationBusy releases the inFlight slot without recording a failure", async () => {
-    const { Router } = await import("../src/routing/router");
+    const { Router } = await import("../src/gateway/router");
     const router = new Router({} as never);
     router.ledger.begin(key);
     const busy = new Error("conversation busy");
@@ -278,7 +278,7 @@ describe("Router.withRoute (admission → settle lifecycle; ConversationBusy mus
   });
 
   it("a real failure settles as error (inFlight released, failure recorded)", async () => {
-    const { Router } = await import("../src/routing/router");
+    const { Router } = await import("../src/gateway/router");
     const router = new Router({} as never);
     router.ledger.begin(key);
     await expect(router.withRoute(decision, () => Promise.reject(new Error("boom")))).rejects.toThrow();
@@ -293,7 +293,7 @@ describe("Router.withRoute (admission → settle lifecycle; ConversationBusy mus
   });
 
   it("success path leaves the slot to the caller's settle", async () => {
-    const { Router } = await import("../src/routing/router");
+    const { Router } = await import("../src/gateway/router");
     const router = new Router({} as never);
     router.ledger.begin(key);
     await expect(router.withRoute(decision, () => Promise.resolve("receipt"))).resolves.toBe("receipt");
