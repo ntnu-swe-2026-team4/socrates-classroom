@@ -26,8 +26,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("httpApi 契約（瀏覽器端實際代碼）", () => {
-  test("me：GET /api/me 帶 cookie 與 Accept-Language", async () => {
+describe("httpApi contract (browser-side actual code)", () => {
+  test("me: GET /api/me with cookie and Accept-Language", async () => {
     handler.mockReturnValue(json({ id: "u1", name: "小明", role: "student" }));
     document.documentElement.lang = "zh-TW";
     const user = await httpApi.me();
@@ -38,7 +38,7 @@ describe("httpApi 契約（瀏覽器端實際代碼）", () => {
     expect(new Headers(init.headers).get("Accept-Language")).toBe("zh");
   });
 
-  test("joinAsGuest：POST /api/join 契約形狀＋活動 id 持久化", async () => {
+  test("joinAsGuest: POST /api/join contract shape + activity id persisted", async () => {
     handler.mockReturnValue(json({ user: { id: "u9", name: "小明", role: "student" }, activityId: "a_1" }));
     const payload = await httpApi.joinAsGuest("socrat", "小明");
     expect(payload.activityId).toBe("a_1");
@@ -49,7 +49,7 @@ describe("httpApi 契約（瀏覽器端實際代碼）", () => {
     expect(localStorage.getItem("socrates_activity")).toBe("a_1");
   });
 
-  test("錯誤映射：422 tos_required → ApiError.code", async () => {
+  test("error mapping: 422 tos_required → ApiError.code", async () => {
     handler.mockImplementation(() => json({ message: "需要同意使用條款才能進入。", code: "tos_required" }, 422));
     await expect(httpApi.joinAsGuest("socrat", "小明")).rejects.toMatchObject({
       code: "tos_required",
@@ -63,7 +63,7 @@ describe("httpApi 契約（瀏覽器端實際代碼）", () => {
     }
   });
 
-  test("stt：multipart 上傳、回 {text}", async () => {
+  test("stt: multipart upload, returns {text}", async () => {
     handler.mockReturnValue(json({ text: "我認為應該拉桿" }));
     const text = await httpApi.stt(new Blob([new Uint8Array([1])], { type: "audio/webm" }));
     expect(text).toBe("我認為應該拉桿");
@@ -71,7 +71,7 @@ describe("httpApi 契約（瀏覽器端實際代碼）", () => {
     expect(path).toBe("/api/stt");
   });
 
-  test("finishActivity：POST 204 無 body", async () => {
+  test("finishActivity: POST 204 with no body", async () => {
     handler.mockReturnValue(new Response(null, { status: 204 }));
     await expect(httpApi.finishActivity("a_1")).resolves.toBeUndefined();
     const [path, init] = handler.mock.calls[0]!;

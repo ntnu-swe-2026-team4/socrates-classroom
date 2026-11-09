@@ -7,8 +7,8 @@ import { createRegistry, Harness } from "@earendil-works/pi-durable";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import { runProfile, PROFILES } from "../src/pi/agents/profiles";
 
-describe("agent profiles（#113：角色定義，model 由 routing 解析）", () => {
-  it("profiles 表：角色欄位正確（零 model hardcode）", () => {
+describe("agent profiles (#113: role definitions, models resolved by routing)", () => {
+  it("profiles table: role fields correct (zero model hardcode)", () => {
     expect(PROFILES.lookup.trafficClass).toBe("interactive");
     expect(PROFILES.lookup.maxTurns).toBe(3);
     expect(PROFILES.lookup.extensions).toContain("websearch");
@@ -21,7 +21,7 @@ describe("agent profiles（#113：角色定義，model 由 routing 解析）", (
     }
   });
 
-  it("instructions：真 prompt 資產接線（非 placeholder）＋ JSON 形狀附錄＋無 Handlebars 殘留", () => {
+  it("instructions: real prompt assets wired (no placeholders) + JSON shape appendix + no Handlebars residue", () => {
     expect(PROFILES["student-report"].instructions).toContain("You are reading one student's conversation");
     expect(PROFILES["student-report"].instructions).toContain('"stated": true');
     expect(PROFILES["class-report"].instructions).toContain("You are analyzing the whole class's conversations");
@@ -35,7 +35,7 @@ describe("agent profiles（#113：角色定義，model 由 routing 解析）", (
     }
   });
 
-  it("runProfile（lookup profile）：faux 全路徑——conversation 建立、submit、wait、text 回傳", async () => {
+  it("runProfile (lookup profile): full path on faux — conversation created, submit, wait, text returned", async () => {
     const { models, faux } = buildFauxModels();
     const harness = await Harness.open(new MemoryStorage(), { models, registry: createRegistry() }, BACKGROUND_CONTEXT);
     const runtime = {

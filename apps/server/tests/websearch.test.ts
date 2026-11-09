@@ -86,8 +86,8 @@ function frames(socket: WebSocket): {
   };
 }
 
-describe("websearch extension（web_search + get_search_content）", () => {
-  it("無 AI binding：tool 註冊、呼叫回明確錯誤、不炸", async () => {
+describe("websearch extension (web_search + get_search_content)", () => {
+  it("no AI binding: tools register, calls return a clear error, nothing throws", async () => {
     const socket = await connect(thread);
     const rx = frames(socket);
     await rx.until((f) => {
@@ -109,7 +109,7 @@ describe("websearch extension（web_search + get_search_content）", () => {
     socket.close();
   }, 30_000);
 
-  it("store/find/slice 單元語意：bounded slice 帶續讀提示、findText 帶前後文", async () => {
+  it("store/find/slice unit semantics: bounded slice with a continuation hint, findText with surrounding context", async () => {
     const { createResponseStore, slicePage, findPassages } = await import("../src/pi/extensions/websearch/store");
     const responses = createResponseStore();
     const id = responses.storeSearch([
@@ -131,7 +131,7 @@ describe("websearch extension（web_search + get_search_content）", () => {
     expect(responses.isSearchHit("https://attacker.example")).toBe(false);
   });
 
-  it("fetch_content 只准搜尋結果 URL（B 定案：web_search 先行 → 同 URL 可抓、未搜尋 → 拒）", async () => {
+  it("fetch_content allows only search-result URLs (option B: web_search first → same URL fetchable; not searched → rejected)", async () => {
     const { createWebSearchExtension } = await import("../src/pi/extensions/websearch");
     const fakeAi = {
       websearch: async () =>
@@ -160,8 +160,8 @@ describe("websearch extension（web_search + get_search_content）", () => {
   });
 });
 
-describe("fetch_content（readable/raw＋cache＋SSRF）", () => {
-  it("validateUrl 擋 localhost/私網/非 http", async () => {
+describe("fetch_content (readable/raw + cache + SSRF)", () => {
+  it("validateUrl blocks localhost/private ranges/non-HTTP", async () => {
     const { validateUrl } = await import("../src/pi/extensions/websearch/fetch");
     expect(() => validateUrl("http://localhost/x")).toThrow("internal");
     expect(() => validateUrl("http://127.0.0.1/x")).toThrow("internal");
@@ -171,7 +171,7 @@ describe("fetch_content（readable/raw＋cache＋SSRF）", () => {
     expect(validateUrl("https://zh.wikipedia.org/wiki/Justice").protocol).toBe("https:");
   });
 
-  it("validateUrl bypass 語料庫：IPv6 mapped/全段、CGNAT、benchmark、保留段、WHATWG 正規化", async () => {
+  it("validateUrl bypass corpus: IPv6 mapped/expanded, CGNAT, benchmark, reserved ranges, WHATWG normalization", async () => {
     const { validateUrl } = await import("../src/pi/extensions/websearch/fetch");
     const blocked = [
       "http://[::1]/x",
@@ -195,7 +195,7 @@ describe("fetch_content（readable/raw＋cache＋SSRF）", () => {
     expect(validateUrl("http://1.1.1.1/x").hostname).toBe("1.1.1.1");
   });
 
-  it("raw mode：真 fetch 公網頁面，cache 生效（第二次不發請求）", async () => {
+  it("raw mode: fetches a real public page, cache works (no second request)", async () => {
     let requests = 0;
     const origFetch = globalThis.fetch;
     globalThis.fetch = (async (_input: RequestInfo | URL) => {

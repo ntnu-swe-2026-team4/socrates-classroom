@@ -109,8 +109,8 @@ beforeAll(async () => {
   expect(finish.status).toBe(204);
 });
 
-describe("report pipeline（transcript 從 Chat DO → ReportRunner → §7 形狀）", () => {
-  it("finish → alarm 生成 → ready；老師見全班、學生見自己、形狀符合 §7", async () => {
+describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shape)", () => {
+  it("finish → alarm generates → ready; teacher sees the whole class, student sees their own, shape matches §7", async () => {
     let report: Response | null = null;
     for (let i = 0; i < 60; i += 1) {
       report = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: teacherCookie } });

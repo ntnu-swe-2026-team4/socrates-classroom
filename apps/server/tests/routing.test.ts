@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { RoutingLedger } from "../src/routing/ledger";
 
-describe("routing ledger（pi 無結構化錯誤狀態 → 只記 ok/error；連續錯誤 cooldown）", () => {
+describe("routing ledger (pi has no structured error state → records ok/error only; consecutive errors trigger cooldown)", () => {
   const key = { provider: "dgx-spark", model: "GLM-5.3-Flash", credential: "platform" };
 
-  it("cooldown 過期自然回（無 probe）", () => {
+  it("cooldown expires naturally without probing", () => {
     const ledger = new RoutingLedger();
     for (let i = 0; i < 5; i += 1) {
       ledger.record(key);
@@ -14,7 +14,7 @@ describe("routing ledger（pi 無結構化錯誤狀態 → 只記 ok/error；連
     expect(ledger.inCooldown(key, Date.now() + 61_000)).toBe(false);
   });
 
-  it("連續 5 次 error 開 cooldown；ok 重置失敗計數", () => {
+  it("five consecutive errors open a cooldown; ok resets the failure count", () => {
     const ledger = new RoutingLedger();
     for (let i = 0; i < 5; i += 1) {
       ledger.record(key);
@@ -36,7 +36,7 @@ describe("routing ledger（pi 無結構化錯誤狀態 → 只記 ok/error；連
     expect(ledger2.inCooldown(key)).toBe(false);
   });
 
-  it("begin/end 包住 inFlight；settle 結束併發計數", () => {
+  it("begin/end bracket inFlight; settle decrements the concurrency count", () => {
     const ledger = new RoutingLedger();
     ledger.begin(key);
     ledger.begin(key);
@@ -48,15 +48,15 @@ describe("routing ledger（pi 無結構化錯誤狀態 → 只記 ok/error；連
   });
 });
 
-describe("router 走訪（config 驅動，cooldown 過濾）", () => {
-  it("mock 環境（無 AI binding、無 DGX URL）：鏈全空 → pick null", async () => {
+describe("router chain walk (config-driven, cooldown-filtered)", () => {
+  it("mock env (no AI binding, no DGX URL): empty chain → pick returns null", async () => {
     const { Router } = await import("../src/routing/router");
     const env = { LLM_PROVIDER: "mock" } as never;
     const router = new Router(env);
     expect(router.pick("interactive")).toBeNull();
   });
 
-  it("config：workers-ai 是一個 provider 兩個 model 條目，priority 排序正確", async () => {
+  it("config: workers-ai is one provider with two model entries, priority ordering correct", async () => {
     const { routingConfig } = await import("../src/routing/config.gen");
     const wa = routingConfig.providers["workers-ai"];
     expect(wa?.kind).toBe("binding");
@@ -66,7 +66,7 @@ describe("router 走訪（config 驅動，cooldown 過濾）", () => {
     expect(waEntries[0]!.priority).toBeLessThan(waEntries[1]!.priority);
   });
 
-  it("ledger 記帳單位＝(provider, model, credential)——同 provider 不同 model 分開記", async () => {
+  it("ledger unit = (provider, model, credential) — same provider, different models, accounted separately", async () => {
     const { Router } = await import("../src/routing/router");
     const { ledgerKey } = await import("../src/routing/routing-schema");
     const router = new Router({ AI: {} } as never);
@@ -81,7 +81,7 @@ describe("router 走訪（config 驅動，cooldown 過濾）", () => {
   });
 });
 
-describe("teacher legs（#82：老師 key 前置，平台鏈墊後）", () => {
+describe("teacher legs (#82: teacher keys first, platform chain as fallback)", () => {
   const teacherLeg = {
     provider: "openrouter",
     model: "z-ai/glm-5.3-flash",
@@ -90,7 +90,7 @@ describe("teacher legs（#82：老師 key 前置，平台鏈墊後）", () => {
     priority: 0,
   };
 
-  it("teacher leg 排在平台鏈前；canServe 擋下後落到平台鏈", async () => {
+  it("teacher leg precedes the platform chain; canServe rejection falls through to the platform chain", async () => {
     const { Router } = await import("../src/routing/router");
     const router = new Router({ AI: {}, DGX_BASE_URL: "http://spark:8888/v1" } as never);
     const chain = router.chain("interactive", undefined, [teacherLeg]);
@@ -101,7 +101,7 @@ describe("teacher legs（#82：老師 key 前置，平台鏈墊後）", () => {
     expect(blocked.every((e) => e.credential !== "teacher:u_teacher")).toBe(true);
   });
 
-  it("cooldown 過濾 Router.chain：5 連敗的 leg 被踢出、ok 後回歸", async () => {
+  it("cooldown filters Router.chain: a leg with five straight failures is evicted and returns after ok", async () => {
     const { Router } = await import("../src/routing/router");
     const router = new Router({ AI: {} } as never);
     const decision = router.pick("interactive")!;
@@ -119,7 +119,7 @@ describe("teacher legs（#82：老師 key 前置，平台鏈墊後）", () => {
     ).toBe(true);
   });
 
-  it("dgx 腿存活：def 級 model 在 canServe 前解析（DGX_BASE_URL 設定時 priority-1 不被過濾）", async () => {
+  it("dgx leg survives: def-level model resolves before canServe (priority-1 not filtered when DGX_BASE_URL is set)", async () => {
     const { Router } = await import("../src/routing/router");
     const { buildModels } = await import("../src/pi/models");
     const fakeAi = { run: async () => ({}), toMarkdown: async () => ({ format: "markdown", markdown: "" }) };
@@ -131,7 +131,7 @@ describe("teacher legs（#82：老師 key 前置，平台鏈墊後）", () => {
     expect(decision.model).toBe("GLM-5.3-Flash");
   }, 20_000);
 
-  it("teacher leg 獨立記帳：cooldown 不影響平台鏈", async () => {
+  it("teacher leg is accounted independently: its cooldown does not affect the platform chain", async () => {
     const { Router } = await import("../src/routing/router");
     const router = new Router({ AI: {} } as never);
     const decision = router.pick("interactive", undefined, [teacherLeg])!;
@@ -146,8 +146,8 @@ describe("teacher legs（#82：老師 key 前置，平台鏈墊後）", () => {
   });
 });
 
-describe("對話 run 的 fallback legs（models.ts 接線）", () => {
-  it("有 AI binding：registry 裡鏈首 model 帶 fallback symbol（透過 provider catalog 包裝）", async () => {
+describe("dialogue run fallback legs (models.ts wiring)", () => {
+  it("with AI binding: the head model in the registry carries the fallback symbol (wrapped by the provider catalog)", async () => {
     const { buildModels } = await import("../src/pi/models");
     const fakeAi = {
       run: async () => ({}),
@@ -162,7 +162,7 @@ describe("對話 run 的 fallback legs（models.ts 接線）", () => {
     expect(options?.fallback).toEqual(["@cf/zai-org/glm-4.7-flash"]);
   }, 20_000);
 
-  it("mock 模式：faux 無 fallback（faux model 不經 createAI）", async () => {
+  it("mock mode: faux has no fallback (the faux model bypasses createAI)", async () => {
     const { buildModels } = await import("../src/pi/models");
     const bundle = buildModels({ LLM_PROVIDER: "mock" } as never);
     expect(bundle.faux).toBeDefined();
@@ -171,7 +171,7 @@ describe("對話 run 的 fallback legs（models.ts 接線）", () => {
   });
 });
 
-describe("routing schema（availability 引用驗證——打錯字 fail-fast 不靜默掉 leg）", () => {
+describe("routing schema (availability reference validation — typos fail fast instead of silently dropping a leg)", () => {
   const base = {
     providers: {
       "workers-ai": { kind: "binding", models: [{ id: "@cf/zai-org/glm-4.7-flash" }] },
@@ -189,7 +189,7 @@ describe("routing schema（availability 引用驗證——打錯字 fail-fast �
     trafficClasses: {},
   };
 
-  it("引用不存在的 provider → parse 拒絕", async () => {
+  it("reference to a nonexistent provider → parse rejects", async () => {
     const { RoutingConfigSchema } = await import("../src/routing/routing-schema");
     const result = RoutingConfigSchema.safeParse({
       ...base,
@@ -198,7 +198,7 @@ describe("routing schema（availability 引用驗證——打錯字 fail-fast �
     expect(result.success).toBe(false);
   });
 
-  it("引用 provider 未提供的 model → parse 拒絕", async () => {
+  it("reference to a model the provider does not offer → parse rejects", async () => {
     const { RoutingConfigSchema } = await import("../src/routing/routing-schema");
     const result = RoutingConfigSchema.safeParse({
       ...base,
@@ -217,7 +217,7 @@ describe("routing schema（availability 引用驗證——打錯字 fail-fast �
     expect(result.success).toBe(false);
   });
 
-  it("合法引用 → parse 通過", async () => {
+  it("valid references → parse passes", async () => {
     const { RoutingConfigSchema } = await import("../src/routing/routing-schema");
     const result = RoutingConfigSchema.safeParse({
       ...base,

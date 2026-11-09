@@ -121,8 +121,8 @@ beforeAll(async () => {
   activityId = created.activityId;
 });
 
-describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
-  it("WS 升級→hello→watch→submit→回答進 transcript", async () => {
+describe("chat core (real DO + real WebSocket + faux model)", () => {
+  it("WS upgrade → hello → watch → submit → answer lands in transcript", async () => {
     const student = await joinStudent("小明");
     const thread = `${activityId}:${student.userId}`;
     const socket = await connect(thread, student.cookie);
@@ -146,7 +146,7 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     socket.close();
   });
 
-  it("中斷後重連：transcript 從 pi storage 持久恢復", async () => {
+  it("reconnect after disconnect: transcript restored persistently from pi storage", async () => {
     const student = await joinStudent("阿華");
     const thread = `${activityId}:${student.userId}`;
     const socket = await connect(thread, student.cookie);
@@ -173,7 +173,7 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     again.close();
   });
 
-  it("hibernation 存活 socket 跨 evict 重用：第一個 frame 不被 1008（#authorized 隨 reattach 恢復）", async () => {
+  it("hibernated socket survives eviction and is reused: first frame is not 1008 (#authorized restored on reattach)", async () => {
     const student = await joinStudent("冬眠本人");
     const thread = `${activityId}:${student.userId}`;
     const socket = await connect(thread, student.cookie);
@@ -190,7 +190,7 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     socket.close();
   }, 20_000);
 
-  it("submit 邊界：空字串／超過 2000 字 → error frame，不進 transcript", async () => {
+  it("submit bounds: empty string / over 2000 chars → error frame, nothing enters the transcript", async () => {
     const student = await joinStudent("邊界本人");
     const thread = `${activityId}:${student.userId}`;
     const socket = await connect(thread, student.cookie);
@@ -206,7 +206,7 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     socket.close();
   });
 
-  it("run 進行中第二發被拒（ConversationBusy error frame），連線不受影響", async () => {
+  it("a second submit during a run is rejected (ConversationBusy error frame); the connection is unaffected", async () => {
     const student = await joinStudent("小美");
     const thread = `${activityId}:${student.userId}`;
     const socket = await connect(thread, student.cookie);
@@ -224,7 +224,7 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     socket.close();
   }, 20_000);
 
-  it("abort op：回 result（三值之一）、連線不受影響", async () => {
+  it("abort op: replies with a result (one of the three values); connection unaffected", async () => {
     const student = await joinStudent("阿捷");
     const thread = `${activityId}:${student.userId}`;
     const socket = await connect(thread, student.cookie);
@@ -244,7 +244,7 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     socket.close();
   }, 20_000);
 
-  it("entries op：回分頁 items、limit 生效", async () => {
+  it("entries op: replies with paged items; limit takes effect", async () => {
     const student = await joinStudent("阿查");
     const thread = `${activityId}:${student.userId}`;
     const socket = await connect(thread, student.cookie);
@@ -274,7 +274,7 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     socket.close();
   }, 20_000);
 
-  it("授權：無 cookie／非成員／同班同學的別人 thread → 拒絕（1008，無 hello）", async () => {
+  it("authorization: no cookie / non-member / another student's thread → rejected (1008, no hello)", async () => {
     const owner = await joinStudent("本人");
     const peer = await joinStudent("同學");
     const thread = `${activityId}:${owner.userId}`;
@@ -294,7 +294,7 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     asPeer.close();
   });
 
-  it("transcript 防線：agents-routed 外部路徑 → 404（DO onRequest 只認內部短路徑）", async () => {
+  it("transcript guard: externally agents-routed path → 404 (the DO's onRequest only accepts internal shortcuts)", async () => {
     const student = await joinStudent("逐字稿本人");
     const thread = `${activityId}:${student.userId}`;
     const res = await routeAgentRequest(
@@ -306,7 +306,7 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     expect(res?.status).toBe(404);
   });
 
-  it("授權 race：拒絕後 close 前逕送 watch → 不給 view（逐訊閘門）", async () => {
+  it("authorization race: watch sent after rejection but before close → no view (per-message gate)", async () => {
     const owner = await joinStudent("賽窗本人");
     const thread = `${activityId}:${owner.userId}`;
     const socket = await connect(thread);
@@ -318,7 +318,7 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     socket.close();
   });
 
-  it("授權：老師可觀察學生 thread（hello 送達）", async () => {
+  it("authorization: a teacher may observe a student thread (hello arrives)", async () => {
     const student = await joinStudent("被觀察");
     const thread = `${activityId}:${student.userId}`;
     const socket = await connect(thread, teacherCookie);

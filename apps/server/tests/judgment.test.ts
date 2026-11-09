@@ -109,8 +109,8 @@ function toolNames(view: ConversationView | undefined): string[] {
     .map((part) => (part.type === "toolCall" ? part.name : ""));
 }
 
-describe("judgment extension（違規偵測：自報 tool＋逐輪分類 task）", () => {
-  it("無 AI binding：tool 註冊進 registry（hello 帶 tools）、回答正常、不炸", async () => {
+describe("judgment extension (violation detection: self-report tool + per-turn classification task)", () => {
+  it("no AI binding: tool registers in the registry (hello carries tools), the answer completes, nothing throws", async () => {
     const socket = await connect(threads[0]!, 0);
     const rx = frames(socket);
     await rx.until((f) => {
@@ -134,7 +134,7 @@ describe("judgment extension（違規偵測：自報 tool＋逐輪分類 task）
     socket.close();
   }, 30_000);
 
-  it("Socrates 使用 report_violation tool：app.violation entry（source=agent）出現在 transcript", async () => {
+  it("Socrates calls report_violation: an app.violation entry (source=agent) appears in the transcript", async () => {
     const socket = await connect(threads[1]!, 1);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));

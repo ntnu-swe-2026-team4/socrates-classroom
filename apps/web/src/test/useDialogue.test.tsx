@@ -86,8 +86,8 @@ beforeEach(() => {
   tts.mockResolvedValue(undefined);
 });
 
-describe("useDialogue（WS：view/ops 推導＋baseline 仲裁）", () => {
-  it("黃金流程：result=admission 不完成；assistant entry 落地才 speaking→idle", async () => {
+describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
+  it("golden flow: result=admission does not complete; the assistant entry landing moves speaking → idle", async () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     expect(JSON.parse(agent.sent[0]!)).toMatchObject({ type: "watch" });
 
@@ -120,7 +120,7 @@ describe("useDialogue（WS：view/ops 推導＋baseline 仲裁）", () => {
     expect(tts.mock.calls[0]![0]).toBe("你的直覺");
   });
 
-  it("F22：同步連發只送出第一個 submit（第二個回 false）", () => {
+  it("F22: synchronous consecutive sends admit only one submit (the second returns false)", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
     let first = false;
@@ -134,7 +134,7 @@ describe("useDialogue（WS：view/ops 推導＋baseline 仲裁）", () => {
     expect(agent.sent.filter((raw) => raw.includes("submit"))).toHaveLength(1);
   });
 
-  it("C1：TTS 播放中送新訊息——舊 TTS 被 abort、phase 不被蓋掉", () => {
+  it("C1: sending a new message while TTS plays — the old TTS aborts and the phase is not clobbered", () => {
     tts.mockReturnValue(new Promise<void>(() => {}));
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
@@ -148,7 +148,7 @@ describe("useDialogue（WS：view/ops 推導＋baseline 仲裁）", () => {
     expect(result.current.phase).toBe("thinking");
   });
 
-  it("C2：reconnect view 含本輪 user entry 但向未回答——pending 保留、不朗讀舊文", () => {
+  it("C2: reconnect view has this round's user entry but no answer yet — pending kept, old text not spoken", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答")]));
     act(() => result.current.send("新問題"));
@@ -158,7 +158,7 @@ describe("useDialogue（WS：view/ops 推導＋baseline 仲裁）", () => {
     expect(tts).not.toHaveBeenCalled();
   });
 
-  it("C2：reconnect view 缺本輪 user entry（未被 admission）——清 pending 報錯", () => {
+  it("C2: reconnect view lacks this round's user entry (not admitted) — pending cleared with an error", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
     act(() => result.current.send("斷線前的問題"));
@@ -168,7 +168,7 @@ describe("useDialogue（WS：view/ops 推導＋baseline 仲裁）", () => {
     expect(result.current.pending).toBe(false);
   });
 
-  it("C2：reconnect view 含新答案——完成並朗讀", () => {
+  it("C2: reconnect view contains the new answer — completes and speaks", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
     act(() => result.current.send("孤兒 run 的問題"));
@@ -177,7 +177,7 @@ describe("useDialogue（WS：view/ops 推導＋baseline 仲裁）", () => {
     expect(tts.mock.calls[0]![0]).toBe("孤兒的答案");
   });
 
-  it("run 失敗廣播：id-less error 清 pending；無 pending 時忽略", () => {
+  it("run failure broadcast: id-less error clears pending; ignored when none is pending", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
     emit({ type: "error", message: "The model run failed", code: "llm_unavailable" });
@@ -189,7 +189,7 @@ describe("useDialogue（WS：view/ops 推導＋baseline 仲裁）", () => {
     expect(result.current.error).toEqual({ code: "llm_unavailable" });
   });
 
-  it("別人的 error id：不動 in-flight pending", () => {
+  it("someone else's error id: leaves the in-flight pending untouched", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
     act(() => result.current.send("我的問題"));
@@ -198,7 +198,7 @@ describe("useDialogue（WS：view/ops 推導＋baseline 仲裁）", () => {
     expect(result.current.pending).toBe(true);
   });
 
-  it("ConversationBusy：error frame 帶 code → 錯誤狀態、回到 idle", () => {
+  it("ConversationBusy: error frame carries a code → error state, back to idle", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
     act(() => void result.current.send("問題"));
@@ -212,7 +212,7 @@ describe("useDialogue（WS：view/ops 推導＋baseline 仲裁）", () => {
     expect(result.current.error).toEqual({ code: "ConversationBusy" });
   });
 
-  it("interrupt：送 abort、清 phase、不再說話", () => {
+  it("interrupt: sends abort, clears the phase, stops speaking", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
     act(() => void result.current.send("問題"));
@@ -224,13 +224,13 @@ describe("useDialogue（WS：view/ops 推導＋baseline 仲裁）", () => {
     expect(tts).not.toHaveBeenCalled();
   });
 
-  it("emotion：最新 app.emotion entry 暴露", () => {
+  it("emotion: the latest app.emotion entry is exposed", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([userEntry(1, "問題"), assistantEntry(2, "回答"), emotionEntry(3)]));
     expect(result.current.emotion).toMatchObject({ emotion: "curious", confidence: 0.9 });
   });
 
-  it("retryLast：重送失敗的輸入", () => {
+  it("retryLast: resends the failed input", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
     act(() => result.current.send("被打拒的問題"));
@@ -243,7 +243,7 @@ describe("useDialogue（WS：view/ops 推導＋baseline 仲裁）", () => {
     expect(JSON.parse(resent[1]!)).toMatchObject({ input: "被打拒的問題" });
   });
 
-  it("retryLast：成功回答後清空——不再殘留舊輸入", () => {
+  it("retryLast: cleared after a successful answer — no stale input remains", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
     act(() => result.current.send("成功的問題"));

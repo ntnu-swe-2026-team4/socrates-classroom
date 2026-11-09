@@ -110,8 +110,8 @@ function answerOf(view: ConversationView): string {
     .join("");
 }
 
-describe("avatar extension（情緒走 app.emotion entry，文字零污染）", () => {
-  it("無 AI binding：回答正常完成、不炸、文字不含任何格式 tag", async () => {
+describe("avatar extension (emotion via app.emotion entry, zero text pollution)", () => {
+  it("no AI binding: the answer completes normally, nothing throws, text carries no format tags", async () => {
     const socket = await connect(thread);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));

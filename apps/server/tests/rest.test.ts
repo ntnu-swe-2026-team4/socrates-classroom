@@ -47,13 +47,13 @@ beforeAll(async () => {
   activityId = created.activityId;
 });
 
-describe("R6 REST 層（Hono，真 Worker 入口）", () => {
-  test("health／seed guard", async () => {
+describe("R6 REST layer (Hono, real Worker entry)", () => {
+  test("health / seed guard", async () => {
     expect((await call("/health")).status).toBe(200);
     expect((await call("/api/dev/seed", { method: "POST" })).status).toBe(404);
   });
 
-  test("me／guest join（ToS）→ activity 解析", async () => {
+  test("me / guest join (ToS) → activity resolves", async () => {
     const me = await call("/api/me", { headers: { Cookie: teacher } });
     expect(((await me.json()) as { role: string }).role).toBe("teacher");
 
@@ -76,7 +76,7 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     expect(((await noTos.json()) as { code: string }).code).toBe("tos_required");
   });
 
-  test("GET /classrooms——角色視角列表；code/url 只給老師", async () => {
+  test("GET /classrooms — role-scoped listing; code/url only for teachers", async () => {
     const unauthorized = await call("/api/classrooms");
     expect(unauthorized.status).toBe(401);
 
@@ -112,7 +112,7 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     expect(member!.memberCount).toBeGreaterThan(0);
   });
 
-  test("startActivity——重開活動（{topicId} 契約 shape；同 code 新 activityId）", async () => {
+  test("startActivity — reopens an activity ({topicId} contract shape; same code yields a new activityId)", async () => {
     const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
       id: string;
     }>;
@@ -139,7 +139,7 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     expect(payload.code).toBe(code);
   });
 
-  test("finish→report 語意（pending → 404 report_pending；學生 IDOR 只見自己）", async () => {
+  test("finish → report semantics (pending → 404 report_pending; student IDOR sees only their own)", async () => {
     const joined = await call("/api/join", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -172,7 +172,7 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     expect(typeof mineData.pseudonym).toBe("string");
   }, 60_000);
 
-  test("授權矩陣抽檢：outsider 403／teacher-only 403", async () => {
+  test("authorization matrix spot checks: outsider 403 / teacher-only 403", async () => {
     const outsiderLogin = await call("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -193,7 +193,7 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     expect(finish.status).toBe(403);
   });
 
-  test("teacher keys CRUD：PUT 冪等、order、只回 last4、teacher-only", async () => {
+  test("teacher keys CRUD: PUT idempotent, ordering, last4 only, teacher-only", async () => {
     const put = await call("/api/settings/keys/openrouter", {
       method: "PUT",
       headers: { "Content-Type": "application/json", Cookie: teacher },
@@ -275,7 +275,7 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     expect(del.status).toBe(204);
   });
 
-  test("register→login 學生雙軌：註冊即成員，同 email 密碼可登入", async () => {
+  test("register → login student track: registering creates a member, same email and password can log in", async () => {
     const email = `reg-${Date.now()}@socrates.tw`;
     const registered = await call("/api/auth/register", {
       method: "POST",
@@ -309,7 +309,7 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     expect(((await me.json()) as { role: string }).role).toBe("student");
   });
 
-  test("lookup mock：websearch 缺 binding → fallback 文字（prose mock）", async () => {
+  test("lookup mock: websearch without binding → fallback text (prose mock)", async () => {
     const student = cookieOf(
       await call("/api/join", {
         method: "POST",
@@ -327,8 +327,8 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
   });
 });
 
-describe("report（#74：finish→pending→ready→GET）", () => {
-  test("finish 觸發 ReportRunner：pending→ready→角色分流報告", async () => {
+describe("report (#74: finish → pending → ready → GET)", () => {
+  test("finish triggers the ReportRunner: pending → ready → role-scoped report", async () => {
     const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
       id: string;
       title: string;
