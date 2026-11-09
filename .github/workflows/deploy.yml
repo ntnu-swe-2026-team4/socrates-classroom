@@ -26,6 +26,14 @@ jobs:
           pnpm lint
           pnpm typecheck
           pnpm test
+      - name: YAML lint (yamllint)
+        run: |
+          pip install yamllint
+          yamllint .
+      - name: Config drift (regen config.gen.ts and diff)
+        run: |
+          pnpm --filter @socrates/server run gen-config
+          git diff --exit-code -- apps/server/src/routing/config.gen.ts
       - name: cf build (client + worker, built once)
         run: pnpm exec cf build
         working-directory: apps/web
