@@ -70,7 +70,7 @@ export class ReportRunner extends DurableObject<Env> {
     });
     if (row?.status === "ready") return "ready";
     await this.ctx.storage.setAlarm(Date.now() + 50);
-    await this.ctx.storage.put("attempts", 0);
+    if (!this.#inFlight) await this.ctx.storage.put("attempts", 0);
     if (!row) {
       await run(
         db,
@@ -109,7 +109,8 @@ export class ReportRunner extends DurableObject<Env> {
         await this.#markTerminal(db, activityId);
         return;
       }
-      await this.ctx.storage.setAlarm(Date.now() + plan.delayMs);
+      const delayMs = plan.action === "rearm" ? plan.delayMs : report.alarmTimeoutMs;
+      await this.ctx.storage.setAlarm(Date.now() + delayMs);
       return;
     }
     const row = await one<{ status: string }>(db, "SELECT status FROM reports WHERE activity_id = $id", {
@@ -151,7 +152,8 @@ export class ReportRunner extends DurableObject<Env> {
       ]);
     } catch (error) {
       console.error("[report] generation failed", error instanceof Error ? error.name : typeof error);
-      await this.ctx.storage.setAlarm(Date.now() + plan.backoffMs);
+      const backoffMs = plan.action === "generate" ? plan.backoffMs : report.alarmBackoffMs;
+      await this.ctx.storage.setAlarm(Date.now() + backoffMs);
     } finally {
       clearTimeout(watchdog);
     }
