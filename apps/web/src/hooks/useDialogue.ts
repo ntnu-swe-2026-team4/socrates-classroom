@@ -109,6 +109,7 @@ export function useDialogue(activityId: string, userId: string) {
       setTtsFailed(false);
       const speaking = speak(text);
       const controller = ttsRef.current;
+      if (!controller) return;
       speaking
         .catch(() => {
           if (!controller.signal.aborted) setTtsFailed(true);
