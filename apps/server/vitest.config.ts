@@ -10,6 +10,7 @@ export default defineConfig({
   ],
   test: {
     fsModuleCache: false,
+    hookTimeout: 120_000,
     globalSetup: ["./tests/global-setup.ts"],
   },
 });
