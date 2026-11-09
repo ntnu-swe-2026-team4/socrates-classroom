@@ -6,7 +6,6 @@ import { inject } from "vitest";
 import worker from "../src/index";
 import { seedDemo } from "../src/seed";
 import { frames, latestAssistantText } from "./helpers";
-import type { ServerMessage } from "../src/ws/protocol";
 
 async function call(path: string, init: RequestInit = {}): Promise<Response> {
   return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(

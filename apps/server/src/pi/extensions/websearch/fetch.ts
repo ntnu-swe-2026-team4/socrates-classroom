@@ -135,10 +135,9 @@ export async function fetchPage(
 ): Promise<FetchOutcome> {
   try {
     const url = validateUrl(rawUrl);
-    const permitted = (from: URL, to: URL) => sameSite(from, to) || !permitTarget || permitTarget(to);
-    const { response, url: finalUrl } = await fetchFollowingRedirects(
+    const { response } = await fetchFollowingRedirects(
       url,
-      permitTarget ? (from, to) => permitted(from, to) : undefined,
+      permitTarget ? (_from, to) => sameSite(url, to) || permitTarget(to) : undefined,
     );
     if (!response.ok) {
       return { url: rawUrl, title: "", content: "", error: `HTTP ${response.status}` };

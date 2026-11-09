@@ -289,7 +289,14 @@ describe("lain round-3: reconnect rollover + empty assistant entries", () => {
     expect(result.current.pending).toBe(true);
     expect(result.current.error).toBeNull();
     expect(tts).not.toHaveBeenCalled();
-    emit(opsFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答"), userEntry(3, "新問題"), assistantEntry(4, "新回答")]));
+    emit(
+      opsFrame([
+        userEntry(1, "舊問題"),
+        assistantEntry(2, "舊回答"),
+        userEntry(3, "新問題"),
+        assistantEntry(4, "新回答"),
+      ]),
+    );
     await waitFor(() => expect(result.current.pending).toBe(false));
     expect(tts).toHaveBeenCalledWith("新回答", expect.anything(), expect.anything());
   });

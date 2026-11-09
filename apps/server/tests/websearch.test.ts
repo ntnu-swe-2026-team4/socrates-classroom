@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import worker from "../src/index";
 import { seedDemo } from "../src/seed";
-import { frames, latestView } from "./helpers";
+import { frames } from "./helpers";
 
 let thread: string;
 let cookie: string;
