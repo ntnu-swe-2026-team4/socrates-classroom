@@ -172,7 +172,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     expect(typeof mineData.pseudonym).toBe("string");
   }, 60_000);
 
-  test("authorization matrix spot checks: outsider 403 / teacher-only 403", async () => {
+  test("authorization matrix spot checks: outsider 403 / teacher-only 403 / cross-class report IDOR", async () => {
     const outsiderLogin = await call("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -191,6 +191,28 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     const student = cookieOf(joined);
     const finish = await call(`/api/activities/${activityId}/finish`, { method: "POST", headers: { Cookie: student } });
     expect(finish.status).toBe(403);
+
+    const otherClassroom = await call("/api/classrooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({
+        name: "R6 他班",
+        topicId: ((await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>)[0]!
+          .id,
+      }),
+    });
+    expect(otherClassroom.status).toBe(201);
+    const other = (await otherClassroom.json()) as { code: string };
+    const otherJoined = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: other.code, name: "他班學生", tosAccepted: true }),
+    });
+    const otherStudent = cookieOf(otherJoined);
+    const crossClass = await call(`/api/activities/${activityId}/report`, {
+      headers: { Cookie: otherStudent },
+    });
+    expect(crossClass.status).toBe(403);
   });
 
   test("teacher keys CRUD: PUT idempotent, ordering, last4 only, teacher-only", async () => {
