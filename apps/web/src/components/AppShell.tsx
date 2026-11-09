@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { onOpenAccountSheet } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -37,6 +37,23 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const focusRestoreRef = useRef<HTMLElement | null>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const accountRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const open = drawerOpen || accountOpen;
+    if (!open) return;
+    focusRestoreRef.current = document.activeElement as HTMLElement | null;
+    const target = drawerOpen ? drawerRef.current : accountRef.current;
+    target?.focus();
+  }, [drawerOpen, accountOpen]);
+
+  useEffect(() => {
+    if (drawerOpen || accountOpen) return;
+    focusRestoreRef.current?.focus();
+    focusRestoreRef.current = null;
+  }, [drawerOpen, accountOpen]);
 
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
   const logout = useMutation({
@@ -120,113 +137,150 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       </button>
 
       {drawerOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <div className="anim-fade absolute inset-0 bg-black/40" onClick={() => setDrawerOpen(false)} />
-          <aside
-            role="dialog"
-            aria-modal="true"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setDrawerOpen(false);
-            }}
-            className="absolute inset-y-0 left-0"
-          >
-            {rail}
-          </aside>
-        </div>
+        <TrapDialog ref={drawerRef} className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
+          {rail}
+        </TrapDialog>
       )}
 
       <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
 
       {accountOpen && (
-        <div className="fixed inset-0 z-50">
-          <div className="anim-fade absolute inset-0 bg-black/40" onClick={() => setAccountOpen(false)} />
-          <aside
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="account-title"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setAccountOpen(false);
-            }}
-            className="anim-sheet absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-paper p-6 shadow-xl"
+        <TrapDialog
+          ref={accountRef}
+          ariaLabelledBy="account-title"
+          className="anim-sheet absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-paper p-6 shadow-xl"
+          onClose={() => setAccountOpen(false)}
+        >
+          <button
+            type="button"
+            aria-label={t("common_back")}
+            onClick={() => setAccountOpen(false)}
+            className="absolute top-4 right-4 flex size-8 cursor-pointer items-center justify-center rounded-full text-ink-faint hover:bg-paper-deep hover:text-ink"
           >
-            <button
-              type="button"
-              aria-label={t("common_back")}
-              onClick={() => setAccountOpen(false)}
-              className="absolute top-4 right-4 flex size-8 cursor-pointer items-center justify-center rounded-full text-ink-faint hover:bg-paper-deep hover:text-ink"
-            >
-              <X className="size-4" />
-            </button>
-            <h2 id="account-title" className="font-serif text-lg">
-              {t("account_title")}
-            </h2>
-            <p className="mb-5 text-[13px] text-ink-faint">{t("app_sub")}</p>
+            <X className="size-4" />
+          </button>
+          <h2 id="account-title" className="font-serif text-lg">
+            {t("account_title")}
+          </h2>
+          <p className="mb-5 text-[13px] text-ink-faint">{t("app_sub")}</p>
 
-            {me.data && (
-              <div className="mb-4 flex items-center gap-4 rounded-2xl bg-paper-deep px-4 py-3">
-                <Initial name={me.data.name} className="size-12 text-lg" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-serif text-[15px]">{me.data.name}</div>
-                  <div className="text-[12.5px] text-ink-faint">
-                    {t("account_role")} · {isTeacher ? t("role_teacher") : t("role_student")}
-                  </div>
+          {me.data && (
+            <div className="mb-4 flex items-center gap-4 rounded-2xl bg-paper-deep px-4 py-3">
+              <Initial name={me.data.name} className="size-12 text-lg" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-serif text-[15px]">{me.data.name}</div>
+                <div className="text-[12.5px] text-ink-faint">
+                  {t("account_role")} · {isTeacher ? t("role_teacher") : t("role_student")}
                 </div>
               </div>
-            )}
-
-            {me.data && <NameDisplay key={me.data.id} name={me.data.name} />}
-
-            <div className="mb-4 rounded-2xl bg-paper-deep px-4 py-3 text-sm">
-              <div className="mb-2" id="account-lang">
-                {t("settings_lang")}
-              </div>
-              <div
-                role="radiogroup"
-                aria-labelledby="account-lang"
-                className="inline-flex gap-0.5 rounded-full border border-line-strong bg-card p-0.5"
-              >
-                {LANGS.map((l) => (
-                  // biome-ignore lint/a11y/useSemanticElements: language switch is a button-based radio group
-                  <button
-                    key={l.code}
-                    type="button"
-                    role="radio"
-                    aria-checked={locale === l.code}
-                    lang={l.code}
-                    onClick={() => setLocale(l.code as Locale)}
-                    className={cn(
-                      "cursor-pointer rounded-full px-4 py-1.5 text-[13px]",
-                      locale === l.code ? "bg-ember font-semibold text-on-ember" : "text-ink-soft hover:text-ink",
-                    )}
-                  >
-                    {l.label}
-                  </button>
-                ))}
-              </div>
             </div>
+          )}
 
-            {isTeacher && (
-              <Link
-                to="/settings"
-                className="mb-4 flex items-center gap-3 rounded-2xl bg-paper-deep px-4 py-3 text-sm hover:text-ember"
-              >
-                <KeyRound className="size-4" />
-                <span className="flex-1">{t("settings_title")}</span>
-                <span aria-hidden="true">›</span>
-              </Link>
-            )}
+          {me.data && <NameDisplay key={me.data.id} name={me.data.name} />}
 
-            <button
-              type="button"
-              onClick={() => logout.mutate()}
-              disabled={logout.isPending}
-              className="mt-auto h-10 w-full cursor-pointer rounded-full bg-paper-deep text-sm font-medium text-flag transition-colors hover:bg-flag-wash"
+          <div className="mb-4 rounded-2xl bg-paper-deep px-4 py-3 text-sm">
+            <div className="mb-2" id="account-lang">
+              {t("settings_lang")}
+            </div>
+            <div
+              role="radiogroup"
+              aria-labelledby="account-lang"
+              className="inline-flex gap-0.5 rounded-full border border-line-strong bg-card p-0.5"
             >
-              {t("account_logout")}
-            </button>
-          </aside>
-        </div>
+              {LANGS.map((l) => (
+                // biome-ignore lint/a11y/useSemanticElements: language switch is a button-based radio group
+                <button
+                  key={l.code}
+                  type="button"
+                  role="radio"
+                  aria-checked={locale === l.code}
+                  lang={l.code}
+                  onClick={() => setLocale(l.code as Locale)}
+                  className={cn(
+                    "cursor-pointer rounded-full px-4 py-1.5 text-[13px]",
+                    locale === l.code ? "bg-ember font-semibold text-on-ember" : "text-ink-soft hover:text-ink",
+                  )}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {isTeacher && (
+            <Link
+              to="/settings"
+              className="mb-4 flex items-center gap-3 rounded-2xl bg-paper-deep px-4 py-3 text-sm hover:text-ember"
+            >
+              <KeyRound className="size-4" />
+              <span className="flex-1">{t("settings_title")}</span>
+              <span aria-hidden="true">›</span>
+            </Link>
+          )}
+
+          <button
+            type="button"
+            onClick={() => logout.mutate()}
+            disabled={logout.isPending}
+            className="mt-auto h-10 w-full cursor-pointer rounded-full bg-paper-deep text-sm font-medium text-flag transition-colors hover:bg-flag-wash"
+          >
+            {t("account_logout")}
+          </button>
+        </TrapDialog>
       )}
+    </div>
+  );
+}
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function TrapDialog({
+  ref,
+  className,
+  onClose,
+  ariaLabelledBy,
+  children,
+}: {
+  ref: RefObject<HTMLDivElement | null>;
+  className: string;
+  onClose: () => void;
+  ariaLabelledBy?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="anim-fade absolute inset-0 bg-black/40" onClick={onClose} />
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        {...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {})}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            onClose();
+            return;
+          }
+          if (event.key !== "Tab") return;
+          const container = event.currentTarget;
+          const focusables = [...container.querySelectorAll(FOCUSABLE)] as HTMLElement[];
+          if (focusables.length === 0) return;
+          const first = focusables[0]!;
+          const last = focusables.at(-1)!;
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }}
+        className={className}
+      >
+        {children}
+      </div>
     </div>
   );
 }

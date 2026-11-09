@@ -101,7 +101,7 @@ export function createWebSearchExtension(ai: Ai | undefined, config: WebSearchCo
   const fetchContentTool = defineTool({
     name: "fetch_content",
     description:
-      "Fetch one URL and return extracted content. Modes: readable (default: markdown via Workers AI), raw (exact textual body). Same URL+mode is cached for 1 hour. Full content is stored for retrieval with get_search_content.",
+      "Fetch one URL and return extracted content. Only URLs that appeared in this conversation's web_search results can be fetched — search first. Modes: readable (default: markdown via Workers AI), raw (exact textual body). Same URL+mode is cached for 1 hour. Full content is stored for retrieval with get_search_content.",
     parameters: obj({
       url: str(),
       mode: opt(oneOf(["readable", "raw"] as const)),
@@ -109,6 +109,16 @@ export function createWebSearchExtension(ai: Ai | undefined, config: WebSearchCo
     replay: "safe",
     async execute(args) {
       const mode = args.mode ?? "readable";
+      if (!responses.isSearchHit(args.url)) {
+        return {
+          output: [
+            {
+              type: "text",
+              text: `Error fetching ${args.url}: only URLs from this conversation's web_search results can be fetched. Run web_search first.`,
+            },
+          ],
+        };
+      }
       const cached = responses.getCachedFetch(args.url, mode);
       let outcome: { url: string; title: string; content: string; error: string | null };
       if (cached) {

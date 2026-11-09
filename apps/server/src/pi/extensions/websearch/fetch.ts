@@ -11,19 +11,51 @@ export interface FetchOutcome {
 
 const BLOCKED_HOSTNAMES = ["localhost", "metadata.google.internal"];
 
+function expandIpv6(host: string): number[] | null {
+  if (!host.includes(":")) return null;
+  let text = host.toLowerCase();
+  const v4tail = text.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (v4tail) {
+    const [a = 0, b = 0, c = 0, d = 0] = v4tail[1].split(".").map(Number);
+    text = `${text.slice(0, -v4tail[1].length)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(":").filter(Boolean) : [];
+  const tail = halves[1] !== undefined ? (halves[1] ? halves[1].split(":").filter(Boolean) : []) : [];
+  const missing = 8 - head.length - tail.length;
+  if (halves.length === 1 && head.length !== 8) return null;
+  if (halves.length === 2 && missing < 0) return null;
+  const groups = [...head, ...Array(Math.max(0, missing)).fill("0"), ...tail].map((part) => Number.parseInt(part, 16));
+  return groups.length === 8 && groups.every((group) => Number.isInteger(group)) ? groups : null;
+}
+
+function isPrivateIpv4(a: number, b: number): boolean {
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a >= 240) return true;
+  return false;
+}
+
 function isPrivateIp(host: string): boolean {
   const bare = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(bare)) {
-    const [a, b] = bare.split(".").map(Number);
-    if (a === 10 || a === 127) return true;
-    if (a === 172 && b! >= 16 && b! <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 0) return true;
+    const [a = 0, b = 0] = bare.split(".").map(Number);
+    return isPrivateIpv4(a, b);
   }
-  const v6 = bare.toLowerCase();
-  if (v6 === "::1" || v6.startsWith("fc") || v6.startsWith("fd") || v6.startsWith("fe80")) return true;
-  if (v6.startsWith("::ffff:")) return isPrivateIp(v6.slice("::ffff:".length));
+  const groups = expandIpv6(bare);
+  if (!groups) return false;
+  if (groups.every((group) => group === 0)) return true;
+  if (groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1) return true;
+  if (groups[0]! >= 0xfe80 && groups[0]! <= 0xfebf) return true;
+  if (groups[0]! >= 0xfc00 && groups[0]! <= 0xfdff) return true;
+  if (groups.slice(0, 5).every((group) => group === 0) && (groups[5] === 0xffff || groups[5] === 0)) {
+    return isPrivateIpv4(groups[6]! >> 8, groups[7]! >> 8);
+  }
   return false;
 }
 

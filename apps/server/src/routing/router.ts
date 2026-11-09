@@ -5,6 +5,11 @@ import { RoutingLedger, type SettleKind } from "./ledger";
 
 export type TrafficClass = "interactive" | "judgment" | "batch";
 
+export interface ResolvedLeg {
+  provider: string;
+  model: string;
+}
+
 export interface RouteDecision {
   entry: AvailabilityEntry;
   model: string;
@@ -42,34 +47,38 @@ export class Router {
 
   chain(
     trafficClass: TrafficClass,
-    canServe?: (entry: AvailabilityEntry) => boolean,
+    canServe?: (entry: ResolvedLeg) => boolean,
     teacherLegs?: AvailabilityEntry[],
   ): AvailabilityEntry[] {
     const availability = routingConfig.trafficClasses[trafficClass]?.availability ?? "defaults";
     const platform = availability === "defaults" ? routingConfig.defaults.availability : [];
     return [...(teacherLegs ?? []), ...platform]
       .sort((a, b) => a.priority - b.priority)
-      .filter((entry) => {
-        if (canServe && !canServe(entry)) return false;
-        if (isTeacherCredential(entry.credential)) {
-          const key = this.keyOf(entry, {});
-          return !this.#ledger.inCooldown(key) && this.#ledger.inFlight(key) < entry.maxConcurrency;
+      .map((entry) => {
+        const def = routingConfig.providers[entry.provider] ?? {};
+        return { entry, def, model: entry.model ?? def.model ?? "" };
+      })
+      .filter((leg) => {
+        if (canServe && !canServe({ provider: leg.entry.provider, model: leg.model })) return false;
+        if (isTeacherCredential(leg.entry.credential)) {
+          const key = { provider: leg.entry.provider, model: leg.model, credential: leg.entry.credential };
+          return !this.#ledger.inCooldown(key) && this.#ledger.inFlight(key) < leg.entry.maxConcurrency;
         }
-        const def = routingConfig.providers[entry.provider];
-        if (!def) return false;
-        if (def.kind === "binding" && !this.#env.AI) return false;
-        if (def.kind === "openai-completions") {
-          if (!entry.model && !def.model) return false;
-          if (def.baseUrlEnv && !this.#env[def.baseUrlEnv as keyof Env]) return false;
+        if (!leg.def.kind) return false;
+        if (leg.def.kind === "binding" && !this.#env.AI) return false;
+        if (leg.def.kind === "openai-completions") {
+          if (!leg.model) return false;
+          if (leg.def.baseUrlEnv && !this.#env[leg.def.baseUrlEnv as keyof Env]) return false;
         }
-        const key = this.keyOf(entry, def);
-        return !this.#ledger.inCooldown(key) && this.#ledger.inFlight(key) < entry.maxConcurrency;
-      });
+        const key = { provider: leg.entry.provider, model: leg.model, credential: leg.entry.credential };
+        return !this.#ledger.inCooldown(key) && this.#ledger.inFlight(key) < leg.entry.maxConcurrency;
+      })
+      .map((leg) => leg.entry);
   }
 
   pick(
     trafficClass: TrafficClass,
-    canServe?: (entry: AvailabilityEntry) => boolean,
+    canServe?: (entry: ResolvedLeg) => boolean,
     teacherLegs?: AvailabilityEntry[],
   ): RouteDecision | null {
     const entry = this.chain(trafficClass, canServe, teacherLegs)[0];

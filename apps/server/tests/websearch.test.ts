@@ -123,6 +123,37 @@ describe("websearch extension（web_search + get_search_content）", () => {
     const found = findPassages(content, ["正義"], "case-insensitive");
     expect(found).toContain("正義");
     expect(found).not.toContain("no match");
+
+    expect(responses.isSearchHit("https://u")).toBe(true);
+    expect(responses.isSearchHit("https://attacker.example")).toBe(false);
+  });
+
+  it("fetch_content 只准搜尋結果 URL（B 定案：web_search 先行 → 同 URL 可抓、未搜尋 → 拒）", async () => {
+    const { createWebSearchExtension } = await import("../src/pi/extensions/websearch");
+    const fakeAi = {
+      websearch: async () =>
+        new Response(
+          JSON.stringify({
+            items: [{ url: "https://zh.wikipedia.org/wiki/Justice", title: "Justice", description: "d" }],
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    };
+    const extension = createWebSearchExtension(fakeAi as never);
+    type Tool = {
+      name: string;
+      execute: (args: Record<string, unknown>) => Promise<{ output: Array<{ type: string; text: string }> }>;
+    };
+    const tools = (extension.tools ?? []) as unknown as Tool[];
+    const searchTool = tools.find((tool) => tool.name === "web_search")!;
+    const fetchTool = tools.find((tool) => tool.name === "fetch_content")!;
+
+    const blocked = await fetchTool.execute({ url: "https://zh.wikipedia.org/wiki/Justice" });
+    expect(blocked.output[0]!.text).toContain("web_search results");
+
+    await searchTool.execute({ query: "justice" });
+    const allowed = await fetchTool.execute({ url: "https://zh.wikipedia.org/wiki/Justice" });
+    expect(allowed.output[0]!.text).not.toContain("web_search results");
   });
 });
 
@@ -135,6 +166,30 @@ describe("fetch_content（readable/raw＋cache＋SSRF）", () => {
     expect(() => validateUrl("http://192.168.1.1/x")).toThrow("internal");
     expect(() => validateUrl("file:///etc/passwd")).toThrow("HTTP");
     expect(validateUrl("https://zh.wikipedia.org/wiki/Justice").protocol).toBe("https:");
+  });
+
+  it("validateUrl bypass 語料庫：IPv6 mapped/全段、CGNAT、benchmark、保留段、WHATWG 正規化", async () => {
+    const { validateUrl } = await import("../src/pi/extensions/websearch/fetch");
+    const blocked = [
+      "http://[::1]/x",
+      "http://[::]/x",
+      "http://[::ffff:127.0.0.1]/x",
+      "http://[::ffff:7f00:1]/x",
+      "http://[fe80::1]/x",
+      "http://[fe90::1]/x",
+      "http://[fc00::1]/x",
+      "http://[fd12:3456:789a::1]/x",
+      "http://100.64.0.1/x",
+      "http://198.18.0.1/x",
+      "http://240.0.0.1/x",
+      "http://127.1/x",
+      "http://0177.0.0.1/x",
+      "http://0x7f.0.0.1/x",
+      "http://2130706433/x",
+    ];
+    for (const url of blocked) expect(() => validateUrl(url), url).toThrow("internal");
+    expect(validateUrl("http://[::ffff:8.8.8.8]/x").hostname).toBe("[::ffff:808:808]");
+    expect(validateUrl("http://1.1.1.1/x").hostname).toBe("1.1.1.1");
   });
 
   it("raw mode：真 fetch 公網頁面，cache 生效（第二次不發請求）", async () => {

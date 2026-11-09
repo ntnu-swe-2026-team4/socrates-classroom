@@ -86,19 +86,29 @@ function TeacherKeysCard() {
     }
   };
 
-  const remove = async (entry: TeacherKeyEntry) => {
-    await api.deleteTeacherKey(entry.provider);
-    await refresh();
+  const run = async (action: () => Promise<void>) => {
+    setError(null);
+    try {
+      await action();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   };
 
-  const move = async (index: number, delta: -1 | 1) => {
-    const list = (keys.data ?? []).map((entry) => entry.provider);
-    const target = index + delta;
-    if (target < 0 || target >= list.length) return;
-    [list[index], list[target]] = [list[target]!, list[index]!];
-    await api.orderTeacherKeys(list);
-    await refresh();
-  };
+  const remove = (entry: TeacherKeyEntry) =>
+    run(async () => {
+      await api.deleteTeacherKey(entry.provider);
+    });
+
+  const move = (index: number, delta: -1 | 1) =>
+    run(async () => {
+      const list = (keys.data ?? []).map((entry) => entry.provider);
+      const target = index + delta;
+      if (target < 0 || target >= list.length) return;
+      [list[index], list[target]] = [list[target]!, list[index]!];
+      await api.orderTeacherKeys(list);
+    });
 
   return (
     <Card className="flex flex-col gap-4 p-5">

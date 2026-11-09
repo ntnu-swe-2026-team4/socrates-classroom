@@ -11,6 +11,7 @@ import type { Connection, ConnectionContext } from "agents/lifecycle";
 import type { WebSocketMessage, WebSocketsOptions } from "agents/websockets";
 import { type PiHarness, type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } from "agents/harness/pi";
 import type { UserInput } from "@earendil-works/pi-durable";
+import { DialogueInputSchema } from "@socrates/shared";
 import type { ClientMessage, ServerMessage } from "./protocol";
 
 export type SubmitRoute = (handle: PiSession, input: UserInput, options: PiSubmitOptions) => Promise<PiReceipt>;
@@ -75,6 +76,7 @@ export class ChatSockets {
 
   async reattach(): Promise<void> {
     for (const socket of this.#getWebSockets()) {
+      this.#authorized.add(socket);
       await this.#watchOrClose(socket);
     }
   }
@@ -185,16 +187,19 @@ export class ChatSockets {
   async #dispatch(socket: WebSocket, message: ClientMessage) {
     const handle = this.#harness.session(ROOT_SESSION);
     switch (message.type) {
-      case "submit":
+      case "submit": {
+        if (typeof message.input !== "string") throw new Error("Invalid input");
+        const input = DialogueInputSchema.parse({ text: message.input });
         return this.#submitRoute
-          ? await this.#submitRoute(handle, message.input, {
+          ? await this.#submitRoute(handle, input.text, {
               ...(message.operationId ? { operationId: message.operationId } : {}),
               whenBusy: "reject",
             })
-          : await handle.submit(message.input, {
+          : await handle.submit(input.text, {
               ...(message.operationId ? { operationId: message.operationId } : {}),
               whenBusy: "reject",
             });
+      }
       case "abort":
         return await handle.abort();
       case "watch": {

@@ -113,8 +113,8 @@ export class Chat extends DurableObject<Env> {
 
   private async routeSubmit(handle: PiSession, input: UserInput, options: PiSubmitOptions): Promise<PiReceipt> {
     const router = getRouter(this.env);
-    const canServe = (entry: { provider: string; model?: string }): boolean =>
-      this.models.models.getModel(entry.provider, entry.model ?? "") !== undefined;
+    const canServe = (entry: { provider: string; model: string }): boolean =>
+      this.models.models.getModel(entry.provider, entry.model) !== undefined;
     const decision = router.pick("interactive", canServe, await this.teacherLegs());
     if (decision) {
       const model = this.models.models.getModel(decision.entry.provider, decision.model);
@@ -123,11 +123,24 @@ export class Chat extends DurableObject<Env> {
         this.#sessionModel = { provider: model.provider, id: model.id };
       }
     }
-    const receipt = await handle.submit(input, options);
+    let receipt: PiReceipt;
+    try {
+      receipt = await handle.submit(input, options);
+    } catch (error) {
+      if (decision) router.settle(decision, "error");
+      throw error;
+    }
     if (decision) {
       void handle
         .wait(receipt.operationId)
-        .then((result) => router.settle(decision, result.status === "done" ? "ok" : "error"))
+        .then((result) =>
+          router.settle(
+            decision,
+            result.status === "done" || (result.status === "unanswered" && result.reason === "aborted")
+              ? "ok"
+              : "error",
+          ),
+        )
         .catch(() => {
           if (router.ledger.inFlight(decision.key) > 0) router.settle(decision, "error");
         });

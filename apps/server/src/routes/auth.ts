@@ -34,6 +34,7 @@ export function authRoutes() {
     .post("/auth/register", async (c) => {
       await enforceIpLimit(c, "register", 30);
       const input = await parseBody(c, RegisterInputSchema);
+      if (!input.tosAccepted) fail(422, "tos_required");
       const classroom = await one<{ id: string }>(c.env.DB, "SELECT id FROM classrooms WHERE join_code = $code", {
         code: input.code,
       });

@@ -170,6 +170,39 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     again.close();
   });
 
+  it("hibernation 存活 socket 跨 evict 重用：第一個 frame 不被 1008（#authorized 隨 reattach 恢復）", async () => {
+    const student = await joinStudent("冬眠本人");
+    const thread = `${activityId}:${student.userId}`;
+    const socket = await connect(thread, student.cookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.some((m) => m.type === "view"));
+
+    await evictDurableObject(env.Chat.get(env.Chat.idFromName(thread)));
+
+    socket.send(JSON.stringify({ type: "submit", id: "post-evict", input: "驅逐後的第一句" }));
+    await rx.until((f) => f.some((m) => m.type === "result" && m.id === "post-evict"));
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+    socket.close();
+  }, 20_000);
+
+  it("submit 邊界：空字串／超過 2000 字 → error frame，不進 transcript", async () => {
+    const student = await joinStudent("邊界本人");
+    const thread = `${activityId}:${student.userId}`;
+    const socket = await connect(thread, student.cookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.some((m) => m.type === "view"));
+    socket.send(JSON.stringify({ type: "submit", id: "empty", input: "   " }));
+    await rx.until((f) => f.some((m) => m.type === "error" && m.id === "empty"));
+    socket.send(JSON.stringify({ type: "submit", id: "huge", input: "x".repeat(2001) }));
+    await rx.until((f) => f.some((m) => m.type === "error" && m.id === "huge"));
+    expect(latestView(rx.list)?.entries.some((entry) => entry.kind === "pi.user")).toBe(false);
+    socket.close();
+  });
+
   it("run 進行中第二發被拒（ConversationBusy error frame），連線不受影響", async () => {
     const student = await joinStudent("小美");
     const thread = `${activityId}:${student.userId}`;

@@ -277,10 +277,24 @@ describe("R6 REST 層（Hono，真 Worker 入口）", () => {
     const registered = await call("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, email, password: "student-pass-1", name: "註冊生A" }),
+      body: JSON.stringify({ code, email, password: "student-pass-1", name: "註冊生A", tosAccepted: true }),
     });
     expect(registered.status).toBe(200);
     expect(((await registered.json()) as { role: string }).role).toBe("student");
+
+    const noConsent = await call("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code,
+        email: `nc-${Date.now()}@socrates.tw`,
+        password: "student-pass-1",
+        name: "未同意生",
+        tosAccepted: false,
+      }),
+    });
+    expect(noConsent.status).toBe(422);
+    expect(((await noConsent.json()) as { code?: string }).code).toBe("tos_required");
 
     const login = await call("/api/auth/login", {
       method: "POST",

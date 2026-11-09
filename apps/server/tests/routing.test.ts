@@ -97,7 +97,7 @@ describe("teacher legs（#82：老師 key 前置，平台鏈墊後）", () => {
     expect(chain[0]).toMatchObject({ provider: "openrouter", credential: "teacher:u_teacher" });
     expect(chain[1]!.provider).toBe("dgx-spark");
 
-    const blocked = router.chain("interactive", (e) => e.credential !== "teacher:u_teacher", [teacherLeg]);
+    const blocked = router.chain("interactive", () => false, [teacherLeg]);
     expect(blocked.every((e) => e.credential !== "teacher:u_teacher")).toBe(true);
   });
 
@@ -118,6 +118,18 @@ describe("teacher legs（#82：老師 key 前置，平台鏈墊後）", () => {
       router.chain("interactive").some((e) => e.provider === decision.entry.provider && e.model === decision.model),
     ).toBe(true);
   });
+
+  it("dgx 腿存活：def 級 model 在 canServe 前解析（DGX_BASE_URL 設定時 priority-1 不被過濾）", async () => {
+    const { Router } = await import("../src/routing/router");
+    const { buildModels } = await import("../src/pi/models");
+    const fakeAi = { run: async () => ({}), toMarkdown: async () => ({ format: "markdown", markdown: "" }) };
+    const env = { AI: fakeAi, DGX_BASE_URL: "http://spark:8888/v1" } as never;
+    const { models } = buildModels(env);
+    const router = new Router(env);
+    const decision = router.pick("interactive", (entry) => models.getModel(entry.provider, entry.model) !== undefined)!;
+    expect(decision.entry.provider).toBe("dgx-spark");
+    expect(decision.model).toBe("GLM-5.3-Flash-EXL3");
+  }, 20_000);
 
   it("teacher leg 獨立記帳：cooldown 不影響平台鏈", async () => {
     const { Router } = await import("../src/routing/router");

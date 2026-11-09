@@ -174,10 +174,8 @@ export async function runProfile(
     BACKGROUND_CONTEXT,
   );
   const router = getRouter(runtime.env);
-  const canServe = (entry: { provider: string; model?: string }): boolean => {
-    const modelId = entry.model ?? "";
-    return runtime.models.models.getModel(entry.provider, modelId) !== undefined;
-  };
+  const canServe = (entry: { provider: string; model: string }): boolean =>
+    runtime.models.models.getModel(entry.provider, entry.model) !== undefined;
   const decision = router.pick(profile.trafficClass, canServe, teacherLegs);
   const model = decision
     ? (runtime.models.models.getModel(decision.entry.provider, decision.model) ?? runtime.models.default)

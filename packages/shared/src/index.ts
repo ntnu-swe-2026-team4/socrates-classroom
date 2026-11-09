@@ -101,6 +101,7 @@ export const RegisterInputSchema = z.object({
   email: z.email(),
   password: z.string().min(8).max(128),
   name: z.string().trim().min(1).max(80),
+  tosAccepted: z.boolean(),
 });
 export const JoinInputSchema = z.object({
   code: z.string().min(4).max(32),
