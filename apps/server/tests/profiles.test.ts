@@ -50,6 +50,35 @@ describe("agent profiles (#113: role definitions, models resolved by routing)", 
     const agent = await conversation.agent(BACKGROUND_CONTEXT);
     expect(agent.thinkingLevel).toBe(PROFILES.lookup.thinkingLevel);
     expect(agent.instructions).not.toMatch(/\{\{/);
+
+    const esRegistry = profileRegistry(PROFILES["student-report"], env as never);
+    const esHarness = await Harness.open(new MemoryStorage(), { models, registry: esRegistry }, BACKGROUND_CONTEXT);
+    const esFaux = buildFauxModels();
+    esFaux.faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(SUBMIT_STUDENT_ANALYSIS, {
+            report: { stated: false, doing: { text: "還在探索", turns: [1] } },
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+    ]);
+    const esRuntime = {
+      models: {
+        models: esFaux.models,
+        default: esFaux.models.getModel("faux", "faux-1") as never,
+        faux: esFaux.faux as never,
+      },
+      registry: esRegistry,
+      env: env as never,
+    };
+    const esRun = await runProfile(esHarness, esRuntime, "student-report", "學生（1）：我覺得……", undefined, {
+      lang: "es",
+      submitTool: SUBMIT_STUDENT_ANALYSIS,
+    });
+    const esAgent = await esRun.conversation.agent(BACKGROUND_CONTEXT);
+    expect(esAgent.instructions).toContain("Spanish (Español)");
   }, 15_000);
 
   it("runProfile submitTool: faux tool call is extracted as payload (terminate round)", async () => {

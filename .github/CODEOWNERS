@@ -1,13 +1,13 @@
-* @ccohongrui @G36maid @minstrike520 @shiraga1094 @alifestone
+# Default owners (applies to all files not matched below)
+*                               @ccohongrui @G36maid @minstrike520 @shiraga1094 @alifestone
 
-/apps/web/ @ntnu-swe-2026-team4/frontend @ccohongrui
-
-/apps/server/ @ntnu-swe-2026-team4/backend @minstrike520
-
-/apps/server/src/do/            @ntnu-swe-2026-team4/backend @shiraga1094 @alifestone @minstrike520
-/apps/web/cloudflare.config.ts @ntnu-swe-2026-team4/backend @minstrike520 @ccohongrui
+/apps/web/                      @ntnu-swe-2026-team4/frontend @ccohongrui
+/apps/server/                   @ntnu-swe-2026-team4/backend @minstrike520
+/apps/server/src/pi/            @ntnu-swe-2026-team4/llm @shiraga1094 @alifestone
+/apps/server/src/prompts/       @ntnu-swe-2026-team4/llm @shiraga1094 @alifestone
+/apps/web/cloudflare.config.ts  @ntnu-swe-2026-team4/backend @minstrike520 @ccohongrui
 /apps/server/migrations/        @ntnu-swe-2026-team4/backend @minstrike520
 
-/packages/shared/ @ntnu-swe-2026-team4/backend @ntnu-swe-2026-team4/frontend @minstrike520 @ccohongrui
+/packages/shared/               @ntnu-swe-2026-team4/backend @ntnu-swe-2026-team4/frontend @minstrike520 @ccohongrui
 
-/docs/ @G36maid @minstrike520 @ccohongrui
+/docs/                          @G36maid @minstrike520 @ccohongrui

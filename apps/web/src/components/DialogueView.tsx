@@ -84,9 +84,10 @@ export function DialogueView({
   }, [openTerm, onTermOpened]);
   useEffect(() => {
     if (autoSend && !autoSent.current && phase === "idle") {
-      autoSent.current = true;
-      void send(autoSend);
-      onAutoSent?.();
+      if (send(autoSend)) {
+        autoSent.current = true;
+        onAutoSent?.();
+      }
     }
   }, [autoSend, phase, send, onAutoSent]);
 

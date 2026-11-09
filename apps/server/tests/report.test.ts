@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import worker from "../src/index";
 import { seedDemo } from "../src/seed";
+import { frames, latestAssistantText } from "./helpers";
 import type { ServerMessage } from "../src/ws/protocol";
 
 async function call(path: string, init: RequestInit = {}): Promise<Response> {
@@ -17,25 +18,6 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
 
 function cookieOf(res: Response): string {
   return (res.headers.getSetCookie?.()[0] ?? "").split(";")[0]!;
-}
-
-async function frames(socket: WebSocket) {
-  const list: ServerMessage[] = [];
-  const waiters: Array<() => void> = [];
-  socket.addEventListener("message", (event) => {
-    if (typeof event.data !== "string") return;
-    list.push(JSON.parse(event.data) as ServerMessage);
-    for (const waiter of waiters.splice(0)) waiter();
-  });
-  return {
-    list,
-    until: async (check: (frames: ServerMessage[]) => boolean) => {
-      for (let i = 0; i < 500 && !check(list); i++) {
-        await new Promise<void>((resolve) => waiters.push(resolve));
-      }
-      expect(check(list)).toBe(true);
-    },
-  };
 }
 
 async function speak(thread: string, cookie: string, question: string): Promise<void> {
@@ -54,7 +36,7 @@ async function speak(thread: string, cookie: string, question: string): Promise<
   await rx.until((f) => f.some((m) => m.type === "view"));
   ws.send(JSON.stringify({ type: "submit", id: "s1", input: question }));
   await rx.until((f) => f.some((m) => m.type === "result" && m.id === "s1"));
-  await rx.until((f) => JSON.stringify(f).includes("直覺判斷"));
+  await rx.until((f) => latestAssistantText(f).includes("直覺判斷"));
   ws.close();
 }
 
@@ -127,11 +109,15 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
         pseudonym: string;
         analysis: { stated: boolean } | null;
         violations: Array<{ turn: number; type: string; excerpt: string }>;
+        positions: Array<{ axis: string; at: number; end: string }>;
       }>;
     };
     expect(teacherReport.classReport.axes.length).toBeGreaterThan(0);
     expect(teacherReport.students).toHaveLength(2);
     expect(teacherReport.students.map((s) => s.pseudonym).every((p) => p.startsWith("學生"))).toBe(true);
+    const positioned = teacherReport.students.find((s) => s.pseudonym === "學生1");
+    expect(positioned?.positions.length).toBeGreaterThan(0);
+    expect(positioned?.positions[0]).toMatchObject({ axis: "契約與承諾", end: "middle", at: 50 });
 
     const speaker = teacherReport.students.find((s) => s.studentId === students[0]!.userId)!;
     expect(speaker.analysis?.stated).toBe(true);

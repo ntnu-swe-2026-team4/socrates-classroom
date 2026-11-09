@@ -61,8 +61,11 @@ function emotionEntry(id: number): EntryRecord {
   });
 }
 
-function viewFrame(entries: EntryRecord[]): ServerMessage {
-  return { type: "view", view: { conversation: { id: 1 }, entries, docs: {} } } as unknown as ServerMessage;
+function viewFrame(entries: EntryRecord[], before?: number): ServerMessage {
+  return {
+    type: "view",
+    view: { conversation: { id: 1 }, entries, docs: {}, ...(before !== undefined ? { before } : {}) },
+  } as unknown as ServerMessage;
 }
 
 function opsFrame(entries: EntryRecord[]): ServerMessage {
@@ -272,5 +275,35 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     emit(viewFrame([emotionEntry(3)]));
     expect(result.current.phase).toBe("idle");
     expect(result.current.error).toEqual({ code: "llm_unavailable" });
+  });
+});
+
+describe("lain round-3: reconnect rollover + empty assistant entries", () => {
+  it("view window rolled past the baseline (user entry in the unobserved gap) — pending kept, later ops complete it", async () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答")]));
+    act(() => {
+      result.current.send("新問題");
+    });
+    emit(viewFrame([], 3));
+    expect(result.current.pending).toBe(true);
+    expect(result.current.error).toBeNull();
+    expect(tts).not.toHaveBeenCalled();
+    emit(opsFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答"), userEntry(3, "新問題"), assistantEntry(4, "新回答")]));
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    expect(tts).toHaveBeenCalledWith("新回答", expect.anything(), expect.anything());
+  });
+
+  it("assistant entry with empty text does not complete the round; the real answer later does", async () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([]));
+    act(() => {
+      result.current.send("問題");
+    });
+    emit(opsFrame([userEntry(1, "問題"), assistantEntry(2, "")]));
+    expect(result.current.pending).toBe(true);
+    emit(opsFrame([userEntry(1, "問題"), assistantEntry(2, ""), assistantEntry(3, "真正的回答")]));
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    expect(tts).toHaveBeenCalledWith("真正的回答", expect.anything(), expect.anything());
   });
 });

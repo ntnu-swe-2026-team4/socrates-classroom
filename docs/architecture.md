@@ -232,6 +232,10 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 | `tests/profiles.test.ts`  | profile 表零 model hardcode、真 prompt 資產接線、runProfile 全路徑                |
 | `tests/routing.test.ts`   | cooldown 語意矩陣、config 形狀、分開記帳                                          |
 | `tests/rest.test.ts`      | 真 Worker 入口：seed guard/ToS join/歷史/finish→report/授權矩陣/teacher keys CRUD |
+| `tests/report.test.ts`    | 報告管線端到端：ready/partial 形狀（§7）、pseudonym integrity、IDOR              |
+| `tests/auth-crypto.test.ts` | AES-GCM/HKDF 加密、版本前綴、timing-safe 比對                                  |
+| `tests/d1.test.ts`        | `$named` 轉 positional——字串常數內 `$` 不替換                                    |
+| `tests/helpers.ts`        | 共享 WS 測試原語：frames/latestView/assistantText                                |
 
 原則：真 DO＋真 WebSocket＋faux model（無 fetch 攔截、無 mock DO）；斷言只驗形狀不驗內容。web 端另有 vitest（jsdom）＋review overlay。
 

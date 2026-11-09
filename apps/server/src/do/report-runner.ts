@@ -414,10 +414,17 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
         stopReason: "toolUse",
       });
     }
+    const rosterLine = prompt.split("## Roster:")[1]!.split("\n")[1] ?? "";
+    const roster = rosterLine
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+    const first = roster[0] ?? "學生A";
+    const second = roster[1] ?? first;
     return fauxAssistantMessage(
       [
         fauxToolCall(SUBMIT_CLASS_REPORT, {
-          students: [{ id: "學生A", summary: [{ step: "提出直覺判斷並被追問理由", turns: [1] }] }],
+          students: [{ id: first, summary: [{ step: "提出直覺判斷並被追問理由", turns: [1] }] }],
           unstated: [],
           axes: [
             {
@@ -425,8 +432,8 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
               low: "契約至上",
               high: "人情優先",
               positions: [
-                { id: "學生A", turns: [1], view: "先守約再談情", end: "middle", at: 50 },
-                { id: "學生B", turns: [1], view: "契約就是契約", end: "low", at: 10 },
+                { id: first, turns: [1], view: "先守約再談情", end: "middle", at: 50 },
+                { id: second, turns: [1], view: "契約就是契約", end: "low", at: 10 },
               ],
               why: "全班多數先守約，但接受例外",
             },

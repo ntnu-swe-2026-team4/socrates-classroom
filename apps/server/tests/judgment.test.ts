@@ -1,13 +1,12 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
-import { applyImmutable } from "@earendil-works/chord/delta";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import worker from "../src/index";
 import { seedDemo } from "../src/seed";
-import type { ServerMessage } from "../src/ws/protocol";
+import { frames, latestView } from "./helpers";
 
 let threads: string[];
 let cookies: string[];
@@ -69,37 +68,6 @@ beforeAll(async () => {
     threads.push(`${created.activityId}:${user.id}`);
   }
 });
-
-function frames(socket: WebSocket): {
-  list: ServerMessage[];
-  until: (check: (frames: ServerMessage[]) => boolean) => Promise<void>;
-} {
-  const list: ServerMessage[] = [];
-  const waiters: Array<() => void> = [];
-  socket.addEventListener("message", (event) => {
-    if (typeof event.data !== "string") return;
-    list.push(JSON.parse(event.data) as ServerMessage);
-    for (const waiter of waiters.splice(0)) waiter();
-  });
-  return {
-    list,
-    until: async (check) => {
-      for (let i = 0; i < 1000 && !check(list); i++) {
-        await new Promise<void>((resolve) => waiters.push(resolve));
-      }
-      expect(check(list)).toBe(true);
-    },
-  };
-}
-
-function latestView(list: ServerMessage[]): ConversationView | undefined {
-  let view: ConversationView | undefined;
-  for (const frame of list) {
-    if (frame.type === "view") view = frame.view;
-    if (frame.type === "ops" && view) view = applyImmutable(view, frame.ops);
-  }
-  return view;
-}
 
 function toolNames(view: ConversationView | undefined): string[] {
   return (view?.entries ?? [])

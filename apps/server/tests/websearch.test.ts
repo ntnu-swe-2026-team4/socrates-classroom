@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import worker from "../src/index";
 import { seedDemo } from "../src/seed";
-import type { ServerMessage } from "../src/ws/protocol";
+import { frames, latestView } from "./helpers";
 
 let thread: string;
 let cookie: string;
@@ -63,28 +63,6 @@ beforeAll(async () => {
   cookie = cookieOf(joined);
   thread = `${created.activityId}:${user.id}`;
 });
-
-function frames(socket: WebSocket): {
-  list: ServerMessage[];
-  until: (check: (frames: ServerMessage[]) => boolean) => Promise<void>;
-} {
-  const list: ServerMessage[] = [];
-  const waiters: Array<() => void> = [];
-  socket.addEventListener("message", (event) => {
-    if (typeof event.data !== "string") return;
-    list.push(JSON.parse(event.data) as ServerMessage);
-    for (const waiter of waiters.splice(0)) waiter();
-  });
-  return {
-    list,
-    until: async (check) => {
-      for (let i = 0; i < 1000 && !check(list); i++) {
-        await new Promise<void>((resolve) => waiters.push(resolve));
-      }
-      expect(check(list)).toBe(true);
-    },
-  };
-}
 
 describe("websearch extension (web_search + get_search_content)", () => {
   it("no AI binding: tools register, calls return a clear error, nothing throws", async () => {

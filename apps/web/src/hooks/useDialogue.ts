@@ -52,6 +52,18 @@ function emotionOf(view: ConversationView | null): DialogueEmotion {
   return null;
 }
 
+interface WindowedEntry {
+  id: number;
+  kind: string;
+  model?: readonly unknown[];
+}
+
+function answered(entries: readonly WindowedEntry[]): boolean {
+  return entries.some(
+    (entry) => entry.kind === "pi.assistant" && textOf(entry.model?.[0] as Message | undefined).trim() !== "",
+  );
+}
+
 export function useDialogue(activityId: string, userId: string) {
   const [view, setView] = useState<ConversationView | null>(null);
   const [phase, setPhase] = useState<DialoguePhase>("idle");
@@ -124,12 +136,25 @@ export function useDialogue(activityId: string, userId: string) {
   }, []);
 
   const arbitrate = useCallback(
-    (entries: readonly { id: number; kind: string }[], full: boolean) => {
+    (entries: readonly WindowedEntry[], full: boolean, windowBefore?: number) => {
       if (pendingRef.current === null) return;
       const baseline = baselineRef.current;
+      if (baseline !== null && !entries.some((entry) => entry.id === baseline)) {
+        const ours = entries.find((entry) => entry.kind === "pi.user" && entry.id > baseline);
+        if (ours) {
+          baselineRef.current = ours.id;
+          if (answered(entries.slice(entries.indexOf(ours) + 1))) completePending();
+          return;
+        }
+        if (full) {
+          if (windowBefore !== undefined && windowBefore > baseline) return;
+          failPending("llm_unavailable");
+        }
+        return;
+      }
       const index = baseline === null ? -1 : entries.findIndex((entry) => entry.id === baseline);
       const tail = index === -1 ? entries : entries.slice(index + 1);
-      if (tail.some((entry) => entry.kind === "pi.assistant")) {
+      if (answered(tail)) {
         completePending();
       } else if (full && !tail.some((entry) => entry.kind === "pi.user")) {
         failPending("llm_unavailable");
@@ -150,7 +175,7 @@ export function useDialogue(activityId: string, userId: string) {
       switch (frame.type) {
         case "view": {
           adopt(frame.view);
-          arbitrate(frame.view.entries, true);
+          arbitrate(frame.view.entries, true, frame.view.before);
           return;
         }
         case "ops": {
