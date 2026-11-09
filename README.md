@@ -6,21 +6,26 @@
 
 ## Quickstart
 
-需要 **Node.js ≥ 26.12**（2026-10 安全版；cf CLI 不支援 Bun）與 **pnpm ≥ 12**（`corepack enable` 或 `npm i -g pnpm`）。
+需要 **Node.js 26**（devEngines 由 pnpm 自動下載對應 runtime；shell 互動用 [fnm](https://github.com/Schniz/fnm) 等 version manager）與 **pnpm ≥ 12**（`corepack enable` 或 `npm i -g pnpm`）。
 
 ```bash
 pnpm install
-cp apps/web/.env.example apps/web/.env.local # SEED_TOKEN=dev-seed——先於 pnpm dev（server 啟動時載入）
 pnpm dev                                      # 自動套 D1 migrations → http://localhost:5173
 ```
 
-另開一個終端機灌示範資料（教室：高二哲學選修 A、倫理學讀書會）：
+`.env.local` 全部 optional——`pnpm dev` 沒有任何設定檔也能起（預設 `LLM_PROVIDER=mock`，離線 faux 模型）。要設 dev secrets／override 時：
+
+```bash
+cp apps/web/.env.example apps/web/.env.local   # 改完要重啟 dev（server 啟動時載入一次）
+```
+
+另開一個終端機灌示範資料：
 
 ```bash
 pnpm seed                                     # 需要 dev server 運行中；SEED_TOKEN 自動讀 .env.local
 ```
 
-示範帳號：老師 `林老師`、學生 `訪客`（示範登入：選身分 + 輸入姓名即可）。對話功能的 LLM 設定三選一見 [`docs/development.md`](docs/development.md)。
+示範資料：老師帳號 `demo@socrates.tw`（密碼 `demo-demo`）＋兩間教室（高二哲學選修 A、倫理學讀書會，各含進行中活動）。老師登入 `/login`；學生從老師教室頁拿邀請碼，走 `/join` 以訪客加入對話。對話功能的 LLM 設定三選一見 [`docs/development.md`](docs/development.md)。
 
 選配——git pre-commit hooks（需先安裝 [prek](https://github.com/j178/prek)：`pipx install prek` 或 `uv tool install prek`）：
 
@@ -38,7 +43,7 @@ cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations
 cf deploy --prebuilt                # 用同一份建置產物部署
 ```
 
-CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) PR 檢查 + dry-run、[`deploy.yml`](.github/workflows/deploy.yml) main 自動部署）。Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`；runtime secrets（`AUTH_SECRET`、`BYOK_ENC_KEY`）用 `cf deploy --secrets-file` 或 `wrangler secret put`。
+CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) PR 檢查 + dry-run、[`deploy.yml`](.github/workflows/deploy.yml) main 自動部署）。Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`；runtime secrets（`AUTH_SECRET`、`BYOK_ENC_KEY`——teacher keys 的 AES-GCM 金鑰）用 `cf deploy --secrets-file` 或 `wrangler secret put`。
 
 ## 開發
 
@@ -56,13 +61,13 @@ CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) 
 
 ```
 apps/
-├── web/        # React + Vite 前端（打包後掛在 Worker 的 Static Assets）
-└── server/     # Hono Worker：API + Chat/ReportRunner Durable Objects + routing
+├── web/        # React + Vite 前端（TanStack file routes；打包後掛在 Worker 的 Static Assets）
+└── server/     # Hono Worker：API + Chat/ReportRunner Durable Objects + gateway
     ├── src/do/         # Chat（PiHarness 宿主）、ReportRunner（alarm 驅動報告）
-    ├── src/routing/    # provider 路由：YAML 設定、ledger cooldown、鏈走訪
+    ├── src/gateway/    # provider gateway：YAML 設定、ledger cooldown、鏈走訪
     ├── src/pi/         # extensions（socrates/avatar/judgment/websearch）＋agent profiles
     ├── src/db/         # D1 adapter（$named → 位置參數自動轉換）
-    └── migrations/     # D1 migrations（cf d1 migrations apply）
+    └── migrations/     # D1 migrations（pnpm dev 自動套；cf d1 migrations apply 用於 production）
 packages/
 └── shared/     # 前後端共用契約 schema（zod，單一真相）
 ```

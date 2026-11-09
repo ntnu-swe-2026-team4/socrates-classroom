@@ -7,8 +7,7 @@
 完整 quickstart（安裝 → seed → 登入）見 [README](../README.md#quickstart)。本文件記 dev 專屬細節：
 
 - `pnpm dev` 啟動時**自動套用 D1 migrations**（vite `configureServer` 跑 `pnpm migrate`，冪等約 1s）；手動 `pnpm migrate` 等價
-- `pnpm seed` 需要 **dev server 運行中**；SEED_TOKEN 自動讀 `apps/web/.env.local`（或環境變數），且 `.env.local` 需在 `pnpm dev` **之前**就位（server 啟動時載入）
-- 示範帳號：老師 `林老師`、學生 `訪客`
+- `pnpm seed` 需要 **dev server 運行中**；SEED_TOKEN 自動讀 `apps/web/.env.local`（或環境變數）。在 `LLM_PROVIDER=mock`（預設）或設了 `DGX_BASE_URL` 時可用；灌入老師帳號＋兩間含進行中活動的教室
 
 ## 不需要 Cloudflare 帳號
 
@@ -28,15 +27,15 @@
 
 ## 對話功能（LLM）在本地
 
-`.env.local`（gitignored，範本見 `.env.example`；僅 dev 讀取——build/deploy 用 config 預設，生產設定走 `cf deploy --secrets-file`）三選一：
+`.env.local`（gitignored，範本見 `.env.example`；僅 dev 讀取——build/deploy 用 config 預設，生產設定走 `cf deploy --secrets-file`）。預設 `LLM_PROVIDER=mock`（離線 faux 模型，零帳號）——要真對話，三選一：
 
-| 方式            | 設定                                        | 費用                                          |
-| --------------- | ------------------------------------------- | --------------------------------------------- |
-| 自架 DGX Spark  | `DGX_BASE_URL=http://100.102.84.36:8888/v1` | 0 元（團隊硬體，Tailscale 內）                |
-| GLM Coding Plan | `LLM_PROVIDER=dev` ＋ `ZAI_API_KEY=<token>` | 自己的訂閱額度（dev-only 條款，不進學生流量） |
-| Workers AI      | `CF_REMOTE_AI=true` ＋ `cf login`           | 免費 Neurons 額度                             |
+| 方式           | 設定                                        | 費用                            |
+| -------------- | ------------------------------------------- | ------------------------------- |
+| 離線 mock      | 預設（`LLM_PROVIDER=mock`，無需設定）       | 0 元（faux 腳本回覆，非真 LLM） |
+| 自架 DGX Spark | `DGX_BASE_URL=http://100.102.84.36:8888/v1` | 0 元（團隊硬體，Tailscale 內）  |
+| Workers AI     | `CF_REMOTE_AI=true` ＋ `cf login`           | 免費 Neurons 額度               |
 
-都不設時對話回 `llm_unavailable`，其他功能不受影響。
+都不設真 LLM 時用 mock；`pnpm seed` 在 mock 和 DGX 模式下都可用。
 
 ## 常見問題
 

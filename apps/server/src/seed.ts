@@ -1,9 +1,22 @@
 import type { Db } from "./db/d1";
-import { one, run } from "./db/d1";
+import { all, one, run } from "./db/d1";
 import { hashPassword } from "./auth";
 import { newId, nowIso } from "./http";
 
 export const DEMO_TEACHER = { email: "demo@socrates.tw", password: "demo-demo", name: "林老師" };
+
+const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+const CODE_MAX = 256 - (256 % CODE_ALPHABET.length);
+
+function newCode(): string {
+  let code = "";
+  while (code.length < 6) {
+    const [byte] = crypto.getRandomValues(new Uint8Array(1));
+    if (byte === undefined || byte >= CODE_MAX) continue;
+    code += CODE_ALPHABET[byte % CODE_ALPHABET.length]!;
+  }
+  return code;
+}
 
 const SYSTEM_TOPICS = [
   {
@@ -23,19 +36,30 @@ const SYSTEM_TOPICS = [
   },
 ];
 
+const DEMO_CLASSROOMS = ["高二哲學選修 A", "倫理學讀書會"];
+
+export interface DemoClassroom {
+  name: string;
+  code: string;
+  activityId: string;
+  topicId: string;
+}
+
 export async function seedDemo(db: Db): Promise<void> {
   const at = nowIso();
-  const existing = await one<{ id: string }>(db, "SELECT id FROM users WHERE email = $email", {
-    email: DEMO_TEACHER.email,
-  });
-  if (!existing) {
+  let teacherId = (
+    await one<{ id: string }>(db, "SELECT id FROM users WHERE email = $email", { email: DEMO_TEACHER.email })
+  )?.id;
+  if (!teacherId) {
+    teacherId = newId("u_");
     const hash = await hashPassword(DEMO_TEACHER.password);
     await run(
       db,
       "INSERT INTO users (id, name, role, email, password_hash, created_at) VALUES ($id, $name, 'teacher', $email, $hash, $at)",
-      { id: newId("u_"), name: DEMO_TEACHER.name, email: DEMO_TEACHER.email, hash, at },
+      { id: teacherId, name: DEMO_TEACHER.name, email: DEMO_TEACHER.email, hash, at },
     );
   }
+
   const topicCount = await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM topics WHERE owner_id IS NULL");
   if ((topicCount?.n ?? 0) === 0) {
     for (const topic of SYSTEM_TOPICS) {
@@ -45,5 +69,34 @@ export async function seedDemo(db: Db): Promise<void> {
         { id: newId("t_"), title: topic.title, statement: topic.statement, prompts: JSON.stringify(topic.prompts), at },
       );
     }
+  }
+
+  const topics = await all<{ id: string; title: string }>(
+    db,
+    "SELECT id, title FROM topics WHERE owner_id IS NULL ORDER BY created_at",
+  );
+  const classrooms = await all<{ name: string }>(db, "SELECT name FROM classrooms WHERE teacher_id = $tid", {
+    tid: teacherId,
+  });
+  const existingNames = new Set(classrooms.map((row) => row.name));
+
+  for (const [index, name] of DEMO_CLASSROOMS.entries()) {
+    if (existingNames.has(name)) continue;
+    const topic = topics[index % topics.length];
+    if (!topic) break;
+    const classroomId = newId("c_");
+    const activityId = newId("a_");
+    const code = newCode();
+    await run(
+      db,
+      "INSERT INTO classrooms (id, name, teacher_id, join_code, current_activity_id, created_at) VALUES ($id, $name, $tid, $code, $aid, $at)",
+      { id: classroomId, name, tid: teacherId, code, aid: activityId, at },
+    );
+    await run(db, "INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ($id, $cid, $tid, $at)", {
+      id: activityId,
+      cid: classroomId,
+      tid: topic.id,
+      at,
+    });
   }
 }

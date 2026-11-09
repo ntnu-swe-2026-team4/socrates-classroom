@@ -44,4 +44,9 @@ if (!res.ok) {
   console.error(`seed 失敗：HTTP ${res.status}`, body);
   process.exit(1);
 }
-console.log(body.seeded ? "示範資料已建立。" : "資料庫已有使用者，跳過示範資料。");
+if (body.seeded) {
+  console.log(`示範資料已建立：老師 demo@socrates.tw（密碼 demo-demo）、兩間教室（各含進行中活動）。`);
+  console.log(`學生流程：登入老師帳號在教室頁看邀請碼，或直接用 /join 連結以訪客加入。`);
+} else {
+  console.log("資料庫已有示範資料，跳過。");
+}
