@@ -60,9 +60,14 @@ interface WindowedEntry {
 const ANSWER_STOP_REASONS = new Set(["stop", "length"]);
 
 function intermediateAssistant(entry: WindowedEntry): boolean {
-  const message = entry.model?.[0] as { stopReason?: string } | undefined;
+  const message = entry.model?.[0] as { stopReason?: string; content?: readonly { type?: string }[] } | undefined;
   if (message?.stopReason === undefined) return false;
-  return !ANSWER_STOP_REASONS.has(message.stopReason);
+  if (ANSWER_STOP_REASONS.has(message.stopReason)) return false;
+  // pi answers a toolUse message that carries no tool calls (malformed provider output ends the run)
+  if (message.stopReason === "toolUse" && !(message.content ?? []).some((part) => part.type === "toolCall")) {
+    return false;
+  }
+  return true;
 }
 
 function answered(entries: readonly WindowedEntry[]): boolean {

@@ -153,7 +153,21 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
         userEntry(1, "舊問題"),
         assistantEntry(2, "舊回答"),
         userEntry(3, "幫我查資料"),
-        assistantEntry(4, "Let me search.", "toolUse"),
+        asEntry({
+          id: 4,
+          conversationId: "c1",
+          kind: "pi.assistant",
+          model: [
+            {
+              role: "assistant",
+              content: [
+                { type: "text", text: "Let me search." },
+                { type: "toolCall", name: "web_search" },
+              ],
+              stopReason: "toolUse",
+            },
+          ],
+        }),
       ]),
     );
     expect(result.current.pending).toBe(true);
