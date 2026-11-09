@@ -8,6 +8,7 @@ import { inject } from "vitest";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import worker from "../src/index";
 import { seedDemo } from "../src/seed";
+import { run } from "../src/db/d1";
 import type { ServerMessage } from "../src/ws/protocol";
 
 let teacherCookie: string;
@@ -188,6 +189,33 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     await rx.until((f) => f.some((m) => m.type === "result" && m.id === "post-evict"));
     expect(socket.readyState).toBe(WebSocket.OPEN);
     socket.close();
+  }, 20_000);
+
+  it("revoked member is refused after hibernation wake (membership re-verified, not trusted from connect time)", async () => {
+    const student = await joinStudent("被移出的學生");
+    const thread = `${activityId}:${student.userId}`;
+    const socket = await connect(thread, student.cookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.some((m) => m.type === "view"));
+
+    await run(
+      env.DB,
+      "DELETE FROM members WHERE user_id = $uid AND classroom_id = (SELECT classroom_id FROM activities WHERE id = $aid)",
+      { uid: student.userId, aid: activityId },
+    );
+    await evictDurableObject(env.Chat.get(env.Chat.idFromName(thread)));
+
+    socket.send(JSON.stringify({ type: "submit", id: "revoked", input: "還能送嗎" }));
+    const closed = await new Promise<{ code: number; reason: string; wasClean: boolean } | null>((resolve) => {
+      socket.addEventListener("close", (event) =>
+        resolve({ code: event.code, reason: event.reason, wasClean: event.wasClean }),
+      );
+      setTimeout(() => resolve(null), 8000);
+    });
+    expect(closed?.code).toBe(1008);
+    expect(rx.list.some((m) => m.type === "result" && m.id === "revoked")).toBe(false);
   }, 20_000);
 
   it("submit bounds: empty string / over 2000 chars → error frame, nothing enters the transcript", async () => {

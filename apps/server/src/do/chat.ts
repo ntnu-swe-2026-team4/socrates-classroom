@@ -81,7 +81,7 @@ export class Chat extends DurableObject<Env> {
   }
 
   async onStart(): Promise<void> {
-    await this.sockets.reattach();
+    await this.sockets.reattach(this.webSockets.getConnections(), (userId) => this.reverify(userId));
   }
 
   private async teacherId(): Promise<string | null> {
@@ -159,10 +159,10 @@ export class Chat extends DurableObject<Env> {
     return { messages, violations };
   }
 
-  private async authorize(request: Request): Promise<boolean> {
+  private async authorize(request: Request): Promise<string | null> {
     const name = decodeURIComponent(new URL(request.url).pathname.split("/chat/").at(-1) ?? "");
     const [activityId, studentId] = name.split(":");
-    if (!activityId || !studentId) return false;
+    if (!activityId || !studentId) return null;
     const cookie = request.headers.get("Cookie") ?? "";
     const token = cookie
       .split(";")
@@ -170,10 +170,25 @@ export class Chat extends DurableObject<Env> {
       .find((part) => part.startsWith(`${SESSION_COOKIE}=`))
       ?.slice(SESSION_COOKIE.length + 1);
     const user = await userFromSessionToken({ env: this.env }, token);
-    if (!user) return false;
+    if (!user) return null;
     try {
       const { isTeacher } = await requireMembership(this.env.DB, activityId, user);
-      return isTeacher || user.id === studentId;
+      return isTeacher || user.id === studentId ? user.id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async reverify(userId: string): Promise<boolean> {
+    const [activityId, studentId] = this.ctx.id.name?.split(":") ?? [];
+    if (!activityId) return false;
+    try {
+      const { isTeacher } = await requireMembership(this.env.DB, activityId, {
+        id: userId,
+        name: "",
+        role: "student",
+      });
+      return isTeacher || userId === studentId;
     } catch {
       return false;
     }

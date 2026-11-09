@@ -106,16 +106,19 @@ export class ReportRunner extends DurableObject<Env> {
     this.#inFlight = this.generate(activityId).finally(() => {
       this.#inFlight = null;
     });
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
         this.#inFlight,
         new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error("report_generation_timeout")), report.alarmTimeoutMs);
+          watchdog = setTimeout(() => reject(new Error("report_generation_timeout")), report.alarmTimeoutMs);
         }),
       ]);
     } catch (error) {
       console.error("[report] generation failed", error instanceof Error ? error.name : typeof error);
       await this.ctx.storage.setAlarm(Date.now() + attempts * report.alarmBackoffMs);
+    } finally {
+      clearTimeout(watchdog);
     }
   }
 

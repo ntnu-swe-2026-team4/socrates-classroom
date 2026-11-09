@@ -14,6 +14,8 @@ import type { UserInput } from "@earendil-works/pi-durable";
 import { DialogueInputSchema } from "@socrates/shared";
 import type { ClientMessage, ServerMessage } from "./protocol";
 
+export type Authorize = (request: Request) => Promise<string | null>;
+export type Reverify = (userId: string) => Promise<boolean>;
 export type SubmitRoute = (handle: PiSession, input: UserInput, options: PiSubmitOptions) => Promise<PiReceipt>;
 
 const OPEN = 1;
@@ -44,7 +46,7 @@ export class ChatSockets {
   readonly #harness: PiHarness;
   readonly #registry: RegistryReader;
   readonly #getWebSockets: (tag?: string) => WebSocket[];
-  readonly #authorize?: (request: Request) => Promise<boolean>;
+  readonly #authorize?: Authorize;
   readonly #submitRoute?: SubmitRoute;
   readonly #watches = new Map<WebSocket, ConversationWatch>();
   readonly #authorized = new Set<WebSocket>();
@@ -53,7 +55,7 @@ export class ChatSockets {
     harness: PiHarness,
     registry: RegistryReader,
     getWebSockets: (tag?: string) => WebSocket[],
-    authorize?: (request: Request) => Promise<boolean>,
+    authorize?: Authorize,
     submitRoute?: SubmitRoute,
   ) {
     this.#harness = harness;
@@ -74,10 +76,24 @@ export class ChatSockets {
     };
   }
 
-  async reattach(): Promise<void> {
-    for (const socket of this.#getWebSockets()) {
-      this.#authorized.add(socket);
-      await this.#watchOrClose(socket);
+  async reattach(connections: Iterable<Connection>, reverify?: Reverify): Promise<void> {
+    for (const connection of connections) {
+      const auth = (connection.state as { auth?: string } | null)?.auth;
+      if (!auth || (reverify && !(await reverify(auth)))) {
+        this.#refuse(connection);
+        continue;
+      }
+      this.#authorized.add(connection);
+      await this.#watchOrClose(connection);
+    }
+  }
+
+  #refuse(socket: WebSocket): void {
+    this.#authorized.delete(socket);
+    try {
+      socket.close(1008, "unauthorized");
+    } catch {
+      // Already closed.
     }
   }
 
@@ -88,13 +104,13 @@ export class ChatSockets {
   }
 
   async #onConnect(connection: Connection, ctx: ConnectionContext): Promise<void> {
-    if (this.#authorize && !(await this.#authorize(ctx.request))) {
-      try {
-        connection.close(1008, "unauthorized");
-      } catch {
-        // Already closed.
+    if (this.#authorize) {
+      const userId = await this.#authorize(ctx.request);
+      if (!userId) {
+        this.#refuse(connection);
+        return;
       }
-      return;
+      connection.setState({ auth: userId });
     }
     this.#authorized.add(connection);
     send(connection, {
@@ -161,11 +177,7 @@ export class ChatSockets {
   async #onMessage(connection: Connection, raw: WebSocketMessage): Promise<void> {
     if (typeof raw !== "string") return;
     if (this.#authorize && !this.#authorized.has(connection)) {
-      try {
-        connection.close(1008, "unauthorized");
-      } catch {
-        // Already closed.
-      }
+      this.#refuse(connection);
       return;
     }
     let message: ClientMessage;
