@@ -157,7 +157,7 @@ interface ViolationSlice {
 
 - **學生不拿 classReport**（設計決策）：學生報告只有自己的 analysis＋violations＋pseudonym；全班視角是老師專屬
 - **`ClassReport.students[].id`／`positions[].id`＝pseudonym**（LLM prompt 餵的就是 pseudonym；嚴禁放 studentId——全班互見會洩漏真實 id，#72）
-- transcript 來源：Chat DO `onRequest("/transcript")`（DO→DO，`PiSession.entries` 全量）；violations 同源自 `app.violation` entries——**pi transcript 是唯一真相，violations 不落第二份儲存**
+- transcript 來源：Chat DO RPC（`stub.transcript()`，DO→DO；外部無 request 面）；violations 同源自 `app.violation` entries——**pi transcript 是唯一真相，violations 不落第二份儲存**
 - 逐生分析與 transcript 抓取以 Router budget 批次進行（`budget("batch")`＝鏈上各 leg maxConcurrency 總和；10k 班級的生成時間與供應端限流考量）
 - hexagon（#78 六角圖）與星座圖（#79）不在本契約——前端圖表從 classReport 的 `at`/`end` 映射，屆時更新本節
 
