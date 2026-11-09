@@ -43,9 +43,17 @@ describe("agent profiles (#113: role definitions, models resolved by routing)", 
       registry: createRegistry(),
       env: env as never,
     };
-    const { text } = await runProfile(harness, runtime, "lookup", "什麼是功利主義？");
+    const { text, conversation } = await runProfile(harness, runtime, "lookup", "什麼是功利主義？");
     expect(text).toContain("功利主義");
+    const agent = await conversation.agent(BACKGROUND_CONTEXT);
+    expect(agent.thinkingLevel).toBe(PROFILES.lookup.thinkingLevel);
   }, 15_000);
+
+  it("every profile pins its thinkingLevel — the product decision lives in the table, not in DO code", () => {
+    for (const profile of Object.values(PROFILES)) {
+      expect(profile.thinkingLevel).toBe("high");
+    }
+  });
 });
 
 function buildFauxModels() {

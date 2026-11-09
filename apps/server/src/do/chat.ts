@@ -21,6 +21,7 @@ import { createJudgmentExtension } from "../pi/extensions/judgment";
 import { createWebSearchExtension } from "../pi/extensions/websearch";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 import { socratesExtension } from "../pi/extensions/socrates";
+import { PROFILES } from "../pi/agents/profiles";
 import { buildModels } from "../pi/models";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import { one } from "../db/d1";
@@ -58,7 +59,7 @@ export class Chat extends DurableObject<Env> {
         context,
       );
     },
-    defaults: { model: this.models.default, thinkingLevel: "low" },
+    defaults: { model: this.models.default, thinkingLevel: PROFILES.socrates.thinkingLevel },
   });
 
   readonly sockets = new ChatSockets(

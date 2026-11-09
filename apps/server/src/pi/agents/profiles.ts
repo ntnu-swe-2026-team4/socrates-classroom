@@ -7,6 +7,7 @@ import {
   type Submission,
 } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import STUDENT_REPORT_RAW from "../../prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../../prompts/class-report.md?raw";
@@ -53,6 +54,7 @@ export interface AgentProfile {
   extensions: string[];
   maxTurns: number | undefined;
   trafficClass: TrafficClass;
+  thinkingLevel: ModelThinkingLevel;
 }
 
 export const PROFILES: Record<ProfileName, AgentProfile> = {
@@ -62,6 +64,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     extensions: ["socrates", "avatar", "judgment", "websearch"],
     maxTurns: undefined,
     trafficClass: "interactive",
+    thinkingLevel: "high",
   },
   "topic-gen": {
     name: "topic-gen",
@@ -69,6 +72,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     extensions: ["websearch"],
     maxTurns: 6,
     trafficClass: "batch",
+    thinkingLevel: "high",
   },
   "student-report": {
     name: "student-report",
@@ -76,6 +80,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     extensions: [],
     maxTurns: 4,
     trafficClass: "batch",
+    thinkingLevel: "high",
   },
   "class-report": {
     name: "class-report",
@@ -83,6 +88,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     extensions: [],
     maxTurns: 4,
     trafficClass: "batch",
+    thinkingLevel: "high",
   },
   lookup: {
     name: "lookup",
@@ -90,6 +96,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     extensions: ["websearch"],
     maxTurns: 3,
     trafficClass: "interactive",
+    thinkingLevel: "high",
   },
 };
 
@@ -112,6 +119,7 @@ function agentChangeFor(profile: AgentProfile): AgentChange {
   return {
     instructions: profile.instructions || undefined,
     ...(profile.maxTurns !== undefined ? { maxTurns: profile.maxTurns } : {}),
+    thinkingLevel: profile.thinkingLevel,
   };
 }
 
