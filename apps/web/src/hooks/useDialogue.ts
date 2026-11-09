@@ -12,7 +12,6 @@ export type DialogueEmotion = {
   emotion: string;
   confidence: number;
   probabilities: Record<string, number>;
-  text: string;
 } | null;
 
 export interface DialogueMessage {
