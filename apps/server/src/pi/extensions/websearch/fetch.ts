@@ -53,6 +53,8 @@ function isPrivateIp(host: string): boolean {
   if (groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1) return true;
   if (groups[0]! >= 0xfe80 && groups[0]! <= 0xfebf) return true;
   if (groups[0]! >= 0xfc00 && groups[0]! <= 0xfdff) return true;
+  if (groups[0]! >= 0xff00) return true;
+  if (groups[0] === 0x0064 && groups[1] === 0xff9b && groups.slice(2, 6).every((group) => group === 0)) return true;
   if (groups.slice(0, 5).every((group) => group === 0) && (groups[5] === 0xffff || groups[5] === 0)) {
     return isPrivateIpv4(groups[6]! >> 8, groups[7]! >> 8);
   }
@@ -67,7 +69,7 @@ export function validateUrl(rawUrl: string): URL {
     throw new Error("Invalid URL");
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Only HTTP and HTTPS URLs can be fetched");
-  const host = url.hostname.toLowerCase();
+  const host = url.hostname.toLowerCase().replace(/\.+$/, "");
   if (BLOCKED_HOSTNAMES.includes(host) || host.endsWith(".localhost") || host.endsWith(".internal")) {
     throw new Error(`Blocked internal hostname: ${host}`);
   }
@@ -95,17 +97,26 @@ async function readBounded(response: Response): Promise<string> {
   return text.slice(0, MAX_CONTENT_CHARS);
 }
 
-async function fetchFollowingRedirects(startUrl: URL): Promise<Response> {
+function registrableLabels(host: string): string {
+  const labels = host.replace(/\.+$/, "").split(".");
+  return labels.slice(-2).join(".");
+}
+
+function sameSite(from: URL, to: URL): boolean {
+  return registrableLabels(from.hostname) === registrableLabels(to.hostname);
+}
+
+async function fetchFollowingRedirects(startUrl: URL): Promise<{ response: Response; url: URL }> {
   let url = startUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
-      if (!location) return response;
+      if (!location) return { response, url };
       url = validateUrl(new URL(location, url).toString());
       continue;
     }
-    return response;
+    return { response, url };
   }
   throw new Error("Too many redirects");
 }
@@ -114,10 +125,14 @@ export async function fetchPage(
   rawUrl: string,
   mode: "readable" | "raw",
   toMarkdown?: Ai["toMarkdown"],
+  permitTarget?: (url: URL) => boolean,
 ): Promise<FetchOutcome> {
   try {
     const url = validateUrl(rawUrl);
-    const response = await fetchFollowingRedirects(url);
+    const { response, url: finalUrl } = await fetchFollowingRedirects(url);
+    if (permitTarget && !sameSite(url, finalUrl) && !permitTarget(finalUrl)) {
+      throw new Error(`Blocked redirect target: ${finalUrl.hostname}`);
+    }
     if (!response.ok) {
       return { url: rawUrl, title: "", content: "", error: `HTTP ${response.status}` };
     }
