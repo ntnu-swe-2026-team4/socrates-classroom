@@ -147,6 +147,9 @@ export class Chat extends DurableObject<Env> {
     violations: Array<{ turn: number; type: string; excerpt: string }>;
   }> {
     const entries = await this.harness.session(ROOT_SESSION).entries({ order: "descending" }, TRANSCRIPT_MAX_ENTRIES);
+    if (entries.next) {
+      console.warn("[transcript] truncated at", TRANSCRIPT_MAX_ENTRIES, "entries");
+    }
     const items = [...entries.items].reverse();
     const messages: Array<{ role: "user" | "assistant"; turn: number; text: string }> = [];
     const violations: Array<{ turn: number; type: string; excerpt: string }> = [];
@@ -162,7 +165,14 @@ export class Chat extends DurableObject<Env> {
         violations.push({ turn, type: data.type ?? "other", excerpt: data.excerpt ?? "" });
       }
     }
-    return { messages, violations };
+    const seen = new Set<string>();
+    const deduped = violations.filter((violation) => {
+      const key = `${violation.turn}:${violation.type}:${violation.excerpt}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return { messages, violations: deduped };
   }
 
   private get studentId(): string {

@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useAgent } from "agents/react";
 import { applyImmutable } from "@earendil-works/chord/delta";
-import type { ConversationView } from "@earendil-works/pi-durable";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
+import {
+  ConversationTranscript,
+  type ConversationView,
+  type Cursor,
+  type EntryId,
+  type EntryRecord,
+  type Page,
+  type TranscriptItem,
+  type TranscriptView,
+} from "@earendil-works/pi-durable";
 import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
 import { api } from "@/api";
 
@@ -41,16 +51,6 @@ function lastAssistantText(view: ConversationView | null): string {
   return "";
 }
 
-function emotionOf(view: ConversationView | null): DialogueEmotion {
-  if (!view) return null;
-  for (const entry of [...view.entries].reverse()) {
-    if (entry.kind !== "app.emotion") continue;
-    const data = entry.data as DialogueEmotion;
-    return data;
-  }
-  return null;
-}
-
 interface WindowedEntry {
   id: number;
   kind: string;
@@ -84,13 +84,25 @@ export function useDialogue(activityId: string, userId: string) {
   const [error, setError] = useState<DialogueError>(null);
   const [ttsFailed, setTtsFailed] = useState(false);
   const viewRef = useRef<ConversationView | null>(null);
+  const socketRef = useRef<{ send: (data: string) => void } | null>(null);
   const pendingRef = useRef<string | null>(null);
   const [pendingView, setPendingView] = useState(false);
   const baselineRef = useRef<number | null>(null);
   const failedInputRef = useRef<string | null>(null);
   const ttsRef = useRef<AbortController | null>(null);
-  const entriesWaiters = useRef(new Map<string, (entries: readonly WindowedEntry[]) => void>());
-  const [older, setOlder] = useState<readonly WindowedEntry[]>([]);
+  const entriesWaiters = useRef(new Map<string, (page: Page<EntryRecord, Cursor>) => void>());
+  const loader = useCallback(
+    (query: { minEntryId?: EntryId; maxEntryId?: EntryId; order?: "ascending" | "descending" }, limit: number) => {
+      return new Promise<Page<EntryRecord, Cursor>>((resolve) => {
+        const id = crypto.randomUUID();
+        entriesWaiters.current.set(id, resolve);
+        socketRef.current?.send(JSON.stringify({ type: "entries", id, query, limit } satisfies ClientMessage));
+      });
+    },
+    [],
+  );
+  const transcriptRef = useRef(new ConversationTranscript(loader));
+  const [transcriptView, setTranscriptView] = useState<TranscriptView | null>(null);
 
   useEffect(
     () => () => {
@@ -104,6 +116,7 @@ export function useDialogue(activityId: string, userId: string) {
   const adopt = useCallback((next: ConversationView) => {
     viewRef.current = next;
     setView(next);
+    setTranscriptView(transcriptRef.current.merge(next));
   }, []);
 
   const speak = useCallback((text: string) => {
@@ -210,7 +223,13 @@ export function useDialogue(activityId: string, userId: string) {
         case "ops": {
           const base = viewRef.current;
           if (!base) return;
-          const next = applyImmutable(base, frame.ops);
+          let next: ConversationView;
+          try {
+            next = applyImmutable(base, frame.ops);
+          } catch {
+            socketRef.current?.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
+            return;
+          }
           adopt(next);
           arbitrate(next.entries, false);
           if (frame.ops.length > 0 && pendingRef.current && liveTextOf(next)) {
@@ -222,9 +241,11 @@ export function useDialogue(activityId: string, userId: string) {
           const waiter = entriesWaiters.current.get(frame.id);
           if (waiter === undefined) return;
           entriesWaiters.current.delete(frame.id);
-          const page = frame.result as { items?: unknown[] } | null;
-          const items = Array.isArray(page?.items) ? (page!.items as WindowedEntry[]) : [];
-          waiter(items);
+          if (frame.result && typeof frame.result === "object" && "items" in frame.result) {
+            waiter(frame.result as Page<EntryRecord, Cursor>);
+            return;
+          }
+          waiter({ items: [] });
           return;
         }
         case "error": {
@@ -249,6 +270,7 @@ export function useDialogue(activityId: string, userId: string) {
       ttsRef.current?.abort();
     },
   });
+  socketRef.current = socket;
 
   const subscribe = useCallback(
     (notify: () => void) => {
@@ -321,49 +343,59 @@ export function useDialogue(activityId: string, userId: string) {
     setPhase("idle");
   }, [socket]);
 
-  const loadEarlier = useCallback(() => {
-    const before = viewRef.current?.before;
-    if (before === undefined || socket.readyState !== WebSocket.OPEN) return;
-    const id = crypto.randomUUID();
-    const delivered = (entries: readonly WindowedEntry[]) => {
-      const page = entries.filter((entry) => entry.kind === "pi.user" || entry.kind === "pi.assistant");
-      setOlder((current) => {
-        const known = new Set([...current, ...(viewRef.current?.entries ?? [])].map((entry) => entry.id));
-        return [...current, ...page.filter((entry) => !known.has(entry.id))];
+  const loadEarlier = useCallback(async () => {
+    if (!socketRef.current) return;
+    setTranscriptView(await transcriptRef.current.loadEarlier(BACKGROUND_CONTEXT));
+  }, []);
+
+  const fillGap = useCallback(async (gap: Extract<TranscriptItem, { kind: "gap" }>) => {
+    setTranscriptView(await transcriptRef.current.fillGap(gap, BACKGROUND_CONTEXT));
+  }, []);
+
+  const messages = useMemo(() => {
+    const out: DialogueMessage[] = [];
+    for (const item of transcriptView?.items ?? []) {
+      if (item.kind !== "entry") continue;
+      const entry = item.entry as WindowedEntry;
+      if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") continue;
+      out.push({
+        id: `e${entry.id}`,
+        role: entry.kind === "pi.user" ? "user" : "assistant",
+        text: textOf((entry.model?.[0] ?? undefined) as Message | undefined),
       });
-    };
-    entriesWaiters.current.set(id, delivered);
-    socket.send(
-      JSON.stringify({
-        type: "entries",
-        id,
-        query: { order: "ascending", maxEntryId: before },
-        limit: 50,
-      } satisfies ClientMessage),
-    );
-  }, [socket]);
+    }
+    return out;
+  }, [transcriptView]);
 
-  const { messages, draft } = useMemo(() => {
-    const result = { messages: [] as DialogueMessage[], draft: "" };
-    if (!view) return result;
-    const visible = [...older, ...view.entries].filter(
-      (entry) => entry.kind === "pi.user" || entry.kind === "pi.assistant",
-    );
-    visible.forEach((entry: WindowedEntry, index) => {
-      const text = textOf((entry.model?.[0] ?? undefined) as Message | undefined);
-      const ours = index === visible.length - 1 && entry.id > (baselineRef.current ?? Number.MAX_SAFE_INTEGER);
-      const streaming = ours && (phase === "thinking" || phase === "streaming");
-      if (entry.kind === "pi.assistant" && streaming) {
-        result.draft = text;
-        return;
-      }
-      result.messages.push({ id: `e${entry.id}`, role: entry.kind === "pi.user" ? "user" : "assistant", text });
-    });
-    if (!result.draft) result.draft = liveTextOf(view);
-    return result;
-  }, [older, view, phase]);
+  const draft = useMemo(() => {
+    if (!view || phase === "speaking" || phase === "idle") return liveTextOf(view) || "";
+    const live = liveTextOf(view);
+    if (live) return live;
+    const baseline = baselineRef.current;
+    const tail = view.entries.at(-1);
+    if (tail && tail.kind === "pi.assistant" && tail.id > (baseline ?? Number.MAX_SAFE_INTEGER)) {
+      return textOf((tail.model?.[0] ?? undefined) as Message | undefined);
+    }
+    return "";
+  }, [view, phase]);
 
-  const emotion = useMemo(() => emotionOf(view), [view]);
+  const emotion = useMemo(() => {
+    for (const item of [...(transcriptView?.items ?? [])].reverse()) {
+      if (item.kind !== "entry") continue;
+      const entry = item.entry;
+      if (entry.kind !== "app.emotion") continue;
+      return (entry.data ?? null) as DialogueEmotion;
+    }
+    return null;
+  }, [transcriptView]);
+
+  const gaps = useMemo(
+    () =>
+      (transcriptView?.items.filter((item) => item.kind === "gap") ?? []) as Array<
+        Extract<TranscriptItem, { kind: "gap" }>
+      >,
+    [transcriptView],
+  );
 
   return {
     messages,
@@ -374,7 +406,9 @@ export function useDialogue(activityId: string, userId: string) {
     ttsFailed,
     pending: pendingView,
     viewReady: view !== null,
-    canLoadEarlier: view?.before !== undefined,
+    canLoadEarlier: transcriptView?.items[0]?.kind === "earlier",
+    gaps,
+    fillGap,
     loadEarlier,
     send,
     retryLast,

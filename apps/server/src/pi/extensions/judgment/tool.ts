@@ -18,6 +18,12 @@ export function createReportViolationTool(report: (input: ViolationReport) => Pr
     }),
     replay: "safe",
     async execute(args, api, context) {
+      const recorded = await api.memo<boolean>("violation_recorded", context);
+      if (recorded) {
+        return {
+          output: [{ type: "text" as const, text: "Already recorded. Continue the dialogue." }],
+        };
+      }
       await report({ type: args.type, excerpt: args.excerpt, probability: 1 });
       const handle = (await api.conversation(api.conversationId, context))!;
       await api.commit(async (tx) => {
@@ -29,6 +35,7 @@ export function createReportViolationTool(report: (input: ViolationReport) => Pr
           },
         });
       }, context);
+      await api.memo("violation_recorded", true, context);
       return {
         output: [
           { type: "text" as const, text: "Recorded. Continue the Socratic dialogue, gently redirecting the student." },

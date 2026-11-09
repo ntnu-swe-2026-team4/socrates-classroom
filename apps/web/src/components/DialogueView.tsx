@@ -60,6 +60,8 @@ export function DialogueView({
     viewReady,
     canLoadEarlier,
     loadEarlier,
+    gaps,
+    fillGap,
     send,
     retryLast,
     replay,
@@ -284,6 +286,16 @@ export function DialogueView({
                     {t("dlg_load_earlier")}
                   </button>
                 )}
+                {gaps.map((gap) => (
+                  <button
+                    type="button"
+                    key={`${gap.after}-${gap.upTo}`}
+                    onClick={() => void fillGap(gap)}
+                    className="mx-auto cursor-pointer rounded-full border border-line-strong px-3 py-1 text-[12.5px] text-ink-soft transition-colors hover:text-ink"
+                  >
+                    {t("dlg_load_earlier")}
+                  </button>
+                ))}
                 {messages.map((message) => (
                   <Bubble key={message.id} speaker={message.role} text={message.text} />
                 ))}

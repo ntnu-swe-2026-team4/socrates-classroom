@@ -42,7 +42,6 @@ export function createJudgmentExtension(ai: Ai | undefined, reportViolation: Vio
           return;
         }
         const judgment: ViolationJudgment | null = await classifier(task.input.latest);
-        await runtime.memo("judgment", JSON.stringify(judgment), context);
         if (judgment && judgment.type !== "on_topic") {
           const handle = (await runtime.conversation(runtime.conversationId, context))!;
           const data: ViolationData = {
@@ -55,6 +54,7 @@ export function createJudgmentExtension(ai: Ai | undefined, reportViolation: Vio
             await handle.submit(tx, { type: "write", entry: { kind: "app.violation", data: data as never } });
           }, context);
         }
+        await runtime.memo("judgment", JSON.stringify(judgment), context);
         await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
       },
     },
