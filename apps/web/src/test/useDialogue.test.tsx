@@ -77,10 +77,10 @@ function viewFrame(entries: EntryRecord[], before?: number): ServerMessage {
   } as unknown as ServerMessage;
 }
 
-function opsFrame(entries: EntryRecord[]): ServerMessage {
+function opsFrame(entries: EntryRecord[], docs: Record<string, unknown> = {}): ServerMessage {
   return {
     type: "ops",
-    ops: [["r", { conversation: { id: 1 }, entries, docs: {} }]],
+    ops: [["r", { conversation: { id: 1 }, entries, docs }]],
   } as unknown as ServerMessage;
 }
 
@@ -114,8 +114,16 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     expect(result.current.phase).toBe("thinking");
 
     emit(opsFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答"), userEntry(3, "正義是什麼？")]));
-    expect(result.current.phase).toBe("streaming");
+    expect(result.current.phase).toBe("thinking");
     expect(result.current.pending).toBe(true);
+
+    emit(
+      opsFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答"), userEntry(3, "正義是什麼？")], {
+        "pi.live": { generation: { message: { role: "assistant", content: [{ type: "text", text: "先從你" }] } } },
+      }),
+    );
+    expect(result.current.phase).toBe("streaming");
+    expect(result.current.draft).toBe("先從你");
 
     emit(
       opsFrame([

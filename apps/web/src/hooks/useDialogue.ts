@@ -64,6 +64,13 @@ function answered(entries: readonly WindowedEntry[]): boolean {
   );
 }
 
+function liveTextOf(view: ConversationView | null): string {
+  if (!view) return "";
+  const live = view.docs["pi.live"] as { generation?: { message?: { content?: readonly unknown[] } } } | undefined;
+  const content = live?.generation?.message?.content;
+  return content === undefined ? "" : textOf({ role: "assistant", content } as Message);
+}
+
 export function useDialogue(activityId: string, userId: string) {
   const [view, setView] = useState<ConversationView | null>(null);
   const [phase, setPhase] = useState<DialoguePhase>("idle");
@@ -147,7 +154,10 @@ export function useDialogue(activityId: string, userId: string) {
           return;
         }
         if (full) {
-          if (windowBefore !== undefined && windowBefore > baseline) return;
+          if (windowBefore !== undefined && windowBefore > baseline) {
+            if (answered(entries)) completePending();
+            return;
+          }
           failPending("llm_unavailable");
         }
         return;
@@ -188,7 +198,7 @@ export function useDialogue(activityId: string, userId: string) {
           const next = applyImmutable(base, frame.ops);
           adopt(next);
           arbitrate(next.entries, false);
-          if (frame.ops.length > 0 && lastAssistantText(viewRef.current)) {
+          if (frame.ops.length > 0 && pendingRef.current && liveTextOf(next)) {
             setPhase((current) => (current === "thinking" ? "streaming" : current));
           }
           return;
@@ -216,8 +226,8 @@ export function useDialogue(activityId: string, userId: string) {
     },
   });
 
-  const socketReady = useSyncExternalStore(
-    (notify) => {
+  const subscribe = useCallback(
+    (notify: () => void) => {
       socket.addEventListener("open", notify);
       socket.addEventListener("close", notify);
       return () => {
@@ -225,6 +235,11 @@ export function useDialogue(activityId: string, userId: string) {
         socket.removeEventListener("close", notify);
       };
     },
+    [socket],
+  );
+
+  const socketReady = useSyncExternalStore(
+    subscribe,
     () => socket.readyState === socket.OPEN,
     () => false,
   );
@@ -295,6 +310,7 @@ export function useDialogue(activityId: string, userId: string) {
       }
       result.messages.push({ id: `e${entry.id}`, role: entry.kind === "pi.user" ? "user" : "assistant", text });
     });
+    if (!result.draft) result.draft = liveTextOf(view);
     return result;
   }, [view, phase]);
 
@@ -308,6 +324,7 @@ export function useDialogue(activityId: string, userId: string) {
     emotion,
     ttsFailed,
     pending: pendingView,
+    viewReady: view !== null,
     send,
     retryLast,
     replay,

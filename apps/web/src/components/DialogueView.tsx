@@ -47,10 +47,8 @@ export function DialogueView({
   closedNotice,
 }: DialogueViewProps) {
   const t = useT();
-  const { messages, draft, phase, error, emotion, ttsFailed, ready, send, retryLast, replay, interrupt } = useDialogue(
-    activityId,
-    userId,
-  );
+  const { messages, draft, phase, error, emotion, ttsFailed, ready, viewReady, send, retryLast, replay, interrupt } =
+    useDialogue(activityId, userId);
 
   const stageRef = useRef<SocratesHandle>(null);
   const [socratesOpen, setSocratesOpen] = usePersistentFlag("socrates_dialogue_panel", true);
@@ -83,13 +81,13 @@ export function DialogueView({
     }
   }, [openTerm, onTermOpened]);
   useEffect(() => {
-    if (autoSend && !autoSent.current && phase === "idle" && ready) {
+    if (autoSend && !autoSent.current && phase === "idle" && ready && viewReady) {
       if (send(autoSend)) {
         autoSent.current = true;
         onAutoSent?.();
       }
     }
-  }, [autoSend, phase, ready, send, onAutoSent]);
+  }, [autoSend, phase, ready, viewReady, send, onAutoSent]);
 
   const onVoiceFinal = useCallback((text: string) => void send(text), [send]);
   const voice = useVoiceInput(onVoiceFinal, onAmplitudeNoop);
@@ -125,12 +123,14 @@ export function DialogueView({
       ? t("dlg_listening")
       : phase === "thinking"
         ? t("dlg_thinking")
-        : phase === "speaking"
-          ? t("dlg_speaking")
-          : "";
+        : phase === "streaming"
+          ? t("dlg_streaming")
+          : phase === "speaking"
+            ? t("dlg_speaking")
+            : "";
 
   function submitText() {
-    if (!text.trim() || busy) return;
+    if (!text.trim() || busy || !viewReady) return;
     if (send(text)) setText("");
   }
 
@@ -322,13 +322,20 @@ export function DialogueView({
                   <div className="rounded-2xl border border-line bg-card px-4 py-3 text-center text-[13px] text-ink-soft">
                     {closedNotice}
                   </div>
+                ) : !ready ? (
+                  <div
+                    role="status"
+                    className="rounded-2xl border border-line bg-card px-4 py-3 text-center text-[13px] text-ink-soft"
+                  >
+                    {t("dlg_offline")}
+                  </div>
                 ) : (
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       aria-label={t("dlg_hold_to_talk")}
                       title={t("dlg_hold_to_talk")}
-                      disabled={busy}
+                      disabled={busy || !viewReady}
                       onPointerDown={(event) => {
                         event.preventDefault();
                         void voice.start();
@@ -358,6 +365,7 @@ export function DialogueView({
                       value={text}
                       aria-label={t("dlg_input_placeholder")}
                       placeholder={t("dlg_input_placeholder")}
+                      disabled={!viewReady}
                       onChange={(event) => setText(event.target.value)}
                       onKeyDown={(event) => {
                         if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -368,7 +376,7 @@ export function DialogueView({
                     <button
                       type="button"
                       onClick={submitText}
-                      disabled={!text.trim() || busy}
+                      disabled={!text.trim() || busy || !viewReady}
                       aria-label={t("common_send")}
                       className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-ember text-on-ember transition hover:brightness-110 disabled:opacity-50"
                     >

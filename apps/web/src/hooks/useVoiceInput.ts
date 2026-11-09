@@ -54,8 +54,8 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     onAmplitudeRef.current = onAmplitude;
   });
 
-  const stopEverything = useCallback(() => {
-    const s = session.current;
+  const stopEverything = useCallback((target: typeof session.current = session.current) => {
+    const s = target;
     if (!s) return;
     cancelAnimationFrame(s.raf);
     s.recognition?.stop();
@@ -233,6 +233,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     stopRequestedRef.current = true;
     const s = session.current;
     if (!s) return;
+    session.current = null;
 
     const hasRecognition = Boolean(s.recognition);
     const capturedFinal = s.liveText;
@@ -256,7 +257,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
       });
     }
 
-    stopEverything();
+    stopEverything(s);
     setState("processing");
     try {
       if (hasRecognition && capturedFinal) {
