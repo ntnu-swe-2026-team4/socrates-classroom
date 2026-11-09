@@ -11,8 +11,8 @@ function mockMarkdown(term: string, lang: string): string {
 
 export function lookupRoutes() {
   return new Hono<AppEnv>().post("/lookup", async (c) => {
-    await enforceIpLimit(c, "lookup", 20);
     requireUser(c);
+    await enforceIpLimit(c, "lookup", 20);
     const input = await parseBody(c, LookupInputSchema);
     const lang = c.get("lang");
     if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {

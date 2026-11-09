@@ -194,7 +194,7 @@ export class ChatSockets {
       }
     } catch (error) {
       const name = error instanceof Error ? error.name : "Error";
-      const piError = name !== "Error";
+      const piError = name !== "Error" && name !== "ZodError";
       send(connection, {
         type: "error",
         ...(message.id === undefined ? {} : { id: message.id }),

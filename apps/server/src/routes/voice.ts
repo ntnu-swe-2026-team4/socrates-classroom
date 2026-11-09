@@ -61,8 +61,8 @@ function synthWav(text: string, lang: string): Uint8Array {
 export function voiceRoutes() {
   return new Hono<AppEnv>()
     .post("/stt", async (c) => {
-      await enforceIpLimit(c, "stt", 20);
       requireUser(c);
+      await enforceIpLimit(c, "stt", 20);
       const form = await c.req.formData().catch(() => null);
       const audio = form?.get("audio");
       if (!(audio instanceof File) || audio.size === 0) fail(422, "validation");
@@ -88,8 +88,8 @@ export function voiceRoutes() {
       }
     })
     .post("/tts", async (c) => {
-      await enforceIpLimit(c, "tts", 30);
       requireUser(c);
+      await enforceIpLimit(c, "tts", 30);
       const input = await parseBody(c, TtsInputSchema);
       const ttsModel = c.env.TTS_MODEL ?? routingConfig.voice.tts;
       if (c.env.AI && ttsModel) {

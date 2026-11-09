@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { LoginInputSchema, RegisterInputSchema } from "@socrates/shared";
-import { all, batch, one } from "../db/d1";
+import { batch, one } from "../db/d1";
 import { DUMMY_HASH, endSession, hashPassword, startSession, verifyPassword } from "../auth";
 import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, type AppEnv } from "../http";
 
@@ -79,9 +79,4 @@ export function authRoutes() {
       endSession(c);
       return c.body(null, 204);
     });
-}
-
-export async function teacherExists(db: D1Database): Promise<boolean> {
-  const rows = await all<UserRow>(db, "SELECT id FROM users WHERE role = 'teacher' LIMIT 1");
-  return rows.length > 0;
 }
