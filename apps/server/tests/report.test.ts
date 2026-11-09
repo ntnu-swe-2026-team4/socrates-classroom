@@ -1,10 +1,11 @@
 import { env } from "cloudflare:workers";
+import { applyD1Migrations } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
+import { inject } from "vitest";
 import worker from "../src/index";
 import { seedDemo } from "../src/seed";
 import type { ServerMessage } from "../src/ws/protocol";
-import { applyMigrations } from "./migrations";
 
 async function call(path: string, init: RequestInit = {}): Promise<Response> {
   return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(
@@ -62,8 +63,10 @@ let classroomCode: string;
 let activityId: string;
 const students: Array<{ cookie: string; userId: string }> = [];
 
+const migrations = inject("d1Migrations");
+
 beforeAll(async () => {
-  await applyMigrations(env.DB);
+  await applyD1Migrations(env.DB, migrations);
   await seedDemo(env.DB);
   const login = await call("/api/auth/login", {
     method: "POST",

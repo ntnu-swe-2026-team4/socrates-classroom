@@ -1,13 +1,14 @@
 import { env } from "cloudflare:workers";
+import { applyD1Migrations } from "cloudflare:test";
 import { evictDurableObject } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import { beforeAll, describe, expect, it } from "vitest";
+import { inject } from "vitest";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import worker from "../src/index";
 import { seedDemo } from "../src/seed";
 import type { ServerMessage } from "../src/ws/protocol";
-import { applyMigrations } from "./migrations";
 
 let teacherCookie: string;
 let classroomCode: string;
@@ -93,8 +94,10 @@ function latestView(list: ServerMessage[]): ConversationView | undefined {
   return view;
 }
 
+const migrations = inject("d1Migrations");
+
 beforeAll(async () => {
-  await applyMigrations(env.DB);
+  await applyD1Migrations(env.DB, migrations);
   await seedDemo(env.DB);
   const login = await call("/api/auth/login", {
     method: "POST",

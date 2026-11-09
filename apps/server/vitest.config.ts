@@ -10,5 +10,6 @@ export default defineConfig({
   ],
   test: {
     fsModuleCache: false,
+    globalSetup: ["./tests/global-setup.ts"],
   },
 });

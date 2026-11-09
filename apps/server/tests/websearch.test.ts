@@ -1,10 +1,11 @@
 import { env } from "cloudflare:workers";
+import { applyD1Migrations } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
+import { inject } from "vitest";
 import worker from "../src/index";
 import { seedDemo } from "../src/seed";
 import type { ServerMessage } from "../src/ws/protocol";
-import { applyMigrations } from "./migrations";
 
 let thread: string;
 let cookie: string;
@@ -34,8 +35,10 @@ async function connect(name: string): Promise<WebSocket> {
   return socket;
 }
 
+const migrations = inject("d1Migrations");
+
 beforeAll(async () => {
-  await applyMigrations(env.DB);
+  await applyD1Migrations(env.DB, migrations);
   await seedDemo(env.DB);
   const login = await call("/api/auth/login", {
     method: "POST",
