@@ -127,8 +127,7 @@ export function DialogueView({
 
   function submitText() {
     if (!text.trim() || busy) return;
-    void send(text);
-    setText("");
+    if (send(text)) setText("");
   }
 
   return (

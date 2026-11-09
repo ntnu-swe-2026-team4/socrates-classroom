@@ -58,6 +58,7 @@ export function useDialogue(activityId: string, userId: string) {
   const [error, setError] = useState<DialogueError>(null);
   const viewRef = useRef<ConversationView | null>(null);
   const pendingRef = useRef<string | null>(null);
+  const baselineRef = useRef<number | null>(null);
   const failedInputRef = useRef<string | null>(null);
   const ttsRef = useRef<AbortController | null>(null);
 
@@ -65,6 +66,7 @@ export function useDialogue(activityId: string, userId: string) {
     () => () => {
       ttsRef.current?.abort();
       pendingRef.current = null;
+      baselineRef.current = null;
     },
     [],
   );
@@ -83,6 +85,7 @@ export function useDialogue(activityId: string, userId: string) {
 
   const completePending = useCallback(() => {
     pendingRef.current = null;
+    baselineRef.current = null;
     failedInputRef.current = null;
     const text = lastAssistantText(viewRef.current);
     if (text) {
@@ -101,6 +104,27 @@ export function useDialogue(activityId: string, userId: string) {
     }
   }, [speak]);
 
+  const failPending = useCallback((code: string) => {
+    pendingRef.current = null;
+    baselineRef.current = null;
+    setPhase("idle");
+    setError({ code });
+  }, []);
+
+  const arbitrate = useCallback(
+    (entries: readonly { kind: string }[], full: boolean) => {
+      if (pendingRef.current === null) return;
+      const baseline = baselineRef.current ?? entries.length;
+      const tail = entries.slice(baseline);
+      if (tail.some((entry) => entry.kind === "pi.assistant")) {
+        completePending();
+      } else if (full && !tail.some((entry) => entry.kind === "pi.user")) {
+        failPending("llm_unavailable");
+      }
+    },
+    [completePending, failPending],
+  );
+
   const onFrame = useCallback(
     (raw: unknown) => {
       if (typeof raw !== "string") return;
@@ -113,34 +137,29 @@ export function useDialogue(activityId: string, userId: string) {
       switch (frame.type) {
         case "view": {
           adopt(frame.view);
-          const last = frame.view.entries.at(-1);
-          if (pendingRef.current && last?.kind === "pi.assistant") completePending();
+          arbitrate(frame.view.entries, true);
           return;
         }
         case "ops": {
           const base = viewRef.current;
           if (!base) return;
-          adopt(applyImmutable(base, frame.ops));
+          const next = applyImmutable(base, frame.ops);
+          adopt(next);
+          arbitrate(next.entries, false);
           if (frame.ops.length > 0 && lastAssistantText(viewRef.current)) {
             setPhase((current) => (current === "thinking" ? "streaming" : current));
           }
           return;
         }
-        case "result": {
-          if (frame.id !== pendingRef.current) return;
-          completePending();
-          return;
-        }
         case "error": {
           if (frame.id !== undefined && frame.id !== pendingRef.current) return;
-          pendingRef.current = null;
-          setPhase("idle");
-          setError({ code: frame.code ?? "llm_unavailable" });
+          if (frame.id === undefined && pendingRef.current === null) return;
+          failPending(frame.code ?? "llm_unavailable");
           return;
         }
       }
     },
-    [adopt, completePending],
+    [adopt, arbitrate, failPending],
   );
 
   const socket = useAgent({
@@ -151,11 +170,7 @@ export function useDialogue(activityId: string, userId: string) {
     },
     onMessage: (event) => onFrame(event.data),
     onConnectionError: () => {
-      pendingRef.current = null;
       ttsRef.current?.abort();
-      ttsRef.current = null;
-      setPhase("idle");
-      setError({ code: "llm_unavailable" });
     },
   });
 
@@ -168,13 +183,17 @@ export function useDialogue(activityId: string, userId: string) {
   const send = useCallback(
     (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || pendingRef.current) return;
+      if (!trimmed || pendingRef.current || !viewRef.current) return false;
+      ttsRef.current?.abort();
+      ttsRef.current = null;
       const id = crypto.randomUUID();
       pendingRef.current = id;
+      baselineRef.current = viewRef.current.entries.length;
       failedInputRef.current = trimmed;
       setError(null);
       setPhase("thinking");
       socket.send(JSON.stringify({ type: "submit", id, input: trimmed } satisfies ClientMessage));
+      return true;
     },
     [socket],
   );
@@ -206,6 +225,7 @@ export function useDialogue(activityId: string, userId: string) {
     if (pendingRef.current) {
       socket.send(JSON.stringify({ type: "abort", id: pendingRef.current } satisfies ClientMessage));
       pendingRef.current = null;
+      baselineRef.current = null;
     }
     ttsRef.current?.abort();
     ttsRef.current = null;
@@ -230,5 +250,16 @@ export function useDialogue(activityId: string, userId: string) {
 
   const emotion = useMemo(() => emotionOf(view), [view]);
 
-  return { messages, draft, phase, error, emotion, send, retryLast, replay, interrupt };
+  return {
+    messages,
+    draft,
+    phase,
+    error,
+    emotion,
+    pending: pendingRef.current !== null,
+    send,
+    retryLast,
+    replay,
+    interrupt,
+  };
 }

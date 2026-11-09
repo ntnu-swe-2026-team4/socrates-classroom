@@ -81,6 +81,12 @@ export class ChatSockets {
     }
   }
 
+  notifyRunFailure(): void {
+    for (const socket of this.#getWebSockets()) {
+      send(socket, { type: "error", message: "The model run failed", code: "llm_unavailable" });
+    }
+  }
+
   async #onConnect(connection: Connection, ctx: ConnectionContext): Promise<void> {
     if (this.#authorize && !(await this.#authorize(ctx.request))) {
       try {

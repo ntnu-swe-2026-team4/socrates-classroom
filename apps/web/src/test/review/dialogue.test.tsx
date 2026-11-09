@@ -74,6 +74,7 @@ afterEach(cleanup);
 test("F06: playback failure and retry do not submit another dialogue turn", async () => {
   calls.tts.mockRejectedValueOnce(new Error("decode failed"));
   const { result } = renderHook(() => useDialogue("activity-1", "u_1"));
+  emit(viewFrame([]));
   act(() => void result.current.send("My question"));
   emit(viewFrame([userEntry(1, "My question"), assistantEntry(2, "A persisted reply")]));
   emit({ type: "result", id: submitId() ?? "none", result: null });
@@ -91,6 +92,7 @@ test("F06: playback failure and retry do not submit another dialogue turn", asyn
 
 test("F22: synchronous consecutive sends admit only one request", () => {
   const { result } = renderHook(() => useDialogue("activity-1", "u_1"));
+  emit(viewFrame([]));
   act(() => {
     void result.current.send("First question");
     void result.current.send("Second question");
@@ -100,6 +102,7 @@ test("F22: synchronous consecutive sends admit only one request", () => {
 
 test("control: a successful turn preserves both speakers and returns to idle", async () => {
   const { result } = renderHook(() => useDialogue("activity-1", "u_1"));
+  emit(viewFrame([]));
   act(() => void result.current.send("My question"));
   emit(viewFrame([userEntry(1, "My question"), assistantEntry(2, "A persisted reply")]));
   emit({ type: "result", id: submitId() ?? "none", result: null });

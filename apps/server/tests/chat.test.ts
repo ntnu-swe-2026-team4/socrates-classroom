@@ -214,8 +214,59 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     socket.send(JSON.stringify({ type: "submit", id: "a", input: "問題 A" }));
     socket.send(JSON.stringify({ type: "submit", id: "b", input: "問題 B" }));
     await rx.until((f) => f.some((m) => m.type === "error" && m.id === "b"));
+    const busy = rx.list.find((m) => m.type === "error" && m.id === "b");
+    expect(busy).toMatchObject({ code: "ConversationBusy" });
     await rx.until((f) => f.some((m) => m.type === "result" && m.id === "a"));
     expect(socket.readyState).toBe(WebSocket.OPEN);
+    socket.close();
+  }, 20_000);
+
+  it("abort op：回 result（三值之一）、連線不受影響", async () => {
+    const student = await joinStudent("阿捷");
+    const thread = `${activityId}:${student.userId}`;
+    const socket = await connect(thread, student.cookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.some((m) => m.type === "view"));
+    socket.send(JSON.stringify({ type: "submit", id: "q", input: "長問題" }));
+    await rx.until((f) => f.some((m) => m.type === "result" && m.id === "q"));
+    socket.send(JSON.stringify({ type: "abort", id: "ab" }));
+    await rx.until((f) => f.some((m) => m.type === "result" && m.id === "ab"));
+    const abortResult = rx.list.find((m) => m.type === "result" && m.id === "ab") as unknown as {
+      result: unknown;
+    };
+    expect(typeof abortResult.result).toBe("boolean");
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+    socket.close();
+  }, 20_000);
+
+  it("entries op：回分頁 items、limit 生效", async () => {
+    const student = await joinStudent("阿查");
+    const thread = `${activityId}:${student.userId}`;
+    const socket = await connect(thread, student.cookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.some((m) => m.type === "view"));
+    socket.send(JSON.stringify({ type: "submit", id: "q", input: "正義是什麼？" }));
+    await rx.until((f) =>
+      latestView(f)?.entries.some((entry) => entry.kind === "pi.assistant" && assistantText(latestView(f)!).length > 0),
+    );
+    socket.send(JSON.stringify({ type: "entries", id: "e1", query: { order: "ascending" }, limit: 100 }));
+    await rx.until((f) => f.some((m) => m.type === "result" && m.id === "e1"));
+    const page = rx.list.find((m) => m.type === "result" && m.id === "e1") as unknown as {
+      result: { items: Array<{ kind: string }> };
+    };
+    const kinds = page.result.items.map((entry) => entry.kind);
+    expect(kinds).toContain("pi.user");
+    expect(kinds).toContain("pi.assistant");
+    socket.send(JSON.stringify({ type: "entries", id: "e2", query: { order: "ascending" }, limit: 1 }));
+    await rx.until((f) => f.some((m) => m.type === "result" && m.id === "e2"));
+    const single = rx.list.find((m) => m.type === "result" && m.id === "e2") as unknown as {
+      result: { items: unknown[] };
+    };
+    expect(single.result.items.length).toBeLessThanOrEqual(1);
     socket.close();
   }, 20_000);
 

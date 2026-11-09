@@ -124,16 +124,14 @@ export class Chat extends DurableObject<Env> {
     if (decision) {
       void handle
         .wait(receipt.operationId)
-        .then((result) =>
-          router.settle(
-            decision,
-            result.status === "done" || (result.status === "unanswered" && result.reason === "aborted")
-              ? "ok"
-              : "error",
-          ),
-        )
+        .then((result) => {
+          const ok = result.status === "done" || (result.status === "unanswered" && result.reason === "aborted");
+          router.settle(decision, ok ? "ok" : "error");
+          if (!ok) this.sockets.notifyRunFailure();
+        })
         .catch(() => {
           if (router.ledger.inFlight(decision.key) > 0) router.settle(decision, "error");
+          this.sockets.notifyRunFailure();
         });
     }
     return receipt;
