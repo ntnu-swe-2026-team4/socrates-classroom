@@ -20,6 +20,7 @@ import { routingConfig } from "../routing/config.gen";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 
 export class ReportRunner extends DurableObject<Env> {
+  #inFlight: Promise<void> | null = null;
   readonly models = buildModels(this.env, {
     teacherOf: () => teacherOfActivity(this.env, this.ctx.id.name ?? ""),
   });
@@ -35,6 +36,8 @@ export class ReportRunner extends DurableObject<Env> {
 
   async startReport(input: { activityId: string }): Promise<"started" | "ready"> {
     const db = this.env.DB;
+    await this.ctx.storage.setAlarm(Date.now() + 50);
+    await this.ctx.storage.put("attempts", 0);
     const row = await one<{ status: string }>(db, "SELECT status FROM reports WHERE activity_id = $id", {
       id: input.activityId,
     });
@@ -56,30 +59,45 @@ export class ReportRunner extends DurableObject<Env> {
         at: nowIso(),
       });
     }
-    await this.ctx.storage.put("attempts", 0);
-    await this.ctx.storage.setAlarm(Date.now() + 50);
     return "started";
   }
 
   async alarm(): Promise<void> {
     const { report } = routingConfig;
     const activityId = this.ctx.id.name ?? "";
-    const row = await one<{ status: string }>(this.env.DB, "SELECT status FROM reports WHERE activity_id = $id", {
+    if (this.#inFlight) {
+      await this.ctx.storage.setAlarm(Date.now() + report.alarmTimeoutMs);
+      return;
+    }
+    const db = this.env.DB;
+    const row = await one<{ status: string }>(db, "SELECT status FROM reports WHERE activity_id = $id", {
       id: activityId,
     });
     if (row?.status === "ready" || row?.status === "failed") return;
+    if (!row) {
+      await run(
+        db,
+        `INSERT INTO reports (activity_id, status, created_at, updated_at)
+         VALUES ($id, 'pending', $at, $at)
+         ON CONFLICT(activity_id) DO NOTHING`,
+        { id: activityId, at: nowIso() },
+      );
+    }
     const attempts = ((await this.ctx.storage.get<number>("attempts")) ?? 0) + 1;
     await this.ctx.storage.put("attempts", attempts);
     if (attempts > report.alarmAttempts) {
-      await run(this.env.DB, "UPDATE reports SET status = 'failed', updated_at = $at WHERE activity_id = $id", {
+      await run(db, "UPDATE reports SET status = 'failed', updated_at = $at WHERE activity_id = $id", {
         id: activityId,
         at: nowIso(),
       });
       return;
     }
+    this.#inFlight = this.generate(activityId).finally(() => {
+      this.#inFlight = null;
+    });
     try {
       await Promise.race([
-        this.generate(activityId),
+        this.#inFlight,
         new Promise<never>((_, reject) => {
           setTimeout(() => reject(new Error("report_generation_timeout")), report.alarmTimeoutMs);
         }),
@@ -123,11 +141,15 @@ export class ReportRunner extends DurableObject<Env> {
       const pseudonym = existing?.pseudonym ?? `${report.pseudonymPrefix}${index + 1}`;
       pseudonyms.set(member.user_id, pseudonym);
       if (!existing) {
-        await run(db, "INSERT INTO pseudonyms (activity_id, student_id, pseudonym) VALUES ($aid, $sid, $p)", {
-          aid: activityId,
-          sid: member.user_id,
-          p: pseudonym,
-        });
+        await run(
+          db,
+          "INSERT INTO pseudonyms (activity_id, student_id, pseudonym) VALUES ($aid, $sid, $p) ON CONFLICT DO NOTHING",
+          {
+            aid: activityId,
+            sid: member.user_id,
+            p: pseudonym,
+          },
+        );
       }
     }
 
@@ -234,15 +256,7 @@ export class ReportRunner extends DurableObject<Env> {
     pseudonyms: Map<string, string>,
   ): Promise<{ text: string; violations: ViolationSlice[] }> {
     const stub = this.env.Chat.get(this.env.Chat.idFromName(`${activityId}:${studentId}`));
-    const res = await stub.fetch("https://chat/transcript");
-    if (!res.ok) {
-      console.error("[report] transcript fetch failed", res.status);
-      return { text: "", violations: [] };
-    }
-    const data = (await res.json()) as {
-      messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
-      violations: Array<{ turn: number; type: string; excerpt: string }>;
-    };
+    const data = await stub.transcript();
     const pseudonym = pseudonyms.get(studentId) ?? studentId;
     const text = data.messages
       .map((message) =>

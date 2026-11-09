@@ -250,9 +250,10 @@ describe("chat core（真 DO＋真 WebSocket＋faux）", () => {
     socket.send(JSON.stringify({ type: "watch" }));
     await rx.until((f) => f.some((m) => m.type === "view"));
     socket.send(JSON.stringify({ type: "submit", id: "q", input: "正義是什麼？" }));
-    await rx.until((f) =>
-      latestView(f)?.entries.some((entry) => entry.kind === "pi.assistant" && assistantText(latestView(f)!).length > 0),
-    );
+    await rx.until((f) => {
+      const view = latestView(f);
+      return view?.entries.some((entry) => entry.kind === "pi.assistant" && assistantText(view).length > 0) ?? false;
+    });
     socket.send(JSON.stringify({ type: "entries", id: "e1", query: { order: "ascending" }, limit: 100 }));
     await rx.until((f) => f.some((m) => m.type === "result" && m.id === "e1"));
     const page = rx.list.find((m) => m.type === "result" && m.id === "e1") as unknown as {
