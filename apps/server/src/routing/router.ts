@@ -99,6 +99,16 @@ export class Router {
     this.#ledger.settle(decision.key, kind);
   }
 
+  async withRoute<T>(decision: RouteDecision, operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof Error && error.name === "ConversationBusy") this.#ledger.end(decision.key);
+      else this.settle(decision, "error");
+      throw error;
+    }
+  }
+
   private keyOf(entry: AvailabilityEntry, def: z.infer<typeof ProviderSchema>): LedgerKey {
     return { provider: entry.provider, model: entry.model ?? providerModelOf(def), credential: entry.credential };
   }

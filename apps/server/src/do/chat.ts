@@ -111,17 +111,13 @@ export class Chat extends DurableObject<Env> {
     if (!decision && !this.models.faux) throw new Error("no_available_model");
     if (!decision) return handle.submit(input, options);
     const model = this.models.models.getModel(decision.entry.provider, decision.model);
-    let receipt: PiReceipt;
-    try {
+    const receipt = await router.withRoute(decision, async () => {
       if (model && (this.#sessionModel?.provider !== model.provider || this.#sessionModel?.id !== model.id)) {
         await handle.setModel({ provider: model.provider, id: model.id });
         this.#sessionModel = { provider: model.provider, id: model.id };
       }
-      receipt = await handle.submit(input, options);
-    } catch (error) {
-      if (!(error instanceof Error && error.name === "ConversationBusy")) router.settle(decision, "error");
-      throw error;
-    }
+      return handle.submit(input, options);
+    });
     void handle
       .wait(receipt.operationId)
       .then((result) => {

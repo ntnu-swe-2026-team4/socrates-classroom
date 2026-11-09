@@ -250,3 +250,55 @@ describe("routing schema (availability reference validation — typos fail fast 
     expect(result.success).toBe(true);
   });
 });
+
+describe("Router.withRoute (admission → settle lifecycle; ConversationBusy must not leak inFlight)", () => {
+  const key = { provider: "dgx-spark", model: "GLM-5.3-Flash", credential: "platform" };
+  const decision = {
+    entry: {
+      provider: "dgx-spark",
+      model: "GLM-5.3-Flash",
+      credential: "platform",
+      maxConcurrency: 4,
+      priority: 1,
+    },
+    model: "GLM-5.3-Flash",
+    key,
+  };
+
+  it("ConversationBusy releases the inFlight slot without recording a failure", async () => {
+    const { Router } = await import("../src/routing/router");
+    const router = new Router({} as never);
+    router.ledger.begin(key);
+    const busy = new Error("conversation busy");
+    busy.name = "ConversationBusy";
+    await expect(router.withRoute(decision, () => Promise.reject(busy))).rejects.toThrow();
+    expect(router.ledger.inFlight(key)).toBe(0);
+    for (let i = 0; i < 5; i += 1) router.ledger.record(key);
+    expect(router.ledger.inCooldown(key)).toBe(false);
+  });
+
+  it("a real failure settles as error (inFlight released, failure recorded)", async () => {
+    const { Router } = await import("../src/routing/router");
+    const router = new Router({} as never);
+    router.ledger.begin(key);
+    await expect(router.withRoute(decision, () => Promise.reject(new Error("boom")))).rejects.toThrow();
+    expect(router.ledger.inFlight(key)).toBe(0);
+    for (let i = 0; i < 5; i += 1) router.ledger.record(key);
+    router.ledger.settle(key, "error");
+    for (let i = 0; i < 4; i += 1) {
+      router.ledger.record(key);
+      router.ledger.settle(key, "error");
+    }
+    expect(router.ledger.inCooldown(key)).toBe(true);
+  });
+
+  it("success path leaves the slot to the caller's settle", async () => {
+    const { Router } = await import("../src/routing/router");
+    const router = new Router({} as never);
+    router.ledger.begin(key);
+    await expect(router.withRoute(decision, () => Promise.resolve("receipt"))).resolves.toBe("receipt");
+    expect(router.ledger.inFlight(key)).toBe(1);
+    router.settle(decision, "ok");
+    expect(router.ledger.inFlight(key)).toBe(0);
+  });
+});
