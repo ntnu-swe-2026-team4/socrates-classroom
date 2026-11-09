@@ -389,10 +389,18 @@ function textOf(content: string | readonly unknown[]): string {
     .join("");
 }
 
+const FAUX_CLASS_FAILURE_MARKER = "FORCE-CLASS-REPORT-FAILURE";
+
 function fauxReportScript(context: TranscriptContext): AssistantMessage {
   const last = context.messages.filter((message) => message.role !== "system").at(-1);
   const prompt = last?.role === "user" ? textOf(last.content) : "";
   if (prompt.includes("## Roster:")) {
+    if (prompt.includes(FAUX_CLASS_FAILURE_MARKER)) {
+      return fauxAssistantMessage(
+        [fauxToolCall(SUBMIT_CLASS_REPORT, { students: "schema-mismatch-on-purpose" })],
+        { stopReason: "toolUse" },
+      );
+    }
     return fauxAssistantMessage(
       [
         fauxToolCall(SUBMIT_CLASS_REPORT, {

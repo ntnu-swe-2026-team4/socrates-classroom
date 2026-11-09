@@ -153,4 +153,55 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(studentReport.analysis?.stated).toBe(true);
     expect("classReport" in studentReport).toBe(false);
   }, 60_000);
+
+  it("class-report failure with student analyses stored → partial per §7 (200, classReport null, positions empty)", async () => {
+    const topics = (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{
+      id: string;
+    }>;
+    const created = (await (
+      await call("/api/classrooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacherCookie },
+        body: JSON.stringify({ name: "partial 班", topicId: topics[0]!.id }),
+      })
+    ).json()) as { code: string; activityId: string };
+    const joined = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: created.code, name: "小標", tosAccepted: true }),
+    });
+    expect(joined.status).toBe(200);
+    const { user } = (await joined.json()) as { user: { id: string } };
+    const studentCookie = cookieOf(joined);
+
+    await speak(`${created.activityId}:${user.id}`, studentCookie, "FORCE-CLASS-REPORT-FAILURE");
+
+    const finish = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacherCookie },
+    });
+    expect(finish.status).toBe(204);
+
+    let report: Response | null = null;
+    for (let i = 0; i < 60; i += 1) {
+      report = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacherCookie } });
+      if (report.status === 200) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    expect(report?.status).toBe(200);
+    const partial = (await report?.json()) as {
+      classReport: { axes: unknown[] } | null;
+      students: Array<{ analysis: { stated: boolean } | null; positions: unknown[] }>;
+    };
+    expect(partial.classReport).toBeNull();
+    expect(partial.students).toHaveLength(1);
+    expect(partial.students[0]!.analysis?.stated).toBe(true);
+    expect(partial.students[0]!.positions).toEqual([]);
+
+    const own = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: studentCookie } });
+    expect(own.status).toBe(200);
+    const ownReport = (await own.json()) as { analysis: { stated: boolean } | null; positions: unknown[] };
+    expect(ownReport.analysis?.stated).toBe(true);
+    expect(ownReport.positions).toEqual([]);
+  }, 60_000);
 });

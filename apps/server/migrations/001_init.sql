@@ -6,6 +6,7 @@ CREATE TABLE users (
   role          TEXT NOT NULL CHECK (role IN ('student', 'teacher')),
   email         TEXT UNIQUE,
   password_hash TEXT,
+  lang          TEXT NOT NULL DEFAULT 'zh' CHECK (lang IN ('zh', 'en', 'es')),
   created_at    TEXT NOT NULL
 );
 
@@ -48,7 +49,7 @@ CREATE UNIQUE INDEX members_name ON members(classroom_id, name);
 
 CREATE TABLE reports (
   activity_id    TEXT PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
-  status         TEXT NOT NULL CHECK (status IN ('pending', 'ready', 'failed')),
+  status         TEXT NOT NULL CHECK (status IN ('pending', 'partial', 'ready', 'failed')),
   teacher_report TEXT,
   student_reports TEXT,
   created_at     TEXT NOT NULL,
@@ -61,3 +62,15 @@ CREATE TABLE pseudonyms (
   pseudonym   TEXT NOT NULL,
   PRIMARY KEY (activity_id, student_id)
 );
+
+CREATE TABLE teacher_keys (
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider_id TEXT NOT NULL,
+  key_enc     TEXT NOT NULL,
+  last4       TEXT NOT NULL,
+  model       TEXT NOT NULL DEFAULT '',
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  updated_at  TEXT NOT NULL,
+  PRIMARY KEY (user_id, provider_id)
+);
+CREATE INDEX teacher_keys_user ON teacher_keys(user_id, sort_order);
