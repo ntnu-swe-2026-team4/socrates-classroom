@@ -47,12 +47,8 @@ export function createApp() {
           404,
         );
       }
-      const mock = c.env.LLM_PROVIDER === "mock";
-      const password = mock
-        ? undefined
-        : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
-      const { teacherCreated } = await seedDemo(c.env.DB, password);
-      return c.json({ seeded: true, ...(teacherCreated && password ? { password } : {}) });
+      const { teacherCreated } = await seedDemo(c.env.DB);
+      return c.json({ seeded: true, teacherCreated });
     })
     .onError((error, c) => {
       const lang = c.get("lang") ?? normalizeLang(c.req.header("Accept-Language"));

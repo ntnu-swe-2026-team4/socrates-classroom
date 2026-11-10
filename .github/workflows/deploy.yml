@@ -63,3 +63,21 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PROD_SECRETS_FILE: ${{ secrets.PROD_SECRETS_FILE }}
+      - name: Seed demo data (idempotent)
+        run: |
+          SEED_TOKEN=$(printf '%s' "$PROD_SECRETS_FILE" | grep -E '^SEED_TOKEN=' | head -1 | cut -d= -f2-)
+          if [ -z "$SEED_TOKEN" ]; then
+            echo "::warning::SEED_TOKEN not found in PROD_SECRETS_FILE — skipping demo seed (demo login and invite codes will 404)"
+            exit 0
+          fi
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS -X POST -H "x-seed-token: $SEED_TOKEN" https://socrates.g36maid.dev/api/dev/seed; then
+              exit 0
+            fi
+            echo "seed attempt $attempt failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "::warning::demo seed failed after retries — demo login and invite codes will be missing until seeded"
+        working-directory: apps/web
+        env:
+          PROD_SECRETS_FILE: ${{ secrets.PROD_SECRETS_FILE }}

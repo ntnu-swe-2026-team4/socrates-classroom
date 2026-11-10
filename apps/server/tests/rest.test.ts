@@ -42,9 +42,9 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
 
     const seeded = await call("/api/dev/seed", { method: "POST", headers: { "x-seed-token": "dev-seed-token" } });
     expect(seeded.status).toBe(200);
-    const seedBody = (await seeded.json()) as { seeded: boolean; password?: string };
+    const seedBody = (await seeded.json()) as { seeded: boolean; teacherCreated: boolean };
     expect(seedBody.seeded).toBe(true);
-    expect(seedBody.password).toBeUndefined();
+    expect(typeof seedBody.teacherCreated).toBe("boolean");
   });
 
   test("me / guest join (ToS) → activity resolves", async () => {
