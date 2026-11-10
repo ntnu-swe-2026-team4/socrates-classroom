@@ -59,6 +59,21 @@ function synthWav(text: string, lang: string): Uint8Array {
   return wavBytes(samples);
 }
 
+function cleanSpeechText(text: string): string {
+  const cleaned = text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*`>#_~|]+/g, " ")
+    .replace(/^\s*(?:-|\d+[.)])\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /[\p{L}\p{N}]/u.test(cleaned) ? cleaned : "";
+}
+
+function bindingTtsInput(model: string, text: string, lang: "zh" | "en" | "es"): Record<string, unknown> {
+  if (model.startsWith("@cf/")) return { prompt: text, lang };
+  return { text, language: lang, voice_id: "rex" };
+}
+
 export function voiceRoutes() {
   return new Hono<AppEnv>()
     .post("/stt", async (c) => {
@@ -91,7 +106,10 @@ export function voiceRoutes() {
     .post("/tts", async (c) => {
       requireUser(c);
       await enforceIpLimit(c, "tts", 30);
-      const input = await parseBody(c, TtsInputSchema);
+      const parsed = await parseBody(c, TtsInputSchema);
+      const speech = cleanSpeechText(parsed.text);
+      if (!speech) fail(502, "llm_unavailable");
+      const input = { text: speech, lang: parsed.lang };
       if (c.env.TTS_MODEL && !BindingModelSchema.safeParse(c.env.TTS_MODEL).success) {
         fail(500, "internal_error");
       }
@@ -99,12 +117,25 @@ export function voiceRoutes() {
       if (c.env.AI && ttsModel) {
         try {
           const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
-          const result = (await ai.run(ttsModel, { prompt: input.text, lang: input.lang })) as
+          const result = (await ai.run(ttsModel, bindingTtsInput(ttsModel, input.text, input.lang))) as
             | ReadableStream
             | ArrayBuffer
             | Uint8Array
             | string
-            | { audio?: ReadableStream | ArrayBuffer | Uint8Array | string };
+            | { audio?: ReadableStream | ArrayBuffer | Uint8Array | string; result?: { audio?: string } };
+          if (result && typeof result === "object" && "result" in result) {
+            const url = result.result?.audio;
+            if (typeof url === "string" && url.startsWith("https://")) {
+              const upstream = await fetch(url);
+              if (!upstream.ok || !upstream.body) fail(502, "llm_unavailable");
+              return new Response(upstream.body, {
+                headers: {
+                  "Content-Type": upstream.headers.get("Content-Type") ?? "audio/mpeg",
+                  "Cache-Control": "no-store",
+                },
+              });
+            }
+          }
           let bytes: Uint8Array | null = null;
           if (result instanceof ReadableStream) {
             bytes = new Uint8Array(await new Response(result).arrayBuffer());

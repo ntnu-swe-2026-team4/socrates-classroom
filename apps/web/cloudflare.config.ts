@@ -28,7 +28,7 @@ export default defineConfig(({ mode }) => {
         LLM_PROVIDER: bindings.text(local.LLM_PROVIDER ?? (mode === "development" ? "mock" : "")),
         DGX_BASE_URL: text("DGX_BASE_URL", ""),
         SEED_TOKEN: bindings.secret(),
-        TTS_MODEL: text("TTS_MODEL", "@cf/myshell-ai/melotts"),
+        TTS_MODEL: text("TTS_MODEL", "xai/grok-tts"),
         AUTH_SECRET: bindings.secret(),
         BYOK_ENC_KEY: bindings.secret(),
       },

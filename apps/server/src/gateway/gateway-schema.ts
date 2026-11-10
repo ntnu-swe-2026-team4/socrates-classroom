@@ -49,7 +49,10 @@ export const TrafficClassSchema = z
 export const BindingModelSchema = z
   .string()
   .min(1)
-  .regex(/^@cf\/[a-z0-9-]+\/[a-z0-9._-]+$/i, "must be a Workers AI binding model id like @cf/org/model");
+  .regex(
+    /^(?:@cf\/[a-z0-9-]+\/[a-z0-9._-]+|[a-z][a-z0-9-]*\/[a-z0-9._-]+)$/i,
+    "must be a Workers AI binding model id like @cf/org/model or a partner model id like xai/grok-tts",
+  );
 
 export const GatewayConfigSchema = z
   .object({
