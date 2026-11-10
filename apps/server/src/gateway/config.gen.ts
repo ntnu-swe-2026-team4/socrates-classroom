@@ -53,7 +53,7 @@ const CONFIG = {
   },
   "voice": {
     "stt": "@cf/openai/whisper-large-v3-turbo",
-    "tts": "@cf/myshell-ai/melotts"
+    "tts": "xai/grok-tts"
   },
   "report": {
     "studentAttempts": 2,
