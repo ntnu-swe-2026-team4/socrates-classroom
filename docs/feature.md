@@ -50,15 +50,15 @@
 
 ## 對話引擎（Pi Durable）
 
-| 能力           | 說明                                                                                                  | 位置                                       |
-| -------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| Durable 對話   | 每執行緒一個 Chat DO：transcript/admission/retry/恢復存於 DO SQLite（pi_* 表）；no queue（busy 拒絕） | `apps/server/src/do/chat.ts`               |
-| WebSocket      | `session.watch()` → view + chord ops；客戶端 `applyImmutable` 套用；斷線 `onConnectionError` 復原     | `apps/server/src/ws/`・`useDialogue`       |
-| 情緒協議       | avatar extension：Clef choice 題 → `app.emotion` entry（機率）；文字零污染（#111）                    | `apps/server/src/pi/extensions/avatar/`    |
-| 違規偵測       | judgment extension：逐輪 Clef 分類＋`report_violation` 自報 tool → `app.violation` entry（#71）       | `apps/server/src/pi/extensions/judgment/`  |
+| 能力           | 說明                                                                                                                              | 位置                                       |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Durable 對話   | 每執行緒一個 Chat DO：transcript/admission/retry/恢復存於 DO SQLite（pi_* 表）；no queue（busy 拒絕）                             | `apps/server/src/do/chat.ts`               |
+| WebSocket      | `session.watch()` → view + chord ops；客戶端 `applyImmutable` 套用；斷線 `onConnectionError` 復原                                 | `apps/server/src/ws/`・`useDialogue`       |
+| 情緒協議       | avatar extension：Clef choice 題 → `app.emotion` entry（機率）；文字零污染（#111）                                                | `apps/server/src/pi/extensions/avatar/`    |
+| 違規偵測       | judgment extension：逐輪 Clef 分類＋`report_violation` 自報 tool → `app.violation` entry（#71）                                   | `apps/server/src/pi/extensions/judgment/`  |
 | 網路搜尋       | websearch extension：`web_search`（全網）／`fetch_content`（任意 URL，per-hop SSRF 驗證）／`get_search_content`（分頁＋findText） | `apps/server/src/pi/extensions/websearch/` |
-| Agent profiles | socrates／lookup／topic-gen／report-analyst——角色欄位，model 由 gateway 依 traffic class 解析（#113） | `apps/server/src/pi/agents/profiles.ts`    |
-| 供 mock 測試   | pi-ai faux provider（`LLM_PROVIDER=mock`）                                                            | `apps/server/src/pi/models.ts`             |
+| Agent profiles | socrates／lookup／topic-gen／report-analyst——角色欄位，model 由 gateway 依 traffic class 解析（#113）                             | `apps/server/src/pi/agents/profiles.ts`    |
+| 供 mock 測試   | pi-ai faux provider（`LLM_PROVIDER=mock`）                                                                                        | `apps/server/src/pi/models.ts`             |
 
 詳細：[`pi.md`](./pi.md)
 
