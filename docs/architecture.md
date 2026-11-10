@@ -262,7 +262,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | D1 無互動式交易，tx→batch 語意差異                          | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                    |
 | cf beta 格式變動                                            | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                                |
-| dgx-spark 腿延遲                                            | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                      |
+| dgx-spark 腿延遲（暫時移除，回歸時適用）            | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                      |
 | Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）      | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                          |
 | module 級狀態（rate-limit 的 Map）隨 isolate 分散且重啟歸零 | 定位為 best-effort；跨請求一致的併發守衛在 Chat DO 的 whenBusy reject。多 isolate 佈局後限流改走 DO |
 

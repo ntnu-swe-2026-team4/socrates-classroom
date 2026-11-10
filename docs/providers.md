@@ -146,7 +146,7 @@
 
 ---
 
-1. **學生流量（平台鏈）**：`providers.config.yaml` 的 availability 鏈（dgx-spark → workers-ai ×2）；平台 credential 的段落全部 ZDR（自架＝團隊機房、Workers AI＝官方 ZDR），這是平台能保證的部分。
+1. **學生流量（平台鏈）**：`providers.config.yaml` 的 availability 鏈（workers-ai ×2，2026-11-10 起 dgx-spark 暫時移除）；平台 credential 的段落全部 ZDR（Workers AI＝官方 ZDR），這是平台能保證的部分。
 2. **Teacher keys**（2026-11-09 定案）：老師可存**任意 pi builtin provider** 的 key＋自選 model；其教室流量**老師鏈在前、平台鏈墊後**。provider×model 是無窮空間，平台不逐一審查——資料責任由 **ToS 移轉**給教師（設定頁有責任條款文案）；平台僅保證 fallback 到的平台鏈 ZDR。
 3. **平台鏈模型白名單**（可進 fallback 的）：GLM-5.3-Flash、GLM-5.3、GLM-5.2、Kimi／Qwen／MiniMax／MiMo 等 0-day retention 模型。禁入：Muse Spark、Iceman（會訓練）、Grok／GPT Luna／Claude Haiku（30 天）。
 4. **開發流量**：Coding Plan 優先（額度大、離峰五折），任何 provider 皆可。
