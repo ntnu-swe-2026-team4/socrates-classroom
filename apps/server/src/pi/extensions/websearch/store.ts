@@ -29,7 +29,6 @@ export interface ResponseStore {
   getStoredFetch(id: string): StoredFetch | null;
   getCachedFetch(url: string, mode: string): { content: string; title: string } | null;
   putCachedFetch(url: string, mode: string, content: string, title: string): void;
-  isSearchHit(url: string): boolean;
 }
 
 export function createResponseStore(): ResponseStore {
@@ -71,17 +70,7 @@ export function createResponseStore(): ResponseStore {
     },
     getCachedFetch: (url, mode) => getCachedFetch(url, mode),
     putCachedFetch: (url, mode, content, title) => putCachedFetch(url, mode, content, title),
-    isSearchHit: (url) => isSearchHit(url),
   };
-
-  function isSearchHit(url: string): boolean {
-    for (const stored of searches.values()) {
-      for (const query of stored.queries) {
-        if (query.results.some((hit) => hit.url === url)) return true;
-      }
-    }
-    return false;
-  }
 
   function getCachedFetch(url: string, mode: string): { content: string; title: string } | null {
     const entry = fetchCache.get(`${mode}:${url}`);

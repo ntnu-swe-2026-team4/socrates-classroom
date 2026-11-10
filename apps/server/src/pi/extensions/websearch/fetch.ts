@@ -48,7 +48,7 @@ function isPrivateIp(host: string): boolean {
     return isPrivateIpv4(a, b);
   }
   const groups = expandIpv6(bare);
-  // WHATWG normalization leaves no unparseable IPv6 on this path; raw callers are gated by isSearchHit
+  // WHATWG normalization leaves no unparseable IPv6 on this path
   if (!groups) return false;
   if (groups.every((group) => group === 0)) return true;
   if (groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1) return true;

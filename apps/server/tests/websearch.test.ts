@@ -91,21 +91,13 @@ describe("websearch extension (web_search + get_search_content)", () => {
     const found = findPassages(content, ["正義"], "case-insensitive");
     expect(found).toContain("正義");
     expect(found).not.toContain("no match");
-
-    expect(responses.isSearchHit("https://u")).toBe(true);
-    expect(responses.isSearchHit("https://attacker.example")).toBe(false);
   });
 
-  it("fetch_content allows only search-result URLs (option B: web_search first → same URL fetchable; not searched → rejected)", async () => {
+  it("fetch_content fetches any URL directly (no search-first gate; web is fully open)", async () => {
     const { createWebSearchExtension } = await import("../src/pi/extensions/websearch");
     const fakeAi = {
       websearch: async () =>
-        new Response(
-          JSON.stringify({
-            items: [{ url: "https://zh.wikipedia.org/wiki/Justice", title: "Justice", description: "d" }],
-          }),
-          { headers: { "content-type": "application/json" } },
-        ),
+        new Response(JSON.stringify({ items: [] }), { headers: { "content-type": "application/json" } }),
     };
     const extension = createWebSearchExtension(fakeAi as never);
     type Tool = {
@@ -113,28 +105,23 @@ describe("websearch extension (web_search + get_search_content)", () => {
       execute: (args: Record<string, unknown>) => Promise<{ output: Array<{ type: string; text: string }> }>;
     };
     const tools = (extension.tools ?? []) as unknown as Tool[];
-    const searchTool = tools.find((tool) => tool.name === "web_search")!;
     const fetchTool = tools.find((tool) => tool.name === "fetch_content")!;
 
-    const blocked = await fetchTool.execute({ url: "https://zh.wikipedia.org/wiki/Justice" });
-    expect(blocked.output[0]!.text).toContain("web_search results");
-
-    await searchTool.execute({ query: "justice" });
     const origFetch = globalThis.fetch;
     globalThis.fetch = (async () =>
       new Response("<html><title>Justice</title><body>justice body</body></html>", {
         headers: { "content-type": "text/html" },
       })) as typeof fetch;
     try {
-      const allowed = await fetchTool.execute({ url: "https://zh.wikipedia.org/wiki/Justice", mode: "raw" });
-      expect(allowed.output[0]!.text).not.toContain("web_search results");
-      expect(allowed.output[0]!.text).toContain("justice body");
+      const fetched = await fetchTool.execute({ url: "https://example.org/wiki/Anything", mode: "raw" });
+      expect(fetched.output[0]!.text).toContain("justice body");
+      expect(fetched.output[0]!.text).not.toContain("web_search results");
     } finally {
       globalThis.fetch = origFetch;
     }
   });
 
-  it("redirect hops are gated by the search-hit allowlist (302 to a non-hit host rejected; hit host allowed)", async () => {
+  it("redirect hops must stay same-site (302 cross-site rejected; same-site allowed)", async () => {
     const { createWebSearchExtension } = await import("../src/pi/extensions/websearch");
     const fakeAi = {
       websearch: async () =>

@@ -61,7 +61,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     name: "socrates",
     instructions: "",
     extensions: ["socrates", "avatar", "judgment", "websearch"],
-    maxTurns: undefined,
+    maxTurns: 8,
     trafficClass: "interactive",
     thinkingLevel: "high",
   },

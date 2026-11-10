@@ -9,7 +9,7 @@
 - Node 26 由 `devEngines`（root `package.json`）保證：`pnpm install` 自動下載對應 runtime；shell 互動（`node`／`cf` 直呼）用 [fnm](https://github.com/Schniz/fnm) 等 version manager（`eval "$(fnm env --use-on-cd --shell zsh)"`）
 
 - `pnpm dev` 啟動時**自動套用 D1 migrations**（vite `configureServer` 跑 `pnpm migrate`，冪等約 1s）；手動 `pnpm migrate` 等價
-- `pnpm seed` 需要 **dev server 運行中**；SEED_TOKEN 自動讀 `apps/web/.env.local`（或環境變數）。在 `LLM_PROVIDER=mock`（預設）或設了 `DGX_BASE_URL` 時可用；灌入老師帳號＋兩間含進行中活動的教室
+- `pnpm seed` 需要 **dev server 運行中**；SEED_TOKEN 自動讀 `apps/web/.env.local`（或環境變數）。server 端設了 `SEED_TOKEN` 就可用（與 LLM 模式無關）；灌入老師帳號＋兩間含進行中活動的教室。非 mock 模式下老師密碼隨機產生並印在輸出
 
 ## 不需要 Cloudflare 帳號
 
@@ -37,7 +37,8 @@
 | CF Workers AI | `CF_REMOTE_AI=true`（需 `cf auth login`） | Workers AI 計費（neurons）      |
 | Workers AI    | `CF_REMOTE_AI=true` ＋ `cf login`         | 免費 Neurons 額度               |
 
-都不設真 LLM 時用 mock；`pnpm seed` 在 mock 和 DGX 模式下都可用（`DGX_BASE_URL` 目前僅開 seed 閘門——dgx 腿已隨 provider block 暫時移除，設定 URL 不會註冊模型腿）。
+都不設真 LLM 時用 mock；`pnpm seed` 只要 server 端設了 `SEED_TOKEN` 就可用（與 LLM 模式無關）。
+- **demo 老師密碼遺失** → seed 的隨機密碼只在首次建立時回傳一次；刪除該 row 後重新 seed 會產生新密碼：`cf d1 execute <DB_NAME> --local --command "DELETE FROM users WHERE email='demo@socrates.tw'"`（生產同理，去掉 `--local`）
 
 ## 常見問題
 

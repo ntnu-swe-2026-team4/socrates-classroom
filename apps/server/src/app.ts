@@ -40,10 +40,7 @@ export function createApp() {
     .get("/health", (c) => c.json({ ok: true }))
     .post("/api/dev/seed", async (c) => {
       const token = c.req.header("x-seed-token") ?? "";
-      const allowed =
-        (c.env.LLM_PROVIDER === "mock" || c.env.DGX_BASE_URL) &&
-        !!c.env.SEED_TOKEN &&
-        timingSafeEqual(token, c.env.SEED_TOKEN);
+      const allowed = !!c.env.SEED_TOKEN && timingSafeEqual(token, c.env.SEED_TOKEN);
       if (!allowed) {
         return c.json(
           { message: localize("not_found", normalizeLang(c.req.header("Accept-Language"))), code: "not_found" },
