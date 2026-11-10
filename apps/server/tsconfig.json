@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022"],
-    "types": ["@cloudflare/workers-types"],
+    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-plugin/types"],
     "paths": {
       "@socrates/shared": ["../../packages/shared/src/index.ts"]
     },
@@ -13,5 +13,5 @@
     "skipLibCheck": true,
     "isolatedModules": true
   },
-  "include": ["src", "scripts", "cloudflare.config.ts", "../../packages/shared/src"]
+  "include": ["src", "tests", "../../packages/shared/src"]
 }

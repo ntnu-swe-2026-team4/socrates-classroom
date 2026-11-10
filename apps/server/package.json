@@ -2,19 +2,23 @@
   "name": "@socrates/server",
   "private": true,
   "type": "module",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "gen-config": "node scripts/gen-config.mjs",
+    "build:types": "rm -rf dist/types && tsc -p tsconfig.types.json",
     "seed": "node scripts/seed.mjs"
   },
   "dependencies": {
-    "@earendil-works/chord": "~1.4.0",
-    "@earendil-works/pi-ai": "~1.4.0",
-    "@earendil-works/pi-durable": "~1.4.0",
+    "@earendil-works/chord": "~1.5.0",
+    "@earendil-works/pi-ai": "~1.5.0",
+    "@earendil-works/pi-durable": "~1.5.0",
     "@socrates/shared": "workspace:*",
-    "agents": "^0.32.0",
-    "hono": "^4.10.7"
+    "agents": "^0.33.0",
+    "hono": "^4.10.7",
+    "zod": "^4.6.6",
+    "@earendil-works/pi-schema": "~1.5.0"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.9",
@@ -24,6 +28,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5",
-    "wrangler": "^4.156.1"
+    "wrangler": "^4.156.1",
+    "yaml": "^2.9.1"
   }
 }

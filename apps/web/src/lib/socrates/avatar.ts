@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as THREE from "three";
 
 export const VISEMES = [
@@ -22,14 +21,27 @@ export const VISEMES = [
 const BLINK_KEYS = ["eyeBlinkLeft", "eyeBlinkRight"];
 const BLINK_TIMING = { close: 0.28, hold: 0.12, open: 0.45 };
 
-const easeInOut = (x) => x * x * (3 - 2 * x);
+const easeInOut = (x: number): number => x * x * (3 - 2 * x);
 
 class ClipLayer {
-  constructor(track, duration, fadeIn, fadeOut) {
+  duration: number;
+  fadeIn: number;
+  fadeOut: number;
+  interp: { evaluate: (t: number) => Float64Array };
+  used: boolean[];
+  time: number;
+  weight: number;
+  playing: boolean;
+  loop: boolean;
+  values: Float64Array | null;
+
+  constructor(track: THREE.KeyframeTrack, duration: number, fadeIn: number, fadeOut: number) {
     this.duration = duration;
     this.fadeIn = fadeIn;
     this.fadeOut = fadeOut;
-    this.interp = track.createInterpolant();
+    this.interp = (
+      track as unknown as { createInterpolant: () => { evaluate: (t: number) => Float64Array } }
+    ).createInterpolant();
     const k = track.values.length / track.times.length;
     this.used = new Array(k).fill(false);
     for (let i = 0; i < track.values.length; i++) if (Math.abs(track.values[i]) > 0.01) this.used[i % k] = true;
@@ -40,7 +52,7 @@ class ClipLayer {
     this.values = null;
   }
 
-  play({ loop = false } = {}) {
+  play({ loop = false }: { loop?: boolean } = {}) {
     this.time = 0;
     this.loop = loop;
     this.playing = true;
@@ -54,7 +66,7 @@ class ClipLayer {
     return this.playing || this.weight > 0;
   }
 
-  update(dt) {
+  update(dt: number) {
     if (!this.active) return;
     this.time += dt;
     if (this.loop) this.time %= this.duration;
@@ -65,14 +77,31 @@ class ClipLayer {
     this.values = this.interp.evaluate(Math.min(this.time, this.duration));
   }
 
-  apply(i, base) {
-    if (!this.weight || !this.used[i]) return base;
-    return base + (this.values[i] - base) * this.weight;
+  apply(i: number, base: number): number {
+    if (!this.weight || !this.used[i] || !this.values) return base;
+    return base + (this.values[i]! - base) * this.weight;
   }
 }
 
+type MorphMesh = THREE.Mesh & {
+  morphTargetDictionary: Record<string, number>;
+  morphTargetInfluences: number[];
+};
+
 export class Avatar {
-  constructor(model, clips = []) {
+  root: THREE.Group;
+  meshes: MorphMesh[];
+  visemeTarget: Map<string, number>;
+  visemeCurrent: Map<string, number>;
+  blink: number;
+  nextBlinkAt: number;
+  blinkStart: number;
+  speaking: number;
+  time: number;
+  expressionLayers: Map<string, ClipLayer>;
+  expression: ClipLayer | null;
+
+  constructor(model: THREE.Object3D, clips: THREE.AnimationClip[] = []) {
     this.root = new THREE.Group();
     this.root.add(model);
     this.meshes = [];
@@ -84,9 +113,10 @@ export class Avatar {
     this.speaking = 0;
     this.time = 0;
 
-    model.traverse((obj) => {
-      if (obj.isMesh && obj.morphTargetDictionary && obj.morphTargetInfluences) {
-        this.meshes.push(obj);
+    model.traverse((obj: THREE.Object3D) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh && mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
+        this.meshes.push(mesh as MorphMesh);
       }
     });
     if (this.meshes.length === 0) console.warn("Model has no morph targets; lip-sync disabled");
@@ -107,28 +137,28 @@ export class Avatar {
     return [...this.expressionLayers.keys()];
   }
 
-  setExpression(name, { loop = false } = {}) {
+  setExpression(name: string | null, { loop = false }: { loop?: boolean } = {}) {
     const next = name ? this.expressionLayers.get(name) : null;
     if (this.expression && this.expression !== next) this.expression.stop();
     this.expression = next ?? null;
     next?.play({ loop });
   }
 
-  setViseme(viseme, weight = 1) {
+  setViseme(viseme: string | null, weight = 1) {
     for (const v of VISEMES) this.visemeTarget.set(v, v === viseme ? weight : 0);
   }
 
-  setSpeaking(on) {
+  setSpeaking(on: boolean) {
     this.speaking = on ? 1 : 0;
     if (!on) this.setViseme(null);
   }
 
-  update(dt) {
+  update(dt: number) {
     this.time += dt;
 
     for (const v of VISEMES) {
-      const cur = this.visemeCurrent.get(v);
-      const tgt = this.visemeTarget.get(v);
+      const cur = this.visemeCurrent.get(v) ?? 0;
+      const tgt = this.visemeTarget.get(v) ?? 0;
       const rate = tgt > cur ? 28 : 14;
       this.visemeCurrent.set(v, cur + (tgt - cur) * (1 - Math.exp(-rate * dt)));
     }
@@ -155,7 +185,7 @@ export class Avatar {
     this.root.position.y = Math.sin(t * 1.3) * 0.0015;
   }
 
-  updateBlink() {
+  updateBlink(): void {
     const t = this.time;
     if (this.blinkStart < 0 && t >= this.nextBlinkAt) this.blinkStart = t;
     if (this.blinkStart < 0) return;

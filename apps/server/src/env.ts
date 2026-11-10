@@ -1,18 +1,16 @@
-import type { DurableObjectNamespace } from "@cloudflare/workers-types";
+import type { Ai } from "@cloudflare/workers-types";
 
 export interface Env {
   DB: D1Database;
-  UPLOADS: R2Bucket;
-  PiAgent: DurableObjectNamespace<import("./do/pi-agent").PiAgent>;
-  ActivityEvents: DurableObjectNamespace<import("./do/events").ActivityEvents>;
-  AI: Ai;
+  Chat: DurableObjectNamespace<import("./do/chat").Chat>;
+  ReportRunner: DurableObjectNamespace<import("./do/report-runner").ReportRunner>;
+  AI?: Ai;
   PUBLIC_BASE_URL?: string;
-  COOKIE_SECURE?: string;
-  CORS_ORIGINS?: string;
+  AUTH_SECRET?: string;
   LLM_PROVIDER?: string;
-  SEED_TOKEN?: string;
-  OPENCODE_API_KEY?: string;
-  OPENROUTER_API_KEY?: string;
-  ZAI_API_KEY?: string;
+  DGX_BASE_URL?: string;
+  TTS_MODEL?: string;
   BYOK_ENC_KEY?: string;
+  SEED_TOKEN?: string;
+  FAUX_TOKENS_PER_SECOND?: string;
 }

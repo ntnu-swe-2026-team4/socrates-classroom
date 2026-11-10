@@ -1,358 +1,218 @@
-# 前後端 API 契約（給後端）
+# API 契約
 
-型別定義在 `apps/web/src/api/types.ts`，介面在 `apps/web/src/api/api.ts`，HTTP 實作在 `apps/web/src/api/http.ts`。
-後端只要照下表提供路徑與 JSON，把 `.env` 設成 `VITE_API_MODE=http`，前端不用改頁面程式。
-JSON 欄位用 camelCase；id 為字串；時間為 ISO 8601；登入用 cookie（`credentials: include`）。
-語言：前端每個請求都帶 `Accept-Language: zh-TW | en | es`（使用者在設定選的介面語言）。後端用這個語言產生給使用者看的文字——錯誤訊息的 `message`、AI 蘇格拉底的追問與辯論主持 / 裁判的發言、系統訊息；資料本身（教室名稱、公告、使用者輸入）原樣保存，不翻譯。
-錯誤格式：HTTP 狀態碼 + `{ "message": "給使用者看的說明" }`；未登入回 401。
-健康檢查：`GET /health`（不在 `/api` 下、不需要登入）→ `{ ok: true, db: "d1" }`。
+> 日期：2026-11-06 ｜ 分支：`experiment/web-next` ｜ 狀態：定案
+> 型別單一真相：`packages/shared`（zod schema + TypeScript）；本文件描述形狀，shared 是可編譯的同一份。
+> 2026-11-06 重構變更：對話通道 SSE → WebSocket（R7，`docs/pi.md`）；報告形狀改 agent 分析（#74，PR #109）；新增 teacher keys（#82）；lookup 為獨立功能（#76）。
 
-## 認證
+## 1. 慣例
 
-| 方法  | 路徑               | 說明                                                                                                                                                                                     |
-| ----- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST  | `/api/auth/login`  | `{ role, name }` → `User`（目前示範用，之後換真的登入）                                                                                                                                  |
-| GET   | `/api/me`          | 目前使用者；未登入 401                                                                                                                                                                   |
-| PATCH | `/api/me`          | `{ name?, avatarUrl? }` → `User`。`avatarUrl` 是前端縮成 256×256 的圖片 data URL（約 20–60 KB，後端可限制在 200 KB 內，或改存成檔案後回傳網址）；`null` = 移除頭像（回到預設的黑色頭像） |
-| POST  | `/api/auth/logout` | 204                                                                                                                                                                                      |
+| 項目     | 規範                                                                                                                                                                                                                                               |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 部署     | 單一 Worker：static assets + `/api/*`（Hono）+ `/agents/*`（WebSocket），同源無 CORS                                                                                                                                                               |
+| Auth     | httpOnly cookie `socrates_session`（`SameSite=Lax`＋prod 恆 `Secure`）；前端 `credentials: "include"`；**任何 key 永不進前端**。30 天 HMAC token **不可撤銷**（logout 僅清 cookie；membership 撤銷會在 WS 喚醒時 re-verify，REST 仍有效至過期）    |
+| 語言     | `Accept-Language` → `Lang`（`zh-*→"zh"`、`en→"en"`、`es→"es"`）——錯誤訊息依此三語                                                                                                                                                                  |
+| JSON     | camelCase；id 為字串；時間 ISO 8601                                                                                                                                                                                                                |
+| 錯誤     | `{ "message": string, "code": string }`；`code` 為 shared 的 `ErrorCode` literal union（§10），`message` 已本地化                                                                                                                                  |
+| 輸入邊界 | zod 強制：`name` ≤80、對話 `text` ≤2000、`term` 1–30、`direction` ≤200、STT 音檔 ≤15MB（位元組上限，非時長）；超界 `422 validation`                                                                                                                |
+| 授權     | 預設 deny——見 §1.1；未列者一律需登入且屬教室成員                                                                                                                                                                                                   |
+| 限流     | 現行 per-IP stopgaps（isolate-local sliding window，跨 isolate 不保證、eviction 即重置）：login/register 30、join-code 60、join 30、lookup 20、topics-generate 10、stt 20、tts 30、activity-finish 6；集中式 per-user 限流為 #103 待辦，非現行行為 |
+| 冪等     | 自然鍵冪等：重複 `POST /api/join`（同身分）＝200 冪等、`finish` 重試安全、`PUT settings/*` 天然冪等                                                                                                                                                |
+| 版本     | `/api` 無版本前綴（單一消費者）；外部消費者出現時才評版本化＋OpenAPI                                                                                                                                                                               |
+| 型別共享 | `RpcApp = ReturnType<typeof createApp>`＋`RpcApi = ReturnType<typeof createApi>`（`apps/server/src/app.ts`）；web 端消費 declaration 產物 `hc<RpcApi>("/api")`（R6）                                                                               |
 
-## 議題與題庫
+### 1.1 授權矩陣
 
-| GET | `/api/classrooms/discover` | 學生探索開放加入的教室（`discovering[]`） |
-| GET   | `/api/archives`                    | `Archive[]`                                                                                                                        |
-| ----- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| POST  | `/api/archives`                    | `{ title }` → `Archive`（首頁提問框開始一段新對話）                                                                                |
-| GET   | `/api/archives/:id/dialogue`       | `DialogueMessage[]`（議題的自由對話）                                                                                              |
-| POST  | `/api/archives/:id/dialogue`       | `{ text }` → **SSE**（`delta` / `done` / `error`），詳見下方〈對話 API〉                                                           |
-| PATCH | `/api/archives/:id`                | `{ bank?: "private"\|"public"\|null, inSummary?: boolean, sharedWithIds?: string[] }` → `Archive`（私人 / 公開只能擇一由後端保證） |
-| GET   | `/api/me/share-targets`            | `ShareTarget[]` = `{ id, name, role }`（私人題庫可以分享給誰：同教室的同學、助教與老師）                                           |
-| GET   | `/api/classrooms/:id/applications` | `Application[]`（`?status=pending` 過濾；老師/助教限定）                                                                           |
+> 「訪客」＝未持 session；訪客入場後取得 guest user（有 session），權利視同學生。
 
-**私人題庫的協作：** `sharedWithIds` 是整份取代的名單，只有題目的擁有者可以改（別人分享給你的題目要擋下來，回 403）。
-被分享的人在自己的 `GET /api/archives` 裡看得到這道題目，`sharedBy` = 分享者的名字、`sharedWithIds` 為空陣列，且不能再轉分享。
+| Operation                                                                                               | 訪客 | 學生（含 guest user） | 老師                 |
+| ------------------------------------------------------------------------------------------------------- | ---- | --------------------- | -------------------- |
+| `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅   | ✅                    | ✅                   |
+| `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —    | ✅                    | ✅                   |
+| `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —    | ❌ 403                | ✅                   |
+| `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —    | —                     | ✅                   |
+| `GET /activities/:id`、`GET /report`                                                                    | —    | 需教室成員            | 需教室成員           |
+| **WS** `/agents/chat/:name`（watch/entries/abort）                                                      | —    | 僅本人 thread         | ✅（可觀察全班）     |
+| **WS** `submit` op                                                                                      | —    | 僅本人 thread         | ❌ `SubmitForbidden` |
+| `POST /activities/:id/finish`                                                                           | —    | ❌ 403                | 需教室成員           |
 
-## 對話 API（AI 蘇格拉底，provider pool）
+## 2. 身分（雙軌：訪客即玩＋帳號選用，#67）
 
-適用兩個端點，格式完全相同：
-
-| 端點                                | 用在哪裡                                     | 前端函式                |
-| ----------------------------------- | -------------------------------------------- | ----------------------- |
-| `POST /api/archives/:id/dialogue`   | 單人 → 對話（`DialoguePage.tsx`）            | `api.sendTopicDialogue` |
-| `POST /api/activities/:id/dialogue` | 辯論階段 1 個人調查（`IndividualStage.tsx`） | `api.sendDialogue`      |
-
-歷史紀錄用對應的 `GET`（回 `DialogueMessage[]`，依時間舊到新）。
-
-### 架構與 API key
-
-```
-瀏覽器 ──POST /api/…/dialogue──▶ Worker（Hono） ──▶ PiAgent Durable Object（PiHarness）
-       ◀──SSE: delta… done─────    provider pool：DGX Spark → OpenCode Go → OpenRouter → Workers AI
+```ts
+interface User {
+  id: string;
+  name: string;
+  role: "student" | "teacher";
+}
 ```
 
-- 路由由 provider pool 白名單決定（ZDR 規則見 `docs/providers.md`）；健康降級自動換下一棒
-- **所有 key 只存在 Worker secrets**（`OPENCODE_API_KEY` / `OPENROUTER_API_KEY` / `ZAI_API_KEY`）。**絕對不要**放進前端或任何 `VITE_` 開頭的變數：`VITE_` 變數會被打包進瀏覽器的 JS，任何人打開網頁都能看到。前端永遠只呼叫我們自己的 `/api/...`
-- 沒有任何可用 provider 時，串流送 `event: error`（`llm_unavailable`），其他功能照常可用
-- 每段對話一個 `PiAgent` DO 執行緒：排隊（409 `already_streaming`）、重試、crash 恢復由 pi 管理（見 `docs/pi.md`）
+- 訪客 join 即建 guest user（`role: "student"`）；帳號登入後訪客紀錄認領合併（#60，P1）
+- `GET /me` → `User | null`
 
-### 請求
+## 3. 入場（唯一閘門，#66/#70）
 
-```http
-POST /api/archives/n1/dialogue
-Content-Type: application/json
-Accept: text/event-stream
-Accept-Language: zh-TW
+| Operation                                                            | 說明                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/join/:code` → `{code, classroomName, topic}`               | 直達 URL 載入用（刷新不丟）；無效碼 404 `join_code_invalid`                                                                                                                                                                                                                                                                           |
+| `POST /api/join` `{code, name?, tosAccepted}` → `{user, activityId}` | 一次完成：身分（無 session 建 guest user）＋ToS 同意存證＋加入教室。**冪等**：同身分重 join → 200（活動結束後仍可 rejoin，供 session 修復與報告回看）。錯誤：`tosAccepted` 非 true → 422 `tos_required`；`name` 教室內唯一（409 `name_taken`）；老師 session → 403 `only_student`；活動已結束 → 409 `activity_finished`（僅攔新成員） |
 
-{ "text": "我覺得說謊有時候是對的" }
+## 4. 老師：主題集與開課（#77）
+
+| Operation                                                                                | 說明                                                                                                                                           |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/topics` → `Topic[]`                                                            | 系統題＋自建題                                                                                                                                 |
+| `POST /api/topics` `{title, statement, prompts}` → `Topic`（201）                        | 手動出題                                                                                                                                       |
+| `POST /api/topics/generate` `{direction}` → `Topic[]`                                    | agent 生成（topic-gen profile，#77/#113）；結果進老師端編輯器，不自動投放。失敗 → mock（不擋，回應帶 X-Socrates-Fallback: mock）               |
+| `POST /api/classrooms` `{name, topicId}` → `{classroomId, code, url, activityId}`（201） | 建教室＋首活動；`url` 為 `PUBLIC_BASE_URL/join/:code`                                                                                          |
+| `POST /api/classrooms/:id/activities` `{topicId}` → 同上（201）                          | 重開活動（同 code、新 activityId）                                                                                                             |
+| `GET /api/classrooms` → `ClassroomSummary[]`（登入者）                                   | 老師：自己開的教室；學生：已加入的教室。`code/url` 只回給老師；`current` 嵌入當前活動（topic＋finished）。教室單筆不另設端點——前端以本列表過濾 |
+
+## 5. 對話（WebSocket，核心；R7）
+
+### 5.1 通道
+
+- `GET /agents/chat/:name`（WebSocket 升級）——**對話唯一通道**（先前的 SSE 端點已退役）
+- thread name 協定：`{activityId}:{userId}`（一人一 thread；DO name 即路由鍵）
+- 授權：`socrates_session` cookie（升級請求帶 cookie）——onConnect 驗 session＋membership：學生限本人 thread，老師可觀察全班（watch/entries/abort；**submit 僅限該 thread 的學生本人**——老師代打 → error frame code `SubmitForbidden`）；未通過 → close 1008（無 hello）；hibernation 喚醒後 reverify 確定撤權（ApiError）→ close 1008；reverify 暫時性錯誤（D1 失敗等）或 watch 遺失（session 驅逐）→ close 1011（客戶端重連即重試）
+- 一條連線跟一個 session（root）；重連後重新 `watch`（partysocket 自動重連，客戶端端 onOpen 重送）
+
+### 5.2 Client → Server
+
+```ts
+type ClientMessage =
+  | { type: "watch"; id?: string; from?: EntryId }                       // 附掛（重連帶 from 續看）
+  | { type: "submit"; id?: string; input: string; operationId?: string } // 發言（input＝string；pi 的 content parts 形狀未開放；冪等鍵可選）
+  | { type: "abort"; id?: string }
+  | { type: "entries"; id: string; query: {...}; limit: number };        // 分頁載入歷史（query 必填；上限 100）
 ```
 
-- `text`：去頭尾空白後不可為空，最長 2000 字；不符合回 `422`。
-- `Accept-Language`（`zh-TW` / `en` / `es`）決定蘇格拉底用哪個語言回覆。
+- **no queue**：submit 一律 `whenBusy: "reject"`——run 進行中第二發被拒（§5.3 error frame），**永不排隊**
 
-### 回應：SSE
+### 5.3 Server → Client
 
-Headers：`Content-Type: text/event-stream`、`Cache-Control: no-cache`、`Connection: keep-alive`（有反向代理時加 `X-Accel-Buffering: no`，避免被緩衝）。
-
-```
-event: emotion
-data: {"emotion":"confused"}
-
-event: delta
-data: {"text":"有意思。但你剛才"}
-
-event: delta
-data: {"text":"說「有時候」——"}
-
-event: done
-data: {"message":{"id":"m42","role":"assistant","text":"有意思。但你剛才說「有時候」——……","at":"2026-10-12T14:03:00.000Z"}}
-
+```ts
+type ServerMessage =
+  | { type: "hello"; tools: { name: string; description: string }[] }    // 連線首發（在 SDK 的 cf_agent_identity 之後）
+  | { type: "view"; view: ConversationView }                              // watch 附掛時整份視圖
+  | { type: "ops"; ops: Op[] }                                            // 之後每次變更的 chord 增量
+  | { type: "result"; id: string; result: ... }                           // 對帶 id 指令的回覆；submit 的 result＝admission receipt（非 run 完成）
+  | { type: "error"; id?: string; message: string; code?: string };      // 帶 id：該指令失敗（code＝pi 錯誤名，如 ConversationBusy）；無 id：run 失敗廣播（code=llm_unavailable）
 ```
 
-| 事件      | data                                    | 說明                                                                                                                                          |
-| --------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `emotion` | `{ "emotion": Emotion }`                | AI 對學生這句話的當下反應（見〈情緒〉），**在第一個 `delta` 之前送一次**。前端收到就先做表情（例如先笑），文字與朗讀接在後面                  |
-| `delta`   | `{ "text": string }`                    | 新產生的一段文字（零到多次）。前端照順序接起來即時顯示                                                                                        |
-| `done`    | `{ "message": DialogueMessage }`        | **一定是最後一個事件**，`message` 是已存進資料庫的完整回覆（`role: "assistant"`，含 `emotion`，見下方〈情緒〉）。前端以它為準，並重新讀取歷史 |
-| `error`   | `{ "message": string, "code": string }` | 串流開始後才出錯時用，取代 `done` 當最後一個事件；`message` 直接顯示給使用者（依 `Accept-Language`）                                          |
-| 註解行    | `: ping`                                | 心跳（建議每 15 秒一次，避免閒置連線被切），前端忽略                                                                                          |
+- **客戶端以 `applyImmutable`（`@earendil-works/chord/delta`）套用 ops**——禁止手寫 delta applier
+- **回合完成判定**：submit 後記 baseline（當時最後一個 entry id，sliding window splice 安全），view/ops 中 baseline 之後出現 `pi.assistant` entry 即完成（admission receipt 不代表完成；串流中的 partial 寫在 `pi.live` doc，不會誤觸）；reconnect 後全量 view 仲裁——無本輪 `pi.user` entry＝未被 admission，清 pending 報錯（防 double-submit）
+- **情緒**：`view.entries` 的 `app.emotion` entry（`{emotion, probabilities, confidence}`，#111）——UI 依機率驅動表情，文字零污染
+- **違規**：`app.violation` entry（`{type, probability, excerpt, source}`，#71）——老師面板讀 D1（#73 輪詢），學生端不消費
+- **歷史**：WS `watch` 首個 view（window 預設最新 50 則 entries）或 `entries` 指令；pi transcript（DO storage）為唯一真相
 
-規則：每個事件之間空一行；送出 `done` 或 `error` 之後就關閉連線。所有 `delta` 接起來應等於 `done.message.text`。
+## 6. 老師即時面板（#73；本輪不實作，資料源已調查）
 
-### 錯誤
+- `GET /api/activities/:id/live` → `StudentLive[]`——gate 到 #73：資料源為 Chat DO 的 pi transcript 聚合（`messages`/`violations` 表已隨 v3 退役，migration 003 drop；pi transcript 是唯一真相），實作前不佔端點
+- `StudentLive`：`{id, name, status, rounds, flagged, flagReason?, lastUtterance}`
 
-**還沒開始串流**（驗證、權限、AI 沒設定）→ 一般 HTTP 錯誤 + `{ "message": "…" }`，不要開 SSE：
+## 7. 活動結束與報告（#74/#78/#79/#72）
 
-| 狀態 | 情況                                                                |
-| ---- | ------------------------------------------------------------------- |
-| 401  | 未登入                                                              |
-| 403  | 不是這個議題的擁有者 / 不是活動成員；活動不在階段 1（`individual`） |
-| 404  | 議題或活動不存在                                                    |
-| 409  | 同一段對話已經有一則回覆在產生中（同一時間只允許一個請求）          |
-| 422  | `text` 空白或太長；階段 1 已經達到 `maxRounds`（20 輪）             |
-| 429  | 這個使用者送得太頻繁（rate limit）                                  |
-| 503  | 沒有任何可用 LLM provider，或全部被限流／降級中                     |
+| Operation                                                           | 說明                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/activities/:id/finish` → `204`                           | 老師結束活動 → ReportRunner DO `startReport`（alarm 驅動，非同步）。冪等；老師專屬                                                                                                                                                                                                                                                                                                                                                |
+| `GET /api/activities/:id/report` → `TeacherReport \| StudentReport` | 生成中 404 `report_pending`（前端輪詢至 200）；失敗 500 `report_failed`（重打 `finish` 可重觸發）；**partial**＝群體生成失敗（第一次失敗即落 partial；重試不存在於 alarm 迴圈）但個別報告已存——200 回應，`classReport: null`、`positions: []`（重打 `finish` 可重觸發全量；alarm 層的重試耗盡才是 `failed`）。**角色分流**：老師見全班＋個人；學生見自己（無 classReport）；學生的報告不存在（無 transcript 等）→ 404 `not_found` |
 
-**已經開始串流**（上游中途出錯、逾時）→ 送 `event: error`，`code` 用：
+**報告形狀（#74，PR #109 的分析為核心；`pseudonym` 生成一次存 D1，活動內穩定；#72 全去識別化）**：
 
-| `code`             | 情況                       |
-| ------------------ | -------------------------- |
-| `llm_unavailable`  | provider 出錯或全部不可用  |
-| `llm_rate_limited` | 被限流                     |
-| `llm_timeout`      | 超過 60 秒沒有收到新的文字 |
-| `llm_error`        | 其他                       |
+```ts
+// LLM 分析輸出（shared/reports.ts）
+interface StudentAnalysis {
+  stated: true; claim: {text; turns}; reasons: {text; turns}; tension: {text; turns} | null;
+} | {
+  stated: false; doing: {text; turns};   // 未表態：做了什麼（離題/早退…）
+}
+interface ClassReport {
+  students: {id; summary: {step; turns}[]}[];   // 逐生摘要（cause → result 步驟＋出處行號）；空陣列＝全班未表態
+  unstated: string[];                            // 未表態者
+  axes: {name; low; high; positions: {id; turns; view; end: "low"|"middle"|"high"; at: 0-100}[]; why}[];  // 立場軸＋落點；空陣列＝無分歧（overview 照實寫）
+  overview: string[];                            // 全班整理
+}
 
-給使用者看的 `message` 不要包含 key、上游的原始錯誤或模型名稱（例如統一寫「蘇格拉底暫時無法回應，請稍後再試」）；細節寫在伺服器 log。
+interface ReportPosition {                       // 單人落點：從 classReport.axes[].positions 以 pseudonym 對出（不經 LLM，與全班報告一致）
+  axis: string; view: string; end: "low"|"middle"|"high"; at: number;
+}
 
-### 情緒（AI 控制 3D 模型的表情）
-
-蘇格拉底的每則回覆都帶一個情緒，代表他聽到學生這句話的當下反應。前端一收到 `event: emotion` 就先播對應的表情動畫（模型內建大笑、疑惑、生氣三段），表情開始至少 1.2 秒後才開口朗讀——像「先笑，再回話」：
-
-| `emotion`  | 何時用（由 AI 判斷）                                                   | 前端表情           |
-| ---------- | ---------------------------------------------------------------------- | ------------------ |
-| `neutral`  | 一般追問                                                               | 不播               |
-| `happy`    | 學生說了開心、好笑或溫暖的話（「我喜歡你」），或提出好理由、想法有進步 | 大笑（`Happy`）    |
-| `confused` | 學生的話真的聽不懂：模糊、矛盾、用詞沒定義                             | 疑惑（`Confused`） |
-| `angry`    | 學生無禮、敷衍、拒絕思考（克制地板起臉）                               | 生氣（`Angry`）    |
-
-學生要求「演示某種情緒」時，AI 直接用那個情緒（例如「你能演示生氣嗎」→ `angry`，回覆「這就是我生氣的樣子！好啦，不開玩笑了…」）。
-
-做法：提示詞（`packages/llm/prompts/socrates.md`）要求 AI 在回覆**最前面**寫一個標記，例如 `[confused] 你說的「善意」是指…`。後端要：
-
-1. 讀上游串流時，先把開頭的文字暫存起來，直到能判斷有沒有標記（符合 `^\s*\[(neutral|happy|confused|angry)\]\s*` 就取出情緒；開頭不是 `[` 或超過 24 字還沒對上，就當作 `neutral`，原文照送）。
-2. **標記不能出現在任何 `delta` 裡**，也不存進 `text`（不然會顯示在對話框、被朗讀出來）。
-3. 情緒一確定就送 `event: emotion`（在第一個 `delta` 之前），並存進資料庫，放在 `done.message.emotion`；`GET …/dialogue` 的歷史也帶這個欄位（使用者的訊息沒有）。
-
-開發用的轉接器 `frontend/dev/llm-bridge.ts` 的 `push()` 就是這個邏輯，可以直接參考。
-
-### 資料保存
-
-- **成功（送出 `done` 前）**才把「使用者訊息 + 蘇格拉底回覆」一起存進資料庫（同一個 transaction）。
-- **失敗（`error` 或 HTTP 錯誤）**兩則都不存，使用者可以直接重送，不會出現重複的提問。
-- 使用者中途關掉頁面（連線斷開）：後端照樣把回覆產生完並保存，下次打開看得到完整對話。
-- 成功後更新議題：`rounds` = 使用者訊息數、`snippet` = 最新回覆的前 60 字左右、`date`。階段 1 另外更新 `Progress`（`rounds`、`coverage`、`readyToSummarize`）。
-
-### 後端呼叫 LLM 的方式（provider pool + Pi Durable）
-
-實作在 `apps/server/src/providers/pool.ts`（白名單路由）與 `src/do/pi-agent.ts`（PiHarness 對話執行緒）；規則與查證見 `docs/providers.md` 與 `docs/pi.md`。要點：
-
-- **白名單鏈**：`CLASS_POOL`（`whitelist.ts`）——自架 DGX Spark（CF Tunnel，4 併發）→ OpenCode Go → OpenRouter（`zdr:true` 模型）→ Workers AI；全 ZDR 0-day retention
-- **本地開發**：`.env.local` 設 `DGX_BASE_URL`（自架 DGX）或 `LLM_PROVIDER=dev`（GLM Coding Plan 優先，dev-only 條款）或 `CF_REMOTE_AI=true`（Workers AI）；詳見 `docs/development.md`
-- **提示詞**：`packages/llm/prompts/socrates.md` 於 build time 注入 system；回覆語言依 `Accept-Language`
-- **歷史**：由 Pi transcript 管理（首次對話把 D1 歷史摘要為 digest 前綴）；單輪回覆 ≤3 句、以問句結尾（提示詞契約見 `packages/llm/prompts/`）
-- **情緒標記**：模型開頭輸出 `[neutral/happy/confused/angry]`，由 `EmotionSplitter` 拆出（協議格式不可變）；思考內容一律丟棄，不送前端不存庫
-- **限流與併發**：DGX 併發 4、Workers AI 50 RPM（gate 常駐）；每使用者請求頻率由 `checkRate` 把關
-
-### 用 curl 測試
-
-```bash
-# 先登入拿 cookie
-curl -c jar.txt -H 'Content-Type: application/json' -d '{"role":"student","name":"測試"}' localhost:5173/api/auth/login
-# -N 關閉緩衝，才看得到一段一段的 delta
-curl -N -b jar.txt -H 'Content-Type: application/json' -H 'Accept: text/event-stream' -H 'Accept-Language: zh-TW' \
-  -d '{"text":"我覺得說謊有時候是對的"}' localhost:5173/api/archives/n1/dialogue
+// API 回應（組合層）
+interface TeacherReport {
+  topicTitle: string;
+  classReport: ClassReport | null;               // null＝partial（群體生成失敗，個別報告仍可用）
+  students: Array<{                              // array 保序（joined_at）；10k 班級下回應體積上限由生成端併發與輪詢分頁另議
+    studentId: string;                           // 真實 id——僅老師可見
+    pseudonym: string;
+    analysis: StudentAnalysis | null;            // 論點總結（claim/reasons/tension＋turns 出處）
+    violations: ViolationSlice[];                 // 違規切片（不經 LLM）
+    positions: ReportPosition[];                 // 每位學生自己的落點（partial 時為空）
+  }>;
+}
+interface StudentReport {
+  topicTitle: string;
+  pseudonym: string;                             // 學生在 classReport 中的定位線索（老師版可對照）
+  analysis: StudentAnalysis | null;              // 自己的
+  violations: ViolationSlice[];
+  positions: ReportPosition[];                   // 自己在每條軸上的落點
+}
+interface ViolationSlice {
+  turn: number;                                  // transcript 行號＝「學生（n）」的 n（app.violation entry 抽取時計算）
+  type: ViolationType;                          // shared VIOLATION_TYPES enum
+  excerpt: string;
+}
 ```
 
-前端驗證：`pnpm dev` 後到「單人 → 對話」送一句話，應該看到回覆一段一段出現，結束後蘇格拉底開始朗讀（provider 見 SSE 的 `meta` event）。
+- **學生不拿 classReport**（設計決策）：學生報告只有自己的 analysis＋violations＋pseudonym；全班視角是老師專屬
+- **`ClassReport.students[].id`／`positions[].id`＝pseudonym**（LLM prompt 餵的就是 pseudonym；嚴禁放 studentId——全班互見會洩漏真實 id，#72）
+- transcript 來源：Chat DO RPC（`stub.transcript()`，DO→DO；外部無 request 面）；violations 同源自 `app.violation` entries——**pi transcript 是唯一真相，violations 不落第二份儲存**
+- 逐生分析與 transcript 抓取以 Router budget 批次進行（`budget("batch")`＝鏈上各 leg maxConcurrency 總和；10k 班級的生成時間與供應端限流考量）
+- hexagon（#78 六角圖）與星座圖（#79）不在本契約——前端圖表從 classReport 的 `at`/`end` 映射，屆時更新本節
 
-## 教室與活動
+## 8. 語音（#69）
 
-| 方法   | 路徑                                    | 說明                                                                                                                                               |
-| ------ | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/classrooms`                       | `Classroom[]`                                                                                                                                      |
-| GET    | `/api/classrooms/:id`                   | `Classroom`（含 `description` 簡介）                                                                                                               |
-| POST   | `/api/classrooms`                       | `ClassroomInput` = `{ name, description }`（僅老師）→ `Classroom`                                                                                  |
-| PATCH  | `/api/classrooms/:id`                   | `Partial<ClassroomInput>`（僅老師）→ `Classroom`                                                                                                   |
-| POST   | `/api/classrooms/:id/invite/accept`     | 學生接受邀請 → `Classroom`（`joined` 變成 true）                                                                                                   |
-| POST   | `/api/classrooms/:id/invite/decline`    | 學生拒絕邀請，204                                                                                                                                  |
-| GET    | `/api/classrooms/:id/members`           | `ClassroomMember[]`（姓名、在線、最近一次對話、完成度）                                                                                            |
-| POST   | `/api/classrooms/:id/members`           | `{ name }`（僅老師）→ `ClassroomMember`                                                                                                            |
-| POST   | `/api/classrooms/:id/members/import`    | `{ names: string[] }`（僅老師，每個是帳號或姓名）→ `ImportMembersResult`（`added` 與 `skipped`，不因單筆失敗整批失敗）                             |
-| DELETE | `/api/classrooms/:id/members/:memberId` | 僅老師，204                                                                                                                                        |
-| PATCH  | `/api/classrooms/:id/members/:memberId` | `{ role: "student" \| "assistant" }`（僅老師）→ `ClassroomMember`。助教可發公告、編輯行事曆、上傳 / 移除辯論資料；不能管理成員、教室設定與辯論階段 |
-| GET    | `/api/classrooms/:id/activities`        | `Activity[]`（這間教室所有辯論活動）                                                                                                               |
-| GET    | `/api/activities/:id`                   | `Activity`（含 `kind`、`stageDeadline`、`topicId`）                                                                                                |
-| POST   | `/api/activities/:id/advance`           | 僅老師；**由活動狀態機（FSM）決定能否推進**；個人調查→團隊提純時由後端分組                                                                         |
-| POST   | `/api/activities/:id/finish`            | 僅老師；從任何階段直接進入 `done`，用目前已有的資料計分 → `Activity`                                                                               |
-| PUT    | `/api/activities/:id/deadline`          | `{ deadline: string\|null }`（僅老師）→ `Activity`。**到時間只提醒、不自動推進**；換階段時後端清為 null；變更時發 `deadline_changed` 事件          |
-| GET    | `/api/activities/:id/events`            | **SSE**，事件見 `ActivityEvent`（階段切換、組內訊息、輪到誰、新發言與評分、截止時間變更、成員準備好了）                                            |
-| GET    | `/api/activities/:id/members`           | `Member[]`（含 `ready`）                                                                                                                           |
-| PUT    | `/api/activities/:id/ready`             | `{ ready: boolean }`（學生）→ 204；換階段時後端全部重設為 false；發 `member_ready` 事件                                                            |
+| Operation                                          | 說明                                                                                                     |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `POST /api/stt`（multipart audio ≤15MB）→ `{text}` | 供無 Web Speech API 的瀏覽器（Firefox）；支援者前端自走原生                                              |
+| `POST /api/tts` `{text, lang}` → audio stream      | server-side 為保證路徑；**無 char boundary**——嘴型驅動用 amplitude：`Api.tts(text, onAmplitude, signal)` |
 
-## 加入教室（邀請碼、公開探索、審核問卷）
+## 9. 查詢與 teacher keys
 
-加入流程：學生用**邀請碼**或從**探索教室**找到教室 → 若 `requireApproval = false` 直接加入；
-若為 true，須填老師自訂的問卷並送出申請，老師審核通過後才成為成員。
-| 方法   | 路徑                                       | 說明                                                                                                                                                |
-| ------ | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/classrooms/:id/join-policy`          | 僅老師 → `JoinPolicy`                                                                                                                               |
-| PATCH  | `/api/classrooms/:id/join-policy`          | `Partial<{ codeEnabled, discoverable, requireApproval, questionnaire }>`（僅老師）→ `JoinPolicy`。改問卷不影響已送出的申請                          |
-| POST   | `/api/classrooms/:id/join-policy/code`     | 重新產生邀請碼，舊碼立即失效（僅老師）→ `JoinPolicy`                                                                                                |
-| GET    | `/api/classrooms/discover?q=`              | 學生 → `ClassroomPreview[]`（只列 `discoverable = true` 的教室）                                                                                    |
-| GET    | `/api/join-codes/:code`                    | 學生 → `ClassroomPreview`；代碼不存在或已關閉回 404                                                                                                 |
-| POST   | `/api/classrooms/:id/join`                 | `JoinInput` = `{ code?, answers? }`（學生）→ `JoinResult`。教室不可探索時必須帶有效 `code`；需要審核時必填題目沒回答回 422；已有 pending 申請回 409 |
-| GET    | `/api/me/applications`                     | 學生 → 自己的 `JoinApplication[]`                                                                                                                   |
-| DELETE | `/api/applications/:id`                    | 學生取消自己的 pending 申請，204                                                                                                                    |
-| GET    | `/api/classrooms/:id/applications?status=` | 僅老師 → `JoinApplication[]`                                                                                                                        |
-| POST   | `/api/applications/:id/review`             | `{ decision: "approve"\|"reject", note: string\|null }`（僅老師）→ `JoinApplication`；通過時同時把學生加入教室                                      |
+| Operation                                                                                | 說明                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/lookup` `{term}` → `{term, markdown}`                                         | #76 獨立查詢功能（lookup profile：agent 自主 search/fetch）；**不落庫不計輪**。失敗 → mock（回應帶 `X-Socrates-Fallback: mock`）。termHistory 由前端 localStorage 持久化，無端點                                    |
+| `GET /api/settings/keys` → `{provider, model, last4, sortOrder, updatedAt}[]`            | #82 teacher keys；**一 provider 一把 key**（帳戶級）；key 明文永不回傳                                                                                                                                              |
+| `PUT /api/settings/keys/:provider` `{provider, model, key}` → `{provider, model, last4}` | 冪等 upsert；body `provider` 須等於 path provider（不符 → 422 `byok_provider_invalid`，與非法 provider 同碼）；provider＝任意 pi builtin（api-key 類）；model 不在該 provider catalog → 422 `byok_provider_invalid` |
+| `DELETE /api/settings/keys/:provider` → `204`；無該 key → `404 not_found`                |                                                                                                                                                                                                                     |
+| `PUT /api/settings/keys/order` `{providers: string[]}` → `{providers}`                   | 排序＝gateway 的 teacher legs 鏈序（#98）                                                                                                                                                                           |
+| `GET /api/settings/keys/providers` → `{id, name}[]`                                      | 可選 provider 清單（pi builtin catalog，api-key 類）                                                                                                                                                                |
+| `GET /api/settings/keys/providers/:provider/models` → `{id, name}[]`                     | 該 provider 的 model catalog（設定頁選單）                                                                                                                                                                          |
 
-## 公告
+- **學生無 BYOK 入口**（#82 定案）
+- **teacher keys 服務語意**（2026-11-09 定案）：老師 keys 的教室流量**老師鏈在前、平台鏈墊後**；teacher leg 的 provider/model 資料責任由 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；ledger 以 `teacher:<userId>` credential 獨立記帳；within-turn fallback 僅存在於平台 binding 鏈（pi 機制限制），跨輪失敗由 ledger cooldown 接手
 
-| 方法   | 路徑                                | 說明                                                                                                                         |
-| ------ | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/classrooms/:id/announcements` | `Announcement[]`，置頂優先、再依 `publishAt` 新到舊。**學生只拿得到 `publishAt` 已到的**（以伺服器時間為準）；老師拿得到全部 |
-| POST   | `/api/classrooms/:id/announcements` | `AnnouncementInput` = `{ title, body, pinned, publishAt }`（老師或助教；`publishAt = null` 表示立即）→ `Announcement`        |
-| PATCH  | `/api/announcements/:id`            | `Partial<AnnouncementInput>`（老師或助教）→ `Announcement`                                                                   |
-| DELETE | `/api/announcements/:id`            | 老師或助教，204                                                                                                              |
+## 10. 錯誤碼
 
-只做排程發布，不做推播或 email。
+`code` 為 shared 的 `ErrorCode` literal union＋`ApiError`（帶型別 `code`），呼叫端 switch 窮舉有編譯期檢查。
 
-## 教室議題
+| 層                     | code                                                                                                                                                           | HTTP                        |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| 通用                   | `unauthorized` / `forbidden` / `not_found` / `conflict` / `validation` / `rate_limited` / `internal_error`                                                     | 401/403/404/409/422/429/500 |
+| 入場                   | `join_code_invalid` / `tos_required` / `name_taken` / `only_student` / `activity_finished`（新成員加入已結束活動）                                             | 404/422/409/403/409         |
+| 對話（WS error frame） | pi 錯誤名作 code（`ConversationBusy`＝忙線拒寫、`ActivityFinished`＝活動已結束拒寫、`SubmitForbidden`＝非本人 thread 代打）；內部錯誤只回 generic 訊息不洩細節 | —                           |
+| 報告                   | `report_pending` / `report_failed`                                                                                                                             | 404 / 500                   |
+| 語音／LLM              | `llm_unavailable`（binding 或上游失敗；mock 降級不丟這個碼）；`llm_rate_limited` / `llm_timeout` 未接線（保留碼，上游限流／逾時目前也回 `llm_unavailable`）    | 502（未接線碼保留）         |
+| 對話入場               | `already_streaming`（歷史碼，保留給舊客戶端 switch 窮舉）                                                                                                      | 409                         |
+| BYOK / teacher keys    | `byok_provider_invalid`                                                                                                                                        | 422                         |
 
-> 畫面上稱為「**辯論**」（網址 `/classrooms/:id/debates/:id`）；API 名稱沿用 `topics`。
+## 11. 端點外的既存通道
 
-建立議題時，後端同時建立一個 `Activity`（`title` / `statement` 用議題標題），並把 `activityId` 填回議題。活動是四階段辯論（個人調查 → 團隊提純 → 辯論比賽 → 結果），由老師推進。
-| 方法   | 路徑                                    | 說明                                                                                                                        |
-| ------ | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/classrooms/:id/topics`            | `ClassroomTopic[]`                                                                                                          |
-| GET    | `/api/topics/:id`                       | `ClassroomTopic`                                                                                                            |
-| POST   | `/api/classrooms/:id/topics`            | `TopicInput`（僅老師）。`activity`（回答方式、價值軸、組別人數）必填 → `ClassroomTopic`                                     |
-| PATCH  | `/api/topics/:id`                       | `Partial<TopicInput>`（僅老師）。`activity` 設定只能在還沒有學生開始對話前修改，否則回 409                                  |
-| DELETE | `/api/topics/:id`                       | 僅老師，204；連同辯論活動一起刪除                                                                                           |
-| POST   | `/api/topics/:id/resources`             | `{ name, url }` 新增連結（老師或助教）→ `TopicResource`                                                                     |
-| POST   | `/api/topics/:id/resources/files`       | **multipart/form-data**，欄位 `file`（老師或助教）→ `TopicResource`。超過大小上限回 413                                     |
-| DELETE | `/api/topics/:id/resources/:resourceId` | 老師或助教，204                                                                                                             |
-| GET    | `/api/topics/:id/reports`               | `TopicReport[]`（老師：全班；學生：只有自己）                                                                               |
-| POST   | `/api/topics/:id/reports`               | **multipart/form-data**，欄位 `file`、`comment`（學生；`acceptsReports = false` 時回 403）→ `TopicReport`。再次上傳取代舊檔 |
-| DELETE | `/api/reports/:id`                      | 作者本人，204                                                                                                               |
+- `GET /health` → `{ok: true}`（無需 session；deploy 後煙霧測試用）
+- `POST /api/dev/seed`（server 端設有 `SEED_TOKEN` 即生效；需 header 帶同值 token）——demo 資料播種，運維動作；非 mock 模式且首次建立 demo 老師時，密碼隨機產生並隨回應回傳（重播 seed 不回傳）
 
-`FileRef.url` 指向 `GET /api/files/:id`，需要登入（cookie）且使用者要對該議題有存取權；**結論報告（`topic_report`）只有報告作者本人與老師／助教能下載**，教材（`topic_resource`）則是議題教室成員皆可。
+## 12. 範圍外（明確不在 v1 契約）
 
-## 討論區
-
-每個教室有一個教室討論區（`topicId = null`），每個議題各有一個議題討論區。回覆只有一層（`parentId` 指向主貼文）。
-| 方法   | 路徑                                 | 說明                                                                       |
-| ------ | ------------------------------------ | -------------------------------------------------------------------------- |
-| GET    | `/api/classrooms/:id/posts?topicId=` | `DiscussionPost[]`（省略 `topicId` = 教室討論區），依時間舊到新            |
-| POST   | `/api/classrooms/:id/posts`          | `PostInput` = `{ topicId, parentId?, body, anonymous }` → `DiscussionPost` |
-| DELETE | `/api/posts/:id`                     | 作者本人或老師，204；有回覆的貼文改成 `deleted = true` 保留位置            |
-
-**匿名規則（必須由後端過濾，不能只靠前端隱藏）：** 匿名貼文回傳給其他學生時，`authorLabel = "匿名同學"`、`authorId = null`；
-回傳給老師或作者本人時帶本名與 `authorId`（作者本人另看到 `isMine = true`）。老師的貼文一律實名。
-
-## 多人討論（老師出一題，同學各自跟 AI 對話）
-
-老師（或助教）出一個統一的題目，教室裡每位學生各有**自己的一段對話**（彼此看不到），聊完寫下結論；
-老師在同一頁看全班的討論成果，可以點開任一位同學的完整對話。畫面上稱為「多人討論」，API 名稱用 `discussions`。
-
-| 方法   | 路徑                                          | 說明                                                                                                          |
-| ------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/classrooms/:id/discussions`             | `DiscussionTask[]`，依建立時間新到舊。學生另外拿到 `myStatus`                                                 |
-| GET    | `/api/discussions/:id`                        | `DiscussionTask`                                                                                              |
-| POST   | `/api/classrooms/:id/discussions`             | `DiscussionTaskInput` = `{ title, prompt, conclusionHint, dueAt, maxRounds }`（老師或助教）→ `DiscussionTask` |
-| PATCH  | `/api/discussions/:id`                        | `Partial<DiscussionTaskInput>`（老師或助教）→ `DiscussionTask`                                                |
-| PUT    | `/api/discussions/:id/status`                 | `{ status: "open" \| "closed" }`（老師或助教）→ `DiscussionTask`；`closed` 後學生只能回看                     |
-| DELETE | `/api/discussions/:id`                        | 老師或助教，204；連同全班的對話與結論一起刪除                                                                 |
-| GET    | `/api/discussions/:id/sessions`               | `DiscussionSession[]`（**只有老師與助教**），不含逐句對話                                                     |
-| GET    | `/api/discussions/:id/sessions/:studentId`    | `DiscussionSessionDetail`（含 `messages`）。`:studentId` = `me` 代表自己；要看別人一律需要老師或助教          |
-| POST   | `/api/discussions/:id/sessions/me/messages`   | `{ text }` → **SSE**（`emotion` / `delta` / `done` / `error`），格式與〈對話 API〉完全相同                    |
-| PUT    | `/api/discussions/:id/sessions/me/conclusion` | `{ conclusion: string \| null }` → `DiscussionSessionDetail`；`null` = 收回結論，回到「對話中」               |
-
-**規則（由後端保證）**
-- 學生只讀寫得到自己的那段對話；`GET /sessions`（全班）與別人的 `/sessions/:studentId` 對學生回 403。
-- `maxRounds` 是每位同學的提問上限（2–40）；達到上限後 `POST …/messages` 回 409，畫面改成只能寫結論。
-- 討論 `closed` 之後，送訊息與送結論都回 409。
-- 還沒有任何對話就送結論回 422（先聊過才能下結論）。
-- `DiscussionTask.stats` = `{ total, started, submitted, avgRounds }`，由後端統計；`coverage` 與個人調查用同一套判斷（主張 / 理由 / 證據 / 反例的回應）。
-- `dueAt` 會出現在行事曆，`kind: "discussion_due"`、帶 `discussionId`。
-
-## 行事曆
-
-| 方法   | 路徑                                     | 說明                                                                                             |
-| ------ | ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| GET    | `/api/classrooms/:id/calendar?from=&to=` | 單一教室的 `CalendarEvent[]`（系統事件之外，還有 `kind: "custom"` 的自訂事件）                   |
-| POST   | `/api/classrooms/:id/calendar-events`    | `CalendarEventInput` = `{ title, at, note? }`（老師或助教）→ `CalendarEvent`（`kind: "custom"`） |
-| PATCH  | `/api/calendar-events/:id`               | `Partial<CalendarEventInput>`（老師或助教；只能改 custom 事件）→ `CalendarEvent`                 |
-| DELETE | `/api/calendar-events/:id`               | 老師或助教，204                                                                                  |
-
-事件由後端從現有資料整理，不需要另外建立：議題截止日（`topic_due`）、已發布或已排程的公告（`announcement`，學生只看得到已發布的）、
-活動階段截止時間（`stage_deadline`）、多人討論的截止時間（`discussion_due`）。
-
-## 階段 1：個人調查
-
-| 方法   | 路徑                                 | 說明                                                                                                           |
-| ------ | ------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/activities/:id/dialogue`       | `DialogueMessage[]`（只有自己的）                                                                              |
-| POST   | `/api/activities/:id/dialogue`       | `{ text }` → **SSE**（`delta` / `done` / `error`），格式與錯誤見〈對話 API〉。最多 20 輪與收尾條件由後端控制   |
-| GET    | `/api/activities/:id/progress`       | `Progress`（四個面向 `coverage`、`rounds`、`maxRounds`、`readyToSummarize`）                                   |
-| POST   | `/api/activities/:id/position/draft` | AI 依對話整理論點 → `PositionDraft` = `{ summary }`（**不含座標**）                                            |
-| PUT    | `/api/activities/:id/position`       | `{ summary }`（學生確認或修改論點；階段 1 結束前可再改）→ `Position`。座標由後端依對話估算後保存，學生不送座標 |
-| GET    | `/api/activities/:id/positions`      | 老師：全班；學生：只有自己。**活動 `stage !== "done"` 前，學生拿到的 `coords` 為 `null`**                      |
-| GET    | `/api/activities/:id/notes`          | 自己的 `ThinkingNote[]`（重點標註與想法，**只有本人看得到，老師也看不到**）                                    |
-| POST   | `/api/activities/:id/notes`          | `NoteInput` = `{ kind: "highlight"\|"thought", sourceMessageId?, text }` → `ThinkingNote`                      |
-| PATCH  | `/api/notes/:id`                     | `{ text }` → `ThinkingNote`（本人）                                                                            |
-| DELETE | `/api/notes/:id`                     | 本人，204                                                                                                      |
-
-## 階段 2：團隊提純
-
-| 方法     | 路徑                                 | 說明                                                                                          |
-| -------- | ------------------------------------ | --------------------------------------------------------------------------------------------- |
-| GET      | `/api/activities/:id/groups`         | `Group[]`                                                                                     |
-| POST     | `/api/activities/:id/groups/regroup` | `{ groupSize }`（僅老師）                                                                     |
-| GET/POST | `/api/groups/:gid/messages`          | 組內聊天                                                                                      |
-| POST     | `/api/groups/:gid/ai/summarize`      | AI 整理論點 → `GroupArgument[]`                                                               |
-| POST     | `/api/groups/:gid/ai/counterexample` | AI 對一條主張丟反例 → `GroupMessage`（`ai_counterexample`）                                   |
-| GET      | `/api/groups/:gid/arguments`         | `GroupArgument[]`                                                                             |
-| POST     | `/api/arguments/:id/vote`            | `{ vote: "endorse"\|"revise"\|"oppose" }`；狀態（active/revised/dropped/contested）由後端重算 |
-| POST     | `/api/groups/:gid/split`             | 出現分歧時把不同意的人分成新組                                                                |
-
-## 階段 3：辯論比賽
-
-| 方法  | 路徑                        | 說明                                                                           |
-| ----- | --------------------------- | ------------------------------------------------------------------------------ |
-| GET   | `/api/activities/:id/rooms` | `Room[]`（配對由後端做：中心距離最遠的先配）                                   |
-| POST  | `/api/rooms/:id/start`      | 開始比賽（主持人開場）                                                         |
-| GET   | `/api/rooms/:id/turns`      | `{ turns, judgments }`                                                         |
-| POST  | `/api/rooms/:id/turns`      | `{ text }`；**輪到誰、計時、逾時都由後端判定**；同時產生 `Judgment`（AI 裁判） |
-| PATCH | `/api/judgments/:id`        | `{ teacherScore: number\|null }`（僅老師覆寫）                                 |
-
-## 立場星圖
-
-| 方法 | 路徑                       | 說明                                                                                                                                                                        |
-| ---- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET  | `/api/activities/:id/star` | `StarData`。階段 1：老師只看到已確認的人、沒有分組；階段 2 之後含分組；活動結束後多一步「團隊提純後」。**活動結束前學生呼叫回 403**；結束後學生看得到，但看不到其他人的名字 |
-
-## 結果
-
-| 方法  | 路徑                                   | 說明                                   |
-| ----- | -------------------------------------- | -------------------------------------- |
-| GET   | `/api/activities/:id/scores`           | `ScoreRow[]`（老師：全班；學生：自己） |
-| PATCH | `/api/activities/:id/scores/:memberId` | `{ adjust }`（僅老師）                 |
-
-## 原型裡「模擬」的部分，對應到後端要做的事
-
-| 原型（`debate-ai.js`）                 | 後端                                                     |
-| -------------------------------------- | -------------------------------------------------------- |
-| 模擬同學的立場與發言                   | 不需要：真人；測試時另做「機器人成員」                   |
-| 座標估計、論點整理、反例、主持人、裁判 | LLM 流程（結構化輸出）；規則式裁判可保留當保底與測試基準 |
-| k-means 分組、分組平衡、配對           | 分群服務                                                 |
-| 計分公式（個人 / 團隊 / 辯論加權）     | 計分服務；權重由老師設定                                 |
-| 「示範：讓老師推進」按鈕               | 移除，只有老師能推進                                     |
+- `/admin` 運維 dashboard（P1，#80/#81/#97）
+- 單人模式的個人對話 scope（前端未實作，屆時拍板）
+- 跨裝置 termHistory（P1）
+- `PATCH /me` 改名／頭像（P1 若有需求）
+- teacher key 設定頁 UI（#82 前端；後端 API 已就緒）

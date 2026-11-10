@@ -1,78 +1,84 @@
 import { Hono } from "hono";
-import type { Db } from "../db/d1";
-import { one, run } from "../db/d1";
-import { endSession, requireUser, startSession } from "../auth";
-import { bodyOf, fail, type AppEnv, type UserRow } from "../http";
-import { publicUser } from "../services/serialize";
+import { LoginInputSchema, RegisterInputSchema } from "@socrates/shared";
+import { batch, one } from "../db/d1";
+import { DUMMY_HASH, endSession, hashPassword, startSession, verifyPassword } from "../auth";
+import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, uniqueViolationColumns, type AppEnv } from "../http";
 
-export function authRoutes(db: Db, cookieSecure: boolean) {
-  const r = new Hono<AppEnv>();
+interface UserRow {
+  id: string;
+  name: string;
+  role: "student" | "teacher";
+  email: string | null;
+  password_hash: string | null;
+}
 
-  r.post("/auth/login", async (c) => {
-    const body = await bodyOf(c);
-    const role = body.role === "teacher" ? "teacher" : body.role === "student" ? "student" : null;
-    if (!role) fail(422, "invalid_role");
-    const rawName = typeof body.name === "string" ? body.name.trim() : "";
-    const name = rawName || (role === "teacher" ? "林老師" : "訪客");
-    if (name.length > 80) fail(422, "text_too_long", { n: 80 });
-    let user = await one<UserRow>(db, "SELECT * FROM users WHERE role = $role AND name = $name", { role, name });
-    if (!user) {
-      const id = crypto.randomUUID().replaceAll("-", "");
-      await run(
-        db,
-        "INSERT INTO users (id, name, role, avatar_url, created_at) VALUES ($id, $name, $role, NULL, $at)",
-        {
-          id,
-          name,
-          role,
-          at: new Date().toISOString(),
-        },
-      );
-      user = (await one<UserRow>(db, "SELECT * FROM users WHERE id = $id", { id }))!;
-    }
-    await startSession(db, c, user.id, cookieSecure);
-    return c.json(publicUser(user));
-  });
-
-  r.get("/me", (c) => {
-    const user = requireUser(c);
-    return c.json(publicUser(user));
-  });
-
-  r.patch("/me", async (c) => {
-    const user = requireUser(c);
-    const body = await bodyOf(c);
-    if (body.name !== undefined) {
-      if (typeof body.name !== "string" || !body.name.trim()) fail(422, "name_required");
-      const name = body.name.trim();
-      if (name.length > 80) fail(422, "text_too_long", { n: 80 });
-      const clash = await one(db, "SELECT id FROM users WHERE role = $role AND name = $name AND id <> $id", {
-        role: user.role,
-        name,
-        id: user.id,
+export function authRoutes() {
+  return new Hono<AppEnv>()
+    .get("/me", (c) => c.json(c.get("user")))
+    .post("/auth/login", async (c) => {
+      await enforceIpLimit(c, "login", 30);
+      const input = await parseBody(c, LoginInputSchema);
+      const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE email = $email", {
+        email: input.email,
       });
-      if (clash) fail(409, "conflict");
-      await run(db, "UPDATE users SET name = $name WHERE id = $id", { name, id: user.id });
-    }
-    if (body.avatarUrl !== undefined) {
-      if (body.avatarUrl === null) {
-        await run(db, "UPDATE users SET avatar_url = NULL WHERE id = $id", { id: user.id });
-      } else {
-        if (typeof body.avatarUrl !== "string" || !/^data:image\/[a-z0-9.+-]+;base64,/i.test(body.avatarUrl))
-          fail(422, "avatar_invalid");
-        if (body.avatarUrl.length > 200 * 1024) fail(413, "avatar_too_large");
-        await run(db, "UPDATE users SET avatar_url = $avatar WHERE id = $id", { avatar: body.avatarUrl, id: user.id });
+      const ok = await verifyPassword(input.password, row?.password_hash ?? DUMMY_HASH);
+      if (!row || !ok) fail(401, "unauthorized");
+      const user = { id: row.id, name: row.name, role: row.role };
+      await startSession(c, user);
+      return c.json(user);
+    })
+    .post("/auth/register", async (c) => {
+      await enforceIpLimit(c, "register", 30);
+      const input = await parseBody(c, RegisterInputSchema);
+      if (!input.tosAccepted) fail(422, "tos_required");
+      const classroom = await one<{ id: string; current_activity_id: string | null }>(
+        c.env.DB,
+        "SELECT id, current_activity_id FROM classrooms WHERE join_code = $code",
+        { code: input.code },
+      );
+      if (!classroom?.current_activity_id) fail(404, "join_code_invalid");
+      const activity = await one<{ finished_at: string | null }>(
+        c.env.DB,
+        "SELECT finished_at FROM activities WHERE id = $id",
+        { id: classroom.current_activity_id },
+      );
+      if (activity?.finished_at) fail(409, "activity_finished");
+      const hash = await hashPassword(input.password);
+      const clash = await one<{ id: string }>(
+        c.env.DB,
+        "SELECT user_id AS id FROM members WHERE classroom_id = $cid AND name = $name",
+        { cid: classroom.id, name: input.name },
+      );
+      if (clash) fail(409, "name_taken");
+      const emailTaken = await one<{ id: string }>(c.env.DB, "SELECT id FROM users WHERE email = $email", {
+        email: input.email,
+      });
+      if (emailTaken) fail(409, "conflict");
+      const id = newId("u_");
+      const at = nowIso();
+      try {
+        await batch(c.env.DB, [
+          {
+            sql: "INSERT INTO users (id, name, role, email, password_hash, lang, created_at) VALUES ($id, $name, 'student', $email, $hash, $lang, $at)",
+            params: { id, name: input.name, email: input.email, hash, at, lang: langOf(c) },
+          },
+          {
+            sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
+            params: { cid: classroom.id, uid: id, name: input.name, at },
+          },
+        ]);
+      } catch (error) {
+        const pairs = uniqueViolationColumns(error);
+        if (pairs.length === 0) throw error;
+        if (pairs.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
+        fail(409, "conflict");
       }
-    }
-    const updated = (await one<UserRow>(db, "SELECT * FROM users WHERE id = $id", { id: user.id }))!;
-    c.set("user", updated);
-    return c.json(publicUser(updated));
-  });
-
-  r.post("/auth/logout", async (c) => {
-    await endSession(db, c);
-    return c.body(null, 204);
-  });
-
-  return r;
+      const user = { id, name: input.name, role: "student" as const };
+      await startSession(c, user);
+      return c.json(user);
+    })
+    .post("/auth/logout", (c) => {
+      endSession(c);
+      return c.body(null, 204);
+    });
 }

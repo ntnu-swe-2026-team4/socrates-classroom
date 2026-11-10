@@ -14,7 +14,10 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "types": ["vite/client"],
-    "paths": { "@/*": ["./src/*"] }
+    "paths": {
+      "@/*": ["./src/*"],
+      "@server/*": ["../server/dist/types/apps/server/src/*"]
+    }
   },
   "include": ["src", "dev", "vite.config.ts"]
 }

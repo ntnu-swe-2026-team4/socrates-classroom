@@ -1,0 +1,538 @@
+import { env } from "cloudflare:workers";
+import { applyD1Migrations } from "cloudflare:test";
+import { beforeAll, describe, expect, test, vi } from "vitest";
+import { inject } from "vitest";
+import { seedDemo } from "../src/seed";
+import { call, cookieOf } from "./helpers";
+
+let teacher: string;
+let code: string;
+let activityId: string;
+
+const migrations = inject("d1Migrations");
+
+beforeAll(async () => {
+  await applyD1Migrations(env.DB, migrations);
+  await seedDemo(env.DB);
+  const login = await call("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "demo@socrates.tw", password: "demo-demo" }),
+  });
+  expect(login.status).toBe(200);
+  teacher = cookieOf(login);
+
+  const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>;
+  expect(topics.length).toBeGreaterThan(0);
+  const created = (await (
+    await call("/api/classrooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ name: "R6 班", topicId: topics[0]!.id }),
+    })
+  ).json()) as { code: string; activityId: string; classroomId: string };
+  code = created.code;
+  activityId = created.activityId;
+});
+
+describe("R6 REST layer (Hono, real Worker entry)", () => {
+  test("health / seed guard", async () => {
+    expect((await call("/health")).status).toBe(200);
+    expect((await call("/api/dev/seed", { method: "POST" })).status).toBe(404);
+
+    const seeded = await call("/api/dev/seed", { method: "POST", headers: { "x-seed-token": "dev-seed-token" } });
+    expect(seeded.status).toBe(200);
+    const seedBody = (await seeded.json()) as { seeded: boolean; password?: string };
+    expect(seedBody.seeded).toBe(true);
+    expect(seedBody.password).toBeUndefined();
+  });
+
+  test("me / guest join (ToS) → activity resolves", async () => {
+    const me = await call("/api/me", { headers: { Cookie: teacher } });
+    expect(((await me.json()) as { role: string }).role).toBe("teacher");
+
+    const joined = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, name: "R6生", tosAccepted: true }),
+    });
+    expect(joined.status).toBe(200);
+    const { user, activityId: aid } = (await joined.json()) as { user: { role: string }; activityId: string };
+    expect(user.role).toBe("student");
+    expect(aid).toBe(activityId);
+
+    const noTos = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, name: "R6生B", tosAccepted: false }),
+    });
+    expect(noTos.status).toBe(422);
+    expect(((await noTos.json()) as { code: string }).code).toBe("tos_required");
+  });
+
+  test("GET /classrooms — role-scoped listing; code/url only for teachers", async () => {
+    const unauthorized = await call("/api/classrooms");
+    expect(unauthorized.status).toBe(401);
+
+    const teacherList = (await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+      role: string;
+      code: string | null;
+      current: { activityId: string } | null;
+    }>;
+    const own = teacherList.find((entry) => entry.current?.activityId === activityId);
+    expect(own).toBeDefined();
+    expect(own!.role).toBe("teacher");
+    expect(own!.code).not.toBeNull();
+
+    const joined = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, name: "R6生C", tosAccepted: true }),
+    });
+    const student = cookieOf(joined);
+    const studentList = (await (await call("/api/classrooms", { headers: { Cookie: student } })).json()) as Array<{
+      role: string;
+      code: string | null;
+      teacherName: string;
+      memberCount: number;
+      current: { activityId: string } | null;
+    }>;
+    const member = studentList.find((entry) => entry.current?.activityId === activityId);
+    expect(member).toBeDefined();
+    expect(member!.role).toBe("student");
+    expect(member!.code).toBeNull();
+    expect(member!.teacherName).toBeTruthy();
+    expect(member!.memberCount).toBeGreaterThan(0);
+  });
+
+  test("startActivity — reopens an activity ({topicId} contract shape; same code yields a new activityId)", async () => {
+    const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+    }>;
+    const restarted = await call("/api/classrooms/c_missing/activities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ topicId: topics[0]!.id }),
+    });
+    expect(restarted.status).toBe(404);
+
+    const classrooms = (await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+      current: { activityId: string } | null;
+    }>;
+    const own = classrooms.find((entry) => entry.current?.activityId === activityId);
+    const res = await call(`/api/classrooms/${own!.id}/activities`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ topicId: topics[0]!.id }),
+    });
+    expect(res.status).toBe(201);
+    const payload = (await res.json()) as { activityId: string; code: string };
+    expect(payload.activityId).not.toBe(activityId);
+    expect(payload.code).toBe(code);
+  });
+
+  test("finish → report semantics (pending → 404 report_pending; student IDOR sees only their own)", async () => {
+    const created = (await (
+      await call("/api/classrooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({
+          name: "R6 報告班",
+          topicId: (
+            (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>
+          )[0]!.id,
+        }),
+      })
+    ).json()) as { code: string; activityId: string };
+    const joined = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: created.code, name: "R6生報", tosAccepted: true }),
+    });
+    const student = cookieOf(joined);
+
+    const report0 = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacher } });
+    expect(report0.status).toBe(404);
+    expect(((await report0.json()) as { code: string }).code).toBe("report_pending");
+
+    const finish = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacher, "CF-Connecting-IP": "198.51.100.10" },
+    });
+    expect(finish.status).toBe(204);
+    const again = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacher, "CF-Connecting-IP": "198.51.100.11" },
+    });
+    expect(again.status).toBe(204);
+
+    const lateJoin = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: created.code, name: "R6遲到生", tosAccepted: true }),
+    });
+    expect(lateJoin.status).toBe(409);
+    expect(((await lateJoin.json()) as { code: string }).code).toBe("activity_finished");
+
+    const rejoin = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: student },
+      body: JSON.stringify({ code: created.code, tosAccepted: true }),
+    });
+    expect(rejoin.status).toBe(200);
+    expect(((await rejoin.json()) as { activityId: string }).activityId).toBe(created.activityId);
+
+    await vi.waitFor(
+      async () => {
+        const res = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacher } });
+        expect(res.status).toBe(200);
+      },
+      { timeout: 30_000 },
+    );
+
+    const mine = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: student } });
+    expect(mine.status).toBe(200);
+    const mineData = (await mine.json()) as Record<string, unknown>;
+    expect("students" in mineData).toBe(false);
+    expect("classReport" in mineData).toBe(false);
+    expect(typeof mineData.pseudonym).toBe("string");
+  }, 60_000);
+
+  test("authorization matrix spot checks: outsider 403 / teacher-only 403 / cross-class report IDOR", async () => {
+    const outsiderLogin = await call("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "demo@socrates.tw", password: "wrong-password" }),
+    });
+    expect(outsiderLogin.status).toBe(401);
+
+    const topics = await call("/api/topics");
+    expect(topics.status).toBe(401);
+
+    const studentCookie = cookieOf(
+      await call("/api/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: "R6生G", tosAccepted: true }),
+      }),
+    );
+    const genAsStudent = await call("/api/topics/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: studentCookie },
+      body: JSON.stringify({ direction: "測試" }),
+    });
+    expect(genAsStudent.status).toBe(403);
+
+    const joined = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, name: "R6生D", tosAccepted: true }),
+    });
+    const student = cookieOf(joined);
+    const finish = await call(`/api/activities/${activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: student, "CF-Connecting-IP": "198.51.100.12" },
+    });
+    expect(finish.status).toBe(403);
+
+    const otherClassroom = await call("/api/classrooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({
+        name: "R6 他班",
+        topicId: (
+          (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>
+        )[0]!.id,
+      }),
+    });
+    expect(otherClassroom.status).toBe(201);
+    const other = (await otherClassroom.json()) as { code: string };
+    const otherJoined = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: other.code, name: "他班學生", tosAccepted: true }),
+    });
+    const otherStudent = cookieOf(otherJoined);
+    const crossClass = await call(`/api/activities/${activityId}/report`, {
+      headers: { Cookie: otherStudent },
+    });
+    expect(crossClass.status).toBe(403);
+  });
+
+  test("teacher keys CRUD: PUT idempotent, ordering, last4 only, teacher-only", async () => {
+    const put = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ provider: "openrouter", model: "z-ai/glm-5.3-flash", key: "sk-or-v1-abcdefgh" }),
+    });
+    expect(put.status).toBe(200);
+    expect(((await put.json()) as { last4: string }).last4).toBe("efgh");
+
+    const again = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ provider: "openrouter", model: "z-ai/glm-5.3-flash", key: "sk-or-v1-zzzzzzzz" }),
+    });
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { last4: string }).last4).toBe("zzzz");
+
+    const list = (await (await call("/api/settings/keys", { headers: { Cookie: teacher } })).json()) as Array<{
+      provider: string;
+      model: string;
+      last4: string;
+    }>;
+    expect(list).toEqual([
+      {
+        provider: "openrouter",
+        model: "z-ai/glm-5.3-flash",
+        last4: "zzzz",
+        sortOrder: 0,
+        updatedAt: expect.any(String),
+      },
+    ]);
+
+    const badProvider = await call("/api/settings/keys/evil", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ provider: "evil", model: "any", key: "sk-or-v1-abcdefgh" }),
+    });
+    expect(badProvider.status).toBe(422);
+
+    const badModel = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ provider: "openrouter", model: "not-a-model", key: "sk-or-v1-abcdefgh" }),
+    });
+    expect(badModel.status).toBe(422);
+
+    const providers = (await (
+      await call("/api/settings/keys/providers", { headers: { Cookie: teacher } })
+    ).json()) as Array<{
+      id: string;
+    }>;
+    expect(providers.some((entry) => entry.id === "openrouter")).toBe(true);
+    const models = (await (
+      await call("/api/settings/keys/providers/openrouter/models", { headers: { Cookie: teacher } })
+    ).json()) as Array<{ id: string }>;
+    expect(models.some((entry) => entry.id === "z-ai/glm-5.3-flash")).toBe(true);
+
+    const studentCookie = cookieOf(
+      await call("/api/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: "R6生F", tosAccepted: true }),
+      }),
+    );
+    const studentPut = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: studentCookie },
+      body: JSON.stringify({ provider: "openrouter", key: "sk-or-v1-abcdefgh" }),
+    });
+    expect(studentPut.status).toBe(403);
+
+    const order = await call("/api/settings/keys/order", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ providers: ["openrouter"] }),
+    });
+    expect(order.status).toBe(200);
+
+    const del = await call("/api/settings/keys/openrouter", { method: "DELETE", headers: { Cookie: teacher } });
+    expect(del.status).toBe(204);
+  });
+
+  test("register → login student track: registering creates a member, same email and password can log in", async () => {
+    const email = `reg-${Date.now()}@socrates.tw`;
+    const registered = await call("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, email, password: "student-pass-1", name: "註冊生A", tosAccepted: true }),
+    });
+    expect(registered.status).toBe(200);
+    expect(((await registered.json()) as { role: string }).role).toBe("student");
+
+    const teacherJoin = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ code, tosAccepted: true }),
+    });
+    expect(teacherJoin.status).toBe(403);
+    expect(((await teacherJoin.json()) as { code?: string }).code).toBe("only_student");
+
+    const noConsent = await call("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code,
+        email: `nc-${Date.now()}@socrates.tw`,
+        password: "student-pass-1",
+        name: "未同意生",
+        tosAccepted: false,
+      }),
+    });
+    expect(noConsent.status).toBe(422);
+    expect(((await noConsent.json()) as { code?: string }).code).toBe("tos_required");
+
+    const login = await call("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: "student-pass-1" }),
+    });
+    expect(login.status).toBe(200);
+    const me = await call("/api/me", { headers: { Cookie: cookieOf(login) } });
+    expect(((await me.json()) as { role: string }).role).toBe("student");
+  });
+
+  test("lookup mock: websearch without binding → fallback text (prose mock)", async () => {
+    const student = cookieOf(
+      await call("/api/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: "R6生E", tosAccepted: true }),
+      }),
+    );
+    const lookup = await call("/api/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: student },
+      body: JSON.stringify({ term: "功利主義" }),
+    });
+    expect(lookup.status).toBe(200);
+    expect(((await lookup.json()) as { markdown: string }).markdown).toContain("功利主義");
+  });
+});
+
+describe("report (#74: finish → pending → ready → GET)", () => {
+  test("finish triggers the ReportRunner: pending → ready → role-scoped report", async () => {
+    const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+      title: string;
+    }>;
+    const created = (await (
+      await call("/api/classrooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({ name: "Report 班", topicId: topics[0]!.id }),
+      })
+    ).json()) as { code: string; activityId: string };
+    const joined = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: created.code, name: "報告生", tosAccepted: true }),
+    });
+    const student = cookieOf(joined);
+
+    const finish = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacher },
+    });
+    expect(finish.status).toBe(204);
+
+    const report = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacher } });
+    expect([200, 404]).toContain(report.status);
+    if (report.status === 404) {
+      expect(((await report.json()) as { code: string }).code).toBe("report_pending");
+    }
+
+    const settled = await vi.waitFor(
+      async () => {
+        const res = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacher } });
+        expect(res.status).toBe(200);
+        return (await res.json()) as { topicTitle: string; classReport: unknown; students: unknown[] };
+      },
+      { timeout: 30_000, interval: 500 },
+    );
+    expect(settled.topicTitle).toBe(topics[0]!.title);
+    expect(Array.isArray(settled.students)).toBe(true);
+
+    const asStudent = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: student } });
+    expect(asStudent.status).toBe(200);
+    const studentReport = (await asStudent.json()) as { pseudonym: string; analysis: unknown };
+    expect(typeof studentReport.pseudonym).toBe("string");
+    expect("analysis" in studentReport).toBe(true);
+  }, 40_000);
+});
+
+describe("rate limiting + register gate (round-6 restores)", () => {
+  test("activity finish: calls 1-6 → 204, the 7th inside one minute → 429 rate_limited", async () => {
+    const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+    }>;
+    const created = (await (
+      await call("/api/classrooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({ name: "限流班", topicId: topics[0]!.id }),
+      })
+    ).json()) as { activityId: string };
+    const ip = "198.51.100.30";
+    let last: Response | null = null;
+    for (let i = 0; i < 7; i += 1) {
+      last = await call(`/api/activities/${created.activityId}/finish`, {
+        method: "POST",
+        headers: { Cookie: teacher, "CF-Connecting-IP": ip },
+      });
+      if (i < 6) expect(last?.status).toBe(204);
+    }
+    expect(last?.status).toBe(429);
+    const body = (await last?.json()) as { code?: string };
+    expect(body?.code).toBe("rate_limited");
+
+    const noHeader = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacher },
+    });
+    expect(noHeader.status).not.toBe(429);
+  });
+
+  test("register after the classroom activity finished → 409 activity_finished (mirrors join)", async () => {
+    const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+    }>;
+    const created = (await (
+      await call("/api/classrooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({ name: "註冊截止班", topicId: topics[0]!.id }),
+      })
+    ).json()) as { code: string; activityId: string };
+    const finish = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacher, "CF-Connecting-IP": "198.51.100.31" },
+    });
+    expect(finish.status).toBe(204);
+    const registered = await call("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: created.code,
+        email: `late-${Date.now()}@socrates.tw`,
+        password: "student-pass-1",
+        name: "遲到註冊",
+        tosAccepted: true,
+      }),
+    });
+    expect(registered.status).toBe(409);
+    expect(((await registered.json()) as { code?: string }).code).toBe("activity_finished");
+  });
+});
+
+describe("uniqueViolationColumns (real D1 error envelope)", () => {
+  test("parses the Miniflare envelope (D1_ERROR prefix, SQLITE_CONSTRAINT suffix, cause chain) and the bare raw message", async () => {
+    const { uniqueViolationColumns } = await import("../src/http");
+    const causeMessage =
+      "UNIQUE constraint failed: members.classroom_id, members.name: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)";
+    const envelope = new Error(`D1_ERROR: ${causeMessage}`, { cause: new Error(causeMessage) });
+    expect(uniqueViolationColumns(envelope)).toEqual([
+      ["members", "classroom_id"],
+      ["members", "name"],
+    ]);
+    expect(uniqueViolationColumns(envelope.cause as Error)).toEqual([
+      ["members", "classroom_id"],
+      ["members", "name"],
+    ]);
+    expect(uniqueViolationColumns(new Error("UNIQUE constraint failed: users.email"))).toEqual([["users", "email"]]);
+    expect(uniqueViolationColumns(new Error("FOREIGN KEY constraint failed"))).toEqual([]);
+  });
+});

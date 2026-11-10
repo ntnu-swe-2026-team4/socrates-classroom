@@ -1,69 +1,140 @@
-import type { MiddlewareHandler } from "hono";
-import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import type { Db } from "./db/d1";
-import { one, run } from "./db/d1";
-import { languageOf } from "./messages";
-import type { AppEnv, UserRow } from "./http";
-import { fail } from "./http";
+import { deleteCookie, setCookie } from "hono/cookie";
+import type { User } from "@socrates/shared";
+import type { Ctx } from "./http";
+import { timingSafeEqual } from "./auth-crypto";
 
 export const SESSION_COOKIE = "socrates_session";
 const SESSION_DAYS = 30;
 
-export function authMiddleware(db: Db): MiddlewareHandler<AppEnv> {
-  return async (c, next) => {
-    c.set("lang", languageOf(c.req.header("Accept-Language")));
-    const token = getCookie(c, SESSION_COOKIE);
-    if (token) {
-      const row = await one<{ user_id: string; expires_at: string }>(
-        db,
-        "SELECT user_id, expires_at FROM sessions WHERE token = $token",
-        { token },
-      );
-      if (row && row.expires_at > new Date().toISOString()) {
-        const user = await one<UserRow>(db, "SELECT id, name, role, avatar_url, created_at FROM users WHERE id = $id", {
-          id: row.user_id,
-        });
-        if (user) c.set("user", user);
-      } else if (row) {
-        await run(db, "DELETE FROM sessions WHERE token = $token", { token });
-      }
-    }
-    await next();
+interface TokenClaims {
+  uid: string;
+  name: string;
+  role: User["role"];
+  exp: number;
+}
+
+const encoder = new TextEncoder();
+const keyCache = new Map<string, Promise<CryptoKey>>();
+
+function hmacKey(secret: string): Promise<CryptoKey> {
+  let key = keyCache.get(secret);
+  if (!key) {
+    key = crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
+      "sign",
+      "verify",
+    ]);
+    keyCache.set(secret, key);
+  }
+  return key;
+}
+
+function secretOf(ctx: { env: { AUTH_SECRET?: string } }): string {
+  const secret = ctx.env.AUTH_SECRET;
+  if (!secret) throw new Error("AUTH_SECRET is not set");
+  return secret;
+}
+
+function b64url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+function fromB64url(text: string): Uint8Array {
+  const padded = text.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
+  return Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+}
+
+async function sign(payload: string, secret: string): Promise<string> {
+  const key = await hmacKey(secret);
+  const mac = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
+  return b64url(new Uint8Array(mac));
+}
+
+export async function issueSessionToken(ctx: { env: { AUTH_SECRET?: string } }, user: User): Promise<string> {
+  const claims: TokenClaims = {
+    uid: user.id,
+    name: user.name,
+    role: user.role,
+    exp: Date.now() + SESSION_DAYS * 864e5,
   };
+  const payload = b64url(encoder.encode(JSON.stringify(claims)));
+  const sig = await sign(payload, secretOf(ctx));
+  return `${payload}.${sig}`;
 }
 
-export function requireUser(c: { get: (k: "user") => UserRow | undefined }): UserRow {
-  const user = c.get("user");
-  if (!user) fail(401, "unauthorized");
-  return user;
+export async function userFromSessionToken(
+  ctx: { env: { AUTH_SECRET?: string } },
+  token: string | undefined,
+): Promise<User | null> {
+  if (!token) return null;
+  try {
+    const [payload, sig] = token.split(".");
+    if (!payload || !sig) return null;
+    const expected = await sign(payload, secretOf(ctx));
+    if (expected.length !== sig.length) return null;
+    const a = fromB64url(sig);
+    const b = fromB64url(expected);
+    let diff = 0;
+    for (let i = 0; i < a.length; i += 1) diff |= a[i]! ^ b[i]!;
+    if (diff !== 0) return null;
+    const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as TokenClaims;
+    if (claims.exp < Date.now()) return null;
+    return { id: claims.uid, name: claims.name, role: claims.role };
+  } catch {
+    return null;
+  }
 }
 
-export async function startSession(db: Db, c: any, userId: string, secure: boolean): Promise<void> {
-  await run(db, "DELETE FROM sessions WHERE expires_at < $now", { now: new Date().toISOString() });
-  const token = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
-  const now = new Date();
-  const expires = new Date(now.getTime() + SESSION_DAYS * 864e5);
-  await run(
-    db,
-    "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES ($token, $userId, $now, $expires)",
-    {
-      token,
-      userId,
-      now: now.toISOString(),
-      expires: expires.toISOString(),
-    },
-  );
+export async function startSession(c: Ctx, user: User): Promise<void> {
+  const token = await issueSessionToken({ env: c.env }, user);
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "Lax",
     path: "/",
     maxAge: SESSION_DAYS * 86400,
-    secure,
+    secure: true,
   });
 }
 
-export async function endSession(db: Db, c: any): Promise<void> {
-  const token = getCookie(c, SESSION_COOKIE);
-  if (token) await run(db, "DELETE FROM sessions WHERE token = $token", { token });
+export function endSession(c: Ctx): void {
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
+}
+
+// OWASP recommends 600k PBKDF2-SHA256 iterations; Workers CPU limits make
+// that cost prohibitive per login. 100k with per-user salt is the deliberate
+// compromise — revisit if Workers CPU budgets change.
+const PBKDF2_ITERATIONS = 100_000;
+
+async function pbkdf2(password: string, salt: Uint8Array): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: salt as BufferSource, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    key,
+    256,
+  );
+  return b64url(new Uint8Array(bits));
+}
+
+export async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await pbkdf2(password, salt);
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${b64url(salt)}$${hash}`;
+}
+
+export const DUMMY_HASH = "pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+export async function verifyPassword(password: string, stored: string | null): Promise<boolean> {
+  if (!stored) return false;
+  const [scheme, iterations, salt, hash] = stored.split("$");
+  if (scheme !== "pbkdf2" || !iterations || !salt || !hash) return false;
+  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: fromB64url(salt) as BufferSource, iterations: Number(iterations), hash: "SHA-256" },
+    key,
+    256,
+  );
+  const computed = b64url(new Uint8Array(bits));
+  return timingSafeEqual(computed, hash);
 }

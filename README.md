@@ -1,26 +1,31 @@
 # 詰問 · 蘇格拉底對話教室
 
-以蘇格拉底式詰問為核心的課堂辯論平台：與 AI 蘇格拉底單人對話、四階段課堂辯論（調查 → 提純 → 比賽 → 結果）、**多人討論**（老師出一題，同學各自跟 AI 對話，老師看全班討論成果）、立場星圖視覺化。
+以蘇格拉底式詰問為核心的課堂平台：學生與 AI 蘇格拉底一對一對話，老師開課堂、發議題、看逐人與全班報告，立場星圖視覺化。
 
-**執行在 Cloudflare Workers 上**：一個 Worker（Hono API + React 靜態資產）、D1（SQLite）、R2（上傳檔案）、Durable Object（**Pi Durable** 對話引擎）。對話模型走可切換的 provider pool（自架 GPU 端點 → OpenCode Go → OpenRouter → Workers AI，全 ZDR；詳見 [`docs/providers.md`](docs/providers.md)）。
+**執行在 Cloudflare Workers 上**：一個 Worker（Hono API + React 靜態資產）、D1（SQLite）、Durable Object（**Pi Durable** 對話引擎）。對話模型走 gateway（`providers.config.yaml` 定義的 provider 鏈：自架 DGX 端點（GLM-5.3-Flash）→ Workers AI 託管 GLM，全 ZDR；老師 key 可插自有 provider；詳見 [`docs/providers.md`](docs/providers.md)）。
 
 ## Quickstart
 
-需要 **Node.js ≥ 26.12**（2026-10 安全版；cf CLI 不支援 Bun）與 **pnpm ≥ 12**（`corepack enable` 或 `npm i -g pnpm`）。
+需要 **Node.js 26**（devEngines 由 pnpm 自動下載對應 runtime；shell 互動用 [fnm](https://github.com/Schniz/fnm) 等 version manager）與 **pnpm ≥ 12**（`corepack enable` 或 `npm i -g pnpm`）。
 
 ```bash
 pnpm install
-cp apps/web/.env.example apps/web/.env.local # SEED_TOKEN=dev-seed——先於 pnpm dev（server 啟動時載入）
 pnpm dev                                      # 自動套 D1 migrations → http://localhost:5173
 ```
 
-另開一個終端機灌示範資料（教室：高二哲學選修 A、倫理學讀書會）：
+`.env.local` 全部 optional——`pnpm dev` 沒有任何設定檔也能起（預設 `LLM_PROVIDER=mock`，離線 faux 模型）。要設 dev secrets／override 時：
+
+```bash
+cp apps/web/.env.example apps/web/.env.local   # 改完要重啟 dev（server 啟動時載入一次）
+```
+
+另開一個終端機灌示範資料：
 
 ```bash
 pnpm seed                                     # 需要 dev server 運行中；SEED_TOKEN 自動讀 .env.local
 ```
 
-示範帳號：老師 `林老師`、學生 `訪客`（示範登入：選身分 + 輸入姓名即可）。對話功能的 LLM 設定三選一見 [`docs/development.md`](docs/development.md)。
+示範資料：老師帳號 `demo@socrates.tw`（密碼 `demo-demo`）＋兩間教室（高二哲學選修 A、倫理學讀書會，各含進行中活動）。老師登入 `/login`；學生從老師教室頁拿邀請碼，走 `/join` 以訪客加入對話。對話功能的 LLM 設定三選一見 [`docs/development.md`](docs/development.md)。
 
 選配——git pre-commit hooks（需先安裝 [prek](https://github.com/j178/prek)：`pipx install prek` 或 `uv tool install prek`）：
 
@@ -38,37 +43,37 @@ cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations
 cf deploy --prebuilt                # 用同一份建置產物部署
 ```
 
-CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) PR 檢查 + dry-run、[`deploy.yml`](.github/workflows/deploy.yml) main 自動部署）。Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`；runtime keys（`OPENCODE_API_KEY`、`OPENROUTER_API_KEY`、`BYOK_ENC_KEY`）用 `cf deploy --secrets-file` 或 `wrangler secret put`。
+CI/CD：GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml) PR 檢查 + dry-run、[`deploy.yml`](.github/workflows/deploy.yml) push main 自動部署）。Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`；runtime secrets（`AUTH_SECRET`、`BYOK_ENC_KEY`、`SEED_TOKEN`——詳見 [`docs/cf.md`](docs/cf.md) §Secrets）走 `cf deploy --secrets-file`。
 
 ## 開發
 
-| 指令（專案根目錄） | 作用                                                          |
-| ------------------ | ------------------------------------------------------------- |
-| `pnpm dev`         | 單一全端 dev server（SPA HMR + Worker + 本地 D1/R2，:5173）   |
-| `pnpm test`        | vitest（Worker runtime：路由 + D1 + 對話 SSE，mock provider） |
-| `pnpm typecheck`   | server 與 web 的 TypeScript 檢查                              |
-| `pnpm lint`        | Biome 檢查（`pnpm format` 自動修）                            |
-| `pnpm migrate`     | 本地 D1 migrations                                            |
-| `pnpm seed`        | 灌示範資料（需 dev server 運行中）                            |
-| `pnpm deploy`      | 部署到 Cloudflare（apps/web）                                 |
+| 指令（專案根目錄） | 作用                                                              |
+| ------------------ | ----------------------------------------------------------------- |
+| `pnpm dev`         | 單一全端 dev server（SPA HMR + Worker + 本地 D1，:5173）          |
+| `pnpm test`        | vitest（server：真 workerd + D1 + DO；web：jsdom；mock provider） |
+| `pnpm typecheck`   | server 與 web 的 TypeScript 檢查                                  |
+| `pnpm lint`        | Biome 檢查（`pnpm format` 自動修）                                |
+| `pnpm migrate`     | 本地 D1 migrations                                                |
+| `pnpm seed`        | 灌示範資料（需 dev server 運行中）                                |
+| `pnpm deploy`      | 部署到 Cloudflare（apps/web）                                     |
 
 ## 結構
 
 ```
 apps/
-├── web/        # React + Vite 前端（打包後掛在 Worker 的 Static Assets）
-└── server/     # Hono Worker：API + PiAgent Durable Object + provider pool
-    ├── src/do/         # PiAgent（PiHarness）、ActivityEvents（活動事件扇出）
-    ├── src/providers/  # provider pool、ZDR 白名單、學生 BYOK
+├── web/        # React + Vite 前端（TanStack file routes；打包後掛在 Worker 的 Static Assets）
+└── server/     # Hono Worker：API + Chat/ReportRunner Durable Objects + gateway
+    ├── src/do/         # Chat（PiHarness 宿主）、ReportRunner（alarm 驅動報告）
+    ├── src/gateway/    # provider gateway：YAML 設定、ledger cooldown、鏈走訪
+    ├── src/pi/         # extensions（socrates/avatar/judgment/websearch）＋agent profiles
     ├── src/db/         # D1 adapter（$named → 位置參數自動轉換）
-    └── migrations/     # D1 migrations（cf d1 migrations apply）
+    └── migrations/     # D1 migrations（pnpm dev 自動套；cf d1 migrations apply 用於 production）
 packages/
-├── shared/     # 前後端共用契約型別
-└── llm/        # 提示詞與 provider 設定（LLM 組改檔即部署生效）
+└── shared/     # 前後端共用契約 schema（zod，單一真相）
 ```
 
-- **對話引擎**：`PiHarness`（Agents SDK）跑在 Durable Object——transcript、排隊、重試、崩潰恢復由 pi 管理；前端對話 API 契約（SSE：`delta/emotion/done/error`）與 [`docs/api-contract.md`](docs/api-contract.md) 一致。
-- **LLM 設定層**：提示詞在 `packages/llm/prompts/`，模型路由在 `apps/server/src/providers/`；規則與查證詳見 [`docs/providers.md`](docs/providers.md)。
+- **對話引擎**：`PiHarness`（Agents SDK）跑在 Durable Object——transcript、重試、崩潰恢復由 pi 管理；對話走 WebSocket（view＋chord ops），契約與 [`docs/api-contract.md`](docs/api-contract.md) §5 一致。
+- **LLM 設定層**：提示詞在 `apps/server/src/prompts/`，模型路由在 `apps/server/providers.config.yaml`（build-time 編譯）；規則與查證詳見 [`docs/providers.md`](docs/providers.md)。
 - 沒有金鑰也能開發：`LLM_PROVIDER=mock`（測試預設）用離線 faux 模型。
 
 ## 文件（每份 = 一個領域的 SSOT）

@@ -1,13 +1,21 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   pull_request:
   push:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       CF_SEND_TELEMETRY: "false"
     steps:
@@ -22,11 +30,15 @@ jobs:
         run: pnpm lint
       - name: YAML lint (yamllint)
         run: |
-          pip install yamllint
+          pip install "yamllint==1.38.0"
           yamllint .
+      - name: Config drift (regen config.gen.ts and diff)
+        run: |
+          pnpm --filter @socrates/server run gen-config
+          git diff --exit-code -- apps/server/src/gateway/config.gen.ts
       - name: Typecheck
         run: pnpm typecheck
-      - name: Test (Worker runtime + local D1/R2, LLM_PROVIDER=mock)
+      - name: "Test (server: workerd real runtime, LLM_PROVIDER=mock / web: vitest)"
         run: pnpm test
       - name: cf build (client + worker into Build Output)
         run: pnpm exec cf build

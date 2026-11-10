@@ -1,0 +1,299 @@
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { onOpenAccountSheet } from "@/lib/accountSheet";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CircleUserRound, GraduationCap, Home, KeyRound, Menu, Moon, Sun, X } from "lucide-react";
+import { api } from "@/api";
+import { Initial, cn } from "@/components/ui";
+import { LANGS, setLocale, useI18n, type Locale } from "@/i18n";
+import { toggleTheme, useTheme } from "@/theme";
+
+const BARE_ROUTES = [/^\/$/, /^\/login\/?$/];
+
+const NAV_BTN =
+  "flex w-[72px] flex-col items-center gap-1 rounded-md py-2.5 text-[11.5px] text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink-soft";
+const NAV_ACTIVE = "bg-ember-wash text-ember hover:bg-ember-wash hover:text-ember";
+
+const NAV = [
+  { to: "/home", label: "nav_home", icon: Home, match: ["/home"] },
+  {
+    to: "/classrooms",
+    label: "nav_classrooms",
+    icon: GraduationCap,
+    match: ["/classrooms", "/join", "/dialogue", "/t/", "/report"],
+  },
+] as const;
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  if (BARE_ROUTES.some((re) => re.test(pathname))) return <>{children}</>;
+  return <RailShell pathname={pathname}>{children}</RailShell>;
+}
+
+function RailShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
+  const { t, locale } = useI18n();
+  const theme = useTheme();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const focusRestoreRef = useRef<HTMLElement | null>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const accountRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const open = drawerOpen || accountOpen;
+    if (!open) return;
+    focusRestoreRef.current = document.activeElement as HTMLElement | null;
+    const target = drawerOpen ? drawerRef.current : accountRef.current;
+    target?.focus();
+  }, [drawerOpen, accountOpen]);
+
+  useEffect(() => {
+    if (drawerOpen || accountOpen) return;
+    focusRestoreRef.current?.focus();
+    focusRestoreRef.current = null;
+  }, [drawerOpen, accountOpen]);
+
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const logout = useMutation({
+    mutationFn: () => api.logout(),
+    onSuccess: async () => {
+      setAccountOpen(false);
+      queryClient.clear();
+      queryClient.setQueryData(["me"], null);
+      await navigate({ to: "/" });
+    },
+  });
+  const isTeacher = me.data?.role === "teacher";
+  useEffect(() => onOpenAccountSheet(() => setAccountOpen(true)), []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: close overlays on every navigation
+  useEffect(() => {
+    setDrawerOpen(false);
+    setAccountOpen(false);
+  }, [pathname]);
+
+  const themeTip = t("theme_toggle");
+
+  const rail = (
+    <nav className="flex h-full w-24 flex-col items-center gap-1 border-r border-line bg-card pb-5">
+      <button
+        type="button"
+        onClick={() => setAccountOpen(true)}
+        title={me.data?.name}
+        className="mb-5 flex h-topbar w-full shrink-0 cursor-pointer flex-col items-center justify-center gap-1.5 border-b border-line px-2"
+      >
+        <Initial name={me.data?.name ?? "詰"} />
+        <span className="line-clamp-2 max-w-full break-all text-center font-serif text-[12.5px] leading-snug tracking-[.04em] text-ink-soft">
+          {me.data?.name}
+        </span>
+      </button>
+
+      {NAV.map((item) => {
+        const active = item.match.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
+        const Icon = item.icon;
+        return (
+          <Link key={item.to} to={item.to} className={cn(NAV_BTN, active && NAV_ACTIVE)}>
+            <Icon className="size-5" />
+            <span>{t(item.label)}</span>
+          </Link>
+        );
+      })}
+
+      <div className="flex-1" />
+
+      <button
+        type="button"
+        onClick={toggleTheme}
+        aria-label={themeTip}
+        title={themeTip}
+        className="mb-2 flex size-10 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-paper-deep text-ink-soft transition-colors hover:border-ember hover:text-ember"
+      >
+        {theme === "dark" ? <Moon className="size-[19px]" /> : <Sun className="size-[19px]" />}
+      </button>
+      <button
+        type="button"
+        onClick={() => setAccountOpen(true)}
+        className="flex w-[72px] cursor-pointer flex-col items-center gap-1 rounded-md border border-line-strong py-2 text-[10.5px] text-ink-faint hover:text-ink-soft"
+      >
+        <CircleUserRound className="size-[15px]" />
+        <span>{t("account_title")}</span>
+      </button>
+    </nav>
+  );
+
+  return (
+    <div className="flex h-dvh bg-paper text-ink">
+      <aside className="relative hidden h-dvh shrink-0 md:block">{rail}</aside>
+
+      <button
+        type="button"
+        aria-label={t("menu_open")}
+        onClick={() => setDrawerOpen(true)}
+        className="fixed top-6 left-3 z-40 flex size-10 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-card text-ink-soft md:hidden"
+      >
+        <Menu className="size-[18px]" />
+      </button>
+
+      {drawerOpen && (
+        <TrapDialog ref={drawerRef} className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
+          {rail}
+        </TrapDialog>
+      )}
+
+      <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
+
+      {accountOpen && (
+        <TrapDialog
+          ref={accountRef}
+          ariaLabelledBy="account-title"
+          className="anim-sheet absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-paper p-6 shadow-xl"
+          onClose={() => setAccountOpen(false)}
+        >
+          <button
+            type="button"
+            aria-label={t("common_back")}
+            onClick={() => setAccountOpen(false)}
+            className="absolute top-4 right-4 flex size-8 cursor-pointer items-center justify-center rounded-full text-ink-faint hover:bg-paper-deep hover:text-ink"
+          >
+            <X className="size-4" />
+          </button>
+          <h2 id="account-title" className="font-serif text-lg">
+            {t("account_title")}
+          </h2>
+          <p className="mb-5 text-[13px] text-ink-faint">{t("app_sub")}</p>
+
+          {me.data && (
+            <div className="mb-4 flex items-center gap-4 rounded-2xl bg-paper-deep px-4 py-3">
+              <Initial name={me.data.name} className="size-12 text-lg" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-serif text-[15px]">{me.data.name}</div>
+                <div className="text-[12.5px] text-ink-faint">
+                  {t("account_role")} · {isTeacher ? t("role_teacher") : t("role_student")}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {me.data && <NameDisplay key={me.data.id} name={me.data.name} />}
+
+          <div className="mb-4 rounded-2xl bg-paper-deep px-4 py-3 text-sm">
+            <div className="mb-2" id="account-lang">
+              {t("settings_lang")}
+            </div>
+            <div
+              role="radiogroup"
+              aria-labelledby="account-lang"
+              className="inline-flex gap-0.5 rounded-full border border-line-strong bg-card p-0.5"
+            >
+              {LANGS.map((l) => (
+                // biome-ignore lint/a11y/useSemanticElements: language switch is a button-based radio group
+                <button
+                  key={l.code}
+                  type="button"
+                  role="radio"
+                  aria-checked={locale === l.code}
+                  lang={l.code}
+                  onClick={() => setLocale(l.code as Locale)}
+                  className={cn(
+                    "cursor-pointer rounded-full px-4 py-1.5 text-[13px]",
+                    locale === l.code ? "bg-ember font-semibold text-on-ember" : "text-ink-soft hover:text-ink",
+                  )}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {isTeacher && (
+            <Link
+              to="/settings"
+              className="mb-4 flex items-center gap-3 rounded-2xl bg-paper-deep px-4 py-3 text-sm hover:text-ember"
+            >
+              <KeyRound className="size-4" />
+              <span className="flex-1">{t("settings_title")}</span>
+              <span aria-hidden="true">›</span>
+            </Link>
+          )}
+
+          <button
+            type="button"
+            onClick={() => logout.mutate()}
+            disabled={logout.isPending}
+            className="mt-auto h-10 w-full cursor-pointer rounded-full bg-paper-deep text-sm font-medium text-flag transition-colors hover:bg-flag-wash"
+          >
+            {t("account_logout")}
+          </button>
+        </TrapDialog>
+      )}
+    </div>
+  );
+}
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function TrapDialog({
+  ref,
+  className,
+  onClose,
+  ariaLabelledBy,
+  children,
+}: {
+  ref: RefObject<HTMLDivElement | null>;
+  className: string;
+  onClose: () => void;
+  ariaLabelledBy?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="anim-fade absolute inset-0 bg-black/40" onClick={onClose} />
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        {...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {})}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            onClose();
+            return;
+          }
+          if (event.key !== "Tab") return;
+          const container = event.currentTarget;
+          const focusables = [...container.querySelectorAll(FOCUSABLE)] as HTMLElement[];
+          if (focusables.length === 0) return;
+          const first = focusables[0]!;
+          const last = focusables.at(-1)!;
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }}
+        className={className}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function NameDisplay({ name }: { name: string }) {
+  const { t } = useI18n();
+  return (
+    <div className="mb-4 flex items-center gap-4 rounded-2xl bg-paper-deep px-4 py-3">
+      <Initial name={name} className="size-12 text-lg" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-serif text-[15px]">{name}</div>
+        <div className="text-[12.5px] text-ink-faint">{t("account_name_hint")}</div>
+      </div>
+    </div>
+  );
+}

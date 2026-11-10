@@ -2,22 +2,21 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "socrates-server-test",
   "main": "./src/index.ts",
-  "compatibility_date": "2026-08-06",
+  "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
   "rules": [{ "type": "Text", "globs": ["**/*.md", "**/*.sql"] }],
   "d1_databases": [{ "binding": "DB", "database_name": "socrates-test", "database_id": "local-test" }],
-  "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "socrates-test-uploads" }],
   "durable_objects": {
-    "bindings": [
-      { "name": "PiAgent", "class_name": "PiAgent" },
-      { "name": "ActivityEvents", "class_name": "ActivityEvents" }
-    ]
+    "bindings": [{ "name": "Chat", "class_name": "Chat" }, { "name": "ReportRunner", "class_name": "ReportRunner" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PiAgent", "ActivityEvents"] }],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Chat", "ReportRunner"] }],
   "vars": {
+    // Test-only fixtures sharing names with production secrets; never real credentials.
     "LLM_PROVIDER": "mock",
+    "FAUX_TOKENS_PER_SECOND": "4",
     "PUBLIC_BASE_URL": "",
-    "COOKIE_SECURE": "false",
-    "CORS_ORIGINS": "http://localhost:5173"
+    "SEED_TOKEN": "dev-seed-token",
+    "AUTH_SECRET": "test-auth-secret",
+    "BYOK_ENC_KEY": "test-byok-enc-key"
   }
 }

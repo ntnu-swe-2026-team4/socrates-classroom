@@ -12,5 +12,5 @@ hooks = [
 repo = "local"
 hooks = [
   { id = "biome", name = "biome check (write)", language = "system", entry = "pnpm exec biome check --write --staged --files-ignore-unknown=true --no-errors-on-unmatched", pass_filenames = false },
-  { id = "yamllint", name = "yamllint", language = "python", entry = "yamllint", additional_dependencies = ["yamllint==1.37.1"], types = ["yaml"] },
+  { id = "yamllint", name = "yamllint", language = "python", entry = "yamllint", additional_dependencies = ["yamllint==1.38.0"], types = ["yaml"] },
 ]
