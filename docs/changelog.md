@@ -16,6 +16,50 @@
 - Chat DO `settings.extensions` 改為 getter：已安裝且非 btw 的 extensions（root 行為不變）
 - routeSubmit 的 model 快取改 per session；`llm_unavailable` 廣播只送綁定該 session 的連線
 
+## 2026-11-11 — 統一帳號、單人模式、第三方登入與介面改版（`experiment/web-next`）
+
+### Added
+
+- 單人模式（從 `socrate-classroom` 分支移植並改走 WS）：`solo_chats`（`003_accounts_solo.sql`）、`/api/solo/chats` CRUD；Chat DO 支援 `s_` thread（本人授權、無活動結束檢查、擁有者 teacher keys）；前端 `/chat`、`/chat/:chatId`（左側主題欄可收合＋搜尋／重新命名／刪除）
+- 登入：訪客（`POST /auth/guest`）、Email 註冊／登入（`code` 改選填，guest 原地升級）、Google／Apple／Facebook OAuth（`004_oauth.sql` `oauth_identities`，未設定時按鈕停用）
+- `GET /api/classrooms/:id`、`GET /api/classrooms/:id/activities`；教室內頁與教室對話左欄列出所有討論主題
+- 自由浮動的蘇格拉底小幫手（`SocratesCompanion`）：左鍵拖曳、雙擊開啟輪盤選單（查詢／靜音／表情）；rail 上的小幫手按鈕切換顯示
+
+### Changed
+
+- **帳號不分老師／學生**：`users.role` 移除、改 `is_guest`；`User.role` → `User.guest`；老師是每間教室的 owner 身分，任何正式帳號都可開課也可加入別人的教室（guest 開課 → 403 `account_required`）
+- 對話介面統一為 AI 對話版型（左主題欄＋右對話）；移除固定蘇格拉底面板、旋轉與全息特效；TTS 遵守小幫手靜音
+- 導向：登入後到首頁；「教室」一律先到教室列表／教室內頁（不再預設開課頁或邀請碼頁）；邀請連結加入後進教室內頁
+- 視覺：移除漸層、收緊區塊間距（圓角維持原設計）；教室列表與教室內頁改為滿版（Moodle 式課程卡片格狀排列＋右側資訊欄）；帳號只保留一個頭像入口；蘇格拉底小幫手放大（桌面 280px／手機 180px）
+- Biome 排除參考資料夾 `socrate-classroom/`
+
+### Added（後續）
+
+- 刪除教室（`DELETE /api/classrooms/:id`，僅 owner，確認框）
+- 教室社群（`006_community.sql`）：教室頁改為分頁（主題／公告／討論區／成員）；公告（僅 owner 發布）、討論區（討論串＋單層回覆）、成員列表（owner 移除學生、學生退出教室）；端點見 `api-contract.md` §4.2
+- 全翻譯：系統主題 en／es 譯文（`005_topic_i18n.sql`）、日期依介面語言格式化、離線 mock 回覆依學生語言、`socrates.md` 新增「以學生語言回覆」規則；問 AI（`POST /api/assistant`）
+
+- 學生視角預覽改版：頂部深色細條（回到教室／重設／離開）、預覽期間鎖定在該教室（session 帶 `previewClassroomId`，首頁／聊天／教室列表／設定導回）；切換身分改整頁導向，修正離開預覽後畫面不更新
+- 邀請連結加入前先選身分（使用我的帳號／以訪客加入）；課程改名改為對話框；設定新增語音朗讀開關＋音量（套用到 TTS GainNode）；頁面標題字級縮小；手機版小幫手縮為 120px；移除已棄用的 `THREE.Clock`；對話連線前 3 秒顯示「連線中」
+
+- 語音仲裁：所有朗讀改走單一語音通道 `lib/speech.ts`（最後主動者優先、非主動不打斷、跨分頁互斥），小幫手「正在朗讀」標籤＋停止鈕，問 AI 回答新增「朗讀」
+
+- 老爺爺聲線：前端 Web Audio 處理（playbackRate 0.86、low-shelf 暖化、3.2 kHz lowpass、5.2 Hz tremolo），設定頁可切換「老爺爺／原聲」，預設老爺爺；離線 mock 對話改為五種追問輪替
+
+- 離線 mock 朗讀改用瀏覽器本機語音（僅 `localService` voice，不送出文字；優先台灣男聲，老爺爺聲線＝pitch 0.55、rate 0.86），伺服器 mock 音檔加 `X-Socrates-Fallback: mock` 標記；真實 TTS 的老爺爺處理減弱以免悶糊；教室頁與卡片移除「我開的」標示
+
+### Security
+
+- OAuth 不自動連結到「有密碼、Email 未驗證」的帳號，避免先註冊他人 Email 再接管其第三方登入
+
+## 2026-11-11 — Student View（學生視角預覽，`experiment/web-next`）
+
+### Added
+
+- 老師在教室頁一鍵以測試學生進入對話，不需邀請碼或第二個瀏覽器：`002_preview_student.sql`（`users.preview_classroom_id`）、`POST /api/classrooms/:id/preview`・`/api/preview/reset`・`/api/preview/exit`、`User.preview`（session claim `pv`）、AppShell banner（重設／離開）；`memberCount` 與 ReportRunner 排除測試學生；i18n zh/en/es
+
+### Changed
+
 ## 2026-11-09 — routing/ 更名 gateway/（`experiment/web-next`）
 
 ### Changed

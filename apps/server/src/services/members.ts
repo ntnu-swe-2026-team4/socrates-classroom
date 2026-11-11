@@ -1,4 +1,4 @@
-import type { User } from "@socrates/shared";
+import type { Lang, User } from "@socrates/shared";
 import type { Db } from "../db/d1";
 import { one } from "../db/d1";
 import { fail } from "../http";
@@ -26,6 +26,7 @@ export interface TopicRow {
   statement: string;
   summary: string | null;
   prompts: string;
+  i18n: string | null;
 }
 
 export interface MemberRow {
@@ -36,13 +37,32 @@ export interface MemberRow {
   joined_at: string;
 }
 
-export function parsePrompts(row: TopicRow) {
+interface TopicTranslation {
+  title?: string;
+  statement?: string;
+  summary?: string;
+  prompts?: string[];
+}
+
+export function translationOf(i18n: string | null, lang: Lang): TopicTranslation {
+  if (!i18n || lang === "zh") return {};
+  try {
+    const parsed = JSON.parse(i18n) as Partial<Record<Lang, TopicTranslation>>;
+    return parsed[lang] ?? {};
+  } catch {
+    return {};
+  }
+}
+
+export function parsePrompts(row: TopicRow, lang: Lang = "zh") {
+  const local = translationOf(row.i18n, lang);
+  const summary = local.summary ?? row.summary;
   return {
     id: row.id,
-    title: row.title,
-    statement: row.statement,
-    ...(row.summary ? { summary: row.summary } : {}),
-    prompts: JSON.parse(row.prompts) as string[],
+    title: local.title ?? row.title,
+    statement: local.statement ?? row.statement,
+    ...(summary ? { summary } : {}),
+    prompts: local.prompts ?? (JSON.parse(row.prompts) as string[]),
   };
 }
 
@@ -59,10 +79,10 @@ export async function activityOf(
   return { activity, classroom };
 }
 
-export async function topicOf(db: Db, topicId: string): Promise<ReturnType<typeof parsePrompts>> {
+export async function topicOf(db: Db, topicId: string, lang: Lang = "zh"): Promise<ReturnType<typeof parsePrompts>> {
   const row = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id", { id: topicId });
   if (!row) fail(404, "not_found");
-  return parsePrompts(row);
+  return parsePrompts(row, lang);
 }
 
 export async function requireMembership(

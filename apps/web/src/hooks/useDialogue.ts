@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useAgent } from "agents/react";
+import { markIntent, speak, stopSpeech } from "@/lib/speech";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
@@ -14,7 +15,6 @@ import {
   type TranscriptView,
 } from "@earendil-works/pi-durable";
 import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
-import { api } from "@/api";
 
 export type DialoguePhase = "idle" | "thinking" | "streaming" | "speaking";
 export type DialogueError = { code: string } | null;
@@ -29,8 +29,6 @@ export interface DialogueMessage {
   role: "user" | "assistant";
   text: string;
 }
-
-const NO_AMPLITUDE = () => {};
 
 export function textOf(message: Message | undefined): string {
   if (!message) return "";
@@ -91,13 +89,14 @@ export function useDialogue(activityId: string, userId: string) {
   const [phase, setPhase] = useState<DialoguePhase>("idle");
   const [error, setError] = useState<DialogueError>(null);
   const [ttsFailed, setTtsFailed] = useState(false);
+  const [ttsSkipped, setTtsSkipped] = useState(false);
   const viewRef = useRef<ConversationView | null>(null);
   const socketRef = useRef<{ send: (data: string) => void; readyState: number; OPEN: number } | null>(null);
   const pendingRef = useRef<string | null>(null);
   const [pendingView, setPendingView] = useState(false);
   const baselineRef = useRef<number | null>(null);
   const failedInputRef = useRef<string | null>(null);
-  const ttsRef = useRef<AbortController | null>(null);
+  const speechToken = useRef(0);
   const entriesWaiters = useRef(
     new Map<string, { resolve: (page: Page<EntryRecord, Cursor>) => void; reject: (reason: Error) => void }>(),
   );
@@ -120,7 +119,8 @@ export function useDialogue(activityId: string, userId: string) {
 
   useEffect(
     () => () => {
-      ttsRef.current?.abort();
+      speechToken.current += 1;
+      stopSpeech("dialogue");
       pendingRef.current = null;
       baselineRef.current = null;
     },
@@ -133,32 +133,23 @@ export function useDialogue(activityId: string, userId: string) {
     setTranscriptView(transcriptRef.current.merge(next));
   }, []);
 
-  const speak = useCallback((text: string) => {
-    ttsRef.current?.abort();
-    const controller = new AbortController();
-    ttsRef.current = controller;
-    return api.tts(text, NO_AMPLITUDE, controller.signal);
+  const speakAnswer = useCallback((text: string, userInitiated = false) => {
+    speechToken.current += 1;
+    const token = speechToken.current;
+    setPhase("speaking");
+    setTtsFailed(false);
+    setTtsSkipped(false);
+    speak("dialogue", text, { userInitiated })
+      .then((outcome) => {
+        if (token === speechToken.current && outcome === "skipped") setTtsSkipped(true);
+      })
+      .catch(() => {
+        if (token === speechToken.current) setTtsFailed(true);
+      })
+      .finally(() => {
+        if (token === speechToken.current) setPhase("idle");
+      });
   }, []);
-
-  const speakAnswer = useCallback(
-    (text: string) => {
-      setPhase("speaking");
-      setTtsFailed(false);
-      const speaking = speak(text);
-      const controller = ttsRef.current;
-      if (!controller) return;
-      speaking
-        .catch(() => {
-          if (!controller.signal.aborted) setTtsFailed(true);
-        })
-        .finally(() => {
-          if (ttsRef.current !== controller) return;
-          ttsRef.current = null;
-          setPhase("idle");
-        });
-    },
-    [speak],
-  );
 
   const completePending = useCallback(() => {
     pendingRef.current = null;
@@ -287,7 +278,8 @@ export function useDialogue(activityId: string, userId: string) {
     },
     onMessage: (event) => onFrame(event.data),
     onConnectionError: () => {
-      ttsRef.current?.abort();
+      speechToken.current += 1;
+      stopSpeech("dialogue");
     },
   });
   socketRef.current = socket;
@@ -330,8 +322,9 @@ export function useDialogue(activityId: string, userId: string) {
       const trimmed = text.trim();
       if (!trimmed || pendingRef.current || !viewRef.current) return false;
       if (socket.readyState !== WebSocket.OPEN) return false;
-      ttsRef.current?.abort();
-      ttsRef.current = null;
+      markIntent("dialogue");
+      speechToken.current += 1;
+      stopSpeech("dialogue");
       const id = crypto.randomUUID();
       pendingRef.current = id;
       setPendingView(true);
@@ -339,6 +332,7 @@ export function useDialogue(activityId: string, userId: string) {
       failedInputRef.current = trimmed;
       setError(null);
       setTtsFailed(false);
+      setTtsSkipped(false);
       setPhase("thinking");
       socket.send(JSON.stringify({ type: "submit", id, input: trimmed } satisfies ClientMessage));
       return true;
@@ -357,7 +351,7 @@ export function useDialogue(activityId: string, userId: string) {
     if (pendingRef.current) return;
     const last = lastAssistantText(viewRef.current);
     if (!last) return;
-    speakAnswer(last);
+    speakAnswer(last, true);
   }, [speakAnswer]);
 
   const interrupt = useCallback(() => {
@@ -367,8 +361,8 @@ export function useDialogue(activityId: string, userId: string) {
       setPendingView(false);
       baselineRef.current = null;
     }
-    ttsRef.current?.abort();
-    ttsRef.current = null;
+    speechToken.current += 1;
+    stopSpeech("dialogue");
     setPhase("idle");
   }, [socket]);
 
@@ -447,6 +441,7 @@ export function useDialogue(activityId: string, userId: string) {
     error,
     emotion,
     ttsFailed,
+    ttsSkipped,
     pending: pendingView,
     viewReady: view !== null,
     canLoadEarlier: transcriptView?.items[0]?.kind === "earlier",

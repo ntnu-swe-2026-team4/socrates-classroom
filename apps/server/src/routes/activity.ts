@@ -21,7 +21,7 @@ export function activityRoutes() {
     .get("/activities/:id", async (c) => {
       const user = requireUser(c);
       const { activity, classroom } = await requireMembership(c.env.DB, c.req.param("id"), user);
-      const topic = await topicOf(c.env.DB, activity.topic_id);
+      const topic = await topicOf(c.env.DB, activity.topic_id, c.get("lang"));
       return c.json({
         id: activity.id,
         classroomId: classroom.id,
@@ -55,7 +55,7 @@ export function activityRoutes() {
       );
       if (!row || row.status === "pending") fail(404, "report_pending");
       if (row.status === "failed") fail(500, "report_failed");
-      const topic = await topicOf(c.env.DB, activity.topic_id);
+      const topic = await topicOf(c.env.DB, activity.topic_id, c.get("lang"));
       const stored = storedReport(row.teacher_report, StoredTeacherReportSchema);
       const students = storedReport(row.student_reports, StoredStudentReportsSchema);
       if (stored === undefined || students === undefined) fail(500, "report_failed");

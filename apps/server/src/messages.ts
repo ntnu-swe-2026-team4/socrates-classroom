@@ -47,9 +47,9 @@ const M: Record<ErrorCode, Entry> = {
     es: "Ese nombre ya está en uso en esta clase.",
   },
   only_student: {
-    zh: "只有學生可以進行對話。",
-    en: "Only students can hold this dialogue.",
-    es: "Solo los estudiantes pueden dialogar.",
+    zh: "你是這間教室的老師，請從教室頁進入。",
+    en: "You teach this classroom — open it from the classroom page.",
+    es: "Eres docente de esta clase: entra desde la página de la clase.",
   },
   already_streaming: {
     zh: "上一則回覆還在產生中。",
@@ -90,6 +90,21 @@ const M: Record<ErrorCode, Entry> = {
     zh: "不支援這個 provider。",
     en: "This provider is not supported.",
     es: "Este proveedor no es compatible.",
+  },
+  account_required: {
+    zh: "請先登入正式帳號才能開課。",
+    en: "Sign in with a full account to open a classroom.",
+    es: "Inicia sesión con una cuenta completa para abrir una clase.",
+  },
+  oauth_unavailable: {
+    zh: "這個登入方式尚未設定。",
+    en: "This sign-in method is not configured.",
+    es: "Este método de inicio de sesión no está configurado.",
+  },
+  oauth_failed: {
+    zh: "第三方登入失敗，請再試一次。",
+    en: "Third-party sign-in failed. Please try again.",
+    es: "Falló el inicio de sesión externo. Inténtalo de nuevo.",
   },
 };
 

@@ -17,7 +17,7 @@ export function joinRoutes() {
         id: classroom.current_activity_id,
       });
       if (!activity) fail(404, "join_code_invalid");
-      const topic = await topicOf(c.env.DB, activity.topic_id);
+      const topic = await topicOf(c.env.DB, activity.topic_id, langOf(c));
       return c.json({ code: classroom.join_code, classroomName: classroom.name, topic });
     })
     .post("/join", async (c) => {
@@ -29,7 +29,7 @@ export function joinRoutes() {
       });
       if (!classroom?.current_activity_id) fail(404, "join_code_invalid");
       const user = c.get("user");
-      if (user?.role === "teacher") fail(403, "only_student");
+      if (user && classroom.teacher_id === user.id) fail(403, "only_student");
 
       const existing = user
         ? await one<{ user_id: string }>(
@@ -65,7 +65,7 @@ export function joinRoutes() {
         try {
           await batch(c.env.DB, [
             {
-              sql: "INSERT INTO users (id, name, role, lang, created_at) VALUES ($id, $name, 'student', $lang, $at)",
+              sql: "INSERT INTO users (id, name, is_guest, lang, created_at) VALUES ($id, $name, 1, $lang, $at)",
               params: { id, name, at, lang: langOf(c) },
             },
             {
@@ -80,7 +80,7 @@ export function joinRoutes() {
           if (taken) fail(409, "name_taken");
           throw error;
         }
-        sessionUser = { id, name, role: "student" as const };
+        sessionUser = { id, name, guest: true };
         await startSession(c, sessionUser);
         return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
       }

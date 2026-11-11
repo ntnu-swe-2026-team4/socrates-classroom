@@ -193,7 +193,7 @@ export class ReportRunner extends DurableObject<Env> {
     }
     const members = await all<{ user_id: string; name: string; lang: "zh" | "en" | "es" }>(
       db,
-      "SELECT m.user_id, m.name, u.lang FROM members m JOIN users u ON u.id = m.user_id WHERE m.classroom_id = $cid ORDER BY m.joined_at, m.user_id",
+      "SELECT m.user_id, m.name, u.lang FROM members m JOIN users u ON u.id = m.user_id WHERE m.classroom_id = $cid AND u.preview_classroom_id IS NULL ORDER BY m.joined_at, m.user_id",
       { cid: activity.classroom_id },
     );
 

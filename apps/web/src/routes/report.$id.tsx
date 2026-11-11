@@ -17,8 +17,13 @@ function ReportPage() {
   const t = useT();
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity, enabled: false });
-  const isTeacher = me.data?.role === "teacher";
+  const info = useQuery({ queryKey: ["activity", id], queryFn: () => api.activityInfo(id), staleTime: Infinity });
+  const room = useQuery({
+    queryKey: ["classroom", info.data?.classroomId],
+    queryFn: () => api.getClassroom(info.data?.classroomId ?? ""),
+    enabled: Boolean(info.data?.classroomId),
+  });
+  const isTeacher = room.data?.role === "teacher";
   const [view, setView] = useState<"group" | "individual">("group");
   const [studentIdx, setStudentIdx] = useState(0);
   const report = useQuery({
@@ -115,7 +120,7 @@ function ReportPage() {
               <div className="flex flex-col gap-4">
                 <h2 className="font-serif text-lg font-semibold text-ink">{t("report_axes")}</h2>
                 {data.classReport.axes.map((axis) => (
-                  <div key={axis.name} className="rounded-2xl border border-line bg-card p-5">
+                  <div key={axis.name} className="border border-line bg-card p-5">
                     <p className="text-[15px] font-medium text-ink">
                       {axis.name}：{axis.low} ↔ {axis.high}
                     </p>
@@ -141,7 +146,7 @@ function ReportPage() {
               )}
             </>
           ) : (
-            <div className="rounded-2xl border border-line bg-card p-5">
+            <div className="border border-line bg-card p-5">
               <p className="text-[14px] text-ink-soft">{t("report_partial")}</p>
             </div>
           )}
@@ -183,7 +188,7 @@ function Positions({ positions }: { positions: ReportPosition[] }) {
       <h2 className="font-serif text-lg font-semibold text-ink">{t("report_positions")}</h2>
       <ul className="flex max-w-2xl flex-col gap-2">
         {positions.map((position) => (
-          <li key={position.axis} className="rounded-2xl border border-line bg-card px-4 py-3 text-[14px] text-ink">
+          <li key={position.axis} className="border border-line bg-card px-4 py-3 text-[14px] text-ink">
             <span className="font-medium">{position.axis}</span>
             <span className="text-ink-faint"> · {t("report_position", { at: position.at })}</span>
             <p className="mt-1 text-[13.5px] text-ink-soft">{position.view}</p>
@@ -205,18 +210,18 @@ function Analysis({ analysis, violations }: { analysis: StudentAnalysis | null; 
       <h2 className="font-serif text-lg font-semibold text-ink">{t("report_summary")}</h2>
       {analysis.stated ? (
         <div className="flex flex-col gap-3">
-          <div className="rounded-2xl border border-line bg-card p-4">
+          <div className="border border-line bg-card p-4">
             <p className="text-[13px] font-medium text-moss">{t("report_claim")}</p>
             <p className="mt-1 text-[14.5px] text-ink">{analysis.claim.text}</p>
             <p className="mt-0.5 text-[12.5px] text-ink-faint">{turns(analysis.claim.turns)}</p>
           </div>
-          <div className="rounded-2xl border border-line bg-card p-4">
+          <div className="border border-line bg-card p-4">
             <p className="text-[13px] font-medium text-moss">{t("report_reason")}</p>
             <p className="mt-1 text-[14.5px] text-ink">{analysis.reasons.text}</p>
             <p className="mt-0.5 text-[12.5px] text-ink-faint">{turns(analysis.reasons.turns)}</p>
           </div>
           {analysis.tension && (
-            <div className="rounded-2xl border border-line bg-card p-4">
+            <div className="border border-line bg-card p-4">
               <p className="text-[13px] font-medium text-ember">{t("report_tension")}</p>
               <p className="mt-1 text-[14.5px] text-ink">{analysis.tension.text}</p>
               <p className="mt-0.5 text-[12.5px] text-ink-faint">{turns(analysis.tension.turns)}</p>
@@ -224,7 +229,7 @@ function Analysis({ analysis, violations }: { analysis: StudentAnalysis | null; 
           )}
         </div>
       ) : (
-        <div className="rounded-2xl border border-line bg-card p-4">
+        <div className="border border-line bg-card p-4">
           <p className="text-[13px] font-medium text-moss">{t("report_doing")}</p>
           <p className="mt-1 text-[14.5px] text-ink">{analysis.doing.text}</p>
           <p className="mt-0.5 text-[12.5px] text-ink-faint">{turns(analysis.doing.turns)}</p>

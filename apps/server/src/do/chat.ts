@@ -25,7 +25,8 @@ import { btwExtension, forkBtw } from "../pi/extensions/btw";
 import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
 import { buildModels } from "../pi/models";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
-import { one } from "../db/d1";
+import { one, run } from "../db/d1";
+import { SOLO_PREFIX, ownedSoloChat } from "../routes/solo";
 import { getRouter } from "../gateway/router";
 import { ApiError } from "@socrates/shared";
 import { ChatSockets } from "../ws/sockets";
@@ -109,8 +110,12 @@ export class Chat extends DurableObject<Env> {
 
   private async teacherId(): Promise<string | null> {
     if (this.#teacherId === undefined) {
-      const activityId = this.ctx.id.name?.split(":")[0] ?? "";
-      this.#teacherId = activityId ? await teacherOfActivity(this.env, activityId) : null;
+      const [threadId = "", ownerId = ""] = this.ctx.id.name?.split(":") ?? [];
+      if (threadId.startsWith(SOLO_PREFIX)) {
+        this.#teacherId = (await ownedSoloChat(this.env.DB, threadId, ownerId)) ? ownerId : null;
+      } else {
+        this.#teacherId = threadId ? await teacherOfActivity(this.env, threadId) : null;
+      }
     }
     return this.#teacherId;
   }
@@ -120,13 +125,20 @@ export class Chat extends DurableObject<Env> {
   }
 
   private async routeSubmit(handle: PiSession, input: UserInput, options: PiSubmitOptions): Promise<PiReceipt> {
-    const activityId = this.ctx.id.name?.split(":")[0] ?? "";
-    const activity = await one<{ finished_at: string | null }>(
-      this.env.DB,
-      "SELECT finished_at FROM activities WHERE id = $id",
-      { id: activityId },
-    );
-    if (activity?.finished_at) throw new ActivityFinishedError();
+    const threadId = this.ctx.id.name?.split(":")[0] ?? "";
+    if (threadId.startsWith(SOLO_PREFIX)) {
+      await run(this.env.DB, "UPDATE solo_chats SET updated_at = $at WHERE id = $id", {
+        id: threadId,
+        at: new Date().toISOString(),
+      });
+    } else {
+      const activity = await one<{ finished_at: string | null }>(
+        this.env.DB,
+        "SELECT finished_at FROM activities WHERE id = $id",
+        { id: threadId },
+      );
+      if (activity?.finished_at) throw new ActivityFinishedError();
+    }
     const router = getRouter(this.env);
     const canServe = (entry: { provider: string; model: string }): boolean =>
       this.models.models.getModel(entry.provider, entry.model) !== undefined;
@@ -201,6 +213,9 @@ export class Chat extends DurableObject<Env> {
       ?.slice(SESSION_COOKIE.length + 1);
     const user = await userFromSessionToken({ env: this.env }, token);
     if (!user) return null;
+    if (activityId.startsWith(SOLO_PREFIX)) {
+      return user.id === studentId && (await ownedSoloChat(this.env.DB, activityId, user.id)) ? user.id : null;
+    }
     try {
       const { isTeacher } = await requireMembership(this.env.DB, activityId, user);
       return isTeacher || user.id === studentId ? user.id : null;
@@ -212,11 +227,18 @@ export class Chat extends DurableObject<Env> {
   private async reverify(userId: string): Promise<"member" | "revoked" | "error"> {
     const [activityId, studentId] = this.ctx.id.name?.split(":") ?? [];
     if (!activityId) return "revoked";
+    if (activityId.startsWith(SOLO_PREFIX)) {
+      try {
+        return userId === studentId && (await ownedSoloChat(this.env.DB, activityId, userId)) ? "member" : "revoked";
+      } catch {
+        return "error";
+      }
+    }
     try {
       const { isTeacher } = await requireMembership(this.env.DB, activityId, {
         id: userId,
         name: "",
-        role: "student",
+        guest: true,
       });
       return isTeacher || userId === studentId ? "member" : "revoked";
     } catch (error) {
@@ -233,7 +255,41 @@ function fauxSocraticScript(context: TranscriptContext): AssistantMessage {
       stopReason: "toolUse",
     });
   }
-  return fauxAssistantMessage([fauxText(`你提到「${said}」。先別急著找標準答案——你的直覺判斷是什麼？為什麼？`)]);
+  const userTurns = context.messages.filter((message) => message.role === "user");
+  const lastUser = userTurns.at(-1);
+  const replies = FAUX_REPLY[languageOf(lastUser ? textOf(lastUser.content) : "")];
+  const reply = replies[Math.max(0, userTurns.length - 1) % replies.length]!;
+  return fauxAssistantMessage([fauxText(reply(said))]);
+}
+
+const FAUX_REPLY = {
+  zh: [
+    (said: string) => `你提到「${said}」。先別急著找標準答案——你的直覺判斷是什麼？為什麼？`,
+    (said: string) => `「${said}」——這句話背後，你先假設了什麼？`,
+    (said: string) => `如果有人反對「${said}」，他最可能怎麼說？你會怎麼回應？`,
+    (said: string) => `你說「${said}」。能舉一個具體的例子嗎？`,
+    (said: string) => `在什麼情況下，「${said}」會不成立？`,
+  ],
+  en: [
+    (said: string) => `You said “${said}”. Don’t rush to a textbook answer — what is your gut judgment, and why?`,
+    (said: string) => `“${said}” — what are you assuming before you even say that?`,
+    (said: string) => `If someone disagreed with “${said}”, what would they say, and how would you answer?`,
+    (said: string) => `You said “${said}”. Can you give me a concrete example?`,
+    (said: string) => `When would “${said}” stop being true?`,
+  ],
+  es: [
+    (said: string) => `Dijiste «${said}». No busques aún la respuesta de manual: ¿cuál es tu intuición y por qué?`,
+    (said: string) => `«${said}»: ¿qué das por supuesto antes de decirlo?`,
+    (said: string) => `Si alguien no estuviera de acuerdo con «${said}», ¿qué diría y cómo responderías?`,
+    (said: string) => `Dijiste «${said}». ¿Puedes darme un ejemplo concreto?`,
+    (said: string) => `¿En qué caso «${said}» dejaría de ser cierto?`,
+  ],
+} as const;
+
+function languageOf(text: string): keyof typeof FAUX_REPLY {
+  if (/[\u3400-\u9fff]/.test(text)) return "zh";
+  if (/[¿¡ñáéíóú]/i.test(text)) return "es";
+  return /[a-z]/i.test(text) ? "en" : "zh";
 }
 
 function textOf(content: Message["content"]): string {

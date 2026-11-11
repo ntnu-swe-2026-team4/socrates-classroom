@@ -49,7 +49,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
 
   test("me / guest join (ToS) → activity resolves", async () => {
     const me = await call("/api/me", { headers: { Cookie: teacher } });
-    expect(((await me.json()) as { role: string }).role).toBe("teacher");
+    expect(((await me.json()) as { guest: boolean }).guest).toBe(false);
 
     const joined = await call("/api/join", {
       method: "POST",
@@ -57,8 +57,8 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       body: JSON.stringify({ code, name: "R6生", tosAccepted: true }),
     });
     expect(joined.status).toBe(200);
-    const { user, activityId: aid } = (await joined.json()) as { user: { role: string }; activityId: string };
-    expect(user.role).toBe("student");
+    const { user, activityId: aid } = (await joined.json()) as { user: { guest: boolean }; activityId: string };
+    expect(user.guest).toBe(true);
     expect(aid).toBe(activityId);
 
     const noTos = await call("/api/join", {
@@ -351,7 +351,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       body: JSON.stringify({ code, email, password: "student-pass-1", name: "註冊生A", tosAccepted: true }),
     });
     expect(registered.status).toBe(200);
-    expect(((await registered.json()) as { role: string }).role).toBe("student");
+    expect(((await registered.json()) as { guest: boolean }).guest).toBe(false);
 
     const teacherJoin = await call("/api/join", {
       method: "POST",
@@ -382,7 +382,93 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     });
     expect(login.status).toBe(200);
     const me = await call("/api/me", { headers: { Cookie: cookieOf(login) } });
-    expect(((await me.json()) as { role: string }).role).toBe("student");
+    expect(((await me.json()) as { guest: boolean }).guest).toBe(false);
+  });
+
+  test("student view — teacher previews as a hidden test student, resets it and returns to the teacher session", async () => {
+    const jar = (res: Response) =>
+      res.headers
+        .getSetCookie()
+        .map((line) => line.split(";")[0])
+        .join("; ");
+    const json = { "Content-Type": "application/json" };
+    const classroomId = (
+      (await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()) as Array<{
+        id: string;
+        code: string | null;
+      }>
+    ).find((entry) => entry.code === code)!.id;
+    const countOf = async () =>
+      (
+        (await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()) as Array<{
+          id: string;
+          memberCount: number;
+        }>
+      ).find((entry) => entry.id === classroomId)!.memberCount;
+    const before = await countOf();
+
+    const entered = await call(`/api/classrooms/${classroomId}/preview`, {
+      method: "POST",
+      headers: { Cookie: teacher },
+    });
+    expect(entered.status).toBe(200);
+    const enteredBody = (await entered.json()) as {
+      user: { id: string; guest: boolean; preview?: boolean };
+      activityId: string;
+    };
+    expect(enteredBody.user).toMatchObject({ guest: true, preview: true });
+    expect(enteredBody.activityId).toBeTruthy();
+    const previewCookies = jar(entered);
+
+    const me = (await (await call("/api/me", { headers: { Cookie: previewCookies } })).json()) as {
+      guest: boolean;
+      preview?: boolean;
+    };
+    expect(me).toMatchObject({ guest: true, preview: true });
+    expect(
+      (await call(`/api/activities/${enteredBody.activityId}`, { headers: { Cookie: previewCookies } })).status,
+    ).toBe(200);
+    expect(await countOf()).toBe(before);
+
+    const again = await call(`/api/classrooms/${classroomId}/preview`, {
+      method: "POST",
+      headers: { Cookie: teacher },
+    });
+    expect(((await again.json()) as { user: { id: string } }).user.id).toBe(enteredBody.user.id);
+
+    const reset = await call("/api/preview/reset", { method: "POST", headers: { Cookie: previewCookies } });
+    expect(reset.status).toBe(200);
+    const resetBody = (await reset.json()) as { user: { id: string; preview?: boolean } };
+    expect(resetBody.user.id).not.toBe(enteredBody.user.id);
+    expect(resetBody.user.preview).toBe(true);
+    const resetCookies = `${previewCookies.split("; ")[0]}; ${jar(reset)}`;
+
+    const notPreview = await call("/api/preview/exit", { method: "POST", headers: { Cookie: teacher, ...json } });
+    expect(notPreview.status).toBe(403);
+
+    const left = await call("/api/preview/exit", { method: "POST", headers: { Cookie: resetCookies } });
+    expect(left.status).toBe(200);
+    expect(((await left.json()) as { guest: boolean }).guest).toBe(false);
+    const restored = (await (await call("/api/me", { headers: { Cookie: jar(left).split("; ").at(-1)! } })).json()) as {
+      guest: boolean;
+      preview?: boolean;
+    };
+    expect(restored.guest).toBe(false);
+    expect(restored.preview).toBeUndefined();
+
+    const studentTry = await call(`/api/classrooms/${classroomId}/preview`, {
+      method: "POST",
+      headers: {
+        Cookie: cookieOf(
+          await call("/api/join", {
+            method: "POST",
+            headers: json,
+            body: JSON.stringify({ code, name: "R6預覽攔截生", tosAccepted: true }),
+          }),
+        ),
+      },
+    });
+    expect(studentTry.status).toBe(403);
   });
 
   test("lookup mock: websearch without binding → fallback text (prose mock)", async () => {

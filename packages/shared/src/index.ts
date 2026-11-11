@@ -11,9 +11,33 @@ export const LANG_NAMES: Record<Lang, string> = {
 export const UserSchema = z.object({
   id: z.string(),
   name: z.string(),
-  role: z.enum(["student", "teacher"]),
+  guest: z.boolean(),
+  preview: z.boolean().optional(),
+  previewClassroomId: z.string().optional(),
 });
 export type User = z.infer<typeof UserSchema>;
+
+export const AUTH_PROVIDERS = ["google", "apple", "facebook"] as const;
+export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
+export type AuthProviders = Record<AuthProvider, boolean>;
+
+export const SoloChatSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type SoloChat = z.infer<typeof SoloChatSchema>;
+
+export const ClassroomActivitySchema = z.object({
+  id: z.string(),
+  topicId: z.string(),
+  topicTitle: z.string(),
+  topicStatement: z.string(),
+  createdAt: z.string(),
+  finished: z.boolean(),
+});
+export type ClassroomActivity = z.infer<typeof ClassroomActivitySchema>;
 
 export const TopicSchema = z.object({
   id: z.string(),
@@ -35,7 +59,7 @@ export const ClassroomCreatedSchema = z.object({
   classroomId: z.string(),
   code: z.string(),
   url: z.string(),
-  activityId: z.string(),
+  activityId: z.string().nullable(),
 });
 export type ClassroomCreated = z.infer<typeof ClassroomCreatedSchema>;
 
@@ -132,12 +156,15 @@ const emailField = z.email().transform((value) => value.toLowerCase());
 
 export const LoginInputSchema = z.object({ email: emailField, password: z.string().min(8).max(128) });
 export const RegisterInputSchema = z.object({
-  code: z.string().min(4).max(32),
+  code: z.string().min(4).max(32).optional(),
   email: emailField,
   password: z.string().min(8).max(128),
-  name: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(80).optional(),
   tosAccepted: z.boolean(),
 });
+export const ProfileInputSchema = z.object({ name: z.string().trim().min(1).max(80) });
+export const GuestInputSchema = z.object({ name: z.string().trim().max(80).optional() });
+export const SoloChatInputSchema = z.object({ title: z.string().trim().min(1).max(120) });
 export const JoinInputSchema = z.object({
   code: z.string().min(4).max(32),
   name: z.string().trim().max(80).optional(),
@@ -152,12 +179,21 @@ export const TopicCreateInputSchema = z.object({
 export const GenerateTopicsInputSchema = z.object({
   direction: z.string().trim().min(1).max(200),
 });
+export const ClassroomRenameInputSchema = z.object({ name: z.string().trim().min(1).max(80) });
 export const ClassroomCreateInputSchema = z.object({
-  name: z.string().trim().min(1).max(80),
-  topicId: z.string().min(1),
+  name: z.string().trim().min(1).max(80).optional(),
+  topicId: z.string().min(1).optional(),
 });
 export const ActivityStartInputSchema = z.object({ topicId: z.string().min(1) });
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
+export const AssistantInputSchema = z.object({
+  messages: z
+    .array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().trim().min(1).max(4000) }))
+    .min(1)
+    .max(20)
+    .refine((messages) => messages.at(-1)?.role === "user"),
+});
+export type AssistantMessage = z.infer<typeof AssistantInputSchema>["messages"][number];
 export const LookupInputSchema = z.object({ term: z.string().trim().min(1).max(30) });
 export const TtsInputSchema = z.object({ text: z.string().min(1).max(2000), lang: z.enum(["zh", "en", "es"]) });
 export const ClassroomSummarySchema = z.object({
@@ -180,6 +216,38 @@ export const ClassroomSummarySchema = z.object({
   createdAt: z.string(),
 });
 export type ClassroomSummary = z.infer<typeof ClassroomSummarySchema>;
+
+export const AnnouncementInputSchema = z.object({ body: z.string().trim().min(1).max(2000) });
+export const PostInputSchema = z.object({
+  body: z.string().trim().min(1).max(2000),
+  parentId: z.string().min(1).optional(),
+});
+
+export const AnnouncementSchema = z.object({
+  id: z.string(),
+  body: z.string(),
+  authorName: z.string(),
+  createdAt: z.string(),
+});
+export type Announcement = z.infer<typeof AnnouncementSchema>;
+
+export const ClassroomMembersSchema = z.object({
+  teacher: z.object({ id: z.string(), name: z.string() }),
+  members: z.array(z.object({ id: z.string(), name: z.string(), joinedAt: z.string() })),
+});
+export type ClassroomMembers = z.infer<typeof ClassroomMembersSchema>;
+
+export const PostReplySchema = z.object({
+  id: z.string(),
+  body: z.string(),
+  authorId: z.string(),
+  authorName: z.string(),
+  isTeacher: z.boolean(),
+  createdAt: z.string(),
+});
+export type PostReply = z.infer<typeof PostReplySchema>;
+export const PostSchema = PostReplySchema.extend({ replies: z.array(PostReplySchema) });
+export type Post = z.infer<typeof PostSchema>;
 
 export const TeacherKeyStatusSchema = z.object({
   provider: z.string(),
@@ -218,6 +286,9 @@ export const ERROR_CODES = [
   "report_pending",
   "report_failed",
   "byok_provider_invalid",
+  "account_required",
+  "oauth_unavailable",
+  "oauth_failed",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

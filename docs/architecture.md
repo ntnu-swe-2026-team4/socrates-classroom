@@ -217,7 +217,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 - run: pnpm exec cf deploy --prebuilt --mode production # 唯一拿 secrets 的 step
 ```
 
-- secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`；runtime secrets 走 `cf deploy` 環境注入（`AUTH_SECRET`、`BYOK_ENC_KEY`、`SEED_TOKEN`——見 `docs/cf.md` §Secrets）
+- secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`；runtime secrets 走 `cf deploy` 環境注入（`AUTH_SECRET`、`BYOK_ENC_KEY`、`DGX_BASE_URL` 等，見 `apps/web/.env.example`）
 - **D1 migration 重置決策（2026-11-08）**：從未部署過（所有 deploy run 都在 migration step 因缺 `D1_DATABASE_ID` 失敗），`001_init.sql` 原地重寫為 v4 schema（8 表，2026-11-10 併入 001-005 為單檔）——不做前向 migration。本地若殘留 v3 D1：刪掉 `.cloudflare/state`（或對應 persist 目錄）重來即可；`d1_migrations` 狀態與新 001 不相容是預期行為
 - wrangler 僅存於 devDependencies（cf 的建置後端 + `wrangler tail`）
 
@@ -262,7 +262,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | D1 無互動式交易，tx→batch 語意差異                          | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                    |
 | cf beta 格式變動                                            | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                                |
-| dgx-spark 腿延遲（暫時移除，回歸時適用）                    | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                      |
+| dgx-spark 腿延遲                                            | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                      |
 | Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）      | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                          |
 | module 級狀態（rate-limit 的 Map）隨 isolate 分散且重啟歸零 | 定位為 best-effort；跨請求一致的併發守衛在 Chat DO 的 whenBusy reject。多 isolate 佈局後限流改走 DO |
 

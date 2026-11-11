@@ -96,7 +96,7 @@ pnpm migrate     # = cf d1 migrations apply <固定 DB_ID> --local --persist-to 
 cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations   # 在 apps/web/ 下執行
 ```
 
-Schema 的 SSOT 是 `apps/server/migrations/*.sql`（目前單一 `001_init.sql`）；本地與遠端由同一批檔案驅動。
+Schema 的 SSOT 是 `apps/server/migrations/*.sql`（`001_init.sql` 起依序編號）；本地與遠端由同一批檔案驅動。
 
 ## Secrets
 
@@ -108,10 +108,46 @@ Schema 的 SSOT 是 `apps/server/migrations/*.sql`（目前單一 `001_init.sql`
 | `BYOK_ENC_KEY` | teacher keys 的 AES-GCM 金鑰（必填，缺了 fail-fast） | `openssl rand -base64 32` |
 | `SEED_TOKEN`   | `POST /api/dev/seed` 閘門（production 留空即可禁用） | 任意亂數                  |
 
+OAuth 第三方登入的 bindings **目前未宣告**在 `cloudflare.config.ts`（雲端設定維持原版），因此三家登入皆停用；啟用方式見下方 [OAuth 登入](#oauth-登入googlefacebookapple選用)。
+
 ```bash
 # 一次上傳（dotenv 格式；.env.production.local 不會進 dev/git）
 cf deploy --prebuilt --mode production --secrets-file .env.production.local
 ```
+
+### OAuth 登入（Google／Facebook／Apple，選用）
+
+> **目前狀態：未啟用。** server 端（`routes/oauth.ts`）已實作，但 `apps/web/cloudflare.config.ts` 尚未宣告下表的 bindings。要啟用某一家，需在 `worker.env` 加入該家的 public id（`bindings.text`）與 secret（`bindings.secret()`——注意 secret 宣告後即為 required，dev 未提供會啟動失敗），並在 CI build 環境提供 public id、在 `PROD_SECRETS_FILE` 加入 secret。
+
+三家皆為選用：某家的值**全部**設齊才會在 `GET /api/auth/providers` 回 `true`、登入頁按鈕才可按；未設則 `/api/auth/oauth/<provider>/start` 直接 302 回 `/login?error=oauth_unavailable`。
+
+| 名稱                   | 類型         | 用途／取得方式                                                                                                                                                                         |
+| ---------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOOGLE_CLIENT_ID`     | text binding | Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID（type：Web application）；OAuth consent screen 需含 scope `openid`、`email`、`profile`                   |
+| `GOOGLE_CLIENT_SECRET` | secret       | 同上 OAuth client 的 client secret                                                                                                                                                     |
+| `FACEBOOK_APP_ID`      | text binding | Meta for Developers → 建立 App（use case：Facebook Login）→ App settings → Basic 的 App ID；permissions 需 `email`、`public_profile`                                                   |
+| `FACEBOOK_APP_SECRET`  | secret       | 同頁的 App Secret                                                                                                                                                                      |
+| `APPLE_CLIENT_ID`      | text binding | Apple Developer → Certificates, Identifiers & Profiles → Identifiers → **Services ID**（例 `dev.g36maid.socrates.web`），勾選 Sign in with Apple 並設定 domain 與 Return URL           |
+| `APPLE_TEAM_ID`        | text binding | Apple Developer 帳號 Membership 頁的 Team ID（10 碼）                                                                                                                                  |
+| `APPLE_KEY_ID`         | text binding | Keys → 建立啟用 Sign in with Apple 的 key 後顯示的 Key ID（10 碼）                                                                                                                     |
+| `APPLE_PRIVATE_KEY`    | secret       | 上述 key 下載的 `.p8` 全文（PKCS8 PEM；只能下載一次）。Worker 以 WebCrypto ECDSA P-256 現場簽 ES256 JWT 當 client_secret（效期 300 秒），不需事先產生；dotenv 內可用字面 `\n` 取代換行 |
+
+各家須登記的 callback（redirect URI）——值為 `${PUBLIC_BASE_URL}/api/auth/oauth/<provider>/callback`（`PUBLIC_BASE_URL` 空則用 request origin），必須逐字相符：
+
+| Provider | Production callback                                             | 登記位置                                                                |
+| -------- | --------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Google   | `https://socrates.g36maid.dev/api/auth/oauth/google/callback`   | OAuth client 的 Authorized redirect URIs                                |
+| Facebook | `https://socrates.g36maid.dev/api/auth/oauth/facebook/callback` | Facebook Login → Settings → Valid OAuth Redirect URIs                   |
+| Apple    | `https://socrates.g36maid.dev/api/auth/oauth/apple/callback`    | Services ID → Configure → Domains `socrates.g36maid.dev` 與 Return URLs |
+
+注意事項：
+
+- **public id 是 text binding、不是 secret**：dev 讀 `.env`／`.env.local`；production 由 `cf build --mode production` 當下的 process environment 帶入（`--secrets-file` 不設 text bindings，見下段）——CI 需在 build 步驟提供這五個變數（GitHub Actions repo variables 即可，非機密）。
+- **secret 只在對應 public id 非空時才宣告**（`bindings.secret()` 是 required secret，缺值時 dev 啟動報 `Missing required secrets`、deploy 亦會缺值）：設了 `GOOGLE_CLIENT_ID` 就必須在 `.env.local` 或 `--secrets-file` 裡一併提供 `GOOGLE_CLIENT_SECRET`，Facebook／Apple 同理。
+- **本機測試**：`.env` 的 `PUBLIC_BASE_URL` 留空（用 request origin），並在 Google／Facebook 額外登記 `http://localhost:5173/api/auth/oauth/<provider>/callback`；Apple 不接受 `localhost` 與非 HTTPS 的 Return URL，需透過 HTTPS tunnel 測。
+- **Apple 用 `response_mode=form_post`**：callback 是 Apple 網域發起的 cross-site POST，因此 state cookie `socrates_oauth` 為 `SameSite=None; Secure; HttpOnly`（`Path=/api/auth/oauth`、10 分鐘、HMAC 以 `AUTH_SECRET` 簽章）；`SameSite=Lax` 的 session cookie 在這個 POST 上不會送出，所以 guest 的 in-place upgrade 所需的 guest id 在 start 時就記進 state cookie。
+- **Apple `id_token` 不驗簽**：token 是 Worker 以 client_secret 透過 TLS 直接向 `https://appleid.apple.com/auth/token` 換得（非經瀏覽器轉交），來源已由 TLS 保證，故只檢查 `iss`／`aud`，不抓 Apple JWKS 驗簽。Google 與 Facebook 同理以 access token 向 userinfo／Graph API 取 profile。
+- Facebook Graph API 版本固定於 `apps/server/src/routes/oauth.ts` 的 `FACEBOOK_VERSION`（目前 `v24.0`）；Meta 約兩年淘汰一版，到期前需更新。
 
 平台 LLM 憑證不在 secrets——provider 憑證走 `providers.config.yaml` 宣告的 env 名（`workersAuthContext` 只解析 YAML 裡宣告的名字）；teacher keys 是老師自填、加密落 D1。**注意**：`--secrets-file` 只上傳 secrets，不設 text bindings——`DGX_BASE_URL` 等 text bindings 的 production 值來自 config 本身（預設空＝該腿跳過）。完整規則與新增 provider 腿的步驟見 [`providers.md`](./providers.md) §設定與運維。
 

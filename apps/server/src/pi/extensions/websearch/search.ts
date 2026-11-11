@@ -11,11 +11,13 @@ export interface SearchOutcome {
   error: string | null;
 }
 
+export const DOMAIN_ALLOWLIST = ["wikipedia.org", "terms.naer.edu.tw", "plato.stanford.edu", "iep.utm.edu"];
+
 interface WebsearchResponse {
   items?: Array<{ url?: unknown; title?: unknown; description?: unknown }>;
 }
 
-export function createWebSearch(ai: Ai) {
+export function createWebSearch(ai: Ai, allowlist: string[] = DOMAIN_ALLOWLIST) {
   return async (query: string, numResults = 5): Promise<SearchOutcome> => {
     try {
       const response = await (ai as unknown as { websearch?: (req: unknown) => Promise<Response> }).websearch!({
@@ -31,7 +33,8 @@ export function createWebSearch(ai: Ai) {
       const hits: SearchHit[] = [];
       for (const item of raw.items ?? []) {
         try {
-          new URL(String(item.url ?? ""));
+          const host = new URL(String(item.url ?? "")).hostname.toLowerCase();
+          if (!allowlist.some((domain) => host === domain || host.endsWith(`.${domain}`))) continue;
           hits.push({
             title: String(item.title ?? item.url ?? ""),
             url: String(item.url ?? ""),
@@ -50,7 +53,7 @@ export function createWebSearch(ai: Ai) {
 }
 
 export function formatAnswer(hits: SearchHit[]): string {
-  if (hits.length === 0) return "No results found.";
+  if (hits.length === 0) return "No results in the allowed domains.";
   return hits
     .map((hit) =>
       hit.snippet ? `${hit.snippet}\nSource: ${hit.title} (${hit.url})` : `Source: ${hit.title} (${hit.url})`,

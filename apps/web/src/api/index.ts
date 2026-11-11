@@ -5,11 +5,14 @@ export { ApiError } from "./http";
 export type { Api } from "./http";
 export type {
   ActivityInfo,
+  AuthProviders,
+  ClassroomActivity,
   ClassroomCreated,
   ClassroomSummary,
   JoinInfo,
   Report,
   ReportPosition,
+  SoloChat,
   StudentAnalysis,
   StudentLive,
   TeacherReport,

@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe("httpApi contract (browser-side actual code)", () => {
   test("me: GET /api/me with cookie and Accept-Language", async () => {
-    handler.mockReturnValue(json({ id: "u1", name: "小明", role: "student" }));
+    handler.mockReturnValue(json({ id: "u1", name: "小明", guest: true }));
     document.documentElement.lang = "zh-TW";
     const user = await httpApi.me();
     expect(user?.name).toBe("小明");
@@ -39,7 +39,7 @@ describe("httpApi contract (browser-side actual code)", () => {
   });
 
   test("joinAsGuest: POST /api/join contract shape + activity id persisted", async () => {
-    handler.mockReturnValue(json({ user: { id: "u9", name: "小明", role: "student" }, activityId: "a_1" }));
+    handler.mockReturnValue(json({ user: { id: "u9", name: "小明", guest: true }, activityId: "a_1" }));
     const payload = await httpApi.joinAsGuest("socrat", "小明");
     expect(payload.activityId).toBe("a_1");
     const [path, init] = handler.mock.calls[0]!;

@@ -75,9 +75,9 @@ export function uniqueViolationColumns(error: unknown): Array<[string, string]> 
   return [];
 }
 
-export function requireTeacher(c: Ctx): User {
+export function requireAccount(c: Ctx): User {
   const user = requireUser(c);
-  if (user.role !== "teacher") fail(403, "forbidden");
+  if (user.guest) fail(403, "account_required");
   return user;
 }
 

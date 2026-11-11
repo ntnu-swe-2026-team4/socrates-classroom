@@ -1,15 +1,19 @@
-import { deleteCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { User } from "@socrates/shared";
 import type { Ctx } from "./http";
 import { timingSafeEqual } from "./auth-crypto";
 
 export const SESSION_COOKIE = "socrates_session";
+export const PREVIEW_RETURN_COOKIE = "socrates_preview_return";
 const SESSION_DAYS = 30;
 
 interface TokenClaims {
   uid: string;
   name: string;
-  role: User["role"];
+  g?: 1;
+  role?: "student" | "teacher";
+  pv?: 1;
+  pc?: string;
   exp: number;
 }
 
@@ -34,13 +38,13 @@ function secretOf(ctx: { env: { AUTH_SECRET?: string } }): string {
   return secret;
 }
 
-function b64url(bytes: Uint8Array): string {
+export function b64url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
 
-function fromB64url(text: string): Uint8Array {
+export function fromB64url(text: string): Uint8Array {
   const padded = text.replaceAll("-", "+").replaceAll("_", "/");
   const binary = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
   return Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
@@ -52,11 +56,33 @@ async function sign(payload: string, secret: string): Promise<string> {
   return b64url(new Uint8Array(mac));
 }
 
+export async function sealClaims(ctx: { env: { AUTH_SECRET?: string } }, claims: object): Promise<string> {
+  const payload = b64url(encoder.encode(JSON.stringify(claims)));
+  return `${payload}.${await sign(payload, secretOf(ctx))}`;
+}
+
+export async function openClaims<T>(
+  ctx: { env: { AUTH_SECRET?: string } },
+  token: string | undefined,
+): Promise<T | null> {
+  if (!token) return null;
+  const [payload, sig, extra] = token.split(".");
+  if (!payload || !sig || extra !== undefined) return null;
+  if (!timingSafeEqual(await sign(payload, secretOf(ctx)), sig)) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(fromB64url(payload))) as T;
+  } catch {
+    return null;
+  }
+}
+
 export async function issueSessionToken(ctx: { env: { AUTH_SECRET?: string } }, user: User): Promise<string> {
   const claims: TokenClaims = {
     uid: user.id,
     name: user.name,
-    role: user.role,
+    ...(user.guest ? { g: 1 as const } : {}),
+    ...(user.preview ? { pv: 1 as const } : {}),
+    ...(user.previewClassroomId ? { pc: user.previewClassroomId } : {}),
     exp: Date.now() + SESSION_DAYS * 864e5,
   };
   const payload = b64url(encoder.encode(JSON.stringify(claims)));
@@ -81,15 +107,21 @@ export async function userFromSessionToken(
     if (diff !== 0) return null;
     const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as TokenClaims;
     if (claims.exp < Date.now()) return null;
-    return { id: claims.uid, name: claims.name, role: claims.role };
+    const guest = claims.g === 1 || (claims.g === undefined && claims.role === "student");
+    return {
+      id: claims.uid,
+      name: claims.name,
+      guest,
+      ...(claims.pv ? { preview: true } : {}),
+      ...(claims.pc ? { previewClassroomId: claims.pc } : {}),
+    };
   } catch {
     return null;
   }
 }
 
-export async function startSession(c: Ctx, user: User): Promise<void> {
-  const token = await issueSessionToken({ env: c.env }, user);
-  setCookie(c, SESSION_COOKIE, token, {
+function setTokenCookie(c: Ctx, name: string, token: string): void {
+  setCookie(c, name, token, {
     httpOnly: true,
     sameSite: "Lax",
     path: "/",
@@ -98,8 +130,30 @@ export async function startSession(c: Ctx, user: User): Promise<void> {
   });
 }
 
+export async function startSession(c: Ctx, user: User): Promise<void> {
+  setTokenCookie(c, SESSION_COOKIE, await issueSessionToken({ env: c.env }, user));
+}
+
 export function endSession(c: Ctx): void {
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
+  deleteCookie(c, PREVIEW_RETURN_COOKIE, { path: "/" });
+}
+
+export async function enterPreviewSession(c: Ctx, teacherToken: string | undefined, student: User): Promise<void> {
+  if (teacherToken) setTokenCookie(c, PREVIEW_RETURN_COOKIE, teacherToken);
+  await startSession(c, student);
+}
+
+export async function leavePreviewSession(c: Ctx): Promise<User | null> {
+  const token = getCookie(c, PREVIEW_RETURN_COOKIE);
+  const teacher = await userFromSessionToken({ env: c.env }, token);
+  deleteCookie(c, PREVIEW_RETURN_COOKIE, { path: "/" });
+  if (!token || !teacher || teacher.preview) {
+    deleteCookie(c, SESSION_COOKIE, { path: "/" });
+    return null;
+  }
+  setTokenCookie(c, SESSION_COOKIE, token);
+  return teacher;
 }
 
 // OWASP recommends 600k PBKDF2-SHA256 iterations; Workers CPU limits make

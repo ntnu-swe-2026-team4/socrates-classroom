@@ -24,7 +24,7 @@ async function speak(thread: string, cookie: string, question: string): Promise<
   await rx.until((f) => f.some((m) => m.type === "view"));
   ws.send(JSON.stringify({ type: "submit", id: "s1", input: question }));
   await rx.until((f) => f.some((m) => m.type === "result" && m.id === "s1"));
-  await rx.until((f) => latestAssistantText(f).includes("直覺判斷"));
+  await rx.until((f) => latestAssistantText(f).length > 0);
   ws.close();
 }
 

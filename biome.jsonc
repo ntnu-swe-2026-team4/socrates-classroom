@@ -19,7 +19,8 @@
       "!**/config.gen.ts",
       "!.agents",
       "!.claude",
-      "!.playwright-cli"
+      "!.playwright-cli",
+      "!socrate-classroom"
     ]
   },
   "formatter": {

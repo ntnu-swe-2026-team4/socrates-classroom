@@ -13,4 +13,12 @@ export interface Env {
   BYOK_ENC_KEY?: string;
   SEED_TOKEN?: string;
   FAUX_TOKENS_PER_SECOND?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  FACEBOOK_APP_ID?: string;
+  FACEBOOK_APP_SECRET?: string;
+  APPLE_CLIENT_ID?: string;
+  APPLE_TEAM_ID?: string;
+  APPLE_KEY_ID?: string;
+  APPLE_PRIVATE_KEY?: string;
 }

@@ -6,25 +6,33 @@ import { seedDemo } from "./seed";
 import { SESSION_COOKIE, userFromSessionToken } from "./auth";
 import { getCookie } from "hono/cookie";
 import { authRoutes } from "./routes/auth";
+import { oauthRoutes } from "./routes/oauth";
 import { joinRoutes } from "./routes/join";
 import { topicsRoutes } from "./routes/topics";
 import { classroomsRoutes } from "./routes/classrooms";
 import { activityRoutes } from "./routes/activity";
 import { voiceRoutes } from "./routes/voice";
 import { lookupRoutes } from "./routes/lookup";
+import { assistantRoutes } from "./routes/assistant";
 import { teacherKeyRoutes } from "./routes/teacher-keys";
+import { soloRoutes } from "./routes/solo";
+import { communityRoutes } from "./routes/community";
 import { timingSafeEqual } from "./auth-crypto";
 
 export function createApi() {
   return new Hono<AppEnv>()
     .route("/", authRoutes())
+    .route("/", oauthRoutes())
     .route("/", joinRoutes())
     .route("/", topicsRoutes())
     .route("/", classroomsRoutes())
     .route("/", activityRoutes())
     .route("/", voiceRoutes())
     .route("/", lookupRoutes())
-    .route("/", teacherKeyRoutes());
+    .route("/", assistantRoutes())
+    .route("/", teacherKeyRoutes())
+    .route("/", soloRoutes())
+    .route("/", communityRoutes());
 }
 export type RpcApi = ReturnType<typeof createApi>;
 
@@ -40,7 +48,10 @@ export function createApp() {
     .get("/health", (c) => c.json({ ok: true }))
     .post("/api/dev/seed", async (c) => {
       const token = c.req.header("x-seed-token") ?? "";
-      const allowed = !!c.env.SEED_TOKEN && timingSafeEqual(token, c.env.SEED_TOKEN);
+      const allowed =
+        (c.env.LLM_PROVIDER === "mock" || c.env.DGX_BASE_URL) &&
+        !!c.env.SEED_TOKEN &&
+        timingSafeEqual(token, c.env.SEED_TOKEN);
       if (!allowed) {
         return c.json(
           { message: localize("not_found", normalizeLang(c.req.header("Accept-Language"))), code: "not_found" },

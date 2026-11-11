@@ -168,7 +168,7 @@ export function voiceRoutes() {
       if (c.env.LLM_PROVIDER !== "mock") fail(502, "llm_unavailable");
       const wav = synthWav(input.text, input.lang);
       return new Response(wav as unknown as BodyInit, {
-        headers: { "Content-Type": "audio/wav", "Cache-Control": "no-store" },
+        headers: { "Content-Type": "audio/wav", "Cache-Control": "no-store", "X-Socrates-Fallback": "mock" },
       });
     });
 }
