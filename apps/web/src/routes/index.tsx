@@ -103,11 +103,11 @@ const CROWD = [
   { id: 6, x: 0.5618, y: 0.6834, ratio: 0.3483, anchor: 0.4274, scale: 1.01 },
   { id: 7, x: 0.5032, y: 0.6537, ratio: 0.381, anchor: 0.4922, scale: 1.096 },
 ] as const;
-const CROWD_FLOOR = { horizon: 0.454, slope: 0.8775, near: 1, far: 0.65, grip: 12 } as const;
-const CROWD_VOICES: Partial<Record<number, { key: MessageKey; tilt: string }>> = {
-  0: { key: "comic_q1", tilt: "-rotate-3" },
-  5: { key: "comic_q2", tilt: "rotate-2" },
-  4: { key: "comic_q3", tilt: "-rotate-1" },
+const CROWD_FLOOR = { horizon: 0.454, slope: 0.8775 } as const;
+const CROWD_VOICES: Partial<Record<number, { lines: MessageKey[]; tilt: string }>> = {
+  0: { lines: ["comic_q1", "comic_q1b", "comic_q1c"], tilt: "-rotate-3" },
+  5: { lines: ["comic_q2", "comic_q2b", "comic_q2c"], tilt: "rotate-2" },
+  4: { lines: ["comic_q3", "comic_q3b", "comic_q3c"], tilt: "-rotate-1" },
 };
 const IRIS_COLOURS = ["blue", "grey", "ochre"] as const;
 
@@ -815,74 +815,40 @@ function DesertStage({ children }: { children?: ReactNode }) {
   );
 }
 
-function CrowdStage({ children }: { children?: ReactNode }) {
+function CrowdVoice({ lines, tilt }: { lines: MessageKey[]; tilt: string }) {
   const { t } = useI18n();
-  const stage = useRef<HTMLDivElement>(null);
+  const [index, setIndex] = useState(0);
+  return (
+    <span className="absolute bottom-full left-1/2 block -translate-x-1/2 pb-3">
+      <button
+        type="button"
+        data-voice
+        title={t("comic_next_line")}
+        onClick={() => setIndex((index + 1) % lines.length)}
+        className={cn(
+          "relative block cursor-pointer border-2 border-comic-ink bg-comic-paper px-2.5 py-1 text-[12px] font-semibold whitespace-nowrap text-comic-ink hover:bg-comic-ink hover:text-comic-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vermilion md:px-3.5 md:py-2 md:text-[15px]",
+          tilt,
+        )}
+      >
+        <span aria-live="polite">{t(lines[index] ?? lines[0]!)}</span>
+        <svg aria-hidden viewBox="0 0 16 12" className="absolute top-full left-1/2 -mt-[2px] h-3 w-4 -translate-x-1/2">
+          <path
+            d="M1 0L7 11 15 0"
+            strokeWidth={2}
+            strokeLinejoin="round"
+            className="fill-comic-paper stroke-comic-ink"
+          />
+        </svg>
+      </button>
+    </span>
+  );
+}
 
-  useEffect(() => {
-    const board = stage.current;
-    if (!board) return;
-    const releases = Array.from(board.querySelectorAll<HTMLElement>("[data-crowd]")).map((node) => {
-      const spec = CROWD.find((item) => String(item.id) === node.dataset.crowd);
-      const body = node.querySelector<HTMLElement>("[data-body]");
-      if (!spec || !body) return () => {};
-      let pointer = -1;
-      let grabX = 0;
-      let grabY = 0;
-      const place = (event: PointerEvent) => {
-        const rect = board.getBoundingClientRect();
-        const x = clamp((event.clientX - grabX - rect.left) / rect.width, 0.03, 0.97);
-        const feet = (event.clientY - grabY - rect.top) / rect.height;
-        const ground = clamp(feet, CROWD_FLOOR.far, CROWD_FLOOR.near);
-        const lift = Math.max(CROWD_FLOOR.grip, (ground - feet) * rect.height + CROWD_FLOOR.grip);
-        node.style.left = `${(x * 100).toFixed(2)}%`;
-        node.style.top = `${(ground * 100).toFixed(2)}%`;
-        node.style.height = `${(crowdHeight(ground) * spec.scale * 100).toFixed(2)}%`;
-        node.style.zIndex = String(Math.round(ground * 1000));
-        body.style.transform = `translate3d(0,${(-lift).toFixed(1)}px,0)`;
-      };
-      const onDown = (event: PointerEvent) => {
-        if (event.pointerType === "mouse" && event.button !== 0) return;
-        const box = node.getBoundingClientRect();
-        grabX = event.clientX - (box.left + box.width * spec.anchor);
-        grabY = event.clientY - box.bottom;
-        pointer = event.pointerId;
-        try {
-          node.setPointerCapture(pointer);
-        } catch {}
-        node.dataset.held = "true";
-        place(event);
-        event.preventDefault();
-      };
-      const onMove = (event: PointerEvent) => {
-        if (event.pointerId === pointer) place(event);
-      };
-      const onUp = (event: PointerEvent) => {
-        if (event.pointerId !== pointer) return;
-        pointer = -1;
-        delete node.dataset.held;
-        body.style.transform = "";
-      };
-      node.addEventListener("pointerdown", onDown);
-      node.addEventListener("pointermove", onMove);
-      node.addEventListener("pointerup", onUp);
-      node.addEventListener("pointercancel", onUp);
-      return () => {
-        node.removeEventListener("pointerdown", onDown);
-        node.removeEventListener("pointermove", onMove);
-        node.removeEventListener("pointerup", onUp);
-        node.removeEventListener("pointercancel", onUp);
-      };
-    });
-    return () => {
-      for (const release of releases) release();
-    };
-  }, []);
-
+function CrowdStage({ children }: { children?: ReactNode }) {
   return (
     <figure data-panel className="relative">
       <div className={cn("relative overflow-hidden bg-comic-paper", FRAME)} style={{ aspectRatio: "1400 / 875" }}>
-        <div ref={stage} data-scene className="absolute inset-0">
+        <div data-scene className="absolute inset-0">
           <img
             src={asset("crowd-plate")}
             alt=""
@@ -896,7 +862,7 @@ function CrowdStage({ children }: { children?: ReactNode }) {
               <div
                 key={person.id}
                 data-crowd={person.id}
-                className="group absolute cursor-grab touch-none select-none data-[held=true]:cursor-grabbing"
+                className="absolute select-none"
                 style={{
                   left: `${person.x * 100}%`,
                   top: `${person.y * 100}%`,
@@ -906,43 +872,15 @@ function CrowdStage({ children }: { children?: ReactNode }) {
                   zIndex: Math.round(person.y * 1000),
                 }}
               >
-                <div
-                  data-body
-                  className="absolute inset-0 transition-transform duration-300 ease-in group-data-[held=true]:transition-none"
-                >
-                  <img
-                    src={asset(`crowd-${person.id}`)}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    draggable={false}
-                    className="anim-struggle block size-full"
-                  />
-                  {voice && (
-                    <span className="pointer-events-none absolute bottom-full left-1/2 block -translate-x-1/2 pb-3">
-                      <span
-                        className={cn(
-                          "relative block border-2 border-comic-ink bg-comic-paper px-2.5 py-1 text-[12px] font-semibold whitespace-nowrap md:px-3.5 md:py-2 md:text-[15px]",
-                          voice.tilt,
-                        )}
-                      >
-                        {t(voice.key)}
-                        <svg
-                          aria-hidden
-                          viewBox="0 0 16 12"
-                          className="absolute top-full left-1/2 -mt-[2px] h-3 w-4 -translate-x-1/2"
-                        >
-                          <path
-                            d="M1 0L7 11 15 0"
-                            strokeWidth={2}
-                            strokeLinejoin="round"
-                            className="fill-comic-paper stroke-comic-ink"
-                          />
-                        </svg>
-                      </span>
-                    </span>
-                  )}
-                </div>
+                <img
+                  src={asset(`crowd-${person.id}`)}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  draggable={false}
+                  className="pointer-events-none block size-full"
+                />
+                {voice && <CrowdVoice lines={voice.lines} tilt={voice.tilt} />}
               </div>
             );
           })}
