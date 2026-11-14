@@ -40,7 +40,7 @@
 
 - 回紋（meander）圖樣與所有裝飾圖片（`public/theatre/`）；內部介面目前不含裝飾圖，待以 Higgsfield 重新設計
 - 模型的輪盤選單（雙擊開啟：問 AI／靜音／表情）、拖曳，以及 rail 與 top bar 的小幫手按鈕；靜音改由設定頁的語音朗讀開關控制
-- web 端的「問 AI」；server 的 `POST /api/assistant` 尚未移除
+- 「問 AI」：web 端入口、`POST /api/assistant`、assistant profile 與其 prompt
 
 ## 2026-11-14 — 登入前故事頁重做（`experiment/web-next`）
 

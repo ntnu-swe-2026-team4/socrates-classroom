@@ -13,7 +13,6 @@ import { LANG_NAMES, type Lang } from "@socrates/shared";
 import STUDENT_REPORT_RAW from "../../prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../../prompts/class-report.md?raw";
 import LOOKUP_RAW from "../../prompts/lookup.md?raw";
-import ASSISTANT_RAW from "../../prompts/assistant.md?raw";
 import TOPIC_GEN_RAW from "../../prompts/topic-gen.md?raw";
 import type { Env } from "../../env";
 import { buildModels } from "../models";
@@ -27,7 +26,7 @@ import { teacherLegsOf, withPinnedCredential, type TeacherLeg } from "../credent
 import { reportSubmitExtension, SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../extensions/report-submit";
 import type { JsonObject } from "@earendil-works/pi-durable";
 
-export type ProfileName = "socrates" | "topic-gen" | "student-report" | "class-report" | "lookup" | "assistant";
+export type ProfileName = "socrates" | "topic-gen" | "student-report" | "class-report" | "lookup";
 
 const ROLE_USER_MARKER = '{{role "user"}}';
 const LOCALE_BLOCK = "{{#if locale}}{{locale}}{{else}}繁體中文{{/if}}";
@@ -95,14 +94,6 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     instructions: instructionsOf(LOOKUP_RAW),
     extensions: ["websearch"],
     maxTurns: 3,
-    trafficClass: "interactive",
-    thinkingLevel: "high",
-  },
-  assistant: {
-    name: "assistant",
-    instructions: instructionsOf(ASSISTANT_RAW),
-    extensions: ["websearch"],
-    maxTurns: 4,
     trafficClass: "interactive",
     thinkingLevel: "high",
   },

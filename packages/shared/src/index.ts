@@ -258,14 +258,6 @@ export const ClassroomCreateInputSchema = z.object({
 });
 export const ActivityStartInputSchema = z.object({ topicId: z.string().min(1) });
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
-export const AssistantInputSchema = z.object({
-  messages: z
-    .array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().trim().min(1).max(4000) }))
-    .min(1)
-    .max(20)
-    .refine((messages) => messages.at(-1)?.role === "user"),
-});
-export type AssistantMessage = z.infer<typeof AssistantInputSchema>["messages"][number];
 export const LookupInputSchema = z.object({ term: z.string().trim().min(1).max(30) });
 export const TtsInputSchema = z.object({ text: z.string().min(1).max(2000), lang: z.enum(["zh", "en", "es"]) });
 export const ClassroomSummarySchema = z.object({

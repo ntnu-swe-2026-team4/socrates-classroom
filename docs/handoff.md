@@ -46,7 +46,6 @@
 | 教室內頁 | 主題卡片              | 分頁：主題（可選取歷次主題）／公告／討論區／成員（移除成員、退出教室）；學生視角預覽                                                                                                    |
 | 加入教室 | 邀請碼→輸入名字       | 先選「使用我的帳號」或「以訪客加入」；已登入沿用帳號名                                                                                                                                  |
 | 蘇格拉底 | 固定 3D 面板          | 可拖曳的圓形小幫手：雙擊輪盤（問 AI／靜音／表情）、表情一次性播放                                                                                                                       |
-| 問 AI    | 無                    | 小幫手面板直接回答（`POST /api/assistant`），每則可「朗讀」                                                                                                                             |
 | 語音     | 對話自動朗讀          | 單一語音通道：最後主動者優先、跨分頁互斥、「正在朗讀」標籤；設定頁開關＋音量＋「老爺爺／原聲」聲線                                                                                      |
 | 多語系   | 介面三語              | 另加系統主題譯文、日期依介面語言、蘇格拉底依學生語言回覆                                                                                                                                |
 | 自備金鑰 | 一 provider 一把 key  | 多把 key × 多個 model，拖曳調整優先順序；可沿用已存的 key 加入其他模型                                                                                                                  |
@@ -61,7 +60,6 @@
 - 教室：`GET /classrooms/:id`、`/classrooms/:id/activities`、`PATCH`／`DELETE /classrooms/:id`、`POST /classrooms` 可不帶主題
 - 學生視角預覽：`/classrooms/:id/preview`、`/preview/reset`、`/preview/exit`（session 帶 `previewClassroomId`）
 - 教室社群：公告、討論區、成員（含移除與退出）
-- 問 AI：`POST /assistant`（assistant profile，走既有 gateway 路由）
 - 系統主題在地化（依 `Accept-Language`）；離線 mock 回覆依學生語言輪替五種追問
 - Teacher keys 多筆化：`POST /settings/keys`、`PATCH`／`DELETE /settings/keys/:id`、`PUT /settings/keys/order {ids}`（API 形狀變更，PM 需求）
 - 第三方登入的 server 端（`routes/oauth.ts`、`004_oauth.sql`）：程式完成，**待 config 宣告後即可用**

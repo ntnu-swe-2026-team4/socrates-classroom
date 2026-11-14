@@ -13,7 +13,6 @@ import { classroomsRoutes } from "./routes/classrooms";
 import { activityRoutes } from "./routes/activity";
 import { voiceRoutes } from "./routes/voice";
 import { lookupRoutes } from "./routes/lookup";
-import { assistantRoutes } from "./routes/assistant";
 import { teacherKeyRoutes } from "./routes/teacher-keys";
 import { soloRoutes } from "./routes/solo";
 import { communityRoutes } from "./routes/community";
@@ -31,7 +30,6 @@ export function createApi() {
     .route("/", activityRoutes())
     .route("/", voiceRoutes())
     .route("/", lookupRoutes())
-    .route("/", assistantRoutes())
     .route("/", teacherKeyRoutes())
     .route("/", soloRoutes())
     .route("/", communityRoutes())

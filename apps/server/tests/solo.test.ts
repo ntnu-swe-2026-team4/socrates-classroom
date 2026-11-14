@@ -251,39 +251,6 @@ describe("solo chats", () => {
   }, 20_000);
 });
 
-describe("assistant (quick AI answers)", () => {
-  it("answers the latest user turn (mock), validates shape, and requires a session", async () => {
-    const asker = await registerAccount("提問者");
-    const answered = await call("/api/assistant", {
-      method: "POST",
-      headers: { ...json, Cookie: asker.cookie },
-      body: JSON.stringify({
-        messages: [
-          { role: "user", text: "光速是多少？" },
-          { role: "assistant", text: "約每秒 30 萬公里。" },
-          { role: "user", text: "那聲速呢？" },
-        ],
-      }),
-    });
-    expect(answered.status).toBe(200);
-    expect(((await answered.json()) as { markdown: string }).markdown.length).toBeGreaterThan(0);
-
-    const endsWithAssistant = await call("/api/assistant", {
-      method: "POST",
-      headers: { ...json, Cookie: asker.cookie },
-      body: JSON.stringify({ messages: [{ role: "assistant", text: "hi" }] }),
-    });
-    expect(endsWithAssistant.status).toBe(422);
-
-    const anonymous = await call("/api/assistant", {
-      method: "POST",
-      headers: json,
-      body: JSON.stringify({ messages: [{ role: "user", text: "hi" }] }),
-    });
-    expect(anonymous.status).toBe(401);
-  });
-});
-
 describe("classroom deletion and topic translations", () => {
   it("only the owner deletes a classroom; members and topics list stop showing it", async () => {
     const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
