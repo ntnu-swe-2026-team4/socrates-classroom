@@ -107,3 +107,47 @@ describe("migration 003: activity participant backfill", () => {
     expect(pseudonym).toEqual([{ pseudonym: "學生2" }]);
   });
 });
+
+describe("migration 007: user identities", () => {
+  it("provider identity is unique and cascades with its user", async () => {
+    expect(migrations.some((migration) => migration.name === "007_user_identities.sql")).toBe(true);
+
+    const at = "2026-11-15T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
+       VALUES ('u_oid', 'OAuth生', 'student', 'oid@example.com', 'x', 'zh', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO user_identities (provider, provider_user_id, user_id, email, created_at)
+       VALUES ('google', 'sub-1', 'u_oid', 'oid@example.com', $at)`,
+      { at },
+    );
+
+    await expect(
+      run(
+        env.DB,
+        `INSERT INTO user_identities (provider, provider_user_id, user_id, email, created_at)
+         VALUES ('google', 'sub-1', 'u_oid', 'again@example.com', $at)`,
+        { at },
+      ),
+    ).rejects.toThrow();
+    await expect(
+      run(
+        env.DB,
+        `INSERT INTO user_identities (provider, provider_user_id, user_id, email, created_at)
+         VALUES ('google', 'sub-2', 'u_missing', 'x@example.com', $at)`,
+        { at },
+      ),
+    ).rejects.toThrow();
+
+    await run(env.DB, "DELETE FROM users WHERE id = 'u_oid'");
+    const identities = await all<{ provider: string }>(
+      env.DB,
+      "SELECT provider FROM user_identities WHERE user_id = 'u_oid'",
+    );
+    expect(identities).toEqual([]);
+  });
+});

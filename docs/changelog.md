@@ -147,6 +147,15 @@
 
 - Chat DO `settings.extensions` 改為 getter：已安裝且非 btw 的 extensions（root 行為不變）
 - routeSubmit 的 model 快取改 per session；`llm_unavailable` 廣播只送綁定該 session 的連線
+## 2026-11-14 — SSO 登入：Email 自行註冊＋Google（#124，`feat/124-sso-login`）
+
+### Added
+
+- `POST /api/auth/signup`：不需邀請碼的 email＋密碼註冊，建獨立帳號（不屬於任何教室、無能力；加入班級後即一般學生）
+- Google 登入：`GET /api/auth/oauth/:provider/start`／`callback`（OIDC authorization code＋PKCE S256＋state＋nonce；ID token 以 JWKS 驗簽並驗 `iss`／`aud`／`exp`／`nonce`／`email_verified`）；`src/oauth.ts` 為 provider 共用流程，日後加 provider 只需新增 adapter
+- Migration `007_user_identities.sql`：第三方登入身分表（`user_identities`，PK (`provider`, `provider_user_id`)，隨帳號 cascade 刪除）
+- 錯誤碼 `oauth_unavailable`／`oauth_state_invalid`／`oauth_email_unverified`／`oauth_failed`（三語）；binding `GOOGLE_CLIENT_ID`（text）／`GOOGLE_CLIENT_SECRET`（secret，留空＝停用）
+- 測試：`tests/auth-sso.test.ts`（signup、OAuth 成功／state 竄改／簽章偽造／aud・iss・exp・nonce・未驗證 email）、`tests/migrations.test.ts`（user_identities 唯一性與 cascade）
 
 ## 2026-11-09 — routing/ 更名 gateway/（`experiment/web-next`）
 

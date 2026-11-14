@@ -70,13 +70,13 @@ export function secretOf(ctx: { env: { AUTH_SECRET?: string } }): string {
   return secret;
 }
 
-function b64url(bytes: Uint8Array): string {
+export function b64url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
 
-function fromB64url(text: string): Uint8Array {
+export function fromB64url(text: string): Uint8Array {
   const padded = text.replaceAll("-", "+").replaceAll("_", "/");
   const binary = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
   return Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
@@ -86,6 +86,27 @@ async function sign(payload: string, secret: string): Promise<string> {
   const key = await hmacKey(secret);
   const mac = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
   return b64url(new Uint8Array(mac));
+}
+
+export async function sealPayload(ctx: { env: { AUTH_SECRET?: string } }, data: unknown): Promise<string> {
+  const payload = b64url(encoder.encode(JSON.stringify(data)));
+  return `${payload}.${await sign(payload, secretOf(ctx))}`;
+}
+
+export async function openPayload<T>(
+  ctx: { env: { AUTH_SECRET?: string } },
+  token: string | undefined,
+): Promise<T | null> {
+  if (!token) return null;
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return null;
+  const expected = await sign(payload, secretOf(ctx));
+  if (!timingSafeEqual(expected, sig)) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(fromB64url(payload))) as T;
+  } catch {
+    return null;
+  }
 }
 
 export async function issueSessionToken(

@@ -24,10 +24,12 @@
 
 > 「訪客」＝沒有帳號的活動參與者：持 `socrates_participant` cookie，**不建 `users` 列**，只存在於那一個活動（#133）。
 > 「老師」不是帳號屬性，而是能力＋關係（#131、#136）：「能不能建班級」看 `canManageClasses`；「是不是某班老師」看 `classrooms.teacher_id`。同一帳號可以同時是 A 班老師、B 班學生。`isAdmin` 只解鎖 `/admin/*`，不含建班級（需 `canManageClasses`）。
+> 自行註冊（`POST /auth/signup`）與 Google OAuth（#124）建立的獨立帳號：未加入任何教室前權利同「已登入」欄（無班級關係，多數班級操作本就需成員或 owner）。
 
 | Operation                                                                                               | 訪客                      | 已登入                       | `canManageClasses`                 | `isAdmin`             |
 | ------------------------------------------------------------------------------------------------------- | ------------------------- | ---------------------------- | ---------------------------------- | --------------------- |
 | `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅                        | ✅                           | ✅                                 | ✅                    |
+| `POST /auth/signup`、`GET /auth/oauth/:provider/start`、`GET /auth/oauth/:provider/callback`（#124）    | ✅                        | ✅                           | ✅                                 | ✅                    |
 | `GET /invites/:token`、`POST /invites/:token/join`（活動邀請連結，#133）                                | ✅                        | ✅（只加入活動，不入名冊）   | ✅                                 | ✅                    |
 | `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —                         | ✅                           | ✅                                 | ✅                    |
 | `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —                         | ❌ 403 `capability_required` | ✅                                 | ✅（仍需能力）        |
@@ -82,6 +84,18 @@ interface User {
 - `GET /activities/:id` 對已登入的教室成員帶**寫入副作用**：冪等建立 participant（auto-join）
 - **成員 display_name 優先**（UNIQUE(`activity_id`, `display_name`) 撞名時）：被 account-less 訪客搶佔的名字——訪客列改名為 `原名（訪客）`（再撞則 `（訪客 2）`…），成員取名原 名；與其他已綁帳號的 participant 撞名——新參與者改用後綴 `原名 2`、`原名 3`…，既色列不動
 - 同一帳號在**同一個活動**可以有多個 participant（#134 的 1–6 個 `teacher` slot）：`activity_participants` 的 PK 是 (`activity_id`, `id`)，不是 (`activity_id`, `user_id`)；`ensureParticipant` 的「一人一個」只約束 `member`／`guest` 的入場路徑
+
+### 2.1 自行註冊與第三方登入（#124）
+
+| Endpoint                                                                | 說明                                                                                                                                                                                                                                                |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/auth/signup` `{email, password, name, tosAccepted}` → `User` | 不需邀請碼；建獨立帳號（無能力，未屬任何教室）並發 session。email 已被 email 帳號使用 → 409 `conflict`；`tosAccepted` 非 true → 422 `tos_required`；限流與 register 共用
+| `GET /api/auth/oauth/:provider/start`（目前 `provider` 僅 `google`）    | 302 至 provider 授權頁；state＋nonce＋PKCE（S256）封入 10 分鐘 httpOnly cookie `socrates_oauth`（HMAC 簽章，path `/api/auth/oauth`）。未設定 `GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET` → 302 `/login?error=oauth_unavailable`；未知 provider → 404 |
+| `GET /api/auth/oauth/:provider/callback?code&state`                     | 驗 state cookie → code＋PKCE verifier 換 ID token → 驗簽章（JWKS）／`iss`／`aud`／`exp`／`nonce`／`email_verified` → 以 `(provider, sub)` 找或建獨立帳號 → 發 session → 302 `/home`。失敗一律 302 `/login?error=<code>`，不發 session               |
+
+- 一個帳號對應一種登入方式；同一個 email 經 email 註冊與 Google 登入是**兩個帳號**（第三方登入不以 email 認身分）
+- Google 帳號的 email 存於 `user_identities.email`，`users.email` 為 NULL（`users.email` 只承載 email 密碼登入）
+- callback redirect URI＝`PUBLIC_BASE_URL`（未設則用請求 origin）＋`/api/auth/oauth/google/callback`，需登錄於 Google Cloud Console
 
 ## 3. 入場（唯一閘門，#66/#70）
 
@@ -301,6 +315,7 @@ interface ViolationSlice {
 | 語音／LLM              | `llm_unavailable`（binding 或上游失敗；mock 降級不丟這個碼）；`llm_rate_limited` / `llm_timeout` 未接線（保留碼，上游限流／逾時目前也回 `llm_unavailable`）    | 502（未接線碼保留）         |
 | 對話入場               | `already_streaming`（歷史碼，保留給舊客戶端 switch 窮舉）                                                                                                      | 409                         |
 | BYOK / teacher keys    | `byok_provider_invalid`                                                                                                                                        | 422                         |
+| 第三方登入（#124）     | `oauth_unavailable` / `oauth_state_invalid` / `oauth_email_unverified` / `oauth_failed`（以 `/login?error=<code>` query 傳回，非 JSON）                        | 302                         |
 
 ## 11. 端點外的既存通道
 

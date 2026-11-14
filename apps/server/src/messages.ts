@@ -111,6 +111,26 @@ const M: Record<ErrorCode, Entry> = {
     en: "This provider is not supported.",
     es: "Este proveedor no es compatible.",
   },
+  oauth_unavailable: {
+    zh: "這個登入方式目前無法使用。",
+    en: "This sign-in method is not available right now.",
+    es: "Este método de inicio de sesión no está disponible ahora.",
+  },
+  oauth_state_invalid: {
+    zh: "登入請求已失效，請重新登入。",
+    en: "The sign-in request expired. Please try again.",
+    es: "La solicitud de inicio de sesión caducó. Inténtalo de nuevo.",
+  },
+  oauth_email_unverified: {
+    zh: "這個帳號的信箱尚未驗證，無法登入。",
+    en: "This account's email is not verified.",
+    es: "El correo de esta cuenta no está verificado.",
+  },
+  oauth_failed: {
+    zh: "第三方登入失敗，請再試一次。",
+    en: "Third-party sign-in failed. Please try again.",
+    es: "El inicio de sesión externo falló. Inténtalo de nuevo.",
+  },
 };
 
 export function localize(code: ErrorCode, lang: Lang, vars: Record<string, string | number> = {}): string {

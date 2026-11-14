@@ -216,6 +216,12 @@ export const RegisterInputSchema = z.object({
   name: z.string().trim().min(1).max(80),
   tosAccepted: z.boolean(),
 });
+export const SignupInputSchema = z.object({
+  email: emailField,
+  password: z.string().min(8).max(128),
+  name: z.string().trim().min(1).max(80),
+  tosAccepted: z.boolean(),
+});
 export const JoinInputSchema = z.object({
   code: z.string().min(4).max(32),
   name: z.string().trim().max(80).optional(),
@@ -358,6 +364,10 @@ export const ERROR_CODES = [
   "report_pending",
   "report_failed",
   "byok_provider_invalid",
+  "oauth_unavailable",
+  "oauth_state_invalid",
+  "oauth_email_unverified",
+  "oauth_failed",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

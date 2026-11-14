@@ -96,17 +96,20 @@ pnpm migrate     # = cf d1 migrations apply <固定 DB_ID> --local --persist-to 
 cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations   # 在 apps/web/ 下執行
 ```
 
-Schema 的 SSOT 是 `apps/server/migrations/*.sql`（目前單一 `001_init.sql`）；本地與遠端由同一批檔案驅動。
+Schema 的 SSOT 是 `apps/server/migrations/*.sql`（`001_init.sql` 起依序前向套用）；本地與遠端由同一批檔案驅動。production 已部署（2026-11-10 起），schema 變更一律新增前向 migration，不得改寫已套用的檔案。D1 不允許關閉 foreign keys，`DROP TABLE` 父表會觸發 `ON DELETE CASCADE`——重建被參照的表須先備份、由葉節點往上 drop、重建後依序回填（`tests/migrations.test.ts` 驗證資料不流失）。
 
 ## Secrets
 
 本專案 secrets（`cloudflare.config.ts` 宣告為 `bindings.secret()`）：
 
-| Secret         | 用途                                                 | 產生方式                  |
-| -------------- | ---------------------------------------------------- | ------------------------- |
-| `AUTH_SECRET`  | HMAC session cookie 簽章（必填，缺了 fail-fast）     | `openssl rand -base64 32` |
-| `BYOK_ENC_KEY` | teacher keys 的 AES-GCM 金鑰（必填，缺了 fail-fast） | `openssl rand -base64 32` |
-| `SEED_TOKEN`   | `POST /api/dev/seed` 閘門（production 留空即可禁用） | 任意亂數                  |
+| Secret                 | 用途                                                                        | 產生方式                            |
+| ---------------------- | --------------------------------------------------------------------------- | ----------------------------------- |
+| `AUTH_SECRET`          | HMAC session cookie 簽章（必填，缺了 fail-fast）                            | `openssl rand -base64 32`           |
+| `BYOK_ENC_KEY`         | teacher keys 的 AES-GCM 金鑰（必填，缺了 fail-fast）                        | `openssl rand -base64 32`           |
+| `SEED_TOKEN`           | `POST /api/dev/seed` 閘門（production 留空即可禁用）                        | 任意亂數                            |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret（留空＝Google 登入停用，回 `oauth_unavailable`） | Google Cloud Console → OAuth 用戶端 |
+
+Google 登入另需 text binding `GOOGLE_CLIENT_ID`（`cloudflare.config.ts`，dev 由 `.env.local` override），並在 Google Cloud Console 登錄 redirect URI `<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`；本地開發需在 `.env.local` 設 `PUBLIC_BASE_URL=http://localhost:5173`。
 
 ```bash
 # 一次上傳（dotenv 格式；.env.production.local 不會進 dev/git）

@@ -32,6 +32,8 @@ export default defineConfig(({ mode }) => {
         TTS_MODEL: text("TTS_MODEL", "xai/grok-tts"),
         AUTH_SECRET: bindings.secret(),
         BYOK_ENC_KEY: bindings.secret(),
+        GOOGLE_CLIENT_ID: text("GOOGLE_CLIENT_ID", ""),
+        GOOGLE_CLIENT_SECRET: bindings.secret(),
       },
       assets: { notFoundHandling: "single-page-application" },
       domains: ["socrates.g36maid.dev"],

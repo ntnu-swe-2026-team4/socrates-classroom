@@ -13,5 +13,7 @@ export interface Env {
   TTS_MODEL?: string;
   BYOK_ENC_KEY?: string;
   SEED_TOKEN?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   FAUX_TOKENS_PER_SECOND?: string;
 }
