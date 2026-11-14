@@ -13,10 +13,38 @@ interface DockRect {
   size: number;
 }
 
+const BACKDROP = "url(/stage/back.webp)";
+
 export function SocratesDock() {
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-1">
-      <div {...{ [COMPANION_DOCK_ATTR]: "" }} className="aspect-square w-full max-w-[320px]" />
+    <div aria-hidden className="relative min-h-0 flex-1 overflow-hidden">
+      <div
+        className="absolute inset-0 bg-ink/15"
+        style={{
+          maskImage: BACKDROP,
+          WebkitMaskImage: BACKDROP,
+          maskSize: "cover",
+          WebkitMaskSize: "cover",
+          maskPosition: "center bottom",
+          WebkitMaskPosition: "center bottom",
+        }}
+      />
+      <div className="absolute inset-x-0 bottom-0 h-[16%] bg-gradient-to-t from-card to-transparent" />
+      <div className="absolute inset-x-0 bottom-[5%] flex flex-col items-center">
+        <div className="relative -mb-[7%] aspect-square w-[min(94%,40dvh)]">
+          <span className="absolute -inset-[6%] rounded-full bg-card blur-2xl" />
+          <div {...{ [COMPANION_DOCK_ATTR]: "" }} className="absolute inset-0" />
+        </div>
+        <span className="relative block w-[min(60%,26dvh)]">
+          <span className="absolute inset-x-[4%] -bottom-[3%] h-[14%] rounded-[50%] bg-ink/25 blur-md" />
+          <img
+            src="/stage/pedestal.webp"
+            alt=""
+            decoding="async"
+            className="relative block w-full [[data-theme=dark]_&]:brightness-75"
+          />
+        </span>
+      </div>
     </div>
   );
 }
