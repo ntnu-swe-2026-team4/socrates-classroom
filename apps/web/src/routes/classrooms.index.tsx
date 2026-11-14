@@ -3,7 +3,18 @@ import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-ro
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Users } from "lucide-react";
 import { api, ApiError, type ClassroomSummary } from "@/api";
-import { Button, ConfirmDialog, Initial, Input, PageHeader, Spinner, cn } from "@/components/ui";
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  Initial,
+  Input,
+  MOTIF_NAMES,
+  Motif,
+  PageHeader,
+  Spinner,
+  cn,
+} from "@/components/ui";
 import { useT } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
 
@@ -143,9 +154,7 @@ function RoomGroup({ title, rooms, empty }: { title: string | null; rooms: Class
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-faint">
-          {empty}
-        </div>
+        <EmptyState motif="amphora">{empty}</EmptyState>
       )}
     </section>
   );
@@ -158,10 +167,14 @@ const COVER_TONES = [
   "bg-paper-deep text-ink-soft",
 ] as const;
 
-function toneOf(id: string): (typeof COVER_TONES)[number] {
+function hashOf(id: string): number {
   let hash = 0;
   for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return COVER_TONES[hash % COVER_TONES.length]!;
+  return hash;
+}
+
+function toneOf(id: string): (typeof COVER_TONES)[number] {
+  return COVER_TONES[hashOf(id) % COVER_TONES.length]!;
 }
 
 function ClassroomCard({ room }: { room: ClassroomSummary }) {
@@ -176,25 +189,10 @@ function ClassroomCard({ room }: { room: ClassroomSummary }) {
     >
       <div className={cn("relative aspect-[16/9] rounded-t-2xl", toneOf(room.id))}>
         <div className="absolute inset-0 overflow-hidden rounded-t-2xl">
-          <svg
-            aria-hidden
-            viewBox="0 0 160 90"
-            preserveAspectRatio="xMidYMid slice"
-            className="absolute inset-0 size-full"
-          >
-            <g fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="0.8">
-              <circle cx="132" cy="18" r="34" />
-              <circle cx="132" cy="18" r="22" />
-              <path d="M0 70 C40 50 70 88 110 66 S160 58 160 58" />
-              <path d="M0 80 C40 60 70 98 110 76 S160 68 160 68" />
-            </g>
-          </svg>
-          <span
-            aria-hidden
-            className="absolute top-3 left-4 font-serif text-[56px] leading-none opacity-40 select-none"
-          >
-            {room.name.slice(0, 1)}
-          </span>
+          <Motif
+            name={MOTIF_NAMES[(hashOf(room.id) >>> 3) % MOTIF_NAMES.length]!}
+            className="absolute right-[8%] bottom-[10%] h-[72%] opacity-55"
+          />
         </div>
         {room.current && (
           <span

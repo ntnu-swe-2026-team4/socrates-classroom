@@ -132,6 +132,62 @@ export function Segmented<T extends string>({
   );
 }
 
+const MOTIFS = {
+  column: 0.616,
+  temple: 1.19,
+  amphora: 0.684,
+  laurel: 1.039,
+  olive: 1.143,
+  lyre: 0.866,
+  owl: 0.856,
+  lamp: 1.416,
+} as const;
+export type MotifName = keyof typeof MOTIFS;
+export const MOTIF_NAMES = Object.keys(MOTIFS) as MotifName[];
+
+export function Motif({ name, className }: { name: MotifName; className?: string }) {
+  const image = `url(/greek/${name}.webp)`;
+  return (
+    <span
+      aria-hidden
+      className={cn("inline-block shrink-0 bg-current", className)}
+      style={{
+        aspectRatio: String(MOTIFS[name]),
+        maskImage: image,
+        WebkitMaskImage: image,
+        maskSize: "contain",
+        WebkitMaskSize: "contain",
+        maskRepeat: "no-repeat",
+        WebkitMaskRepeat: "no-repeat",
+        maskPosition: "center",
+        WebkitMaskPosition: "center",
+      }}
+    />
+  );
+}
+
+export function EmptyState({
+  motif,
+  className,
+  children,
+}: {
+  motif: MotifName;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center gap-3 rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-faint",
+        className,
+      )}
+    >
+      <Motif name={motif} className="h-14 text-ochre" />
+      <div>{children}</div>
+    </div>
+  );
+}
+
 export function BackLink({ onClick, label, className }: { onClick: () => void; label: string; className?: string }) {
   return (
     <button
@@ -191,6 +247,7 @@ export function PageHeader({
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>}
       </div>
+      <div aria-hidden className="dentils mt-4" />
     </header>
   );
 }

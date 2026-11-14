@@ -131,7 +131,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       >
         {t("app_mark")}
       </Link>
-      <div className="mb-2 h-px w-8 bg-line-strong" aria-hidden />
+      <div className="dentils mb-2 w-11" aria-hidden />
 
       <div className="flex w-full flex-col gap-2 px-1.5">
         {previewRoom ? (

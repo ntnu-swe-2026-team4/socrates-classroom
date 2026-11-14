@@ -97,9 +97,21 @@ export function NotificationBoard({ className }: { className?: string }) {
   const formatDate = useFormatDate();
   const feed = useQuery({ queryKey: FEED_KEY, queryFn: () => api.notifications() });
   return (
-    <section className={cn("flex min-h-0 flex-col rounded-xl border border-line-strong bg-card p-5", className)}>
-      <h2 className="shrink-0 font-serif text-[22px] leading-snug text-ink">{t("notify_board")}</h2>
-      <ul className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+    <section
+      className={cn(
+        "relative flex min-h-0 flex-col overflow-hidden rounded-xl border border-line-strong bg-paper p-5",
+        className,
+      )}
+    >
+      <img
+        src="/greek/hero.webp"
+        alt=""
+        decoding="async"
+        className="pointer-events-none absolute right-0 bottom-0 w-[78%] max-w-[380px] opacity-90 [[data-theme=dark]_&]:opacity-70"
+      />
+      <h2 className="relative shrink-0 text-[22px] leading-snug font-semibold text-ink">{t("notify_board")}</h2>
+      <div aria-hidden className="dentils relative mt-3" />
+      <ul className="relative mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-28">
         {feed.data?.items.map((item) => (
           <li key={item.id} className="rounded-xl border border-line bg-paper px-4 py-3">
             <div className="flex items-baseline justify-between gap-3">

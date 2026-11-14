@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, KeyRound, LogOut, MessageSquare, Send, Trash2, UserMinus, UserPlus } from "lucide-react";
 import type { Announcement, ClassroomSummary, Post, PostReply, StudentCredential } from "@socrates/shared";
 import { api, ApiError } from "@/api";
-import { Button, ConfirmDialog, FormDialog, Initial, Input, Spinner, cn } from "@/components/ui";
+import { Button, ConfirmDialog, EmptyState, FormDialog, Initial, Input, Spinner, cn } from "@/components/ui";
 import { useFormatDate, useT, type MessageKey } from "@/i18n";
 
 export const ROOM_TABS = ["topics", "announcements", "board", "members"] as const;
@@ -182,9 +182,9 @@ function DeleteIcon({ label, onClick }: { label: string; onClick: () => void }) 
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-[13px] text-ink-faint">
+    <EmptyState motif="olive" className="border-line py-6 text-[13px]">
       {children}
-    </p>
+    </EmptyState>
   );
 }
 

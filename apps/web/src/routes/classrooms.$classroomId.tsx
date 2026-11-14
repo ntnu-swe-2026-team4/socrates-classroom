@@ -98,7 +98,13 @@ function ClassroomPage() {
     <div className="min-h-full bg-paper-deep pb-10">
       <div className="mx-auto w-full max-w-6xl px-4 pt-14 md:px-6 md:pt-5">
         <header className="overflow-hidden rounded-xl border border-line bg-paper shadow-sm">
-          <div className="relative flex min-h-[132px] flex-col justify-end gap-2 bg-comic-night px-5 py-4 [--color-ink-faint:rgb(255_255_255/0.65)] [--color-ink-soft:rgb(255_255_255/0.8)] [--color-ink:#ffffff] [--color-paper-deep:rgb(255_255_255/0.14)] md:px-7 md:py-5">
+          <div className="relative flex min-h-[150px] flex-col justify-end gap-2 overflow-hidden bg-comic-night [&>:not(img):not(a)]:relative px-5 py-4 [--color-ink-faint:rgb(255_255_255/0.65)] [--color-ink-soft:rgb(255_255_255/0.8)] [--color-ink:#ffffff] [--color-paper-deep:rgb(255_255_255/0.14)] md:px-7 md:py-5">
+            <img
+              src="/greek/banner.webp"
+              alt=""
+              decoding="async"
+              className="pointer-events-none absolute top-0 right-0 h-full max-sm:opacity-40"
+            />
             <Link
               to="/classrooms"
               search={{ view: teacher ? "teacher" : "student" }}

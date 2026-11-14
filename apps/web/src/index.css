@@ -21,6 +21,7 @@
   --color-ember-deep: #9c2420;
   --color-ember-wash: rgb(206 174 98 / 0.22);
   --color-on-ember: #ffffff;
+  --color-ochre: #b8923a;
   --color-moss: #5c6b2f;
   --color-moss-wash: rgb(92 107 47 / 0.14);
   --color-flag: #a3241f;
@@ -47,6 +48,7 @@
   --color-ember-deep: #c1302a;
   --color-ember-wash: rgb(206 174 98 / 0.16);
   --color-on-ember: #ffffff;
+  --color-ochre: #c9a856;
   --color-moss: #9aab6e;
   --color-moss-wash: rgb(154 171 110 / 0.14);
   --color-flag: #e07a70;
@@ -187,6 +189,13 @@ body {
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+.dentils {
+  height: 7px;
+  border-top: 1px solid var(--color-line-strong);
+  background:
+    repeating-linear-gradient(90deg, var(--color-line-strong) 0 5px, transparent 5px 11px) left top / auto 4px no-repeat;
 }
 
 @keyframes wind-drift {
