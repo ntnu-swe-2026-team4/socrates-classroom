@@ -12,6 +12,7 @@ import type {
   JoinInfo,
   Report,
   TeacherKeyStatus,
+  LiveBoard,
   Notification,
   NotificationFeed,
   School,
@@ -72,6 +73,7 @@ export interface Api {
   updateProfile(input: { name?: string; teacherMode?: boolean; acceptTeacherTerms?: true }): Promise<User>;
   createStudents(classroomId: string, names: string[]): Promise<StudentCredential[]>;
   resetStudentPassword(classroomId: string, userId: string): Promise<StudentCredential>;
+  liveBoard(activityId: string): Promise<LiveBoard>;
   notifications(): Promise<NotificationFeed>;
   markNotificationsSeen(): Promise<void>;
   sendNotification(input: { title: string; body: string }): Promise<Notification>;
@@ -384,6 +386,9 @@ export const httpApi: Api = {
       `/classrooms/${encodeURIComponent(classroomId)}/students/${encodeURIComponent(userId)}/password`,
       { method: "POST" },
     );
+  },
+  async liveBoard(activityId) {
+    return raw<LiveBoard>(`/activities/${encodeURIComponent(activityId)}/live`);
   },
   async notifications() {
     return raw<NotificationFeed>("/notifications");

@@ -86,16 +86,19 @@ export const ActivityInfoSchema = z.object({
 });
 export type ActivityInfo = z.infer<typeof ActivityInfoSchema>;
 
+export const LIVE_ACTIVE_WINDOW_MS = 120_000;
 export const StudentLiveSchema = z.object({
   id: z.string(),
   name: z.string(),
-  status: z.enum(["active", "speaking", "idle"]),
+  status: z.enum(["active", "idle"]),
   rounds: z.number(),
-  flagged: z.boolean(),
-  flagReason: z.string().optional(),
+  flags: z.array(z.object({ turn: z.number().int(), type: z.string(), excerpt: z.string() })),
   lastUtterance: z.string(),
+  lastActiveAt: z.string().nullable(),
 });
 export type StudentLive = z.infer<typeof StudentLiveSchema>;
+export const LiveBoardSchema = z.object({ students: z.array(StudentLiveSchema), finished: z.boolean() });
+export type LiveBoard = z.infer<typeof LiveBoardSchema>;
 
 export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
 export type ViolationType = (typeof VIOLATION_TYPES)[number];

@@ -16,6 +16,13 @@
 - Chat DO `settings.extensions` 改為 getter：已安裝且非 btw 的 extensions（root 行為不變）
 - routeSubmit 的 model 快取改 per session；`llm_unavailable` 廣播只送綁定該 session 的連線
 
+## 2026-11-14 — 老師即時面板與立場分佈圖（`experiment/web-next`）
+
+### Added
+
+- `/t/live/:id` 即時面板（輪詢 `GET /api/activities/:id/live`，Chat DO 新增 `live()` 與 `lastActiveAt`）：學生狀態、輪數、違規標記、最後一句，依需要注意的程度排序，新標記與長時間沒回應會提醒
+- 班級報告的立場軸加上分佈圖
+
 ## 2026-11-14 — 系統通知（`experiment/web-next`）
 
 ### Added

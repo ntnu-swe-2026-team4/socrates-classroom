@@ -137,6 +137,7 @@ function ReportPage() {
                     <p className="text-[15px] font-medium text-ink">
                       {axis.name}：{axis.low} ↔ {axis.high}
                     </p>
+                    <StanceAxis low={axis.low} high={axis.high} points={axis.positions} />
                     <ul className="mt-3 flex flex-col gap-1.5">
                       {axis.positions.map((position) => (
                         <li key={`${axis.name}-${position.id}`} className="text-[13.5px] text-ink-soft">
@@ -189,6 +190,42 @@ function ReportPage() {
           <Analysis analysis={person.analysis} violations={person.violations} />
         </section>
       )}
+    </div>
+  );
+}
+
+function StanceAxis({ low, high, points }: { low: string; high: string; points: Array<{ id: string; at: number }> }) {
+  const lanes: number[] = [];
+  const placed = [...points]
+    .sort((a, b) => a.at - b.at)
+    .map((point) => {
+      let lane = lanes.findIndex((last) => point.at - last >= 9);
+      if (lane < 0) lane = lanes.length;
+      lanes[lane] = point.at;
+      return { ...point, lane };
+    });
+  const rows = Math.max(1, lanes.length);
+  return (
+    <div data-stance-axis className="mt-4">
+      <div className="relative mx-3" style={{ height: `${rows * 30 + 14}px` }}>
+        <span aria-hidden className="absolute inset-x-0 bottom-[6px] h-px bg-line-strong" />
+        <span aria-hidden className="absolute bottom-0 left-1/2 h-[13px] w-px bg-line-strong" />
+        {placed.map((point) => (
+          <span
+            key={point.id}
+            title={`${point.id} · ${point.at}`}
+            className="absolute flex -translate-x-1/2 flex-col items-center"
+            style={{ left: `${point.at}%`, bottom: `${point.lane * 30}px` }}
+          >
+            <span className="mb-0.5 max-w-[72px] truncate text-[11px] leading-none text-ink-soft">{point.id}</span>
+            <span className="size-3 rounded-full border-2 border-paper bg-ember" />
+          </span>
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between gap-4 text-[12px] text-ink-faint">
+        <span>{low}</span>
+        <span className="text-right">{high}</span>
+      </div>
     </div>
   );
 }

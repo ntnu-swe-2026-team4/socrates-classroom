@@ -73,6 +73,8 @@
 | fallback     | pi 原生 legs（鏈首綁 symbol）＋`settings.retry` 指數退避；gateway 只做決策（cooldown/記帳）                                                                      |
 | cooldown     | (provider, model, credential) 記帳；429/timeout 60s、401/403 dead、過期自然回；ledger 生命週期＝isolate（`getRouter`）                                           |
 | 帳號角色     | admin／user⇄teacher（教師模式、試用 3 教室×40 人、學校方案）／student（老師建立）／guest（單一活動，結束 24h 失效）；`/admin` 管理學校與教師（見 `accounts.md`） |
+| 立場分佈圖   | 班級報告每條立場軸把學生畫在 0–100 的軸上                                                                                                                        | `/report/:id`                                 |
+| 老師即時面板 | 每 5 秒輪詢：每位學生一列（名稱、對話中／閒置／還沒開口、輪數、違規標記、最後一句），需要注意的排最上面；新的違規標記或超過 3 分鐘沒回應時在面板上方提醒         | `/t/live/:id`・`GET /api/activities/:id/live` |
 | 系統通知     | admin 在管理頁發送／刪除；有帳號者在鈴鐺看到並有未讀紅點（打開即已讀）；登入頁左側公告欄公開顯示                                                                 |
 | Teacher keys | 多把 key × 多個 model（每筆 entry 一條 leg，D1 AES-GCM，回 last4）；設定頁拖曳排序＝鏈序；學生無 BYOK（#82）                                                     |
 | Mock         | `LLM_PROVIDER=mock`：離線 faux 模型（測試預設）                                                                                                                  |

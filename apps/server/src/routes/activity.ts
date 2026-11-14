@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { ZodType } from "zod";
-import type { StudentReport, TeacherReport, ViolationType } from "@socrates/shared";
-import { StoredStudentReportsSchema, StoredTeacherReportSchema } from "@socrates/shared";
-import { one, run } from "../db/d1";
+import type { LiveBoard, StudentLive, StudentReport, TeacherReport, ViolationType } from "@socrates/shared";
+import { LIVE_ACTIVE_WINDOW_MS, StoredStudentReportsSchema, StoredTeacherReportSchema } from "@socrates/shared";
+import { all, one, run } from "../db/d1";
 import { enforceIpLimit, fail, requireUser, type AppEnv } from "../http";
 import { requireMembership, topicOf } from "../services/members";
 
@@ -43,6 +43,32 @@ export function activityRoutes() {
       }
       await c.env.ReportRunner.getByName(activity.id).startReport({ activityId: activity.id });
       return c.body(null, 204);
+    })
+    .get("/activities/:id/live", async (c) => {
+      c.header("Cache-Control", "no-store");
+      const user = requireUser(c);
+      const { activity, classroom, isTeacher } = await requireMembership(c.env.DB, c.req.param("id"), user);
+      if (!isTeacher || user.preview) fail(403, "forbidden");
+      const members = await all<{ id: string; name: string }>(
+        c.env.DB,
+        `SELECT m.user_id AS id, m.name FROM members m JOIN users u ON u.id = m.user_id
+         WHERE m.classroom_id = $cid AND u.preview_classroom_id IS NULL
+           AND (u.is_guest = 0 OR u.guest_activity_id = $aid)
+         ORDER BY m.joined_at`,
+        { cid: classroom.id, aid: activity.id },
+      );
+      const now = Date.now();
+      const students = await Promise.all(
+        members.map(async (member): Promise<StudentLive> => {
+          const state = await c.env.Chat.get(c.env.Chat.idFromName(`${activity.id}:${member.id}`))
+            .live()
+            .catch(() => ({ rounds: 0, lastUtterance: "", lastActiveAt: null, flags: [] }));
+          const recent = state.lastActiveAt !== null && now - Date.parse(state.lastActiveAt) < LIVE_ACTIVE_WINDOW_MS;
+          return { id: member.id, name: member.name, status: recent ? "active" : "idle", ...state };
+        }),
+      );
+      const board: LiveBoard = { students, finished: Boolean(activity.finished_at) };
+      return c.json(board);
     })
     .get("/activities/:id/report", async (c) => {
       c.header("Cache-Control", "no-store");
