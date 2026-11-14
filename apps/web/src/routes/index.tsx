@@ -9,6 +9,7 @@ export const Route = createFileRoute("/")({
 });
 
 const ASSET_VERSION = "22";
+const SCENE_SHIFT = 2;
 const asset = (name: string) => `/story/${name}.webp?v=${ASSET_VERSION}`;
 
 interface SpriteSheet {
@@ -197,12 +198,12 @@ function Panel({
     <figure data-panel className={cn("relative", className)}>
       <div className={cn("overflow-hidden bg-comic-paper", FRAME)} style={{ aspectRatio: ratio }}>
         <img
-          data-drift
+          data-scene="1.12"
           src={asset(src)}
           alt=""
           loading="lazy"
           decoding="async"
-          className="size-full scale-[1.12] object-cover"
+          className="size-full object-cover"
         />
       </div>
       {children}
@@ -602,40 +603,41 @@ function AgoraStage({ children }: { children?: ReactNode }) {
   return (
     <figure className="relative left-1/2 w-[var(--joint)] -translate-x-1/2">
       <div
-        ref={stage}
         className="relative bg-comic-paper [clip-path:polygon(12%_0,88%_0,100%_100%,0_100%)]"
         style={{ aspectRatio: "1100 / 1320" }}
       >
-        <img
-          src={asset("agora-plate")}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          className="absolute inset-0 size-full object-cover"
-        />
-        {CAST.map((actor) => {
-          const figure = FIGURES[actor.figure];
-          return (
-            <img
-              key={`${actor.figure}-${actor.x}`}
-              data-actor
-              data-figure={actor.figure}
-              src={asset(`fig-${actor.figure}`)}
-              alt=""
-              draggable={false}
-              className="absolute w-auto max-w-none cursor-grab touch-none select-none data-[held=true]:cursor-grabbing"
-              style={{
-                left: `${actor.x * 100}%`,
-                top: `${actor.y * 100}%`,
-                height: `${figureHeight(actor.y) * figure.scale * 100}%`,
-                aspectRatio: String(figure.ratio),
-                transform: `translate(${-figure.anchor * 100}%,-100%)`,
-                zIndex: Math.round(actor.y * 100),
-              }}
-            />
-          );
-        })}
-        <WindCanvas seed={5} className="z-[200]" />
+        <div ref={stage} data-scene className="absolute inset-0">
+          <img
+            src={asset("agora-plate")}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="absolute inset-0 size-full object-cover"
+          />
+          {CAST.map((actor) => {
+            const figure = FIGURES[actor.figure];
+            return (
+              <img
+                key={`${actor.figure}-${actor.x}`}
+                data-actor
+                data-figure={actor.figure}
+                src={asset(`fig-${actor.figure}`)}
+                alt=""
+                draggable={false}
+                className="absolute w-auto max-w-none cursor-grab touch-none select-none data-[held=true]:cursor-grabbing"
+                style={{
+                  left: `${actor.x * 100}%`,
+                  top: `${actor.y * 100}%`,
+                  height: `${figureHeight(actor.y) * figure.scale * 100}%`,
+                  aspectRatio: String(figure.ratio),
+                  transform: `translate(${-figure.anchor * 100}%,-100%)`,
+                  zIndex: Math.round(actor.y * 100),
+                }}
+              />
+            );
+          })}
+          <WindCanvas seed={5} className="z-[200]" />
+        </div>
       </div>
       <svg
         aria-hidden
@@ -728,59 +730,60 @@ function DesertStage({ children }: { children?: ReactNode }) {
     <figure className="relative left-1/2 -mt-px w-[min(100vw,1400px)] -translate-x-1/2">
       <div className="bg-comic-ink px-[3px] pb-[3px] [clip-path:polygon(calc(50%_-_var(--joint)/2)_0,calc(50%_+_var(--joint)/2)_0,100%_100%,0_100%)]">
         <div
-          ref={stage}
           className="relative overflow-hidden bg-comic-paper [clip-path:polygon(calc(50%_-_var(--joint)/2_+_3px)_0,calc(50%_+_var(--joint)/2_-_3px)_0,calc(100%_-_1px)_100%,1px_100%)]"
           style={{ aspectRatio: "8 / 5" }}
         >
-          <img
-            src={asset("desert-poster")}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="absolute inset-0 size-full object-cover"
-          />
-          <LoopCanvas sheets={DESERT} frames={24} columns={6} fps={10} className="absolute inset-0 size-full" />
-          <WindCanvas seed={23} />
-          <img
-            src={asset("desert-statue")}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="pointer-events-none absolute inset-0 size-full object-cover"
-          />
-          {ENGINEERS.map((engineer) => (
-            <div
-              key={engineer.key}
-              data-engineer={engineer.key}
-              className="group absolute cursor-grab touch-none select-none data-[held=true]:cursor-grabbing"
-              style={{
-                left: `${engineer.x * 100}%`,
-                top: `${engineer.y * 100}%`,
-                height: `${engineerHeight(engineer.y) * engineer.scale * 100}%`,
-                aspectRatio: String(engineer.ratio),
-                transform: `translate(${-engineer.anchor * 100}%,-100%)`,
-                zIndex: Math.round(engineer.y * 1000),
-              }}
-            >
-              <span
-                aria-hidden
-                className="pointer-events-none absolute bottom-0 left-[40%] h-[5%] w-[190%] origin-left translate-y-1/2 -rotate-[7deg] rounded-[50%] bg-comic-ink/30"
-              />
+          <div ref={stage} data-scene className="absolute inset-0">
+            <img
+              src={asset("desert-poster")}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 size-full object-cover"
+            />
+            <LoopCanvas sheets={DESERT} frames={24} columns={6} fps={10} className="absolute inset-0 size-full" />
+            <WindCanvas seed={23} />
+            <img
+              src={asset("desert-statue")}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="pointer-events-none absolute inset-0 size-full object-cover"
+            />
+            {ENGINEERS.map((engineer) => (
               <div
-                data-body
-                className="absolute inset-0 transition-transform duration-300 ease-in group-data-[held=true]:transition-none"
+                key={engineer.key}
+                data-engineer={engineer.key}
+                className="group absolute cursor-grab touch-none select-none data-[held=true]:cursor-grabbing"
+                style={{
+                  left: `${engineer.x * 100}%`,
+                  top: `${engineer.y * 100}%`,
+                  height: `${engineerHeight(engineer.y) * engineer.scale * 100}%`,
+                  aspectRatio: String(engineer.ratio),
+                  transform: `translate(${-engineer.anchor * 100}%,-100%)`,
+                  zIndex: Math.round(engineer.y * 1000),
+                }}
               >
-                <div className="anim-struggle size-full overflow-hidden">
-                  <img
-                    src={asset(engineer.key)}
-                    alt=""
-                    draggable={false}
-                    className="anim-stride block h-full w-[1200%] max-w-none"
-                  />
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute bottom-0 left-[40%] h-[5%] w-[190%] origin-left translate-y-1/2 -rotate-[7deg] rounded-[50%] bg-comic-ink/30"
+                />
+                <div
+                  data-body
+                  className="absolute inset-0 transition-transform duration-300 ease-in group-data-[held=true]:transition-none"
+                >
+                  <div className="anim-struggle size-full overflow-hidden">
+                    <img
+                      src={asset(engineer.key)}
+                      alt=""
+                      draggable={false}
+                      className="anim-stride block h-full w-[1200%] max-w-none"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
       <span
@@ -1393,23 +1396,25 @@ function HoldTurn({
           ref={box}
           className="relative aspect-square cursor-pointer overflow-hidden rounded-full border-[3px] border-comic-ink bg-comic-ochre select-none"
         >
-          <img
-            src={asset("turn-poster")}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="absolute inset-0 size-full object-cover"
-          />
-          <canvas ref={canvas} className="absolute inset-0 size-full" />
-          <img
-            src={asset("turn-final")}
-            alt=""
-            loading="lazy"
-            className={cn(
-              "absolute inset-0 size-full object-cover transition-opacity duration-300",
-              done ? "opacity-100" : "opacity-0",
-            )}
-          />
+          <div data-scene className="absolute inset-0">
+            <img
+              src={asset("turn-poster")}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 size-full object-cover"
+            />
+            <canvas ref={canvas} className="absolute inset-0 size-full" />
+            <img
+              src={asset("turn-final")}
+              alt=""
+              loading="lazy"
+              className={cn(
+                "absolute inset-0 size-full object-cover transition-opacity duration-300",
+                done ? "opacity-100" : "opacity-0",
+              )}
+            />
+          </div>
           <CursorTag layer={layer} tag={tag} label={label} ariaLabel={ariaLabel} pressed={pressed} hidden={done} />
         </div>
       </div>
@@ -1436,17 +1441,12 @@ function ComicLanding() {
   useEffect(() => {
     const root = scroller.current;
     if (!root) return;
-    const panels = Array.from(root.querySelectorAll<HTMLElement>("[data-panel]")).map((node, index) => ({
+    const scenes = Array.from(root.querySelectorAll<HTMLElement>("[data-scene]")).map((node) => ({
       node,
-      drift: node.querySelector<HTMLElement>("[data-drift]"),
-      floats: Array.from(node.querySelectorAll<HTMLElement>("figcaption, [data-float]")).map((item) => ({
-        item,
-        depth: Number(item.dataset.depth ?? 1),
-      })),
-      depth: 0.6 + (index % 3) * 0.35,
-      top: 0,
-      height: 0,
+      scale: Number(node.dataset.scene) || 1.05,
     }));
+    const followers = Array.from(root.querySelectorAll<HTMLElement>("[data-scene-follow]"));
+    for (const scene of scenes) scene.node.style.transform = `scale(${scene.scale})`;
     const layers = Array.from(root.querySelectorAll<HTMLElement>("[data-layer]")).map((node) => ({
       node,
       depth: Number(node.dataset.depth ?? 0),
@@ -1456,8 +1456,8 @@ function ComicLanding() {
     const bar = root.querySelector<HTMLElement>("[data-bar]");
     const title = root.querySelector<HTMLElement>("[data-title]");
     const still = prefersStill();
-    const tilts = !still && hasFinePointer();
-    if (tilts) for (const panel of panels) panel.node.style.willChange = "transform";
+    const shifts = !still && hasFinePointer();
+    if (shifts) for (const scene of scenes) scene.node.style.willChange = "transform";
     const pointer = { x: 0, y: 0 };
     const eased = { x: 0, y: 0 };
     let frame = 0;
@@ -1478,32 +1478,15 @@ function ComicLanding() {
           if (layer.fade) layer.node.style.opacity = (1 - clamp01(lift * 1.6)).toFixed(3);
         }
       }
-      if (!tilts) return;
-      for (const panel of panels) {
-        const top = panel.top - root.scrollTop;
-        if (top + panel.height < -height * 0.5 || top > height * 1.5) continue;
-        const offset = (top + panel.height / 2 - height / 2) / height;
-        panel.node.style.transform = `perspective(1400px) translate3d(${(-eased.x * 12 * panel.depth).toFixed(1)}px,${(-eased.y * 9 * panel.depth).toFixed(1)}px,0) rotateX(${(-eased.y * 2 * panel.depth).toFixed(2)}deg) rotateY(${(eased.x * 2.4 * panel.depth).toFixed(2)}deg)`;
-        if (panel.drift) {
-          panel.drift.style.translate = `${(-eased.x * 1.4 * panel.depth).toFixed(2)}% ${(offset * -4 - eased.y * 1.2 * panel.depth).toFixed(2)}%`;
-        }
-        for (const float of panel.floats) {
-          float.item.style.translate = `${(-eased.x * 9 * panel.depth * float.depth).toFixed(1)}px ${(-eased.y * 7 * panel.depth * float.depth).toFixed(1)}px`;
-        }
-      }
+      if (!shifts) return;
+      const dx = (-eased.x * SCENE_SHIFT).toFixed(2);
+      const dy = (-eased.y * SCENE_SHIFT).toFixed(2);
+      for (const scene of scenes) scene.node.style.transform = `translate3d(${dx}%,${dy}%,0) scale(${scene.scale})`;
+      for (const follower of followers) follower.style.transform = `translate3d(${dx}%,${dy}%,0)`;
       if (Math.abs(pointer.x - eased.x) > 0.002 || Math.abs(pointer.y - eased.y) > 0.002) schedule();
     };
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(render);
-    };
-    const measure = () => {
-      if (tilts) for (const panel of panels) panel.node.style.transform = "none";
-      for (const panel of panels) {
-        const rect = panel.node.getBoundingClientRect();
-        panel.top = rect.top + root.scrollTop;
-        panel.height = rect.height;
-      }
-      schedule();
     };
     const onPointer = (event: PointerEvent) => {
       if (event.pointerType !== "mouse") return;
@@ -1511,22 +1494,17 @@ function ComicLanding() {
       pointer.y = (event.clientY / window.innerHeight) * 2 - 1;
       schedule();
     };
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    for (const content of root.querySelectorAll("main")) observer?.observe(content);
     const unwatch = title
       ? whileVisible(title, "0px", (visible) => {
           title.dataset.live = String(visible);
         })
       : () => {};
     root.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", measure);
     window.addEventListener("pointermove", onPointer, { passive: true });
-    measure();
+    schedule();
     return () => {
-      observer?.disconnect();
       unwatch();
       root.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", measure);
       window.removeEventListener("pointermove", onPointer);
       cancelAnimationFrame(frame);
     };
@@ -1657,8 +1635,10 @@ function ComicLanding() {
         <section className="relative pt-[clamp(120px,22vh,260px)]">
           <figure data-panel className="relative">
             <div className={cn("relative overflow-hidden bg-comic-paper", FRAME)} style={{ aspectRatio: "5 / 3" }}>
-              <img src={asset("walk-poster")} alt="" className="absolute inset-0 size-full object-cover" />
-              <LoopCanvas sheets={WALK} frames={24} columns={6} fps={10} className="absolute inset-0 size-full" />
+              <div data-scene className="absolute inset-0">
+                <img src={asset("walk-poster")} alt="" className="absolute inset-0 size-full object-cover" />
+                <LoopCanvas sheets={WALK} frames={24} columns={6} fps={10} className="absolute inset-0 size-full" />
+              </div>
             </div>
             <Inset
               ratio="1000 / 317"
@@ -1674,7 +1654,9 @@ function ComicLanding() {
         <section className="relative pt-[clamp(190px,30vh,340px)]">
           <figure data-panel data-feet className="relative w-[78%] md:ml-[5%] md:w-[46%]">
             <div className={cn("overflow-hidden bg-comic-paper", FRAME)} style={{ aspectRatio: "480 / 197" }}>
-              <LoopCanvas sheets={FEET} frames={24} columns={6} fps={10} className="block size-full" />
+              <div data-scene className="size-full">
+                <LoopCanvas sheets={FEET} frames={24} columns={6} fps={10} className="block size-full" />
+              </div>
             </div>
           </figure>
         </section>
@@ -1746,7 +1728,7 @@ function ComicLanding() {
         <section className="relative pt-[clamp(110px,18vh,220px)]">
           <Panel src="crowd" ratio="1400 / 875">
             <Caption className="-top-5 left-3 md:-left-8">{t("comic_5")}</Caption>
-            <div className="pointer-events-none absolute inset-0 z-20">
+            <div data-scene-follow className="pointer-events-none absolute inset-0 z-20">
               {BALLOONS.map((balloon, index) => (
                 <span
                   key={balloon.key}
