@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Users } from "lucide-react";
-import { api, type ClassroomSummary } from "@/api";
+import { api, ApiError, type ClassroomSummary } from "@/api";
 import { Button, ConfirmDialog, Initial, Input, PageHeader, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
@@ -19,6 +19,11 @@ export const Route = createFileRoute("/classrooms/")({
     if (me?.preview && me.previewClassroomId) {
       throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: me.previewClassroomId } });
     }
+    if (me.guest && !me.preview && me.activityId)
+      throw redirect({ to: "/dialogue", search: { activityId: me.activityId } });
+    if (me.kind === "student" && me.classroomId) {
+      throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: me.classroomId } });
+    }
   },
   component: ClassroomsPage,
 });
@@ -26,9 +31,9 @@ export const Route = createFileRoute("/classrooms/")({
 function ClassroomsPage() {
   const t = useT();
   const navigate = useNavigate();
-  const view: View = Route.useSearch().view ?? "student";
-  const teaching = view === "teacher";
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const teacherMode = me.data?.teacherMode === true;
+  const { view } = Route.useSearch();
   const classrooms = useQuery({ queryKey: ["classrooms"], queryFn: () => api.listClassrooms() });
   const [code, setCode] = useState("");
   const [needAccount, setNeedAccount] = useState(false);
@@ -40,8 +45,12 @@ function ClassroomsPage() {
       await navigate({ to: "/classrooms/$classroomId", params: { classroomId: created.classroomId } });
     },
   });
-  const list = (classrooms.data ?? []).filter((room) => room.role === view);
+  const owned = (classrooms.data ?? []).filter((room) => room.role === "teacher");
+  const joined = (classrooms.data ?? []).filter((room) => room.role !== "teacher");
   const guest = me.data?.guest ?? true;
+  const canTeach = me.data?.kind === "member" && !guest;
+  const teaching = view === "teacher" && canTeach && teacherMode;
+  const startCreate = () => (guest ? setNeedAccount(true) : create.mutate());
 
   function join() {
     const normalized = normalizeJoinCode(code);
@@ -49,7 +58,7 @@ function ClassroomsPage() {
   }
 
   return (
-    <div className="min-h-full pb-10">
+    <div className="min-h-full bg-paper-deep pb-10">
       <ConfirmDialog
         open={needAccount}
         title={t("account_required_title")}
@@ -64,18 +73,17 @@ function ClassroomsPage() {
       />
       <PageHeader
         width="max-w-none"
-        eyebrow={t("nav_classrooms")}
-        title={teaching ? t("classrooms_teaching_title") : t("classrooms_learning_title")}
+        title={teaching ? t("nav_classrooms") : t("nav_learning")}
         description={teaching ? t("classrooms_teaching_intro") : t("classrooms_learning_intro")}
         actions={
           teaching ? (
-            <Button disabled={create.isPending} onClick={() => (guest ? setNeedAccount(true) : create.mutate())}>
+            <Button disabled={create.isPending} onClick={startCreate}>
               {create.isPending ? <Spinner /> : <Plus className="size-4" />}
               {t("nav_setup")}
             </Button>
           ) : (
             <form
-              className="flex w-full items-center gap-2 sm:w-auto"
+              className="flex w-full min-w-0 items-center gap-2 sm:w-auto"
               onSubmit={(event) => {
                 event.preventDefault();
                 join();
@@ -89,7 +97,7 @@ function ClassroomsPage() {
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
-                className="min-w-0 flex-1 font-mono tracking-[0.2em] sm:w-44 sm:flex-none"
+                className="min-w-0 flex-1 font-mono tracking-[0.2em] sm:w-40 sm:flex-none"
               />
               <Button type="submit" disabled={!code.trim()}>
                 {t("join_code_go")}
@@ -99,27 +107,47 @@ function ClassroomsPage() {
         }
       />
       <div className="w-full px-4 pt-5 md:px-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-          {list.map((room) => (
-            <ClassroomCard key={room.id} room={room} />
-          ))}
-        </div>
+        {create.isError && (
+          <p
+            role="alert"
+            className="mb-4 rounded-xl border border-flag/40 bg-flag-wash px-4 py-3 text-[13px] text-flag"
+          >
+            {create.error instanceof ApiError && create.error.code === "trial_limit"
+              ? create.error.message
+              : t("common_error")}
+          </p>
+        )}
         {classrooms.isError && (
-          <div role="alert" className="rounded-2xl border border-line-strong px-4 py-8 text-center text-sm text-flag">
+          <div role="alert" className="rounded-xl border border-line-strong px-4 py-8 text-center text-sm text-flag">
             {t("common_error")}
           </div>
         )}
-        {classrooms.isSuccess && !list.length && (
-          <div className="rounded-2xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-faint">
-            {teaching
-              ? guest
-                ? t("account_required_body")
-                : t("classrooms_teaching_empty")
-              : t("classrooms_learning_empty")}
-          </div>
+        {teaching ? (
+          <RoomGroup title={null} rooms={owned} empty={t("classrooms_teaching_empty")} />
+        ) : (
+          <RoomGroup title={null} rooms={joined} empty={t("classrooms_learning_empty")} />
         )}
       </div>
     </div>
+  );
+}
+
+function RoomGroup({ title, rooms, empty }: { title: string | null; rooms: ClassroomSummary[]; empty: string }) {
+  return (
+    <section className="mb-7">
+      {title && <h2 className="mb-3 font-serif text-[16px] text-ink">{title}</h2>}
+      {rooms.length > 0 ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {rooms.map((room) => (
+            <ClassroomCard key={room.id} room={room} />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-faint">
+          {empty}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -144,7 +172,7 @@ function ClassroomCard({ room }: { room: ClassroomSummary }) {
     <Link
       to="/classrooms/$classroomId"
       params={{ classroomId: room.id }}
-      className="group flex flex-col rounded-2xl border border-line bg-card transition-shadow hover:shadow-md"
+      className="group flex flex-col rounded-xl border border-line bg-card transition-shadow hover:shadow-md"
     >
       <div className={cn("relative aspect-[16/9] rounded-t-2xl", toneOf(room.id))}>
         <div className="absolute inset-0 overflow-hidden rounded-t-2xl">
@@ -171,7 +199,7 @@ function ClassroomCard({ room }: { room: ClassroomSummary }) {
         {room.current && (
           <span
             className={cn(
-              "absolute top-3 right-3 rounded-full px-2 py-0.5 text-[11px] font-medium",
+              "absolute top-3 right-3 rounded-lg px-2 py-0.5 text-[11px] font-medium",
               running ? "bg-moss text-paper" : "bg-paper/80 text-ink-faint",
             )}
           >

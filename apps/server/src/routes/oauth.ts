@@ -20,7 +20,6 @@ export interface OAuthState {
   s: string;
   v?: string;
   n: string;
-  g?: string;
   exp: number;
 }
 
@@ -228,7 +227,7 @@ interface AccountRow {
 
 const toUser = (row: AccountRow): User => ({ id: row.id, name: row.name, guest: row.is_guest === 1 });
 
-async function resolveOnce(db: D1Database, profile: OAuthProfile, guestId: string | null, lang: Lang): Promise<User> {
+async function resolveOnce(db: D1Database, profile: OAuthProfile, lang: Lang): Promise<User> {
   const key = { provider: profile.provider, subject: profile.subject };
   const linked = await one<AccountRow>(
     db,
@@ -266,24 +265,6 @@ async function resolveOnce(db: D1Database, profile: OAuthProfile, guestId: strin
     profile.email?.split("@")[0]?.trim().slice(0, 80) ||
     FALLBACK_NAME[lang](PROVIDER_LABEL[profile.provider]);
 
-  const guest = guestId
-    ? await one<{ id: string }>(
-        db,
-        "SELECT id FROM users WHERE id = $id AND is_guest = 1 AND preview_classroom_id IS NULL",
-        { id: guestId },
-      )
-    : null;
-  if (guest) {
-    await batch(db, [
-      {
-        sql: "UPDATE users SET name = $name, email = COALESCE($email, email), is_guest = 0 WHERE id = $id",
-        params: { id: guest.id, name, email: storedEmail },
-      },
-      link(guest.id),
-    ]);
-    return { id: guest.id, name, guest: false };
-  }
-
   const id = newId("u_");
   await batch(db, [
     {
@@ -298,14 +279,14 @@ async function resolveOnce(db: D1Database, profile: OAuthProfile, guestId: strin
 export async function resolveOAuthAccount(
   db: D1Database,
   profile: OAuthProfile,
-  options: { guestId?: string | null; lang: Lang },
+  options: { lang: Lang },
 ): Promise<User> {
   if (!profile.subject) throw new Error(`${profile.provider} profile without subject`);
   try {
-    return await resolveOnce(db, profile, options.guestId ?? null, options.lang);
+    return await resolveOnce(db, profile, options.lang);
   } catch (error) {
     if (uniqueViolationColumns(error).length === 0) throw error;
-    return await resolveOnce(db, profile, options.guestId ?? null, options.lang);
+    return await resolveOnce(db, profile, options.lang);
   }
 }
 
@@ -321,23 +302,16 @@ async function callbackParams(c: Ctx): Promise<Record<string, string>> {
   }
 }
 
-function currentGuestId(c: Ctx): string | undefined {
-  const user = c.get("user");
-  return user?.guest && !user.preview ? user.id : undefined;
-}
-
 export function oauthRoutes() {
   return new Hono<AppEnv>()
     .get("/auth/oauth/:provider/start", async (c) => {
       const provider = providerOf(c.req.param("provider"));
       if (!provider || !providerConfigured(c.env, provider)) return c.redirect("/login?error=oauth_unavailable", 302);
-      const guestId = currentGuestId(c);
       const state: OAuthState = {
         p: provider,
         s: randomToken(),
         ...(provider === "google" ? { v: randomToken() } : {}),
         n: safeNext(c.req.query("next")),
-        ...(guestId ? { g: guestId } : {}),
         exp: Date.now() + STATE_TTL_SECONDS * 1000,
       };
       setCookie(c, OAUTH_STATE_COOKIE, await sealClaims({ env: c.env }, state), {
@@ -367,7 +341,6 @@ export function oauthRoutes() {
       try {
         const profile = await fetchProfile(c.env, provider, params, callbackUrl(c, provider), state.v);
         const user = await resolveOAuthAccount(c.env.DB, profile, {
-          guestId: state.g ?? currentGuestId(c),
           lang: langOf(c),
         });
         await startSession(c, user);

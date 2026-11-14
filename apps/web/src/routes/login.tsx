@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { api, ApiError, type User } from "@/api";
-import { Button, Checkbox, Field, Initial, Input, Segmented, Spinner } from "@/components/ui";
+import { api, ApiError, guestSession, type User } from "@/api";
+import { NotificationBoard } from "@/components/Notifications";
+import { Button, Checkbox, Field, Input, Segmented, Spinner } from "@/components/ui";
 import { useT, type MessageKey } from "@/i18n";
 import type { AuthProvider } from "@socrates/shared";
 
@@ -26,6 +27,12 @@ export const Route = createFileRoute("/login")({
     next: typeof search.next === "string" ? search.next : undefined,
     error: typeof search.error === "string" ? search.error : undefined,
   }),
+  beforeLoad: async ({ context, search }) => {
+    const me = await context.queryClient
+      .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
+      .catch(() => null);
+    if (me && !me.guest && !me.preview) throw redirect({ href: safeNext(search.next) });
+  },
   component: LoginPage,
 });
 
@@ -71,7 +78,8 @@ function LoginPage() {
   const search = Route.useSearch();
   const next = safeNext(search.next);
   const [mode, setMode] = useState<Mode>(search.mode ?? "login");
-  const [busy, setBusy] = useState<"form" | "guest" | null>(null);
+  const [busy, setBusy] = useState<"form" | null>(null);
+  const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState(search.error && ERROR_KEYS[search.error] ? t(ERROR_KEYS[search.error]!) : "");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -80,7 +88,7 @@ function LoginPage() {
   const providers = useQuery({ queryKey: ["authProviders"], queryFn: () => api.authProviders(), staleTime: Infinity });
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
 
-  async function run(kind: "form" | "guest", action: () => Promise<User>) {
+  async function run(kind: "form", action: () => Promise<User>) {
     if (busy) return;
     setError("");
     setBusy(kind);
@@ -103,21 +111,6 @@ function LoginPage() {
     }
   }
 
-  const signedIn = me.data && !me.data.guest && !me.data.preview ? me.data : null;
-  const [switching, setSwitching] = useState(false);
-
-  async function switchAccount() {
-    if (switching) return;
-    setSwitching(true);
-    try {
-      await api.logout();
-    } finally {
-      queryClient.clear();
-      queryClient.setQueryData(["me"], null);
-      setSwitching(false);
-    }
-  }
-
   function goBack() {
     if (window.history.length > 1) window.history.back();
     else void navigate({ to: "/home" });
@@ -126,172 +119,167 @@ function LoginPage() {
   const formReady = email.trim() && password.length >= 8 && (mode === "login" || tos) && !busy;
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-paper px-4 py-8">
-      <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-line bg-card">
-        <div className="border-b border-line px-5 pt-4 pb-4">
-          <div className="flex items-center justify-between gap-2">
-            <Link to="/" className="font-serif text-[15px] text-ink">
-              {t("app_name")} <span className="text-[12px] text-ink-faint">{t("app_sub")}</span>
-            </Link>
-            {me.data && (
-              <button
-                type="button"
-                onClick={goBack}
-                className="flex cursor-pointer items-center gap-1 rounded-full px-2 py-1 text-[12.5px] text-ink-soft hover:bg-paper-deep hover:text-ink"
-              >
-                <ArrowLeft className="size-3.5" />
-                {t("common_back")}
-              </button>
-            )}
-          </div>
-          <h1 className="mt-3 font-serif text-[22px] leading-snug text-ink">
-            {mode === "login" ? t("login_title") : t("register_title")}
-          </h1>
-          <p className="mt-0.5 text-[12.5px] text-ink-soft">{t("login_hint")}</p>
-        </div>
-
-        {signedIn ? (
-          <div className="flex flex-col gap-3 px-5 py-5">
-            <p className="text-[12.5px] text-ink-soft">{t("login_signed_in_as")}</p>
-            <div className="flex items-center gap-3 rounded-2xl border border-line bg-paper px-3 py-3">
-              <Initial name={signedIn.name} className="size-10 text-base" />
-              <span className="min-w-0 flex-1 truncate font-serif text-[15px] text-ink">{signedIn.name}</span>
-            </div>
-            <Button onClick={() => void navigate({ href: next })}>
-              {t("login_continue_as", { name: signedIn.name })}
-            </Button>
-            <Button variant="outline" disabled={switching} onClick={() => void switchAccount()}>
-              {switching ? <Spinner /> : t("login_switch_account")}
-            </Button>
-          </div>
-        ) : (
-          <>
-            <div className="flex flex-col gap-2 px-5 pt-4">
-              {PROVIDERS.map((provider) => {
-                const enabled = providers.data?.[provider.id] ?? false;
-                const href = `/api/auth/oauth/${provider.id}/start?next=${encodeURIComponent(next)}`;
-                return enabled ? (
-                  <a
-                    key={provider.id}
-                    href={href}
-                    className="flex h-9 items-center justify-center gap-2 rounded-full border border-line-strong bg-paper text-[13.5px] text-ink transition-colors hover:border-ember"
-                  >
-                    {provider.icon}
-                    {t(provider.label)}
-                  </a>
-                ) : (
-                  <span
-                    key={provider.id}
-                    aria-disabled="true"
-                    title={t("login_provider_off")}
-                    className="flex h-9 cursor-not-allowed items-center justify-center gap-2 rounded-full border border-line bg-paper text-[13.5px] text-ink-faint"
-                  >
-                    {provider.icon}
-                    {t(provider.label)}
-                  </span>
-                );
-              })}
-            </div>
-
-            <div className="flex items-center gap-3 px-5 py-3 text-[11.5px] text-ink-faint">
-              <span className="h-px flex-1 bg-line" />
-              {t("login_or")}
-              <span className="h-px flex-1 bg-line" />
-            </div>
-
-            <form
-              className="flex flex-col gap-3 px-5"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!formReady) return;
-                void run("form", () =>
-                  mode === "login"
-                    ? api.login(email.trim(), password)
-                    : api.register({ email: email.trim(), password }),
-                );
-              }}
-            >
-              <Segmented
-                label={t("login_mode")}
-                value={mode}
-                onChange={(value) => {
-                  setMode(value);
-                  setError("");
-                }}
-                items={[
-                  { value: "login", label: t("login_title") },
-                  { value: "register", label: t("register_title") },
-                ]}
-              />
-              <Field label={t("login_email")}>
-                <Input
-                  type="email"
-                  autoComplete="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  required
-                />
-              </Field>
-              <Field label={t("login_password")}>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    autoComplete={mode === "login" ? "current-password" : "new-password"}
-                    minLength={8}
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    required
-                    className="pr-16"
-                  />
-                  <button
-                    type="button"
-                    aria-pressed={showPassword}
-                    onClick={() => setShowPassword((value) => !value)}
-                    className="absolute inset-y-0 right-1 my-1 cursor-pointer rounded-full px-2.5 text-[12px] text-ink-soft hover:bg-paper-deep hover:text-ink"
-                  >
-                    {showPassword ? t("password_hide") : t("password_show")}
-                  </button>
-                </div>
-              </Field>
-              {mode === "register" && (
-                <>
-                  <Checkbox label={t("join_tos")} checked={tos} onCheckedChange={setTos} />
-                  {me.data?.guest && !me.data.preview && (
-                    <p className="text-[12px] leading-relaxed text-ink-soft">{t("register_keeps_guest")}</p>
-                  )}
-                </>
-              )}
-              {error && (
-                <p role="alert" className="text-[12.5px] text-flag">
-                  {error}
-                </p>
-              )}
-              <Button type="submit" disabled={!formReady}>
-                {busy === "form" ? <Spinner /> : mode === "login" ? t("login_title") : t("register_submit")}
-              </Button>
-            </form>
-
-            <div className="mt-4 border-t border-line px-5 py-4">
-              {me.data?.guest && !me.data.preview ? (
-                <Button variant="ghost" className="w-full" onClick={goBack}>
-                  {t("login_continue_guest", { name: me.data.name })}
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  disabled={busy !== null}
-                  onClick={() => void run("guest", () => api.loginAsGuest())}
+    <div className="flex min-h-dvh items-center justify-center bg-paper-deep px-4 py-8 [--font-serif:var(--font-sans)]">
+      <div className="grid w-full max-w-4xl items-stretch gap-5 md:grid-cols-2">
+        <NotificationBoard className="max-md:order-2 max-md:max-h-80 md:max-h-[640px]" />
+        <div className="mx-auto w-full max-w-sm self-center overflow-hidden rounded-xl border border-line-strong bg-card md:max-w-none">
+          <div className="border-b border-line px-5 pt-4 pb-4">
+            <div className="flex items-center justify-between gap-2">
+              <Link to="/" className="font-serif text-[15px] text-ink">
+                {t("app_name")} <span className="text-[12px] text-ink-faint">{t("app_sub")}</span>
+              </Link>
+              {me.data && (
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[12.5px] text-ink-soft hover:bg-paper-deep hover:text-ink"
                 >
-                  {busy === "guest" ? <Spinner /> : t("login_guest")}
-                </Button>
+                  <ArrowLeft className="size-3.5" />
+                  {t("common_back")}
+                </button>
               )}
-              <p className="mt-2 text-center text-[11.5px] leading-relaxed text-ink-faint">{t("login_guest_hint")}</p>
             </div>
-          </>
-        )}
+            <h1 className="mt-3 font-serif text-[22px] leading-snug text-ink">
+              {mode === "login" ? t("login_title") : t("register_title")}
+            </h1>
+            <p className="mt-0.5 text-[12.5px] text-ink-soft">{t("login_hint")}</p>
+          </div>
+
+          {guestSession.expired && (
+            <p
+              role="status"
+              className="border-b border-line bg-ember-wash px-5 py-3 text-[12.5px] leading-relaxed text-ink"
+            >
+              {t("guest_expired_notice")}
+            </p>
+          )}
+
+          <div className="flex flex-col gap-2 px-5 pt-4">
+            {PROVIDERS.map((provider) => {
+              const enabled = providers.data?.[provider.id] ?? false;
+              const href = `/api/auth/oauth/${provider.id}/start?next=${encodeURIComponent(next)}`;
+              return enabled ? (
+                <a
+                  key={provider.id}
+                  href={href}
+                  className="flex h-9 items-center justify-center gap-2 rounded-full border border-line-strong bg-paper text-[13.5px] text-ink transition-colors hover:border-ember"
+                >
+                  {provider.icon}
+                  {t(provider.label)}
+                </a>
+              ) : (
+                <span
+                  key={provider.id}
+                  aria-disabled="true"
+                  title={t("login_provider_off")}
+                  className="flex h-9 cursor-not-allowed items-center justify-center gap-2 rounded-full border border-line bg-paper text-[13.5px] text-ink-faint"
+                >
+                  {provider.icon}
+                  {t(provider.label)}
+                </span>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-3 px-5 py-3 text-[11.5px] text-ink-faint">
+            <span className="h-px flex-1 bg-line" />
+            {t("login_or")}
+            <span className="h-px flex-1 bg-line" />
+          </div>
+
+          <form
+            className="flex flex-col gap-3 px-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!formReady) return;
+              void run("form", () =>
+                mode === "login" ? api.login(email.trim(), password) : api.register({ email: email.trim(), password }),
+              );
+            }}
+          >
+            <Segmented
+              label={t("login_mode")}
+              value={mode}
+              onChange={(value) => {
+                setMode(value);
+                setError("");
+              }}
+              items={[
+                { value: "login", label: t("login_title") },
+                { value: "register", label: t("register_title") },
+              ]}
+            />
+            <Field label={mode === "login" ? t("login_identifier") : t("login_email")}>
+              <Input
+                type={mode === "login" ? "text" : "email"}
+                autoComplete={mode === "login" ? "username" : "email"}
+                autoCapitalize="none"
+                placeholder={mode === "login" ? t("login_identifier_placeholder") : "you@example.com"}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </Field>
+            <Field label={t("login_password")}>
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  minLength={8}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                  className="pr-16"
+                />
+                <button
+                  type="button"
+                  aria-pressed={showPassword}
+                  onClick={() => setShowPassword((value) => !value)}
+                  className="absolute inset-y-0 right-1 my-1 cursor-pointer rounded-lg px-2.5 text-[12px] text-ink-soft hover:bg-paper-deep hover:text-ink"
+                >
+                  {showPassword ? t("password_hide") : t("password_show")}
+                </button>
+              </div>
+            </Field>
+            {mode === "register" && <Checkbox label={t("join_tos")} checked={tos} onCheckedChange={setTos} />}
+            {error && (
+              <p role="alert" className="text-[12.5px] text-flag">
+                {error}
+              </p>
+            )}
+            <Button type="submit" disabled={!formReady}>
+              {busy === "form" ? <Spinner /> : mode === "login" ? t("login_title") : t("register_submit")}
+            </Button>
+          </form>
+
+          <form
+            className="mt-4 flex flex-col gap-2 border-t border-line px-5 py-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const code = joinCode.trim().toLowerCase();
+              if (code) void navigate({ to: "/join/$code", params: { code } });
+            }}
+          >
+            <label htmlFor="join-code" className="text-[12.5px] text-ink-soft">
+              {t("login_have_code")}
+            </label>
+            <div className="flex gap-2">
+              <Input
+                id="join-code"
+                value={joinCode}
+                autoCapitalize="none"
+                autoComplete="off"
+                placeholder={t("login_code_placeholder")}
+                onChange={(event) => setJoinCode(event.target.value)}
+              />
+              <Button type="submit" variant="outline" disabled={!joinCode.trim()}>
+                {t("login_code_go")}
+              </Button>
+            </div>
+            <p className="text-[11.5px] leading-relaxed text-ink-faint">{t("login_guest_hint")}</p>
+          </form>
+        </div>
       </div>
     </div>
   );

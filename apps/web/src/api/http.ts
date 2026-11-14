@@ -12,6 +12,11 @@ import type {
   JoinInfo,
   Report,
   TeacherKeyStatus,
+  Notification,
+  NotificationFeed,
+  School,
+  SchoolTeacher,
+  StudentCredential,
   TermExplanation,
   Topic,
   User,
@@ -23,7 +28,6 @@ import {
   ERROR_CODES,
   GenerateTopicsInputSchema,
   JoinInputSchema,
-  LoginInputSchema,
   LookupInputSchema,
   PostInputSchema,
   SttResultSchema,
@@ -34,6 +38,8 @@ import {
 import type { RpcApi } from "@server/app";
 import { persistActivityId, recordTerm } from "./local";
 import { getCompanion } from "@/lib/companion";
+
+export const guestSession = { expired: false };
 
 export class ApiError extends Error {
   constructor(
@@ -60,11 +66,21 @@ export interface KeyModelInfo {
 
 export interface Api {
   me(): Promise<User | null>;
-  login(email: string, password: string): Promise<User>;
+  login(identifier: string, password: string): Promise<User>;
   logout(): Promise<void>;
-  loginAsGuest(name?: string): Promise<User>;
   register(input: { email: string; password: string; name?: string; code?: string }): Promise<User>;
-  updateProfile(name: string): Promise<User>;
+  updateProfile(input: { name?: string; teacherMode?: boolean; acceptTeacherTerms?: true }): Promise<User>;
+  createStudents(classroomId: string, names: string[]): Promise<StudentCredential[]>;
+  resetStudentPassword(classroomId: string, userId: string): Promise<StudentCredential>;
+  notifications(): Promise<NotificationFeed>;
+  markNotificationsSeen(): Promise<void>;
+  sendNotification(input: { title: string; body: string }): Promise<Notification>;
+  deleteNotification(id: string): Promise<void>;
+  listSchools(): Promise<School[]>;
+  createSchool(name: string): Promise<School>;
+  listSchoolTeachers(): Promise<SchoolTeacher[]>;
+  createSchoolTeacher(input: { name: string; email: string; schoolId: string }): Promise<SchoolTeacher>;
+  removeSchoolTeacher(id: string): Promise<void>;
   authProviders(): Promise<AuthProviders>;
   getClassroom(classroomId: string): Promise<ClassroomSummary>;
   deleteClassroom(classroomId: string): Promise<void>;
@@ -100,17 +116,18 @@ export interface Api {
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
   lookupTerm(term: string): Promise<TermExplanation>;
-  askAssistant(messages: Array<{ role: "user" | "assistant"; text: string }>): Promise<{ markdown: string }>;
   listTeacherKeys(): Promise<TeacherKeyStatus[]>;
   listKeyProviders(): Promise<KeyProviderInfo[]>;
   listKeyProviderModels(provider: string): Promise<KeyModelInfo[]>;
-  putTeacherKey(
-    provider: string,
-    model: string,
-    key: string,
-  ): Promise<{ provider: string; model: string; last4: string }>;
-  deleteTeacherKey(provider: string): Promise<void>;
-  orderTeacherKeys(providers: string[]): Promise<void>;
+  addTeacherKey(input: {
+    provider: string;
+    model: string;
+    key?: string;
+    fromEntry?: string;
+  }): Promise<TeacherKeyStatus>;
+  updateTeacherKey(id: string, input: { model?: string; key?: string }): Promise<TeacherKeyStatus>;
+  deleteTeacherKey(id: string): Promise<void>;
+  orderTeacherKeys(ids: string[]): Promise<void>;
 }
 
 const client = hc<RpcApi>("/api", {
@@ -332,22 +349,68 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
 
 export const httpApi: Api = {
   async me() {
-    return unwrap(await client.me.$get());
+    try {
+      const user = await raw<User | null>("/me");
+      if (user) guestSession.expired = false;
+      return user;
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "guest_session_expired") {
+        guestSession.expired = true;
+        return null;
+      }
+      throw error;
+    }
   },
-  async login(email, password) {
-    return unwrap(await client.auth.login.$post({ json: LoginInputSchema.parse({ email, password }) }));
+  async login(identifier, password) {
+    return raw<User>("/auth/login", { method: "POST", json: { identifier: identifier.trim(), password } });
   },
   async logout() {
     await unwrap(await client.auth.logout.$post());
   },
-  async loginAsGuest(name) {
-    return raw<User>("/auth/guest", { method: "POST", json: name ? { name } : {} });
-  },
   async register(input) {
     return raw<User>("/auth/register", { method: "POST", json: { ...input, tosAccepted: true } });
   },
-  async updateProfile(name) {
-    return raw<User>("/me", { method: "PATCH", json: { name } });
+  async updateProfile(input) {
+    return raw<User>("/me", { method: "PATCH", json: input });
+  },
+  async createStudents(classroomId, names) {
+    return raw<StudentCredential[]>(`/classrooms/${encodeURIComponent(classroomId)}/students`, {
+      method: "POST",
+      json: { names },
+    });
+  },
+  async resetStudentPassword(classroomId, userId) {
+    return raw<StudentCredential>(
+      `/classrooms/${encodeURIComponent(classroomId)}/students/${encodeURIComponent(userId)}/password`,
+      { method: "POST" },
+    );
+  },
+  async notifications() {
+    return raw<NotificationFeed>("/notifications");
+  },
+  async markNotificationsSeen() {
+    await rawVoid("/notifications/seen", { method: "POST" });
+  },
+  async sendNotification(input) {
+    return raw<Notification>("/admin/notifications", { method: "POST", json: input });
+  },
+  async deleteNotification(id) {
+    await rawVoid(`/admin/notifications/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+  async listSchools() {
+    return raw<School[]>("/admin/schools");
+  },
+  async createSchool(name) {
+    return raw<School>("/admin/schools", { method: "POST", json: { name } });
+  },
+  async listSchoolTeachers() {
+    return raw<SchoolTeacher[]>("/admin/teachers");
+  },
+  async createSchoolTeacher(input) {
+    return raw<SchoolTeacher>("/admin/teachers", { method: "POST", json: input });
+  },
+  async removeSchoolTeacher(id) {
+    await rawVoid(`/admin/teachers/${encodeURIComponent(id)}`, { method: "DELETE" });
   },
   async authProviders() {
     return raw<AuthProviders>("/auth/providers");
@@ -485,9 +548,6 @@ export const httpApi: Api = {
   async report(activityId) {
     return unwrap(await client.activities[":id"].report.$get({ param: { id: activityId } }));
   },
-  async askAssistant(messages) {
-    return raw<{ markdown: string }>("/assistant", { method: "POST", json: { messages } });
-  },
   async lookupTerm(term) {
     const input = LookupInputSchema.parse({ term });
     const data = await unwrap(await client.lookup.$post({ json: input }));
@@ -495,7 +555,7 @@ export const httpApi: Api = {
     return data;
   },
   async listTeacherKeys() {
-    return unwrap(await client.settings.keys.$get());
+    return raw<TeacherKeyStatus[]>("/settings/keys");
   },
   async listKeyProviders() {
     return unwrap(await client.settings.keys.providers.$get());
@@ -503,16 +563,16 @@ export const httpApi: Api = {
   async listKeyProviderModels(provider) {
     return unwrap(await client.settings.keys.providers[":provider"].models.$get({ param: { provider } }));
   },
-  async putTeacherKey(provider, model, key) {
-    return raw<{ provider: string; model: string; last4: string }>(`/settings/keys/${encodeURIComponent(provider)}`, {
-      method: "PUT",
-      json: { provider, model, key },
-    });
+  async addTeacherKey(input) {
+    return raw<TeacherKeyStatus>("/settings/keys", { method: "POST", json: input });
   },
-  async deleteTeacherKey(provider) {
-    await unwrap(await client.settings.keys[":provider"].$delete({ param: { provider } }));
+  async updateTeacherKey(id, input) {
+    return raw<TeacherKeyStatus>(`/settings/keys/${encodeURIComponent(id)}`, { method: "PATCH", json: input });
   },
-  async orderTeacherKeys(providers) {
-    await unwrap(await client.settings.keys.order.$put({ json: { providers } }));
+  async deleteTeacherKey(id) {
+    await rawVoid(`/settings/keys/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+  async orderTeacherKeys(ids) {
+    await raw<{ ids: string[] }>("/settings/keys/order", { method: "PUT", json: { ids } });
   },
 };

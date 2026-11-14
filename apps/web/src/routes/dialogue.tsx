@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChartNoAxesColumn } from "lucide-react";
 import { api } from "@/api";
 import { readActivityId } from "@/api/local";
-import { ChatLayout, SidebarHeader } from "@/components/ChatLayout";
+import { ChatLayout, PanelSwitch, SidebarHeader } from "@/components/ChatLayout";
 import { DialogueView } from "@/components/DialogueView";
 import { cn } from "@/components/ui";
 import { useFormatDate, useT } from "@/i18n";
@@ -57,7 +57,16 @@ function DialoguePage() {
   return (
     <ChatLayout
       sidebar={
-        <ClassroomTopics classroomId={info?.classroomId} classroomName={info?.classroomName} activeId={activityId} />
+        me.data?.guest && !me.data.preview ? (
+          <ActivityTopic title={topic?.title} finished={finished} />
+        ) : (
+          <ClassroomTopics
+            classroomId={me.data?.kind === "student" ? undefined : info?.classroomId}
+            listId={info?.classroomId}
+            classroomName={info?.classroomName}
+            activeId={activityId}
+          />
+        )
       }
     >
       {me.data ? (
@@ -99,37 +108,74 @@ function DialoguePage() {
   );
 }
 
+function ActivityTopic({ title, finished }: { title?: string; finished: boolean }) {
+  const t = useT();
+  return (
+    <>
+      <SidebarHeader title={t("nav_activity")} />
+      <PanelSwitch />
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-2 pb-3">
+        <h3 className="px-2 pb-1 text-[11.5px] text-ink-faint">{t("classroom_topics")}</h3>
+        {title && (
+          <div className="rounded-lg bg-ember-wash py-2 pr-2 pl-2.5 text-ink">
+            <span className="block truncate text-[13.5px]">{title}</span>
+            <span className="block text-[11.5px] text-ink-faint">
+              {finished ? t("classroom_finished") : t("classroom_running")}
+            </span>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function ClassroomTopics({
   classroomId,
+  listId,
   classroomName,
   activeId,
 }: {
   classroomId?: string;
+  listId?: string;
   classroomName?: string;
   activeId: string;
 }) {
   const t = useT();
   const formatDate = useFormatDate();
   const activities = useQuery({
-    queryKey: ["classroom", classroomId, "activities"],
-    queryFn: () => api.classroomActivities(classroomId ?? ""),
-    enabled: Boolean(classroomId),
+    queryKey: ["classroom", listId, "activities"],
+    queryFn: () => api.classroomActivities(listId ?? ""),
+    enabled: Boolean(listId),
   });
   return (
     <>
-      <SidebarHeader title={classroomName ?? t("nav_classrooms")} />
-      {classroomId && (
-        <Link
-          to="/classrooms/$classroomId"
-          params={{ classroomId }}
-          className="flex items-center gap-1.5 border-b border-line px-3 py-2 text-[12.5px] text-ink-soft hover:bg-paper-deep hover:text-ink"
-        >
-          <ArrowLeft className="size-3.5" />
-          {t("classroom_back_to_room")}
-        </Link>
+      {classroomId ? (
+        <>
+          <SidebarHeader
+            className="border-b-0"
+            title={
+              classroomId && (
+                <Link
+                  to="/classrooms/$classroomId"
+                  params={{ classroomId }}
+                  className="-ml-1.5 inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[12.5px] font-normal text-ink-soft hover:bg-paper-deep hover:text-ink"
+                >
+                  <ArrowLeft className="size-3.5" />
+                  {t("classroom_back_to_room")}
+                </Link>
+              )
+            }
+          />
+          <h2 className="shrink-0 truncate border-b border-line px-3 pb-3 font-serif text-[18px] leading-snug text-ink">
+            {classroomName ?? t("nav_classrooms")}
+          </h2>
+        </>
+      ) : (
+        <SidebarHeader title={t("classroom_topics")} />
       )}
-      <nav className="stream-scroll min-h-0 flex-1 overflow-y-auto px-2 pt-2 pb-3">
-        <h3 className="px-2 pb-1 text-[11.5px] text-ink-faint">{t("classroom_topics")}</h3>
+      <PanelSwitch />
+      <nav className="stream-scroll min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-3">
+        {classroomId && <h3 className="px-2 pb-1 text-[11.5px] text-ink-faint">{t("classroom_topics")}</h3>}
         <ul>
           {(activities.data ?? []).map((activity) => {
             const active = activity.id === activeId;

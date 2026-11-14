@@ -13,6 +13,7 @@ export const Route = createFileRoute("/home")({
     if (me?.preview && me.previewClassroomId) {
       throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: me.previewClassroomId } });
     }
+    if (me.guest || me.kind === "student") throw redirect({ to: "/classrooms" });
   },
   component: HomePage,
 });
@@ -59,10 +60,10 @@ function HomePage() {
   }
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="flex min-h-full flex-col bg-paper-deep pb-10">
       <PageHeader width="max-w-4xl" eyebrow={t("home_eyebrow")} title={t("nav_home")} />
       <div className="mx-auto w-full max-w-4xl space-y-4 px-4 py-5 md:px-6">
-        <Card className="grid gap-6 bg-ember-wash/40 p-6 md:grid-cols-[1fr_220px] md:p-7">
+        <Card className="grid gap-6 bg-paper p-6 md:grid-cols-[1fr_230px] md:p-7">
           <div className="min-w-0">
             <p className="text-xs text-ember">
               {t("home_greeting", { greeting: t(greetingKey()), name: me.data?.name ?? "" })}
@@ -94,7 +95,7 @@ function HomePage() {
                   type="button"
                   disabled={start.isPending}
                   onClick={() => ask(t(key))}
-                  className="cursor-pointer rounded-full border border-line-strong bg-paper px-4 py-1.5 text-[13px] text-ink-soft hover:border-ember hover:text-ink disabled:opacity-50"
+                  className="cursor-pointer rounded-lg border border-line-strong bg-paper px-4 py-1.5 text-[13px] text-ink-soft hover:border-ember hover:text-ink disabled:opacity-50"
                 >
                   {t(key)}
                 </button>
@@ -111,7 +112,7 @@ function HomePage() {
         {last && (
           <Link to="/chat/$chatId" params={{ chatId: last.id }} className="block">
             <Card className="flex items-center gap-4 p-4 transition-colors hover:border-ember-deep">
-              <span className="flex size-11 items-center justify-center rounded-full bg-ember-wash text-ember">
+              <span className="flex size-11 items-center justify-center rounded-full bg-ember-wash text-ink">
                 <MessageSquare className="size-5" />
               </span>
               <span className="min-w-0 flex-1">
@@ -126,14 +127,14 @@ function HomePage() {
         <section className="grid gap-4 sm:grid-cols-2">
           <Link to="/chat">
             <Card className="h-full p-5 transition-colors hover:border-ember-deep">
-              <b className="block font-serif text-4xl font-medium text-ember">{chatList.length}</b>
+              <b className="block font-serif text-4xl font-medium text-ink">{chatList.length}</b>
               <span className="mt-1 block text-sm">{t("home_stat_chats")}</span>
               <span className="text-xs text-ink-faint">{t("nav_chat")}</span>
             </Card>
           </Link>
           <Link to="/classrooms">
             <Card className="h-full p-5 transition-colors hover:border-ember-deep">
-              <b className="block font-serif text-4xl font-medium text-ember">{roomList.length}</b>
+              <b className="block font-serif text-4xl font-medium text-ink">{roomList.length}</b>
               <span className="mt-1 block text-sm">{t("home_stat_classrooms")}</span>
               <span className="text-xs text-ink-faint">{t("home_stat_running", { n: running.length })}</span>
             </Card>
@@ -189,8 +190,8 @@ function HomePage() {
                   <span
                     className={
                       room.current.finished
-                        ? "shrink-0 rounded-full bg-paper-deep px-2.5 py-0.5 text-[11.5px] text-ink-faint"
-                        : "shrink-0 rounded-full bg-moss-wash px-2.5 py-0.5 text-[11.5px] text-moss"
+                        ? "shrink-0 rounded-lg bg-paper-deep px-2.5 py-0.5 text-[11.5px] text-ink-faint"
+                        : "shrink-0 rounded-lg bg-moss-wash px-2.5 py-0.5 text-[11.5px] text-moss"
                     }
                   >
                     {room.current.finished ? t("classroom_finished") : t("classroom_running")}

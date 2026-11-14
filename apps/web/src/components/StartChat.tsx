@@ -30,7 +30,7 @@ export function StartChat({ autoFocus = false }: { autoFocus?: boolean }) {
   return (
     <div className="flex flex-col gap-2">
       <form
-        className="rounded-2xl border border-line-strong bg-paper focus-within:border-ember"
+        className="rounded-2xl border border-line-strong bg-paper focus-within:border-ink"
         onSubmit={(event) => {
           event.preventDefault();
           submit(text);
@@ -60,13 +60,9 @@ export function StartChat({ autoFocus = false }: { autoFocus?: boolean }) {
             type="submit"
             disabled={!text.trim() || start.isPending}
             aria-label={t("common_send")}
-            className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-ember text-on-ember transition hover:brightness-110 disabled:opacity-40"
+            className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-ink text-paper transition-colors hover:bg-ember hover:text-on-ember disabled:opacity-40"
           >
-            {start.isPending ? (
-              <Spinner className="border-on-ember/30 border-t-on-ember" />
-            ) : (
-              <ArrowUp className="size-4" />
-            )}
+            {start.isPending ? <Spinner className="border-paper/30 border-t-paper" /> : <ArrowUp className="size-4" />}
           </button>
         </div>
       </form>

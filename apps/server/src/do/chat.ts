@@ -14,7 +14,7 @@ import { PiHarness, type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_S
 import { Lifecycle } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
-import { SESSION_COOKIE, userFromSessionToken } from "../auth";
+import { SESSION_COOKIE, resolveSession } from "../auth";
 import { requireMembership } from "../services/members";
 import { createAvatarExtension } from "../pi/extensions/avatar";
 import { createJudgmentExtension } from "../pi/extensions/judgment";
@@ -24,7 +24,7 @@ import { socratesExtension } from "../pi/extensions/socrates";
 import { btwExtension, forkBtw } from "../pi/extensions/btw";
 import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
 import { buildModels } from "../pi/models";
-import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
+import { teacherLegsOf, teacherOfActivity, withPinnedCredential, type TeacherLeg } from "../pi/credentials";
 import { one, run } from "../db/d1";
 import { SOLO_PREFIX, ownedSoloChat } from "../routes/solo";
 import { getRouter } from "../gateway/router";
@@ -152,7 +152,7 @@ export class Chat extends DurableObject<Env> {
         await handle.setModel({ provider: model.provider, id: model.id });
         this.#sessionModels.set(handle.id, { provider: model.provider, id: model.id });
       }
-      return handle.submit(input, options);
+      return withPinnedCredential(decision.entry.credential, () => handle.submit(input, options));
     });
     void handle
       .wait(receipt.operationId)
@@ -211,7 +211,7 @@ export class Chat extends DurableObject<Env> {
       .map((part) => part.trim())
       .find((part) => part.startsWith(`${SESSION_COOKIE}=`))
       ?.slice(SESSION_COOKIE.length + 1);
-    const user = await userFromSessionToken({ env: this.env }, token);
+    const { user } = await resolveSession(this.env, token);
     if (!user) return null;
     if (activityId.startsWith(SOLO_PREFIX)) {
       return user.id === studentId && (await ownedSoloChat(this.env.DB, activityId, user.id)) ? user.id : null;

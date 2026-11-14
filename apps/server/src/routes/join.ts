@@ -1,9 +1,12 @@
 import { Hono } from "hono";
-import { JoinInputSchema } from "@socrates/shared";
+import { JoinInputSchema, type User } from "@socrates/shared";
 import { batch, one, run } from "../db/d1";
 import { startSession } from "../auth";
 import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, uniqueViolationColumns, type AppEnv } from "../http";
-import { topicOf, type ClassroomRow } from "../services/members";
+import { assertSeats, topicOf, type ClassroomRow } from "../services/members";
+
+const isNameClash = (error: unknown) =>
+  uniqueViolationColumns(error).some(([table, column]) => table === "members" && column === "name");
 
 export function joinRoutes() {
   return new Hono<AppEnv>()
@@ -28,31 +31,33 @@ export function joinRoutes() {
         code: input.code,
       });
       if (!classroom?.current_activity_id) fail(404, "join_code_invalid");
-      const user = c.get("user");
-      if (user && classroom.teacher_id === user.id) fail(403, "only_student");
+      const activityId = classroom.current_activity_id;
+      const current = c.get("user");
+      const account = current && !current.guest && !current.preview ? current : null;
+      if (account && classroom.teacher_id === account.id) fail(403, "only_student");
 
-      const existing = user
-        ? await one<{ user_id: string }>(
-            c.env.DB,
-            "SELECT user_id FROM members WHERE classroom_id = $cid AND user_id = $uid",
-            { cid: classroom.id, uid: user.id },
-          )
-        : undefined;
-
-      if (existing && user) {
-        return c.json({ user, activityId: classroom.current_activity_id! });
+      if (account) {
+        const existing = await one<{ user_id: string }>(
+          c.env.DB,
+          "SELECT user_id FROM members WHERE classroom_id = $cid AND user_id = $uid",
+          { cid: classroom.id, uid: account.id },
+        );
+        if (existing) return c.json({ user: account, activityId });
+        if (account.kind === "student") fail(403, "student_restricted");
+      } else if (current?.guest && !current.preview && current.activityId === activityId) {
+        return c.json({ user: current, activityId });
       }
 
       const activity = await one<{ finished_at: string | null }>(
         c.env.DB,
         "SELECT finished_at FROM activities WHERE id = $id",
-        { id: classroom.current_activity_id },
+        { id: activityId },
       );
       if (activity?.finished_at) fail(409, "activity_finished");
+      await assertSeats(c.env.DB, classroom.id, 1);
 
       const at = nowIso();
-      let sessionUser = user;
-      if (!sessionUser) {
+      if (!account) {
         const name = input.name?.trim();
         if (!name) fail(422, "validation");
         const clash = await one<{ user_id: string }>(
@@ -65,8 +70,8 @@ export function joinRoutes() {
         try {
           await batch(c.env.DB, [
             {
-              sql: "INSERT INTO users (id, name, is_guest, lang, created_at) VALUES ($id, $name, 1, $lang, $at)",
-              params: { id, name, at, lang: langOf(c) },
+              sql: "INSERT INTO users (id, name, is_guest, guest_activity_id, lang, created_at) VALUES ($id, $name, 1, $aid, $lang, $at)",
+              params: { id, name, aid: activityId, at, lang: langOf(c) },
             },
             {
               sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
@@ -74,41 +79,35 @@ export function joinRoutes() {
             },
           ]);
         } catch (error) {
-          const taken = uniqueViolationColumns(error).some(
-            ([table, column]) => table === "members" && column === "name",
-          );
-          if (taken) fail(409, "name_taken");
+          if (isNameClash(error)) fail(409, "name_taken");
           throw error;
         }
-        sessionUser = { id, name, guest: true };
-        await startSession(c, sessionUser);
-        return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
+        const guest: User = { id, name, guest: true, kind: "guest", activityId };
+        await startSession(c, guest);
+        return c.json({ user: guest, activityId });
       }
 
       const clash = await one<{ user_id: string }>(
         c.env.DB,
         "SELECT user_id FROM members WHERE classroom_id = $cid AND name = $name",
-        { cid: classroom.id, name: sessionUser.name },
+        { cid: classroom.id, name: account.name },
       );
-      if (clash && clash.user_id !== sessionUser.id) fail(409, "name_taken");
+      if (clash) fail(409, "name_taken");
       try {
         await run(
           c.env.DB,
           "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
-          { cid: classroom.id, uid: sessionUser.id, name: sessionUser.name, at },
+          { cid: classroom.id, uid: account.id, name: account.name, at },
         );
       } catch (error) {
-        if (uniqueViolationColumns(error).some(([table, column]) => table === "members" && column === "name")) {
-          const raced = await one<{ user_id: string }>(
-            c.env.DB,
-            "SELECT user_id FROM members WHERE classroom_id = $cid AND user_id = $uid",
-            { cid: classroom.id, uid: sessionUser.id },
-          );
-          if (raced) return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
-          fail(409, "name_taken");
-        }
-        throw error;
+        if (!isNameClash(error)) throw error;
+        const raced = await one<{ user_id: string }>(
+          c.env.DB,
+          "SELECT user_id FROM members WHERE classroom_id = $cid AND user_id = $uid",
+          { cid: classroom.id, uid: account.id },
+        );
+        if (!raced) fail(409, "name_taken");
       }
-      return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
+      return c.json({ user: account, activityId });
     });
 }

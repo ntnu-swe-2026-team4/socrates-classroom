@@ -18,6 +18,7 @@ This directory is the project's **documentation SSOT**. Each document owns one d
 | Quickstart (for humans)                                               | `../README.md`    | when commands or prerequisites change                           |
 | Local development (zero-account, DB, dialogue)                        | `development.md`  | when the dev flow or local simulation behavior changes          |
 | Handoff: differences from the downloaded baseline + go-live checklist | `handoff.md`      | when a migration, cloud-config decision or go-live step changes |
+| Account & identity model (admin/user/teacher/student/guest)           | `accounts.md`     | when roles, plans, limits or session rules change               |
 
 ## Rules
 

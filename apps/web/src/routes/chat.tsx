@@ -3,7 +3,7 @@ import { Link, Outlet, createFileRoute, redirect, useNavigate, useRouterState } 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Pencil, Search, SquarePen, Trash2, X } from "lucide-react";
 import { api, type SoloChat } from "@/api";
-import { ChatLayout, SidebarHeader } from "@/components/ChatLayout";
+import { ChatLayout, PanelSwitch, SidebarHeader } from "@/components/ChatLayout";
 import { ConfirmDialog, cn } from "@/components/ui";
 import { useT, type MessageKey } from "@/i18n";
 
@@ -14,6 +14,7 @@ export const Route = createFileRoute("/chat")({
     if (me?.preview && me.previewClassroomId) {
       throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: me.previewClassroomId } });
     }
+    if (me.guest || me.kind === "student") throw redirect({ to: "/classrooms" });
   },
   component: ChatSection,
 });
@@ -81,8 +82,9 @@ function SoloSidebar() {
           </Link>
         }
       />
+      <PanelSwitch />
       <div className="px-2 pt-2 pb-1">
-        <label className="flex h-8 items-center gap-2 rounded-lg border border-line bg-paper px-2 text-ink-faint focus-within:border-ember">
+        <label className="flex h-8 items-center gap-2 rounded-lg border border-line bg-paper px-2 text-ink-faint focus-within:border-ink">
           <Search className="size-3.5 shrink-0" />
           <input
             value={filter}
@@ -149,7 +151,7 @@ function ChatRow({ chat, active, onDelete }: { chat: SoloChat; active: boolean; 
             if (event.key === "Enter" && title.trim()) rename.mutate();
             if (event.key === "Escape") setEditing(false);
           }}
-          className="h-7 min-w-0 flex-1 rounded-md border border-line-strong bg-paper px-1.5 text-[13px] outline-none focus:border-ember"
+          className="h-7 min-w-0 flex-1 rounded-md border border-line-strong bg-paper px-1.5 text-[13px] outline-none focus:border-ink"
         />
         <button
           type="button"

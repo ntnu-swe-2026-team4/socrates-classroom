@@ -6,7 +6,7 @@ import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedDemo } from "../src/seed";
 import { reportAlarmPlan } from "../src/do/report-runner";
-import { call, cookieOf, frames, latestAssistantText } from "./helpers";
+import { call, cookieOf, frames, latestAssistantText, enableTeacher } from "./helpers";
 
 async function speak(thread: string, cookie: string, question: string): Promise<void> {
   const socket = await routeAgentRequest(
@@ -44,7 +44,7 @@ beforeAll(async () => {
     body: JSON.stringify({ email: "demo@socrates.tw", password: "demo-demo" }),
   });
   expect(login.status).toBe(200);
-  teacherCookie = cookieOf(login);
+  teacherCookie = await enableTeacher(cookieOf(login));
   const topics = (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{
     id: string;
   }>;

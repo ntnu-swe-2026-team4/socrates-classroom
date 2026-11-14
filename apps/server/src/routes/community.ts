@@ -31,6 +31,7 @@ interface PostRow {
 
 async function access(c: Ctx, classroomId: string): Promise<Access> {
   const user = requireUser(c);
+  if (user.guest && !user.preview) fail(403, "account_required");
   const row = await one<{ id: string; teacher_id: string; teacher_name: string; member_name: string | null }>(
     c.env.DB,
     `SELECT c.id, c.teacher_id, t.name AS teacher_name, m.name AS member_name
@@ -143,9 +144,16 @@ export function communityRoutes() {
     })
     .get("/classrooms/:id/members", async (c) => {
       const room = await access(c, c.req.param("id"));
-      const rows = await all<{ user_id: string; name: string; joined_at: string }>(
+      const rows = await all<{
+        user_id: string;
+        name: string;
+        joined_at: string;
+        username: string | null;
+        is_guest: number;
+        student_classroom_id: string | null;
+      }>(
         c.env.DB,
-        `SELECT m.user_id, m.name, m.joined_at
+        `SELECT m.user_id, m.name, m.joined_at, u.username, u.is_guest, u.student_classroom_id
          FROM members m JOIN users u ON u.id = m.user_id
          WHERE m.classroom_id = $cid AND u.preview_classroom_id IS NULL
          ORDER BY m.joined_at ASC, m.rowid ASC`,
@@ -153,7 +161,13 @@ export function communityRoutes() {
       );
       const body: ClassroomMembers = {
         teacher: { id: room.teacherId, name: room.teacherName },
-        members: rows.map((row) => ({ id: row.user_id, name: row.name, joinedAt: row.joined_at })),
+        members: rows.map((row) => ({
+          id: row.user_id,
+          name: row.name,
+          joinedAt: row.joined_at,
+          kind: row.student_classroom_id ? "student" : row.is_guest === 1 ? "guest" : "member",
+          ...(room.owner ? { username: row.username } : {}),
+        })),
       };
       return c.json(body);
     })
@@ -162,6 +176,12 @@ export function communityRoutes() {
       const target = c.req.param("userId");
       if (target === room.teacherId) fail(403, "forbidden");
       if (!room.owner && target !== room.user.id) fail(403, "forbidden");
+      if (!room.owner && room.user.kind === "student") fail(403, "student_restricted");
+      const student = await run(c.env.DB, "DELETE FROM users WHERE id = $uid AND student_classroom_id = $cid", {
+        cid: room.classroomId,
+        uid: target,
+      });
+      if (student.meta.changes) return c.body(null, 204);
       const result = await run(c.env.DB, "DELETE FROM members WHERE classroom_id = $cid AND user_id = $uid", {
         cid: room.classroomId,
         uid: target,

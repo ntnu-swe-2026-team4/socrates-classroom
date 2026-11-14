@@ -92,17 +92,6 @@ describe("OAuth sign-in routes", () => {
     expect(stateOf(cookieOf(missing)).n).toBe("/home");
   });
 
-  test("start records the current guest for in-place upgrade", async () => {
-    const guest = await call("/api/auth/guest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    const { id } = (await guest.json()) as { id: string };
-    const res = await callWith(configured, "/api/auth/oauth/google/start", { headers: { Cookie: cookieOf(guest) } });
-    expect(stateOf(cookieOf(res)).g).toBe(id);
-  });
-
   test("callback with missing or mismatched state redirects to oauth_failed", async () => {
     const start = await callWith(configured, "/api/auth/oauth/google/start");
     const cookie = cookieOf(start);
@@ -179,21 +168,14 @@ describe("resolveOAuthAccount", () => {
     expect((await guestRow(victim.id))?.email).toBeNull();
   });
 
-  test("a guest session is upgraded in place; preview users and full accounts are not", async () => {
+  test("signing in with OAuth never takes over a guest row", async () => {
     await run(
       env.DB,
       "INSERT INTO users (id, name, is_guest, lang, created_at) VALUES ('u_guest', '訪客 0001', 1, 'zh', '2026-11-11T00:00:00Z')",
     );
-    const upgraded = await resolveOAuthAccount(
-      env.DB,
-      profile("sub-guest", { email: "guest@example.com", emailVerified: true, name: "Guest Upgraded" }),
-      { guestId: "u_guest", lang: "zh" },
-    );
-    expect(upgraded).toEqual({ id: "u_guest", name: "Guest Upgraded", guest: false });
-    expect(await guestRow("u_guest")).toEqual({ is_guest: 0, email: "guest@example.com", name: "Guest Upgraded" });
-
-    const notGuest = await resolveOAuthAccount(env.DB, profile("sub-guest-2"), { guestId: "u_guest", lang: "zh" });
-    expect(notGuest.id).not.toBe("u_guest");
+    const created = await resolveOAuthAccount(env.DB, profile("sub-guest"), { lang: "zh" });
+    expect(created.id).not.toBe("u_guest");
+    expect((await guestRow("u_guest"))?.is_guest).toBe(1);
   });
 
   test("name falls back to the email local part, then a provider label", async () => {

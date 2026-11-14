@@ -74,11 +74,11 @@
 
 ## 6. BYOK 模式（三種層次；定案見 #82）
 
-| 層次                                | 機制                                                                                               | 適用                                                     |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| AI Gateway BYOK                     | key 存 CF gateway，Worker 完全不碰 key；僅限 provider-native 清單（**無智譜**）                    | 想統一觀測/計費且只用清單內 provider 時                  |
-| OpenRouter BYOK                     | 60+ providers、統一 API 與分析；$25k/月內免費、之後 5%                                             | 用自己的 Z.AI/其他 key 但要 OpenRouter 的路由與 failover |
-| **產品級 teacher keys（#82 定案）** | 老師一 provider 一把 key（加密存 D1，`sort_order`＝provider 鏈序）；學生無 BYOK 入口，一律走平台鏈 | 學生流量合規責任單一（平台鏈全 ZDR）；byok 端點已退役    |
+| 層次                                | 機制                                                                                                | 適用                                                     |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| AI Gateway BYOK                     | key 存 CF gateway，Worker 完全不碰 key；僅限 provider-native 清單（**無智譜**）                     | 想統一觀測/計費且只用清單內 provider 時                  |
+| OpenRouter BYOK                     | 60+ providers、統一 API 與分析；$25k/月內免費、之後 5%                                              | 用自己的 Z.AI/其他 key 但要 OpenRouter 的路由與 failover |
+| **產品級 teacher keys（#82 定案）** | 老師多把 key × 多個 model（加密存 D1，拖曳排序＝teacher legs 鏈序）；學生無 BYOK 入口，一律走平台鏈 | 學生流量合規責任單一（平台鏈全 ZDR）；byok 端點已退役    |
 
 ## 7. Judgment 模型（逐輪違規判斷）
 
@@ -180,7 +180,7 @@ pnpm --filter @socrates/server run gen-config
 
 ### Teacher keys（老師自帶 key）
 
-- **設定入口**：老師登入 → `/settings` → Teacher keys 卡片——選 provider（pi builtin catalog）→ 選 model（該 provider 的 model 清單）→ 貼 key；一 provider 一把 key，上下拖曳排序（`sort_order`＝teacher legs 鏈序，老師鏈在前、平台鏈墕後）
+- **設定入口**：老師登入 → `/settings` → Teacher keys 卡片——選 provider（pi builtin catalog）→ 選 model（該 provider 的 model 清單）→ 貼新 key 或沿用已存的 key；可加入多把 key、多個 model，拖曳把手（或上移／下移）調整順序（`sort_order`＝teacher legs 鏈序，老師鏈在前、平台鏈墊後）
 - **儲存**：D1 AES-GCM（金鑰 `BYOK_ENC_KEY`）；明文永不回傳（只回 last4）
 - **責任**：老師鏈流量 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；學生無 BYOK 入口（#82）
 - API 形狀見 [`api-contract.md`](./api-contract.md) §9

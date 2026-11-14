@@ -1,7 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
-import { Button, Card, PageHeader, Spinner } from "@/components/ui";
+import { BackLink, Button, Card, PageHeader, Spinner } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/t/live/$id")({
@@ -20,6 +20,12 @@ function LivePage() {
     mutationFn: () => api.finishActivity(id),
   });
 
+  const info = useQuery({ queryKey: ["activity", id], queryFn: () => api.activityInfo(id), staleTime: Infinity });
+  const backToRoom = () =>
+    info.data?.classroomId
+      ? void navigate({ to: "/classrooms/$classroomId", params: { classroomId: info.data.classroomId } })
+      : void navigate({ to: "/classrooms", search: { view: "teacher" } });
+
   async function finishAndReport() {
     if (finish.isPending) return;
     try {
@@ -33,7 +39,7 @@ function LivePage() {
   return (
     <div className="flex min-h-full flex-col">
       <PageHeader
-        eyebrow={t("eyebrow_teacher")}
+        eyebrow={<BackLink onClick={backToRoom} label={t("classroom_back_to_room")} />}
         title={t("live_title")}
         actions={
           <Button variant="outline" size="sm" onClick={() => void finishAndReport()} disabled={finish.isPending}>

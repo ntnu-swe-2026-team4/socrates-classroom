@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { SoloChatInputSchema, type SoloChat } from "@socrates/shared";
 import { all, one, run, type Db } from "../db/d1";
-import { enforceIpLimit, fail, newId, nowIso, parseBody, requireUser, type AppEnv } from "../http";
+import { enforceIpLimit, fail, newId, nowIso, parseBody, requireMember, type AppEnv } from "../http";
 
 export const SOLO_PREFIX = "s_";
 
@@ -31,7 +31,7 @@ async function requireOwned(db: Db, chatId: string, userId: string): Promise<Sol
 export function soloRoutes() {
   return new Hono<AppEnv>()
     .get("/solo/chats", async (c) => {
-      const user = requireUser(c);
+      const user = requireMember(c);
       const rows = await all<SoloChatRow>(
         c.env.DB,
         "SELECT * FROM solo_chats WHERE user_id = $uid ORDER BY updated_at DESC, id DESC",
@@ -40,7 +40,7 @@ export function soloRoutes() {
       return c.json(rows.map(toChat));
     })
     .post("/solo/chats", async (c) => {
-      const user = requireUser(c);
+      const user = requireMember(c);
       await enforceIpLimit(c, "solo-create", 60);
       const input = await parseBody(c, SoloChatInputSchema);
       const at = nowIso();
@@ -59,18 +59,18 @@ export function soloRoutes() {
       return c.json(toChat(row), 201);
     })
     .get("/solo/chats/:id", async (c) => {
-      const user = requireUser(c);
+      const user = requireMember(c);
       return c.json(toChat(await requireOwned(c.env.DB, c.req.param("id"), user.id)));
     })
     .patch("/solo/chats/:id", async (c) => {
-      const user = requireUser(c);
+      const user = requireMember(c);
       const input = await parseBody(c, SoloChatInputSchema);
       const row = await requireOwned(c.env.DB, c.req.param("id"), user.id);
       await run(c.env.DB, "UPDATE solo_chats SET title = $title WHERE id = $id", { id: row.id, title: input.title });
       return c.json(toChat({ ...row, title: input.title }));
     })
     .delete("/solo/chats/:id", async (c) => {
-      const user = requireUser(c);
+      const user = requireMember(c);
       const row = await requireOwned(c.env.DB, c.req.param("id"), user.id);
       await run(c.env.DB, "DELETE FROM solo_chats WHERE id = $id", { id: row.id });
       return c.body(null, 204);

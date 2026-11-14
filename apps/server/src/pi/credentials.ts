@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
 import { all, one } from "../db/d1";
 import { gatewayConfig } from "../gateway/config.gen";
@@ -5,7 +6,22 @@ import { decryptKey } from "../auth-crypto";
 import type { Env } from "../env";
 
 interface TeacherKeyRow {
+  id: string;
   key_enc: string;
+}
+
+const pinnedCredential = new AsyncLocalStorage<string>();
+
+export function teacherCredentialOf(teacherId: string, entryId: string): string {
+  return `teacher:${teacherId}:${entryId}`;
+}
+
+function pinnedEntryId(): string | undefined {
+  return pinnedCredential.getStore()?.split(":")[2];
+}
+
+export function withPinnedCredential<T>(credential: string | undefined, operation: () => Promise<T>): Promise<T> {
+  return credential ? pinnedCredential.run(credential, operation) : operation();
 }
 
 /**
@@ -18,11 +34,20 @@ export function teacherCredentialStore(env: Env, teacherOf: () => Promise<string
     async read(providerId: string): Promise<Credential | undefined> {
       const teacherId = await teacherOf();
       if (!teacherId) return undefined;
-      const row = await one<TeacherKeyRow>(
-        env.DB,
-        "SELECT key_enc FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
-        { uid: teacherId, pid: providerId },
-      );
+      const pinned = pinnedEntryId();
+      const row =
+        (pinned
+          ? await one<TeacherKeyRow>(
+              env.DB,
+              "SELECT id, key_enc FROM teacher_key_entries WHERE id = $id AND user_id = $uid AND provider_id = $pid",
+              { id: pinned, uid: teacherId, pid: providerId },
+            )
+          : undefined) ??
+        (await one<TeacherKeyRow>(
+          env.DB,
+          "SELECT id, key_enc FROM teacher_key_entries WHERE user_id = $uid AND provider_id = $pid ORDER BY sort_order, id LIMIT 1",
+          { uid: teacherId, pid: providerId },
+        ));
       if (!row) return undefined;
       const key = await decryptKey(env, row.key_enc);
       return key === null ? undefined : { type: "api_key", key };
@@ -32,7 +57,7 @@ export function teacherCredentialStore(env: Env, teacherOf: () => Promise<string
       if (!teacherId) return [];
       const rows = await all<{ provider_id: string }>(
         env.DB,
-        "SELECT provider_id FROM teacher_keys WHERE user_id = $uid",
+        "SELECT DISTINCT provider_id FROM teacher_key_entries WHERE user_id = $uid",
         { uid: teacherId },
       );
       return rows.map((row) => ({ providerId: row.provider_id, type: "api_key" as const }));
@@ -88,6 +113,7 @@ export interface TeacherLeg {
 }
 
 export interface TeacherLegRow {
+  id: string;
   provider_id: string;
   model: string;
 }
@@ -97,7 +123,7 @@ export async function teacherLegsOf(env: Env, teacherId: string | null): Promise
   if (!teacherId) return [];
   const rows = await all<TeacherLegRow>(
     env.DB,
-    "SELECT provider_id, model FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
+    "SELECT id, provider_id, model FROM teacher_key_entries WHERE user_id = $uid ORDER BY sort_order, id",
     { uid: teacherId },
   );
   return rows
@@ -105,7 +131,7 @@ export async function teacherLegsOf(env: Env, teacherId: string | null): Promise
     .map((row) => ({
       provider: row.provider_id,
       model: row.model,
-      credential: `teacher:${teacherId}`,
+      credential: teacherCredentialOf(teacherId, row.id),
       maxConcurrency,
       priority: 0,
     }));

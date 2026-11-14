@@ -18,35 +18,39 @@
 - **本機 dev 需要 Cloudflare 遠端連線**：原版 config 在 dev 也宣告 `AI` binding，cf CLI 會走 remote mode。若出現「You need to register a workers.dev subdomain」，需到 Cloudflare 註冊 workers.dev 子網域，或在 `pnpm dev` 終端機按 `l` 切成 local。
 - **第三方登入（Google／Apple／Facebook）停用**：server 已實作，但 config 未宣告對應 bindings。啟用步驟見 [`cf.md` §OAuth 登入](./cf.md#oauth-登入googlefacebookapple選用)。登入頁三顆按鈕會顯示為「尚未設定」，其他登入方式不受影響。
 
-## 2. 資料庫 migrations（新增 5 支）
+## 2. 資料庫 migrations（新增 7 支）
 
 原版只有 `001_init.sql`。部署時 `deploy.yml` 的「D1 migrations」步驟會**自動依序套用**，不需手動操作；本機 `pnpm dev` 啟動時也會自動套用（已開著的 dev server 可執行 `pnpm migrate`）。
 
-| Migration                 | 內容                                                                              |
-| ------------------------- | --------------------------------------------------------------------------------- |
-| `002_preview_student.sql` | `users.preview_classroom_id`：學生視角預覽的測試學生                              |
-| `003_accounts_solo.sql`   | 帳號統一：移除 `users.role`、新增 `users.is_guest`；新增 `solo_chats`（單人對話） |
-| `004_oauth.sql`           | `oauth_identities`：第三方登入身分（目前停用，表先建好）                          |
-| `005_topic_i18n.sql`      | `topics.i18n`：系統主題的英文／西班牙文譯文，並回填三個內建主題                   |
-| `006_community.sql`       | `announcements`、`posts`：教室公告與討論區                                        |
+| Migration                     | 內容                                                                                                                                                |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `002_preview_student.sql`     | `users.preview_classroom_id`：學生視角預覽的測試學生                                                                                                |
+| `003_accounts_solo.sql`       | 帳號統一：移除 `users.role`、新增 `users.is_guest`；新增 `solo_chats`（單人對話）                                                                   |
+| `004_oauth.sql`               | `oauth_identities`：第三方登入身分（目前停用，表先建好）                                                                                            |
+| `005_topic_i18n.sql`          | `topics.i18n`：系統主題的英文／西班牙文譯文，並回填三個內建主題                                                                                     |
+| `006_community.sql`           | `announcements`、`posts`：教室公告與討論區                                                                                                          |
+| `007_teacher_key_entries.sql` | `teacher_key_entries` 取代 `teacher_keys`：多把 key × 多個 model，舊資料自動搬移                                                                    |
+| `008_account_roles.sql`       | 帳號角色：`schools`、`users.is_admin／teacher_plan／school_id／teacher_mode／username／student_classroom_id／guest_activity_id`（見 `accounts.md`） |
+| `009_notifications.sql`       | 系統通知：`notifications` 資料表、`users.notifications_seen_at`                                                                                     |
 
 > `003` 會**刪除 `users.role` 欄位**：既有帳號依「有無 email」換算為正式帳號／訪客；舊 session 的 `role` claim 仍可登入（student → 訪客、teacher → 正式帳號）。
 
 ## 3. 功能差異摘要
 
-| 範圍     | 原版                  | 現在                                                                                                |
-| -------- | --------------------- | --------------------------------------------------------------------------------------------------- |
-| 帳號     | 老師／學生兩種帳號    | 不分角色：任何正式帳號都能開課與加入；老師＝教室 owner。訪客一鍵進入、註冊時原地升級保留紀錄        |
-| 登入     | Email＋密碼、示範老師 | 訪客、Email 登入／註冊、第三方登入（停用中）；已登入時可「繼續使用／切換帳號」                      |
-| 單人模式 | 無                    | `/chat`：AI 對話版型（左主題欄＋右對話），搜尋／改名／刪除                                          |
-| 教室     | 開課頁先命名＋選題    | 「創建課程」直接建立空課程並進入教室頁編輯；名稱對話框修改；主題可選題庫／自訂／AI 生成；可刪除教室 |
-| 教室內頁 | 主題卡片              | 分頁：主題（可選取歷次主題）／公告／討論區／成員（移除成員、退出教室）；學生視角預覽                |
-| 加入教室 | 邀請碼→輸入名字       | 先選「使用我的帳號」或「以訪客加入」；已登入沿用帳號名                                              |
-| 蘇格拉底 | 固定 3D 面板          | 可拖曳的圓形小幫手：雙擊輪盤（問 AI／靜音／表情）、表情一次性播放                                   |
-| 問 AI    | 無                    | 小幫手面板直接回答（`POST /api/assistant`），每則可「朗讀」                                         |
-| 語音     | 對話自動朗讀          | 單一語音通道：最後主動者優先、跨分頁互斥、「正在朗讀」標籤；設定頁開關＋音量＋「老爺爺／原聲」聲線  |
-| 多語系   | 介面三語              | 另加系統主題譯文、日期依介面語言、蘇格拉底依學生語言回覆                                            |
-| 介面     | 原設計                | 全面改版（首頁、教室卡片、AppShell、設定頁個人資料＋語音）                                          |
+| 範圍     | 原版                  | 現在                                                                                                                                                                                    |
+| -------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 帳號     | 老師／學生兩種帳號    | admin／user⇄teacher（設定頁教師模式；試用 3 教室×40 人、學校方案由 admin 開通）／student（老師建立的受管帳號）／guest（只參加一場活動，結束 24 小時後失效，不能升級）；見 `accounts.md` |
+| 登入     | Email＋密碼、示範老師 | 訪客、Email 登入／註冊、第三方登入（停用中）；已登入時開啟登入頁會直接進入，不再詢問                                                                                                    |
+| 單人模式 | 無                    | `/chat`：AI 對話版型（左主題欄＋右對話），搜尋／改名／刪除                                                                                                                              |
+| 教室     | 開課頁先命名＋選題    | 「創建課程」直接建立空課程並進入教室頁編輯；名稱對話框修改；主題可選題庫／自訂／AI 生成；可刪除教室                                                                                     |
+| 教室內頁 | 主題卡片              | 分頁：主題（可選取歷次主題）／公告／討論區／成員（移除成員、退出教室）；學生視角預覽                                                                                                    |
+| 加入教室 | 邀請碼→輸入名字       | 先選「使用我的帳號」或「以訪客加入」；已登入沿用帳號名                                                                                                                                  |
+| 蘇格拉底 | 固定 3D 面板          | 可拖曳的圓形小幫手：雙擊輪盤（問 AI／靜音／表情）、表情一次性播放                                                                                                                       |
+| 問 AI    | 無                    | 小幫手面板直接回答（`POST /api/assistant`），每則可「朗讀」                                                                                                                             |
+| 語音     | 對話自動朗讀          | 單一語音通道：最後主動者優先、跨分頁互斥、「正在朗讀」標籤；設定頁開關＋音量＋「老爺爺／原聲」聲線                                                                                      |
+| 多語系   | 介面三語              | 另加系統主題譯文、日期依介面語言、蘇格拉底依學生語言回覆                                                                                                                                |
+| 自備金鑰 | 一 provider 一把 key  | 多把 key × 多個 model，拖曳調整優先順序；可沿用已存的 key 加入其他模型                                                                                                                  |
+| 介面     | 原設計                | 全面改版（首頁、教室卡片、AppShell、設定頁個人資料＋語音）                                                                                                                              |
 
 ## 4. 已補上的後端
 
@@ -59,6 +63,7 @@
 - 教室社群：公告、討論區、成員（含移除與退出）
 - 問 AI：`POST /assistant`（assistant profile，走既有 gateway 路由）
 - 系統主題在地化（依 `Accept-Language`）；離線 mock 回覆依學生語言輪替五種追問
+- Teacher keys 多筆化：`POST /settings/keys`、`PATCH`／`DELETE /settings/keys/:id`、`PUT /settings/keys/order {ids}`（API 形狀變更，PM 需求）
 - 第三方登入的 server 端（`routes/oauth.ts`、`004_oauth.sql`）：程式完成，**待 config 宣告後即可用**
 
 ## 5. 無法在不改雲端設定下完成的項目

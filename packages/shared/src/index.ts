@@ -8,10 +8,24 @@ export const LANG_NAMES: Record<Lang, string> = {
   es: "Spanish (Español)",
 };
 
+export const ACCOUNT_KINDS = ["member", "student", "guest"] as const;
+export type AccountKind = (typeof ACCOUNT_KINDS)[number];
+export const TEACHER_PLANS = ["trial", "school"] as const;
+export type TeacherPlan = (typeof TEACHER_PLANS)[number];
+export const TRIAL_LIMITS = { classrooms: 3, membersPerClassroom: 40 } as const;
+
 export const UserSchema = z.object({
   id: z.string(),
   name: z.string(),
   guest: z.boolean(),
+  kind: z.enum(ACCOUNT_KINDS).optional(),
+  admin: z.boolean().optional(),
+  teacherPlan: z.enum(TEACHER_PLANS).nullable().optional(),
+  teacherMode: z.boolean().optional(),
+  schoolName: z.string().nullable().optional(),
+  username: z.string().nullable().optional(),
+  classroomId: z.string().nullable().optional(),
+  activityId: z.string().nullable().optional(),
   preview: z.boolean().optional(),
   previewClassroomId: z.string().optional(),
 });
@@ -154,7 +168,14 @@ export type TermExplanation = z.infer<typeof TermExplanationSchema>;
 
 const emailField = z.email().transform((value) => value.toLowerCase());
 
-export const LoginInputSchema = z.object({ email: emailField, password: z.string().min(8).max(128) });
+export const LoginInputSchema = z
+  .object({
+    identifier: z.string().trim().toLowerCase().min(3).max(254).optional(),
+    email: z.string().trim().toLowerCase().min(3).max(254).optional(),
+    password: z.string().min(6).max(128),
+  })
+  .refine((input) => (input.identifier ?? input.email) !== undefined)
+  .transform((input) => ({ identifier: (input.identifier ?? input.email)!, password: input.password }));
 export const RegisterInputSchema = z.object({
   code: z.string().min(4).max(32).optional(),
   email: emailField,
@@ -162,8 +183,59 @@ export const RegisterInputSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   tosAccepted: z.boolean(),
 });
-export const ProfileInputSchema = z.object({ name: z.string().trim().min(1).max(80) });
-export const GuestInputSchema = z.object({ name: z.string().trim().max(80).optional() });
+export const ProfileInputSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80).optional(),
+    teacherMode: z.boolean().optional(),
+    acceptTeacherTerms: z.literal(true).optional(),
+  })
+  .refine((input) => input.name !== undefined || input.teacherMode !== undefined);
+export const StudentsCreateInputSchema = z.object({
+  names: z.array(z.string().trim().min(1).max(80)).min(1).max(50),
+});
+export const StudentCredentialSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  username: z.string(),
+  password: z.string(),
+});
+export type StudentCredential = z.infer<typeof StudentCredentialSchema>;
+export const NotificationInputSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  body: z.string().trim().max(2000),
+});
+export const NotificationSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
+});
+export type Notification = z.infer<typeof NotificationSchema>;
+export const NotificationFeedSchema = z.object({ items: z.array(NotificationSchema), unread: z.number() });
+export type NotificationFeed = z.infer<typeof NotificationFeedSchema>;
+
+export const SchoolInputSchema = z.object({ name: z.string().trim().min(1).max(120) });
+export const SchoolSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  teacherCount: z.number(),
+  createdAt: z.string(),
+});
+export type School = z.infer<typeof SchoolSchema>;
+export const SchoolTeacherInputSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  email: emailField,
+  schoolId: z.string().min(1),
+});
+export const SchoolTeacherSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string(),
+  schoolId: z.string(),
+  schoolName: z.string(),
+  temporaryPassword: z.string().nullable().optional(),
+});
+export type SchoolTeacher = z.infer<typeof SchoolTeacherSchema>;
 export const SoloChatInputSchema = z.object({ title: z.string().trim().min(1).max(120) });
 export const JoinInputSchema = z.object({
   code: z.string().min(4).max(32),
@@ -233,7 +305,15 @@ export type Announcement = z.infer<typeof AnnouncementSchema>;
 
 export const ClassroomMembersSchema = z.object({
   teacher: z.object({ id: z.string(), name: z.string() }),
-  members: z.array(z.object({ id: z.string(), name: z.string(), joinedAt: z.string() })),
+  members: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      joinedAt: z.string(),
+      kind: z.enum(ACCOUNT_KINDS).optional(),
+      username: z.string().nullable().optional(),
+    }),
+  ),
 });
 export type ClassroomMembers = z.infer<typeof ClassroomMembersSchema>;
 
@@ -250,6 +330,7 @@ export const PostSchema = PostReplySchema.extend({ replies: z.array(PostReplySch
 export type Post = z.infer<typeof PostSchema>;
 
 export const TeacherKeyStatusSchema = z.object({
+  id: z.string(),
   provider: z.string(),
   model: z.string(),
   last4: z.string(),
@@ -257,6 +338,18 @@ export const TeacherKeyStatusSchema = z.object({
   updatedAt: z.string(),
 });
 export type TeacherKeyStatus = z.infer<typeof TeacherKeyStatusSchema>;
+export const TeacherKeyCreateInputSchema = z
+  .object({
+    provider: z.string().min(1).max(100),
+    model: z.string().min(1).max(200),
+    key: z.string().min(8).max(256).optional(),
+    fromEntry: z.string().min(1).max(64).optional(),
+  })
+  .refine((input) => Boolean(input.key) !== Boolean(input.fromEntry));
+export const TeacherKeyUpdateInputSchema = z
+  .object({ model: z.string().min(1).max(200).optional(), key: z.string().min(8).max(256).optional() })
+  .refine((input) => input.model !== undefined || input.key !== undefined);
+export const TeacherKeyOrderInputSchema = z.object({ ids: z.array(z.string().min(1).max(64)).max(50) });
 
 export const ViolationChoiceSchema = z.object({
   type: z.string(),
@@ -289,6 +382,11 @@ export const ERROR_CODES = [
   "account_required",
   "oauth_unavailable",
   "oauth_failed",
+  "teacher_required",
+  "teacher_terms_required",
+  "trial_limit",
+  "student_restricted",
+  "guest_session_expired",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

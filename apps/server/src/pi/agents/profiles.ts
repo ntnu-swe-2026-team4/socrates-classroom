@@ -23,7 +23,7 @@ import { createJudgmentExtension } from "../extensions/judgment";
 import { createWebSearchExtension } from "../extensions/websearch";
 import { getRouter, type TrafficClass } from "../../gateway/router";
 import type { SettleKind } from "../../gateway/ledger";
-import { teacherLegsOf, type TeacherLeg } from "../credentials";
+import { teacherLegsOf, withPinnedCredential, type TeacherLeg } from "../credentials";
 import { reportSubmitExtension, SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../extensions/report-submit";
 import type { JsonObject } from "@earendil-works/pi-durable";
 
@@ -217,8 +217,10 @@ export async function runProfile(
       : runtime.models.default;
     if (!model) throw new Error("model_not_resolvable");
     await conversation.configure({ model: { provider: model.provider, modelId: model.id } }, BACKGROUND_CONTEXT);
-    const submission: Submission = await conversation.submit({ type: "input", content: input }, BACKGROUND_CONTEXT);
-    const settled = await submission.wait(BACKGROUND_CONTEXT);
+    const settled = await withPinnedCredential(decision?.entry.credential, async () => {
+      const submission: Submission = await conversation.submit({ type: "input", content: input }, BACKGROUND_CONTEXT);
+      return submission.wait(BACKGROUND_CONTEXT);
+    });
     if (settled.status !== "done" || settled.type !== "input") {
       kind = settled.status === "unanswered" && settled.reason === "aborted" ? "ok" : "error";
       return { text: "", payload: null, conversation };

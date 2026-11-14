@@ -4,23 +4,11 @@ import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { seedDemo } from "../src/seed";
-import { assistantText, call, cookieOf, frames, latestView } from "./helpers";
+import { assistantText, call, cookieOf, frames, latestView, registerAccount, enableTeacher } from "./helpers";
 
 const json = { "Content-Type": "application/json" };
 const migrations = inject("d1Migrations");
 let teacher: string;
-
-async function guest(name?: string): Promise<{ cookie: string; id: string }> {
-  const res = await call("/api/auth/guest", {
-    method: "POST",
-    headers: json,
-    body: JSON.stringify(name ? { name } : {}),
-  });
-  expect(res.status).toBe(200);
-  const user = (await res.json()) as { id: string; guest: boolean };
-  expect(user.guest).toBe(true);
-  return { cookie: cookieOf(res), id: user.id };
-}
 
 async function upgrade(path: string, cookie?: string): Promise<Response | null> {
   return routeAgentRequest(
@@ -53,56 +41,33 @@ beforeAll(async () => {
     headers: json,
     body: JSON.stringify({ email: "demo@socrates.tw", password: "demo-demo" }),
   });
-  teacher = cookieOf(login);
+  teacher = await enableTeacher(cookieOf(login));
 });
 
 describe("unified accounts", () => {
-  it("guest sign-in → cannot open a classroom → registering upgrades the same user, who then can", async () => {
-    const visitor = await guest();
+  it("a new account cannot open a classroom until it turns on teacher mode", async () => {
+    const visitor = await registerAccount();
     const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
       id: string;
     }>;
     const blocked = await call("/api/classrooms", {
       method: "POST",
       headers: { ...json, Cookie: visitor.cookie },
-      body: JSON.stringify({ name: "訪客班", topicId: topics[0]!.id }),
+      body: JSON.stringify({ name: "還不是老師", topicId: topics[0]!.id }),
     });
     expect(blocked.status).toBe(403);
-    expect(((await blocked.json()) as { code: string }).code).toBe("account_required");
+    expect(((await blocked.json()) as { code: string }).code).toBe("teacher_required");
 
-    const registered = await call("/api/auth/register", {
-      method: "POST",
-      headers: { ...json, Cookie: visitor.cookie },
-      body: JSON.stringify({
-        email: `up-${Date.now()}@socrates.tw`,
-        password: "upgrade-pass-1",
-        name: "升級者",
-        tosAccepted: true,
-      }),
-    });
-    expect(registered.status).toBe(200);
-    const account = (await registered.json()) as { id: string; guest: boolean };
-    expect(account).toMatchObject({ id: visitor.id, guest: false });
-    const cookie = cookieOf(registered);
-
+    const cookie = await enableTeacher(visitor.cookie);
     const opened = await call("/api/classrooms", {
       method: "POST",
       headers: { ...json, Cookie: cookie },
-      body: JSON.stringify({ name: "升級者的班", topicId: topics[0]!.id }),
+      body: JSON.stringify({ name: "試用老師的班", topicId: topics[0]!.id }),
     });
     expect(opened.status).toBe(201);
   });
 
-  it("registration needs no display name (guest keeps theirs); PATCH /me renames and re-issues the session", async () => {
-    const visitor = await guest("原本的名字");
-    const registered = await call("/api/auth/register", {
-      method: "POST",
-      headers: { ...json, Cookie: visitor.cookie },
-      body: JSON.stringify({ email: `noname-${Date.now()}@socrates.tw`, password: "noname-pass-1", tosAccepted: true }),
-    });
-    expect(registered.status).toBe(200);
-    expect(((await registered.json()) as { name: string }).name).toBe("原本的名字");
-
+  it("registration needs no display name; PATCH /me renames and re-issues the session", async () => {
     const fresh = await call("/api/auth/register", {
       method: "POST",
       headers: json,
@@ -149,7 +114,7 @@ describe("unified accounts", () => {
         tosAccepted: true,
       }),
     });
-    const cookie = cookieOf(register);
+    const cookie = await enableTeacher(cookieOf(register));
     const own = (await (
       await call("/api/classrooms", {
         method: "POST",
@@ -191,7 +156,7 @@ describe("unified accounts", () => {
     expect(detail.status).toBe(200);
     expect(((await detail.json()) as { role: string; code: string | null }).code).toBeNull();
 
-    const stranger = await guest("路人");
+    const stranger = await registerAccount("路人");
     expect((await call(`/api/classrooms/${own.classroomId}`, { headers: { Cookie: stranger.cookie } })).status).toBe(
       404,
     );
@@ -214,7 +179,7 @@ describe("unified accounts", () => {
 
 describe("solo chats", () => {
   it("CRUD is owner-scoped", async () => {
-    const owner = await guest("獨白者");
+    const owner = await registerAccount("獨白者");
     const created = await call("/api/solo/chats", {
       method: "POST",
       headers: { ...json, Cookie: owner.cookie },
@@ -236,7 +201,7 @@ describe("solo chats", () => {
     });
     expect(((await renamed.json()) as { title: string }).title).toBe("正義與公平");
 
-    const intruder = await guest("闖入者");
+    const intruder = await registerAccount("闖入者");
     expect((await call(`/api/solo/chats/${chat.id}`, { headers: { Cookie: intruder.cookie } })).status).toBe(404);
     expect(
       (await call(`/api/solo/chats/${chat.id}`, { method: "DELETE", headers: { Cookie: intruder.cookie } })).status,
@@ -249,7 +214,7 @@ describe("solo chats", () => {
   });
 
   it("solo thread: owner talks over the same WebSocket protocol; strangers are refused", async () => {
-    const owner = await guest("對話者");
+    const owner = await registerAccount("對話者");
     const chat = (await (
       await call("/api/solo/chats", {
         method: "POST",
@@ -259,7 +224,7 @@ describe("solo chats", () => {
     ).json()) as { id: string; updatedAt: string };
     const thread = `${chat.id}:${owner.id}`;
 
-    const intruder = await guest("偷聽者");
+    const intruder = await registerAccount("偷聽者");
     expect(await refused(thread, intruder.cookie)).toBe(1008);
     expect(await refused(`${chat.id}:${intruder.id}`, intruder.cookie)).toBe(1008);
 
@@ -288,7 +253,7 @@ describe("solo chats", () => {
 
 describe("assistant (quick AI answers)", () => {
   it("answers the latest user turn (mock), validates shape, and requires a session", async () => {
-    const asker = await guest("提問者");
+    const asker = await registerAccount("提問者");
     const answered = await call("/api/assistant", {
       method: "POST",
       headers: { ...json, Cookie: asker.cookie },
@@ -331,7 +296,7 @@ describe("classroom deletion and topic translations", () => {
         body: JSON.stringify({ name: "要刪的班", topicId: topics[0]!.id }),
       })
     ).json()) as { classroomId: string; code: string };
-    const student = await guest("將被移除");
+    const student = await registerAccount("將被移除");
     await call("/api/join", {
       method: "POST",
       headers: { ...json, Cookie: student.cookie },
@@ -392,7 +357,7 @@ describe("create-then-edit courses", () => {
     };
     expect(detail).toMatchObject({ name: "未命名課程", current: null });
 
-    const stranger = await guest("改名路人");
+    const stranger = await registerAccount("改名路人");
     expect(
       (
         await call(`/api/classrooms/${body.classroomId}`, {

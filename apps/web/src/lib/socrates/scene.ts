@@ -115,7 +115,7 @@ export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElemen
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     const fovRad = (camera.fov * Math.PI) / 180;
-    const desiredScreenFrac = mini ? 1.4 : 1.25;
+    const desiredScreenFrac = mini ? 1.1 : 1.25;
     const distance = (modelHeight * desiredScreenFrac) / (2 * Math.tan(fovRad / 2));
     camera.position.set(modelCenter.x, modelCenter.y, modelCenter.z + distance);
     camera.lookAt(modelCenter);

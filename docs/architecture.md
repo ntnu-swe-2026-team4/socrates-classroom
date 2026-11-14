@@ -13,7 +13,7 @@
 | D4  | 對話走 WebSocket（`/agents/chat/:name`，view＋chord ops），SSE 已於 web-next 重建時退役                                                                                                     | 單一真相在 pi transcript；前端 applyImmutable 套件                                       |
 | D5  | 全 Node 化（pnpm workspaces + vitest）；cf 指令走 Node ≥26.12                                                                                                                               | `cf` 載 `cloudflare.config.ts` 不支援 Bun；Node 版本對齊 root AGENTS.md 與 CI（node 26） |
 | D6  | Platform chain（providers.config.yaml）：workers-ai（單 provider，全 CF）；teacher keys（任意 pi builtin provider）排鏈首，平台鏈墊底。自架 DGX Spark 腿暫時移除（等 Tunnel＋key 管控回歸） | 平台鏈全 ZDR；teacher keyed 流量 ToS 移轉老師（2026-11-09）                              |
-| D7  | Teacher keys：老師一 provider 一把 key（#82），學生無 BYOK 入口，byok 端點已退役                                                                                                            | 學生流量一律走平台鏈，ZDR 責任單一                                                       |
+| D7  | Teacher keys：老師可存多把 key × 多個 model、拖曳排序（#82），學生無 BYOK 入口，byok 端點已退役                                                                                             | 學生流量一律走平台鏈，ZDR 責任單一                                                       |
 | D8  | CI/CD：GitHub Actions 官方 cf 範本（build once → dry-run → `--prebuilt` deploy）                                                                                                            | cf 無官方 action，純 steps 是欽定方式                                                    |
 
 ## 1. 系統拓撲
@@ -30,7 +30,7 @@ flowchart TD
 
         HONO --> AUTH["auth：HMAC cookie＋PBKDF2（auth.ts）"]
         HONO --> ROUTES["routes/：auth／join／topics／classrooms／activity／voice／lookup／teacher-keys"]
-        ROUTES --> DB[("D1：users／classrooms／topics／activities／members／reports／pseudonyms／teacher_keys")]
+        ROUTES --> DB[("D1：users／classrooms／topics／activities／members／reports／pseudonyms／teacher_key_entries")]
         HONO --> VOICE["voice：whisper STT／melotts TTS（AI binding）"]
         HONO --> LOOKUP["lookup：runProfile(lookup)"]
         HONO --> GEN["topics/generate：runProfile(topic-gen)"]
@@ -174,7 +174,7 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 
 **請求層 vs 決策層**：fallback legs 的試錯、retry 退避由 pi 原生（`streamWithFallback`／`settings.retry`）；gateway 只決定「誰該拿到哪條 legs、誰的錢、記誰的帳」。調查過 LiteLLM Router／pi-router／pi-fallback-provider（#98 留言，2026-11-06）——結論：不引入，pi 原生＋三個小件已涵蓋。
 
-**credential**：`platform`（env）／`teacher:{user_id}`（D1 `teacher_keys`，一 provider 一把 key，AES-GCM）。學生無 BYOK（#82 定案）。teacher key 設定頁是前端配套（#82）。
+**credential**：`platform`（env）／`teacher:{user_id}:{entry_id}`（D1 `teacher_key_entries`，每筆 entry＝key＋model，AES-GCM；每筆獨立 ledger）。學生無 BYOK（#82 定案）。teacher key 設定頁是前端配套（#82）。
 
 **traffic class**：interactive（對話/lookup）／judgment（分類）／batch（報告/生成）——agent profile 只寫角色，model 全由這裡解析（#113）。
 
@@ -182,8 +182,8 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 
 ## 6. 資料層
 
-- **D1 schema**：users／classrooms／topics／activities／members／reports／pseudonyms／teacher_keys（`migrations/001_init.sql` 單檔）。pi transcript 是對話與違規的唯一真相，無第二份儲存
-- **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 provider 鏈序（#82）
+- **D1 schema**：users／classrooms／topics／activities／members／reports／pseudonyms／teacher_key_entries（`migrations/`）。pi transcript 是對話與違規的唯一真相，無第二份儲存
+- **teacher_key_entries**（`007`）：一位老師多筆 entry（`provider_id`＋`model`＋`key_enc`，AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 teacher legs 鏈序（#82）。同一個 provider 可有多把 key：路由決策選中的 entry 由 `withPinnedCredential`（AsyncLocalStorage）釘住，pi 讀 credential 時取得該 entry 的 key
 - **DO SQLite**：只有 pi 自己的 `pi_*` 表，應用程式不讀寫——agent 狀態與產品資料分離（D2）
 - **保留政策**：AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容（judgment sink 只記 type/source）
 

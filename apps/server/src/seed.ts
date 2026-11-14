@@ -4,6 +4,7 @@ import { hashPassword } from "./auth";
 import { newId, nowIso } from "./http";
 
 export const DEMO_TEACHER = { email: "demo@socrates.tw", password: "demo-demo", name: "林老師" };
+const DEMO_SCHOOL = "示範學校";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const CODE_MAX = 256 - (256 % CODE_ALPHABET.length);
@@ -125,6 +126,22 @@ export async function seedDemo(db: Db, teacherPassword = DEMO_TEACHER.password):
       { id: teacherId, name: DEMO_TEACHER.name, email: DEMO_TEACHER.email, hash, at },
     );
   }
+
+  let schoolId = (await one<{ id: string }>(db, "SELECT id FROM schools WHERE name = $name", { name: DEMO_SCHOOL }))
+    ?.id;
+  if (!schoolId) {
+    schoolId = newId("sch_");
+    await run(db, "INSERT INTO schools (id, name, created_at) VALUES ($id, $name, $at)", {
+      id: schoolId,
+      name: DEMO_SCHOOL,
+      at,
+    });
+  }
+  await run(
+    db,
+    "UPDATE users SET is_admin = 1, teacher_plan = 'school', school_id = $sid, teacher_terms_at = COALESCE(teacher_terms_at, $at) WHERE id = $id",
+    { id: teacherId, sid: schoolId, at },
+  );
 
   const topicCount = await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM topics WHERE owner_id IS NULL");
   if ((topicCount?.n ?? 0) === 0) {

@@ -22,6 +22,7 @@ import {
   AnnouncementsPanel,
   BoardPanel,
   MembersPanel,
+  AddStudentsButton,
   ROOM_TABS,
   RoomTabs,
   roomPanelId,
@@ -36,6 +37,9 @@ export const Route = createFileRoute("/classrooms/$classroomId")({
   beforeLoad: async ({ context }) => {
     const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
     if (!me) throw redirect({ to: "/login" });
+    if (me.guest && !me.preview && me.activityId) {
+      throw redirect({ to: "/dialogue", search: { activityId: me.activityId } });
+    }
   },
   component: ClassroomPage,
 });
@@ -47,6 +51,7 @@ function ClassroomPage() {
   const navigate = Route.useNavigate();
   const room = useQuery({ queryKey: ["classroom", classroomId], queryFn: () => api.getClassroom(classroomId) });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
   const activities = useQuery({
     queryKey: ["classroom", classroomId, "activities"],
     queryFn: () => api.classroomActivities(classroomId),
@@ -87,60 +92,81 @@ function ClassroomPage() {
       : null);
   const teacher = data.role === "teacher";
   const running = data.current && !data.current.finished;
+  const bound = me.data?.kind === "student";
 
   return (
-    <div className="min-h-full pb-10">
-      <header className="border-b border-line bg-card">
-        <div className="flex w-full flex-wrap items-center gap-x-3 px-4 pt-14 md:h-14 md:flex-nowrap md:px-6 md:pt-0">
-          <div className="flex min-w-0 flex-1 items-center gap-2 py-2 md:py-0">
+    <div className="min-h-full bg-paper-deep pb-10">
+      <div className="mx-auto w-full max-w-6xl px-4 pt-14 md:px-6 md:pt-5">
+        <header className="overflow-hidden rounded-xl border border-line bg-paper shadow-sm">
+          <div className="relative flex min-h-[132px] flex-col justify-end gap-2 bg-comic-night px-5 py-4 [--color-ink-faint:rgb(255_255_255/0.65)] [--color-ink-soft:rgb(255_255_255/0.8)] [--color-ink:#ffffff] [--color-paper-deep:rgb(255_255_255/0.14)] md:px-7 md:py-5">
             <Link
               to="/classrooms"
               search={{ view: teacher ? "teacher" : "student" }}
-              aria-label={t("nav_classrooms")}
-              title={t("nav_classrooms")}
-              className="-ml-1.5 flex size-7 shrink-0 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink"
+              hidden={bound}
+              className="absolute top-3 left-4 flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[12.5px] text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink md:left-6"
             >
-              <ArrowLeft className="size-4" />
+              <ArrowLeft className="size-3.5" />
+              {teacher ? t("nav_classrooms") : t("nav_learning")}
             </Link>
             {teacher ? (
               <CourseName room={data} />
             ) : (
-              <h1 className="min-w-0 truncate font-serif text-[17px] leading-tight text-ink">{data.name}</h1>
+              <h1 className="min-w-0 truncate text-[26px] leading-tight font-semibold tracking-tight text-ink md:text-[30px]">
+                {data.name}
+              </h1>
             )}
-            <span className="hidden min-w-0 items-center gap-x-2 truncate text-[12px] text-ink-faint lg:flex">
-              {!teacher && <span className="truncate">{t("classroom_teacher_is", { name: data.teacherName })}</span>}
-              <span className="flex shrink-0 items-center gap-1">
-                <Users className="size-3" />
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-soft">
+              <span>{t("classroom_teacher_is", { name: data.teacherName })}</span>
+              <span className="flex items-center gap-1">
+                <Users className="size-3.5" />
                 {t("classroom_members", { n: data.memberCount })}
               </span>
               {data.current && (
-                <span className={cn("shrink-0", running && "text-moss")}>
-                  · {running ? t("classroom_running") : t("classroom_finished")}
+                <span className="flex items-center gap-1.5">
+                  <span className={cn("size-1.5 rounded-full", running ? "bg-moss" : "bg-ink-faint")} />
+                  {running ? t("classroom_running") : t("classroom_finished")}
                 </span>
               )}
-            </span>
+            </p>
           </div>
-          <div className="order-last flex h-10 w-full items-stretch md:order-none md:h-full md:w-auto">
-            <RoomTabs
-              value={tab}
-              onChange={(next) =>
-                void navigate({
-                  search: (prev) => ({ ...prev, tab: next === "topics" ? undefined : next }),
-                  replace: true,
-                })
-              }
-            />
-          </div>
-          {teacher && (
-            <div className="flex shrink-0 items-center gap-1 md:border-l md:border-line md:pl-2">
-              <PreviewButton room={data} />
-              <DeleteClassroomButton room={data} />
+          <div className="flex h-12 items-stretch gap-2 px-3 md:px-5">
+            <div className="flex min-w-0 flex-1 items-stretch">
+              <RoomTabs
+                value={tab}
+                onChange={(next) =>
+                  void navigate({
+                    search: (prev) => ({ ...prev, tab: next === "topics" ? undefined : next }),
+                    replace: true,
+                  })
+                }
+              />
             </div>
-          )}
-        </div>
-      </header>
+            {teacher && (
+              <div className="flex shrink-0 items-center gap-1">
+                <PreviewButton room={data} />
+                <DeleteClassroomButton room={data} />
+              </div>
+            )}
+          </div>
+        </header>
+      </div>
 
-      <div className={cn("grid w-full gap-4 px-4 pt-4 md:px-6 lg:grid-cols-[minmax(0,1fr)_320px]")}>
+      <div className="mx-auto grid w-full max-w-6xl gap-4 px-4 pt-4 md:px-6 lg:grid-cols-[300px_minmax(0,1fr)]">
+        <aside className="flex flex-col gap-4 max-lg:order-2 lg:sticky lg:top-4 lg:self-start">
+          {teacher && data.url && data.code ? (
+            <>
+              <InviteCard url={data.url} code={data.code} ready={Boolean(data.current)} />
+              <Section title={t("students_card_title")}>
+                <div className="flex flex-col gap-2 p-3">
+                  <p className="text-[12.5px] leading-relaxed text-ink-soft">{t("students_card_desc")}</p>
+                  <AddStudentsButton classroomId={data.id} block />
+                </div>
+              </Section>
+            </>
+          ) : (
+            <AboutCard room={data} />
+          )}
+        </aside>
         <div
           id={roomPanelId(tab)}
           role="tabpanel"
@@ -165,13 +191,6 @@ function ClassroomPage() {
           {tab === "board" && <BoardPanel room={data} />}
           {tab === "members" && <MembersPanel room={data} />}
         </div>
-        <aside className="flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start">
-          {teacher && data.url && data.code ? (
-            <InviteCard url={data.url} code={data.code} ready={Boolean(data.current)} />
-          ) : (
-            <AboutCard room={data} />
-          )}
-        </aside>
       </div>
     </div>
   );
@@ -187,7 +206,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-line bg-card">
+    <section className="overflow-hidden rounded-xl border border-line bg-paper shadow-sm">
       <header className="flex items-center gap-2 border-b border-line px-3 py-2">
         <h2 className="flex-1 text-[13.5px] font-medium text-ink">{title}</h2>
         {actions}
@@ -210,7 +229,7 @@ function SelectedTopic({ room, activity }: { room: ClassroomSummary; activity: C
         activity && (
           <span
             className={cn(
-              "rounded-full px-2 py-0.5 text-[11px]",
+              "rounded-lg px-2 py-0.5 text-[11px]",
               activity.finished ? "bg-paper-deep text-ink-faint" : "bg-moss-wash text-moss",
             )}
           >
@@ -302,7 +321,7 @@ function TopicHistory({
                   </span>
                   <span
                     className={cn(
-                      "shrink-0 rounded-full px-2 py-0.5 text-[11px]",
+                      "shrink-0 rounded-lg px-2 py-0.5 text-[11px]",
                       activity.finished ? "bg-paper-deep text-ink-faint" : "bg-moss-wash text-moss",
                     )}
                   >
@@ -399,7 +418,7 @@ function InviteCard({ url, code, ready }: { url: string; code: string; ready: bo
       <div className="flex flex-col items-center gap-3 p-3 text-center">
         <QrBlock url={url} />
         <span className="font-mono text-2xl tracking-[0.3em] text-ink">{code}</span>
-        <code className="w-full truncate rounded-full bg-paper-deep px-3 py-1 font-mono text-[11.5px] text-ink-soft">
+        <code className="w-full truncate rounded-lg bg-paper-deep px-3 py-1 font-mono text-[11.5px] text-ink-soft">
           {full}
         </code>
         <Button variant="outline" size="sm" className="w-full" onClick={() => void copy()}>
@@ -504,7 +523,9 @@ function CourseName({ room }: { room: ClassroomSummary }) {
   });
   return (
     <div className="flex min-w-0 items-center gap-1">
-      <h1 className="truncate font-serif text-[17px] leading-tight text-ink">{room.name}</h1>
+      <h1 className="truncate text-[26px] leading-tight font-semibold tracking-tight text-ink md:text-[30px]">
+        {room.name}
+      </h1>
       <button
         type="button"
         aria-label={t("classroom_rename")}

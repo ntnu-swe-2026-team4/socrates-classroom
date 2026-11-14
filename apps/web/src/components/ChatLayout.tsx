@@ -1,12 +1,20 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { cn } from "@/components/ui";
+import { SocratesDock } from "@/components/SocratesCompanion";
+import { Segmented, cn } from "@/components/ui";
 import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useT } from "@/i18n";
+import { useCompanion } from "@/lib/companion";
 
 const MOBILE_QUERY = "(max-width: 767px)";
 
-const SidebarContext = createContext<{ open: boolean; toggle: () => void } | null>(null);
+const SidebarContext = createContext<{
+  open: boolean;
+  toggle: () => void;
+  switchable: boolean;
+  showModel: boolean;
+  setShowModel: (next: boolean) => void;
+} | null>(null);
 
 function mediaQuery(): MediaQueryList | null {
   return typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -26,20 +34,28 @@ function useIsMobile(): boolean {
   return mobile;
 }
 
-export function ChatLayout({ sidebar, children }: { sidebar: ReactNode; children: ReactNode }) {
+export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; children: ReactNode }) {
   const t = useT();
   const mobile = useIsMobile();
+  const { visible: switchable } = useCompanion();
   const [desktopOpen, setDesktopOpen] = usePersistentFlag("chat_sidebar_open", true);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopModel, setDesktopModel] = usePersistentFlag("chat_sidebar_model", true);
+  const [mobileModel, setMobileModel] = useState(false);
   const open = mobile ? mobileOpen : desktopOpen;
   const toggle = () => (mobile ? setMobileOpen((value) => !value) : setDesktopOpen(!desktopOpen));
+  const showModel = switchable && (mobile ? mobileModel : desktopModel);
 
   useEffect(() => {
     if (!mobile) setMobileOpen(false);
   }, [mobile]);
 
+  if (!sidebar) return <div className="flex h-full min-h-0 flex-col">{children}</div>;
+
   return (
-    <SidebarContext.Provider value={{ open, toggle }}>
+    <SidebarContext.Provider
+      value={{ open, toggle, switchable, showModel, setShowModel: mobile ? setMobileModel : setDesktopModel }}
+    >
       <div className="flex h-full min-h-0">
         {open && mobile && (
           <button
@@ -64,7 +80,15 @@ export function ChatLayout({ sidebar, children }: { sidebar: ReactNode; children
             if (mobile && (event.target as HTMLElement).closest("a")) setMobileOpen(false);
           }}
         >
-          {sidebar}
+          {showModel ? (
+            <>
+              <SidebarHeader title={t("dlg_socrates")} />
+              <PanelSwitch />
+              {open && <SocratesDock />}
+            </>
+          ) : (
+            sidebar
+          )}
         </aside>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
       </div>
@@ -95,12 +119,39 @@ export function SidebarToggle({ className }: { className?: string }) {
   );
 }
 
-export function SidebarHeader({ title, actions }: { title: ReactNode; actions?: ReactNode }) {
+export function SidebarHeader({
+  title,
+  actions,
+  className,
+}: {
+  title: ReactNode;
+  actions?: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="flex h-14 shrink-0 items-center gap-1 border-b border-line pr-2 pl-3">
+    <div className={cn("flex h-14 shrink-0 items-center gap-1 border-b border-line pr-2 pl-3", className)}>
       <div className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{title}</div>
       {actions}
       <SidebarToggle />
+    </div>
+  );
+}
+
+export function PanelSwitch() {
+  const t = useT();
+  const context = useContext(SidebarContext);
+  if (!context?.switchable) return null;
+  return (
+    <div className="flex shrink-0 justify-center border-b border-line px-3 py-2">
+      <Segmented
+        label={t("chat_panel_switch")}
+        value={context.showModel ? "model" : "list"}
+        onChange={(value) => context.setShowModel(value === "model")}
+        items={[
+          { value: "list", label: t("chat_panel_list") },
+          { value: "model", label: t("dlg_socrates") },
+        ]}
+      />
     </div>
   );
 }

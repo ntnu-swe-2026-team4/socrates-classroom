@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LogOut, MessageSquare, Send, Trash2, UserMinus } from "lucide-react";
-import type { Announcement, ClassroomSummary, Post, PostReply } from "@socrates/shared";
-import { api } from "@/api";
-import { Button, ConfirmDialog, Initial, Input, Spinner, cn } from "@/components/ui";
+import { Check, Copy, KeyRound, LogOut, MessageSquare, Send, Trash2, UserMinus, UserPlus } from "lucide-react";
+import type { Announcement, ClassroomSummary, Post, PostReply, StudentCredential } from "@socrates/shared";
+import { api, ApiError } from "@/api";
+import { Button, ConfirmDialog, FormDialog, Initial, Input, Spinner, cn } from "@/components/ui";
 import { useFormatDate, useT, type MessageKey } from "@/i18n";
 
 export const ROOM_TABS = ["topics", "announcements", "board", "members"] as const;
@@ -110,7 +110,7 @@ function Composer({
   const ready = body.length > 0 && body.length <= 2000 && !submit.isPending;
   return (
     <form
-      className="flex gap-2.5 rounded-2xl border border-line bg-card p-3"
+      className="flex gap-2.5 rounded-xl border border-line bg-card p-3"
       onSubmit={(event) => {
         event.preventDefault();
         if (ready) submit.mutate(body);
@@ -131,7 +131,7 @@ function Composer({
               if (ready) submit.mutate(body);
             }
           }}
-          className="min-h-16 w-full resize-y rounded-xl border border-line-strong bg-paper px-3 py-2 text-[13.5px] leading-relaxed text-ink outline-none placeholder:text-ink-faint focus:border-ember"
+          className="min-h-16 w-full resize-y rounded-xl border border-line-strong bg-paper px-3 py-2 text-[13.5px] leading-relaxed text-ink outline-none placeholder:text-ink-faint focus:border-ink"
         />
         <div className="flex items-center justify-end gap-3">
           {submit.isError && (
@@ -157,7 +157,7 @@ function Byline({ name, teacher, date }: { name: string; teacher: boolean; date:
     <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12.5px]">
       <span className="truncate font-medium text-ink">{name}</span>
       {teacher && (
-        <span className="rounded-full bg-ember-wash px-1.5 py-px text-[10.5px] text-ember">
+        <span className="rounded-lg bg-ember-wash px-1.5 py-px text-[10.5px] text-ember">
           {t("room_teacher_badge")}
         </span>
       )}
@@ -182,7 +182,7 @@ function DeleteIcon({ label, onClick }: { label: string; onClick: () => void }) 
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-2xl border border-dashed border-line px-3 py-6 text-center text-[13px] text-ink-faint">
+    <p className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-[13px] text-ink-faint">
       {children}
     </p>
   );
@@ -230,7 +230,7 @@ export function AnnouncementsPanel({ room }: { room: ClassroomSummary }) {
       ) : (
         <ul className="flex flex-col gap-2">
           {list.data.map((entry) => (
-            <li key={entry.id} className="rounded-2xl border border-line bg-card p-3">
+            <li key={entry.id} className="rounded-xl border border-line bg-card p-3">
               <div className="flex items-start gap-2.5">
                 <Initial name={entry.authorName} className="size-8 text-[13px]" />
                 <div className="min-w-0 flex-1">
@@ -346,7 +346,7 @@ function Thread({
   const body = draft.trim();
   const repliesId = `thread-${post.id}-replies`;
   return (
-    <li className="rounded-2xl border border-line bg-card">
+    <li className="rounded-xl border border-line bg-card">
       <article className="flex items-start gap-2.5 p-3">
         <Initial name={post.authorName} className="size-8 text-[13px]" />
         <div className="min-w-0 flex-1">
@@ -357,7 +357,7 @@ function Thread({
             aria-expanded={open}
             aria-controls={repliesId}
             onClick={() => setOpen((value) => !value)}
-            className="mt-1.5 -ml-2 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 text-[12px] text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
+            className="mt-1.5 -ml-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
           >
             <MessageSquare className="size-3.5" />
             {open
@@ -430,9 +430,14 @@ export function MembersPanel({ room }: { room: ClassroomSummary }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const list = useQuery({ queryKey: ["classroom", room.id, "members"], queryFn: () => api.listMembers(room.id) });
-  const [kick, setKick] = useState<{ id: string; name: string } | null>(null);
+  const [kick, setKick] = useState<{ id: string; name: string; kind?: string } | null>(null);
   const [leaving, setLeaving] = useState(false);
+  const [credentials, setCredentials] = useState<StudentCredential[] | null>(null);
   const owner = room.role === "teacher";
+  const resetPassword = useMutation({
+    mutationFn: (userId: string) => api.resetStudentPassword(room.id, userId),
+    onSuccess: (credential) => setCredentials([credential]),
+  });
   const remove = useMutation({
     mutationFn: (userId: string) => api.removeMember(room.id, userId),
     onSettled: async () => {
@@ -453,10 +458,10 @@ export function MembersPanel({ room }: { room: ClassroomSummary }) {
   const { teacher, members } = list.data;
   return (
     <div className="flex flex-col gap-3">
-      <section className="overflow-hidden rounded-2xl border border-line bg-card">
+      <section className="overflow-hidden rounded-xl border border-line bg-card">
         <header className="flex items-center gap-2 border-b border-line px-3 py-2">
           <h2 className="flex-1 text-[13.5px] font-medium text-ink">{t("room_members_teacher")}</h2>
-          <span className="rounded-full bg-paper-deep px-2 py-0.5 text-[11px] text-ink-soft">1</span>
+          <span className="rounded-lg bg-paper-deep px-2 py-0.5 text-[11px] text-ink-soft">1</span>
         </header>
         <div className="flex items-center gap-2.5 px-3 py-2.5">
           <Initial name={teacher.name} className="size-8 text-[13px]" />
@@ -464,10 +469,11 @@ export function MembersPanel({ room }: { room: ClassroomSummary }) {
           {teacher.id === me?.id && <YouBadge />}
         </div>
       </section>
-      <section className="overflow-hidden rounded-2xl border border-line bg-card">
+      <section className="overflow-hidden rounded-xl border border-line bg-card">
         <header className="flex items-center gap-2 border-b border-line px-3 py-2">
           <h2 className="flex-1 text-[13.5px] font-medium text-ink">{t("room_members_students")}</h2>
-          <span className="rounded-full bg-paper-deep px-2 py-0.5 text-[11px] text-ink-soft">{members.length}</span>
+          <span className="rounded-lg bg-paper-deep px-2 py-0.5 text-[11px] text-ink-soft">{members.length}</span>
+          {owner && <AddStudentsButton classroomId={room.id} />}
         </header>
         {members.length === 0 ? (
           <p className="px-3 py-3 text-[13px] text-ink-faint">{t("room_members_empty")}</p>
@@ -480,11 +486,31 @@ export function MembersPanel({ room }: { room: ClassroomSummary }) {
                   <p className="flex items-center gap-1.5 text-[13.5px] text-ink">
                     <span className="truncate">{member.name}</span>
                     {member.id === me?.id && <YouBadge />}
+                    {owner && member.kind && member.kind !== "member" && (
+                      <span className="shrink-0 rounded-lg bg-paper-deep px-1.5 py-px text-[10.5px] text-ink-soft">
+                        {member.kind === "student" ? t("account_kind_student") : t("account_kind_guest")}
+                      </span>
+                    )}
                   </p>
                   <p className="text-[11.5px] text-ink-faint">
-                    {t("room_members_joined", { date: formatDate(member.joinedAt) })}
+                    {owner && member.username ? (
+                      <span className="font-mono">{member.username}</span>
+                    ) : (
+                      t("room_members_joined", { date: formatDate(member.joinedAt) })
+                    )}
                   </p>
                 </div>
+                {owner && member.kind === "student" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={resetPassword.isPending && resetPassword.variables === member.id}
+                    onClick={() => resetPassword.mutate(member.id)}
+                  >
+                    <KeyRound className="size-3.5" />
+                    {t("students_reset")}
+                  </Button>
+                )}
                 {owner && (
                   <Button
                     variant="ghost"
@@ -502,12 +528,12 @@ export function MembersPanel({ room }: { room: ClassroomSummary }) {
           </ul>
         )}
       </section>
-      {remove.isError && (
+      {(remove.isError || resetPassword.isError) && (
         <p role="alert" className="text-[12.5px] text-flag">
           {t("common_error")}
         </p>
       )}
-      {!owner && me && (
+      {!owner && me && me.kind !== "student" && (
         <div className="flex flex-col items-start gap-1.5">
           <Button
             variant="outline"
@@ -530,7 +556,7 @@ export function MembersPanel({ room }: { room: ClassroomSummary }) {
         open={kick !== null}
         danger
         title={t("room_members_remove_title", { name: kick?.name ?? "" })}
-        body={t("room_members_remove_body")}
+        body={kick?.kind === "student" ? t("students_remove_body") : t("room_members_remove_body")}
         confirmLabel={t("room_members_remove")}
         cancelLabel={t("common_cancel")}
         onCancel={() => setKick(null)}
@@ -539,6 +565,7 @@ export function MembersPanel({ room }: { room: ClassroomSummary }) {
           setKick(null);
         }}
       />
+      {credentials && <CredentialsDialog credentials={credentials} onClose={() => setCredentials(null)} />}
       <ConfirmDialog
         open={leaving}
         danger
@@ -559,8 +586,128 @@ export function MembersPanel({ room }: { room: ClassroomSummary }) {
 function YouBadge() {
   const t = useT();
   return (
-    <span className="shrink-0 rounded-full bg-paper-deep px-1.5 py-px text-[10.5px] text-ink-soft">
+    <span className="shrink-0 rounded-lg bg-paper-deep px-1.5 py-px text-[10.5px] text-ink-soft">
       {t("room_members_you")}
     </span>
+  );
+}
+
+function CredentialsDialog({ credentials, onClose }: { credentials: StudentCredential[]; onClose: () => void }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const text = credentials.map((entry) => [entry.name, entry.username, entry.password].join("\t")).join("\n");
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div className="anim-fade absolute inset-0 bg-black/40" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="credentials-title"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") onClose();
+        }}
+        className="anim-rise relative flex max-h-[85dvh] w-full max-w-lg flex-col gap-3 rounded-xl border border-line bg-paper p-5 shadow-xl"
+      >
+        <div>
+          <h2 id="credentials-title" className="font-serif text-[17px] text-ink">
+            {t("students_credentials_title")}
+          </h2>
+          <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">{t("students_credentials_desc")}</p>
+        </div>
+        <div className="min-h-0 overflow-auto rounded-xl border border-line">
+          <table className="w-full text-left text-[13px]">
+            <thead className="bg-paper-deep/60 text-[12px] text-ink-soft">
+              <tr>
+                <th className="px-3 py-2 font-medium">{t("register_name")}</th>
+                <th className="px-3 py-2 font-medium">{t("student_username")}</th>
+                <th className="px-3 py-2 font-medium">{t("login_password")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {credentials.map((entry) => (
+                <tr key={entry.id} className="border-t border-line">
+                  <td className="px-3 py-2 text-ink">{entry.name}</td>
+                  <td className="px-3 py-2 font-mono text-ink">{entry.username}</td>
+                  <td className="px-3 py-2 font-mono text-ink">{entry.password}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              void navigator.clipboard.writeText(text).then(() => setCopied(true));
+            }}
+          >
+            {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+            {copied ? t("students_copied") : t("students_copy")}
+          </Button>
+          <Button onClick={onClose}>{t("students_done")}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AddStudentsButton({ classroomId, block = false }: { classroomId: string; block?: boolean }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [namesText, setNamesText] = useState("");
+  const [credentials, setCredentials] = useState<StudentCredential[] | null>(null);
+  const names = namesText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const create = useMutation({
+    mutationFn: () => api.createStudents(classroomId, names),
+    onSuccess: async (created) => {
+      setOpen(false);
+      setNamesText("");
+      setCredentials(created);
+      await queryClient.invalidateQueries({ queryKey: ["classroom", classroomId] });
+      await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+    },
+  });
+  return (
+    <>
+      <Button size="sm" variant="outline" className={block ? "w-full" : undefined} onClick={() => setOpen(true)}>
+        <UserPlus className="size-3.5" />
+        {t("students_add")}
+      </Button>
+      <FormDialog
+        open={open}
+        title={t("students_add")}
+        description={t("students_add_desc")}
+        submitLabel={t("students_create", { count: names.length })}
+        cancelLabel={t("common_cancel")}
+        canSubmit={names.length > 0 && names.length <= 50}
+        submitting={create.isPending}
+        onSubmit={() => create.mutate()}
+        onCancel={() => {
+          setOpen(false);
+          create.reset();
+        }}
+      >
+        <textarea
+          value={namesText}
+          rows={8}
+          aria-label={t("students_names")}
+          placeholder={t("students_names_placeholder")}
+          onChange={(event) => setNamesText(event.target.value)}
+          className="w-full resize-y rounded-xl border border-line-strong bg-paper px-3 py-2 text-[13.5px] text-ink outline-none focus:border-ink"
+        />
+        {create.isError && (
+          <p role="alert" className="text-[12.5px] text-flag">
+            {create.error instanceof ApiError && ["name_taken", "trial_limit"].includes(create.error.code)
+              ? create.error.message
+              : t("common_error")}
+          </p>
+        )}
+      </FormDialog>
+      {credentials && <CredentialsDialog credentials={credentials} onClose={() => setCredentials(null)} />}
+    </>
   );
 }

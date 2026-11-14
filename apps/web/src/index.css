@@ -9,42 +9,48 @@
   --spacing-topbar: 6rem;
 
   --color-paper: #ffffff;
-  --color-card: #f7f7f5;
-  --color-paper-deep: #efeeea;
-  --color-paper-shade: #e2e0d9;
-  --color-ink: #17181c;
-  --color-ink-soft: #55575e;
-  --color-ink-faint: #8d8f96;
-  --color-line: rgb(20 20 20 / 0.09);
-  --color-line-strong: rgb(20 20 20 / 0.18);
-  --color-ember: #b3813a;
-  --color-ember-deep: #8a6329;
-  --color-ember-wash: rgb(179 129 58 / 0.13);
-  --color-on-ember: #221a0c;
-  --color-moss: #66794f;
-  --color-moss-wash: rgb(102 121 79 / 0.13);
-  --color-flag: #9c4a3c;
-  --color-flag-wash: rgb(156 74 60 / 0.13);
+  --color-card: #faf9f6;
+  --color-paper-deep: #f1efe9;
+  --color-paper-shade: #dcd8cd;
+  --color-ink: #161514;
+  --color-ink-soft: #55514a;
+  --color-ink-faint: #8b867c;
+  --color-line: rgb(22 21 20 / 0.13);
+  --color-line-strong: rgb(22 21 20 / 0.28);
+  --color-ember: #c1302a;
+  --color-ember-deep: #9c2420;
+  --color-ember-wash: rgb(206 174 98 / 0.22);
+  --color-on-ember: #ffffff;
+  --color-moss: #5c6b2f;
+  --color-moss-wash: rgb(92 107 47 / 0.14);
+  --color-flag: #a3241f;
+  --color-flag-wash: rgb(163 36 31 / 0.1);
+  --color-vermilion: #c1302a;
+  --color-comic-ink: #0b0b0b;
+  --color-comic-paper: #ffffff;
+  --color-comic-night: #202022;
+  --color-comic-ochre: #ceae62;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --color-paper: #1f2228;
-  --color-card: #262a31;
-  --color-paper-deep: #2d3139;
-  --color-paper-shade: #383d47;
-  --color-ink: #edeae2;
-  --color-ink-soft: #aeb1ba;
-  --color-ink-faint: #7d818d;
-  --color-line: rgb(237 234 226 / 0.1);
-  --color-line-strong: rgb(237 234 226 / 0.19);
-  --color-ember: #c9a15a;
-  --color-ember-deep: #8f7442;
-  --color-ember-wash: rgb(201 161 90 / 0.14);
-  --color-moss: #8ca07a;
-  --color-moss-wash: rgb(140 160 122 / 0.14);
-  --color-flag: #b2604f;
-  --color-flag-wash: rgb(178 96 79 / 0.14);
+  --color-paper: #2a2b2f;
+  --color-card: #303136;
+  --color-paper-deep: #1f2023;
+  --color-paper-shade: #4a4b51;
+  --color-ink: #f1efe9;
+  --color-ink-soft: #b8b4aa;
+  --color-ink-faint: #827e75;
+  --color-line: rgb(241 239 233 / 0.12);
+  --color-line-strong: rgb(241 239 233 / 0.26);
+  --color-ember: #e5645a;
+  --color-ember-deep: #c1302a;
+  --color-ember-wash: rgb(206 174 98 / 0.16);
+  --color-on-ember: #ffffff;
+  --color-moss: #9aab6e;
+  --color-moss-wash: rgb(154 171 110 / 0.14);
+  --color-flag: #e07a70;
+  --color-flag-wash: rgb(224 122 112 / 0.14);
 }
 
 :root {
@@ -181,4 +187,67 @@ body {
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+@keyframes wind-drift {
+  from {
+    transform: translate3d(-3%, 0, 0);
+  }
+  to {
+    transform: translate3d(3%, 0, 0);
+  }
+}
+
+.anim-wind {
+  animation: wind-drift 13s ease-in-out infinite alternate;
+}
+
+.anim-wind-slow {
+  animation: wind-drift 21s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes stride {
+  to {
+    transform: translate3d(-100%, 0, 0);
+  }
+}
+
+@keyframes struggle {
+  from {
+    rotate: -9deg;
+  }
+  to {
+    rotate: 9deg;
+  }
+}
+
+.anim-stride {
+  animation: stride 1.2s steps(12) infinite;
+}
+
+.anim-struggle {
+  transform-origin: 50% 12%;
+}
+
+[data-held="true"] .anim-stride {
+  animation-duration: 0.4s;
+}
+
+[data-held="true"] .anim-struggle {
+  animation: struggle 0.17s ease-in-out infinite alternate;
+}
+
+[data-live="false"] .anim-wind,
+[data-live="false"] .anim-wind-slow,
+[data-live="false"] .anim-stride {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-wind,
+  .anim-wind-slow,
+  .anim-stride,
+  [data-held="true"] .anim-struggle {
+    animation: none;
+  }
 }

@@ -68,14 +68,6 @@
       }
     }
   },
-  "overrides": [
-    {
-      "includes": ["apps/web/src/landing/**"],
-      "linter": {
-        "enabled": false
-      }
-    }
-  ],
   "json": {
     "formatter": {
       "enabled": true

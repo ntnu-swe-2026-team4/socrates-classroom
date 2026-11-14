@@ -1,4 +1,4 @@
-import type { Lang, User } from "@socrates/shared";
+import { TRIAL_LIMITS, type Lang, type User } from "@socrates/shared";
 import type { Db } from "../db/d1";
 import { one } from "../db/d1";
 import { fail } from "../http";
@@ -91,6 +91,7 @@ export async function requireMembership(
   user: User,
 ): Promise<{ activity: ActivityRow; classroom: ClassroomRow; member: MemberRow | null; isTeacher: boolean }> {
   const { activity, classroom } = await activityOf(db, activityId);
+  if (user.kind === "guest" && !user.preview && user.activityId !== activityId) fail(403, "forbidden");
   if (classroom.teacher_id === user.id) return { activity, classroom, member: null, isTeacher: true };
   const member = await one<MemberRow>(db, "SELECT * FROM members WHERE classroom_id = $cid AND user_id = $uid", {
     cid: classroom.id,
@@ -98,4 +99,19 @@ export async function requireMembership(
   });
   if (!member) fail(403, "forbidden");
   return { activity, classroom, member, isTeacher: false };
+}
+
+export const TRIAL_LIMIT_VARS = { classrooms: TRIAL_LIMITS.classrooms, members: TRIAL_LIMITS.membersPerClassroom };
+
+export async function assertSeats(db: Db, classroomId: string, adding: number): Promise<void> {
+  const row = await one<{ plan: string | null; seats: number }>(
+    db,
+    `SELECT u.teacher_plan AS plan,
+       (SELECT COUNT(*) FROM members m JOIN users mu ON mu.id = m.user_id
+        WHERE m.classroom_id = c.id AND mu.preview_classroom_id IS NULL) AS seats
+     FROM classrooms c JOIN users u ON u.id = c.teacher_id WHERE c.id = $cid`,
+    { cid: classroomId },
+  );
+  if (!row || row.plan === "school") return;
+  if (Number(row.seats) + adding > TRIAL_LIMITS.membersPerClassroom) fail(403, "trial_limit", TRIAL_LIMIT_VARS);
 }

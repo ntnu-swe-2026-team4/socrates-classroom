@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { seedDemo } from "../src/seed";
 import { SESSION_COOKIE } from "../src/auth";
-import { call, cookieOf } from "./helpers";
+import { call, cookieOf, registerAccount, enableTeacher } from "./helpers";
 
 const json = { "Content-Type": "application/json" };
 const migrations = inject("d1Migrations");
@@ -21,13 +21,6 @@ interface PostShape {
   replies: Array<Omit<PostShape, "replies">>;
 }
 
-async function guest(name: string): Promise<{ cookie: string; id: string }> {
-  const res = await call("/api/auth/guest", { method: "POST", headers: json, body: JSON.stringify({ name }) });
-  expect(res.status).toBe(200);
-  const user = (await res.json()) as { id: string };
-  return { cookie: cookieOf(res), id: user.id };
-}
-
 async function classroom(name: string): Promise<{ id: string; code: string }> {
   const res = await call("/api/classrooms", {
     method: "POST",
@@ -40,7 +33,7 @@ async function classroom(name: string): Promise<{ id: string; code: string }> {
 }
 
 async function student(code: string, name: string): Promise<{ cookie: string; id: string }> {
-  const user = await guest(name);
+  const user = await registerAccount(name);
   const res = await call("/api/join", {
     method: "POST",
     headers: { ...json, Cookie: user.cookie },
@@ -72,7 +65,7 @@ beforeAll(async () => {
     headers: json,
     body: JSON.stringify({ email: "demo@socrates.tw", password: "demo-demo" }),
   });
-  teacher = cookieOf(login);
+  teacher = await enableTeacher(cookieOf(login));
   const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>;
   topicId = topics[0]!.id;
 });
@@ -81,7 +74,7 @@ describe("announcements", () => {
   it("owner posts and deletes; members read newest first; students cannot post; strangers get 404", async () => {
     const room = await classroom("公告班");
     const alice = await student(room.code, "公告甲");
-    const stranger = await guest("公告路人");
+    const stranger = await registerAccount("公告路人");
     const base = `/api/classrooms/${room.id}/announcements`;
 
     const first = await send(base, teacher, "POST", { body: "第一則\n第二行" });
@@ -135,7 +128,7 @@ describe("members", () => {
       (await send(`/api/classrooms/${room.id}/posts`, previewCookie, "POST", { body: "測試學生發言" })).status,
     ).toBe(201);
 
-    expect((await call(base, { headers: { Cookie: (await guest("成員路人")).cookie } })).status).toBe(404);
+    expect((await call(base, { headers: { Cookie: (await registerAccount("成員路人")).cookie } })).status).toBe(404);
     expect((await send(`${base}/${roster.teacher.id}`, teacher, "DELETE")).status).toBe(403);
     expect((await send(`${base}/${roster.teacher.id}`, alice.cookie, "DELETE")).status).toBe(403);
     expect((await send(`${base}/${bob.id}`, alice.cookie, "DELETE")).status).toBe(403);

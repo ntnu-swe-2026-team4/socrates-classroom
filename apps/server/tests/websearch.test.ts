@@ -4,7 +4,7 @@ import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { seedDemo } from "../src/seed";
-import { call, cookieOf, frames } from "./helpers";
+import { call, cookieOf, frames, enableTeacher } from "./helpers";
 
 let thread: string;
 let cookie: string;
@@ -32,7 +32,7 @@ beforeAll(async () => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: "demo@socrates.tw", password: "demo-demo" }),
   });
-  const teacher = cookieOf(login);
+  const teacher = await enableTeacher(cookieOf(login));
   const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>;
   const created = (await (
     await call("/api/classrooms", {

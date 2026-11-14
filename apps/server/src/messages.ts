@@ -91,6 +91,31 @@ const M: Record<ErrorCode, Entry> = {
     en: "This provider is not supported.",
     es: "Este proveedor no es compatible.",
   },
+  teacher_required: {
+    zh: "請先在設定開啟教師模式。",
+    en: "Turn on teacher mode in Settings first.",
+    es: "Activa primero el modo docente en Ajustes.",
+  },
+  teacher_terms_required: {
+    zh: "開啟教師模式前需要先同意教師條款。",
+    en: "Accept the teacher terms before turning on teacher mode.",
+    es: "Acepta los términos para docentes antes de activar el modo docente.",
+  },
+  trial_limit: {
+    zh: "已達試用方案上限（最多 {classrooms} 間教室、每間 {members} 人）。請聯絡我們升級為學校方案。",
+    en: "You have reached the trial limit (up to {classrooms} classrooms, {members} people each). Contact us to upgrade to a school plan.",
+    es: "Has alcanzado el límite de la prueba (hasta {classrooms} clases, {members} personas cada una). Contáctanos para pasar a un plan escolar.",
+  },
+  student_restricted: {
+    zh: "學生帳號只能使用所屬的班級。",
+    en: "Student accounts can only use their own class.",
+    es: "Las cuentas de estudiante solo pueden usar su propia clase.",
+  },
+  guest_session_expired: {
+    zh: "這場活動已結束，訪客身分已失效。",
+    en: "This activity has ended, so your guest session has expired.",
+    es: "La actividad ha terminado y tu sesión de invitado ha caducado.",
+  },
   account_required: {
     zh: "請先登入正式帳號才能開課。",
     en: "Sign in with a full account to open a classroom.",

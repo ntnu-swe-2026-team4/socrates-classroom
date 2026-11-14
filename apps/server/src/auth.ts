@@ -2,6 +2,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { User } from "@socrates/shared";
 import type { Ctx } from "./http";
 import { timingSafeEqual } from "./auth-crypto";
+import { one, type Db } from "./db/d1";
 
 export const SESSION_COOKIE = "socrates_session";
 export const PREVIEW_RETURN_COOKIE = "socrates_preview_return";
@@ -118,6 +119,75 @@ export async function userFromSessionToken(
   } catch {
     return null;
   }
+}
+
+interface AccountRow {
+  id: string;
+  name: string;
+  is_guest: number;
+  is_admin: number;
+  teacher_plan: "trial" | "school" | null;
+  teacher_mode: number;
+  school_name: string | null;
+  username: string | null;
+  student_classroom_id: string | null;
+  guest_activity_id: string | null;
+  preview_classroom_id: string | null;
+  guest_activity_open: number | null;
+}
+
+const ACCOUNT_SQL = `SELECT u.id, u.name, u.is_guest, u.is_admin, u.teacher_plan, u.teacher_mode, s.name AS school_name,
+  u.username, u.student_classroom_id, u.guest_activity_id, u.preview_classroom_id,
+  CASE WHEN a.id IS NOT NULL AND (a.finished_at IS NULL OR a.finished_at > $cutoff) THEN 1 ELSE 0 END AS guest_activity_open
+  FROM users u
+  LEFT JOIN schools s ON s.id = u.school_id
+  LEFT JOIN activities a ON a.id = u.guest_activity_id
+  WHERE u.id = $id`;
+
+function accountUser(row: AccountRow): User {
+  const kind = row.student_classroom_id ? "student" : row.is_guest === 1 ? "guest" : "member";
+  return {
+    id: row.id,
+    name: row.name,
+    guest: kind === "guest",
+    kind,
+    admin: row.is_admin === 1,
+    teacherPlan: row.teacher_plan,
+    teacherMode: row.teacher_plan !== null && row.teacher_mode === 1,
+    schoolName: row.school_name,
+    username: row.username,
+    classroomId: row.student_classroom_id,
+    activityId: row.guest_activity_id,
+    ...(row.preview_classroom_id ? { preview: true, previewClassroomId: row.preview_classroom_id } : {}),
+  };
+}
+
+const GUEST_GRACE_MS = 24 * 3600_000;
+
+const accountRow = (db: Db, id: string) =>
+  one<AccountRow>(db, ACCOUNT_SQL, { id, cutoff: new Date(Date.now() - GUEST_GRACE_MS).toISOString() });
+
+export async function loadAccount(db: Db, id: string): Promise<User | null> {
+  const row = await accountRow(db, id);
+  return row ? accountUser(row) : null;
+}
+
+export interface SessionState {
+  user: User | null;
+  expired: boolean;
+}
+
+export async function resolveSession(
+  env: { AUTH_SECRET?: string; DB: D1Database },
+  token: string | undefined,
+): Promise<SessionState> {
+  const claims = await userFromSessionToken({ env }, token);
+  if (!claims) return { user: null, expired: false };
+  const row = await accountRow(env.DB, claims.id);
+  if (!row) return { user: null, expired: false };
+  const user = accountUser(row);
+  if (user.kind === "guest" && !user.preview && row.guest_activity_open !== 1) return { user: null, expired: true };
+  return { user, expired: false };
 }
 
 function setTokenCookie(c: Ctx, name: string, token: string): void {

@@ -3,7 +3,7 @@ import { ApiError } from "@socrates/shared";
 import { localize } from "./messages";
 import { normalizeLang, type AppEnv } from "./http";
 import { seedDemo } from "./seed";
-import { SESSION_COOKIE, userFromSessionToken } from "./auth";
+import { SESSION_COOKIE, resolveSession } from "./auth";
 import { getCookie } from "hono/cookie";
 import { authRoutes } from "./routes/auth";
 import { oauthRoutes } from "./routes/oauth";
@@ -17,6 +17,8 @@ import { assistantRoutes } from "./routes/assistant";
 import { teacherKeyRoutes } from "./routes/teacher-keys";
 import { soloRoutes } from "./routes/solo";
 import { communityRoutes } from "./routes/community";
+import { accountRoutes } from "./routes/accounts";
+import { notificationRoutes } from "./routes/notifications";
 import { timingSafeEqual } from "./auth-crypto";
 
 export function createApi() {
@@ -32,7 +34,9 @@ export function createApi() {
     .route("/", assistantRoutes())
     .route("/", teacherKeyRoutes())
     .route("/", soloRoutes())
-    .route("/", communityRoutes());
+    .route("/", communityRoutes())
+    .route("/", accountRoutes())
+    .route("/", notificationRoutes());
 }
 export type RpcApi = ReturnType<typeof createApi>;
 
@@ -41,7 +45,9 @@ export function createApp() {
     .use("/api/*", async (c, next) => {
       c.set("lang", normalizeLang(c.req.header("Accept-Language")));
       const token = getCookie(c, SESSION_COOKIE);
-      c.set("user", await userFromSessionToken({ env: c.env }, token));
+      const session = await resolveSession(c.env, token);
+      c.set("user", session.user);
+      c.set("sessionExpired", session.expired);
       await next();
     })
     .route("/api", createApi())

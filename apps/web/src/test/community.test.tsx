@@ -7,7 +7,6 @@ import { routeTree } from "@/routeTree.gen";
 import { setLocale } from "@/i18n";
 
 vi.mock("@/components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
-vi.mock("@/landing/LandAnimation", () => ({ LandAnimation: () => null }));
 vi.mock("agents/react", () => ({
   useAgent: () => ({
     send: () => {},

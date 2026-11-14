@@ -1,13 +1,7 @@
 import { Hono } from "hono";
-import {
-  GuestInputSchema,
-  LoginInputSchema,
-  ProfileInputSchema,
-  RegisterInputSchema,
-  type User,
-} from "@socrates/shared";
-import { batch, one, run } from "../db/d1";
-import { DUMMY_HASH, endSession, hashPassword, startSession, verifyPassword } from "../auth";
+import { LoginInputSchema, ProfileInputSchema, RegisterInputSchema, type User } from "@socrates/shared";
+import { one, run } from "../db/d1";
+import { DUMMY_HASH, endSession, hashPassword, loadAccount, startSession, verifyPassword } from "../auth";
 import {
   enforceIpLimit,
   fail,
@@ -20,28 +14,15 @@ import {
   type AppEnv,
   type Ctx,
 } from "../http";
+import { assertSeats } from "../services/members";
 import { enabledProviders } from "./oauth-config";
-
-interface UserRow {
-  id: string;
-  name: string;
-  email: string | null;
-  password_hash: string | null;
-}
-
-const GUEST_PREFIX = { zh: "訪客", en: "Guest", es: "Invitado" } as const;
-
-function guestName(c: Ctx): string {
-  const [byte1 = 0, byte2 = 0] = crypto.getRandomValues(new Uint8Array(2));
-  return `${GUEST_PREFIX[langOf(c)]} ${String(((byte1 << 8) | byte2) % 10000).padStart(4, "0")}`;
-}
 
 interface JoinTarget {
   id: string;
   teacher_id: string;
 }
 
-async function joinTarget(c: Ctx, code: string, name: string, userId: string | null): Promise<JoinTarget> {
+async function joinTarget(c: Ctx, code: string, name: string): Promise<JoinTarget> {
   const classroom = await one<{ id: string; teacher_id: string; current_activity_id: string | null }>(
     c.env.DB,
     "SELECT id, teacher_id, current_activity_id FROM classrooms WHERE join_code = $code",
@@ -59,7 +40,8 @@ async function joinTarget(c: Ctx, code: string, name: string, userId: string | n
     "SELECT user_id FROM members WHERE classroom_id = $cid AND name = $name",
     { cid: classroom.id, name },
   );
-  if (clash && clash.user_id !== userId) fail(409, "name_taken");
+  if (clash) fail(409, "name_taken");
+  await assertSeats(c.env.DB, classroom.id, 1);
   return { id: classroom.id, teacher_id: classroom.teacher_id };
 }
 
@@ -73,44 +55,61 @@ async function addMember(c: Ctx, target: JoinTarget, userId: string, name: strin
   );
 }
 
+async function sessionFor(c: Ctx, id: string): Promise<User> {
+  const user = await loadAccount(c.env.DB, id);
+  if (!user) fail(401, "unauthorized");
+  await startSession(c, user);
+  return user;
+}
+
 export function authRoutes() {
   return new Hono<AppEnv>()
-    .get("/me", (c) => c.json(c.get("user")))
+    .get("/me", (c) => {
+      if (c.get("sessionExpired")) fail(401, "guest_session_expired");
+      return c.json(c.get("user"));
+    })
     .patch("/me", async (c) => {
       const current = requireUser(c);
       if (current.preview) fail(403, "forbidden");
       const input = await parseBody(c, ProfileInputSchema);
-      await run(c.env.DB, "UPDATE users SET name = $name WHERE id = $id", { id: current.id, name: input.name });
-      const user: User = { ...current, name: input.name };
-      await startSession(c, user);
-      return c.json(user);
+      if (input.name !== undefined) {
+        if (current.kind === "student") fail(403, "student_restricted");
+        await run(c.env.DB, "UPDATE users SET name = $name WHERE id = $id", { id: current.id, name: input.name });
+      }
+      if (input.teacherMode !== undefined) {
+        if (current.kind !== "member")
+          fail(403, current.kind === "student" ? "student_restricted" : "account_required");
+        if (input.teacherMode && !current.teacherPlan) {
+          if (!input.acceptTeacherTerms) fail(422, "teacher_terms_required");
+          await run(
+            c.env.DB,
+            "UPDATE users SET teacher_plan = 'trial', teacher_mode = 1, teacher_terms_at = $at WHERE id = $id",
+            { id: current.id, at: nowIso() },
+          );
+        } else {
+          await run(c.env.DB, "UPDATE users SET teacher_mode = $mode WHERE id = $id", {
+            id: current.id,
+            mode: input.teacherMode ? 1 : 0,
+          });
+        }
+      }
+      return c.json(await sessionFor(c, current.id));
     })
     .get("/auth/providers", (c) => c.json(enabledProviders(c.env)))
     .post("/auth/login", async (c) => {
       await enforceIpLimit(c, "login", 30);
       const input = await parseBody(c, LoginInputSchema);
-      const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE email = $email", {
-        email: input.email,
-      });
+      const byEmail = input.identifier.includes("@");
+      const row = await one<{ id: string; password_hash: string | null }>(
+        c.env.DB,
+        byEmail
+          ? "SELECT id, password_hash FROM users WHERE email = $identifier"
+          : "SELECT id, password_hash FROM users WHERE username = $identifier",
+        { identifier: input.identifier },
+      );
       const ok = await verifyPassword(input.password, row?.password_hash ?? DUMMY_HASH);
       if (!row || !ok) fail(401, "unauthorized");
-      const user: User = { id: row.id, name: row.name, guest: false };
-      await startSession(c, user);
-      return c.json(user);
-    })
-    .post("/auth/guest", async (c) => {
-      await enforceIpLimit(c, "guest", 30);
-      const input = await parseBody(c, GuestInputSchema);
-      const current = c.get("user");
-      if (current && !current.preview) return c.json(current);
-      const user: User = { id: newId("u_"), name: input.name || guestName(c), guest: true };
-      await run(
-        c.env.DB,
-        "INSERT INTO users (id, name, is_guest, lang, created_at) VALUES ($id, $name, 1, $lang, $at)",
-        { id: user.id, name: user.name, lang: langOf(c), at: nowIso() },
-      );
-      await startSession(c, user);
-      return c.json(user);
+      return c.json(await sessionFor(c, row.id));
     })
     .post("/auth/register", async (c) => {
       await enforceIpLimit(c, "register", 30);
@@ -120,34 +119,22 @@ export function authRoutes() {
         email: input.email,
       });
       if (emailTaken) fail(409, "conflict");
-      const current = c.get("user");
-      const upgrade = current?.guest && !current.preview ? current : null;
-      const name = input.name ?? upgrade?.name ?? input.email.split("@")[0]!.slice(0, 80);
-      const target = input.code ? await joinTarget(c, input.code, name, upgrade?.id ?? null) : null;
+      const name = input.name ?? input.email.split("@")[0]!.slice(0, 80);
+      const target = input.code ? await joinTarget(c, input.code, name) : null;
       const hash = await hashPassword(input.password);
-      const user: User = { id: upgrade?.id ?? newId("u_"), name, guest: false };
+      const id = newId("u_");
       try {
-        if (upgrade) {
-          await batch(c.env.DB, [
-            {
-              sql: "UPDATE users SET name = $name, email = $email, password_hash = $hash, is_guest = 0 WHERE id = $id",
-              params: { id: user.id, name: user.name, email: input.email, hash },
-            },
-          ]);
-        } else {
-          await run(
-            c.env.DB,
-            "INSERT INTO users (id, name, is_guest, email, password_hash, lang, created_at) VALUES ($id, $name, 0, $email, $hash, $lang, $at)",
-            { id: user.id, name: user.name, email: input.email, hash, lang: langOf(c), at: nowIso() },
-          );
-        }
+        await run(
+          c.env.DB,
+          "INSERT INTO users (id, name, is_guest, email, password_hash, lang, created_at) VALUES ($id, $name, 0, $email, $hash, $lang, $at)",
+          { id, name, email: input.email, hash, lang: langOf(c), at: nowIso() },
+        );
       } catch (error) {
         if (uniqueViolationColumns(error).length === 0) throw error;
         fail(409, "conflict");
       }
-      if (target) await addMember(c, target, user.id, user.name);
-      await startSession(c, user);
-      return c.json(user);
+      if (target) await addMember(c, target, id, name);
+      return c.json(await sessionFor(c, id));
     })
     .post("/auth/logout", (c) => {
       endSession(c);

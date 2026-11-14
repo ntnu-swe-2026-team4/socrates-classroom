@@ -28,10 +28,20 @@ function JoinPage() {
   const [failed, setFailed] = useState<string | null>(null);
   const info = useQuery({ queryKey: ["join", code], queryFn: () => api.joinByCode(code) });
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
-  const account = me.data && !me.data.preview ? me.data : null;
+  const account = me.data && !me.data.preview && !me.data.guest ? me.data : null;
   const [asGuest, setAsGuest] = useState(false);
   const signedIn = Boolean(account);
   const loginHref = `/join/${code}`;
+
+  async function switchAccount() {
+    try {
+      await api.logout();
+    } finally {
+      queryClient.clear();
+      queryClient.setQueryData(["me"], null);
+      await navigate({ to: "/login", search: { next: loginHref } });
+    }
+  }
 
   useEffect(() => {
     fetch("/socrates.glb").catch(() => {});
@@ -48,8 +58,8 @@ function JoinPage() {
       const { activityId, user } = await api.joinAsGuest(code, signedIn ? undefined : name.trim());
       queryClient.setQueryData(["me"], user);
       await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
-      if (draft) {
-        await navigate({ to: "/dialogue", search: { activityId, q: draft } });
+      if (draft || user.guest) {
+        await navigate({ to: "/dialogue", search: { activityId, ...(draft ? { q: draft } : {}) } });
         return;
       }
       const activity = await api.activityInfo(activityId);
@@ -63,7 +73,9 @@ function JoinPage() {
             ? t("join_err_finished")
             : code === "only_student"
               ? t("join_only_student")
-              : t("join_failed"),
+              : code === "student_restricted" || code === "trial_limit"
+                ? (error as ApiError).message
+                : t("join_failed"),
       );
     } finally {
       setSubmitting(false);
@@ -112,16 +124,16 @@ function JoinPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13.5px] text-ink">{t("join_as", { name: account.name })}</p>
                     <p className="text-[12px] text-ink-faint">
-                      {account.guest ? t("account_kind_guest") : t("join_with_account")}
+                      {account.kind === "student" ? t("account_kind_student") : t("join_with_account")}
                     </p>
                   </div>
-                  <Link
-                    to="/login"
-                    search={{ next: loginHref }}
-                    className="shrink-0 rounded-full px-2.5 py-1 text-[12.5px] text-ember hover:bg-ember-wash"
+                  <button
+                    type="button"
+                    onClick={() => void switchAccount()}
+                    className="shrink-0 cursor-pointer rounded-lg px-2.5 py-1 text-[12.5px] text-ember hover:bg-ember-wash"
                   >
-                    {account.guest ? t("join_use_account") : t("login_switch_account")}
-                  </Link>
+                    {t("login_switch_account")}
+                  </button>
                 </div>
               ) : !asGuest ? (
                 <div className="flex flex-col gap-2">

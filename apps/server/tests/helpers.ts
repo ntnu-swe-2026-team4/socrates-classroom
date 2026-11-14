@@ -65,3 +65,33 @@ export async function call(path: string, init: RequestInit = {}): Promise<Respon
 export function cookieOf(res: Response): string {
   return (res.headers.getSetCookie?.()[0] ?? "").split(";")[0]!;
 }
+
+let accountSeq = 0;
+
+export async function registerAccount(name?: string): Promise<{ cookie: string; id: string }> {
+  accountSeq += 1;
+  const res = await call("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: `acct-${Date.now()}-${accountSeq}@socrates.tw`,
+      password: "account-pass-1",
+      tosAccepted: true,
+      ...(name ? { name } : {}),
+    }),
+  });
+  expect(res.status).toBe(200);
+  const user = (await res.json()) as { id: string; guest: boolean };
+  expect(user.guest).toBe(false);
+  return { cookie: cookieOf(res), id: user.id };
+}
+
+export async function enableTeacher(cookie: string): Promise<string> {
+  const res = await call("/api/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({ teacherMode: true, acceptTeacherTerms: true }),
+  });
+  expect(res.status).toBe(200);
+  return cookieOf(res);
+}

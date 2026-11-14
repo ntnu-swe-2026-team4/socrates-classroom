@@ -7,6 +7,7 @@ export interface AppEnv {
   Bindings: Env;
   Variables: {
     user: User | null;
+    sessionExpired: boolean;
     lang: Lang;
   };
 }
@@ -51,7 +52,7 @@ export async function parseBody<S extends z.ZodType>(c: Ctx, schema: S): Promise
 
 export function requireUser(c: Ctx): User {
   const user = c.get("user");
-  if (!user) fail(401, "unauthorized");
+  if (!user) fail(401, c.get("sessionExpired") ? "guest_session_expired" : "unauthorized");
   return user;
 }
 
@@ -77,7 +78,25 @@ export function uniqueViolationColumns(error: unknown): Array<[string, string]> 
 
 export function requireAccount(c: Ctx): User {
   const user = requireUser(c);
-  if (user.guest) fail(403, "account_required");
+  if (user.guest || user.preview) fail(403, "account_required");
+  return user;
+}
+
+export function requireMember(c: Ctx): User {
+  const user = requireAccount(c);
+  if (user.kind === "student") fail(403, "student_restricted");
+  return user;
+}
+
+export function requireTeacher(c: Ctx): User {
+  const user = requireMember(c);
+  if (!user.teacherPlan || !user.teacherMode) fail(403, "teacher_required");
+  return user;
+}
+
+export function requireAdmin(c: Ctx): User {
+  const user = requireAccount(c);
+  if (!user.admin) fail(403, "forbidden");
   return user;
 }
 

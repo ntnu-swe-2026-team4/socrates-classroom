@@ -30,16 +30,16 @@
 
 ## 單人：與蘇格拉底對話
 
-| 功能           | 說明                                                                                                                                                                                                                                                                                                                                                                | 路由 / 頁面                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| 單人對話       | 不需教室的自由提問；左側主題欄（搜尋、重新命名、刪除、可收合）＋右側對話                                                                                                                                                                                                                                                                                            | `/api/solo/chats`・`/chat`・`/chat/:chatId`                    |
-| 教室對話       | 學生提問 → 蘇格拉底追問（≤3 句、以問句結尾）；WebSocket 串流（view＋chord ops）；左欄列出該教室所有討論主題                                                                                                                                                                                                                                                         | `/agents/chat/:name`・`/dialogue`                              |
-| 蘇格拉底小幫手 | 自由浮動的 3D 半身像（`socrates.glb`，圓形底框）：左鍵拖曳、雙擊開輪盤選單（問 AI／靜音／表情）；「問 AI」面板預設在模型右側中間，可連續追問、直接回答（與蘇格拉底對話分開）；rail 小幫手按鈕切換顯示                                                                                                                                                               | `SocratesCompanion`・`lib/companion.ts`・`POST /api/assistant` |
-| 情緒表現       | avatar extension 產生 `app.emotion` entry（機率本體）→ 本次對話中新回覆抵達時，小幫手播放一次對應表情（不循環、載入歷史不重播）；輪盤選單選表情同樣只播一次                                                                                                                                                                                                         | `DialogueView`・`companion.playExpression`                     |
-| 語音輸入       | MediaRecorder 錄音 → whisper STT → 文字                                                                                                                                                                                                                                                                                                                             | `POST /api/stt`・`useVoiceInput`                               |
-| 語音朗讀       | 單一語音通道（`lib/speech.ts`）：整個 App 同時只有一段聲音，嘴型跟著正在播的那段；「使用者最後主動做的事」優先——新的主動朗讀會打斷舊的，非主動的自動朗讀不打斷別人（略過時顯示「唸給我聽」）；對話自動朗讀、問 AI 每則回答有「朗讀」鈕；小幫手顯示「正在朗讀：來源」可一鍵停止；跨分頁用 `BroadcastChannel`，一個分頁開始說話其他分頁自動停止；設定頁可關閉或調音量 | `POST /api/tts`・`lib/speech.ts`・`SocratesCompanion`          |
-| 名詞查詢       | 選取文字 → 查詢面板（prose oneshot，失敗回 fallback 文字）；查詢紀錄持久化                                                                                                                                                                                                                                                                                          | `POST /api/lookup`・`TermPanel`                                |
-| 對話歷史       | pi transcript 永久保存於 DO；重連 watch 即恢復完整 view                                                                                                                                                                                                                                                                                                             | `watch`（無獨立歷史端點）                                      |
+| 功能         | 說明                                                                                                                                                                                                                                                                                                                                                                | 路由 / 頁面                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| 單人對話     | 不需教室的自由提問；左側主題欄（搜尋、重新命名、刪除、可收合）＋右側對話                                                                                                                                                                                                                                                                                            | `/api/solo/chats`・`/chat`・`/chat/:chatId`           |
+| 教室對話     | 學生提問 → 蘇格拉底追問（≤3 句、以問句結尾）；WebSocket 串流（view＋chord ops）；左欄列出該教室所有討論主題                                                                                                                                                                                                                                                         | `/agents/chat/:name`・`/dialogue`                     |
+| 蘇格拉底模型 | 3D 半身像（`socrates.glb`）只出現在 AI 對話介面的左側面板：面板最上方可切換「列表／蘇格拉底」（手機為抽屜），會員、學生帳號、訪客都有；模型只顯示、不可操作，朗讀時顯示「正在朗讀」與停止鈕；設定頁可關閉模型，關閉後介面不出現模型，語音朗讀不受影響                                                                                                               | `SocratesCompanion`・`ChatLayout`・`lib/companion.ts` |
+| 情緒表現     | avatar extension 產生 `app.emotion` entry（機率本體）→ 本次對話中新回覆抵達時，模型播放一次對應表情（不循環、載入歷史不重播）                                                                                                                                                                                                                                       | `DialogueView`・`companion.playExpression`            |
+| 語音輸入     | MediaRecorder 錄音 → whisper STT → 文字                                                                                                                                                                                                                                                                                                                             | `POST /api/stt`・`useVoiceInput`                      |
+| 語音朗讀     | 單一語音通道（`lib/speech.ts`）：整個 App 同時只有一段聲音，嘴型跟著正在播的那段；「使用者最後主動做的事」優先——新的主動朗讀會打斷舊的，非主動的自動朗讀不打斷別人（略過時顯示「唸給我聽」）；對話自動朗讀、問 AI 每則回答有「朗讀」鈕；小幫手顯示「正在朗讀：來源」可一鍵停止；跨分頁用 `BroadcastChannel`，一個分頁開始說話其他分頁自動停止；設定頁可關閉或調音量 | `POST /api/tts`・`lib/speech.ts`・`SocratesCompanion` |
+| 名詞查詢     | 選取文字 → 查詢面板（prose oneshot，失敗回 fallback 文字）；查詢紀錄持久化                                                                                                                                                                                                                                                                                          | `POST /api/lookup`・`TermPanel`                       |
+| 對話歷史     | pi transcript 永久保存於 DO；重連 watch 即恢復完整 view                                                                                                                                                                                                                                                                                                             | `watch`（無獨立歷史端點）                             |
 
 ## 活動與報告
 
@@ -67,23 +67,25 @@
 
 ## LLM Gateway 與 Teacher Keys
 
-| 能力         | 說明                                                                                                                   |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| 配置化路由   | `providers.config.yaml`（build-time 編譯）：provider 實例×credential×priority×traffic class；程式碼零模型 id           |
-| fallback     | pi 原生 legs（鏈首綁 symbol）＋`settings.retry` 指數退避；gateway 只做決策（cooldown/記帳）                            |
-| cooldown     | (provider, model, credential) 記帳；429/timeout 60s、401/403 dead、過期自然回；ledger 生命週期＝isolate（`getRouter`） |
-| Teacher keys | 一 provider 一把 key（D1 AES-GCM，回 last4）；`sort_order`＝provider 鏈序；學生無 BYOK（#82，byok 端點已退役）         |
-| Mock         | `LLM_PROVIDER=mock`：離線 faux 模型（測試預設）                                                                        |
+| 能力         | 說明                                                                                                                                                             |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 配置化路由   | `providers.config.yaml`（build-time 編譯）：provider 實例×credential×priority×traffic class；程式碼零模型 id                                                     |
+| fallback     | pi 原生 legs（鏈首綁 symbol）＋`settings.retry` 指數退避；gateway 只做決策（cooldown/記帳）                                                                      |
+| cooldown     | (provider, model, credential) 記帳；429/timeout 60s、401/403 dead、過期自然回；ledger 生命週期＝isolate（`getRouter`）                                           |
+| 帳號角色     | admin／user⇄teacher（教師模式、試用 3 教室×40 人、學校方案）／student（老師建立）／guest（單一活動，結束 24h 失效）；`/admin` 管理學校與教師（見 `accounts.md`） |
+| 系統通知     | admin 在管理頁發送／刪除；有帳號者在鈴鐺看到並有未讀紅點（打開即已讀）；登入頁左側公告欄公開顯示                                                                 |
+| Teacher keys | 多把 key × 多個 model（每筆 entry 一條 leg，D1 AES-GCM，回 last4）；設定頁拖曳排序＝鏈序；學生無 BYOK（#82）                                                     |
+| Mock         | `LLM_PROVIDER=mock`：離線 faux 模型（測試預設）                                                                                                                  |
 
 詳細規則與查證：[`providers.md`](./providers.md)、[`architecture.md`](./architecture.md) §5
 
 ## 平台與基礎建設
 
-| 能力        | 說明                                                                                                                                  |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| 單一 Worker | Hono API + SPA 靜態資產 + 兩個 DO，同一部署單位                                                                                       |
-| D1          | 應用資料（users／classrooms／topics／activities／members／reports／pseudonyms／teacher_keys）；migrations 走 `cf d1 migrations apply` |
-| i18n        | 介面三語（zh-TW/en/es，typed dictionary 由 tsc 強制完備）；後端訊息 (`src/messages.ts`) 同步三語                                      |
-| 登入前故事  | StorySection 互動故事頁（#83 拆分互動化）＋ Lottie 動畫（捲動載入）                                                                   |
-| CI/CD       | GitHub Actions：PR lint/test（server＋web）/build/dry-run；main 自動 migrations + deploy（見 [`cf.md`](./cf.md)）                     |
-| 觀測        | Worker observability 開啟；AI Gateway log/cache 關閉（ZDR）；log 不含學生對話內容                                                     |
+| 能力        | 說明                                                                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 單一 Worker | Hono API + SPA 靜態資產 + 兩個 DO，同一部署單位                                                                                              |
+| D1          | 應用資料（users／classrooms／topics／activities／members／reports／pseudonyms／teacher_key_entries）；migrations 走 `cf d1 migrations apply` |
+| i18n        | 介面三語（zh-TW/en/es，typed dictionary 由 tsc 強制完備）；後端訊息 (`src/messages.ts`) 同步三語                                             |
+| 登入前故事  | 捲動式漫畫故事頁（`routes/index.tsx`）：sprite sheet＋canvas 分格動畫、滑鼠視差、可拖曳人物、按住互動；取代原 Lottie 故事頁                  |
+| CI/CD       | GitHub Actions：PR lint/test（server＋web）/build/dry-run；main 自動 migrations + deploy（見 [`cf.md`](./cf.md)）                            |
+| 觀測        | Worker observability 開啟；AI Gateway log/cache 關閉（ZDR）；log 不含學生對話內容                                                            |

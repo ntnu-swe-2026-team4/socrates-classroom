@@ -16,6 +16,76 @@
 - Chat DO `settings.extensions` 改為 getter：已安裝且非 btw 的 extensions（root 行為不變）
 - routeSubmit 的 model 快取改 per session；`llm_unavailable` 廣播只送綁定該 session 的連線
 
+## 2026-11-14 — 系統通知（`experiment/web-next`）
+
+### Added
+
+- `009_notifications.sql`：`notifications` 與 `users.notifications_seen_at`
+- admin 在管理頁發送／刪除系統通知；rail 與 top bar 的鈴鐺顯示通知與未讀紅點；登入頁改為左側公告欄、右側登入表單
+- API：`GET /api/notifications`（公開）、`POST /api/notifications/seen`、`POST｜DELETE /api/admin/notifications`
+
+## 2026-11-14 — 內部介面改版（`experiment/web-next`）
+
+### Changed
+
+- 配色改為與故事頁一致：白底、黑墨、朱紅點綴（`index.css` 的 `@theme` token；深色模式同步）
+- 主要按鈕與選取中的分段按鈕改為黑色；輸入框聚焦邊框改為黑色；朱紅只用於連結、作用中導覽、開關
+- 蘇格拉底 3D 模型不再浮動：只停靠在 AI 對話介面的左側面板，面板最上方切換「列表／蘇格拉底」；會員、學生帳號、訪客都有（訪客的列表只有所在活動的主題）
+- 設定頁新增「蘇格拉底 3D 模型」開關，關閉後介面不出現模型
+- 內部頁面改為常見的 dashboard 版型：淺灰頁底配白色卡片、方角按鈕與輸入框、無襯線標題；教室頁改為上方橫幅（教室名稱、老師、人數、狀態）＋分頁列＋左側資訊欄（老師：邀請與學生帳號；學生：關於這間教室），老師與學生同一版型
+- rail 的「教室」拆成兩個入口：「學習」（輸入邀請碼、我加入的教室）與「教室」（我開的教室、創建課程），對應 `/classrooms?view=student|teacher`
+- 已登入時開啟 `/login` 直接導向目的頁（`next` 或 `/home`），不再顯示「目前登入的帳號」確認卡；加入頁的「登出並切換帳號」改為先登出再顯示登入表單
+
+### Removed
+
+- 回紋（meander）圖樣與所有裝飾圖片（`public/theatre/`）；內部介面目前不含裝飾圖，待以 Higgsfield 重新設計
+- 模型的輪盤選單（雙擊開啟：問 AI／靜音／表情）、拖曳，以及 rail 與 top bar 的小幫手按鈕；靜音改由設定頁的語音朗讀開關控制
+- web 端的「問 AI」；server 的 `POST /api/assistant` 尚未移除
+
+## 2026-11-14 — 登入前故事頁重做（`experiment/web-next`）
+
+### Changed
+
+- `/` 改為上下捲動的漫畫故事：開場只有站名，往下依序是柱廊走路、廣場階梯接沙漠（兩個梯形分格相連）、龍捲風、群眾、轉頭、結尾 CTA
+- 分格動畫全部是預先算好的 WebP sprite sheet，用 `<canvas>` 播放（不跑即時 3D）；龍捲風、白轉黑的直線過場、風線為 canvas 即時繪製
+- 互動：滑鼠視差、眼睛特寫的虹膜跟著滑鼠、可拖曳廣場人物、可抓起工程師、按住龍捲風喚醒、按住提問讓他轉身
+- 右上角：語言切換（中／EN／ES）、登入、「跳到結尾」
+- 效能：canvas 繪製上限約 30fps、畫面外的動畫全部暫停（`IntersectionObserver`）、sprite sheet 以 `image.decode()` 在背景解碼、觸控裝置不做視差；尊重 `prefers-reduced-motion`
+- RWD：320–2560 寬度無水平溢出，說明框不互相重疊
+
+### Removed
+
+- 舊版 Lottie 故事頁（`src/landing/`、`public/landing/` 共 17 MB）與 `lottie-web` 依賴
+
+## 2026-11-13 — 帳號管理重新設計（`experiment/web-next`）
+
+### Added
+
+- 身分模型（[`accounts.md`](./accounts.md)）：admin、user⇄teacher（設定頁「教師模式」）、student（老師建立的受管帳號）、guest（綁定單一活動）
+- `008_account_roles.sql`：`schools` 與 `users` 角色欄位；既有開過課的帳號搬為試用教師
+- 學生帳號：成員分頁「新增學生帳號」批次建立、一次性顯示帳密（可複製）、重設密碼、移除即刪除帳號；學生以帳號登入後只看得到所屬班級
+- 管理後台 `/admin`：建立學校、開通學校教師（既有帳號升級／新帳號臨時密碼）、移出學校
+- 試用方案上限：3 間教室、每間 40 人；首次開啟教師模式需同意教師條款
+
+### Changed
+
+- 登入欄位改為「Email 或學生帳號」；登入頁移除「以訪客進入」，改為輸入邀請碼
+- 訪客：活動結束 24 小時後失效（`guest_session_expired`），不能升級為正式帳號；`POST /auth/guest` 移除
+- 帳號狀態每個請求從 D1 讀取（`resolveSession`），WS 授權同步改用
+- 教師模式預設關閉；左側「教室」不再有下拉，依教師模式顯示「我開的教室」或「我加入的教室」
+- 訪客沒有教室概念：左側只有「活動」、直接進入對話，不能看公告／討論區／成員；換活動需「退出活動」後重輸邀請碼
+- 教室側欄新增「學生帳號」卡片，可直接建立綁定該教室的學生帳號（成員分頁也有）
+- 開課需教師模式（`teacher_required`）；單人對話、teacher keys、題庫限正式帳號（學生 `student_restricted`）
+
+## 2026-11-12 — Teacher keys 多把 key × 多個模型（`experiment/web-next`）
+
+### Changed
+
+- **BYOK 設定（PM 需求）**：老師可加入多把 key、多個模型，並以拖曳把手（或上移／下移按鈕）調整優先順序；可「用這把金鑰加入其他模型」沿用已存的 key；每列可更換金鑰或刪除（確認對話框）；列表最後顯示平台模型為最後備援
+- `007_teacher_key_entries.sql`：`teacher_keys`（一 provider 一列）→ `teacher_key_entries`（每筆 entry＝provider＋model＋key），舊資料自動搬移
+- API：`PUT/DELETE /settings/keys/:provider` → `POST /settings/keys`、`PATCH/DELETE /settings/keys/:id`；`PUT /settings/keys/order` 改收 `{ids}`（見 api-contract §9）
+- Gateway：每筆 entry 是一條 teacher leg，credential `teacher:{userId}:{entryId}` 各自記帳；選中的 entry 以 AsyncLocalStorage 釘住，同 provider 多把 key 也能讀到正確的 key
+
 ## 2026-11-11 — 統一帳號、單人模式、第三方登入與介面改版（`experiment/web-next`）
 
 ### Added

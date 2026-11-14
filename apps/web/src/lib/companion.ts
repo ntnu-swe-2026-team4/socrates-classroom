@@ -14,7 +14,7 @@ export interface CompanionState {
   speakingSource: SpeechSource | null;
 }
 
-const VISIBLE_KEY = "socrates_companion_visible";
+const VISIBLE_KEY = "socrates_model_enabled";
 const MUTED_KEY = "socrates_companion_muted";
 const VOLUME_KEY = "socrates_voice_volume";
 const VOICE_STYLE_KEY = "socrates_voice_style";

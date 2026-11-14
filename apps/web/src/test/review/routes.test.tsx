@@ -8,7 +8,6 @@ import { setLocale } from "@/i18n";
 import { onExpression } from "@/lib/companion";
 
 vi.mock("@/components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
-vi.mock("@/landing/LandAnimation", () => ({ LandAnimation: () => null }));
 
 const agent = vi.hoisted(() => ({ options: null as null | { onMessage?: (event: { data: unknown }) => void } }));
 vi.mock("agents/react", () => ({
@@ -134,6 +133,7 @@ test("F01: direct invitation URL renders the topic, name and required consent", 
 });
 
 test("F01b: a signed-in user joins under their account name without retyping it", async () => {
+  me = { id: "student-1", name: "Student", guest: false, kind: "member" };
   const dispose = await mountRoute("/join/abcdef");
   try {
     expect(await screen.findByRole("heading", { name: "Invitation topic" })).toBeTruthy();

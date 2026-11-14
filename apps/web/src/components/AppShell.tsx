@@ -3,26 +3,26 @@ import { onOpenAccountSheet } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  BookOpen,
-  ChevronDown,
+  ShieldCheck,
   Eye,
+  ArrowLeft,
+  BookOpen,
   GraduationCap,
-  Hand,
+  MessageCircleQuestion,
   Home,
   Settings,
   Menu,
   MessageSquare,
   Moon,
-  Presentation,
   Sun,
   UserPlus,
   X,
 } from "lucide-react";
 import { api } from "@/api";
+import { NotificationBell } from "@/components/Notifications";
 import { SocratesCompanion } from "@/components/SocratesCompanion";
 import { Button, ConfirmDialog, Initial, cn } from "@/components/ui";
 import { LANGS, setLocale, useI18n, type Locale } from "@/i18n";
-import { companion, useCompanion } from "@/lib/companion";
 import { toggleTheme, useTheme } from "@/theme";
 
 const BARE_ROUTES = [/^\/$/, /^\/login\/?$/];
@@ -40,11 +40,6 @@ const NAV = [
 
 const CLASSROOM_MATCH = ["/classrooms", "/join", "/dialogue", "/t/", "/report"];
 
-const CLASSROOM_VIEWS = [
-  { view: "student", label: "nav_learning", icon: BookOpen },
-  { view: "teacher", label: "nav_teaching", icon: Presentation },
-] as const;
-
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   if (BARE_ROUTES.some((re) => re.test(pathname))) return <>{children}</>;
@@ -54,7 +49,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 function RailShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const { t, locale } = useI18n();
   const theme = useTheme();
-  const { visible: companionVisible } = useCompanion();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -85,10 +79,22 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       setAccountOpen(false);
       queryClient.clear();
       queryClient.setQueryData(["me"], null);
-      await navigate({ to: "/" });
+      await navigate({ to: guest ? "/login" : "/" });
     },
   });
   const guest = me.data?.guest ?? true;
+  const member = (me.data?.kind ?? "member") === "member" && !guest;
+  const student = me.data?.kind === "student";
+  const accountLabel =
+    me.data?.kind === "student"
+      ? t("account_kind_student")
+      : guest
+        ? t("account_kind_guest")
+        : me.data?.teacherPlan === "school"
+          ? t("account_plan_school", { school: me.data.schoolName ?? "" })
+          : me.data?.teacherPlan === "trial"
+            ? t("account_plan_trial")
+            : null;
   const previewRoom = me.data?.preview ? me.data.previewClassroomId : undefined;
   useEffect(() => onOpenAccountSheet(() => setAccountOpen(true)), []);
 
@@ -98,25 +104,34 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
     setAccountOpen(false);
   }, [pathname]);
 
-  const search = useRouterState({ select: (state) => state.location.search as { view?: string } });
   const inClassrooms = CLASSROOM_MATCH.some((prefix) => pathname.startsWith(prefix));
-  const [classroomsOpen, setClassroomsOpen] = useState(inClassrooms);
-  useEffect(() => {
-    if (inClassrooms) setClassroomsOpen(true);
-  }, [inClassrooms]);
+  const listView = useRouterState({
+    select: (state) => (state.location.search as { view?: string } | undefined)?.view,
+  });
+  const rooms = useQuery({
+    queryKey: ["classrooms"],
+    queryFn: () => api.listClassrooms(),
+    enabled: (member && inClassrooms) || student,
+  });
+  const roomId = /^\/classrooms\/([^/]+)/.exec(pathname)?.[1];
+  const teachingHere = roomId
+    ? rooms.data?.find((room) => room.id === roomId)?.role === "teacher"
+    : pathname.startsWith("/t/") ||
+      pathname.startsWith("/report") ||
+      (listView === "teacher" && me.data?.teacherMode === true);
 
   const themeTip = t("theme_toggle");
-  const helperTip = companionVisible ? t("companion_hide") : t("companion_show");
 
   const rail = (
     <nav className="flex h-full w-[84px] flex-col items-center border-r border-line bg-card pb-3">
       <Link
         to="/home"
         aria-label={t("app_name")}
-        className="mb-2 flex h-14 w-full shrink-0 items-center justify-center border-b border-line font-serif text-[20px] text-ink"
+        className="flex h-14 w-full shrink-0 items-center justify-center font-serif text-[20px] text-ink"
       >
         {t("app_mark")}
       </Link>
+      <div className="mb-2 h-px w-8 bg-line-strong" aria-hidden />
 
       <div className="flex w-full flex-col gap-2 px-1.5">
         {previewRoom ? (
@@ -126,7 +141,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           </Link>
         ) : (
           <>
-            {NAV.map((item) => {
+            {NAV.filter(() => member).map((item) => {
               const active = item.match.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
               const Icon = item.icon;
               return (
@@ -136,41 +151,44 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                 </Link>
               );
             })}
-            <button
-              type="button"
-              aria-expanded={classroomsOpen}
-              aria-controls="rail-classrooms"
-              onClick={() => setClassroomsOpen((open) => !open)}
-              className={cn(NAV_BTN, inClassrooms && NAV_ACTIVE)}
-            >
-              <GraduationCap className="size-[19px]" />
-              <span className="flex items-center gap-0.5">
-                {t("nav_classrooms")}
-                <ChevronDown className={cn("size-3 transition-transform", classroomsOpen && "rotate-180")} />
-              </span>
-            </button>
-            {classroomsOpen && (
-              <div id="rail-classrooms" className="flex flex-col gap-1 rounded-lg bg-paper-deep/60 p-1">
-                {CLASSROOM_VIEWS.map((item) => {
-                  const active =
-                    pathname.replace(/\/$/, "") === "/classrooms" && (search.view ?? "student") === item.view;
-                  const Icon = item.icon;
-                  return (
-                    <Link
-                      key={item.view}
-                      to="/classrooms"
-                      search={{ view: item.view }}
-                      className={cn(
-                        "flex flex-col items-center gap-0.5 rounded-md py-1.5 text-[10.5px] text-ink-faint transition-colors hover:bg-paper hover:text-ink-soft",
-                        active && "bg-paper text-ember hover:text-ember",
-                      )}
-                    >
-                      <Icon className="size-4" />
-                      <span>{t(item.label)}</span>
-                    </Link>
-                  );
-                })}
-              </div>
+            {guest ? (
+              me.data?.activityId && (
+                <Link
+                  to="/dialogue"
+                  search={{ activityId: me.data.activityId }}
+                  className={cn(NAV_BTN, pathname.startsWith("/dialogue") && NAV_ACTIVE)}
+                >
+                  <MessageCircleQuestion className="size-[19px]" />
+                  <span>{t("nav_activity")}</span>
+                </Link>
+              )
+            ) : (
+              <>
+                <Link
+                  to="/classrooms"
+                  search={{ view: "student" }}
+                  className={cn(NAV_BTN, inClassrooms && !teachingHere && NAV_ACTIVE)}
+                >
+                  <BookOpen className="size-[19px]" />
+                  <span>{t("nav_learning")}</span>
+                </Link>
+                {member && me.data?.teacherMode && (
+                  <Link
+                    to="/classrooms"
+                    search={{ view: "teacher" }}
+                    className={cn(NAV_BTN, inClassrooms && teachingHere && NAV_ACTIVE)}
+                  >
+                    <GraduationCap className="size-[19px]" />
+                    <span>{t("nav_classrooms")}</span>
+                  </Link>
+                )}
+              </>
+            )}
+            {me.data?.admin && (
+              <Link to="/admin" className={cn(NAV_BTN, pathname.startsWith("/admin") && NAV_ACTIVE)}>
+                <ShieldCheck className="size-[19px]" />
+                <span>{t("nav_admin")}</span>
+              </Link>
             )}
           </>
         )}
@@ -179,16 +197,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       <div className="flex-1" />
 
       <div className="mb-3 flex flex-col items-center gap-2">
-        <button
-          type="button"
-          onClick={companion.toggleVisible}
-          aria-label={helperTip}
-          aria-pressed={companionVisible}
-          title={helperTip}
-          className={cn(RAIL_ICON_BTN, companionVisible && "border-ember text-ember")}
-        >
-          <Hand className="size-[17px]" />
-        </button>
+        {!guest && <NotificationBell side="beside" />}
         <button type="button" onClick={toggleTheme} aria-label={themeTip} title={themeTip} className={RAIL_ICON_BTN}>
           {theme === "dark" ? <Moon className="size-[17px]" /> : <Sun className="size-[17px]" />}
         </button>
@@ -208,23 +217,96 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
     </nav>
   );
 
+  const focused = Boolean(me.data) && !me.data?.preview && (guest || me.data?.kind === "student");
+  const topBar = (
+    <header className="shrink-0 border-b border-line bg-card">
+      <div className="flex h-12 items-center gap-2 px-3 md:px-5">
+        <span className="font-serif text-[19px] leading-none text-ink">{t("app_mark")}</span>
+        {student && me.data?.classroomId ? (
+          <>
+            {!pathname.startsWith("/classrooms") && (
+              <Link
+                to="/classrooms/$classroomId"
+                params={{ classroomId: me.data.classroomId }}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-[12.5px] text-ink-soft hover:bg-paper-deep hover:text-ink"
+              >
+                <ArrowLeft className="size-3.5" />
+                {t("classroom_back_to_room")}
+              </Link>
+            )}
+            <span className="min-w-0 flex-1 truncate font-serif text-[16px] text-ink">
+              {rooms.data?.find((room) => room.id === me.data?.classroomId)?.name}
+            </span>
+          </>
+        ) : (
+          <>
+            {guest && me.data?.activityId && !pathname.startsWith("/dialogue") && (
+              <Link
+                to="/dialogue"
+                search={{ activityId: me.data.activityId }}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-[12.5px] text-ink-soft hover:bg-paper-deep hover:text-ink"
+              >
+                <ArrowLeft className="size-3.5" />
+                {t("common_back")}
+              </Link>
+            )}
+            <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-soft">
+              {guest ? t("guest_bar_label", { name: me.data?.name ?? "" }) : t("app_name")}
+            </span>
+          </>
+        )}
+        {!guest && <NotificationBell className="size-8" />}
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label={themeTip}
+          title={themeTip}
+          className={cn(RAIL_ICON_BTN, "size-8")}
+        >
+          {theme === "dark" ? <Moon className="size-4" /> : <Sun className="size-4" />}
+        </button>
+        {guest ? (
+          <Button variant="outline" size="sm" disabled={logout.isPending} onClick={() => logout.mutate()}>
+            {t("guest_leave_activity")}
+          </Button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAccountOpen(true)}
+            aria-label={t("account_title")}
+            title={me.data?.name}
+            className="cursor-pointer rounded-full"
+          >
+            <Initial name={me.data?.name} className="size-8 text-[13px]" />
+          </button>
+        )}
+      </div>
+    </header>
+  );
+
   return (
-    <div className="flex h-dvh bg-paper text-ink">
-      <aside className="relative hidden h-dvh shrink-0 md:block">{rail}</aside>
+    <div className={cn("flex h-dvh bg-paper text-ink [--font-serif:var(--font-sans)]", focused && "flex-col")}>
+      {focused ? (
+        topBar
+      ) : (
+        <>
+          <aside className="relative hidden h-dvh shrink-0 md:block">{rail}</aside>
 
-      <button
-        type="button"
-        aria-label={t("menu_open")}
-        onClick={() => setDrawerOpen(true)}
-        className="fixed top-3 left-3 z-30 flex size-8 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-card text-ink-soft md:hidden"
-      >
-        <Menu className="size-[17px]" />
-      </button>
+          <button
+            type="button"
+            aria-label={t("menu_open")}
+            onClick={() => setDrawerOpen(true)}
+            className="fixed top-3 left-3 z-30 flex size-8 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-card text-ink-soft md:hidden"
+          >
+            <Menu className="size-[17px]" />
+          </button>
 
-      {drawerOpen && (
-        <TrapDialog ref={drawerRef} className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
-          {rail}
-        </TrapDialog>
+          {drawerOpen && (
+            <TrapDialog ref={drawerRef} className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
+              {rail}
+            </TrapDialog>
+          )}
+        </>
       )}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -283,7 +365,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
               <Initial name={me.data.name} className="size-11 text-lg" />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-serif text-[15px]">{me.data.name}</div>
-                {guest && <div className="text-[12px] text-ink-faint">{t("account_kind_guest")}</div>}
+                {accountLabel && <div className="text-[12px] text-ink-faint">{accountLabel}</div>}
               </div>
             </div>
           )}
@@ -322,7 +404,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                   onClick={() => setLocale(l.code as Locale)}
                   className={cn(
                     "cursor-pointer rounded-full px-3.5 py-1.5 text-[13px]",
-                    locale === l.code ? "bg-ember font-semibold text-on-ember" : "text-ink-soft hover:text-ink",
+                    locale === l.code ? "bg-ink font-semibold text-paper" : "text-ink-soft hover:text-ink",
                   )}
                 >
                   {l.label}
@@ -348,7 +430,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
             disabled={logout.isPending}
             className="mt-auto h-9 w-full cursor-pointer rounded-full border border-line text-sm font-medium text-flag transition-colors hover:bg-flag-wash"
           >
-            {t("account_logout")}
+            {guest && !me.data?.preview ? t("guest_leave_activity") : t("account_logout")}
           </button>
         </TrapDialog>
       )}

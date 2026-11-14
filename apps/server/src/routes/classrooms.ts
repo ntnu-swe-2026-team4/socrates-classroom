@@ -3,6 +3,7 @@ import {
   ActivityStartInputSchema,
   ClassroomCreateInputSchema,
   ClassroomRenameInputSchema,
+  TRIAL_LIMITS,
   type ClassroomActivity,
   type ClassroomSummary,
   type Lang,
@@ -11,8 +12,18 @@ import {
 import { getCookie } from "hono/cookie";
 import { all, batch, one, run, type Db } from "../db/d1";
 import { SESSION_COOKIE, enterPreviewSession, leavePreviewSession, startSession } from "../auth";
-import { fail, langOf, newId, nowIso, parseBody, requireAccount, requireUser, type AppEnv } from "../http";
-import { translationOf, type ClassroomRow } from "../services/members";
+import {
+  fail,
+  langOf,
+  newId,
+  nowIso,
+  parseBody,
+  requireAccount,
+  requireTeacher,
+  requireUser,
+  type AppEnv,
+} from "../http";
+import { TRIAL_LIMIT_VARS, translationOf, type ClassroomRow } from "../services/members";
 
 const PREVIEW_NAMES = { zh: "測試學生", en: "Test Student", es: "Estudiante de prueba" } as const;
 const UNTITLED_COURSE = { zh: "未命名課程", en: "Untitled course", es: "Curso sin título" } as const;
@@ -181,8 +192,18 @@ export function classroomsRoutes() {
       );
     })
     .post("/classrooms", async (c) => {
-      const user = requireAccount(c);
+      const user = requireTeacher(c);
       const input = await parseBody(c, ClassroomCreateInputSchema);
+      if (user.teacherPlan === "trial") {
+        const owned = await one<{ n: number }>(
+          c.env.DB,
+          "SELECT COUNT(*) AS n FROM classrooms WHERE teacher_id = $uid",
+          {
+            uid: user.id,
+          },
+        );
+        if (Number(owned?.n ?? 0) >= TRIAL_LIMITS.classrooms) fail(403, "trial_limit", TRIAL_LIMIT_VARS);
+      }
       if (input.topicId) {
         const topic = await one<{ id: string }>(
           c.env.DB,

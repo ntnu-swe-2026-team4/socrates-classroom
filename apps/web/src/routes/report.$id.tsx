@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, type ReportPosition, type StudentAnalysis, type ViolationSlice } from "@/api";
-import { Segmented, Spinner, cn } from "@/components/ui";
+import { BackLink, Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/report/$id")({
@@ -24,6 +24,16 @@ function ReportPage() {
     enabled: Boolean(info.data?.classroomId),
   });
   const isTeacher = room.data?.role === "teacher";
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const railUser = me.data?.kind === "member" && !me.data.guest;
+  const back = railUser && info.data?.classroomId && (
+    <BackLink
+      label={t("classroom_back_to_room")}
+      onClick={() =>
+        void navigate({ to: "/classrooms/$classroomId", params: { classroomId: info.data?.classroomId ?? "" } })
+      }
+    />
+  );
   const [view, setView] = useState<"group" | "individual">("group");
   const [studentIdx, setStudentIdx] = useState(0);
   const report = useQuery({
@@ -35,7 +45,8 @@ function ReportPage() {
 
   if (report.isPending) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
+        {back}
         <Spinner className="h-6 w-6" />
       </div>
     );
@@ -46,13 +57,14 @@ function ReportPage() {
     const failed = err?.code === "report_failed";
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-[15px] text-ink-soft">
+        {back}
         <p>{pending ? t("report_generating") : (err?.message ?? t("common_error"))}</p>
         {failed ? (
           isTeacher ? (
             <button
               type="button"
               onClick={() => void navigate({ to: "/t/live/$id", params: { id } })}
-              className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
+              className="cursor-pointer rounded-lg border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
             >
               {t("report_refinish")}
             </button>
@@ -63,7 +75,7 @@ function ReportPage() {
           <button
             type="button"
             onClick={() => report.refetch()}
-            className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
+            className="cursor-pointer rounded-lg border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
           >
             {t("report_retry")}
           </button>
@@ -80,6 +92,7 @@ function ReportPage() {
     <div className="mx-auto w-full max-w-4xl px-5 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3 pl-12 md:pl-0">
         <div>
+          {back}
           <h1 className="font-serif text-2xl font-semibold text-ink">{t("report_title")}</h1>
           <p className="mt-1 text-[13px] text-ink-faint">{data.topicTitle}</p>
         </div>
@@ -162,7 +175,7 @@ function ReportPage() {
                 key={student.studentId}
                 onClick={() => setStudentIdx(index)}
                 className={cn(
-                  "rounded-full border px-3.5 py-1.5 text-[13px] transition-colors",
+                  "rounded-lg border px-3.5 py-1.5 text-[13px] transition-colors",
                   index === studentIdx
                     ? "border-ember bg-ember-wash font-medium text-ember"
                     : "border-line bg-card text-ink-soft",
