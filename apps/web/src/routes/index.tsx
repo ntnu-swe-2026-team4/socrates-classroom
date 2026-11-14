@@ -9,7 +9,7 @@ export const Route = createFileRoute("/")({
 });
 
 const ASSET_VERSION = "22";
-const SCENE_SHIFT = 2;
+const SCENE_SHIFT = 3;
 const asset = (name: string) => `/story/${name}.webp?v=${ASSET_VERSION}`;
 
 interface SpriteSheet {
@@ -1443,7 +1443,7 @@ function ComicLanding() {
     if (!root) return;
     const scenes = Array.from(root.querySelectorAll<HTMLElement>("[data-scene]")).map((node) => ({
       node,
-      scale: Number(node.dataset.scene) || 1.05,
+      scale: Number(node.dataset.scene) || 1.07,
     }));
     const followers = Array.from(root.querySelectorAll<HTMLElement>("[data-scene-follow]"));
     for (const scene of scenes) scene.node.style.transform = `scale(${scene.scale})`;
