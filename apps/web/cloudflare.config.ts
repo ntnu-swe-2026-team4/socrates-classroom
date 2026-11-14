@@ -35,7 +35,7 @@ export default defineConfig(({ mode }) => {
         GOOGLE_CLIENT_ID: text("GOOGLE_CLIENT_ID", ""),
         GOOGLE_CLIENT_SECRET: bindings.secret(),
       },
-      assets: { notFoundHandling: "single-page-application" },
+      assets: { notFoundHandling: "single-page-application", runWorkerFirst: ["/api/*", "/health"] },
       domains: ["socrates.g36maid.dev"],
       exports: {
         Chat: exports.durableObject({ storage: "sqlite" }),
