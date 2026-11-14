@@ -3,7 +3,7 @@ import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-ro
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare } from "lucide-react";
 import { api, type SoloChat } from "@/api";
-import { Button, Card, Input, Motif, PageHeader } from "@/components/ui";
+import { Button, Card, Input, PageHeader } from "@/components/ui";
 import { useFormatDate, useT, type MessageKey } from "@/i18n";
 
 export const Route = createFileRoute("/home")({
@@ -63,14 +63,8 @@ function HomePage() {
     <div className="flex min-h-full flex-col bg-paper-deep pb-10">
       <PageHeader width="max-w-4xl" eyebrow={t("home_eyebrow")} title={t("nav_home")} />
       <div className="mx-auto w-full max-w-4xl space-y-4 px-4 py-5 md:px-6">
-        <Card className="relative overflow-hidden p-6 md:p-7">
-          <img
-            src="/greek/hero.webp"
-            alt=""
-            decoding="async"
-            className="pointer-events-none absolute right-0 bottom-0 h-[88%] max-md:hidden [[data-theme=dark]_&]:opacity-80"
-          />
-          <div className="relative min-w-0 md:max-w-[52%]">
+        <Card className="grid gap-6 bg-paper p-6 md:grid-cols-[1fr_230px] md:p-7">
+          <div className="min-w-0">
             <p className="text-xs text-ember">
               {t("home_greeting", { greeting: t(greetingKey()), name: me.data?.name ?? "" })}
             </p>
@@ -109,6 +103,10 @@ function HomePage() {
             </div>
             {start.isError && <p className="mt-2 text-[12.5px] text-flag">{t("common_error")}</p>}
           </div>
+          <blockquote className="flex flex-col justify-center gap-3 border-line pl-7 max-md:hidden md:border-l">
+            <p className="font-serif text-lg leading-relaxed">“{t("home_quote")}”</p>
+            <cite className="text-xs not-italic text-ink-faint">— {t("dlg_socrates")}</cite>
+          </blockquote>
         </Card>
 
         {last && (
@@ -128,23 +126,17 @@ function HomePage() {
 
         <section className="grid gap-4 sm:grid-cols-2">
           <Link to="/chat">
-            <Card className="flex h-full items-center justify-between gap-4 p-5 transition-colors hover:border-ember-deep">
-              <span>
-                <b className="block font-serif text-4xl font-medium text-ink">{chatList.length}</b>
-                <span className="mt-1 block text-sm">{t("home_stat_chats")}</span>
-                <span className="text-xs text-ink-faint">{t("nav_chat")}</span>
-              </span>
-              <Motif name="lyre" className="h-16 text-ochre" />
+            <Card className="h-full p-5 transition-colors hover:border-ember-deep">
+              <b className="block font-serif text-4xl font-medium text-ink">{chatList.length}</b>
+              <span className="mt-1 block text-sm">{t("home_stat_chats")}</span>
+              <span className="text-xs text-ink-faint">{t("nav_chat")}</span>
             </Card>
           </Link>
           <Link to="/classrooms">
-            <Card className="flex h-full items-center justify-between gap-4 p-5 transition-colors hover:border-ember-deep">
-              <span>
-                <b className="block font-serif text-4xl font-medium text-ink">{roomList.length}</b>
-                <span className="mt-1 block text-sm">{t("home_stat_classrooms")}</span>
-                <span className="text-xs text-ink-faint">{t("home_stat_running", { n: running.length })}</span>
-              </span>
-              <Motif name="temple" className="h-16 text-ochre" />
+            <Card className="h-full p-5 transition-colors hover:border-ember-deep">
+              <b className="block font-serif text-4xl font-medium text-ink">{roomList.length}</b>
+              <span className="mt-1 block text-sm">{t("home_stat_classrooms")}</span>
+              <span className="text-xs text-ink-faint">{t("home_stat_running", { n: running.length })}</span>
             </Card>
           </Link>
         </section>
@@ -212,12 +204,6 @@ function HomePage() {
             )}
           </Card>
         </section>
-
-        <blockquote className="flex flex-col items-center gap-2 pt-6 pb-2 text-center">
-          <Motif name="laurel" className="h-10 text-ochre" />
-          <p className="max-w-md text-[15px] leading-relaxed text-ink-soft">“{t("home_quote")}”</p>
-          <cite className="text-xs not-italic text-ink-faint">— {t("dlg_socrates")}</cite>
-        </blockquote>
       </div>
     </div>
   );

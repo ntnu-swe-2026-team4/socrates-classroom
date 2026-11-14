@@ -110,7 +110,6 @@ export function NotificationBoard({ className }: { className?: string }) {
         className="pointer-events-none absolute right-0 bottom-0 w-[78%] max-w-[380px] opacity-90 [[data-theme=dark]_&]:opacity-70"
       />
       <h2 className="relative shrink-0 text-[22px] leading-snug font-semibold text-ink">{t("notify_board")}</h2>
-      <div aria-hidden className="dentils relative mt-3" />
       <ul className="relative mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-28">
         {feed.data?.items.map((item) => (
           <li key={item.id} className="rounded-xl border border-line bg-paper px-4 py-3">
