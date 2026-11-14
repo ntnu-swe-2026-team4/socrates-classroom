@@ -237,6 +237,37 @@ body {
   animation: struggle 0.17s ease-in-out infinite alternate;
 }
 
+@keyframes title-in {
+  from {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+    transform: translate3d(-3%, 0, 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes skyline-in {
+  from {
+    transform: translate3d(0, 45%, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .anim-title {
+    animation: title-in 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s both;
+  }
+  .anim-skyline {
+    animation: skyline-in 1.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+}
+
 [data-live="false"] .anim-wind,
 [data-live="false"] .anim-wind-slow,
 [data-live="false"] .anim-stride {

@@ -8,7 +8,7 @@ export const Route = createFileRoute("/")({
   component: ComicLanding,
 });
 
-const ASSET_VERSION = "22";
+const ASSET_VERSION = "23";
 const SCENE_SHIFT = 3;
 const asset = (name: string) => `/story/${name}.webp?v=${ASSET_VERSION}`;
 
@@ -93,11 +93,23 @@ const ENGINEERS = [
 ] as const;
 const SAND = { horizon: 0.5702, slope: 0.5947, near: 0.992, far: 0.9, grip: 14 } as const;
 
-const BALLOONS: Array<{ key: MessageKey; left: string; top: string; tail: number; tilt: string }> = [
-  { key: "comic_q1", left: "20.5%", top: "47%", tail: 70, tilt: "-rotate-3" },
-  { key: "comic_q2", left: "46.5%", top: "42%", tail: 50, tilt: "rotate-2" },
-  { key: "comic_q3", left: "65.5%", top: "45.5%", tail: 25, tilt: "-rotate-1" },
-];
+const CROWD = [
+  { id: 0, x: 0.2471, y: 0.9989, ratio: 0.2915, anchor: 0.4634, scale: 1.009 },
+  { id: 1, x: 0.6582, y: 0.9531, ratio: 0.3178, anchor: 0.5163, scale: 1.01 },
+  { id: 2, x: 0.535, y: 0.8309, ratio: 0.3733, anchor: 0.4037, scale: 1.009 },
+  { id: 3, x: 0.3489, y: 0.7714, ratio: 0.4187, anchor: 0.5388, scale: 1.009 },
+  { id: 4, x: 0.6368, y: 0.7371, ratio: 0.4155, anchor: 0.4341, scale: 1.008 },
+  { id: 5, x: 0.4646, y: 0.7029, ratio: 0.3834, anchor: 0.5743, scale: 1.01 },
+  { id: 6, x: 0.5618, y: 0.6834, ratio: 0.3483, anchor: 0.4274, scale: 1.01 },
+  { id: 7, x: 0.5032, y: 0.6537, ratio: 0.381, anchor: 0.4922, scale: 1.096 },
+] as const;
+const CROWD_FLOOR = { horizon: 0.454, slope: 0.8775, near: 1, far: 0.65, grip: 12 } as const;
+const CROWD_VOICES: Partial<Record<number, { key: MessageKey; tilt: string }>> = {
+  0: { key: "comic_q1", tilt: "-rotate-3" },
+  5: { key: "comic_q2", tilt: "rotate-2" },
+  4: { key: "comic_q3", tilt: "-rotate-1" },
+};
+const IRIS_COLOURS = ["blue", "grey", "ochre"] as const;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const clamp01 = (value: number) => clamp(value, 0, 1);
@@ -111,6 +123,7 @@ const hasFinePointer = () => window.matchMedia?.("(hover: hover) and (pointer: f
 const figureHeight = (y: number) => (y < 0.66 ? 0.0704 + (y - 0.3938) * 0.155 : 0.1115 + (y - 0.66) * 0.34);
 const stageHalfWidth = (y: number) => (y < 0.66 ? 0.19 + (y - 0.39) * 0.5 : 0.455);
 const engineerHeight = (y: number) => SAND.slope * (y - SAND.horizon);
+const crowdHeight = (y: number) => CROWD_FLOOR.slope * (y - CROWD_FLOOR.horizon);
 
 function loadSheet(image: HTMLImageElement, src: string, onReady: () => void) {
   let done = false;
@@ -302,7 +315,6 @@ function Inset({
     <div
       data-float
       data-depth={depth}
-      aria-hidden
       className={cn("absolute z-10 overflow-hidden bg-comic-paper", FRAME, className)}
       style={{ aspectRatio: ratio }}
     >
@@ -311,8 +323,9 @@ function Inset({
   );
 }
 
-function EyesInset() {
-  const box = useRef<HTMLDivElement>(null);
+function EyesInset({ label }: { label: string }) {
+  const box = useRef<HTMLButtonElement>(null);
+  const [colour, setColour] = useState(0);
 
   useEffect(() => {
     const view = box.current;
@@ -364,7 +377,14 @@ function EyesInset() {
 
   const mask = `url(${asset("eyes-mask")})`;
   return (
-    <div ref={box} className="relative size-full">
+    <button
+      ref={box}
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={() => setColour((colour + 1) % IRIS_COLOURS.length)}
+      className="relative block size-full cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vermilion"
+    >
       <img
         src={asset("eyes-base")}
         alt=""
@@ -380,7 +400,7 @@ function EyesInset() {
           <img
             key={socket.x}
             data-iris
-            src={asset("eyes-iris")}
+            src={asset(`eyes-iris-${IRIS_COLOURS[colour]}`)}
             alt=""
             loading="lazy"
             className="absolute aspect-square will-change-transform"
@@ -400,7 +420,7 @@ function EyesInset() {
         decoding="async"
         className="absolute inset-0 size-full object-cover"
       />
-    </div>
+    </button>
   );
 }
 
@@ -790,6 +810,144 @@ function DesertStage({ children }: { children?: ReactNode }) {
         aria-hidden
         className="pointer-events-none absolute -top-[5px] right-[calc(50%_-_var(--joint)/2_+_3px)] left-[calc(50%_-_var(--joint)/2_+_3px)] h-[10px] bg-comic-paper"
       />
+      {children}
+    </figure>
+  );
+}
+
+function CrowdStage({ children }: { children?: ReactNode }) {
+  const { t } = useI18n();
+  const stage = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const board = stage.current;
+    if (!board) return;
+    const releases = Array.from(board.querySelectorAll<HTMLElement>("[data-crowd]")).map((node) => {
+      const spec = CROWD.find((item) => String(item.id) === node.dataset.crowd);
+      const body = node.querySelector<HTMLElement>("[data-body]");
+      if (!spec || !body) return () => {};
+      let pointer = -1;
+      let grabX = 0;
+      let grabY = 0;
+      const place = (event: PointerEvent) => {
+        const rect = board.getBoundingClientRect();
+        const x = clamp((event.clientX - grabX - rect.left) / rect.width, 0.03, 0.97);
+        const feet = (event.clientY - grabY - rect.top) / rect.height;
+        const ground = clamp(feet, CROWD_FLOOR.far, CROWD_FLOOR.near);
+        const lift = Math.max(CROWD_FLOOR.grip, (ground - feet) * rect.height + CROWD_FLOOR.grip);
+        node.style.left = `${(x * 100).toFixed(2)}%`;
+        node.style.top = `${(ground * 100).toFixed(2)}%`;
+        node.style.height = `${(crowdHeight(ground) * spec.scale * 100).toFixed(2)}%`;
+        node.style.zIndex = String(Math.round(ground * 1000));
+        body.style.transform = `translate3d(0,${(-lift).toFixed(1)}px,0)`;
+      };
+      const onDown = (event: PointerEvent) => {
+        if (event.pointerType === "mouse" && event.button !== 0) return;
+        const box = node.getBoundingClientRect();
+        grabX = event.clientX - (box.left + box.width * spec.anchor);
+        grabY = event.clientY - box.bottom;
+        pointer = event.pointerId;
+        try {
+          node.setPointerCapture(pointer);
+        } catch {}
+        node.dataset.held = "true";
+        place(event);
+        event.preventDefault();
+      };
+      const onMove = (event: PointerEvent) => {
+        if (event.pointerId === pointer) place(event);
+      };
+      const onUp = (event: PointerEvent) => {
+        if (event.pointerId !== pointer) return;
+        pointer = -1;
+        delete node.dataset.held;
+        body.style.transform = "";
+      };
+      node.addEventListener("pointerdown", onDown);
+      node.addEventListener("pointermove", onMove);
+      node.addEventListener("pointerup", onUp);
+      node.addEventListener("pointercancel", onUp);
+      return () => {
+        node.removeEventListener("pointerdown", onDown);
+        node.removeEventListener("pointermove", onMove);
+        node.removeEventListener("pointerup", onUp);
+        node.removeEventListener("pointercancel", onUp);
+      };
+    });
+    return () => {
+      for (const release of releases) release();
+    };
+  }, []);
+
+  return (
+    <figure data-panel className="relative">
+      <div className={cn("relative overflow-hidden bg-comic-paper", FRAME)} style={{ aspectRatio: "1400 / 875" }}>
+        <div ref={stage} data-scene className="absolute inset-0">
+          <img
+            src={asset("crowd-plate")}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="absolute inset-0 size-full object-cover"
+          />
+          {CROWD.map((person) => {
+            const voice = CROWD_VOICES[person.id];
+            return (
+              <div
+                key={person.id}
+                data-crowd={person.id}
+                className="group absolute cursor-grab touch-none select-none data-[held=true]:cursor-grabbing"
+                style={{
+                  left: `${person.x * 100}%`,
+                  top: `${person.y * 100}%`,
+                  height: `${crowdHeight(person.y) * person.scale * 100}%`,
+                  aspectRatio: String(person.ratio),
+                  transform: `translate(${-person.anchor * 100}%,-100%)`,
+                  zIndex: Math.round(person.y * 1000),
+                }}
+              >
+                <div
+                  data-body
+                  className="absolute inset-0 transition-transform duration-300 ease-in group-data-[held=true]:transition-none"
+                >
+                  <img
+                    src={asset(`crowd-${person.id}`)}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    draggable={false}
+                    className="anim-struggle block size-full"
+                  />
+                  {voice && (
+                    <span className="pointer-events-none absolute bottom-full left-1/2 block -translate-x-1/2 pb-3">
+                      <span
+                        className={cn(
+                          "relative block border-2 border-comic-ink bg-comic-paper px-2.5 py-1 text-[12px] font-semibold whitespace-nowrap md:px-3.5 md:py-2 md:text-[15px]",
+                          voice.tilt,
+                        )}
+                      >
+                        {t(voice.key)}
+                        <svg
+                          aria-hidden
+                          viewBox="0 0 16 12"
+                          className="absolute top-full left-1/2 -mt-[2px] h-3 w-4 -translate-x-1/2"
+                        >
+                          <path
+                            d="M1 0L7 11 15 0"
+                            strokeWidth={2}
+                            strokeLinejoin="round"
+                            className="fill-comic-paper stroke-comic-ink"
+                          />
+                        </svg>
+                      </span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
       {children}
     </figure>
   );
@@ -1445,7 +1603,6 @@ function ComicLanding() {
       node,
       scale: Number(node.dataset.scene) || 1.07,
     }));
-    const followers = Array.from(root.querySelectorAll<HTMLElement>("[data-scene-follow]"));
     for (const scene of scenes) scene.node.style.transform = `scale(${scene.scale})`;
     const layers = Array.from(root.querySelectorAll<HTMLElement>("[data-layer]")).map((node) => ({
       node,
@@ -1482,7 +1639,6 @@ function ComicLanding() {
       const dx = (-eased.x * SCENE_SHIFT).toFixed(2);
       const dy = (-eased.y * SCENE_SHIFT).toFixed(2);
       for (const scene of scenes) scene.node.style.transform = `translate3d(${dx}%,${dy}%,0) scale(${scene.scale})`;
-      for (const follower of followers) follower.style.transform = `translate3d(${dx}%,${dy}%,0)`;
       if (Math.abs(pointer.x - eased.x) > 0.002 || Math.abs(pointer.y - eased.y) > 0.002) schedule();
     };
     const schedule = () => {
@@ -1609,7 +1765,7 @@ function ComicLanding() {
           className="absolute inset-0 flex items-center justify-center will-change-transform"
         >
           <h1 className="w-[min(70vw,560px)] -translate-y-[14%] md:-translate-y-[26%]">
-            <img src={asset("title-logo")} alt={t("brand_name")} className="block w-full" />
+            <img src={asset("title-logo")} alt={t("brand_name")} className="anim-title block w-full" />
           </h1>
         </div>
         <div
@@ -1618,7 +1774,7 @@ function ComicLanding() {
           data-lift="-1.5"
           className="absolute inset-x-[-5%] bottom-0 h-[min(30dvh,30vw)] will-change-transform"
         >
-          <img src={asset("title-skyline")} alt="" className="block size-full object-cover object-top" />
+          <img src={asset("title-skyline")} alt="" className="anim-skyline block size-full object-cover object-top" />
           <div className="absolute inset-x-0 top-[98%] h-dvh bg-comic-paper" />
         </div>
         <p
@@ -1645,7 +1801,7 @@ function ComicLanding() {
               depth={2.2}
               className="-right-1 -bottom-12 w-[66%] md:-right-6 md:-bottom-20 md:w-[47%]"
             >
-              <EyesInset />
+              <EyesInset label={t("comic_eyes_label")} />
             </Inset>
             <Caption className="-bottom-32 left-2 md:bottom-8 md:-left-8">{t("comic_1")}</Caption>
           </figure>
@@ -1726,46 +1882,9 @@ function ComicLanding() {
 
       <main className="relative mx-auto w-full max-w-[1180px] px-4 pb-[clamp(140px,24vh,280px)] md:px-8">
         <section className="relative pt-[clamp(110px,18vh,220px)]">
-          <Panel src="crowd" ratio="1400 / 875">
+          <CrowdStage>
             <Caption className="-top-5 left-3 md:-left-8">{t("comic_5")}</Caption>
-            <div data-scene-follow className="pointer-events-none absolute inset-0 z-20">
-              {BALLOONS.map((balloon, index) => (
-                <span
-                  key={balloon.key}
-                  data-float
-                  data-depth={1.4 + index * 0.5}
-                  className="absolute block pb-3"
-                  style={{
-                    left: balloon.left,
-                    top: balloon.top,
-                    transform: `translate(-${balloon.tail}%,-100%)`,
-                  }}
-                >
-                  <span
-                    className={cn(
-                      "relative block border-2 border-comic-ink bg-comic-paper px-2.5 py-1 text-[12px] font-semibold whitespace-nowrap md:px-3.5 md:py-2 md:text-[15px]",
-                      balloon.tilt,
-                    )}
-                  >
-                    {t(balloon.key)}
-                    <svg
-                      aria-hidden
-                      viewBox="0 0 16 12"
-                      className="absolute top-full -mt-[2px] h-3 w-4 -translate-x-1/2"
-                      style={{ left: `${balloon.tail}%` }}
-                    >
-                      <path
-                        d="M1 0L7 11 15 0"
-                        strokeWidth={2}
-                        strokeLinejoin="round"
-                        className="fill-comic-paper stroke-comic-ink"
-                      />
-                    </svg>
-                  </span>
-                </span>
-              ))}
-            </div>
-          </Panel>
+          </CrowdStage>
         </section>
 
         <section className="relative pt-[clamp(220px,40vh,460px)]">
