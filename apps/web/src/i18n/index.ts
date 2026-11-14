@@ -291,7 +291,8 @@ const messages = {
     settings_model_hint:
       "開啟時，對話介面左側面板上方可以在「列表」與「蘇格拉底」之間切換；關閉後整個介面不會出現模型，語音朗讀不受影響。",
     chat_panel_switch: "左側面板內容",
-    chat_panel_list: "列表",
+    chat_panel_list: "提問",
+    chat_panel_model: "對話",
     comic_skip: "跳到結尾",
     comic_desert: "一群工程師走進沙漠，朝著那尊半埋在沙裡的雕像前進。",
     comic_revived: "他醒了。",
@@ -823,7 +824,8 @@ const messages = {
     settings_model_hint:
       "When on, the top of the side panel in a dialogue switches between the list and Socrates. When off, the model never appears; voice readout is unaffected.",
     chat_panel_switch: "Side panel content",
-    chat_panel_list: "List",
+    chat_panel_list: "Ask",
+    chat_panel_model: "Dialogue",
     comic_skip: "Skip to the end",
     comic_desert: "A group of engineers set out across the desert, toward the statue half-buried in the sand.",
     comic_revived: "He is awake.",
@@ -1379,7 +1381,8 @@ const messages = {
     settings_model_hint:
       "Si está activado, la parte superior del panel lateral del diálogo alterna entre la lista y Sócrates. Si está desactivado, el modelo no aparece; la lectura en voz alta no cambia.",
     chat_panel_switch: "Contenido del panel lateral",
-    chat_panel_list: "Lista",
+    chat_panel_list: "Preguntar",
+    chat_panel_model: "Diálogo",
     comic_skip: "Saltar al final",
     comic_desert: "Un grupo de ingenieros cruzó el desierto hacia la estatua medio enterrada en la arena.",
     comic_revived: "Ha despertado.",

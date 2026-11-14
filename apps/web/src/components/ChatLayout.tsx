@@ -83,7 +83,6 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
           {showModel ? (
             <>
               <SidebarHeader title={t("dlg_socrates")} />
-              <PanelSwitch />
               {open && <SocratesDock />}
             </>
           ) : (
@@ -128,30 +127,27 @@ export function SidebarHeader({
   actions?: ReactNode;
   className?: string;
 }) {
-  return (
-    <div className={cn("flex h-14 shrink-0 items-center gap-1 border-b border-line pr-2 pl-3", className)}>
-      <div className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{title}</div>
-      {actions}
-      <SidebarToggle />
-    </div>
-  );
-}
-
-export function PanelSwitch() {
   const t = useT();
   const context = useContext(SidebarContext);
-  if (!context?.switchable) return null;
   return (
-    <div className="flex shrink-0 justify-center border-b border-line px-3 py-2">
-      <Segmented
-        label={t("chat_panel_switch")}
-        value={context.showModel ? "model" : "list"}
-        onChange={(value) => context.setShowModel(value === "model")}
-        items={[
-          { value: "list", label: t("chat_panel_list") },
-          { value: "model", label: t("dlg_socrates") },
-        ]}
-      />
+    <div className={cn("flex h-14 shrink-0 items-center gap-1 border-b border-line pr-2 pl-3", className)}>
+      <div className="flex min-w-0 flex-1 items-center truncate text-[14px] font-medium text-ink">
+        {context?.switchable ? (
+          <Segmented
+            label={t("chat_panel_switch")}
+            value={context.showModel ? "model" : "list"}
+            onChange={(value) => context.setShowModel(value === "model")}
+            items={[
+              { value: "list", label: t("chat_panel_list") },
+              { value: "model", label: t("chat_panel_model") },
+            ]}
+          />
+        ) : (
+          title
+        )}
+      </div>
+      {actions}
+      <SidebarToggle />
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { Link, Outlet, createFileRoute, redirect, useNavigate, useRouterState } 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Pencil, Search, SquarePen, Trash2, X } from "lucide-react";
 import { api, type SoloChat } from "@/api";
-import { ChatLayout, PanelSwitch, SidebarHeader } from "@/components/ChatLayout";
+import { ChatLayout, SidebarHeader } from "@/components/ChatLayout";
 import { ConfirmDialog, cn } from "@/components/ui";
 import { useT, type MessageKey } from "@/i18n";
 
@@ -82,7 +82,6 @@ function SoloSidebar() {
           </Link>
         }
       />
-      <PanelSwitch />
       <div className="px-2 pt-2 pb-1">
         <label className="flex h-8 items-center gap-2 rounded-lg border border-line bg-paper px-2 text-ink-faint focus-within:border-ink">
           <Search className="size-3.5 shrink-0" />

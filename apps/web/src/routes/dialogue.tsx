@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChartNoAxesColumn } from "lucide-react";
 import { api } from "@/api";
 import { readActivityId } from "@/api/local";
-import { ChatLayout, PanelSwitch, SidebarHeader } from "@/components/ChatLayout";
+import { ChatLayout, SidebarHeader } from "@/components/ChatLayout";
 import { DialogueView } from "@/components/DialogueView";
 import { cn } from "@/components/ui";
 import { useFormatDate, useT } from "@/i18n";
@@ -113,7 +113,6 @@ function ActivityTopic({ title, finished }: { title?: string; finished: boolean 
   return (
     <>
       <SidebarHeader title={t("nav_activity")} />
-      <PanelSwitch />
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-2 pb-3">
         <h3 className="px-2 pb-1 text-[11.5px] text-ink-faint">{t("classroom_topics")}</h3>
         {title && (
@@ -149,31 +148,22 @@ function ClassroomTopics({
   });
   return (
     <>
-      {classroomId ? (
-        <>
-          <SidebarHeader
-            className="border-b-0"
-            title={
-              classroomId && (
-                <Link
-                  to="/classrooms/$classroomId"
-                  params={{ classroomId }}
-                  className="-ml-1.5 inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[12.5px] font-normal text-ink-soft hover:bg-paper-deep hover:text-ink"
-                >
-                  <ArrowLeft className="size-3.5" />
-                  {t("classroom_back_to_room")}
-                </Link>
-              )
-            }
-          />
-          <h2 className="shrink-0 truncate border-b border-line px-3 pb-3 font-serif text-[18px] leading-snug text-ink">
+      <SidebarHeader title={t("classroom_topics")} />
+      {classroomId && (
+        <div className="shrink-0 border-b border-line px-3 pt-2 pb-3">
+          <Link
+            to="/classrooms/$classroomId"
+            params={{ classroomId }}
+            className="-ml-1.5 inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[12.5px] text-ink-soft hover:bg-paper-deep hover:text-ink"
+          >
+            <ArrowLeft className="size-3.5" />
+            {t("classroom_back_to_room")}
+          </Link>
+          <h2 className="mt-1 truncate font-serif text-[18px] leading-snug text-ink">
             {classroomName ?? t("nav_classrooms")}
           </h2>
-        </>
-      ) : (
-        <SidebarHeader title={t("classroom_topics")} />
+        </div>
       )}
-      <PanelSwitch />
       <nav className="stream-scroll min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-3">
         {classroomId && <h3 className="px-2 pb-1 text-[11.5px] text-ink-faint">{t("classroom_topics")}</h3>}
         <ul>
