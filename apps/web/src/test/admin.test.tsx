@@ -813,3 +813,54 @@ test("leaving review mode closes the drill-down", async () => {
     dispose();
   }
 });
+
+test("review mode breaks failures down by violation type and by purpose, and leaves cost unknown", async () => {
+  metricsBody.violations.byType = [
+    { type: "math", count: 3 },
+    { type: "injection", count: 1 },
+  ];
+  const { dispose } = await mountRoute("/admin/ops?mode=review");
+  try {
+    const violations = await screen.findByRole("region", { name: /Violations/ });
+    const rows = Array.from(violations.querySelectorAll("li")).map((row) => row.textContent);
+    expect(rows).toEqual(["math3", "injection1"]);
+
+    const purposes = screen.getByRole("region", { name: /Usage by purpose/ });
+    const purposeRows = Array.from(purposes.querySelectorAll("li")).map((row) => row.textContent);
+    expect(purposeRows).toEqual(["Dialogue120 attempts, 60 failed (50%)", "Judgment60 attempts, 0 failed (0%)"]);
+
+    const cost = screen.getByRole("region", { name: "Cost" });
+    expect(cost.textContent).toContain("—");
+    expect(cost.textContent).toContain("Not estimated");
+  } finally {
+    dispose();
+  }
+});
+
+test("with no violations the panel says so, and a known cost is printed as money", async () => {
+  metricsBody.violations.byType = [{ type: "math", count: 0 }];
+  metricsBody.cost.totalUsd = 1.5;
+  const { dispose } = await mountRoute("/admin/ops?mode=review");
+  try {
+    const violations = await screen.findByRole("region", { name: /Violations/ });
+    expect(violations.textContent).toContain("No violations in this period");
+    expect(violations.querySelectorAll("li")).toHaveLength(0);
+    const cost = screen.getByRole("region", { name: "Cost" });
+    expect(cost.textContent).toContain("$1.50");
+    expect(cost.textContent).not.toContain("Not estimated");
+  } finally {
+    dispose();
+  }
+});
+
+test("live mode has no breakdown or cost panels", async () => {
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    await screen.findByRole("heading", { name: /Degraded/ });
+    expect(screen.queryByRole("region", { name: /Violations/ })).toBeNull();
+    expect(screen.queryByRole("region", { name: /Usage by purpose/ })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Cost" })).toBeNull();
+  } finally {
+    dispose();
+  }
+});

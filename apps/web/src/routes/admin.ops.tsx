@@ -5,7 +5,7 @@ import { RefreshCw, TriangleAlert } from "lucide-react";
 import { OPS_AXIS_PLAN, OPS_RANGES, OpsRangeSchema, type OpsRange } from "@socrates/shared";
 import { api } from "@/api";
 import { AdminTabs } from "@/components/AdminTabs";
-import { LiveSummary, QuotaPanel, ReviewSummary } from "@/components/OpsPanels";
+import { BreakdownPanels, LiveSummary, QuotaPanel, ReviewSummary } from "@/components/OpsPanels";
 import { ClassroomDrilldown, ClassUsagePanel, EventsPanel } from "@/components/OpsTables";
 import { Button, PageHeader, SectionTitle, Segmented, Spinner, cn } from "@/components/ui";
 import { useI18n, type MessageKey } from "@/i18n";
@@ -174,6 +174,7 @@ function OpsPage() {
           <QuotaPanel quotas={data.quotas} channels={data.channels} live={live} etas={liveQuery.data?.now.quotaEta} />
         )}
         {!live && metricsQuery.data && <ClassUsagePanel usage={metricsQuery.data.classUsage} onOpen={openClassroom} />}
+        {!live && metricsQuery.data && <BreakdownPanels data={metricsQuery.data} />}
         {data && <EventsPanel events={data.events} channels={data.channels} live={live} />}
         {!live && classroom && (
           <ClassroomDrilldown

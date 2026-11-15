@@ -402,3 +402,95 @@ export function QuotaPanel({ quotas, channels, live, etas = [] }: QuotaPanelProp
     </section>
   );
 }
+
+function BarRow({ label, detail, parts }: { label: string; detail: string; parts: { share: number; tone: string }[] }) {
+  return (
+    <li className="py-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-[13px]">
+        <span className="font-medium text-ink">{label}</span>
+        <span className="tabular-nums text-ink-soft">{detail}</span>
+      </div>
+      <div className="mt-1.5 flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-paper-deep" aria-hidden="true">
+        {parts.map((part) => (
+          <div
+            key={part.tone}
+            className={cn("h-full first:rounded-l-full last:rounded-r-full", part.tone)}
+            style={{ width: `${Math.max(0, Math.min(100, part.share * 100))}%` }}
+          />
+        ))}
+      </div>
+    </li>
+  );
+}
+
+export function BreakdownPanels({ data }: { data: OpsMetricsResponse }) {
+  const { t, locale } = useI18n();
+  const violationTotal = data.violations.byType.reduce((sum, entry) => sum + entry.count, 0);
+  const violationMax = Math.max(1, ...data.violations.byType.map((entry) => entry.count));
+  const purposeMax = Math.max(1, ...data.purposeSummary.map((entry) => entry.summary.requests));
+  const money = new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumFractionDigits: 4 });
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <section aria-labelledby="ops-violations">
+          <SectionTitle>
+            <span id="ops-violations">{t("admin_violations_title")}</span>
+          </SectionTitle>
+          <Card className="px-5 py-3">
+            {violationTotal === 0 ? (
+              <p className="py-2 text-[13px] text-ink-faint">{t("admin_violations_none")}</p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {data.violations.byType.map((entry) => (
+                  <BarRow
+                    key={entry.type}
+                    label={entry.type}
+                    detail={formatCount(entry.count, locale)}
+                    parts={[{ share: entry.count / violationMax, tone: "bg-ink-soft" }]}
+                  />
+                ))}
+              </ul>
+            )}
+          </Card>
+        </section>
+        <section aria-labelledby="ops-purposes">
+          <SectionTitle>
+            <span id="ops-purposes">{t("admin_purposes_title")}</span>
+          </SectionTitle>
+          <Card className="px-5 py-3">
+            <ul className="divide-y divide-line">
+              {data.purposeSummary.map((entry) => (
+                <BarRow
+                  key={entry.purpose}
+                  label={labelOf(PURPOSE_KEYS, entry.purpose, t)}
+                  detail={t("admin_card_range", {
+                    requests: formatCount(entry.summary.requests, locale),
+                    errors: formatCount(entry.summary.errors, locale),
+                    rate: formatPercent(ratio(entry.summary.errors, entry.summary.requests), locale),
+                  })}
+                  parts={[
+                    { share: (entry.summary.requests - entry.summary.errors) / purposeMax, tone: "bg-ink-soft" },
+                    { share: entry.summary.errors / purposeMax, tone: "bg-flag" },
+                  ]}
+                />
+              ))}
+            </ul>
+          </Card>
+        </section>
+      </div>
+      <section aria-labelledby="ops-cost">
+        <SectionTitle>
+          <span id="ops-cost">{t("admin_cost_title")}</span>
+        </SectionTitle>
+        <Card className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-5 py-4">
+          <span className="text-[24px] font-semibold tabular-nums text-ink">
+            {data.cost.totalUsd === null ? "—" : money.format(data.cost.totalUsd)}
+          </span>
+          {data.cost.totalUsd === null && (
+            <span className="text-[12.5px] text-ink-faint">{t("admin_cost_unknown")}</span>
+          )}
+        </Card>
+      </section>
+    </>
+  );
+}
