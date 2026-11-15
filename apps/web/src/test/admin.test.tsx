@@ -903,3 +903,50 @@ test("review mode never shows the idle notice", async () => {
     dispose();
   }
 });
+
+test("each trend chart can be read as a table, newest first, with the in-progress cell marked", async () => {
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    const turnsHeading = await screen.findByRole("heading", { name: "Dialogue turns per second" });
+    const card = turnsHeading.closest("div")!.parentElement!;
+    fireEvent.click(within(card).getByRole("button", { name: "View as table" }));
+    const table = within(card).getByRole("table", { name: "Dialogue turns per second" });
+    const headers = Array.from(table.querySelectorAll("thead th")).map((cell) => cell.textContent);
+    expect(headers).toEqual(["Time", "Completed", "Students saw an error"]);
+    const rows = Array.from(table.querySelectorAll("tbody tr"));
+    expect(rows).toHaveLength(10);
+    expect(rows[0]?.querySelector("th")?.textContent).toContain("(in progress)");
+    expect(rows[1]?.querySelector("th")?.textContent).not.toContain("in progress");
+    expect(card.textContent).toContain("1–10 of 180");
+    expect(card.querySelector(".recharts-surface")).toBeNull();
+    expect(within(card).getByRole("button", { name: "Back to chart" }).getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(within(card).getByRole("button", { name: "Back to chart" }));
+    await waitFor(() => expect(card.querySelector(".recharts-surface")).not.toBeNull());
+    expect(within(card).queryByRole("table")).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test("the latency table has a column per channel and prints missing values as dashes", async () => {
+  liveBody.channels[1]!.ttftP95Ms = liveBody.channels[1]!.ttftP95Ms.map(() => null);
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    const heading = await screen.findByRole("heading", { name: "Time to first token p95", level: 3 });
+    const card = heading.closest("div")!.parentElement!;
+    fireEvent.click(within(card).getByRole("button", { name: "View as table" }));
+    const table = within(card).getByRole("table");
+    expect(Array.from(table.querySelectorAll("thead th")).map((cell) => cell.textContent)).toEqual([
+      "Time",
+      "GLM 5.3 Flash",
+      "Clef Flash",
+    ]);
+    const first = Array.from(table.querySelectorAll("tbody tr")[0]!.querySelectorAll("td")).map(
+      (cell) => cell.textContent,
+    );
+    expect(first).toEqual(["800 ms", "—"]);
+  } finally {
+    dispose();
+  }
+});

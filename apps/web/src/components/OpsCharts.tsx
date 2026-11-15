@@ -18,6 +18,8 @@ import {
   type OpsChannelSeries,
   type OpsSystemSeries,
 } from "@socrates/shared";
+import { useState } from "react";
+import { Pagination, useTable } from "@/components/DataTable";
 import { Card } from "@/components/ui";
 import { useI18n } from "@/i18n";
 import { formatMs } from "@/lib/ops";
@@ -53,11 +55,82 @@ function Legend({ items }: { items: { label: string; color: string }[] }) {
   );
 }
 
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+interface TableRowData {
+  key: number;
+  time: string;
+  partial: boolean;
+  cells: string[];
+}
+
+const NO_SORT = {} as const;
+
+function ChartTable({ title, columns, rows }: { title: string; columns: string[]; rows: TableRowData[] }) {
+  const { t } = useI18n();
+  const table = useTable(rows, NO_SORT);
+  return (
+    <div className="mt-3">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-[12.5px]">
+          <caption className="sr-only">{title}</caption>
+          <thead>
+            <tr className="text-ink-faint">
+              <th scope="col" className="px-2 py-1.5 font-medium">
+                {t("admin_chart_col_time")}
+              </th>
+              {columns.map((column) => (
+                <th key={column} scope="col" className="px-2 py-1.5 font-medium">
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {table.rows.map((row) => (
+              <tr key={row.key} className="border-t border-line">
+                <th scope="row" className="px-2 py-1.5 text-left font-normal tabular-nums text-ink-soft">
+                  {row.time}
+                  {row.partial && <span className="ml-1.5 text-ink-faint">({t("admin_chart_in_progress")})</span>}
+                </th>
+                {row.cells.map((cell, index) => (
+                  <td key={`${row.key}-${columns[index]}`} className="px-2 py-1.5 tabular-nums text-ink">
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Pagination table={table} />
+    </div>
+  );
+}
+
+function ChartCard({
+  title,
+  table,
+  children,
+}: {
+  title: string;
+  table: { columns: string[]; rows: TableRowData[] };
+  children: React.ReactNode;
+}) {
+  const { t } = useI18n();
+  const [asTable, setAsTable] = useState(false);
   return (
     <Card className="p-4">
-      <h3 className="text-[13.5px] font-semibold text-ink">{title}</h3>
-      {children}
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-[13.5px] font-semibold text-ink">{title}</h3>
+        <button
+          type="button"
+          aria-pressed={asTable}
+          onClick={() => setAsTable((current) => !current)}
+          className="shrink-0 cursor-pointer rounded-full border border-line-strong px-3 py-1 text-[12px] text-ink-soft hover:text-ink"
+        >
+          {asTable ? t("admin_chart_table_hide") : t("admin_chart_table_show")}
+        </button>
+      </div>
+      {asTable ? <ChartTable title={title} columns={table.columns} rows={table.rows} /> : children}
     </Card>
   );
 }
@@ -99,9 +172,33 @@ export function OpsCharts({ live, axis, generatedAtSec, channels, system }: Prop
   const okLabel = t("admin_chart_ok_turns");
   const failedLabel = t("admin_chart_failed_turns");
 
+  const newestFirst = <T,>(rows: T[]) => [...rows].reverse();
+  const turnsTable = {
+    columns: [okLabel, failedLabel],
+    rows: newestFirst(
+      turns.map((row) => ({
+        key: row.startSec,
+        time: fullTime.format(new Date(row.startSec * 1000)),
+        partial: row.partial,
+        cells: [number.format(row.ok), number.format(row.failed)],
+      })),
+    ),
+  };
+  const latencyTable = {
+    columns: channels.map((channel) => channel.label),
+    rows: newestFirst(
+      latency.map((row, index) => ({
+        key: row.startSec,
+        time: fullTime.format(new Date(row.startSec * 1000)),
+        partial: row.partial,
+        cells: channels.map((channel) => formatMs(channel.ttftP95Ms[index] ?? null, locale)),
+      })),
+    ),
+  };
+
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-      <ChartCard title={live ? t("admin_chart_turns_live") : t("admin_chart_turns_range")}>
+      <ChartCard title={live ? t("admin_chart_turns_live") : t("admin_chart_turns_range")} table={turnsTable}>
         <Legend
           items={[
             { label: okLabel, color: "var(--color-ink-soft)" },
@@ -162,7 +259,7 @@ export function OpsCharts({ live, axis, generatedAtSec, channels, system }: Prop
         </div>
       </ChartCard>
 
-      <ChartCard title={t("admin_chart_ttft")}>
+      <ChartCard title={t("admin_chart_ttft")} table={latencyTable}>
         <Legend
           items={channels.slice(0, 3).map((channel, index) => ({ label: channel.label, color: seriesColor(index) }))}
         />
