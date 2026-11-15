@@ -6,6 +6,7 @@ import { OPS_AXIS_PLAN, OPS_RANGES, OpsRangeSchema, type OpsRange } from "@socra
 import { api } from "@/api";
 import { AdminTabs } from "@/components/AdminTabs";
 import { LiveSummary, QuotaPanel, ReviewSummary } from "@/components/OpsPanels";
+import { EventsPanel } from "@/components/OpsTables";
 import { Button, PageHeader, SectionTitle, Segmented, Spinner, cn } from "@/components/ui";
 import { useI18n, type MessageKey } from "@/i18n";
 import { formatDateTime } from "@/lib/adminTime";
@@ -162,6 +163,7 @@ function OpsPage() {
         {data && (
           <QuotaPanel quotas={data.quotas} channels={data.channels} live={live} etas={liveQuery.data?.now.quotaEta} />
         )}
+        {data && <EventsPanel events={data.events} channels={data.channels} live={live} />}
       </div>
     </div>
   );

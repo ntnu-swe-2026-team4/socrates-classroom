@@ -41,7 +41,7 @@ const REASON_KEYS = {
   no_data: "admin_reason_no_data",
 } as const satisfies Record<NonNullable<OpsLiveChannel["usableReason"]>, MessageKey>;
 
-const PURPOSE_KEYS = {
+export const PURPOSE_KEYS = {
   dialogue: "admin_purpose_dialogue",
   judgment: "admin_purpose_judgment",
   avatar: "admin_purpose_avatar",

@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AdminDashboard } from "@socrates/shared";
 import { routeTree } from "@/routeTree.gen";
 import { setLocale } from "@/i18n";
-import { liveResponse, metricsResponse } from "./opsFixtures";
+import { event, liveResponse, metricsResponse } from "./opsFixtures";
 
 vi.mock("@/components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
 vi.mock("@/landing/LandAnimation", () => ({ LandAnimation: () => null }));
@@ -377,13 +377,17 @@ test("live mode states the overall verdict, the headline numbers and one card pe
 
     const channels = screen.getByRole("region", { name: /Channels/ });
     expect(channels.querySelectorAll("li")).toHaveLength(2);
-    const glm = screen.getByText("GLM 5.3 Flash", { selector: "span" }).closest("li")!;
+    const glm = within(screen.getByRole("region", { name: /Channels/ }))
+      .getByText("GLM 5.3 Flash", { selector: "span" })
+      .closest("li")!;
     expect(glm.textContent).toContain("Degraded");
     expect(glm.textContent).toContain("Error rate 50%");
     expect(glm.textContent).toContain("Last minute: 24 attempts, 12 failed");
     expect(glm.textContent).toContain("Used for: Dialogue");
     expect(glm.textContent).toContain("No concurrency limit set");
-    const clef = screen.getByText("Clef Flash", { selector: "span" }).closest("li")!;
+    const clef = within(screen.getByRole("region", { name: /Channels/ }))
+      .getByText("Clef Flash", { selector: "span" })
+      .closest("li")!;
     expect(clef.textContent).toContain("OK");
     expect(clef.textContent).toContain("Used for: Judgment");
   } finally {
@@ -401,7 +405,9 @@ test("a down channel outranks a degraded one and its duration is shown", async (
   try {
     expect(await screen.findByRole("heading", { name: "Down: Clef Flash" })).toBeTruthy();
     expect(screen.getByText(/for 5 min/)).toBeTruthy();
-    const clef = screen.getByText("Clef Flash", { selector: "span" }).closest("li")!;
+    const clef = within(screen.getByRole("region", { name: /Channels/ }))
+      .getByText("Clef Flash", { selector: "span" })
+      .closest("li")!;
     expect(clef.textContent).toContain("Circuit breaker open");
   } finally {
     dispose();
@@ -449,7 +455,9 @@ test("review mode shows range summaries and no current-state verdict", async () 
       screen.getByText(label, { selector: "dt" }).closest("div")?.querySelectorAll("dd")[0]?.textContent;
     expect(tile("Dialogue turns")).toBe("120");
     expect(tile("Peak online")).toBe("12");
-    const glm = screen.getByText("GLM 5.3 Flash", { selector: "span" }).closest("li")!;
+    const glm = within(screen.getByRole("region", { name: /Channels/ }))
+      .getByText("GLM 5.3 Flash", { selector: "span" })
+      .closest("li")!;
     expect(glm.textContent).toContain("120 attempts, 60 failed (50%)");
     expect(glm.textContent).toContain("Time to first token p95: 800 ms");
     expect(glm.textContent).toContain("Full response p95: 2.4 sec");
@@ -565,6 +573,81 @@ test("without any quota the section is left out", async () => {
   try {
     await screen.findByRole("heading", { name: /Degraded/ });
     expect(screen.queryByRole("region", { name: /Quotas/ })).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test("events list each failover or breaker change with its channel, purpose and reason code", async () => {
+  liveBody.events = {
+    items: [
+      {
+        ...event(1_763_199_990),
+        kind: "breaker_open",
+        channelId: "workers-ai/clef-flash",
+        purpose: "judgment",
+        reason: "upstream_5xx",
+        threads: 0,
+      },
+      { ...event(1_763_199_980), threads: 3 },
+    ],
+    total: 2,
+  };
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    const region = await screen.findByRole("region", { name: /Events/ });
+    const rows = Array.from(region.querySelectorAll("li"));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.textContent).toContain("Breaker opened");
+    expect(rows[0]?.textContent).toContain("Clef Flash");
+    expect(rows[0]?.textContent).toContain("Judgment");
+    expect(rows[0]?.textContent).toContain("upstream_5xx");
+    expect(rows[0]?.textContent).not.toContain("Conversations affected");
+    expect(rows[1]?.textContent).toContain("Failover");
+    expect(rows[1]?.textContent).toContain("GLM 5.3 Flash");
+    expect(rows[1]?.textContent).toContain("rate_limited");
+    expect(rows[1]?.textContent).toContain("Conversations affected: 3");
+    expect(rows[1]?.querySelector("time")?.getAttribute("dateTime")).toBe(new Date(1_763_199_980 * 1000).toISOString());
+    expect(region.textContent).toContain("Last 15 minutes, newest first");
+  } finally {
+    dispose();
+  }
+});
+
+test("an unknown channel falls back to its id and a quiet period says so", async () => {
+  liveBody.events = { items: [{ ...event(1_763_199_990), channelId: "workers-ai/mystery" }], total: 1 };
+  const first = await mountRoute("/admin/ops");
+  try {
+    const region = await screen.findByRole("region", { name: /Events/ });
+    expect(region.textContent).toContain("workers-ai/mystery");
+  } finally {
+    first.dispose();
+  }
+  liveBody.events = { items: [], total: 0 };
+  const second = await mountRoute("/admin/ops");
+  try {
+    const region = await screen.findByRole("region", { name: /Events/ });
+    expect(region.textContent).toContain("No events in this period");
+    expect(region.querySelectorAll("li")).toHaveLength(0);
+  } finally {
+    second.dispose();
+  }
+});
+
+test("long event lists are paged and a capped list says how many exist in total", async () => {
+  metricsBody.events = {
+    items: Array.from({ length: 25 }, (_, index) => event(1_763_199_000 - index)),
+    total: 240,
+  };
+  const { dispose } = await mountRoute("/admin/ops?mode=review");
+  try {
+    const region = await screen.findByRole("region", { name: /Events/ });
+    expect(region.querySelectorAll("li")).toHaveLength(10);
+    expect(region.textContent).toContain("1–10 of 25");
+    expect(region.textContent).toContain("Only 25 rows were loaded; there are 240 in total.");
+    expect(region.textContent).toContain("In the range, newest first");
+    fireEvent.click(within(region).getByRole("button", { name: "Next page" }));
+    expect(region.textContent).toContain("11–20 of 25");
   } finally {
     dispose();
   }
