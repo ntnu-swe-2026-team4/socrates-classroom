@@ -1,5 +1,15 @@
 import { expect, test } from "vitest";
-import { LIVE_WINDOW_CELLS, formatCount, formatMs, formatPercent, lastTotal, overall, ratio } from "@/lib/ops";
+import {
+  LIVE_WINDOW_CELLS,
+  formatCount,
+  formatDuration,
+  formatMs,
+  formatPercent,
+  lastTotal,
+  overall,
+  peakOf,
+  ratio,
+} from "@/lib/ops";
 
 const channel = (
   label: string,
@@ -62,4 +72,17 @@ test("latency switches to seconds at one second and follows the locale", () => {
   expect(formatMs(2800, "zh-TW")).toContain("2.8");
   expect(formatMs(2800, "zh-TW")).toContain("秒");
   expect(formatPercent(0.125, "en")).toBe("12.5%");
+});
+
+test("durations read in minutes under an hour and in hours above it", () => {
+  expect(formatDuration(30, "en")).toContain("1");
+  expect(formatDuration(1500, "en")).toContain("25");
+  expect(formatDuration(13_320, "en")).toContain("3.7");
+  expect(formatDuration(13_320, "zh-TW")).toContain("小時");
+});
+
+test("the peak of a series ignores gaps and is null when nothing was recorded", () => {
+  expect(peakOf([3, null, 9, 4])).toBe(9);
+  expect(peakOf([null, null])).toBeNull();
+  expect(peakOf([])).toBeNull();
 });

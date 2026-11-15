@@ -1,9 +1,26 @@
 import type { ReactNode } from "react";
 import { CircleCheck, CircleHelp, CircleX, TriangleAlert, type LucideIcon } from "lucide-react";
-import type { OpsLiveChannel, OpsLiveResponse, OpsMetricsResponse, OpsPurpose } from "@socrates/shared";
+import type {
+  OpsChannelSeries,
+  OpsLiveChannel,
+  OpsLiveResponse,
+  OpsMetricsResponse,
+  OpsPurpose,
+  OpsQuota,
+} from "@socrates/shared";
 import { Card, SectionTitle, cn } from "@/components/ui";
 import { useI18n, type MessageKey } from "@/i18n";
-import { type ChannelState, formatCount, formatMs, formatPercent, lastTotal, overall, ratio } from "@/lib/ops";
+import {
+  type ChannelState,
+  formatCount,
+  formatDuration,
+  formatMs,
+  formatPercent,
+  lastTotal,
+  overall,
+  peakOf,
+  ratio,
+} from "@/lib/ops";
 
 const SERIES_SWATCH = ["bg-series-1", "bg-series-2", "bg-series-3", "bg-series-4"];
 const swatch = (index: number) => SERIES_SWATCH[index] ?? "bg-ink-faint";
@@ -280,5 +297,92 @@ export function ReviewSummary({ data }: { data: OpsMetricsResponse }) {
         <ChannelCards cards={cards} t={t} />
       </section>
     </>
+  );
+}
+
+const SOURCE_KEYS = {
+  estimated: "admin_quota_source_estimated",
+  provider: "admin_quota_source_provider",
+  inferred: "admin_quota_source_inferred",
+} as const satisfies Record<OpsQuota["source"], MessageKey>;
+
+interface QuotaPanelProps {
+  quotas: OpsQuota[];
+  channels: Pick<OpsChannelSeries, "id" | "label">[];
+  live: boolean;
+  etas?: { quotaId: string; etaSec: number | null }[];
+}
+
+export function QuotaPanel({ quotas, channels, live, etas = [] }: QuotaPanelProps) {
+  const { t, locale } = useI18n();
+  if (quotas.length === 0) return null;
+  const number = new Intl.NumberFormat(locale);
+  const resetFormat = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" });
+  return (
+    <section aria-labelledby="ops-quotas">
+      <SectionTitle>
+        <span id="ops-quotas">{t("admin_quotas_title")}</span>{" "}
+        <span className="font-sans text-[12.5px] font-normal text-ink-faint">
+          {live ? t("admin_quotas_live_note") : t("admin_quotas_review_note")}
+        </span>
+      </SectionTitle>
+      <Card className="flex flex-col gap-5 p-5">
+        {quotas.map((quota) => {
+          const channel = channels.find((entry) => entry.id === quota.appliesTo[0]);
+          const title =
+            quota.model === "allowance"
+              ? t("admin_quota_allowance", { unit: quota.unit.charAt(0).toUpperCase() + quota.unit.slice(1) })
+              : t("admin_quota_rate", { channel: channel?.label ?? quota.appliesTo[0] ?? "" });
+          const used = live ? quota.used : peakOf(quota.series);
+          const share = used === null ? null : used / quota.limit;
+          const over = share !== null && share > 1;
+          const eta = etas.find((entry) => entry.quotaId === quota.id)?.etaSec ?? null;
+          return (
+            <div key={quota.id}>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-[13.5px] font-semibold text-ink">{title}</h3>
+                  <span className="rounded-full bg-paper-deep px-2 py-0.5 text-[11.5px] text-ink-soft">
+                    {t(SOURCE_KEYS[quota.source])}
+                  </span>
+                  {!live && (
+                    <span className="text-[12px] text-ink-faint">
+                      {quota.model === "allowance" ? t("admin_quota_peak_day") : t("admin_quota_peak_minute")}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[13px] tabular-nums text-ink-soft">
+                  {used === null ? "—" : number.format(used)} / {number.format(quota.limit)}
+                  {share !== null && <span className="ml-2 text-ink-faint">{formatPercent(share, locale)}</span>}
+                </p>
+              </div>
+              <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-paper-deep" aria-hidden="true">
+                <div
+                  className={cn("h-full rounded-full", over ? "bg-flag" : "bg-ink-soft")}
+                  style={{ width: `${Math.min(100, (share ?? 0) * 100)}%` }}
+                />
+              </div>
+              <meter
+                className="sr-only"
+                min={0}
+                max={quota.limit}
+                value={Math.min(used ?? 0, quota.limit)}
+                aria-label={title}
+              />
+              <div className="mt-1.5 flex flex-col gap-0.5 text-[12px] text-ink-faint">
+                {over && <p className="font-medium text-flag">{t("admin_quota_over")}</p>}
+                {live && quota.model === "allowance" && (
+                  <p>
+                    {t("admin_quota_resets", { time: resetFormat.format(new Date(quota.resetsAtSec * 1000)) })}
+                    {eta !== null && ` · ${t("admin_quota_eta", { duration: formatDuration(eta, locale) })}`}
+                  </p>
+                )}
+                {quota.model === "allowance" && quota.usedIsLowerBound && <p>{t("admin_quota_lower_bound")}</p>}
+              </div>
+            </div>
+          );
+        })}
+      </Card>
+    </section>
   );
 }

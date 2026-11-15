@@ -5,7 +5,7 @@ import { RefreshCw, TriangleAlert } from "lucide-react";
 import { OPS_AXIS_PLAN, OPS_RANGES, OpsRangeSchema, type OpsRange } from "@socrates/shared";
 import { api } from "@/api";
 import { AdminTabs } from "@/components/AdminTabs";
-import { LiveSummary, ReviewSummary } from "@/components/OpsPanels";
+import { LiveSummary, QuotaPanel, ReviewSummary } from "@/components/OpsPanels";
 import { Button, PageHeader, SectionTitle, Segmented, Spinner, cn } from "@/components/ui";
 import { useI18n, type MessageKey } from "@/i18n";
 import { formatDateTime } from "@/lib/adminTime";
@@ -158,6 +158,9 @@ function OpsPage() {
               />
             </Suspense>
           </section>
+        )}
+        {data && (
+          <QuotaPanel quotas={data.quotas} channels={data.channels} live={live} etas={liveQuery.data?.now.quotaEta} />
         )}
       </div>
     </div>

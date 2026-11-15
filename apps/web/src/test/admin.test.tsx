@@ -496,3 +496,76 @@ test("review mode labels the charts per point and says each latency point covers
     dispose();
   }
 });
+
+test("live quotas show the current level with its source, reset time and the lower-bound caveat", async () => {
+  liveBody.now.quotaEta = [{ quotaId: "workers-ai/daily-neurons", etaSec: 13_320 }];
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    const region = await screen.findByRole("region", { name: /Quotas/ });
+    const meters = Array.from(region.querySelectorAll("meter"));
+    expect(meters.map((meter) => meter.getAttribute("aria-label"))).toEqual([
+      "Daily Neurons",
+      "GLM 5.3 Flash requests per minute",
+    ]);
+    expect(meters[0]?.getAttribute("value")).toBe("280");
+    expect(meters[0]?.getAttribute("max")).toBe("10000");
+    expect(region.textContent).toContain("280 / 10,000");
+    expect(region.textContent).toContain("Estimated");
+    expect(region.textContent).toContain("Inferred from errors");
+    expect(region.textContent).toContain("Runs out in 3.7 hr");
+    expect(region.textContent).toContain("Resets at");
+    expect(region.textContent).toContain("At least this much");
+    expect(region.textContent).toContain("4 / 20");
+    expect(region.textContent).not.toContain("Highest");
+  } finally {
+    dispose();
+  }
+});
+
+test("an exact provider figure carries no lower-bound caveat, and exceeding the limit is called out", async () => {
+  const allowance = liveBody.quotas[0]!;
+  allowance.source = "provider";
+  if (allowance.model === "allowance") allowance.usedIsLowerBound = false;
+  const rate = liveBody.quotas[1]!;
+  rate.used = 25;
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    const region = await screen.findByRole("region", { name: /Quotas/ });
+    expect(region.textContent).toContain("Reported by provider");
+    expect(region.textContent).not.toContain("At least this much");
+    expect(region.textContent).toContain("Over the quota");
+    const meter = region.querySelectorAll("meter")[1];
+    expect(meter?.getAttribute("value")).toBe("20");
+    expect(region.textContent).toContain("25 / 20");
+  } finally {
+    dispose();
+  }
+});
+
+test("review quotas show the highest level in the range, not the current one", async () => {
+  const { dispose } = await mountRoute("/admin/ops?mode=review");
+  try {
+    const region = await screen.findByRole("region", { name: /Quotas/ });
+    expect(region.textContent).toContain("Highest level in the range");
+    expect(region.textContent).toContain("Highest day in the range");
+    expect(region.textContent).toContain("Highest in the range");
+    expect(region.textContent).toContain("159 / 10,000");
+    expect(region.textContent).not.toContain("Resets at");
+    expect(region.textContent).not.toContain("Runs out");
+    expect(region.textContent).toContain("At least this much");
+  } finally {
+    dispose();
+  }
+});
+
+test("without any quota the section is left out", async () => {
+  liveBody.quotas = [];
+  liveBody.now.quotaEta = [];
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    await screen.findByRole("heading", { name: /Degraded/ });
+    expect(screen.queryByRole("region", { name: /Quotas/ })).toBeNull();
+  } finally {
+    dispose();
+  }
+});

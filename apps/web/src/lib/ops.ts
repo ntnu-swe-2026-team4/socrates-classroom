@@ -48,3 +48,19 @@ export function formatCount(value: number | null, locale: string): string {
 export function ratio(part: number, whole: number): number | null {
   return whole === 0 ? null : part / whole;
 }
+
+export function formatDuration(seconds: number, locale: string): string {
+  if (seconds < 3600) {
+    return new Intl.NumberFormat(locale, { style: "unit", unit: "minute", maximumFractionDigits: 0 }).format(
+      Math.max(1, Math.round(seconds / 60)),
+    );
+  }
+  return new Intl.NumberFormat(locale, { style: "unit", unit: "hour", maximumFractionDigits: 1 }).format(
+    seconds / 3600,
+  );
+}
+
+export function peakOf(series: readonly (number | null)[]): number | null {
+  const values = series.filter((value): value is number => value !== null);
+  return values.length === 0 ? null : Math.max(...values);
+}
