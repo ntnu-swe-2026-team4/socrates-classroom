@@ -7,6 +7,7 @@ export interface Env {
   AI?: Ai;
   PUBLIC_BASE_URL?: string;
   AUTH_SECRET?: string;
+  ADMIN_EMAILS?: string;
   LLM_PROVIDER?: string;
   DGX_BASE_URL?: string;
   TTS_MODEL?: string;

@@ -35,6 +35,8 @@
 | **WS** `submit` op                                                                                      | —    | 僅本人 thread         | ❌ `SubmitForbidden` |
 | `POST /activities/:id/finish`                                                                           | —    | ❌ 403                | 需教室成員           |
 
+**管理員（#80）**：`/api/admin/*` 整組先過 `requireAdmin`，單一守衛，新增端點不必各自檢查。條件是「已登入的老師，且其 email 在 server 端 `ADMIN_EMAILS`（逗號分隔、不分大小寫）內」：未登入 `401`，其餘（學生、非白名單老師、`ADMIN_EMAILS` 為空）一律 `403 forbidden`。身分每次請求都查 D1（不信 cookie 內的 role），所以已不存在的使用者即使持有效 cookie 也是 `403`。`GET /admin/session` → `200 {admin: true}`，供前端決定是否顯示管理入口。
+
 ## 2. 身分（雙軌：訪客即玩＋帳號選用，#67）
 
 ```ts
@@ -211,7 +213,7 @@ interface ViolationSlice {
 
 ## 12. 範圍外（明確不在 v1 契約）
 
-- `/admin` 運維 dashboard（P1，#80/#81/#97）
+- `/admin` 的運維 dashboard、停損、額度警示、封禁與帳號管理（P1，#80/#81/#63/#97）；僅管理員守衛與 `/admin/session` 已有，見 §1.1
 - 單人模式的個人對話 scope（前端未實作，屆時拍板）
 - 跨裝置 termHistory（P1）
 - `PATCH /me` 改名／頭像（P1 若有需求）

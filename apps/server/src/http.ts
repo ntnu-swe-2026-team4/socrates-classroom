@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { z } from "zod";
 import { ApiError, type ErrorCode, type Lang, type User } from "@socrates/shared";
+import { one } from "./db/d1";
 import type { Env } from "./env";
 
 export interface AppEnv {
@@ -78,6 +79,31 @@ export function uniqueViolationColumns(error: unknown): Array<[string, string]> 
 export function requireTeacher(c: Ctx): User {
   const user = requireUser(c);
   if (user.role !== "teacher") fail(403, "forbidden");
+  return user;
+}
+
+function adminEmailsOf(raw: string | undefined): Set<string> {
+  return new Set(
+    (raw ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+export async function requireAdmin(c: Ctx): Promise<User> {
+  const user = requireTeacher(c);
+  const allowed = adminEmailsOf(c.env.ADMIN_EMAILS);
+  if (allowed.size === 0) fail(403, "forbidden");
+  const row = await one<{ email: string | null }>(
+    c.env.DB,
+    "SELECT email FROM users WHERE id = $id AND role = 'teacher'",
+    {
+      id: user.id,
+    },
+  );
+  const email = row?.email?.trim().toLowerCase();
+  if (!email || !allowed.has(email)) fail(403, "forbidden");
   return user;
 }
 

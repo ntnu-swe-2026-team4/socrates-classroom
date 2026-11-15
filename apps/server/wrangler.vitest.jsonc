@@ -17,6 +17,7 @@
     "PUBLIC_BASE_URL": "",
     "SEED_TOKEN": "dev-seed-token",
     "AUTH_SECRET": "test-auth-secret",
+    "ADMIN_EMAILS": "demo@socrates.tw",
     "BYOK_ENC_KEY": "test-byok-enc-key"
   }
 }

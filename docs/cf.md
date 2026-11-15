@@ -102,11 +102,12 @@ Schema 的 SSOT 是 `apps/server/migrations/*.sql`（目前單一 `001_init.sql`
 
 本專案 secrets（`cloudflare.config.ts` 宣告為 `bindings.secret()`）：
 
-| Secret         | 用途                                                 | 產生方式                  |
-| -------------- | ---------------------------------------------------- | ------------------------- |
-| `AUTH_SECRET`  | HMAC session cookie 簽章（必填，缺了 fail-fast）     | `openssl rand -base64 32` |
-| `BYOK_ENC_KEY` | teacher keys 的 AES-GCM 金鑰（必填，缺了 fail-fast） | `openssl rand -base64 32` |
-| `SEED_TOKEN`   | `POST /api/dev/seed` 閘門（production 留空即可禁用） | 任意亂數                  |
+| Secret         | 用途                                                     | 產生方式                  |
+| -------------- | -------------------------------------------------------- | ------------------------- |
+| `AUTH_SECRET`  | HMAC session cookie 簽章（必填，缺了 fail-fast）         | `openssl rand -base64 32` |
+| `BYOK_ENC_KEY` | teacher keys 的 AES-GCM 金鑰（必填，缺了 fail-fast）     | `openssl rand -base64 32` |
+| `SEED_TOKEN`   | `POST /api/dev/seed` 閘門（production 留空即可禁用）     | 任意亂數                  |
+| `ADMIN_EMAILS` | 可使用 `/admin` 的老師 email，逗號分隔（留空＝無人可用） | 管理員的登入 email        |
 
 ```bash
 # 一次上傳（dotenv 格式；.env.production.local 不會進 dev/git）

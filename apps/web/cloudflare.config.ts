@@ -30,6 +30,7 @@ export default defineConfig(({ mode }) => {
         SEED_TOKEN: bindings.secret(),
         TTS_MODEL: text("TTS_MODEL", "xai/grok-tts"),
         AUTH_SECRET: bindings.secret(),
+        ADMIN_EMAILS: bindings.secret(),
         BYOK_ENC_KEY: bindings.secret(),
       },
       assets: { notFoundHandling: "single-page-application" },
