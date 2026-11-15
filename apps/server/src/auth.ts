@@ -5,7 +5,9 @@ import { timingSafeEqual } from "./auth-crypto";
 import { one, type Db } from "./db/d1";
 
 export const SESSION_COOKIE = "socrates_session";
+export const PARTICIPANT_COOKIE = "socrates_participant";
 const SESSION_DAYS = 30;
+const PARTICIPANT_DAYS = 7;
 
 interface TokenClaims {
   uid: string;
@@ -166,6 +168,58 @@ export async function startSession(c: Ctx, user: User): Promise<void> {
 
 export function endSession(c: Ctx): void {
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
+}
+
+interface ParticipantClaims {
+  aid: string;
+  pid: string;
+  exp: number;
+}
+
+export interface ParticipantIdentity {
+  activityId: string;
+  participantId: string;
+}
+
+export async function startParticipantSession(c: Ctx, activityId: string, participantId: string): Promise<void> {
+  const claims: ParticipantClaims = {
+    aid: activityId,
+    pid: participantId,
+    exp: Date.now() + PARTICIPANT_DAYS * 864e5,
+  };
+  const payload = b64url(encoder.encode(JSON.stringify(claims)));
+  const sig = await sign(payload, secretOf(c));
+  setCookie(c, PARTICIPANT_COOKIE, `${payload}.${sig}`, {
+    httpOnly: true,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: PARTICIPANT_DAYS * 86400,
+    secure: true,
+  });
+}
+
+export async function lookupParticipant(
+  env: { AUTH_SECRET?: string },
+  token: string | undefined,
+): Promise<ParticipantIdentity | null> {
+  if (!token) return null;
+  try {
+    const [payload, sig] = token.split(".");
+    if (!payload || !sig) return null;
+    const expected = await sign(payload, secretOf({ env }));
+    if (expected.length !== sig.length) return null;
+    const a = fromB64url(sig);
+    const b = fromB64url(expected);
+    let diff = 0;
+    for (let i = 0; i < a.length; i += 1) diff |= a[i]! ^ b[i]!;
+    if (diff !== 0) return null;
+    const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as ParticipantClaims;
+    if (claims.exp < Date.now()) return null;
+    if (typeof claims.aid !== "string" || typeof claims.pid !== "string") return null;
+    return { activityId: claims.aid, participantId: claims.pid };
+  } catch {
+    return null;
+  }
 }
 
 // OWASP recommends 600k PBKDF2-SHA256 iterations; Workers CPU limits make

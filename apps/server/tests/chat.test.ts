@@ -7,26 +7,24 @@ import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
 import { run } from "../src/db/d1";
 import type { Chat } from "../src/do/chat";
-import { assistantText, call, cookieOf, frames, latestView, participantIdOf } from "./helpers";
+import {
+  assistantText,
+  call,
+  cookieOf,
+  frames,
+  joinGuest,
+  latestView,
+  participantIdOf,
+  registerStudent,
+} from "./helpers";
 
 let teacherCookie: string;
 let classroomCode: string;
 let activityId: string;
 
-async function joinStudent(name: string): Promise<{ cookie: string; userId: string; participantId: string }> {
-  const res = await call("/api/join", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: classroomCode, name, tosAccepted: true }),
-  });
-  expect(res.status).toBe(200);
-  const { user } = (await res.json()) as { user: { id: string } };
-  const cookie = cookieOf(res);
-  const info = (await (await call(`/api/activities/${activityId}`, { headers: { Cookie: cookie } })).json()) as {
-    participantId: string;
-  };
-  expect(info.participantId).toBeTruthy();
-  return { cookie, userId: user.id, participantId: info.participantId };
+async function joinStudent(name: string): Promise<{ cookie: string; participantId: string }> {
+  const guest = await joinGuest(classroomCode, name);
+  return { cookie: guest.cookie, participantId: guest.participantId };
 }
 
 async function connect(thread: string, cookie?: string): Promise<WebSocket> {
@@ -138,7 +136,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     socket.close();
   }, 20_000);
 
-  it("revoked member is refused after hibernation wake (membership re-verified, not trusted from connect time)", async () => {
+  it("revoked participant is refused after hibernation wake (ownership re-verified, not trusted from connect time)", async () => {
     const student = await joinStudent("被移出的學生");
     const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, student.cookie);
@@ -147,11 +145,10 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     socket.send(JSON.stringify({ type: "watch" }));
     await rx.until((f) => f.some((m) => m.type === "view"));
 
-    await run(
-      env.DB,
-      "DELETE FROM members WHERE user_id = $uid AND classroom_id = (SELECT classroom_id FROM activities WHERE id = $aid)",
-      { uid: student.userId, aid: activityId },
-    );
+    await run(env.DB, "DELETE FROM activity_participants WHERE activity_id = $aid AND id = $pid", {
+      aid: activityId,
+      pid: student.participantId,
+    });
     await evictDurableObject(env.Chat.get(env.Chat.idFromName(thread)));
 
     socket.send(JSON.stringify({ type: "submit", id: "revoked", input: "還能送嗎" }));
@@ -294,9 +291,10 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
   });
 
   it("disabled account: the open socket is refused on its next message and reconnects are rejected", async () => {
-    const student = await joinStudent("停用本人");
-    const thread = `${activityId}:${student.participantId}`;
-    const socket = await connect(thread, student.cookie);
+    const account = await registerStudent(classroomCode, "停用本人");
+    const participantId = await participantIdOf(activityId, account.cookie);
+    const thread = `${activityId}:${participantId}`;
+    const socket = await connect(thread, account.cookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
 
@@ -306,7 +304,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
       body: JSON.stringify({ email: "admin@socrates.tw", password: "demo-demo" }),
     });
     expect(adminLogin.status).toBe(200);
-    const disabled = await call(`/api/admin/users/${student.userId}`, {
+    const disabled = await call(`/api/admin/users/${account.userId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Cookie: cookieOf(adminLogin) },
       body: JSON.stringify({ disabled: true }),
@@ -317,7 +315,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     await rx.until(() => socket.readyState === WebSocket.CLOSED);
     expect(rx.list.some((m) => m.type === "view")).toBe(false);
 
-    const again = await connect(thread, student.cookie);
+    const again = await connect(thread, account.cookie);
     const reconnected = frames(again);
     await reconnected.until((f) => f.length > 0 || again.readyState === WebSocket.CLOSED);
     expect(reconnected.list.some((m) => m.type === "hello")).toBe(false);

@@ -40,6 +40,38 @@ export const ClassroomCreatedSchema = z.object({
 });
 export type ClassroomCreated = z.infer<typeof ClassroomCreatedSchema>;
 
+export const ActivityInviteSchema = z.object({
+  token: z.string(),
+  activityId: z.string(),
+  url: z.string(),
+  createdAt: z.string(),
+  expiresAt: z.string().nullable(),
+});
+export type ActivityInvite = z.infer<typeof ActivityInviteSchema>;
+
+export const InviteInfoSchema = z.object({
+  token: z.string(),
+  activityId: z.string(),
+  classroomName: z.string(),
+  topic: TopicSchema,
+  finishedAt: z.string().nullable(),
+});
+export type InviteInfo = z.infer<typeof InviteInfoSchema>;
+
+export const InviteJoinInputSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  tosAccepted: z.boolean(),
+});
+export type InviteJoinInput = z.infer<typeof InviteJoinInputSchema>;
+
+export const InviteJoinedSchema = z.object({
+  activityId: z.string(),
+  participantId: z.string(),
+  displayName: z.string(),
+  kind: z.enum(["guest", "member"]),
+});
+export type InviteJoined = z.infer<typeof InviteJoinedSchema>;
+
 export const ActivityInfoSchema = z.object({
   id: z.string(),
   classroomId: z.string(),
@@ -149,6 +181,13 @@ export const JoinInputSchema = z.object({
   name: z.string().trim().max(80).optional(),
   tosAccepted: z.boolean(),
 });
+export const JoinResultSchema = z.object({
+  user: UserSchema.nullable(),
+  activityId: z.string(),
+  participantId: z.string().nullable(),
+  kind: z.enum(["member", "guest"]).nullable(),
+});
+export type JoinResult = z.infer<typeof JoinResultSchema>;
 export const AdminUserSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -259,6 +298,9 @@ export const ERROR_CODES = [
   "rate_limited",
   "internal_error",
   "join_code_invalid",
+  "invite_invalid",
+  "invite_revoked",
+  "invite_expired",
   "tos_required",
   "name_taken",
   "account_disabled",

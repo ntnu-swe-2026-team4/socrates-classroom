@@ -7,6 +7,7 @@ import { lookupSession, SESSION_COOKIE } from "./auth";
 import { getCookie } from "hono/cookie";
 import { authRoutes } from "./routes/auth";
 import { joinRoutes } from "./routes/join";
+import { inviteRoutes } from "./routes/invites";
 import { topicsRoutes } from "./routes/topics";
 import { classroomsRoutes } from "./routes/classrooms";
 import { activityRoutes } from "./routes/activity";
@@ -21,6 +22,7 @@ export function createApi() {
   return new Hono<AppEnv>()
     .route("/", authRoutes())
     .route("/", joinRoutes())
+    .route("/", inviteRoutes())
     .route("/", topicsRoutes())
     .route("/", classroomsRoutes())
     .route("/", activityRoutes())

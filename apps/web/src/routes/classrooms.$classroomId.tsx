@@ -90,9 +90,16 @@ function ClassroomPage() {
           {teacher && <NewTopic room={data} />}
         </div>
         {teacher && data.url && data.code && (
-          <aside className="lg:sticky lg:top-6 lg:self-start">
-            <SectionTitle>{t("setup_step_share")}</SectionTitle>
-            <InviteCard url={data.url} code={data.code} />
+          <aside className="flex flex-col gap-8 lg:sticky lg:top-6 lg:self-start">
+            <div>
+              <SectionTitle>{t("setup_step_share")}</SectionTitle>
+              <InviteCard url={data.url} code={data.code} />
+              {data.current && !data.current.finished && (
+                <div className="mt-4">
+                  <ActivityInviteCard activityId={data.current.activityId} />
+                </div>
+              )}
+            </div>
           </aside>
         )}
       </div>
@@ -207,13 +214,12 @@ function NewTopic({ room }: { room: ClassroomSummary }) {
   );
 }
 
-function InviteCard({ url, code }: { url: string; code: string }) {
+function CopyLinkButton({ url }: { url: string }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
-  const full = absoluteUrl(url);
   async function copy() {
     try {
-      await navigator.clipboard.writeText(full);
+      await navigator.clipboard.writeText(absoluteUrl(url));
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
@@ -221,16 +227,52 @@ function InviteCard({ url, code }: { url: string; code: string }) {
     }
   }
   return (
+    <Button variant="outline" onClick={() => void copy()}>
+      {copied ? t("setup_copied") : t("setup_copy")}
+    </Button>
+  );
+}
+
+function InviteCard({ url, code }: { url: string; code: string }) {
+  const t = useT();
+  return (
     <Card className="flex flex-col items-center gap-4 p-6 text-center">
       <p className="text-[13px] leading-relaxed text-ink-soft">{t("setup_share_hint")}</p>
       <QrBlock url={url} />
       <span className="font-mono text-2xl tracking-[0.3em]">{code}</span>
       <code className="max-w-full truncate rounded-full bg-paper-deep px-4 py-1.5 font-mono text-[12px] text-ink-soft">
-        {full}
+        {absoluteUrl(url)}
       </code>
-      <Button variant="outline" onClick={() => void copy()}>
-        {copied ? t("setup_copied") : t("setup_copy")}
-      </Button>
+      <CopyLinkButton url={url} />
+    </Card>
+  );
+}
+
+function ActivityInviteCard({ activityId }: { activityId: string }) {
+  const t = useT();
+  const create = useMutation({
+    mutationFn: () => api.createActivityInvite(activityId),
+  });
+  const url = create.data?.url;
+  return (
+    <Card className="flex flex-col items-center gap-4 p-6 text-center">
+      <p className="text-[13px] leading-relaxed text-ink-soft">{t("classroom_activity_invite_hint")}</p>
+      {url ? (
+        <>
+          <QrBlock url={url} size={160} />
+          <code className="max-w-full truncate rounded-full bg-paper-deep px-4 py-1.5 font-mono text-[12px] text-ink-soft">
+            {absoluteUrl(url)}
+          </code>
+          <CopyLinkButton url={url} />
+        </>
+      ) : (
+        <>
+          <Button variant="outline" disabled={create.isPending} onClick={() => create.mutate()}>
+            {create.isPending ? <Spinner /> : t("classroom_activity_invite")}
+          </Button>
+          {create.isError && <p className="text-[12.5px] text-flag">{t("common_error")}</p>}
+        </>
+      )}
     </Card>
   );
 }

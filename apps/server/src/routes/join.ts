@@ -1,9 +1,17 @@
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { JoinInputSchema } from "@socrates/shared";
-import { batch, one, run } from "../db/d1";
-import { startSession } from "../auth";
-import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, uniqueViolationColumns, type AppEnv } from "../http";
-import { ensureParticipant, topicOf, type ClassroomRow } from "../services/members";
+import { one, run } from "../db/d1";
+import { PARTICIPANT_COOKIE, lookupParticipant, startParticipantSession } from "../auth";
+import { enforceIpLimit, fail, nowIso, parseBody, uniqueViolationColumns, type AppEnv } from "../http";
+import {
+  createGuestParticipant,
+  ensureParticipant,
+  participantOf,
+  topicOf,
+  type ClassroomRow,
+  type MemberRow,
+} from "../services/members";
 
 export function joinRoutes() {
   return new Hono<AppEnv>()
@@ -28,97 +36,66 @@ export function joinRoutes() {
         code: input.code,
       });
       if (!classroom?.current_activity_id) fail(404, "join_code_invalid");
-      const user = c.get("user");
-
-      const existing = user
-        ? await one<{ user_id: string }>(
-            c.env.DB,
-            "SELECT user_id FROM members WHERE classroom_id = $cid AND user_id = $uid",
-            { cid: classroom.id, uid: user.id },
-          )
-        : undefined;
-
-      if (existing && user) {
-        const activity = await one<{ finished_at: string | null }>(
-          c.env.DB,
-          "SELECT finished_at FROM activities WHERE id = $id",
-          { id: classroom.current_activity_id },
-        );
-        if (!activity?.finished_at) await ensureParticipant(c.env.DB, classroom.current_activity_id, user, nowIso());
-        return c.json({ user, activityId: classroom.current_activity_id! });
-      }
-
+      const activityId = classroom.current_activity_id;
       const activity = await one<{ finished_at: string | null }>(
         c.env.DB,
         "SELECT finished_at FROM activities WHERE id = $id",
-        { id: classroom.current_activity_id },
+        { id: activityId },
       );
-      if (activity?.finished_at) fail(409, "activity_finished");
+      const finished = Boolean(activity?.finished_at);
+      const user = c.get("user");
 
-      const at = nowIso();
-      let sessionUser = user;
-      if (!sessionUser) {
-        const name = input.name?.trim();
-        if (!name) fail(422, "validation");
-        const clash = await one<{ user_id: string }>(
+      if (user) {
+        const existing = await one<MemberRow>(
           c.env.DB,
-          "SELECT user_id FROM members WHERE classroom_id = $cid AND name = $name",
-          { cid: classroom.id, name },
+          "SELECT * FROM members WHERE classroom_id = $cid AND user_id = $uid",
+          { cid: classroom.id, uid: user.id },
         );
-        if (clash) fail(409, "name_taken");
-        const id = newId("u_");
-        try {
-          await batch(c.env.DB, [
-            {
-              sql: "INSERT INTO users (id, name, role, lang, created_at) VALUES ($id, $name, 'student', $lang, $at)",
-              params: { id, name, at, lang: langOf(c) },
-            },
-            {
-              sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
-              params: { cid: classroom.id, uid: id, name, at },
-            },
-          ]);
-        } catch (error) {
-          const taken = uniqueViolationColumns(error).some(
-            ([table, column]) => table === "members" && column === "name",
-          );
-          if (taken) fail(409, "name_taken");
-          throw error;
-        }
-        sessionUser = { id, name, canManageClasses: false, isAdmin: false };
-        await ensureParticipant(c.env.DB, classroom.current_activity_id, sessionUser, at);
-        await startSession(c, sessionUser);
-        return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
-      }
-
-      const clash = await one<{ user_id: string }>(
-        c.env.DB,
-        "SELECT user_id FROM members WHERE classroom_id = $cid AND name = $name",
-        { cid: classroom.id, name: sessionUser.name },
-      );
-      if (clash && clash.user_id !== sessionUser.id) fail(409, "name_taken");
-      try {
-        await run(
-          c.env.DB,
-          "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
-          { cid: classroom.id, uid: sessionUser.id, name: sessionUser.name, at },
-        );
-      } catch (error) {
-        if (uniqueViolationColumns(error).some(([table, column]) => table === "members" && column === "name")) {
-          const raced = await one<{ user_id: string }>(
+        if (!existing) {
+          if (finished) fail(409, "activity_finished");
+          const clash = await one<{ user_id: string }>(
             c.env.DB,
-            "SELECT user_id FROM members WHERE classroom_id = $cid AND user_id = $uid",
-            { cid: classroom.id, uid: sessionUser.id },
+            "SELECT user_id FROM members WHERE classroom_id = $cid AND name = $name",
+            { cid: classroom.id, name: user.name },
           );
-          if (raced) {
-            await ensureParticipant(c.env.DB, classroom.current_activity_id, sessionUser, at);
-            return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
+          if (clash) fail(409, "name_taken");
+          try {
+            await run(
+              c.env.DB,
+              "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
+              { cid: classroom.id, uid: user.id, name: user.name, at: nowIso() },
+            );
+          } catch (error) {
+            const taken = uniqueViolationColumns(error).some(
+              ([table, column]) => table === "members" && column === "name",
+            );
+            if (taken) fail(409, "name_taken");
+            throw error;
           }
-          fail(409, "name_taken");
         }
-        throw error;
+        const participant = finished ? null : await ensureParticipant(c.env.DB, activityId, user, nowIso());
+        return c.json({
+          user,
+          activityId,
+          participantId: participant?.id ?? null,
+          kind: participant ? (participant.kind === "guest" ? "guest" : "member") : null,
+        });
       }
-      await ensureParticipant(c.env.DB, classroom.current_activity_id, sessionUser, at);
-      return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
+
+      const held = await lookupParticipant(c.env, getCookie(c, PARTICIPANT_COOKIE));
+      if (held?.activityId === activityId) {
+        const participant = await participantOf(c.env.DB, activityId, held.participantId);
+        if (participant && participant.user_id === null) {
+          await startParticipantSession(c, activityId, participant.id);
+          return c.json({ user: null, activityId, participantId: participant.id, kind: "guest" });
+        }
+      }
+
+      if (finished) fail(409, "activity_finished");
+      const name = input.name?.trim();
+      if (!name) fail(422, "validation");
+      const participant = await createGuestParticipant(c.env.DB, activityId, name, nowIso());
+      await startParticipantSession(c, activityId, participant.id);
+      return c.json({ user: null, activityId, participantId: participant.id, kind: "guest" });
     });
 }

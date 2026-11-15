@@ -14,8 +14,8 @@ import { PiHarness, type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_S
 import { Lifecycle } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
-import { SESSION_COOKIE, accountState, lookupSession } from "../auth";
-import { participantOf, requireActivityAccess } from "../services/members";
+import { SESSION_COOKIE, PARTICIPANT_COOKIE, accountState, lookupParticipant, lookupSession } from "../auth";
+import { activityAccess, participantOf } from "../services/members";
 import { createAvatarExtension } from "../pi/extensions/avatar";
 import { createJudgmentExtension } from "../pi/extensions/judgment";
 import { createWebSearchExtension } from "../pi/extensions/websearch";
@@ -188,9 +188,10 @@ export class Chat extends DurableObject<Env> {
 
   private async canSubmit(identity: SocketIdentity): Promise<boolean> {
     const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
-    if (!activityId || !participantId) return false;
+    if (!activityId || !participantId || identity.participantId !== participantId) return false;
     const participant = await participantOf(this.env.DB, activityId, participantId);
-    return participant?.user_id === identity.userId;
+    if (!participant) return false;
+    return participant.user_id === identity.userId;
   }
 
   private async authorize(request: Request): Promise<SocketIdentity | null> {
@@ -198,30 +199,46 @@ export class Chat extends DurableObject<Env> {
     const [activityId, participantId] = name.split(":");
     if (!activityId || !participantId) return null;
     const cookie = request.headers.get("Cookie") ?? "";
-    const token = cookie
-      .split(";")
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${SESSION_COOKIE}=`))
-      ?.slice(SESSION_COOKIE.length + 1);
-    const lookup = await lookupSession(this.env, token);
-    if (lookup.kind !== "ok") return null;
-    const identity: SocketIdentity = { userId: lookup.session.user.id, version: lookup.session.version };
-    try {
-      const { participant, isTeacher } = await requireActivityAccess(this.env.DB, activityId, lookup.session.user);
-      return isTeacher || participant?.user_id === identity.userId ? identity : null;
-    } catch {
-      return null;
+    const lookup = await lookupSession(this.env, cookieValue(cookie, SESSION_COOKIE));
+    if (lookup.kind === "ok") {
+      const identity: SocketIdentity = {
+        userId: lookup.session.user.id,
+        participantId,
+        version: lookup.session.version,
+      };
+      const access = await activityAccess(this.env.DB, activityId, {
+        user: lookup.session.user,
+        participant: null,
+      }).catch(() => null);
+      if (access && (access.isTeacher || access.participant?.id === participantId)) return identity;
+      const ownedHere = await participantOf(this.env.DB, activityId, participantId);
+      return ownedHere?.user_id === lookup.session.user.id ? identity : null;
     }
+    if (lookup.kind !== "missing") return null;
+    const held = await lookupParticipant(this.env, cookieValue(cookie, PARTICIPANT_COOKIE));
+    if (!held || held.activityId !== activityId || held.participantId !== participantId) return null;
+    const participant = await participantOf(this.env.DB, activityId, participantId);
+    if (!participant || participant.user_id !== null) return null;
+    return { userId: null, participantId, version: null };
   }
 
   private async reverify(identity: SocketIdentity): Promise<ReverifyOutcome> {
     const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
-    if (!activityId || !participantId) return "revoked";
+    if (!activityId || !participantId || identity.participantId !== participantId) return "revoked";
     try {
+      if (identity.userId === null) {
+        const participant = await participantOf(this.env.DB, activityId, participantId);
+        return participant && participant.user_id === null ? "member" : "revoked";
+      }
       const state = await accountState(this.env.DB, identity.userId);
       if (!state || state.disabled || state.version !== identity.version) return "revoked";
-      const { participant, isTeacher } = await requireActivityAccess(this.env.DB, activityId, { id: identity.userId });
-      return isTeacher || participant?.user_id === identity.userId ? "member" : "revoked";
+      const participant = await participantOf(this.env.DB, activityId, participantId);
+      if (participant?.user_id === identity.userId) return "member";
+      const access = await activityAccess(this.env.DB, activityId, {
+        user: { id: identity.userId },
+        participant: null,
+      });
+      return access.isTeacher ? "member" : "revoked";
     } catch (error) {
       return error instanceof ApiError ? "revoked" : "error";
     }
@@ -229,6 +246,12 @@ export class Chat extends DurableObject<Env> {
 
   private async revalidate(identity: SocketIdentity): Promise<ReverifyOutcome> {
     try {
+      if (identity.userId === null) {
+        const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
+        if (!activityId || !participantId || identity.participantId !== participantId) return "revoked";
+        const participant = await participantOf(this.env.DB, activityId, participantId);
+        return participant && participant.user_id === null ? "member" : "revoked";
+      }
       const state = await accountState(this.env.DB, identity.userId);
       if (!state || state.disabled || state.version !== identity.version) return "revoked";
       return "member";
@@ -236,6 +259,14 @@ export class Chat extends DurableObject<Env> {
       return "error";
     }
   }
+}
+
+function cookieValue(header: string, name: string): string | undefined {
+  return header
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
 }
 
 function fauxSocraticScript(context: TranscriptContext): AssistantMessage {

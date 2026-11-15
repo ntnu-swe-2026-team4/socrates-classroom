@@ -18,8 +18,8 @@ export const Route = createFileRoute("/dialogue")({
       queryFn: () => api.me(),
       staleTime: Infinity,
     });
-    if (!me) throw redirect({ to: "/join" });
-    if (!(search.activityId || readActivityId())) throw redirect({ to: "/home" });
+    const activityId = search.activityId ?? readActivityId();
+    if (!activityId) throw redirect({ to: me ? "/home" : "/join" });
   },
   component: DialoguePage,
 });
@@ -39,7 +39,7 @@ function DialoguePage() {
   const activityRefetch = useCallback(() => void activityQuery.refetch(), [activityQuery.refetch]);
   const topic = activityQuery.data?.topic;
 
-  if (!me.data) return <div className="h-dvh" aria-busy="true" />;
+  if (me.isPending) return <div className="h-dvh" aria-busy="true" />;
   if (activityQuery.isPending) return <div className="h-dvh" aria-busy="true" />;
   const participantId = activityQuery.data?.participantId ?? "";
 

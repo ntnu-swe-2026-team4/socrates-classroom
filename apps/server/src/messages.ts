@@ -36,6 +36,21 @@ const M: Record<ErrorCode, Entry> = {
     en: "This invite link is not valid.",
     es: "Este enlace de invitación no es válido.",
   },
+  invite_invalid: {
+    zh: "活動邀請連結無效。",
+    en: "This activity invite link is not valid.",
+    es: "Este enlace de invitación a la actividad no es válido.",
+  },
+  invite_revoked: {
+    zh: "這個活動邀請連結已被撤回。",
+    en: "This activity invite link has been revoked.",
+    es: "Este enlace de invitación a la actividad fue revocado.",
+  },
+  invite_expired: {
+    zh: "這個活動邀請連結已過期。",
+    en: "This activity invite link has expired.",
+    es: "Este enlace de invitación a la actividad ha caducado.",
+  },
   tos_required: {
     zh: "需要同意使用條款才能進入。",
     en: "You must accept the Terms of Service to continue.",

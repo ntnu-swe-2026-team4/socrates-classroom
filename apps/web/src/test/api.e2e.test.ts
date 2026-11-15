@@ -39,16 +39,42 @@ describe("httpApi contract (browser-side actual code)", () => {
   });
 
   test("joinAsGuest: POST /api/join contract shape + activity id persisted", async () => {
-    handler.mockReturnValue(
-      json({ user: { id: "u9", name: "小明", canManageClasses: false, isAdmin: false }, activityId: "a_1" }),
-    );
+    handler.mockReturnValue(json({ user: null, activityId: "a_1", participantId: "p_1", kind: "guest" }));
     const payload = await httpApi.joinAsGuest("socrat", "小明");
     expect(payload.activityId).toBe("a_1");
+    expect(payload.user).toBeNull();
+    expect(payload.participantId).toBe("p_1");
     const [path, init] = handler.mock.calls[0]!;
     expect(path).toBe("/api/join");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual({ code: "socrat", name: "小明", tosAccepted: true });
     expect(localStorage.getItem("socrates_activity")).toBe("a_1");
+  });
+
+  test("activity invites: create, preview and join hit the right paths", async () => {
+    handler.mockImplementation((_path, init) => {
+      if (init.method === "POST")
+        return json({ activityId: "a_1", participantId: "p_2", displayName: "訪客", kind: "guest" });
+      return json({
+        token: "t1",
+        activityId: "a_1",
+        classroomName: "班",
+        topic: { id: "t", title: "題", statement: "述", prompts: [] },
+        finishedAt: null,
+      });
+    });
+    await httpApi.createActivityInvite("a_1");
+    expect(handler.mock.calls[0]![0]).toBe("/api/activities/a_1/invites");
+    expect(handler.mock.calls[0]![1].method).toBe("POST");
+
+    await httpApi.inviteInfo("t1");
+    expect(handler.mock.calls[1]![0]).toBe("/api/invites/t1");
+
+    const joined = await httpApi.joinByInvite("t1", "訪客");
+    expect(joined.participantId).toBe("p_2");
+    const [path, init] = handler.mock.calls[2]!;
+    expect(path).toBe("/api/invites/t1/join");
+    expect(JSON.parse(init.body as string)).toEqual({ name: "訪客", tosAccepted: true });
   });
 
   test("error mapping: 422 tos_required → ApiError.code", async () => {

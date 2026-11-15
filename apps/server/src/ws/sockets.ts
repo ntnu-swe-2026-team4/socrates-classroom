@@ -15,8 +15,9 @@ import { DialogueInputSchema } from "@socrates/shared";
 import type { ClientMessage, ServerMessage } from "./protocol";
 
 export interface SocketIdentity {
-  userId: string;
-  version: number;
+  userId: string | null;
+  participantId: string;
+  version: number | null;
 }
 
 export type Authorize = (request: Request) => Promise<SocketIdentity | null>;
@@ -42,6 +43,16 @@ export class UnknownSessionError extends Error {
 }
 
 const OPEN = 1;
+
+function isSocketIdentity(value: unknown): value is SocketIdentity {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<SocketIdentity>;
+  return (
+    (typeof candidate.userId === "string" || candidate.userId === null) &&
+    typeof candidate.participantId === "string" &&
+    (candidate.version === null || Number.isInteger(candidate.version))
+  );
+}
 
 const KNOWN_ERROR_NAMES = new Set([
   "ConversationBusy",
@@ -123,8 +134,7 @@ export class ChatSockets {
   async reattach(connections: Iterable<Connection>, reverify?: Reverify): Promise<void> {
     for (const connection of connections) {
       const { auth, session } = (connection.state as SocketState | null) ?? {};
-      const identity =
-        auth && typeof auth.userId === "string" && Number.isInteger(auth.version) ? auth : null;
+      const identity = isSocketIdentity(auth) ? auth : null;
       if (identity === null) {
         this.#refuse(connection);
         continue;
@@ -317,7 +327,7 @@ export class ChatSockets {
         let session: string;
         if (message.session === undefined) {
           const identity = this.#authorized.get(socket);
-          if (!this.#openBtw || identity === undefined || (this.#canSubmit && !this.#canSubmit(identity))) {
+          if (!this.#openBtw || identity === undefined || (this.#canSubmit && !(await this.#canSubmit(identity)))) {
             throw new SubmitForbiddenError();
           }
           session = await this.#openBtw();

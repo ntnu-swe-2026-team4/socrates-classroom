@@ -1,11 +1,15 @@
 import { hc } from "hono/client";
 import type {
   ActivityInfo,
+  ActivityInvite,
   AdminUser,
   ClassroomCreated,
   ClassroomSummary,
   DevAccounts,
+  InviteInfo,
+  InviteJoined,
   JoinInfo,
+  JoinResult,
   Report,
   TeacherKeyStatus,
   TermExplanation,
@@ -59,7 +63,10 @@ export interface Api {
   login(email: string, password: string): Promise<User>;
   logout(): Promise<void>;
   joinByCode(code: string): Promise<JoinInfo>;
-  joinAsGuest(code: string, name: string): Promise<{ user: User; activityId: string }>;
+  joinAsGuest(code: string, name: string): Promise<JoinResult>;
+  createActivityInvite(activityId: string): Promise<ActivityInvite>;
+  inviteInfo(token: string): Promise<InviteInfo>;
+  joinByInvite(token: string, name: string): Promise<InviteJoined>;
   listTopics(): Promise<Topic[]>;
   generateTopics(direction: string): Promise<Topic[]>;
   createClassroom(name: string, topicId: string): Promise<ClassroomCreated>;
@@ -222,8 +229,24 @@ export const httpApi: Api = {
     return unwrap(await client.join[":code"].$get({ param: { code } }));
   },
   async joinAsGuest(code, name) {
-    const payload = unwrap(await client.join.$post({ json: JoinInputSchema.parse({ code, name, tosAccepted: true }) }));
-    const data = await payload;
+    const data = await raw<JoinResult>("/join", {
+      method: "POST",
+      json: JoinInputSchema.parse({ code, name, tosAccepted: true }),
+    });
+    persistActivityId(data.activityId);
+    return data;
+  },
+  async createActivityInvite(activityId) {
+    return await raw<ActivityInvite>(`/activities/${encodeURIComponent(activityId)}/invites`, { method: "POST" });
+  },
+  async inviteInfo(token) {
+    return await raw<InviteInfo>(`/invites/${encodeURIComponent(token)}`);
+  },
+  async joinByInvite(token, name) {
+    const data = await raw<InviteJoined>(`/invites/${encodeURIComponent(token)}/join`, {
+      method: "POST",
+      json: { name, tosAccepted: true },
+    });
     persistActivityId(data.activityId);
     return data;
   },

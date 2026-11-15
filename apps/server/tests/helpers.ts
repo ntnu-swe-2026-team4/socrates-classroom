@@ -77,6 +77,36 @@ export function cookieOf(res: Response): string {
   return (res.headers.getSetCookie?.()[0] ?? "").split(";")[0]!;
 }
 
+export async function joinGuest(
+  code: string,
+  name: string,
+): Promise<{ cookie: string; participantId: string; activityId: string }> {
+  const res = await call("/api/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, name, tosAccepted: true }),
+  });
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { activityId: string; participantId: string | null };
+  expect(body.participantId).toBeTruthy();
+  return { cookie: cookieOf(res), participantId: body.participantId!, activityId: body.activityId };
+}
+
+export async function registerStudent(
+  code: string,
+  name: string,
+): Promise<{ cookie: string; userId: string; email: string }> {
+  const email = `student-${crypto.randomUUID()}@socrates.tw`;
+  const res = await call("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, name, email, password: "student-pass-1", tosAccepted: true }),
+  });
+  expect(res.status).toBe(200);
+  const user = (await res.json()) as { id: string };
+  return { cookie: cookieOf(res), userId: user.id, email };
+}
+
 export async function participantIdOf(activityId: string, cookie: string): Promise<string> {
   const res = await call(`/api/activities/${activityId}`, { headers: { Cookie: cookie } });
   expect(res.status).toBe(200);

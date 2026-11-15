@@ -39,11 +39,11 @@ function JoinPage() {
     setSubmitting(true);
     setFailed(null);
     try {
-      const { activityId, user } = await api.joinAsGuest(code, name.trim());
-      queryClient.setQueryData(["me"], user);
+      const joined = await api.joinAsGuest(code, name.trim());
+      queryClient.setQueryData(["me"], joined.user);
       await navigate({
         to: "/dialogue",
-        search: { activityId, ...(draft ? { q: draft } : {}) },
+        search: { activityId: joined.activityId, ...(draft ? { q: draft } : {}) },
       });
     } catch (error) {
       const code = error instanceof ApiError ? error.code : null;

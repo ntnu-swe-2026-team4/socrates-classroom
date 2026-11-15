@@ -2,6 +2,27 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-16 — #133 活動邀請連結與無帳號訪客（`136-account-classroom-model`）
+
+### Added
+
+- Schema `004_activity_invites.sql`：`activity_invites`（`token` PK、`activity_id`、`created_by`、`created_at`、`expires_at` nullable、`revoked_at`）；token 為 32 hex（128 bits），每個活動只有一條有效邀請
+- `POST /api/activities/:id/invites`（老師／該班 owner）→ `ActivityInvite`；`GET /api/invites/:token` → `InviteInfo`（活動已結束仍回 200，前端顯示結束）；`POST /api/invites/:token/join` → `InviteJoined`（`apps/server/src/routes/invites.ts`）
+- 獨立 cookie `socrates_participant`（`HttpOnly`、`SameSite=Lax`、7 天；簽章只帶 `aid`／`pid`／`exp`）與 `lookupParticipant`（`apps/server/src/auth.ts`）——**不覆寫 `socrates_session`**
+- `/join/a/$token` 入場頁（`apps/web/src/routes/join.a.$token.tsx`）：活動預覽、姓名＋ToS、結束狀態；教室頁新增「活動邀請」卡（`QrBlock` 產生 QR，無新增圖片端點）
+- 錯誤碼 `invite_invalid`／`invite_revoked`／`invite_expired`（404／410／410；`messages.ts` 三語同步）
+- 測試：`apps/server/tests/invite.test.ts`（邀請穩定性、訪客不建 `users`／`members`、session 不被覆寫、thread slot 擁有權、撤回／過期、活動結束、pseudonym 序號）
+
+### Changed
+
+- **匿名加入不再建 guest user**（`POST /join`）：未登入者取得 `kind = 'guest'` participant 與 `socrates_participant` cookie，`users`／`members` 不新增列；回傳改為 `{user, activityId, participantId, kind}`（`JoinResult`）。已登入者仍走名冊（`kind = 'member'`）
+- `GET /api/activities/:id` 接受 participant cookie（訪客只讀自己的 participant）；`GET /api/activities/:id/report` 對訪客一律 403——訪客事後回看報告不在本輪範圍
+- WS 授權（`do/chat.ts`、`ws/sockets.ts`）：`SocketIdentity` 改為 `{userId: string | null, participantId, version: number | null}`；`authorize` 同時接受兩顆 cookie，`submit` 的擁有者規則改為「該 participant slot 屬於這條連線」（`user_id` 本人或無帳號訪客的 participant cookie）；reverify／每則 message 的重驗對訪客改讀 participant
+- **pseudonym 序號改由 HMAC 決定**（`pseudonymRanks`）：以 `HMAC(AUTH_SECRET, activityId:participantId)` 排序後配 1..n，不再等於報到順序；既有 pseudonym 不變
+- `pseudonym 序列依 joined_at` 的舊敘述同步為 HMAC 規則（`api-contract.md` §7）
+- `POST /api/auth/register` 不變（帳號註冊仍建 member 與 participant）；`activity_participants` 的 `guest` kind 自本輪開始生產
+- Docs：`api-contract.md` §1（cookie）、§1.1 授權矩陣、§2、§2.1、§3、§3.1（新）、§5.1、§7、§10、§12；`feature.md`、`architecture.md`（資料表清單）
+
 ## 2026-11-16 — #132 activity participant 成為對話與報告的母體（`136-account-classroom-model`）
 
 ### Added

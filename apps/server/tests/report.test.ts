@@ -5,12 +5,12 @@ import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import { reportAlarmPlan } from "../src/do/report-runner";
-import { call, cookieOf, participantIdOf, speak } from "./helpers";
+import { call, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
 
 let teacherCookie: string;
 let classroomCode: string;
 let activityId: string;
-const students: Array<{ cookie: string; userId: string; participantId: string }> = [];
+const students: Array<{ cookie: string; participantId: string }> = [];
 
 const migrations = inject("d1Migrations");
 
@@ -38,15 +38,8 @@ beforeAll(async () => {
   activityId = created.activityId;
 
   for (const name of ["小明", "阿華", "小靜"]) {
-    const res = await call("/api/join", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: classroomCode, name, tosAccepted: true }),
-    });
-    expect(res.status).toBe(200);
-    const { user } = (await res.json()) as { user: { id: string } };
-    const cookie = cookieOf(res);
-    students.push({ cookie, userId: user.id, participantId: await participantIdOf(activityId, cookie) });
+    const account = await registerStudent(classroomCode, name);
+    students.push({ cookie: account.cookie, participantId: await participantIdOf(activityId, account.cookie) });
   }
 
   await run(
@@ -119,8 +112,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(teacherReport.students).toHaveLength(2);
     expect(teacherReport.students.map((s) => s.participantName).sort()).toEqual(["小明", "阿華"].sort());
     expect(teacherReport.students.map((s) => s.pseudonym).every((p) => p.startsWith("學生"))).toBe(true);
-    const positioned = teacherReport.students.find((s) => s.pseudonym === "學生1");
-    expect(positioned?.positions.length).toBeGreaterThan(0);
+    const positioned = teacherReport.students.find((s) => s.positions.length > 0);
     expect(positioned?.positions[0]).toMatchObject({ axis: "契約與承諾", end: "middle", at: 50 });
 
     const speaker = teacherReport.students.find((s) => s.participantId === students[0]!.participantId)!;
@@ -211,10 +203,16 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
         body: JSON.stringify({ name: "partial 班", topicId: topics[0]!.id }),
       })
     ).json()) as { code: string; activityId: string };
-    const joined = await call("/api/join", {
+    const joined = await call("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: created.code, name: "小標", tosAccepted: true }),
+      body: JSON.stringify({
+        code: created.code,
+        name: "小標",
+        email: `partial-${crypto.randomUUID()}@socrates.tw`,
+        password: "student-pass-1",
+        tosAccepted: true,
+      }),
     });
     expect(joined.status).toBe(200);
     const studentCookie = cookieOf(joined);

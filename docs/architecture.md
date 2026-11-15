@@ -30,7 +30,7 @@ flowchart TD
 
         HONO --> AUTH["auth：HMAC cookie＋PBKDF2（auth.ts）"]
         HONO --> ROUTES["routes/：auth／join／topics／classrooms／activity／voice／lookup／teacher-keys"]
-        ROUTES --> DB[("D1：users／classrooms／topics／activities／members／activity_participants／reports／pseudonyms／teacher_keys")]
+        ROUTES --> DB[("D1：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys")]
         HONO --> VOICE["voice：whisper STT／melotts TTS（AI binding）"]
         HONO --> LOOKUP["lookup：runProfile(lookup)"]
         HONO --> GEN["topics/generate：runProfile(topic-gen)"]
@@ -182,7 +182,7 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 
 ## 6. 資料層
 
-- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／reports／pseudonyms／teacher_keys（`migrations/`：001 init、002 capabilities、003 activity_participants）。pi transcript 是對話與違規的唯一真相，無第二份儲存
+- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys（`migrations/`：001 init、002 capabilities、003 activity_participants、004 activity_invites）。pi transcript 是對話與違規的唯一真相，無第二份儲存
 - **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 provider 鏈序（#82）
 - **DO SQLite**：只有 pi 自己的 `pi_*` 表，應用程式不讀寫——agent 狀態與產品資料分離（D2）
 - **保留政策**：AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容（judgment sink 只記 type/source）

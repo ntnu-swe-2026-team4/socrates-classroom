@@ -4,7 +4,7 @@ import type { StudentReport, TeacherReport, ViolationType } from "@socrates/shar
 import { StoredStudentReportsSchema, StoredTeacherReportSchema } from "@socrates/shared";
 import { one, run } from "../db/d1";
 import { enforceIpLimit, fail, nowIso, requireUser, type AppEnv } from "../http";
-import { ensureParticipant, requireActivityAccess, topicOf } from "../services/members";
+import { ensureParticipant, activityAccess, activityAccessOf, topicOf } from "../services/members";
 
 function storedReport<T>(raw: string | null, schema: ZodType<T>): T | undefined {
   if (raw === null) return undefined;
@@ -19,16 +19,15 @@ function storedReport<T>(raw: string | null, schema: ZodType<T>): T | undefined 
 export function activityRoutes() {
   return new Hono<AppEnv>()
     .get("/activities/:id", async (c) => {
-      const user = requireUser(c);
-      const { activity, classroom, participant, isTeacher } = await requireActivityAccess(
-        c.env.DB,
+      const { activity, classroom, participant, member, isTeacher, user } = await activityAccessOf(
+        c,
         c.req.param("id"),
-        user,
       );
       const self =
-        isTeacher || activity.finished_at
+        isTeacher || activity.finished_at || !user
           ? participant
-          : (participant ?? (await ensureParticipant(c.env.DB, activity.id, user, nowIso())));
+          : (participant ??
+            (await ensureParticipant(c.env.DB, activity.id, { id: user.id, name: member?.name ?? user.id }, nowIso())));
       const topic = await topicOf(c.env.DB, activity.topic_id);
       return c.json({
         id: activity.id,
@@ -42,7 +41,10 @@ export function activityRoutes() {
     .post("/activities/:id/finish", async (c) => {
       await enforceIpLimit(c, "activity-finish", 6);
       const user = requireUser(c);
-      const { activity, classroom } = await requireActivityAccess(c.env.DB, c.req.param("id"), user);
+      const { activity, classroom } = await activityAccess(c.env.DB, c.req.param("id"), {
+        user,
+        participant: null,
+      });
       if (classroom.teacher_id !== user.id) fail(403, "forbidden");
       if (!activity.finished_at) {
         await run(c.env.DB, "UPDATE activities SET finished_at = $at WHERE id = $id", {
@@ -55,8 +57,9 @@ export function activityRoutes() {
     })
     .get("/activities/:id/report", async (c) => {
       c.header("Cache-Control", "no-store");
-      const user = requireUser(c);
-      const { activity, participant, isTeacher } = await requireActivityAccess(c.env.DB, c.req.param("id"), user);
+      const access = await activityAccessOf(c, c.req.param("id"));
+      const { activity, participant, isTeacher } = access;
+      if (!access.user) fail(403, "forbidden");
       const row = await one<{ status: string; teacher_report: string | null; student_reports: string | null }>(
         c.env.DB,
         "SELECT status, teacher_report, student_reports FROM reports WHERE activity_id = $id",

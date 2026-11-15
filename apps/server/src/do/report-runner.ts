@@ -244,7 +244,12 @@ export class ReportRunner extends DurableObject<Env> {
     });
 
     const pseudonyms = new Map<string, string>();
-    for (const [index, participant] of roster.entries()) {
+    const ranks = await pseudonymRanks(
+      this.env.AUTH_SECRET ?? "",
+      activityId,
+      roster.map((p) => p.id),
+    );
+    for (const participant of roster) {
       const existing = await one<{ pseudonym: string }>(
         db,
         "SELECT pseudonym FROM pseudonyms WHERE activity_id = $aid AND participant_id = $pid",
@@ -252,7 +257,7 @@ export class ReportRunner extends DurableObject<Env> {
       );
       let pseudonym = existing?.pseudonym ?? "";
       if (!pseudonym) {
-        let serial = index + 1;
+        let serial = ranks.get(participant.id) ?? 1;
         while ([...pseudonyms.values()].includes(`${report.pseudonymPrefix}${serial}`)) serial += 1;
         pseudonym = `${report.pseudonymPrefix}${serial}`;
       }
@@ -443,6 +448,30 @@ export class ReportRunner extends DurableObject<Env> {
       },
     );
   }
+}
+
+export async function pseudonymRanks(
+  secret: string,
+  activityId: string,
+  participantIds: readonly string[],
+): Promise<Map<string, number>> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const ranked = await Promise.all(
+    participantIds.map(async (id) => {
+      const mac = new Uint8Array(
+        await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${activityId}:${id}`)),
+      );
+      return { id, digest: [...mac].map((byte) => byte.toString(16).padStart(2, "0")).join("") };
+    }),
+  );
+  ranked.sort((a, b) => (a.digest === b.digest ? a.id.localeCompare(b.id) : a.digest < b.digest ? -1 : 1));
+  return new Map(ranked.map((entry, index) => [entry.id, index + 1]));
 }
 
 function positionsOf(classReport: ClassReport | null, pseudonym: string): ReportPosition[] {
