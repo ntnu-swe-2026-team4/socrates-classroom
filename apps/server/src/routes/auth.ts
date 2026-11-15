@@ -134,7 +134,7 @@ export function authRoutes() {
         ]);
       } catch (error) {
         if (uniqueViolationColumns(error).length === 0) throw error;
-        fail(409, "conflict");
+        fail(409, "email_taken");
       }
       const user: User = { id, name: input.name, canManageClasses: false, isAdmin: false };
       await startSession(c, user);

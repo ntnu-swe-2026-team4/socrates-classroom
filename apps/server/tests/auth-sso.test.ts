@@ -171,7 +171,7 @@ describe("email signup (standalone account)", () => {
     );
     const dup = await call("/api/auth/signup", { method: "POST", headers: json, body: JSON.stringify(base) });
     expect(dup.status).toBe(409);
-    expect(((await dup.json()) as { code: string }).code).toBe("conflict");
+    expect(((await dup.json()) as { code: string }).code).toBe("email_taken");
     const noTos = await call("/api/auth/signup", {
       method: "POST",
       headers: json,

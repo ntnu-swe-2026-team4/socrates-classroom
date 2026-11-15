@@ -111,6 +111,11 @@ const M: Record<ErrorCode, Entry> = {
     en: "This provider is not supported.",
     es: "Este proveedor no es compatible.",
   },
+  email_taken: {
+    zh: "這個信箱已經註冊過了，請直接登入。",
+    en: "This email is already registered. Please sign in instead.",
+    es: "Este correo ya está registrado. Inicia sesión.",
+  },
   oauth_unavailable: {
     zh: "這個登入方式目前無法使用。",
     en: "This sign-in method is not available right now.",

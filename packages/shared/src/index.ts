@@ -368,6 +368,7 @@ export const ERROR_CODES = [
   "oauth_state_invalid",
   "oauth_email_unverified",
   "oauth_failed",
+  "email_taken",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

@@ -89,7 +89,7 @@ interface User {
 
 | Endpoint                                                                | 說明                                                                                                                                                                                                                                                |
 | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/auth/signup` `{email, password, name, tosAccepted}` → `User` | 不需邀請碼；建獨立帳號（無能力，未屬任何教室）並發 session。email 已被 email 帳號使用 → 409 `conflict`；`tosAccepted` 非 true → 422 `tos_required`；限流與 register 共用
+| `POST /api/auth/signup` `{email, password, name, tosAccepted}` → `User` | 不需邀請碼；建獨立帳號（無能力，未屬任何教室）並發 session。email 已被 email 帳號使用 → 409 `email_taken`；`tosAccepted` 非 true → 422 `tos_required`；限流與 register 共用 |
 | `GET /api/auth/oauth/:provider/start`（目前 `provider` 僅 `google`）    | 302 至 provider 授權頁；state＋nonce＋PKCE（S256）封入 10 分鐘 httpOnly cookie `socrates_oauth`（HMAC 簽章，path `/api/auth/oauth`）。未設定 `GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET` → 302 `/login?error=oauth_unavailable`；未知 provider → 404 |
 | `GET /api/auth/oauth/:provider/callback?code&state`                     | 驗 state cookie → code＋PKCE verifier 換 ID token → 驗簽章（JWKS）／`iss`／`aud`／`exp`／`nonce`／`email_verified` → 以 `(provider, sub)` 找或建獨立帳號 → 發 session → 302 `/home`。失敗一律 302 `/login?error=<code>`，不發 session               |
 
@@ -316,6 +316,7 @@ interface ViolationSlice {
 | 對話入場               | `already_streaming`（歷史碼，保留給舊客戶端 switch 窮舉）                                                                                                      | 409                         |
 | BYOK / teacher keys    | `byok_provider_invalid`                                                                                                                                        | 422                         |
 | 第三方登入（#124）     | `oauth_unavailable` / `oauth_state_invalid` / `oauth_email_unverified` / `oauth_failed`（以 `/login?error=<code>` query 傳回，非 JSON）                        | 302                         |
+| 自行註冊（#124）       | `email_taken`（`POST /auth/signup` 信箱已被使用）                                                                                                              | 409                         |
 
 ## 11. 端點外的既存通道
 
