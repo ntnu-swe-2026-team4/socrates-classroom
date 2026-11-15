@@ -74,6 +74,7 @@ export function activityRoutes() {
           classReport: stored?.classReport ?? null,
           students: Object.entries(students).map(([participantId, own]) => ({
             participantId,
+            participantName: own.participantName ?? own.pseudonym,
             pseudonym: own.pseudonym,
             analysis: own.analysis,
             violations: own.violations.map((violation) => ({ ...violation, type: violation.type as ViolationType })),
@@ -86,6 +87,7 @@ export function activityRoutes() {
       if (!own) fail(404, "not_found");
       const report: StudentReport = {
         topicTitle: topic.title,
+        participantName: own.participantName ?? own.pseudonym,
         pseudonym: own.pseudonym,
         analysis: own.analysis,
         violations: own.violations.map((violation) => ({ ...violation, type: violation.type as ViolationType })),

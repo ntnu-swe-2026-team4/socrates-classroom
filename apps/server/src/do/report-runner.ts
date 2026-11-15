@@ -35,6 +35,28 @@ export type ReportAlarmPlan =
   | { action: "rearm"; delayMs: number }
   | { action: "generate"; backoffMs: number };
 
+interface RawTranscript {
+  messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
+  turns: number;
+  violations: ViolationSlice[];
+}
+
+function renderTranscript(
+  participantId: string,
+  transcript: RawTranscript | undefined,
+  pseudonyms: Map<string, string>,
+): { text: string; violations: ViolationSlice[] } {
+  const pseudonym = pseudonyms.get(participantId) ?? participantId;
+  const text = (transcript?.messages ?? [])
+    .map((message) =>
+      message.role === "user"
+        ? `${pseudonym}（${message.turn}）：${indentedContinuations(message.text)}`
+        : `AI：${message.text}`,
+    )
+    .join("\n");
+  return { text, violations: transcript?.violations ?? [] };
+}
+
 export function reportAlarmPlan(input: {
   attempts: number;
   cap: number;
@@ -191,9 +213,9 @@ export class ReportRunner extends DurableObject<Env> {
     if (this.models.faux && activity.statement.includes(FAUX_GENERATE_FAILURE_MARKER)) {
       throw new Error("faux_report_generate_failure");
     }
-    const participants = await all<{ id: string; lang: Lang }>(
+    const participants = await all<{ id: string; display_name: string; lang: Lang }>(
       db,
-      `SELECT p.id, COALESCE(u.lang, 'zh') AS lang
+      `SELECT p.id, p.display_name, COALESCE(u.lang, 'zh') AS lang
        FROM activity_participants p
        LEFT JOIN users u ON u.id = p.user_id
        WHERE p.activity_id = $aid
@@ -201,8 +223,28 @@ export class ReportRunner extends DurableObject<Env> {
       { aid: activityId },
     );
 
+    const legs = await this.teacherLegs();
+    const batch = this.batchSize(participants.length, legs);
+    const transcripts = new Map<string, RawTranscript>();
+    for (let i = 0; i < participants.length; i += batch) {
+      await Promise.all(
+        participants.slice(i, i + batch).map(async (participant) => {
+          try {
+            transcripts.set(participant.id, await this.transcriptOf(activityId, participant.id));
+          } catch (error) {
+            console.error("[report] transcript fetch failed", error instanceof Error ? error.name : typeof error);
+          }
+        }),
+      );
+    }
+
+    const roster = participants.filter((participant) => {
+      const transcript = transcripts.get(participant.id);
+      return transcript === undefined || transcript.turns > 0;
+    });
+
     const pseudonyms = new Map<string, string>();
-    for (const [index, participant] of participants.entries()) {
+    for (const [index, participant] of roster.entries()) {
       const existing = await one<{ pseudonym: string }>(
         db,
         "SELECT pseudonym FROM pseudonyms WHERE activity_id = $aid AND participant_id = $pid",
@@ -228,28 +270,18 @@ export class ReportRunner extends DurableObject<Env> {
       }
     }
 
-    const legs = await this.teacherLegs();
     const teacherLang = await this.teacherLanguage();
-    const batch = this.batchSize(participants.length, legs);
-    const transcripts = new Map<string, { text: string; violations: ViolationSlice[] }>();
-    for (let i = 0; i < participants.length; i += batch) {
-      await Promise.all(
-        participants.slice(i, i + batch).map(async (participant) => {
-          try {
-            transcripts.set(participant.id, await this.transcriptOf(activityId, participant.id, pseudonyms));
-          } catch (error) {
-            console.error("[report] transcript fetch failed", error instanceof Error ? error.name : typeof error);
-          }
-        }),
-      );
+    const rendered = new Map<string, { text: string; violations: ViolationSlice[] }>();
+    for (const participant of roster) {
+      rendered.set(participant.id, renderTranscript(participant.id, transcripts.get(participant.id), pseudonyms));
     }
 
     const harness = await this.openHarness();
     const studentAnalyses = new Map<string, StudentAnalysis | null>();
-    for (let i = 0; i < participants.length; i += batch) {
+    for (let i = 0; i < roster.length; i += batch) {
       await Promise.all(
-        participants.slice(i, i + batch).map(async (participant) => {
-          const transcript = transcripts.get(participant.id)?.text ?? "";
+        roster.slice(i, i + batch).map(async (participant) => {
+          const transcript = rendered.get(participant.id)?.text ?? "";
           if (!transcript.trim()) {
             studentAnalyses.set(participant.id, null);
             return;
@@ -282,7 +314,7 @@ export class ReportRunner extends DurableObject<Env> {
       );
     }
 
-    const classInput = this.classReportPrompt(activity, participants, transcripts, pseudonyms);
+    const classInput = this.classReportPrompt(activity, roster, rendered, pseudonyms);
     try {
       const { text: classText, payload: classPayload } = await this.runAgent(
         harness,
@@ -292,18 +324,10 @@ export class ReportRunner extends DurableObject<Env> {
         { lang: teacherLang, submitTool: SUBMIT_CLASS_REPORT },
       );
       const classReport = ClassReportSchema.parse(payloadOf(classText, classPayload));
-      await this.persist(
-        activityId,
-        activity.title,
-        classReport,
-        participants,
-        studentAnalyses,
-        pseudonyms,
-        transcripts,
-      );
+      await this.persist(activityId, activity.title, classReport, roster, studentAnalyses, pseudonyms, rendered);
     } catch (error) {
       console.error("[report] class report failed", error instanceof Error ? error.name : typeof error);
-      await this.persist(activityId, activity.title, null, participants, studentAnalyses, pseudonyms, transcripts);
+      await this.persist(activityId, activity.title, null, roster, studentAnalyses, pseudonyms, rendered);
       throw error;
     }
   }
@@ -351,23 +375,12 @@ export class ReportRunner extends DurableObject<Env> {
     return teacherLegsOf(this.env, await teacherOfActivity(this.env, this.ctx.id.name ?? ""));
   }
 
-  private async transcriptOf(
-    activityId: string,
-    participantId: string,
-    pseudonyms: Map<string, string>,
-  ): Promise<{ text: string; violations: ViolationSlice[] }> {
+  private async transcriptOf(activityId: string, participantId: string): Promise<RawTranscript> {
     const stub = this.env.Chat.get(this.env.Chat.idFromName(`${activityId}:${participantId}`));
     const data = await stub.transcript();
-    const pseudonym = pseudonyms.get(participantId) ?? participantId;
-    const text = data.messages
-      .map((message) =>
-        message.role === "user"
-          ? `${pseudonym}（${message.turn}）：${indentedContinuations(message.text)}`
-          : `AI：${message.text}`,
-      )
-      .join("\n");
     return {
-      text,
+      messages: data.messages,
+      turns: data.messages.filter((message) => message.role === "user").length,
       violations: data.violations.map((violation) => ({
         turn: violation.turn,
         type: violation.type as ViolationType,
@@ -382,32 +395,33 @@ export class ReportRunner extends DurableObject<Env> {
 
   private classReportPrompt(
     activity: { title: string; statement: string },
-    participants: Array<{ id: string }>,
+    roster: Array<{ id: string }>,
     transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
     pseudonyms: Map<string, string>,
   ): string {
-    const roster = participants.map((p) => pseudonyms.get(p.id) ?? "").filter(Boolean);
-    const conversations = participants
+    const names = roster.map((p) => pseudonyms.get(p.id) ?? "").filter(Boolean);
+    const conversations = roster
       .map((p) => `### ${pseudonyms.get(p.id) ?? p.id}\n${transcripts.get(p.id)?.text ?? ""}`)
       .join("\n\n");
-    return `## Topic: ${activity.title}\n${activity.statement}\n\n## Roster: ${roster.length} students in the class\n${roster.join(", ")}\n\n## The whole class's conversations\n${conversations}`;
+    return `## Topic: ${activity.title}\n${activity.statement}\n\n## Roster: ${names.length} students in the class\n${names.join(", ")}\n\n## The whole class's conversations\n${conversations}`;
   }
 
   private async persist(
     activityId: string,
     topicTitle: string,
     classReport: ClassReport | null,
-    participants: Array<{ id: string }>,
+    roster: Array<{ id: string; display_name: string }>,
     studentAnalyses: Map<string, StudentAnalysis | null>,
     pseudonyms: Map<string, string>,
     transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
   ): Promise<void> {
     const students: Record<string, unknown> = {};
-    for (const participant of participants) {
+    for (const participant of roster) {
       const participantId = participant.id;
       const analysis = studentAnalyses.get(participantId) ?? null;
       const pseudonym = pseudonyms.get(participantId) ?? participantId;
       students[participantId] = {
+        participantName: participant.display_name,
         pseudonym,
         analysis,
         violations: transcripts.get(participantId)?.violations ?? [],

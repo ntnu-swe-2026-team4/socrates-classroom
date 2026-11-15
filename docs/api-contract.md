@@ -177,8 +177,9 @@ interface ReportPosition {                       // 單人落點：從 classRepo
 interface TeacherReport {
   topicTitle: string;
   classReport: ClassReport | null;               // null＝partial（群體生成失敗，個別報告仍可用）
-  students: Array<{                              // array 保序（joined_at）；只列活動參與者（§2.1）
+  students: Array<{                              // array 保序（joined_at）；只列真的有對話的參與者
     participantId: string;                       // 活動 participant id——僅老師可見（真實身分在 members／users）
+    participantName: string;                     // 參與者名稱（老師個別頁與學生本人頁顯示；classReport 仍用 pseudonym）
     pseudonym: string;
     analysis: StudentAnalysis | null;            // 論點總結（claim/reasons/tension＋turns 出處）
     violations: ViolationSlice[];                 // 違規切片（不經 LLM）
@@ -187,7 +188,8 @@ interface TeacherReport {
 }
 interface StudentReport {
   topicTitle: string;
-  pseudonym: string;                             // 學生在 classReport 中的定位線索（老師版可對照）
+  participantName: string;                       // 本人名稱（學生看不到別人的）
+  pseudonym: string;                             // 自己在 classReport 中的定位線索（老師版可對照）
   analysis: StudentAnalysis | null;              // 自己的
   violations: ViolationSlice[];
   positions: ReportPosition[];                   // 自己在每條軸上的落點
@@ -200,7 +202,7 @@ interface ViolationSlice {
 ```
 
 - **學生不拿 classReport**（設計決策）：學生報告只有自己的 analysis＋violations＋pseudonym；全班視角是老師專屬
-- **報告母體＝`activity_participants`**（#132）：未進入活動的班級成員**不產生空報告**，也拿不到報告（404 `not_found`）；`student_reports` 的 JSON key 與 WS thread 名的後半段同為 participant id；pseudonym 序列依 participant 的 `joined_at` 產生
+- **報告母體＝有對話的 `activity_participants`**（#132）：沒進活動的班級成員、進了活動但**一句都沒說**的參與者都不產生空報告——本人報告頁 404 `not_found`，classReport 的 roster 也只含真的有對話的人；`student_reports` 的 JSON key 與 WS thread 名的後半段同為 participant id；pseudonym 序列依 roster 的 `joined_at` 產生
 - **`ClassReport.students[].id`／`positions[].id`＝pseudonym**（LLM prompt 餵的就是 pseudonym；嚴禁放 participantId 或 userId——全班互見會洩漏真實 id，#72）
 - transcript 來源：Chat DO RPC（`stub.transcript()`，DO→DO；外部無 request 面）；violations 同源自 `app.violation` entries——**pi transcript 是唯一真相，violations 不落第二份儲存**
 - 逐生分析與 transcript 抓取以 Router budget 批次進行（`budget("batch")`＝鏈上各 leg maxConcurrency 總和；10k 班級的生成時間與供應端限流考量）

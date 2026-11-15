@@ -84,6 +84,7 @@ export const ReportPositionSchema = z.object({
 });
 
 export const StudentReportEntrySchema = z.object({
+  participantName: z.string().optional(),
   pseudonym: z.string(),
   analysis: StudentAnalysisSchema.nullable(),
   violations: z.array(ViolationSliceSchema),
@@ -106,6 +107,7 @@ export interface ReportPosition {
 
 export interface StudentReportEntry {
   participantId: string;
+  participantName: string;
   pseudonym: string;
   analysis: StudentAnalysis | null;
   violations: ViolationSlice[];
@@ -120,6 +122,7 @@ export interface TeacherReport {
 
 export interface StudentReport {
   topicTitle: string;
+  participantName: string;
   pseudonym: string;
   analysis: StudentAnalysis | null;
   violations: ViolationSlice[];

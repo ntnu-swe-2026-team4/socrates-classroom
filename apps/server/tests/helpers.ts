@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { expect } from "vitest";
+import { routeAgentRequest } from "agents";
 import worker from "../src/index";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import type { ConversationView } from "@earendil-works/pi-durable";
@@ -82,4 +83,24 @@ export async function participantIdOf(activityId: string, cookie: string): Promi
   const { participantId } = (await res.json()) as { participantId: string | null };
   expect(participantId).toBeTruthy();
   return participantId!;
+}
+
+export async function speak(thread: string, cookie: string, question: string): Promise<void> {
+  const response = await routeAgentRequest(
+    new Request(`https://example.com/agents/chat/${thread}`, {
+      headers: { Upgrade: "websocket", Cookie: cookie },
+    }),
+    env,
+  );
+  expect(response?.status).toBe(101);
+  const socket = response!.webSocket as WebSocket;
+  socket.accept();
+  const rx = frames(socket);
+  await rx.until((f) => f.some((m) => m.type === "hello"));
+  socket.send(JSON.stringify({ type: "watch" }));
+  await rx.until((f) => f.some((m) => m.type === "view"));
+  socket.send(JSON.stringify({ type: "submit", id: "s1", input: question }));
+  await rx.until((f) => f.some((m) => m.type === "result" && m.id === "s1"));
+  await rx.until((f) => latestAssistantText(f).includes("直覺判斷"));
+  socket.close();
 }

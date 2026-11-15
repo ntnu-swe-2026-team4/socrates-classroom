@@ -1,32 +1,11 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
-import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import { reportAlarmPlan } from "../src/do/report-runner";
-import { call, cookieOf, frames, latestAssistantText, participantIdOf } from "./helpers";
-
-async function speak(thread: string, cookie: string, question: string): Promise<void> {
-  const socket = await routeAgentRequest(
-    new Request(`https://example.com/agents/chat/${thread}`, {
-      headers: { Upgrade: "websocket", Cookie: cookie },
-    }),
-    env,
-  );
-  expect(socket?.status).toBe(101);
-  const ws = socket!.webSocket as WebSocket;
-  ws.accept();
-  const rx = await frames(ws);
-  await rx.until((f) => f.some((m) => m.type === "hello"));
-  ws.send(JSON.stringify({ type: "watch" }));
-  await rx.until((f) => f.some((m) => m.type === "view"));
-  ws.send(JSON.stringify({ type: "submit", id: "s1", input: question }));
-  await rx.until((f) => f.some((m) => m.type === "result" && m.id === "s1"));
-  await rx.until((f) => latestAssistantText(f).includes("直覺判斷"));
-  ws.close();
-}
+import { call, cookieOf, participantIdOf, speak } from "./helpers";
 
 let teacherCookie: string;
 let classroomCode: string;
@@ -58,7 +37,7 @@ beforeAll(async () => {
   classroomCode = created.code;
   activityId = created.activityId;
 
-  for (const name of ["小明", "阿華"]) {
+  for (const name of ["小明", "阿華", "小靜"]) {
     const res = await call("/api/join", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -129,6 +108,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
       classReport: { axes: unknown[]; overview: string[]; students: Array<{ id: string }> };
       students: Array<{
         participantId: string;
+        participantName: string;
         pseudonym: string;
         analysis: { stated: boolean } | null;
         violations: Array<{ turn: number; type: string; excerpt: string }>;
@@ -137,6 +117,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     };
     expect(teacherReport.classReport.axes.length).toBeGreaterThan(0);
     expect(teacherReport.students).toHaveLength(2);
+    expect(teacherReport.students.map((s) => s.participantName).sort()).toEqual(["小明", "阿華"].sort());
     expect(teacherReport.students.map((s) => s.pseudonym).every((p) => p.startsWith("學生"))).toBe(true);
     const positioned = teacherReport.students.find((s) => s.pseudonym === "學生1");
     expect(positioned?.positions.length).toBeGreaterThan(0);
@@ -155,13 +136,19 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(own.status).toBe(200);
     const studentReport = (await own.json()) as {
       topicTitle: string;
+      participantName: string;
       pseudonym: string;
       analysis: { stated: boolean } | null;
       violations: unknown[];
     };
+    expect(studentReport.participantName).toBe("小明");
     expect(studentReport.pseudonym).toBe(speaker.pseudonym);
     expect(studentReport.analysis?.stated).toBe(true);
     expect("classReport" in studentReport).toBe(false);
+
+    const silent = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: students[2]!.cookie } });
+    expect(silent.status).toBe(404);
+    expect(((await silent.json()) as { code: string }).code).toBe("not_found");
 
     const bystander = await call("/api/auth/login", {
       method: "POST",

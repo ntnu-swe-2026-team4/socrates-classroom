@@ -14,9 +14,9 @@
 ### Changed
 
 - **thread name 協定**：`{activityId}:{userId}` → `{activityId}:{participantId}`（`do/chat.ts`：`authorize`／`reverify`／submit 的擁有者比對改讀 participant 的 `user_id`；`ChatSockets` 的 `CanSubmit` 可為 async，每次 submit 重驗）；`docs/api-contract.md` §5.1 與 `apps/server/tests/chat.test.ts` 同步——這是刻意的協定變更
-- **報告母體**：`do/report-runner.ts` 改以 `activity_participants` 為母體（pseudonym 序列依 `joined_at`；`student_reports` key 改為 participant id）——沒進活動的成員不再拿到空報告
+- **報告母體**：`do/report-runner.ts` 改以 `activity_participants` 為母體，且只納入真有對話（transcript 有發言）的參與者——沒進活動的成員、進了活動但一句沒說的參與者都不再拿到空分析（本人報告頁 404）；pseudonym 序列與 `student_reports` key 均以 participant id 為準
 - `pseudonyms`：`student_id` → `participant_id`，移除對 `users` 的 FK（改指 participant；訪客消失或帳號刪除都不斷鏈）
-- `TeacherReport.students[].studentId` → `participantId`（`packages/shared`、`routes/activity.ts`、`report.$id.tsx`）
+- `TeacherReport.students[].studentId` → `participantId`，並新增 `participantName`（`StudentReport` 亦有）：老師的個別頁以真實名稱列人（pseudonym 作為副標），學生自己的報告頁改顯示本人名稱（pseudonym 對學生無定位用途）；`StudentReportEntrySchema.participantName` 為 optional，舊 stored report 回退到 pseudonym
 - `ActivityInfo` 新增 `participantId`：`GET /api/activities/:id` 回傳呼叫者在該活動的 participant（活動進行中且是班級成員時必要則建立）；web 的對話頁等它 resolve 後才掛載 WS
 - `POST /api/join`、`POST /api/auth/register` 一併寫入 participant（活動進行中才寫）
 - Docs：`api-contract.md` §1.1、§2.1（新）、§3、§5.1、§6、§7；`architecture.md`／`feature.md` 的資料表清單

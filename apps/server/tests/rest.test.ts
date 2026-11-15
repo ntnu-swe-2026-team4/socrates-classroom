@@ -3,7 +3,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
-import { call, cookieOf } from "./helpers";
+import { call, cookieOf, participantIdOf, speak } from "./helpers";
 
 let teacher: string;
 let code: string;
@@ -158,6 +158,11 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       body: JSON.stringify({ code: created.code, name: "R6生報", tosAccepted: true }),
     });
     const student = cookieOf(joined);
+    await speak(
+      `${created.activityId}:${await participantIdOf(created.activityId, student)}`,
+      student,
+      "契約應該被遵守嗎？",
+    );
 
     const report0 = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacher } });
     expect(report0.status).toBe(404);
@@ -432,6 +437,11 @@ describe("report (#74: finish → pending → ready → GET)", () => {
       body: JSON.stringify({ code: created.code, name: "報告生", tosAccepted: true }),
     });
     const student = cookieOf(joined);
+    await speak(
+      `${created.activityId}:${await participantIdOf(created.activityId, student)}`,
+      student,
+      "契約應該被遵守嗎？",
+    );
 
     const finish = await call(`/api/activities/${created.activityId}/finish`, {
       method: "POST",

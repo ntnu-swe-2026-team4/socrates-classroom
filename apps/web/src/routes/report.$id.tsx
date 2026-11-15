@@ -93,7 +93,7 @@ function ReportPage() {
 
       {!isTeacherView && (
         <section className="mt-6 flex flex-col gap-6">
-          <p className="text-[14px] text-ink-soft">{person.pseudonym}</p>
+          <p className="text-[14px] text-ink-soft">{person.participantName}</p>
           <Positions positions={person.positions} />
           <Analysis analysis={person.analysis} violations={person.violations} />
         </section>
@@ -163,7 +163,10 @@ function ReportPage() {
                     : "border-line bg-card text-ink-soft",
                 )}
               >
-                {student.pseudonym}
+                {student.participantName}
+                {student.participantName === student.pseudonym ? null : (
+                  <span className="ml-1.5 text-ink-faint">· {student.pseudonym}</span>
+                )}
               </button>
             ))}
           </div>
