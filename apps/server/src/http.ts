@@ -8,6 +8,7 @@ export interface AppEnv {
   Variables: {
     user: User | null;
     lang: Lang;
+    sessionIssue: "stale" | "disabled" | null;
   };
 }
 
@@ -51,8 +52,9 @@ export async function parseBody<S extends z.ZodType>(c: Ctx, schema: S): Promise
 
 export function requireUser(c: Ctx): User {
   const user = c.get("user");
-  if (!user) fail(401, "unauthorized");
-  return user;
+  if (user) return user;
+  if (c.get("sessionIssue") === "disabled") fail(403, "account_disabled");
+  fail(401, "unauthorized");
 }
 
 export function uniqueViolationColumns(error: unknown): Array<[string, string]> {
@@ -75,9 +77,21 @@ export function uniqueViolationColumns(error: unknown): Array<[string, string]> 
   return [];
 }
 
-export function requireTeacher(c: Ctx): User {
+export function requireAdmin(c: Ctx): User {
   const user = requireUser(c);
-  if (user.role !== "teacher") fail(403, "forbidden");
+  if (!user.isAdmin) fail(403, "forbidden");
+  return user;
+}
+
+const CAPABILITY_FLAGS = {
+  manage_classes: "canManageClasses",
+} as const satisfies Record<string, keyof User>;
+
+export type Capability = keyof typeof CAPABILITY_FLAGS;
+
+export function requireCapability(c: Ctx, capability: Capability): User {
+  const user = requireUser(c);
+  if (!user[CAPABILITY_FLAGS[capability]]) fail(403, "capability_required");
   return user;
 }
 

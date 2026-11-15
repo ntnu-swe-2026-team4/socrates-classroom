@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { TeacherKeyStatus } from "@socrates/shared";
 import { all, batch, one, run } from "../db/d1";
-import { fail, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
+import { fail, nowIso, parseBody, requireCapability, type AppEnv } from "../http";
 import { encryptKey } from "../auth-crypto";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 
@@ -31,7 +31,7 @@ function keyableProvider(providerId: string) {
 export function teacherKeyRoutes() {
   return new Hono<AppEnv>()
     .get("/settings/keys", async (c) => {
-      const user = requireTeacher(c);
+      const user = requireCapability(c, "manage_classes");
       const rows = await all<TeacherKeyRow>(
         c.env.DB,
         "SELECT provider_id, model, last4, sort_order, updated_at FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
@@ -47,17 +47,17 @@ export function teacherKeyRoutes() {
       return c.json(keys);
     })
     .get("/settings/keys/providers", async (c) => {
-      requireTeacher(c);
+      requireCapability(c, "manage_classes");
       return c.json(keyableProviders.map((provider) => ({ id: provider.id, name: provider.name })));
     })
     .get("/settings/keys/providers/:provider/models", async (c) => {
-      requireTeacher(c);
+      requireCapability(c, "manage_classes");
       const provider = keyableProvider(c.req.param("provider"));
       if (!provider) fail(404, "not_found");
       return c.json(provider.getModels().map((model) => ({ id: model.id, name: model.name })));
     })
     .put("/settings/keys/order", async (c) => {
-      const user = requireTeacher(c);
+      const user = requireCapability(c, "manage_classes");
       const input = await parseBody(c, OrderInputSchema);
       const owned = await all<{ provider_id: string }>(
         c.env.DB,
@@ -83,7 +83,7 @@ export function teacherKeyRoutes() {
       return c.json({ providers: input.providers });
     })
     .put("/settings/keys/:provider", async (c) => {
-      const user = requireTeacher(c);
+      const user = requireCapability(c, "manage_classes");
       const provider = c.req.param("provider");
       const input = await parseBody(c, KeyInputSchema);
       const def = provider !== input.provider ? undefined : keyableProvider(provider);
@@ -114,7 +114,7 @@ export function teacherKeyRoutes() {
       return c.json({ provider, model: input.model, last4: input.key.slice(-4) });
     })
     .delete("/settings/keys/:provider", async (c) => {
-      const user = requireTeacher(c);
+      const user = requireCapability(c, "manage_classes");
       const result = await run(c.env.DB, "DELETE FROM teacher_keys WHERE provider_id = $pid AND user_id = $uid", {
         pid: c.req.param("provider"),
         uid: user.id,

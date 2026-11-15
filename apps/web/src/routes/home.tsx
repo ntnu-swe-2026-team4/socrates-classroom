@@ -29,7 +29,7 @@ function HomePage() {
   const t = useT();
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
   const classrooms = useQuery({ queryKey: ["classrooms"], queryFn: () => api.listClassrooms() });
-  const teacher = me.data?.role === "teacher";
+  const canManage = me.data?.canManageClasses ?? false;
   const roomList = classrooms.data ?? [];
   const running = roomList.filter((room) => room.current && !room.current.finished);
   const students = roomList.reduce((n, room) => n + room.memberCount, 0);
@@ -45,7 +45,7 @@ function HomePage() {
             </p>
             <h2 className="mt-1 font-serif text-3xl">{t("home_question")}</h2>
             <div className="mt-4">
-              {teacher ? (
+              {canManage ? (
                 <Link to="/t/setup">
                   <Button>{t("home_open_classroom")}</Button>
                 </Link>
@@ -68,7 +68,7 @@ function HomePage() {
               <b className="block font-serif text-4xl font-medium text-ember">{roomList.length}</b>
               <span className="mt-1 block text-sm">{t("home_stat_classrooms")}</span>
               <span className="text-xs text-ink-faint">
-                {teacher ? t("home_stat_students", { n: students }) : t("home_stat_running", { n: running.length })}
+                {canManage ? t("home_stat_students", { n: students }) : t("home_stat_running", { n: running.length })}
               </span>
             </Card>
           </Link>
@@ -110,7 +110,7 @@ function HomePage() {
             ))}
             {!roomList.length && (
               <p className="text-sm text-ink-faint">
-                {teacher ? t("classrooms_empty_teacher") : t("classrooms_empty_student")}
+                {canManage ? t("classrooms_empty_teacher") : t("classrooms_empty_student")}
               </p>
             )}
           </Card>

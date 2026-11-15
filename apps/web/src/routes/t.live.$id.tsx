@@ -7,7 +7,7 @@ import { useT } from "@/i18n";
 export const Route = createFileRoute("/t/live/$id")({
   beforeLoad: async ({ context }) => {
     const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
-    if (me?.role !== "teacher") throw redirect({ to: "/classrooms" });
+    if (!me?.canManageClasses) throw redirect({ to: "/classrooms" });
   },
   component: LivePage,
 });

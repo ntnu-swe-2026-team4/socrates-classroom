@@ -56,7 +56,8 @@ describe("dev fixtures", () => {
     expect(lin.classrooms.every((room) => room.role === "teacher" && room.code !== null)).toBe(true);
 
     const chen = body.accounts.find((account) => account.email === "chen@socrates.tw")!;
-    expect(chen.role).toBe("teacher");
+    expect(chen.canManageClasses).toBe(true);
+    expect(chen.isAdmin).toBe(false);
     expect(chen.classrooms.map((room) => room.role)).toEqual(["student"]);
     expect(chen.classrooms[0]!.code).toBeNull();
 
@@ -66,6 +67,7 @@ describe("dev fixtures", () => {
 
     const admin = body.accounts.find((account) => account.fixtureRole === "admin")!;
     expect(admin.email).toBe("admin@socrates.tw");
+    expect(admin.isAdmin).toBe(true);
 
     const philosophy = lin.classrooms.find((room) => room.id === "c_fx_philosophy")!;
     expect(philosophy.activityId).toBe("a_fx_philosophy");
@@ -77,10 +79,23 @@ describe("dev fixtures", () => {
     expect(res.status).toBe(200);
     const user = (await res.json()) as User;
     expect(user.name).toBe("李美玲");
-    expect(user.role).toBe("student");
+    expect(user.canManageClasses).toBe(false);
 
     const me = await call("/api/me", { headers: { Cookie: cookieOf(res) } });
     expect(((await me.json()) as User).id).toBe(user.id);
+  });
+
+  test("POST /api/dev/login heals is_admin drift left by an older seed", async () => {
+    await env.DB.prepare("UPDATE users SET is_admin = 0 WHERE id = 'u_fx_admin'").run();
+    const res = await call("/api/dev/login", jsonInit({ email: "admin@socrates.tw" }));
+    expect(res.status).toBe(200);
+    const user = (await res.json()) as User;
+    expect(user.isAdmin).toBe(true);
+
+    const me = await call("/api/me", { headers: { Cookie: cookieOf(res) } });
+    expect(((await me.json()) as User).isAdmin).toBe(true);
+    const listed = await call("/api/admin/users", { headers: { Cookie: cookieOf(res) } });
+    expect(listed.status).toBe(200);
   });
 
   test("POST /api/dev/login rejects emails outside the fixture list", async () => {

@@ -21,7 +21,7 @@ function ClassroomsPage() {
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
   const classrooms = useQuery({ queryKey: ["classrooms"], queryFn: () => api.listClassrooms() });
   const [code, setCode] = useState("");
-  const teacher = me.data?.role === "teacher";
+  const canManage = me.data?.canManageClasses ?? false;
   const list = classrooms.data ?? [];
 
   function join() {
@@ -33,18 +33,13 @@ function ClassroomsPage() {
     <div className="min-h-full pb-16">
       <PageHeader
         width="max-w-5xl"
-        eyebrow={teacher ? t("eyebrow_teacher") : t("classrooms_eyebrow_student")}
+        eyebrow={canManage ? t("eyebrow_teacher") : t("classrooms_eyebrow_student")}
         title={t("nav_classrooms")}
-        description={teacher ? t("classrooms_intro_teacher") : t("classrooms_intro_student")}
+        description={canManage ? t("classrooms_intro_teacher") : t("classrooms_intro_student")}
         actions={
-          teacher ? (
-            <Button onClick={() => void navigate({ to: "/t/setup" })}>
-              <Plus className="size-4" />
-              {t("nav_setup")}
-            </Button>
-          ) : (
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
             <form
-              className="flex w-full items-center gap-2 sm:w-auto"
+              className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none"
               onSubmit={(event) => {
                 event.preventDefault();
                 join();
@@ -64,7 +59,13 @@ function ClassroomsPage() {
                 {t("join_code_go")}
               </Button>
             </form>
-          )
+            {canManage && (
+              <Button onClick={() => void navigate({ to: "/t/setup" })}>
+                <Plus className="size-4" />
+                {t("nav_setup")}
+              </Button>
+            )}
+          </div>
         }
       />
       <div className="mx-auto w-full max-w-5xl px-6 pt-8">
@@ -80,7 +81,7 @@ function ClassroomsPage() {
         )}
         {!classrooms.isPending && !classrooms.isError && !list.length && (
           <div className="rounded-3xl border border-dashed border-line-strong px-6 py-14 text-center text-sm text-ink-faint">
-            {teacher ? t("classrooms_empty_teacher") : t("classrooms_empty_student")}
+            {canManage ? t("classrooms_empty_teacher") : t("classrooms_empty_student")}
           </div>
         )}
       </div>

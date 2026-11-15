@@ -70,7 +70,7 @@ beforeEach(() => {
     vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), "http://localhost").pathname;
       const responses: Record<string, unknown> = {
-        "/api/me": { id: "student-1", name: "Student", role: "student" },
+        "/api/me": { id: "student-1", name: "Student", canManageClasses: false, isAdmin: false },
         "/api/join/abcdef": { code: "abcdef", classroomName: "Class", topic },
         "/api/activities/activity-1": {
           id: "activity-1",
@@ -178,7 +178,7 @@ test("t.setup: picking an AI-generated topic persists it before creating the cla
         calls.push({ path, body: JSON.parse(String(init.body)) });
       }
       const responses: Record<string, unknown> = {
-        "/api/me": { id: "teacher-1", name: "Teacher", role: "teacher" },
+        "/api/me": { id: "teacher-1", name: "Teacher", canManageClasses: true, isAdmin: false },
         "/api/topics": [topic],
         "/api/topics/generate": [generatedTopic],
         "/api/classrooms": {

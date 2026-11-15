@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { onOpenAccountSheet } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleUserRound, GraduationCap, Home, KeyRound, Menu, Moon, Sun, X } from "lucide-react";
+import { CircleUserRound, GraduationCap, Home, KeyRound, Menu, Moon, ShieldCheck, Sun, X } from "lucide-react";
 import { api } from "@/api";
 import { Initial, cn } from "@/components/ui";
 import { LANGS, setLocale, useI18n, type Locale } from "@/i18n";
@@ -65,7 +65,8 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       await navigate({ to: "/" });
     },
   });
-  const isTeacher = me.data?.role === "teacher";
+  const canManage = me.data?.canManageClasses ?? false;
+  const roleLabel = me.data?.isAdmin ? "role_admin" : canManage ? "role_teacher" : "role_student";
   useEffect(() => onOpenAccountSheet(() => setAccountOpen(true)), []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: close overlays on every navigation
@@ -170,7 +171,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
               <div className="min-w-0 flex-1">
                 <div className="truncate font-serif text-[15px]">{me.data.name}</div>
                 <div className="text-[12.5px] text-ink-faint">
-                  {t("account_role")} · {isTeacher ? t("role_teacher") : t("role_student")}
+                  {t("account_role")} · {t(roleLabel)}
                 </div>
               </div>
             </div>
@@ -207,13 +208,24 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
             </div>
           </div>
 
-          {isTeacher && (
+          {canManage && (
             <Link
               to="/settings"
               className="mb-4 flex items-center gap-3 rounded-2xl bg-paper-deep px-4 py-3 text-sm hover:text-ember"
             >
               <KeyRound className="size-4" />
               <span className="flex-1">{t("settings_title")}</span>
+              <span aria-hidden="true">›</span>
+            </Link>
+          )}
+
+          {me.data?.isAdmin && (
+            <Link
+              to="/admin/users"
+              className="mb-4 flex items-center gap-3 rounded-2xl bg-paper-deep px-4 py-3 text-sm hover:text-ember"
+            >
+              <ShieldCheck className="size-4" />
+              <span className="flex-1">{t("admin_title")}</span>
               <span aria-hidden="true">›</span>
             </Link>
           )}

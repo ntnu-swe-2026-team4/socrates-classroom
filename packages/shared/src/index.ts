@@ -11,7 +11,8 @@ export const LANG_NAMES: Record<Lang, string> = {
 export const UserSchema = z.object({
   id: z.string(),
   name: z.string(),
-  role: z.enum(["student", "teacher"]),
+  canManageClasses: z.boolean(),
+  isAdmin: z.boolean(),
 });
 export type User = z.infer<typeof UserSchema>;
 
@@ -144,6 +145,27 @@ export const JoinInputSchema = z.object({
   name: z.string().trim().max(80).optional(),
   tosAccepted: z.boolean(),
 });
+export const AdminUserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string().nullable(),
+  canManageClasses: z.boolean(),
+  isAdmin: z.boolean(),
+  disabled: z.boolean(),
+  createdAt: z.string(),
+});
+export type AdminUser = z.infer<typeof AdminUserSchema>;
+export const AdminUserCreateInputSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  email: emailField,
+  password: z.string().min(8).max(128),
+  canManageClasses: z.boolean().default(false),
+});
+export const AdminUserUpdateInputSchema = z
+  .object({ canManageClasses: z.boolean().optional(), disabled: z.boolean().optional() })
+  .refine((value) => value.canManageClasses !== undefined || value.disabled !== undefined, {
+    message: "at least one field is required",
+  });
 export const TopicCreateInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   statement: z.string().trim().min(1).max(2000),
@@ -197,7 +219,8 @@ export const DevAccountSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
-  role: z.enum(["student", "teacher"]),
+  canManageClasses: z.boolean(),
+  isAdmin: z.boolean(),
   fixtureRole: z.enum(DEV_FIXTURE_ROLES),
   classrooms: z.array(DevAccountClassroomSchema),
 });
@@ -234,7 +257,8 @@ export const ERROR_CODES = [
   "join_code_invalid",
   "tos_required",
   "name_taken",
-  "only_student",
+  "account_disabled",
+  "capability_required",
   "already_streaming",
   "activity_finished",
   "llm_unavailable",

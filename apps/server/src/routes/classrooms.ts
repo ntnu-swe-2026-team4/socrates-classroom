@@ -6,7 +6,7 @@ import {
   type User,
 } from "@socrates/shared";
 import { all, batch, one } from "../db/d1";
-import { fail, newId, nowIso, parseBody, requireTeacher, requireUser, type AppEnv } from "../http";
+import { fail, newId, nowIso, parseBody, requireCapability, requireUser, type AppEnv } from "../http";
 import type { ClassroomRow } from "../services/members";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -89,17 +89,17 @@ export function classroomsRoutes() {
     .get("/classrooms", async (c) => {
       const user = requireUser(c);
       const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") ?? "";
-      const scope =
-        user.role === "teacher"
-          ? "c.teacher_id = $uid"
-          : "EXISTS (SELECT 1 FROM members m WHERE m.classroom_id = c.id AND m.user_id = $uid)";
-      const rows = await all<SummaryRow>(c.env.DB, `${SUMMARY_SQL} WHERE ${scope} ORDER BY c.created_at DESC`, {
-        uid: user.id,
-      });
+      const rows = await all<SummaryRow>(
+        c.env.DB,
+        `${SUMMARY_SQL} WHERE c.teacher_id = $uid
+           OR EXISTS (SELECT 1 FROM members m WHERE m.classroom_id = c.id AND m.user_id = $uid)
+         ORDER BY c.created_at DESC`,
+        { uid: user.id },
+      );
       return c.json(rows.map((row) => toSummary(row, user, base)));
     })
     .post("/classrooms", async (c) => {
-      const user = requireTeacher(c);
+      const user = requireCapability(c, "manage_classes");
       const input = await parseBody(c, ClassroomCreateInputSchema);
       const topic = await one<{ id: string }>(
         c.env.DB,
@@ -140,7 +140,7 @@ export function classroomsRoutes() {
       fail(500, "internal_error");
     })
     .post("/classrooms/:id/activities", async (c) => {
-      const user = requireTeacher(c);
+      const user = requireCapability(c, "manage_classes");
       const input = await parseBody(c, ActivityStartInputSchema);
       const classroom = await one<ClassroomRow>(c.env.DB, "SELECT * FROM classrooms WHERE id = $id", {
         id: c.req.param("id"),

@@ -68,7 +68,7 @@ export async function topicOf(db: Db, topicId: string): Promise<ReturnType<typeo
 export async function requireMembership(
   db: Db,
   activityId: string,
-  user: User,
+  user: Pick<User, "id">,
 ): Promise<{ activity: ActivityRow; classroom: ClassroomRow; member: MemberRow | null; isTeacher: boolean }> {
   const { activity, classroom } = await activityOf(db, activityId);
   if (classroom.teacher_id === user.id) return { activity, classroom, member: null, isTeacher: true };

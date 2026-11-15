@@ -2,15 +2,49 @@ import { deleteCookie, setCookie } from "hono/cookie";
 import type { User } from "@socrates/shared";
 import type { Ctx } from "./http";
 import { timingSafeEqual } from "./auth-crypto";
+import { one, type Db } from "./db/d1";
 
 export const SESSION_COOKIE = "socrates_session";
 const SESSION_DAYS = 30;
 
 interface TokenClaims {
   uid: string;
-  name: string;
-  role: User["role"];
+  ver: number;
   exp: number;
+}
+
+export interface Session {
+  user: User;
+  version: number;
+}
+
+export type SessionLookup =
+  | { kind: "ok"; session: Session }
+  | { kind: "missing" }
+  | { kind: "stale" }
+  | { kind: "disabled" };
+
+export interface SessionEnv {
+  AUTH_SECRET?: string;
+  DB: Db;
+}
+
+interface UserRow {
+  id: string;
+  name: string;
+  can_manage_classes: number;
+  is_admin: number;
+  disabled_at: string | null;
+  session_version: number;
+}
+
+export function toUser(row: { id: string; name: string; can_manage_classes: number; is_admin: number }): User {
+  return {
+    id: row.id,
+    name: row.name,
+    canManageClasses: row.can_manage_classes === 1,
+    isAdmin: row.is_admin === 1,
+  };
 }
 
 const encoder = new TextEncoder();
@@ -52,11 +86,14 @@ async function sign(payload: string, secret: string): Promise<string> {
   return b64url(new Uint8Array(mac));
 }
 
-export async function issueSessionToken(ctx: { env: { AUTH_SECRET?: string } }, user: User): Promise<string> {
+export async function issueSessionToken(
+  ctx: { env: { AUTH_SECRET?: string } },
+  user: User,
+  version: number,
+): Promise<string> {
   const claims: TokenClaims = {
     uid: user.id,
-    name: user.name,
-    role: user.role,
+    ver: version,
     exp: Date.now() + SESSION_DAYS * 864e5,
   };
   const payload = b64url(encoder.encode(JSON.stringify(claims)));
@@ -64,10 +101,10 @@ export async function issueSessionToken(ctx: { env: { AUTH_SECRET?: string } }, 
   return `${payload}.${sig}`;
 }
 
-export async function userFromSessionToken(
+async function tokenClaims(
   ctx: { env: { AUTH_SECRET?: string } },
   token: string | undefined,
-): Promise<User | null> {
+): Promise<TokenClaims | null> {
   if (!token) return null;
   try {
     const [payload, sig] = token.split(".");
@@ -81,14 +118,43 @@ export async function userFromSessionToken(
     if (diff !== 0) return null;
     const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as TokenClaims;
     if (claims.exp < Date.now()) return null;
-    return { id: claims.uid, name: claims.name, role: claims.role };
+    return claims;
   } catch {
     return null;
   }
 }
 
+export async function lookupSession(env: SessionEnv, token: string | undefined): Promise<SessionLookup> {
+  const claims = await tokenClaims({ env }, token);
+  if (!claims) return { kind: "missing" };
+  const row = await one<UserRow>(
+    env.DB,
+    "SELECT id, name, can_manage_classes, is_admin, disabled_at, session_version FROM users WHERE id = $id",
+    { id: claims.uid },
+  );
+  if (!row) return { kind: "missing" };
+  if (row.disabled_at !== null) return { kind: "disabled" };
+  if (row.session_version !== claims.ver) return { kind: "stale" };
+  return { kind: "ok", session: { user: toUser(row), version: row.session_version } };
+}
+
+export interface AccountState {
+  disabled: boolean;
+  version: number;
+}
+
+export async function accountState(db: Db, userId: string): Promise<AccountState | null> {
+  const row = await one<{ disabled_at: string | null; session_version: number }>(
+    db,
+    "SELECT disabled_at, session_version FROM users WHERE id = $id",
+    { id: userId },
+  );
+  return row ? { disabled: row.disabled_at !== null, version: row.session_version } : null;
+}
+
 export async function startSession(c: Ctx, user: User): Promise<void> {
-  const token = await issueSessionToken({ env: c.env }, user);
+  const state = await accountState(c.env.DB, user.id);
+  const token = await issueSessionToken({ env: c.env }, user, state?.version ?? 0);
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "Lax",

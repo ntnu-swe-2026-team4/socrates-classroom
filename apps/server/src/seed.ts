@@ -11,19 +11,76 @@ export interface FixtureAccount {
   id: string;
   name: string;
   email: string;
-  role: "student" | "teacher";
+  canManageClasses: boolean;
+  isAdmin: boolean;
   fixtureRole: FixtureRole;
 }
 
 export const FIXTURE_ACCOUNTS: readonly FixtureAccount[] = [
-  { id: "u_fx_admin", name: "系統管理員", email: "admin@socrates.tw", role: "teacher", fixtureRole: "admin" },
-  { id: "u_fx_lin", name: "林老師", email: "demo@socrates.tw", role: "teacher", fixtureRole: "teacher" },
-  { id: "u_fx_chen", name: "陳老師", email: "chen@socrates.tw", role: "teacher", fixtureRole: "teacher" },
-  { id: "u_fx_student_a", name: "王小明", email: "student-a@socrates.tw", role: "student", fixtureRole: "student" },
-  { id: "u_fx_student_b", name: "李美玲", email: "student-b@socrates.tw", role: "student", fixtureRole: "student" },
-  { id: "u_fx_student_c", name: "陳志豪", email: "student-c@socrates.tw", role: "student", fixtureRole: "student" },
-  { id: "u_fx_student_d", name: "林怡君", email: "student-d@socrates.tw", role: "student", fixtureRole: "student" },
-  { id: "u_fx_student_e", name: "張家維", email: "student-e@socrates.tw", role: "student", fixtureRole: "student" },
+  {
+    id: "u_fx_admin",
+    name: "系統管理員",
+    email: "admin@socrates.tw",
+    canManageClasses: true,
+    isAdmin: true,
+    fixtureRole: "admin",
+  },
+  {
+    id: "u_fx_lin",
+    name: "林老師",
+    email: "demo@socrates.tw",
+    canManageClasses: true,
+    isAdmin: false,
+    fixtureRole: "teacher",
+  },
+  {
+    id: "u_fx_chen",
+    name: "陳老師",
+    email: "chen@socrates.tw",
+    canManageClasses: true,
+    isAdmin: false,
+    fixtureRole: "teacher",
+  },
+  {
+    id: "u_fx_student_a",
+    name: "王小明",
+    email: "student-a@socrates.tw",
+    canManageClasses: false,
+    isAdmin: false,
+    fixtureRole: "student",
+  },
+  {
+    id: "u_fx_student_b",
+    name: "李美玲",
+    email: "student-b@socrates.tw",
+    canManageClasses: false,
+    isAdmin: false,
+    fixtureRole: "student",
+  },
+  {
+    id: "u_fx_student_c",
+    name: "陳志豪",
+    email: "student-c@socrates.tw",
+    canManageClasses: false,
+    isAdmin: false,
+    fixtureRole: "student",
+  },
+  {
+    id: "u_fx_student_d",
+    name: "林怡君",
+    email: "student-d@socrates.tw",
+    canManageClasses: false,
+    isAdmin: false,
+    fixtureRole: "student",
+  },
+  {
+    id: "u_fx_student_e",
+    name: "張家維",
+    email: "student-e@socrates.tw",
+    canManageClasses: false,
+    isAdmin: false,
+    fixtureRole: "student",
+  },
 ];
 
 export const FIXTURE_TOPICS = [
@@ -83,20 +140,29 @@ async function ensureUser(db: Db, account: FixtureAccount, hash: string, at: str
     id: account.id,
     email: account.email,
   });
+  const params = {
+    name: account.name,
+    role: account.canManageClasses ? "teacher" : "student",
+    email: account.email,
+    hash,
+    can: account.canManageClasses ? 1 : 0,
+    admin: account.isAdmin ? 1 : 0,
+  };
   if (existing) {
-    await run(db, "UPDATE users SET name = $name, role = $role, email = $email, password_hash = $hash WHERE id = $id", {
-      id: existing.id,
-      name: account.name,
-      role: account.role,
-      email: account.email,
-      hash,
-    });
+    await run(
+      db,
+      `UPDATE users SET name = $name, role = $role, email = $email, password_hash = $hash,
+         can_manage_classes = $can, is_admin = $admin, disabled_at = NULL
+       WHERE id = $id`,
+      { ...params, id: existing.id },
+    );
     return existing.id;
   }
   await run(
     db,
-    "INSERT INTO users (id, name, role, email, password_hash, created_at) VALUES ($id, $name, $role, $email, $hash, $at)",
-    { id: account.id, name: account.name, role: account.role, email: account.email, hash, at },
+    `INSERT INTO users (id, name, role, email, password_hash, can_manage_classes, is_admin, created_at)
+     VALUES ($id, $name, $role, $email, $hash, $can, $admin, $at)`,
+    { ...params, id: account.id, at },
   );
   return account.id;
 }

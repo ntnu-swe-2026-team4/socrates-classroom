@@ -29,7 +29,6 @@ export function joinRoutes() {
       });
       if (!classroom?.current_activity_id) fail(404, "join_code_invalid");
       const user = c.get("user");
-      if (user?.role === "teacher") fail(403, "only_student");
 
       const existing = user
         ? await one<{ user_id: string }>(
@@ -80,7 +79,7 @@ export function joinRoutes() {
           if (taken) fail(409, "name_taken");
           throw error;
         }
-        sessionUser = { id, name, role: "student" as const };
+        sessionUser = { id, name, canManageClasses: false, isAdmin: false };
         await startSession(c, sessionUser);
         return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
       }

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { DevLoginInputSchema, type DevAccount, type User } from "@socrates/shared";
-import { all, one } from "../db/d1";
+import { all, one, run } from "../db/d1";
 import { startSession } from "../auth";
 import { fail, parseBody, type AppEnv, type Ctx } from "../http";
 import { FIXTURE_ACCOUNTS, FIXTURE_PASSWORD } from "../seed";
@@ -16,7 +16,9 @@ function requireDev(c: Ctx): void {
 interface AccountRow {
   id: string;
   name: string;
-  role: "student" | "teacher";
+  can_manage_classes: number;
+  is_admin: number;
+  disabled_at: string | null;
   email: string;
 }
 
@@ -33,7 +35,11 @@ const ROOMS_SQL = `SELECT id, name, teacher_id, join_code, current_activity_id F
   ORDER BY c.created_at`;
 
 async function loadAccount(db: D1Database, email: string): Promise<AccountRow | null> {
-  return one<AccountRow>(db, "SELECT id, name, role, email FROM users WHERE email = $email", { email });
+  return one<AccountRow>(
+    db,
+    "SELECT id, name, can_manage_classes, is_admin, disabled_at, email FROM users WHERE email = $email",
+    { email },
+  );
 }
 
 export function devRoutes() {
@@ -50,7 +56,8 @@ export function devRoutes() {
           id: row.id,
           name: row.name,
           email: row.email,
-          role: row.role,
+          canManageClasses: row.can_manage_classes === 1,
+          isAdmin: row.is_admin === 1,
           fixtureRole: fixture.fixtureRole,
           classrooms: rooms.map((room) => {
             const owner = room.teacher_id === row.id;
@@ -70,10 +77,24 @@ export function devRoutes() {
     .post("/dev/login", async (c) => {
       requireDev(c);
       const input = await parseBody(c, DevLoginInputSchema);
-      if (!FIXTURE_ACCOUNTS.some((account) => account.email === input.email)) fail(404, "not_found");
-      const row = await loadAccount(c.env.DB, input.email);
+      const fixture = FIXTURE_ACCOUNTS.find((account) => account.email === input.email);
+      if (!fixture) fail(404, "not_found");
+      let row = await loadAccount(c.env.DB, input.email);
       if (!row) fail(404, "not_found");
-      const user: User = { id: row.id, name: row.name, role: row.role };
+      if (row.is_admin !== (fixture.isAdmin ? 1 : 0)) {
+        await run(c.env.DB, "UPDATE users SET is_admin = $admin WHERE id = $id", {
+          admin: fixture.isAdmin ? 1 : 0,
+          id: row.id,
+        });
+        row = (await loadAccount(c.env.DB, input.email)) ?? row;
+      }
+      if (row.disabled_at !== null) fail(403, "account_disabled");
+      const user: User = {
+        id: row.id,
+        name: row.name,
+        canManageClasses: row.can_manage_classes === 1,
+        isAdmin: row.is_admin === 1,
+      };
       await startSession(c, user);
       return c.json(user);
     });

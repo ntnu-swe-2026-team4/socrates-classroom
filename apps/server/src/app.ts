@@ -3,7 +3,7 @@ import { ApiError } from "@socrates/shared";
 import { localize } from "./messages";
 import { fail, normalizeLang, type AppEnv } from "./http";
 import { seedFixture } from "./seed";
-import { SESSION_COOKIE, userFromSessionToken } from "./auth";
+import { lookupSession, SESSION_COOKIE } from "./auth";
 import { getCookie } from "hono/cookie";
 import { authRoutes } from "./routes/auth";
 import { joinRoutes } from "./routes/join";
@@ -13,6 +13,7 @@ import { activityRoutes } from "./routes/activity";
 import { voiceRoutes } from "./routes/voice";
 import { lookupRoutes } from "./routes/lookup";
 import { teacherKeyRoutes } from "./routes/teacher-keys";
+import { adminRoutes } from "./routes/admin";
 import { devRoutes, isDev } from "./routes/dev";
 import { timingSafeEqual } from "./auth-crypto";
 
@@ -26,6 +27,7 @@ export function createApi() {
     .route("/", voiceRoutes())
     .route("/", lookupRoutes())
     .route("/", teacherKeyRoutes())
+    .route("/", adminRoutes())
     .route("/", devRoutes());
 }
 export type RpcApi = ReturnType<typeof createApi>;
@@ -34,8 +36,9 @@ export function createApp() {
   return new Hono<AppEnv>()
     .use("/api/*", async (c, next) => {
       c.set("lang", normalizeLang(c.req.header("Accept-Language")));
-      const token = getCookie(c, SESSION_COOKIE);
-      c.set("user", await userFromSessionToken({ env: c.env }, token));
+      const lookup = await lookupSession(c.env, getCookie(c, SESSION_COOKIE));
+      c.set("user", lookup.kind === "ok" ? lookup.session.user : null);
+      c.set("sessionIssue", lookup.kind === "ok" || lookup.kind === "missing" ? null : lookup.kind);
       await next();
     })
     .route("/api", createApi())

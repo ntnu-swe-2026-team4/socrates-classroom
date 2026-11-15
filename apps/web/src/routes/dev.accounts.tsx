@@ -29,6 +29,7 @@ function DevAccountsPage() {
       queryClient.clear();
       queryClient.setQueryData(["me"], user);
       if (account.fixtureRole === "student") await navigate({ to: "/home" });
+      else if (account.fixtureRole === "admin") await navigate({ to: "/admin/users" });
       else await navigate({ to: "/classrooms" });
     },
   });
@@ -87,7 +88,7 @@ function DevAccountsPage() {
                           <span
                             className={cn(
                               "rounded-full px-2.5 py-0.5 text-[11.5px]",
-                              account.role === "teacher" ? "bg-ember-wash text-ember" : "bg-moss-wash text-moss",
+                              account.canManageClasses ? "bg-ember-wash text-ember" : "bg-moss-wash text-moss",
                             )}
                           >
                             {t(ROLE_KEY[account.fixtureRole])}

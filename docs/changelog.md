@@ -2,6 +2,29 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-16 — #131 能力模型取代 role（`136-account-classroom-model`）
+
+### Added
+
+- Schema `002_capabilities.sql`：`users.can_manage_classes`（由 `role = 'teacher'` backfill）、`is_admin`、`disabled_at`、`session_version`
+- `GET/POST /api/admin/users`、`PATCH /api/admin/users/:id`（`apps/server/src/routes/admin.ts`）：列表、建立帳號、切換 `canManageClasses`、停用／復用；`is_admin` 只能由 seed 建立
+- `/admin/users` 管理頁（`apps/web/src/routes/admin.users.tsx`）與帳號面板的 admin 入口
+- 測試：`apps/server/tests/admin.test.ts`（能力即時生效、停用即斷 session、雙重身分、建立帳號、自我停用防呆、`isAdmin` 不可提權）；`chat.test.ts` 新增停用帳號的 WS 拒絕案例
+
+### Changed
+
+- `UserSchema`：`role` → `canManageClasses` / `isAdmin`（`packages/shared`）；web 的 `.role` 讀取全部改為能力判斷（`AppShell`、`home`、`classrooms.index`、`report.$id`、`dialogue`、`settings`、`t.live.$id`、`t.setup`）
+- Token 只帶 `uid`／`ver`／`exp`：`requireUser` 的人民讀取改到 middleware（每次帶 session 的請求一次 `SELECT`），能力與停用狀態以 DB 為真相
+- `requireTeacher` → `requireCapability(c, "manage_classes")`；`topics`、`teacher_keys`、`POST /classrooms`、`POST /classrooms/:id/activities` 同步換閘
+- `GET /classrooms` 改為 owned **UNION** joined：同一帳號可同時是 A 班老師、B 班學生
+- `POST /join` 移除 `only_student`：任何已登入身分都可加入班級成為學生（含 `canManageClasses`）
+- WS：`do/chat.ts` 的 `reverify` 併入 `disabled_at` 與 `session_version`；另加每則 message 的帳號狀態重驗——停用後連線上的下一個 frame 即 1008 關閉，重連亦被拒
+- 錯誤碼：移除 `only_student`，新增 `account_disabled`、`capability_required`（`messages.ts` 三語同步）
+- Seed fixture：帳號改帶 `canManageClasses`／`isAdmin`（admin 兩個都有）；`DevAccount` 以能力取代 `role`
+- 部署後既有 session 失效一次（舊 token 無 `ver` claim → `session_version` 不符），使用者需重新登入；此後能力／停用變更皆即時生效
+- `POST /api/dev/login` 修正 fixture 的 `is_admin` 漂移：舊 seed 建的 row 在 migration 002 後 `is_admin` 仍是 0（migration 只 backfill `can_manage_classes`），管理員一鍵登入會看到 `/admin/users` 被導回 `/classrooms`
+- Docs：`api-contract.md` §1（token／每請求 D1 read）、§1.1 授權矩陣（能力欄）、§2 `User`、§3 入場、§4 `GET /classrooms` scope、§5.1 WS 重驗、§9.1 管理員端點、§10 錯誤碼、§11.1
+
 ## 2026-11-15 — #130 review fixture 與 dev 操作台（`136-account-classroom-model`）
 
 ### Added

@@ -1,6 +1,7 @@
 import { hc } from "hono/client";
 import type {
   ActivityInfo,
+  AdminUser,
   ClassroomCreated,
   ClassroomSummary,
   DevAccounts,
@@ -13,6 +14,8 @@ import type {
 } from "@socrates/shared";
 import {
   ActivityStartInputSchema,
+  AdminUserCreateInputSchema,
+  AdminUserUpdateInputSchema,
   ClassroomCreateInputSchema,
   DevLoginInputSchema,
   ERROR_CODES,
@@ -81,6 +84,14 @@ export interface Api {
   orderTeacherKeys(providers: string[]): Promise<void>;
   devAccounts(): Promise<DevAccounts>;
   devLogin(email: string): Promise<User>;
+  listAdminUsers(): Promise<AdminUser[]>;
+  createAdminUser(input: {
+    name: string;
+    email: string;
+    password: string;
+    canManageClasses: boolean;
+  }): Promise<AdminUser>;
+  updateAdminUser(id: string, input: { canManageClasses?: boolean; disabled?: boolean }): Promise<AdminUser>;
 }
 
 const client = hc<RpcApi>("/api", {
@@ -288,5 +299,17 @@ export const httpApi: Api = {
   },
   async devLogin(email) {
     return raw<User>("/dev/login", { method: "POST", json: DevLoginInputSchema.parse({ email }) });
+  },
+  async listAdminUsers() {
+    return unwrap(await client.admin.users.$get());
+  },
+  async createAdminUser(input) {
+    return raw<AdminUser>("/admin/users", { method: "POST", json: AdminUserCreateInputSchema.parse(input) });
+  },
+  async updateAdminUser(id, input) {
+    return raw<AdminUser>(`/admin/users/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      json: AdminUserUpdateInputSchema.parse(input),
+    });
   },
 };

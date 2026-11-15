@@ -288,6 +288,37 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     socket.close();
   });
 
+  it("disabled account: the open socket is refused on its next message and reconnects are rejected", async () => {
+    const student = await joinStudent("停用本人");
+    const thread = `${activityId}:${student.userId}`;
+    const socket = await connect(thread, student.cookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+
+    const adminLogin = await call("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@socrates.tw", password: "demo-demo" }),
+    });
+    expect(adminLogin.status).toBe(200);
+    const disabled = await call(`/api/admin/users/${student.userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookieOf(adminLogin) },
+      body: JSON.stringify({ disabled: true }),
+    });
+    expect(disabled.status).toBe(200);
+
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until(() => socket.readyState === WebSocket.CLOSED);
+    expect(rx.list.some((m) => m.type === "view")).toBe(false);
+
+    const again = await connect(thread, student.cookie);
+    const reconnected = frames(again);
+    await reconnected.until((f) => f.length > 0 || again.readyState === WebSocket.CLOSED);
+    expect(reconnected.list.some((m) => m.type === "hello")).toBe(false);
+    again.close();
+  });
+
   it("authorization: a teacher may observe a student thread (hello arrives)", async () => {
     const student = await joinStudent("被觀察");
     const thread = `${activityId}:${student.userId}`;

@@ -46,10 +46,15 @@ const M: Record<ErrorCode, Entry> = {
     en: "That name is already taken in this classroom.",
     es: "Ese nombre ya está en uso en esta clase.",
   },
-  only_student: {
-    zh: "只有學生可以進行對話。",
-    en: "Only students can hold this dialogue.",
-    es: "Solo los estudiantes pueden dialogar.",
+  account_disabled: {
+    zh: "這個帳號已停用，請聯絡管理員。",
+    en: "This account is disabled. Contact an administrator.",
+    es: "Esta cuenta está deshabilitada. Contacta a un administrador.",
+  },
+  capability_required: {
+    zh: "你沒有管理班級的權限。",
+    en: "You do not have permission to manage classrooms.",
+    es: "No tienes permiso para administrar clases.",
   },
   already_streaming: {
     zh: "上一則回覆還在產生中。",

@@ -14,7 +14,7 @@ import { PiHarness, type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_S
 import { Lifecycle } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
-import { SESSION_COOKIE, userFromSessionToken } from "../auth";
+import { SESSION_COOKIE, accountState, lookupSession } from "../auth";
 import { requireMembership } from "../services/members";
 import { createAvatarExtension } from "../pi/extensions/avatar";
 import { createJudgmentExtension } from "../pi/extensions/judgment";
@@ -28,7 +28,7 @@ import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credent
 import { one } from "../db/d1";
 import { getRouter } from "../gateway/router";
 import { ApiError } from "@socrates/shared";
-import { ChatSockets } from "../ws/sockets";
+import { ChatSockets, type ReverifyOutcome, type SocketIdentity } from "../ws/sockets";
 
 class ActivityFinishedError extends Error {
   constructor() {
@@ -89,8 +89,9 @@ export class Chat extends DurableObject<Env> {
     (tag) => this.ctx.getWebSockets(tag),
     (request) => this.authorize(request),
     (handle, input, options) => this.routeSubmit(handle, input, options),
-    (userId) => userId === this.studentId,
+    (identity) => identity.userId === this.studentId,
     () => forkBtw(this.harness, this.btw),
+    (identity) => this.revalidate(identity),
   );
   readonly webSockets = new WebSockets(this.sockets.options());
   readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.harness);
@@ -104,7 +105,7 @@ export class Chat extends DurableObject<Env> {
   }
 
   async onStart(): Promise<void> {
-    await this.sockets.reattach(this.webSockets.getConnections(), (userId) => this.reverify(userId));
+    await this.sockets.reattach(this.webSockets.getConnections(), (identity) => this.reverify(identity));
   }
 
   private async teacherId(): Promise<string | null> {
@@ -189,7 +190,7 @@ export class Chat extends DurableObject<Env> {
     return this.ctx.id.name?.split(":")[1] ?? "";
   }
 
-  private async authorize(request: Request): Promise<string | null> {
+  private async authorize(request: Request): Promise<SocketIdentity | null> {
     const name = decodeURIComponent(new URL(request.url).pathname.split("/chat/").at(-1) ?? "");
     const [activityId, studentId] = name.split(":");
     if (!activityId || !studentId) return null;
@@ -199,28 +200,37 @@ export class Chat extends DurableObject<Env> {
       .map((part) => part.trim())
       .find((part) => part.startsWith(`${SESSION_COOKIE}=`))
       ?.slice(SESSION_COOKIE.length + 1);
-    const user = await userFromSessionToken({ env: this.env }, token);
-    if (!user) return null;
+    const lookup = await lookupSession(this.env, token);
+    if (lookup.kind !== "ok") return null;
+    const identity: SocketIdentity = { userId: lookup.session.user.id, version: lookup.session.version };
     try {
-      const { isTeacher } = await requireMembership(this.env.DB, activityId, user);
-      return isTeacher || user.id === studentId ? user.id : null;
+      const { isTeacher } = await requireMembership(this.env.DB, activityId, lookup.session.user);
+      return isTeacher || identity.userId === studentId ? identity : null;
     } catch {
       return null;
     }
   }
 
-  private async reverify(userId: string): Promise<"member" | "revoked" | "error"> {
+  private async reverify(identity: SocketIdentity): Promise<ReverifyOutcome> {
     const [activityId, studentId] = this.ctx.id.name?.split(":") ?? [];
     if (!activityId) return "revoked";
     try {
-      const { isTeacher } = await requireMembership(this.env.DB, activityId, {
-        id: userId,
-        name: "",
-        role: "student",
-      });
-      return isTeacher || userId === studentId ? "member" : "revoked";
+      const state = await accountState(this.env.DB, identity.userId);
+      if (!state || state.disabled || state.version !== identity.version) return "revoked";
+      const { isTeacher } = await requireMembership(this.env.DB, activityId, { id: identity.userId });
+      return isTeacher || identity.userId === studentId ? "member" : "revoked";
     } catch (error) {
       return error instanceof ApiError ? "revoked" : "error";
+    }
+  }
+
+  private async revalidate(identity: SocketIdentity): Promise<ReverifyOutcome> {
+    try {
+      const state = await accountState(this.env.DB, identity.userId);
+      if (!state || state.disabled || state.version !== identity.version) return "revoked";
+      return "member";
+    } catch {
+      return "error";
     }
   }
 }

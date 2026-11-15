@@ -7,7 +7,7 @@ import {
   ApiError,
 } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
-import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
+import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, requireCapability, type AppEnv } from "../http";
 import { parsePrompts, type TopicRow } from "../services/members";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
@@ -24,7 +24,7 @@ function mockTopics(direction: string) {
 export function topicsRoutes() {
   return new Hono<AppEnv>()
     .get("/topics", async (c) => {
-      const user = requireTeacher(c);
+      const user = requireCapability(c, "manage_classes");
       const rows = await all<TopicRow>(
         c.env.DB,
         "SELECT * FROM topics WHERE owner_id IS NULL OR owner_id = $uid ORDER BY created_at, id",
@@ -33,7 +33,7 @@ export function topicsRoutes() {
       return c.json(rows.map(parsePrompts));
     })
     .post("/topics", async (c) => {
-      const user = requireTeacher(c);
+      const user = requireCapability(c, "manage_classes");
       const input = await parseBody(c, TopicCreateInputSchema);
       const id = newId("t_");
       await run(
@@ -56,7 +56,7 @@ export function topicsRoutes() {
     .post("/topics/generate", async (c) => {
       await enforceIpLimit(c, "topics-generate", 10);
       const input = await parseBody(c, GenerateTopicsInputSchema);
-      requireTeacher(c);
+      requireCapability(c, "manage_classes");
       if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {
         return c.json(
           mockTopics(input.direction).topics.map((topic, index) => ({
@@ -68,7 +68,7 @@ export function topicsRoutes() {
         );
       }
       try {
-        const user = requireTeacher(c);
+        const user = requireCapability(c, "manage_classes");
         const { harness, runtime, teacherLegs } = await openProfileHarness(c.env, "topic-gen", async () => user.id);
         const { text } = await runProfile(
           harness,

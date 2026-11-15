@@ -18,7 +18,6 @@ export const Route = createFileRoute("/dialogue")({
       queryFn: () => api.me(),
       staleTime: Infinity,
     });
-    if (me?.role === "teacher") throw redirect({ to: "/t/setup" });
     if (!me) throw redirect({ to: "/join" });
     if (!(search.activityId || readActivityId())) throw redirect({ to: "/home" });
   },

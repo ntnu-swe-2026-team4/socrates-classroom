@@ -49,7 +49,9 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
 
   test("me / guest join (ToS) → activity resolves", async () => {
     const me = await call("/api/me", { headers: { Cookie: teacher } });
-    expect(((await me.json()) as { role: string }).role).toBe("teacher");
+    const teacherMe = (await me.json()) as { canManageClasses: boolean; isAdmin: boolean };
+    expect(teacherMe.canManageClasses).toBe(true);
+    expect(teacherMe.isAdmin).toBe(false);
 
     const joined = await call("/api/join", {
       method: "POST",
@@ -57,8 +59,12 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       body: JSON.stringify({ code, name: "R6生", tosAccepted: true }),
     });
     expect(joined.status).toBe(200);
-    const { user, activityId: aid } = (await joined.json()) as { user: { role: string }; activityId: string };
-    expect(user.role).toBe("student");
+    const { user, activityId: aid } = (await joined.json()) as {
+      user: { canManageClasses: boolean; isAdmin: boolean };
+      activityId: string;
+    };
+    expect(user.canManageClasses).toBe(false);
+    expect(user.isAdmin).toBe(false);
     expect(aid).toBe(activityId);
 
     const noTos = await call("/api/join", {
@@ -351,15 +357,19 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       body: JSON.stringify({ code, email, password: "student-pass-1", name: "註冊生A", tosAccepted: true }),
     });
     expect(registered.status).toBe(200);
-    expect(((await registered.json()) as { role: string }).role).toBe("student");
+    expect(((await registered.json()) as { canManageClasses: boolean }).canManageClasses).toBe(false);
+
+    const registeredTopics = await call("/api/topics", { headers: { Cookie: cookieOf(registered) } });
+    expect(registeredTopics.status).toBe(403);
+    expect(((await registeredTopics.json()) as { code: string }).code).toBe("capability_required");
 
     const teacherJoin = await call("/api/join", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: teacher },
       body: JSON.stringify({ code, tosAccepted: true }),
     });
-    expect(teacherJoin.status).toBe(403);
-    expect(((await teacherJoin.json()) as { code?: string }).code).toBe("only_student");
+    expect(teacherJoin.status).toBe(200);
+    expect(typeof ((await teacherJoin.json()) as { activityId: string }).activityId).toBe("string");
 
     const noConsent = await call("/api/auth/register", {
       method: "POST",
@@ -382,7 +392,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     });
     expect(login.status).toBe(200);
     const me = await call("/api/me", { headers: { Cookie: cookieOf(login) } });
-    expect(((await me.json()) as { role: string }).role).toBe("student");
+    expect(((await me.json()) as { canManageClasses: boolean }).canManageClasses).toBe(false);
   });
 
   test("lookup mock: websearch without binding → fallback text (prose mock)", async () => {
