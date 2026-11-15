@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import { cva } from "class-variance-authority";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -219,5 +220,58 @@ export function Initial({ name, className }: { name?: string | null; className?:
     >
       {name?.slice(0, 1) ?? ""}
     </span>
+  );
+}
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+export function TrapDialog({
+  ref,
+  className,
+  onClose,
+  ariaLabelledBy,
+  children,
+}: {
+  ref: RefObject<HTMLDivElement | null>;
+  className: string;
+  onClose: () => void;
+  ariaLabelledBy?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="anim-fade absolute inset-0 bg-black/40" onClick={onClose} />
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        {...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {})}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            onClose();
+            return;
+          }
+          if (event.key !== "Tab") return;
+          const container = event.currentTarget;
+          const focusables = [...container.querySelectorAll(FOCUSABLE)] as HTMLElement[];
+          if (focusables.length === 0) return;
+          const first = focusables[0]!;
+          const last = focusables.at(-1)!;
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }}
+        className={className}
+      >
+        {children}
+      </div>
+    </div>
   );
 }

@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
 import { onOpenAccountSheet } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleUserRound, GraduationCap, Home, KeyRound, LayoutDashboard, Menu, Moon, Sun, X } from "lucide-react";
 import { api } from "@/api";
-import { Initial, cn } from "@/components/ui";
+import { Initial, TrapDialog, cn } from "@/components/ui";
 import { LANGS, setLocale, useI18n, type Locale } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
 
@@ -237,59 +237,6 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           </button>
         </TrapDialog>
       )}
-    </div>
-  );
-}
-
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-function TrapDialog({
-  ref,
-  className,
-  onClose,
-  ariaLabelledBy,
-  children,
-}: {
-  ref: RefObject<HTMLDivElement | null>;
-  className: string;
-  onClose: () => void;
-  ariaLabelledBy?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="fixed inset-0 z-50">
-      <div className="anim-fade absolute inset-0 bg-black/40" onClick={onClose} />
-      <div
-        ref={ref}
-        role="dialog"
-        aria-modal="true"
-        tabIndex={-1}
-        {...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {})}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.stopPropagation();
-            onClose();
-            return;
-          }
-          if (event.key !== "Tab") return;
-          const container = event.currentTarget;
-          const focusables = [...container.querySelectorAll(FOCUSABLE)] as HTMLElement[];
-          if (focusables.length === 0) return;
-          const first = focusables[0]!;
-          const last = focusables.at(-1)!;
-          if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-          } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-          }
-        }}
-        className={className}
-      >
-        {children}
-      </div>
     </div>
   );
 }
