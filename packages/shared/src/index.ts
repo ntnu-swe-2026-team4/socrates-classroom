@@ -181,6 +181,41 @@ export const ClassroomSummarySchema = z.object({
 });
 export type ClassroomSummary = z.infer<typeof ClassroomSummarySchema>;
 
+export const ADMIN_LIST_CAP = 100;
+
+function cappedList<T extends z.ZodType>(item: T) {
+  return z.object({ items: z.array(item), total: z.number() });
+}
+
+export const AdminDashboardSchema = z.object({
+  generatedAt: z.string(),
+  stuckAfterMs: z.number(),
+  counts: z.object({
+    byRole: z.record(z.string(), z.number()),
+    classrooms: z.number(),
+    activeActivities: z.number(),
+    finishedActivities: z.number(),
+    memberships: z.number(),
+  }),
+  reports: z.object({
+    byStatus: z.object({ pending: z.number(), partial: z.number(), ready: z.number(), failed: z.number() }),
+    stuck: cappedList(z.object({ activityId: z.string(), updatedAt: z.string() })),
+    finishedWithoutReport: cappedList(z.object({ activityId: z.string(), finishedAt: z.string() })),
+  }),
+  recentClassrooms: cappedList(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      createdAt: z.string(),
+      members: z.number(),
+      state: z.enum(["none", "active", "finished"]),
+    }),
+  ),
+  emptyClassrooms: cappedList(z.object({ id: z.string(), name: z.string(), createdAt: z.string() })),
+  hourly: z.array(z.object({ hour: z.string(), classrooms: z.number(), joins: z.number() })),
+});
+export type AdminDashboard = z.infer<typeof AdminDashboardSchema>;
+
 export const TeacherKeyStatusSchema = z.object({
   provider: z.string(),
   model: z.string(),

@@ -213,8 +213,38 @@ interface ViolationSlice {
 
 ## 12. 範圍外（明確不在 v1 契約）
 
-- `/admin` 的運維 dashboard、停損、額度警示、封禁與帳號管理（P1，#80/#81/#63/#97）；僅管理員守衛與 `/admin/session` 已有，見 §1.1
+- `/admin` 的運維指標（通道健康、配額、降級事件、每班用量、違規；資料尚未記錄）、停損、額度警示、封禁與帳號管理（P1，#80/#81/#63/#97）；管理員守衛見 §1.1，唯讀的資料庫概況見 §13
 - 單人模式的個人對話 scope（前端未實作，屆時拍板）
 - 跨裝置 termHistory（P1）
 - `PATCH /me` 改名／頭像（P1 若有需求）
 - teacher key 設定頁 UI（#82 前端；後端 API 已就緒）
+
+## 13. 管理員 dashboard（#80，資料庫概況）
+
+唯讀；整組端點先過 `requireAdmin`（見 §1.1）。
+
+| Operation                                     | 說明                                                                                                           |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `GET /api/admin/session` → `{admin: true}`    | 前端決定是否顯示管理入口；非管理員 `403`（未登入 `401`）                                                       |
+| `GET /api/admin/dashboard` → `AdminDashboard` | 一次回傳所有面板資料；`Cache-Control: private, max-age=30`；形狀見 `packages/shared` 的 `AdminDashboardSchema` |
+
+- `counts.byRole`：依 `users.role` 分組，**不寫死角色清單**（帳號模型仍在演進）
+- `reports.stuck`：`status = 'pending'` 且 `updatedAt` 早於 `stuckAfterMs` 前。`stuckAfterMs = alarmAttempts × alarmTimeoutMs + 5 分鐘`，由 `providers.config.yaml` 的 `report` 推算（目前 20 分鐘）；`partial`／`failed`／`ready` 皆為終局狀態，不算卡住
+- `reports.finishedWithoutReport`：活動結束超過 `stuckAfterMs` 仍沒有任何 `reports` 列
+- `recentClassrooms[].state`：看教室**目前活動**——沒有目前活動＝`none`、活動未結束＝`active`、已結束＝`finished`
+- `emptyClassrooms`：建立超過 24 小時、沒有任何成員的教室
+- 清單欄位（`reports.stuck`、`reports.finishedWithoutReport`、`recentClassrooms`、`emptyClassrooms`）一律是 `{ items, total }`：`items` 最多 `ADMIN_LIST_CAP`（100）筆，`total` 是精確總數。超過上限時前端明確顯示「只載入 N 筆，共 M 筆」，不會默默截斷。排序與分頁（每頁 10／25／50）由前端對已載入的資料處理；`recentClassrooms`、`emptyClassrooms` 取新到舊，`stuck`、`finishedWithoutReport` 取舊到新
+- `hourly`：近 8 天、以 **UTC 每小時**計的新增教室與加入人次（只列有資料的小時）；**時區由前端依使用者設定加總**，端點不帶時區參數
+- 隱私不變量（有測試守住）：回應**不含**學生姓名、email、邀請碼、密碼雜湊、使用者 id；只有教室名稱、活動／教室 id、數量與時間
+- 九個查詢以單一 `batch` 送出（同一交易快照，一次往返）
+
+### 13.1 這個端點依賴的假設
+
+下列行為變動時，儀表板的判斷會跟著失真，修改前請連帶檢查：
+
+| 假設                                                                                | 依賴的程式碼                                                                            | 變動時要檢查                                         |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| 超過 `alarmAttempts × alarmTimeoutMs` 仍是 `pending`＝重試機制失效，門檻再加 5 分鐘 | `apps/server/src/do/report-runner.ts` 的 `alarm()`；`providers.config.yaml` 的 `report` | 重試次數、逾時、是否仍以 alarm 重試                  |
+| `partial`、`failed`、`ready` 是終局狀態，不會再變                                   | `report-runner.ts` 的 `#markTerminal`                                                   | 新增狀態，或讓終局狀態再變                           |
+| 教室狀態取決於它的**目前活動**（`classrooms.current_activity_id`）                  | `apps/server/src/routes/classrooms.ts`（建立教室時一併設定）                            | 是否新增「清除目前活動」「一班多個進行中活動」等行為 |
+| 清單最多回 `ADMIN_LIST_CAP` 筆，`total` 為精確總數                                  | `routes/admin.ts` 的查詢                                                                | 資料量成長到數千筆以上時改為伺服器分頁               |
