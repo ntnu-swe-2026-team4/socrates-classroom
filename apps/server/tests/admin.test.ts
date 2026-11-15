@@ -1,7 +1,15 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, inject, test } from "vitest";
-import { ADMIN_LIST_CAP, AdminDashboardSchema, type AdminDashboard } from "@socrates/shared";
+import {
+  ADMIN_LIST_CAP,
+  AdminDashboardSchema,
+  OPS_RANGES,
+  OpsClassroomMetricsResponseSchema,
+  OpsLiveResponseSchema,
+  OpsMetricsResponseSchema,
+  type AdminDashboard,
+} from "@socrates/shared";
 import { hashPassword, issueSessionToken } from "../src/auth";
 import { all, batch, run } from "../src/db/d1";
 import { gatewayConfig } from "../src/gateway/config.gen";
@@ -421,4 +429,84 @@ describe("admin dashboard lists", () => {
     const times = body.recentClassrooms.items.map((item) => item.createdAt);
     expect(times).toEqual([...times].sort().reverse());
   }, 30_000);
+});
+
+describe("admin ops endpoints (fixture data)", () => {
+  const get = (path: string, cookie?: string) => call(path, cookie ? { headers: { Cookie: cookie } } : {});
+  const errorCode = async (res: Response) => ((await res.json()) as { code: string }).code;
+  const paths = [
+    "/api/admin/live",
+    "/api/admin/metrics?range=1h",
+    "/api/admin/classrooms/fixture-class-a/metrics?range=1h",
+  ];
+
+  test("guarded like the rest of /admin", async () => {
+    for (const path of paths) {
+      expect((await get(path)).status, path).toBe(401);
+      expect((await get(path, student)).status, path).toBe(403);
+      expect((await get(path, otherTeacher)).status, path).toBe(403);
+    }
+  });
+
+  test("live is never cached and satisfies the contract", async () => {
+    const res = await get("/api/admin/live", admin);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = OpsLiveResponseSchema.parse(await res.json());
+    expect(body.source).toBe("fixture");
+  });
+
+  test("live accepts sinceSec and still returns the full window", async () => {
+    const full = OpsLiveResponseSchema.parse(await (await get("/api/admin/live", admin)).json());
+    const res = await get(`/api/admin/live?sinceSec=${full.axis.fromSec + 600}`, admin);
+    expect(res.status).toBe(200);
+    expect(OpsLiveResponseSchema.parse(await res.json()).axis.points).toBe(full.axis.points);
+  });
+
+  test("a malformed sinceSec is rejected", async () => {
+    for (const value of ["abc", "-1", "1.5", ""]) {
+      const res = await get(`/api/admin/live?sinceSec=${value}`, admin);
+      expect(res.status, value).toBe(422);
+      expect(await errorCode(res)).toBe("validation");
+    }
+  });
+
+  test("metrics answers every range with a cacheable, valid response", async () => {
+    for (const range of OPS_RANGES) {
+      const res = await get(`/api/admin/metrics?range=${range}`, admin);
+      expect(res.status, range).toBe(200);
+      expect(res.headers.get("Cache-Control")).toBe("private, max-age=15");
+      expect(OpsMetricsResponseSchema.parse(await res.json()).range).toBe(range);
+    }
+  });
+
+  test("metrics rejects a missing, live-only or unknown range", async () => {
+    for (const query of ["", "?range=15m", "?range=30d", "?range=24H"]) {
+      const res = await get(`/api/admin/metrics${query}`, admin);
+      expect(res.status, query).toBe(422);
+      expect(await errorCode(res)).toBe("validation");
+    }
+  });
+
+  test("a classroom drill-down is valid, an unknown classroom is a 404, a bad range a 422", async () => {
+    const ok = await get("/api/admin/classrooms/fixture-class-a/metrics?range=6h", admin);
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("Cache-Control")).toBe("private, max-age=15");
+    expect(OpsClassroomMetricsResponseSchema.parse(await ok.json()).classroom.id).toBe("fixture-class-a");
+
+    const missing = await get("/api/admin/classrooms/nope/metrics?range=6h", admin);
+    expect(missing.status).toBe(404);
+    expect(await errorCode(missing)).toBe("not_found");
+
+    expect((await get("/api/admin/classrooms/fixture-class-a/metrics", admin)).status).toBe(422);
+  });
+
+  test("none of the ops responses leak people or invitations", async () => {
+    for (const path of paths) {
+      const text = await (await get(path, admin)).text();
+      expect(text, path).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/);
+      expect(text, path).not.toMatch(/u_[0-9a-f]{32}/);
+      expect(text.toLowerCase(), path).not.toContain("invite");
+    }
+  });
 });

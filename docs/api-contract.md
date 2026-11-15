@@ -213,7 +213,7 @@ interface ViolationSlice {
 
 ## 12. 範圍外（明確不在 v1 契約）
 
-- `/admin` 的運維指標（通道健康、配額、降級事件、每班用量、違規；資料尚未記錄）、停損、額度警示、封禁與帳號管理（P1，#80/#81/#63/#97）；管理員守衛見 §1.1，唯讀的資料庫概況見 §13
+- `/admin` 運維指標的**真實資料**（通道健康、配額、降級事件、每班用量、違規；伺服器目前沒有記錄任何用量，端點回示範資料，見 §13.2）、停損、額度警示、封禁與帳號管理（P1，#80/#81/#63/#97）；管理員守衛見 §1.1，唯讀的資料庫概況見 §13
 - 單人模式的個人對話 scope（前端未實作，屆時拍板）
 - 跨裝置 termHistory（P1）
 - `PATCH /me` 改名／頭像（P1 若有需求）
@@ -248,3 +248,19 @@ interface ViolationSlice {
 | `partial`、`failed`、`ready` 是終局狀態，不會再變                                   | `report-runner.ts` 的 `#markTerminal`                                                   | 新增狀態，或讓終局狀態再變                           |
 | 教室狀態取決於它的**目前活動**（`classrooms.current_activity_id`）                  | `apps/server/src/routes/classrooms.ts`（建立教室時一併設定）                            | 是否新增「清除目前活動」「一班多個進行中活動」等行為 |
 | 清單最多回 `ADMIN_LIST_CAP` 筆，`total` 為精確總數                                  | `routes/admin.ts` 的查詢                                                                | 資料量成長到數千筆以上時改為伺服器分頁               |
+
+### 13.2 運維指標（示範資料）
+
+三個端點的形狀與不變量由 `packages/shared` 的 `OpsLiveResponseSchema`、`OpsMetricsResponseSchema`、`OpsClassroomMetricsResponseSchema` 定義（跨欄位檢查寫在 `superRefine`）。**目前回應一律 `source: "fixture"`**：由 `apps/server/src/ops-fixture.ts` 依當下時間產生，不讀任何真實用量。
+
+| Operation                                                                      | 說明                                                                                                                                                                       |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/admin/live[?sinceSec=]` → `OpsLiveResponse`                          | 即時：現在狀態與最近 15 分鐘（5 秒一格、180 點）；`Cache-Control: no-store`。`sinceSec` 選用、必須是非負整數，否則 `422`；伺服器**可以忽略它並回完整視窗**，目前一律回完整 |
+| `GET /api/admin/metrics?range=` → `OpsMetricsResponse`                         | 回顧；`range` ∈ `1h`／`6h`／`24h`／`72h`／`7d`（`15m` 只屬於 `live`），缺少或不合法回 `422`；`Cache-Control: private, max-age=15`                                          |
+| `GET /api/admin/classrooms/:id/metrics?range=` → `OpsClassroomMetricsResponse` | 單一教室下鑽；教室不存在 `404 not_found`、`range` 不合法 `422`；`Cache-Control: private, max-age=15`                                                                       |
+
+- 時間軸 `axis = { fromSec, stepSec, points }`：epoch 秒、格子對齊 `stepSec`、**前端只讀 `axis`，不假設範圍是哪個按鈕**；最後一格是進行中，資料不完整。
+- 沒有資料用 `null`，不用 0（例如延遲百分位、成本、花費）。
+- 回應不含學生姓名、email、邀請碼、使用者 id、對話內容（測試掃描整份 JSON）。
+- 示範資料的教室 id 是固定的 `fixture-class-a` 至 `fixture-class-h`，**不是資料庫裡的教室**；真實教室 id 目前一律 `404`。
+- 欄位的完整語意（用途維度、`failedTurns`、額度判別聯集、延遲視窗等）以 schema 與 `apps/web/src/test/opsContract.test.ts` 的不變量測試為準；真實資料接上、與 G36maid 確認後再補進這份文件。

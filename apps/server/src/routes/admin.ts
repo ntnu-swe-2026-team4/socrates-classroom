@@ -1,8 +1,9 @@
-import { Hono } from "hono";
-import { ADMIN_LIST_CAP, type AdminDashboard } from "@socrates/shared";
+import { Hono, type Context } from "hono";
+import { ADMIN_LIST_CAP, OpsRangeQuerySchema, type AdminDashboard } from "@socrates/shared";
 import { batch } from "../db/d1";
 import { gatewayConfig } from "../gateway/config.gen";
-import { requireAdmin, type AppEnv } from "../http";
+import { fail, requireAdmin, type AppEnv } from "../http";
+import { buildClassroomMetrics, buildLive, buildMetrics } from "../ops-fixture";
 
 const STUCK_MARGIN_MS = 5 * 60_000;
 const EMPTY_CLASSROOM_AFTER_MS = 24 * 60 * 60_000;
@@ -10,6 +11,18 @@ const HOURLY_WINDOW_MS = 8 * 24 * 60 * 60_000;
 
 function rowsOf<T>(result: D1Result | undefined): T[] {
   return (result?.results ?? []) as T[];
+}
+
+const OPS_METRICS_CACHE = "private, max-age=15";
+
+function opsRange(c: Context<AppEnv>) {
+  const parsed = OpsRangeQuerySchema.safeParse({ range: c.req.query("range") });
+  if (!parsed.success) fail(422, "validation");
+  return parsed.data.range;
+}
+
+function nowSec() {
+  return Math.floor(Date.now() / 1000);
 }
 
 export function adminRoutes() {
@@ -160,5 +173,23 @@ export function adminRoutes() {
       };
       c.header("Cache-Control", "private, max-age=30");
       return c.json(body);
+    })
+    .get("/admin/live", (c) => {
+      const sinceSec = c.req.query("sinceSec");
+      if (sinceSec !== undefined && !/^\d+$/.test(sinceSec)) fail(422, "validation");
+      c.header("Cache-Control", "no-store");
+      return c.json(buildLive(nowSec()));
+    })
+    .get("/admin/metrics", (c) => {
+      const range = opsRange(c);
+      c.header("Cache-Control", OPS_METRICS_CACHE);
+      return c.json(buildMetrics(range, nowSec()));
+    })
+    .get("/admin/classrooms/:id/metrics", (c) => {
+      const range = opsRange(c);
+      const metrics = buildClassroomMetrics(c.req.param("id"), range, nowSec());
+      if (!metrics) fail(404, "not_found");
+      c.header("Cache-Control", OPS_METRICS_CACHE);
+      return c.json(metrics);
     });
 }
