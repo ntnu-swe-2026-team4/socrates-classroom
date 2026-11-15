@@ -1,6 +1,9 @@
 import { OPS_AXIS_PLAN, OPS_LIVE_LATENCY_WINDOW_SEC, type OpsLiveChannel } from "@socrates/shared";
+import type { MessageKey, Translate } from "@/i18n";
 
 export type ChannelState = OpsLiveChannel["usable"];
+
+const HEALTHY_STATES: readonly ChannelState[] = ["ok"];
 
 export const LIVE_WINDOW_CELLS = OPS_LIVE_LATENCY_WINDOW_SEC / OPS_AXIS_PLAN.live.stepSec;
 
@@ -15,17 +18,18 @@ export interface Overall {
 }
 
 export function overall(channels: readonly Pick<OpsLiveChannel, "label" | "usable" | "usableSinceSec">[]): Overall {
-  const pick = (state: ChannelState) => channels.filter((channel) => channel.usable === state);
-  const affected = pick("down").length > 0 ? pick("down") : pick("degraded");
+  const inState = (state: ChannelState) => channels.filter((channel) => channel.usable === state);
+  const affected = inState("down").length > 0 ? inState("down") : inState("degraded");
   if (affected.length > 0) {
     const since = affected.flatMap((channel) => (channel.usableSinceSec === null ? [] : [channel.usableSinceSec]));
     return {
-      state: pick("down").length > 0 ? "down" : "degraded",
+      state: inState("down").length > 0 ? "down" : "degraded",
       labels: affected.map((channel) => channel.label),
       sinceSec: since.length > 0 ? Math.min(...since) : null,
     };
   }
-  const allUnknown = channels.length > 0 && channels.every((channel) => channel.usable === "unknown");
+  const allUnknown =
+    channels.length > 0 && channels.every((channel) => !HEALTHY_STATES.includes(channel.usable as ChannelState));
   return { state: allUnknown ? "unknown" : "ok", labels: [], sinceSec: null };
 }
 
@@ -63,4 +67,17 @@ export function formatDuration(seconds: number, locale: string): string {
 export function peakOf(series: readonly (number | null)[]): number | null {
   const values = series.filter((value): value is number => value !== null);
   return values.length === 0 ? null : Math.max(...values);
+}
+
+export function pick<T>(map: Readonly<Record<string, T>>, key: string, fallback: T): T {
+  return Object.hasOwn(map, key) ? (map[key] as T) : fallback;
+}
+
+export function labelOf(
+  keys: Readonly<Record<string, MessageKey>>,
+  value: string,
+  t: Translate,
+  vars?: Record<string, string | number>,
+): string {
+  return Object.hasOwn(keys, value) ? t(keys[value] as MessageKey, vars) : value;
 }

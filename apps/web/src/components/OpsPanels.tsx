@@ -16,9 +16,11 @@ import {
   formatDuration,
   formatMs,
   formatPercent,
+  labelOf,
   lastTotal,
   overall,
   peakOf,
+  pick,
   ratio,
 } from "@/lib/ops";
 
@@ -52,15 +54,17 @@ export const PURPOSE_KEYS = {
 
 type Translate = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
-function StateBadge({ state, t }: { state: ChannelState; t: Translate }) {
-  const style = STATE_STYLE[state];
+const UNRECOGNIZED_STATE = { icon: CircleHelp, tone: "bg-paper-deep text-ink-soft", label: undefined } as const;
+
+function StateBadge({ state, t }: { state: string; t: Translate }) {
+  const style = pick<{ icon: LucideIcon; tone: string; label?: MessageKey }>(STATE_STYLE, state, UNRECOGNIZED_STATE);
   const Icon = style.icon;
   return (
     <span
       className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[12px] font-medium", style.tone)}
     >
       <Icon className="size-3.5" aria-hidden="true" />
-      {t(style.label)}
+      {style.label ? t(style.label) : state}
     </span>
   );
 }
@@ -118,7 +122,7 @@ function ChannelCards({ cards, t }: { cards: CardData[]; t: Translate }) {
               ))}
               <p>
                 {t("admin_card_purposes", {
-                  purposes: card.purposes.map((purpose) => t(PURPOSE_KEYS[purpose])).join(" · "),
+                  purposes: card.purposes.map((purpose) => labelOf(PURPOSE_KEYS, purpose, t)).join(" · "),
                 })}
               </p>
             </div>
@@ -187,7 +191,7 @@ export function LiveSummary({ data }: { data: OpsLiveResponse }) {
       index,
       purposes: channel.purposes,
       badge: <StateBadge state={channel.usable} t={t} />,
-      status: channel.usableReason ? t(REASON_KEYS[channel.usableReason], { rate }) : undefined,
+      status: channel.usableReason ? labelOf(REASON_KEYS, channel.usableReason, t, { rate }) : undefined,
       lines: [
         requests === 0
           ? t("admin_card_recent", { requests: "—", errors: "—" })
@@ -328,6 +332,18 @@ export function QuotaPanel({ quotas, channels, live, etas = [] }: QuotaPanelProp
       </SectionTitle>
       <Card className="flex flex-col gap-5 p-5">
         {quotas.map((quota) => {
+          const model: string = quota.model;
+          if (model !== "allowance" && model !== "rate") {
+            const other = quota as { id: string; source: string };
+            return (
+              <div key={other.id} className="flex flex-wrap items-center gap-2">
+                <h3 className="text-[13.5px] font-semibold text-ink">{other.id}</h3>
+                <span className="rounded-full bg-paper-deep px-2 py-0.5 text-[11.5px] text-ink-soft">
+                  {labelOf(SOURCE_KEYS, other.source, t)}
+                </span>
+              </div>
+            );
+          }
           const channel = channels.find((entry) => entry.id === quota.appliesTo[0]);
           const title =
             quota.model === "allowance"
@@ -343,7 +359,7 @@ export function QuotaPanel({ quotas, channels, live, etas = [] }: QuotaPanelProp
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-[13.5px] font-semibold text-ink">{title}</h3>
                   <span className="rounded-full bg-paper-deep px-2 py-0.5 text-[11.5px] text-ink-soft">
-                    {t(SOURCE_KEYS[quota.source])}
+                    {labelOf(SOURCE_KEYS, quota.source, t)}
                   </span>
                   {!live && (
                     <span className="text-[12px] text-ink-faint">

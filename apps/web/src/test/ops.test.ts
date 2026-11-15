@@ -5,9 +5,11 @@ import {
   formatDuration,
   formatMs,
   formatPercent,
+  labelOf,
   lastTotal,
   overall,
   peakOf,
+  pick,
   ratio,
 } from "@/lib/ops";
 
@@ -85,4 +87,22 @@ test("the peak of a series ignores gaps and is null when nothing was recorded", 
   expect(peakOf([3, null, 9, 4])).toBe(9);
   expect(peakOf([null, null])).toBeNull();
   expect(peakOf([])).toBeNull();
+});
+
+test("lookups fall back to the raw value and never reach into the prototype", () => {
+  const styles = { a: 1 };
+  expect(pick(styles, "a", 0)).toBe(1);
+  expect(pick(styles, "b", 0)).toBe(0);
+  expect(pick(styles, "constructor", 0)).toBe(0);
+  const keys = { known: "admin_chan_ok" } as const;
+  const t = ((key: string) => `T:${key}`) as never;
+  expect(labelOf(keys, "known", t)).toBe("T:admin_chan_ok");
+  expect(labelOf(keys, "other", t)).toBe("other");
+  expect(labelOf(keys, "toString", t)).toBe("toString");
+});
+
+test("an unrecognized state counts as no data in the overall verdict", () => {
+  const odd = { label: "X", usable: "paused" as never, usableSinceSec: null };
+  expect(overall([odd]).state).toBe("unknown");
+  expect(overall([odd, channel("B", "ok")]).state).toBe("ok");
 });

@@ -652,3 +652,53 @@ test("long event lists are paged and a capped list says how many exist in total"
     dispose();
   }
 });
+
+test("values the page does not know are shown as they are instead of breaking it", async () => {
+  const body = liveBody as unknown as {
+    channels: { usable: string; usableReason: string | null; purposes: string[] }[];
+    events: {
+      items: { kind: string; purpose: string; reason: string; atSec: number; channelId: string; threads: number }[];
+      total: number;
+    };
+    quotas: { model: string; id: string; source: string }[];
+  };
+  body.channels[0]!.usable = "paused";
+  body.channels[0]!.usableReason = "maintenance";
+  body.channels[0]!.purposes = ["robot"];
+  body.channels[1]!.usable = "retired";
+  body.events = {
+    items: [
+      {
+        atSec: 1_763_199_990,
+        channelId: "workers-ai/glm-5.3-flash",
+        kind: "quota_alert",
+        purpose: "robot",
+        reason: "weird",
+        threads: 0,
+      },
+    ],
+    total: 1,
+  };
+  body.quotas.push({ model: "balance", id: "openrouter/credits", source: "provider" });
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    const channels = await screen.findByRole("region", { name: /Channels/ });
+    expect(channels.textContent).toContain("paused");
+    expect(channels.textContent).toContain("maintenance");
+    expect(channels.textContent).toContain("robot");
+    expect(channels.textContent).toContain("retired");
+    expect(screen.queryByRole("heading", { name: "All channels are healthy" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "No requests in the last minute" })).toBeTruthy();
+
+    const events = screen.getByRole("region", { name: /Events/ });
+    expect(events.textContent).toContain("quota_alert");
+    expect(events.textContent).toContain("weird");
+    expect(events.textContent).toContain("robot");
+
+    const quotas = screen.getByRole("region", { name: /Quotas/ });
+    expect(quotas.textContent).toContain("openrouter/credits");
+    expect(quotas.querySelectorAll("meter")).toHaveLength(2);
+  } finally {
+    dispose();
+  }
+});

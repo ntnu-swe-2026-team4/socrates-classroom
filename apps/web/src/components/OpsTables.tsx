@@ -3,8 +3,10 @@ import { Pagination, useTable } from "@/components/DataTable";
 import { PURPOSE_KEYS } from "@/components/OpsPanels";
 import { Card, SectionTitle, cn } from "@/components/ui";
 import { useI18n, type MessageKey } from "@/i18n";
+import { labelOf, pick } from "@/lib/ops";
 
 const NO_SORT = {} as const;
+const UNRECOGNIZED_KIND = { label: undefined, tone: "bg-paper-deep text-ink-soft" } as const;
 
 const KIND_STYLE = {
   failover: { label: "admin_event_failover", tone: "bg-ember-wash text-ember-deep" },
@@ -41,7 +43,7 @@ export function EventsPanel({ events, channels, live }: EventsPanelProps) {
         ) : (
           <ul className="divide-y divide-line px-5">
             {table.rows.map((event) => {
-              const kind = KIND_STYLE[event.kind];
+              const kind = pick<{ label?: MessageKey; tone: string }>(KIND_STYLE, event.kind, UNRECOGNIZED_KIND);
               const channel = channels.find((entry) => entry.id === event.channelId)?.label ?? event.channelId;
               return (
                 <li
@@ -55,10 +57,10 @@ export function EventsPanel({ events, channels, live }: EventsPanelProps) {
                     {clock.format(new Date(event.atSec * 1000))}
                   </time>
                   <span className={cn("rounded-full px-2.5 py-0.5 text-[12px] font-medium", kind.tone)}>
-                    {t(kind.label)}
+                    {kind.label ? t(kind.label) : event.kind}
                   </span>
                   <span className="text-ink">
-                    {channel} <span className="text-ink-faint">· {t(PURPOSE_KEYS[event.purpose])}</span>
+                    {channel} <span className="text-ink-faint">· {labelOf(PURPOSE_KEYS, event.purpose, t)}</span>
                   </span>
                   <code className="font-mono text-[12px] text-ink-soft">{event.reason}</code>
                   {event.threads > 0 && (
