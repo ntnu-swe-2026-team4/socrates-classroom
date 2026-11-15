@@ -2,6 +2,8 @@ import { hc } from "hono/client";
 import type {
   ActivityInfo,
   ActivityInvite,
+  ActivityMode,
+  ActivitySlots,
   AdminUser,
   ClassroomCreated,
   ClassroomSummary,
@@ -18,6 +20,7 @@ import type {
 } from "@socrates/shared";
 import {
   ActivityStartInputSchema,
+  ACTIVITY_SLOT_MAX,
   AdminUserCreateInputSchema,
   AdminUserUpdateInputSchema,
   ClassroomCreateInputSchema,
@@ -71,11 +74,13 @@ export interface Api {
   generateTopics(direction: string): Promise<Topic[]>;
   createClassroom(name: string, topicId: string): Promise<ClassroomCreated>;
   listClassrooms(): Promise<ClassroomSummary[]>;
-  startActivity(classroomId: string, topicId: string): Promise<ClassroomCreated>;
+  startActivity(classroomId: string, topicId: string, mode?: ActivityMode): Promise<ClassroomCreated>;
+  listActivitySlots(activityId: string): Promise<ActivitySlots>;
+  createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
   createTopic(input: { title: string; statement: string; summary?: string; prompts: string[] }): Promise<Topic>;
-  activityInfo(activityId: string): Promise<ActivityInfo>;
+  activityInfo(activityId: string, participantId?: string): Promise<ActivityInfo>;
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
   lookupTerm(term: string): Promise<TermExplanation>;
@@ -267,9 +272,18 @@ export const httpApi: Api = {
   async listClassrooms() {
     return unwrap(await client.classrooms.$get());
   },
-  async startActivity(classroomId, topicId) {
-    const input = ActivityStartInputSchema.parse({ topicId });
+  async startActivity(classroomId, topicId, mode = "live") {
+    const input = ActivityStartInputSchema.parse({ topicId, mode });
     return raw<ClassroomCreated>(`/classrooms/${classroomId}/activities`, { method: "POST", json: input });
+  },
+  async listActivitySlots(activityId) {
+    return raw<ActivitySlots>(`/activities/${encodeURIComponent(activityId)}/slots`);
+  },
+  async createActivitySlots(activityId, count) {
+    return raw<ActivitySlots>(`/activities/${encodeURIComponent(activityId)}/slots`, {
+      method: "POST",
+      json: { count: Math.min(Math.max(count, 1), ACTIVITY_SLOT_MAX) },
+    });
   },
   async stt(audio) {
     const file = audio instanceof File ? audio : new File([audio], "speech.webm", { type: audio.type });
@@ -281,8 +295,9 @@ export const httpApi: Api = {
     return SttResultSchema.parse(await res.json()).text;
   },
   tts: playTts,
-  async activityInfo(activityId) {
-    return unwrap(await client.activities[":id"].$get({ param: { id: activityId } }));
+  async activityInfo(activityId, participantId) {
+    const query = participantId === undefined ? "" : `?participantId=${encodeURIComponent(participantId)}`;
+    return raw<ActivityInfo>(`/activities/${encodeURIComponent(activityId)}${query}`);
   },
   async finishActivity(activityId) {
     await unwrap(await client.activities[":id"].finish.$post({ param: { id: activityId } }));

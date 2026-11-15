@@ -32,11 +32,18 @@ export const JoinInfoSchema = z.object({
 });
 export type JoinInfo = z.infer<typeof JoinInfoSchema>;
 
+export const ACTIVITY_MODES = ["live", "test"] as const;
+export const ActivityModeSchema = z.enum(ACTIVITY_MODES);
+export type ActivityMode = z.infer<typeof ActivityModeSchema>;
+
+export const ACTIVITY_SLOT_MAX = 6;
+
 export const ClassroomCreatedSchema = z.object({
   classroomId: z.string(),
   code: z.string(),
   url: z.string(),
   activityId: z.string(),
+  mode: ActivityModeSchema,
 });
 export type ClassroomCreated = z.infer<typeof ClassroomCreatedSchema>;
 
@@ -77,10 +84,31 @@ export const ActivityInfoSchema = z.object({
   classroomId: z.string(),
   classroomName: z.string(),
   participantId: z.string().nullable(),
+  mode: ActivityModeSchema,
   topic: TopicSchema,
   finishedAt: z.string().nullable(),
 });
 export type ActivityInfo = z.infer<typeof ActivityInfoSchema>;
+
+export const ActivitySlotSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  rounds: z.number().int(),
+  lastUtterance: z.string(),
+});
+export type ActivitySlot = z.infer<typeof ActivitySlotSchema>;
+
+export const ActivitySlotsSchema = z.object({
+  activityId: z.string(),
+  mode: ActivityModeSchema,
+  maxSlots: z.number().int(),
+  slots: z.array(ActivitySlotSchema),
+});
+export type ActivitySlots = z.infer<typeof ActivitySlotsSchema>;
+
+export const ActivitySlotCreateInputSchema = z.object({
+  count: z.number().int().min(1).max(ACTIVITY_SLOT_MAX),
+});
 
 export const StudentLiveSchema = z.object({
   id: z.string(),
@@ -222,7 +250,10 @@ export const ClassroomCreateInputSchema = z.object({
   name: z.string().trim().min(1).max(80),
   topicId: z.string().min(1),
 });
-export const ActivityStartInputSchema = z.object({ topicId: z.string().min(1) });
+export const ActivityStartInputSchema = z.object({
+  topicId: z.string().min(1),
+  mode: ActivityModeSchema.default("live"),
+});
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
 export const LookupInputSchema = z.object({ term: z.string().trim().min(1).max(30) });
 export const TtsInputSchema = z.object({ text: z.string().min(1).max(2000), lang: z.enum(["zh", "en", "es"]) });

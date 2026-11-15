@@ -6,6 +6,9 @@ export type { Api } from "./http";
 export type {
   ActivityInfo,
   ActivityInvite,
+  ActivityMode,
+  ActivitySlot,
+  ActivitySlots,
   AdminUser,
   ClassroomCreated,
   ClassroomSummary,

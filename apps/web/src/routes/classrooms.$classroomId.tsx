@@ -5,7 +5,7 @@ import { ArrowLeft, ChartNoAxesColumn, GraduationCap, MessageSquare, SquareActiv
 import { api } from "@/api";
 import type { ClassroomSummary } from "@socrates/shared";
 import { QrBlock, absoluteUrl } from "@/components/QrBlock";
-import { Button, Card, SectionTitle, Spinner, cn } from "@/components/ui";
+import { Button, Card, Checkbox, SectionTitle, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/classrooms/$classroomId")({
@@ -169,14 +169,19 @@ function CurrentTopic({ room }: { room: ClassroomSummary }) {
 
 function NewTopic({ room }: { room: ClassroomSummary }) {
   const t = useT();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const topics = useQuery({ queryKey: ["topics"], queryFn: () => api.listTopics(), staleTime: Infinity });
   const [picked, setPicked] = useState<string | null>(null);
+  const [testMode, setTestMode] = useState(false);
   const start = useMutation({
-    mutationFn: (topicId: string) => api.startActivity(room.id, topicId),
-    onSuccess: async () => {
+    mutationFn: (topicId: string) => api.startActivity(room.id, topicId, testMode ? "test" : "live"),
+    onSuccess: async (created) => {
       setPicked(null);
       await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+      if (created.mode === "test") {
+        await navigate({ to: "/t/live/$id", params: { id: created.activityId } });
+      }
     },
   });
   const list = (topics.data ?? []).filter((topic) => topic.id !== room.current?.topicId);
@@ -203,10 +208,16 @@ function NewTopic({ room }: { room: ClassroomSummary }) {
             </button>
           ))}
         </div>
+        <div className="mt-4">
+          <Checkbox label={t("classroom_mode_test")} checked={testMode} onCheckedChange={setTestMode} />
+          {testMode && (
+            <p className="mt-1.5 pl-8 text-[12px] leading-relaxed text-ink-faint">{t("classroom_mode_test_hint")}</p>
+          )}
+        </div>
         <div className="mt-4 flex items-center justify-between gap-3">
           {start.isError ? <p className="text-[12.5px] text-flag">{t("common_error")}</p> : <span />}
           <Button disabled={!picked || start.isPending} onClick={() => picked && start.mutate(picked)}>
-            {start.isPending ? <Spinner /> : t("classroom_start_topic")}
+            {start.isPending ? <Spinner /> : testMode ? t("classroom_start_test") : t("classroom_start_topic")}
           </Button>
         </div>
       </Card>

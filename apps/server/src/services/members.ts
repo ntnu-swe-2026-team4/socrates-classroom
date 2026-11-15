@@ -1,5 +1,5 @@
 import { getCookie } from "hono/cookie";
-import { ApiError, type User } from "@socrates/shared";
+import { ApiError, type ActivityMode, type User } from "@socrates/shared";
 import type { Db } from "../db/d1";
 import { one } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, type ParticipantIdentity } from "../auth";
@@ -17,6 +17,7 @@ export interface ActivityRow {
   id: string;
   classroom_id: string;
   topic_id: string;
+  mode: ActivityMode;
   created_at: string;
   finished_at: string | null;
 }
@@ -146,6 +147,7 @@ export interface ActivityAccessor {
 
 export async function activityAccess(db: Db, activityId: string, accessor: ActivityAccessor): Promise<ActivityAccess> {
   const { activity, classroom } = await activityOf(db, activityId);
+  if (activity.mode === "test" && classroom.teacher_id !== accessor.user?.id) fail(403, "forbidden");
   if (accessor.user) {
     if (classroom.teacher_id === accessor.user.id) {
       return { activity, classroom, participant: null, member: null, isTeacher: true, user: accessor.user };

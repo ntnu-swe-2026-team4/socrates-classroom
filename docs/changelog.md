@@ -2,6 +2,26 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-16 — #134 教師用測試模式（`136-account-classroom-model`）
+
+### Added
+
+- Schema `005_activity_mode.sql`：`activities.mode`（`live` | `test`，預設 `live`）
+- `POST /api/classrooms/:id/activities` 接受 `{topicId, mode?}`：`live` 照舊更新 `classrooms.current_activity_id`，**`test` 不更新**——班級邀請碼、`GET /classrooms` 的 `current` 與首頁都不會看到測試活動
+- `GET/POST /api/activities/:id/slots`（老師、該班 owner、僅 `test` 活動）：建立 1–6 個 `kind = 'teacher'`、`user_id` = 老師的 participant slot，伺服器依 `Accept-Language` 命名（`測試 1`／`Test 1`／`Prueba 1`）；回傳 `{activityId, mode, maxSlots, slots: [{id, name, rounds, lastUtterance}]}`，rounds 由 Chat DO transcript 即時彙總。總數上限 6（`ACTIVITY_SLOT_MAX`），超出 409 `conflict`
+- `GET /api/activities/:id?participantId=`：老師可指定自己的 test slot，取得 WS thread 名的後半段（非本人 slot → 403）
+- 教室頁「換一個主題」新增測試模式勾選（建完直接進 `/t/live/:id`）；`/t/live/:id` 對 `test` 活動渲染 slot 列表、建立數量選擇（含「建立後共 N 份學生分析」成本提示）與每個 slot 的獨立對話視窗；`/dialogue` 接受 `slot` search param
+- 錯誤字串 `live_*`／`classroom_mode_*`（zh-TW／en／es）
+- 測試：`apps/server/tests/test-mode.test.ts`（test 活動不進 `current`、學生／訪客 403、invite 409、slot 上限與權限、同一帳號 3 條互不干擾的 thread、結束後報告 3 位 pseudonym 且不影響 `live` 的 `current`）
+
+### Changed
+
+- `activityAccess` 對 `mode = 'test'` 的活動只放行該班 owner：`GET /activities/:id`、`/report`、`/slots`、`/invites`、WS 升級全部在源頭擋下（其他人 403／close 1008）
+- `POST /api/activities/:id/invites` 對 `test` 活動回 409 `conflict`（測試活動沒有對外邀請入口）
+- `ActivityInfo` 新增 `mode`；`ClassroomCreated` 新增 `mode`；`ActivityStartInputSchema` 新增 `mode`（預設 `live`）
+- `apps/server/src/seed.ts` 的既有活動走 `mode` 預設值 `live`，fixture 不變
+- Docs：`api-contract.md` §1.1、§2.1、§3、§4、§6（改寫）、§7、§12；`feature.md`、`frontend.md`、`architecture.md`（migration 清單）
+
 ## 2026-11-16 — #133 活動邀請連結與無帳號訪客（`136-account-classroom-model`）
 
 ### Added

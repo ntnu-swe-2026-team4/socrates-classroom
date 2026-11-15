@@ -34,6 +34,7 @@ export function inviteRoutes() {
         participant: null,
       });
       if (classroom.teacher_id !== user.id) fail(403, "forbidden");
+      if (activity.mode === "test") fail(409, "conflict");
       if (activity.finished_at) fail(409, "activity_finished");
 
       let invite = await activeInvite(c.env.DB, activity.id);

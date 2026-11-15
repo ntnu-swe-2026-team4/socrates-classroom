@@ -2,10 +2,11 @@ import { Hono } from "hono";
 import {
   ActivityStartInputSchema,
   ClassroomCreateInputSchema,
+  type ActivityMode,
   type ClassroomSummary,
   type User,
 } from "@socrates/shared";
-import { all, batch, one } from "../db/d1";
+import { all, batch, one, type SqlEntry } from "../db/d1";
 import { fail, newId, nowIso, parseBody, requireCapability, requireUser, type AppEnv } from "../http";
 import type { ClassroomRow } from "../services/members";
 
@@ -22,18 +23,26 @@ function newCode(): string {
   return code;
 }
 
-async function createActivity(db: D1Database, classroomId: string, topicId: string): Promise<string> {
+async function createActivity(
+  db: D1Database,
+  classroomId: string,
+  topicId: string,
+  mode: ActivityMode,
+): Promise<string> {
   const id = newId("a_");
-  await batch(db, [
+  const queries: SqlEntry[] = [
     {
-      sql: "INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ($id, $cid, $tid, $at)",
-      params: { id, cid: classroomId, tid: topicId, at: nowIso() },
+      sql: "INSERT INTO activities (id, classroom_id, topic_id, mode, created_at) VALUES ($id, $cid, $tid, $mode, $at)",
+      params: { id, cid: classroomId, tid: topicId, mode, at: nowIso() },
     },
-    {
+  ];
+  if (mode === "live") {
+    queries.push({
       sql: "UPDATE classrooms SET current_activity_id = $aid WHERE id = $cid",
       params: { aid: id, cid: classroomId },
-    },
-  ]);
+    });
+  }
+  await batch(db, queries);
   return id;
 }
 
@@ -123,7 +132,7 @@ export function classroomsRoutes() {
               params: { id, name: input.name, tid: user.id, code, at },
             },
             {
-              sql: "INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ($aid, $cid, $tid2, $at2)",
+              sql: "INSERT INTO activities (id, classroom_id, topic_id, mode, created_at) VALUES ($aid, $cid, $tid2, 'live', $at2)",
               params: { aid: activityId, cid: id, tid2: input.topicId, at2: at },
             },
             {
@@ -135,7 +144,7 @@ export function classroomsRoutes() {
           continue;
         }
         const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") ?? "";
-        return c.json({ classroomId: id, code, url: `${base}/join/${code}`, activityId }, 201);
+        return c.json({ classroomId: id, code, url: `${base}/join/${code}`, activityId, mode: "live" as const }, 201);
       }
       fail(500, "internal_error");
     })
@@ -153,7 +162,7 @@ export function classroomsRoutes() {
         { id: input.topicId, uid: user.id },
       );
       if (!topic) fail(404, "not_found");
-      const activityId = await createActivity(c.env.DB, classroom.id, input.topicId);
+      const activityId = await createActivity(c.env.DB, classroom.id, input.topicId, input.mode);
       const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") ?? "";
       return c.json(
         {
@@ -161,6 +170,7 @@ export function classroomsRoutes() {
           code: classroom.join_code,
           url: `${base}/join/${classroom.join_code}`,
           activityId,
+          mode: input.mode,
         },
         201,
       );

@@ -78,6 +78,7 @@ beforeEach(() => {
           classroomId: "class-1",
           classroomName: "Class",
           participantId: "p_1",
+          mode: "live",
           topic,
           finishedAt: null,
         },

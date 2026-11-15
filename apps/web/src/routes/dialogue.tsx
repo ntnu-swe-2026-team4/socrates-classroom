@@ -7,8 +7,11 @@ import { DialogueView } from "@/components/DialogueView";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/dialogue")({
-  validateSearch: (search: Record<string, unknown>): { activityId?: string; q?: string; term?: string } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { activityId?: string; slot?: string; q?: string; term?: string } => ({
     activityId: typeof search.activityId === "string" ? search.activityId : undefined,
+    slot: typeof search.slot === "string" ? search.slot : undefined,
     q: typeof search.q === "string" ? search.q : undefined,
     term: typeof search.term === "string" ? search.term : undefined,
   }),
@@ -28,11 +31,11 @@ function DialoguePage() {
   const t = useT();
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
-  const { activityId: activityParam, q, term } = Route.useSearch();
+  const { activityId: activityParam, slot, q, term } = Route.useSearch();
   const activityId = activityParam ?? readActivityId() ?? "";
   const activityQuery = useQuery({
-    queryKey: ["activity", activityId],
-    queryFn: () => api.activityInfo(activityId),
+    queryKey: ["activity", activityId, slot ?? null],
+    queryFn: () => api.activityInfo(activityId, slot),
     enabled: activityId !== "",
     staleTime: Infinity,
   });
