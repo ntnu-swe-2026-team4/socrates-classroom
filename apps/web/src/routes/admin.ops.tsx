@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, TriangleAlert } from "lucide-react";
@@ -6,9 +6,11 @@ import { OPS_AXIS_PLAN, OPS_RANGES, OpsRangeSchema, type OpsRange } from "@socra
 import { api } from "@/api";
 import { AdminTabs } from "@/components/AdminTabs";
 import { LiveSummary, ReviewSummary } from "@/components/OpsPanels";
-import { Button, PageHeader, Segmented, Spinner, cn } from "@/components/ui";
+import { Button, PageHeader, SectionTitle, Segmented, Spinner, cn } from "@/components/ui";
 import { useI18n, type MessageKey } from "@/i18n";
 import { formatDateTime } from "@/lib/adminTime";
+
+const OpsCharts = lazy(() => import("@/components/OpsCharts").then((module) => ({ default: module.OpsCharts })));
 
 type OpsSearch = { mode?: "review"; range?: OpsRange };
 type OpsMode = "live" | "review";
@@ -134,6 +136,29 @@ function OpsPage() {
         {query.isError && <p className="text-[14px] text-flag">{t("admin_load_failed")}</p>}
         {live && liveQuery.data && <LiveSummary data={liveQuery.data} />}
         {!live && metricsQuery.data && <ReviewSummary data={metricsQuery.data} />}
+        {data && (
+          <section aria-labelledby="ops-trends">
+            <SectionTitle>
+              <span id="ops-trends">{t("admin_trends_title")}</span>{" "}
+              <span className="font-sans text-[12.5px] font-normal text-ink-faint">{t("admin_trends_note")}</span>
+            </SectionTitle>
+            <Suspense
+              fallback={
+                <div className="flex justify-center py-10">
+                  <Spinner className="h-5 w-5" />
+                </div>
+              }
+            >
+              <OpsCharts
+                live={live}
+                axis={data.axis}
+                generatedAtSec={data.generatedAtSec}
+                channels={data.channels}
+                system={data.system}
+              />
+            </Suspense>
+          </section>
+        )}
       </div>
     </div>
   );

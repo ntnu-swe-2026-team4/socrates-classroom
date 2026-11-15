@@ -368,7 +368,8 @@ test("live mode states the overall verdict, the headline numbers and one card pe
   try {
     expect(await screen.findByRole("heading", { name: "Degraded: GLM 5.3 Flash" })).toBeTruthy();
     expect(screen.getByText("No student saw an error in the last minute")).toBeTruthy();
-    const tile = (label: string) => screen.getByText(label).closest("div")?.querySelectorAll("dd")[0]?.textContent;
+    const tile = (label: string) =>
+      screen.getByText(label, { selector: "dt" }).closest("div")?.querySelectorAll("dd")[0]?.textContent;
     expect(tile("Online now")).toBe("12");
     expect(tile("Students saw an error")).toBe("0");
     expect(tile("Attempt error rate")).toBe("50%");
@@ -415,7 +416,8 @@ test("students who saw errors are counted in the verdict, and unknown values sta
   const { dispose } = await mountRoute("/admin/ops");
   try {
     expect(await screen.findByText("3 turns showed students an error in the last minute")).toBeTruthy();
-    const tile = (label: string) => screen.getByText(label).closest("div")?.querySelectorAll("dd")[0]?.textContent;
+    const tile = (label: string) =>
+      screen.getByText(label, { selector: "dt" }).closest("div")?.querySelectorAll("dd")[0]?.textContent;
     expect(tile("Online now")).toBe("—");
     expect(tile("Time to first token p95")).toBe("—");
     expect(tile("Attempt error rate")).toBe("—");
@@ -443,7 +445,8 @@ test("review mode shows range summaries and no current-state verdict", async () 
   try {
     expect(await screen.findByText("Dialogue turns")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: /Degraded|Down|All channels/ })).toBeNull();
-    const tile = (label: string) => screen.getByText(label).closest("div")?.querySelectorAll("dd")[0]?.textContent;
+    const tile = (label: string) =>
+      screen.getByText(label, { selector: "dt" }).closest("div")?.querySelectorAll("dd")[0]?.textContent;
     expect(tile("Dialogue turns")).toBe("120");
     expect(tile("Peak online")).toBe("12");
     const glm = screen.getByText("GLM 5.3 Flash", { selector: "span" }).closest("li")!;
@@ -463,6 +466,32 @@ test("the channel cards follow the selected language", async () => {
     expect(await screen.findByRole("heading", { name: "降級：GLM 5.3 Flash" })).toBeTruthy();
     expect(screen.getByText("近 1 分鐘沒有學生看到錯誤")).toBeTruthy();
     expect(screen.getByText(/用途：對話/)).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
+
+test("live mode draws the two trend charts with the degraded threshold and a 60 s latency note", async () => {
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    expect(await screen.findByRole("heading", { name: "Dialogue turns per second" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Time to first token p95" })).toBeTruthy();
+    expect(screen.getByText("Each point is the p95 of the last 60 s")).toBeTruthy();
+    expect(await screen.findByText("Degraded threshold")).toBeTruthy();
+    await waitFor(() => expect(document.querySelectorAll(".recharts-surface")).toHaveLength(2));
+    expect(screen.getByText("Completed")).toBeTruthy();
+    expect(screen.getAllByText("Students saw an error").length).toBeGreaterThanOrEqual(2);
+  } finally {
+    dispose();
+  }
+});
+
+test("review mode labels the charts per point and says each latency point covers its own interval", async () => {
+  const { dispose } = await mountRoute("/admin/ops?mode=review");
+  try {
+    expect(await screen.findByRole("heading", { name: "Dialogue turns per point" })).toBeTruthy();
+    expect(screen.getByText("Each point is the p95 of that interval")).toBeTruthy();
+    await waitFor(() => expect(document.querySelectorAll(".recharts-surface")).toHaveLength(2));
   } finally {
     dispose();
   }
