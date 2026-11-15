@@ -2,10 +2,10 @@
 
 Google 登入（#124）需要兩個值：
 
-| 名稱 | 類型 | 是否機密 | 說明 |
-| --- | --- | --- | --- |
-| `GOOGLE_CLIENT_ID` | text binding | 否（會出現在登入網址上） | OAuth 用戶端 ID，結尾是 `.apps.googleusercontent.com` |
-| `GOOGLE_CLIENT_SECRET` | secret | **是** | OAuth 用戶端密鑰，開頭是 `GOCSPX-` |
+| 名稱                   | 類型         | 是否機密                 | 說明                                                  |
+| ---------------------- | ------------ | ------------------------ | ----------------------------------------------------- |
+| `GOOGLE_CLIENT_ID`     | text binding | 否（會出現在登入網址上） | OAuth 用戶端 ID，結尾是 `.apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | secret       | **是**                   | OAuth 用戶端密鑰，開頭是 `GOCSPX-`                    |
 
 任一值留空時，Google 登入會停用：按下 Google 登入會導回 `/login?error=oauth_unavailable`，其他功能不受影響。
 
@@ -68,11 +68,11 @@ secret 外洩（例如出現在截圖或訊息裡），或定期更換時，照�
 
 ## 常見錯誤
 
-| 現象 | 原因 | 處理 |
-| --- | --- | --- |
-| `/login?error=oauth_unavailable` | `GOOGLE_CLIENT_ID` 或 `GOOGLE_CLIENT_SECRET` 沒設 | 補上後重開 dev 或重新部署 |
-| Google 頁面顯示 `redirect_uri_mismatch` | `PUBLIC_BASE_URL` 和 Console 登錄的 URI 不一致，或 Console 設定還沒生效 | 檢查協定、網域、port、路徑是否完全一致；剛改完可能要等幾分鐘才生效 |
-| `/login?error=oauth_failed` | secret 錯誤或已停用、使用者在 Google 頁面取消，或驗證失敗 | 確認 secret 是最新的一組；看伺服器 log |
-| `/login?error=oauth_state_invalid` | 登入請求超過 10 分鐘，或 cookie 遺失 | 重新按一次 Google 登入 |
-| `/login?error=oauth_email_unverified` | 這個 Google 帳號的信箱還沒驗證 | 請使用者先到 Google 驗證信箱 |
-| Google 顯示「存取遭拒／應用程式尚未經過驗證」 | 應用程式還在測試模式，而且帳號不在測試使用者名單裡 | 把帳號加進測試使用者，或發布為正式版 |
+| 現象                                          | 原因                                                                    | 處理                                                               |
+| --------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `/login?error=oauth_unavailable`              | `GOOGLE_CLIENT_ID` 或 `GOOGLE_CLIENT_SECRET` 沒設                       | 補上後重開 dev 或重新部署                                          |
+| Google 頁面顯示 `redirect_uri_mismatch`       | `PUBLIC_BASE_URL` 和 Console 登錄的 URI 不一致，或 Console 設定還沒生效 | 檢查協定、網域、port、路徑是否完全一致；剛改完可能要等幾分鐘才生效 |
+| `/login?error=oauth_failed`                   | secret 錯誤或已停用、使用者在 Google 頁面取消，或驗證失敗               | 確認 secret 是最新的一組；看伺服器 log                             |
+| `/login?error=oauth_state_invalid`            | 登入請求超過 10 分鐘，或 cookie 遺失                                    | 重新按一次 Google 登入                                             |
+| `/login?error=oauth_email_unverified`         | 這個 Google 帳號的信箱還沒驗證                                          | 請使用者先到 Google 驗證信箱                                       |
+| Google 顯示「存取遭拒／應用程式尚未經過驗證」 | 應用程式還在測試模式，而且帳號不在測試使用者名單裡                      | 把帳號加進測試使用者，或發布為正式版                               |
