@@ -109,7 +109,7 @@ Schema 的 SSOT 是 `apps/server/migrations/*.sql`（`001_init.sql` 起依序前
 | `SEED_TOKEN`           | `POST /api/dev/seed` 閘門（production 留空即可禁用）                        | 任意亂數                            |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret（留空＝Google 登入停用，回 `oauth_unavailable`） | Google Cloud Console → OAuth 用戶端 |
 
-Google 登入另需 text binding `GOOGLE_CLIENT_ID`（`cloudflare.config.ts`，dev 由 `.env.local` override），並在 Google Cloud Console 登錄 redirect URI `<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`；本地開發需在 `.env.local` 設 `PUBLIC_BASE_URL=http://localhost:5173`。
+Google 登入另需 text binding `GOOGLE_CLIENT_ID`（`cloudflare.config.ts`，dev 由 `.env.local` override），並在 Google Cloud Console 登錄 redirect URI `<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`；本地開發需在 `.env.local` 設 `PUBLIC_BASE_URL=http://localhost:5173`。建立用戶端、正式環境設定與 secret 輪替步驟見 [`google-oauth.md`](./google-oauth.md)。
 
 ```bash
 # 一次上傳（dotenv 格式；.env.production.local 不會進 dev/git）

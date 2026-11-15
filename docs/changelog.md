@@ -156,6 +156,7 @@
 - Migration `007_user_identities.sql`：第三方登入身分表（`user_identities`，PK (`provider`, `provider_user_id`)，隨帳號 cascade 刪除）
 - 錯誤碼 `oauth_unavailable`／`oauth_state_invalid`／`oauth_email_unverified`／`oauth_failed`（三語）；binding `GOOGLE_CLIENT_ID`（text）／`GOOGLE_CLIENT_SECRET`（secret，留空＝停用）
 - `assets.runWorkerFirst: ["/api/*", "/health"]`：SPA `notFoundHandling` 會把瀏覽器 navigation（`Sec-Fetch-Mode: navigate`）直接回 `index.html`，導致整頁跳轉的 `/api/auth/oauth/*` 永遠到不了 Worker
+- 新增 [`google-oauth.md`](./google-oauth.md)（建立用戶端、本機／正式設定、secret 輪替、常見錯誤）；`.env.example` 補 `GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET`
 - 測試：`tests/auth-sso.test.ts`（signup、OAuth 成功／state 竄改／簽章偽造／aud・iss・exp・nonce・未驗證 email）、`tests/migrations.test.ts`（user_identities 唯一性與 cascade）
 
 ## 2026-11-09 — routing/ 更名 gateway/（`experiment/web-next`）
