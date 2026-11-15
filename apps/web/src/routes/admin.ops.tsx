@@ -9,6 +9,7 @@ import { BreakdownPanels, LiveSummary, QuotaPanel, ReviewSummary } from "@/compo
 import { ClassroomDrilldown, ClassUsagePanel, EventsPanel } from "@/components/OpsTables";
 import { Button, PageHeader, SectionTitle, Segmented, Spinner, cn } from "@/components/ui";
 import { useI18n, type MessageKey } from "@/i18n";
+import { useIdle } from "@/hooks/useIdle";
 import { formatDateTime } from "@/lib/adminTime";
 
 const OpsCharts = lazy(() => import("@/components/OpsCharts").then((module) => ({ default: module.OpsCharts })));
@@ -17,6 +18,7 @@ type OpsSearch = { mode?: "review"; range?: OpsRange; classroom?: string };
 type OpsMode = "live" | "review";
 
 const DEFAULT_RANGE: OpsRange = "24h";
+const IDLE_STOP_MS = 10 * 60_000;
 const RANGE_KEYS = {
   "1h": "admin_range_1h",
   "6h": "admin_range_6h",
@@ -48,12 +50,13 @@ function OpsPage() {
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
   const live = mode !== "review";
   const livePlan = OPS_AXIS_PLAN.live;
+  const { idle, resume } = useIdle(IDLE_STOP_MS, live);
 
   const liveQuery = useQuery({
     queryKey: ["admin-live"],
     queryFn: () => api.adminLive(),
     enabled: live,
-    refetchInterval: livePlan.stepSec * 1000,
+    refetchInterval: idle ? false : livePlan.stepSec * 1000,
   });
   const metricsQuery = useQuery({
     queryKey: ["admin-metrics", range],
@@ -139,6 +142,23 @@ function OpsPage() {
               : t("admin_review_hint", { minutes: OPS_AXIS_PLAN[range].stepSec / 60 })}
           </span>
         </div>
+        {live && idle && (
+          <p
+            role="status"
+            className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line-strong bg-card px-3 py-2 text-[13px] text-ink-soft"
+          >
+            {t("admin_idle_notice", { minutes: IDLE_STOP_MS / 60_000 })}
+            <Button
+              variant="outline"
+              onClick={() => {
+                resume();
+                void liveQuery.refetch();
+              }}
+            >
+              {t("admin_idle_resume")}
+            </Button>
+          </p>
+        )}
         {query.isPending && (
           <div className="flex justify-center py-16">
             <Spinner className="h-6 w-6" />

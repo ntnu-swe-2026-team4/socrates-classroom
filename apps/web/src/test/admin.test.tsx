@@ -43,6 +43,11 @@ const dashboard: AdminDashboard = {
   hourly: [{ hour: "2026-11-15T08:00:00Z", classrooms: 1, joins: 5 }],
 };
 
+const idleState = vi.hoisted(() => ({ idle: false, resume: vi.fn() }));
+vi.mock("@/hooks/useIdle", () => ({
+  useIdle: (_timeoutMs: number, watching: boolean) => ({ idle: idleState.idle && watching, resume: idleState.resume }),
+}));
+
 let requested: string[] = [];
 let requestedUrls: string[] = [];
 let sessionStatus = 200;
@@ -56,6 +61,8 @@ beforeEach(() => {
   setLocale("en");
   requested = [];
   requestedUrls = [];
+  idleState.idle = false;
+  idleState.resume.mockClear();
   sessionStatus = 200;
   liveStatus = 200;
   liveBody = liveResponse();
@@ -860,6 +867,38 @@ test("live mode has no breakdown or cost panels", async () => {
     expect(screen.queryByRole("region", { name: /Violations/ })).toBeNull();
     expect(screen.queryByRole("region", { name: /Usage by purpose/ })).toBeNull();
     expect(screen.queryByRole("region", { name: "Cost" })).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+const liveRequests = () => requested.filter((path) => path === "/api/admin/live").length;
+
+test("when the page is idle, live polling stops, the notice shows and resuming fetches again", async () => {
+  idleState.idle = true;
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    await waitFor(() => expect(liveRequests()).toBe(1));
+    expect(await screen.findByText("No activity for 10 minutes, so automatic updates are paused.")).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(liveRequests()).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Resume updates" }));
+    expect(idleState.resume).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(liveRequests()).toBe(2));
+  } finally {
+    vi.useRealTimers();
+    dispose();
+  }
+});
+
+test("review mode never shows the idle notice", async () => {
+  idleState.idle = true;
+  const { dispose } = await mountRoute("/admin/ops?mode=review");
+  try {
+    await waitFor(() => expect(requested).toContain("/api/admin/metrics"));
+    await screen.findByText("Dialogue turns");
+    expect(screen.queryByText(/automatic updates are paused/)).toBeNull();
   } finally {
     dispose();
   }
