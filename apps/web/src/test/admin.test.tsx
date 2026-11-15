@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AdminDashboard } from "@socrates/shared";
 import { routeTree } from "@/routeTree.gen";
 import { setLocale } from "@/i18n";
+import { liveResponse, metricsResponse } from "./opsFixtures";
 
 vi.mock("@/components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
 vi.mock("@/landing/LandAnimation", () => ({ LandAnimation: () => null }));
@@ -43,7 +44,8 @@ let requested: string[] = [];
 let requestedUrls: string[] = [];
 let sessionStatus = 200;
 let liveStatus = 200;
-const opsBase = { source: "fixture", generatedAtSec: 1_763_200_000 };
+let liveBody = liveResponse();
+let metricsBody = metricsResponse();
 
 beforeEach(() => {
   localStorage.clear();
@@ -52,6 +54,8 @@ beforeEach(() => {
   requestedUrls = [];
   sessionStatus = 200;
   liveStatus = 200;
+  liveBody = liveResponse();
+  metricsBody = metricsResponse();
   vi.stubGlobal("scrollTo", vi.fn());
   vi.stubGlobal(
     "fetch",
@@ -70,8 +74,8 @@ beforeEach(() => {
       }
       if (path === "/api/admin/dashboard") return json(dashboard);
       if (path === "/api/admin/live")
-        return liveStatus === 200 ? json(opsBase) : json({ code: "internal_error", message: "x" }, liveStatus);
-      if (path === "/api/admin/metrics") return json(opsBase);
+        return liveStatus === 200 ? json(liveBody) : json({ code: "internal_error", message: "x" }, liveStatus);
+      if (path === "/api/admin/metrics") return json(metricsBody);
       if (path === "/api/classrooms") return json([]);
       throw new Error(`Unexpected request: ${path}`);
     }),
@@ -354,6 +358,111 @@ test("the operations page follows the selected language", async () => {
   try {
     expect(await screen.findByRole("heading", { name: "Métricas de operación" })).toBeTruthy();
     expect(await screen.findByText("Se actualiza cada 5 s y muestra los últimos 15 minutos")).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
+
+test("live mode states the overall verdict, the headline numbers and one card per channel", async () => {
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    expect(await screen.findByRole("heading", { name: "Degraded: GLM 5.3 Flash" })).toBeTruthy();
+    expect(screen.getByText("No student saw an error in the last minute")).toBeTruthy();
+    const tile = (label: string) => screen.getByText(label).closest("div")?.querySelectorAll("dd")[0]?.textContent;
+    expect(tile("Online now")).toBe("12");
+    expect(tile("Students saw an error")).toBe("0");
+    expect(tile("Attempt error rate")).toBe("50%");
+    expect(tile("Time to first token p95")).toBe("800 ms");
+
+    const channels = screen.getByRole("region", { name: /Channels/ });
+    expect(channels.querySelectorAll("li")).toHaveLength(2);
+    const glm = screen.getByText("GLM 5.3 Flash", { selector: "span" }).closest("li")!;
+    expect(glm.textContent).toContain("Degraded");
+    expect(glm.textContent).toContain("Error rate 50%");
+    expect(glm.textContent).toContain("Last minute: 24 attempts, 12 failed");
+    expect(glm.textContent).toContain("Used for: Dialogue");
+    expect(glm.textContent).toContain("No concurrency limit set");
+    const clef = screen.getByText("Clef Flash", { selector: "span" }).closest("li")!;
+    expect(clef.textContent).toContain("OK");
+    expect(clef.textContent).toContain("Used for: Judgment");
+  } finally {
+    dispose();
+  }
+});
+
+test("a down channel outranks a degraded one and its duration is shown", async () => {
+  const body = liveBody;
+  body.channels[1]!.usable = "down";
+  body.channels[1]!.usableReason = "breaker_open";
+  body.channels[1]!.usableSinceSec = body.generatedAtSec - 300;
+  body.channels[1]!.breaker = "open";
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    expect(await screen.findByRole("heading", { name: "Down: Clef Flash" })).toBeTruthy();
+    expect(screen.getByText(/for 5 min/)).toBeTruthy();
+    const clef = screen.getByText("Clef Flash", { selector: "span" }).closest("li")!;
+    expect(clef.textContent).toContain("Circuit breaker open");
+  } finally {
+    dispose();
+  }
+});
+
+test("students who saw errors are counted in the verdict, and unknown values stay dashes", async () => {
+  liveBody.now.failedTurns1m = 3;
+  liveBody.now.concurrentUsers = null;
+  liveBody.now.ttftP95Ms5m = null;
+  liveBody.now.errorRate1m = null;
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    expect(await screen.findByText("3 turns showed students an error in the last minute")).toBeTruthy();
+    const tile = (label: string) => screen.getByText(label).closest("div")?.querySelectorAll("dd")[0]?.textContent;
+    expect(tile("Online now")).toBe("—");
+    expect(tile("Time to first token p95")).toBe("—");
+    expect(tile("Attempt error rate")).toBe("—");
+  } finally {
+    dispose();
+  }
+});
+
+test("when no channel has had a request the verdict says there is no data instead of healthy", async () => {
+  for (const channel of liveBody.channels) {
+    channel.usable = "unknown";
+    channel.usableReason = "no_data";
+  }
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    expect(await screen.findByRole("heading", { name: "No requests in the last minute" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "All channels are healthy" })).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test("review mode shows range summaries and no current-state verdict", async () => {
+  const { dispose } = await mountRoute("/admin/ops?mode=review");
+  try {
+    expect(await screen.findByText("Dialogue turns")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /Degraded|Down|All channels/ })).toBeNull();
+    const tile = (label: string) => screen.getByText(label).closest("div")?.querySelectorAll("dd")[0]?.textContent;
+    expect(tile("Dialogue turns")).toBe("120");
+    expect(tile("Peak online")).toBe("12");
+    const glm = screen.getByText("GLM 5.3 Flash", { selector: "span" }).closest("li")!;
+    expect(glm.textContent).toContain("120 attempts, 60 failed (50%)");
+    expect(glm.textContent).toContain("Time to first token p95: 800 ms");
+    expect(glm.textContent).toContain("Full response p95: 2.4 sec");
+    expect(glm.textContent).not.toContain("Last minute");
+  } finally {
+    dispose();
+  }
+});
+
+test("the channel cards follow the selected language", async () => {
+  setLocale("zh-TW");
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    expect(await screen.findByRole("heading", { name: "降級：GLM 5.3 Flash" })).toBeTruthy();
+    expect(screen.getByText("近 1 分鐘沒有學生看到錯誤")).toBeTruthy();
+    expect(screen.getByText(/用途：對話/)).toBeTruthy();
   } finally {
     dispose();
   }

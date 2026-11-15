@@ -5,6 +5,7 @@ import { RefreshCw, TriangleAlert } from "lucide-react";
 import { OPS_AXIS_PLAN, OPS_RANGES, OpsRangeSchema, type OpsRange } from "@socrates/shared";
 import { api } from "@/api";
 import { AdminTabs } from "@/components/AdminTabs";
+import { LiveSummary, ReviewSummary } from "@/components/OpsPanels";
 import { Button, PageHeader, Segmented, Spinner, cn } from "@/components/ui";
 import { useI18n, type MessageKey } from "@/i18n";
 import { formatDateTime } from "@/lib/adminTime";
@@ -131,6 +132,8 @@ function OpsPage() {
           </div>
         )}
         {query.isError && <p className="text-[14px] text-flag">{t("admin_load_failed")}</p>}
+        {live && liveQuery.data && <LiveSummary data={liveQuery.data} />}
+        {!live && metricsQuery.data && <ReviewSummary data={metricsQuery.data} />}
       </div>
     </div>
   );

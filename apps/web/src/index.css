@@ -25,6 +25,10 @@
   --color-moss-wash: rgb(102 121 79 / 0.13);
   --color-flag: #9c4a3c;
   --color-flag-wash: rgb(156 74 60 / 0.13);
+  --color-series-1: #2f6fdb;
+  --color-series-2: #c26a14;
+  --color-series-3: #2a9d8f;
+  --color-series-4: #8e5ec7;
 }
 
 [data-theme="dark"] {
@@ -45,6 +49,10 @@
   --color-moss-wash: rgb(140 160 122 / 0.14);
   --color-flag: #b2604f;
   --color-flag-wash: rgb(178 96 79 / 0.14);
+  --color-series-1: #4d8af0;
+  --color-series-2: #cc7a22;
+  --color-series-3: #2ba394;
+  --color-series-4: #a47be0;
 }
 
 :root {
