@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { api, type AdminDashboard } from "@/api";
+import { AdminTabs } from "@/components/AdminTabs";
 import { Pagination, SortableTh, useTable } from "@/components/DataTable";
 import { Button, Card, PageHeader, SectionTitle, Spinner, cn } from "@/components/ui";
 import { useI18n, type MessageKey } from "@/i18n";
@@ -46,6 +47,7 @@ function DashboardPage() {
         description={t("admin_dashboard_intro")}
         actions={
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <AdminTabs />
             {data && (
               <span className="text-[12.5px] text-ink-faint">
                 {t("admin_updated_at", { time: when(data.generatedAt) })}

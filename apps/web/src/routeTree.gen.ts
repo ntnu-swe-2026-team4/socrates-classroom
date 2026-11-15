@@ -18,6 +18,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
+import { Route as AdminOpsRouteImport } from './routes/admin.ops'
 import { Route as ClassroomsIndexRouteImport } from './routes/classrooms.index'
 import { Route as ClassroomsClassroomIdRouteImport } from './routes/classrooms.$classroomId'
 import { Route as JoinIndexRouteImport } from './routes/join.index'
@@ -71,6 +72,11 @@ const AdminDashboardRoute = AdminDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminOpsRoute = AdminOpsRouteImport.update({
+  id: '/ops',
+  path: '/ops',
+  getParentRoute: () => AdminRoute,
+} as any)
 const ClassroomsIndexRoute = ClassroomsIndexRouteImport.update({
   id: '/classrooms/',
   path: '/classrooms/',
@@ -116,6 +122,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/ops': typeof AdminOpsRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/ops': typeof AdminOpsRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/ops': typeof AdminOpsRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
@@ -171,6 +180,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/settings'
     | '/admin/dashboard'
+    | '/admin/ops'
     | '/classrooms/$classroomId'
     | '/join/$code'
     | '/report/$id'
@@ -187,6 +197,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/settings'
     | '/admin/dashboard'
+    | '/admin/ops'
     | '/classrooms/$classroomId'
     | '/join/$code'
     | '/report/$id'
@@ -205,6 +216,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/settings'
     | '/admin/dashboard'
+    | '/admin/ops'
     | '/classrooms/$classroomId'
     | '/join/$code'
     | '/report/$id'
@@ -295,6 +307,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminDashboardRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/ops': {
+      id: '/admin/ops'
+      path: '/ops'
+      fullPath: '/admin/ops'
+      preLoaderRoute: typeof AdminOpsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/classrooms/': {
       id: '/classrooms/'
       path: '/classrooms'
@@ -349,11 +368,13 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminDashboardRoute: typeof AdminDashboardRoute
+  AdminOpsRoute: typeof AdminOpsRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminDashboardRoute: AdminDashboardRoute,
+  AdminOpsRoute: AdminOpsRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 

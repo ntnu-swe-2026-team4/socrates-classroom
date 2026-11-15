@@ -40,19 +40,26 @@ const dashboard: AdminDashboard = {
 };
 
 let requested: string[] = [];
+let requestedUrls: string[] = [];
 let sessionStatus = 200;
+let liveStatus = 200;
+const opsBase = { source: "fixture", generatedAtSec: 1_763_200_000 };
 
 beforeEach(() => {
   localStorage.clear();
   setLocale("en");
   requested = [];
+  requestedUrls = [];
   sessionStatus = 200;
+  liveStatus = 200;
   vi.stubGlobal("scrollTo", vi.fn());
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
-      const path = new URL(String(input), "http://localhost").pathname;
+      const url = new URL(String(input), "http://localhost");
+      const path = url.pathname;
       requested.push(path);
+      requestedUrls.push(path + url.search);
       const json = (body: unknown, status = 200) =>
         new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
       if (path === "/api/me") return json({ id: "teacher-1", name: "Teacher", role: "teacher" });
@@ -62,6 +69,9 @@ beforeEach(() => {
           : json({ code: "forbidden", message: "no" }, sessionStatus);
       }
       if (path === "/api/admin/dashboard") return json(dashboard);
+      if (path === "/api/admin/live")
+        return liveStatus === 200 ? json(opsBase) : json({ code: "internal_error", message: "x" }, liveStatus);
+      if (path === "/api/admin/metrics") return json(opsBase);
       if (path === "/api/classrooms") return json([]);
       throw new Error(`Unexpected request: ${path}`);
     }),
@@ -208,11 +218,11 @@ test("short lists show no pager", async () => {
   }
 });
 
-test("/admin redirects to the dashboard", async () => {
+test("/admin redirects to the operations page", async () => {
   const { dispose, router } = await mountRoute("/admin");
   try {
-    await waitFor(() => expect(router.state.location.pathname).toBe("/admin/dashboard"));
-    expect(await screen.findByRole("heading", { name: "Operations dashboard" })).toBeTruthy();
+    await waitFor(() => expect(router.state.location.pathname).toBe("/admin/ops"));
+    expect(await screen.findByRole("heading", { name: "Operations metrics" })).toBeTruthy();
   } finally {
     dispose();
   }
@@ -236,6 +246,114 @@ test("the dashboard follows the selected language", async () => {
   try {
     expect(await screen.findByRole("heading", { name: "Panel de operaciones" })).toBeTruthy();
     expect(await screen.findByText("Siguen generándose tras 20 minutos")).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
+
+test("the operations page opens in live mode, says the data is a sample, and links both pages", async () => {
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    expect(await screen.findByText(/Sample data/)).toBeTruthy();
+    expect(screen.getByText("Updates every 5 s, showing the last 15 minutes")).toBeTruthy();
+    expect(requestedUrls).toContain("/api/admin/live");
+    expect(requested).not.toContain("/api/admin/metrics");
+    expect(screen.getByRole("tab", { name: "Live" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("tab", { name: "24 hours" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Operations" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "Database overview" }).getAttribute("aria-current")).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test("switching to review loads the range endpoint and keeps the choice in the address", async () => {
+  const { dispose, router } = await mountRoute("/admin/ops");
+  try {
+    await screen.findByText(/Sample data/);
+    fireEvent.click(screen.getByRole("tab", { name: "Review" }));
+    await waitFor(() => expect(requestedUrls).toContain("/api/admin/metrics?range=24h"));
+    expect(router.state.location.search).toEqual({ mode: "review" });
+    expect(screen.getByText("Each point is 5 min; does not auto-refresh")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("tab", { name: "7 days" }));
+    await waitFor(() => expect(requestedUrls).toContain("/api/admin/metrics?range=7d"));
+    expect(router.state.location.search).toEqual({ mode: "review", range: "7d" });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Live" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ range: "7d" }));
+  } finally {
+    dispose();
+  }
+});
+
+test("the address picks the mode and range, and an unknown range falls back to 24 hours", async () => {
+  const first = await mountRoute("/admin/ops?mode=review&range=72h");
+  try {
+    await waitFor(() => expect(requestedUrls).toContain("/api/admin/metrics?range=72h"));
+    expect(requested).not.toContain("/api/admin/live");
+    expect(screen.getByRole("tab", { name: "72 hours" }).getAttribute("aria-selected")).toBe("true");
+  } finally {
+    first.dispose();
+  }
+  requestedUrls = [];
+  const second = await mountRoute("/admin/ops?mode=review&range=15m");
+  try {
+    await waitFor(() => expect(requestedUrls).toContain("/api/admin/metrics?range=24h"));
+    expect(requestedUrls.some((url) => url.includes("15m"))).toBe(false);
+  } finally {
+    second.dispose();
+  }
+});
+
+test("live mode polls on the contract's step and stops when review is chosen", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    await waitFor(() => expect(requested.filter((path) => path === "/api/admin/live")).toHaveLength(1));
+    await vi.advanceTimersByTimeAsync(5_100);
+    await waitFor(() =>
+      expect(requested.filter((path) => path === "/api/admin/live").length).toBeGreaterThanOrEqual(2),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Review" }));
+    await waitFor(() => expect(requested).toContain("/api/admin/metrics"));
+    const before = requested.filter((path) => path === "/api/admin/live").length;
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(requested.filter((path) => path === "/api/admin/live")).toHaveLength(before);
+  } finally {
+    vi.useRealTimers();
+    dispose();
+  }
+});
+
+test("a failed live request shows an error instead of an empty page", async () => {
+  liveStatus = 500;
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    expect(await screen.findByText("Could not load the dashboard. Please try again later.")).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
+
+test("a non-admin never reaches the operations data", async () => {
+  sessionStatus = 403;
+  const { dispose, router } = await mountRoute("/admin/ops?mode=review");
+  try {
+    await waitFor(() => expect(router.state.location.pathname).toBe("/classrooms"));
+    expect(requested).not.toContain("/api/admin/metrics");
+    expect(requested).not.toContain("/api/admin/live");
+  } finally {
+    dispose();
+  }
+});
+
+test("the operations page follows the selected language", async () => {
+  setLocale("es");
+  const { dispose } = await mountRoute("/admin/ops");
+  try {
+    expect(await screen.findByRole("heading", { name: "Métricas de operación" })).toBeTruthy();
+    expect(await screen.findByText("Se actualiza cada 5 s y muestra los últimos 15 minutos")).toBeTruthy();
   } finally {
     dispose();
   }

@@ -24,7 +24,7 @@ const NAV = [
   },
 ] as const;
 
-const ADMIN_NAV = { to: "/admin/dashboard", label: "nav_admin", icon: LayoutDashboard, match: ["/admin"] } as const;
+const ADMIN_NAV = { to: "/admin/ops", label: "nav_admin", icon: LayoutDashboard, match: ["/admin"] } as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
