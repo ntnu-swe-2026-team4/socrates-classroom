@@ -19,6 +19,7 @@ export type ReverifyOutcome = "member" | "revoked" | "error";
 export type Reverify = (userId: string) => Promise<ReverifyOutcome>;
 export type CanSubmit = (userId: string) => boolean;
 export type SubmitRoute = (handle: PiSession, input: UserInput, options: PiSubmitOptions) => Promise<PiReceipt>;
+export type OpenBtw = () => Promise<string>;
 
 export class SubmitForbiddenError extends Error {
   constructor() {
@@ -27,9 +28,25 @@ export class SubmitForbiddenError extends Error {
   }
 }
 
+export class UnknownSessionError extends Error {
+  constructor() {
+    super("No side session with that id in this thread");
+    this.name = "UnknownSession";
+  }
+}
+
 const OPEN = 1;
 
-const KNOWN_ERROR_NAMES = new Set(["ConversationBusy", "ActivityFinished", "SubmitForbidden", "no_available_model"]);
+const KNOWN_ERROR_NAMES = new Set([
+  "ConversationBusy",
+  "ActivityFinished",
+  "SubmitForbidden",
+  "no_available_model",
+  "NothingToFork",
+  "UnknownSession",
+]);
+
+type SocketState = { auth?: string; session?: string };
 
 function resumeAfter(view: ConversationView): ConversationWindow {
   const newest = view.entries.at(-1)?.id ?? view.before;
@@ -60,8 +77,10 @@ export class ChatSockets {
   readonly #authorize?: Authorize;
   readonly #submitRoute?: SubmitRoute;
   readonly #canSubmit?: CanSubmit;
+  readonly #openBtw?: OpenBtw;
   readonly #watches = new Map<WebSocket, ConversationWatch>();
   readonly #authorized = new Map<WebSocket, string>();
+  readonly #sessions = new Map<WebSocket, string>();
 
   constructor(
     harness: PiHarness,
@@ -70,6 +89,7 @@ export class ChatSockets {
     authorize?: Authorize,
     submitRoute?: SubmitRoute,
     canSubmit?: CanSubmit,
+    openBtw?: OpenBtw,
   ) {
     this.#harness = harness;
     this.#registry = registry;
@@ -77,6 +97,7 @@ export class ChatSockets {
     this.#authorize = authorize;
     this.#submitRoute = submitRoute;
     this.#canSubmit = canSubmit;
+    this.#openBtw = openBtw;
   }
 
   options(): WebSocketsOptions {
@@ -92,7 +113,7 @@ export class ChatSockets {
 
   async reattach(connections: Iterable<Connection>, reverify?: Reverify): Promise<void> {
     for (const connection of connections) {
-      const auth = (connection.state as { auth?: string } | null)?.auth;
+      const { auth, session } = (connection.state as SocketState | null) ?? {};
       const outcome = !auth ? "revoked" : reverify ? await reverify(auth) : "member";
       if (outcome === "revoked") {
         this.#refuse(connection);
@@ -103,6 +124,7 @@ export class ChatSockets {
         continue;
       }
       this.#authorized.set(connection, auth!);
+      if (session !== undefined) this.#sessions.set(connection, session);
       await this.#watchOrClose(connection);
     }
   }
@@ -126,10 +148,25 @@ export class ChatSockets {
     }
   }
 
-  notifyRunFailure(): void {
+  notifyRunFailure(session: string = ROOT_SESSION): void {
     for (const socket of this.#getWebSockets()) {
+      if (this.#sessionOf(socket) !== session) continue;
       send(socket, { type: "error", message: "The model run failed", code: "llm_unavailable" });
     }
+  }
+
+  #sessionOf(socket: WebSocket): string {
+    return this.#sessions.get(socket) ?? ROOT_SESSION;
+  }
+
+  async #isBtwSession(session: string): Promise<boolean> {
+    const sessions = await this.#harness.sessions.list();
+    return sessions.some((info) => info.id === session && info.parent === ROOT_SESSION);
+  }
+
+  #bind(connection: Connection, session: string): void {
+    this.#sessions.set(connection, session);
+    connection.setState({ ...((connection.state as SocketState | null) ?? {}), session } satisfies SocketState);
   }
 
   async #onConnect(connection: Connection, ctx: ConnectionContext): Promise<void> {
@@ -139,7 +176,7 @@ export class ChatSockets {
         this.#refuse(connection);
         return;
       }
-      connection.setState({ auth: userId });
+      connection.setState({ auth: userId } satisfies SocketState);
       this.#authorized.set(connection, userId);
     }
     send(connection, {
@@ -152,7 +189,7 @@ export class ChatSockets {
   }
 
   async #watch(socket: WebSocket, window: ConversationWindow = {}): Promise<void> {
-    const watch = await this.#harness.session(ROOT_SESSION).watch(window);
+    const watch = await this.#harness.session(this.#sessionOf(socket)).watch(window);
     if (socket.readyState !== OPEN) {
       await watch.stop();
       return;
@@ -197,6 +234,7 @@ export class ChatSockets {
 
   async #unwatch(socket: WebSocket): Promise<void> {
     this.#authorized.delete(socket);
+    this.#sessions.delete(socket);
     const watch = this.#watches.get(socket);
     if (!watch) return;
     this.#watches.delete(socket);
@@ -233,8 +271,8 @@ export class ChatSockets {
     }
   }
 
-  async #dispatch(socket: WebSocket, message: ClientMessage) {
-    const handle = this.#harness.session(ROOT_SESSION);
+  async #dispatch(socket: Connection, message: ClientMessage) {
+    const handle = this.#harness.session(this.#sessionOf(socket));
     switch (message.type) {
       case "submit": {
         if (typeof message.input !== "string") throw new Error("Invalid input");
@@ -255,6 +293,24 @@ export class ChatSockets {
       }
       case "abort":
         return await handle.abort();
+      case "btw": {
+        let session: string;
+        if (message.session === undefined) {
+          const userId = this.#authorized.get(socket);
+          if (!this.#openBtw || userId === undefined || (this.#canSubmit && !this.#canSubmit(userId))) {
+            throw new SubmitForbiddenError();
+          }
+          session = await this.#openBtw();
+        } else {
+          if (typeof message.session !== "string" || !(await this.#isBtwSession(message.session))) {
+            throw new UnknownSessionError();
+          }
+          session = message.session;
+        }
+        this.#bind(socket, session);
+        await this.#watchOrClose(socket);
+        return { session };
+      }
       case "watch": {
         if (message.from !== undefined && !isEntryId(message.from)) throw new Error("Invalid from");
         await this.#watchOrClose(socket, message.from === undefined ? {} : { from: message.from });

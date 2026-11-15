@@ -90,6 +90,7 @@ watch 沒有 event cursor；重連以 `watch({ from: newestEntryId + 1 })` 讓 w
 - `avatar`（目錄，#111）：afterRun hook → Clef choice 題 → 寫 `app.emotion` entry（`{emotion, probabilities, confidence}`）
 - `judgment`（目錄，#71）：afterRun 分類 task＋`report_violation` tool → 寫 `app.violation` entry
 - `websearch`（目錄，#112）：`web_search` / `fetch_content` / `get_search_content` 三 tool（形制參考 pi-web-access，裁剪至 Workers 環境）
+- `btw`（單檔，#121）：side session 的 prompt section（`apps/server/src/prompts/btw.md`）＋`forkBtw`。**不在 host 預設 selection**：Chat DO 的 `settings.extensions` 是 getter，回傳「已安裝且非 btw」的 extensions（pi 每次 resolution 都重讀 settings），所以 root 照舊、新裝的 extension（如 faux-replay）自動納入；btw 只在 `root.fork(at, { agent: { extensions: [btw] } })` 的 fork 上生效。fork 繼承 fork 點之前的 entries，之後的 entries 只屬於 fork——這是 side session 不污染 root context 的機制
 
 寫 extension 的要點：
 
