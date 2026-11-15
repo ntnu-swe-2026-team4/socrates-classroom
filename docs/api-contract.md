@@ -33,9 +33,9 @@
 | `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —    | ❌ 403 `capability_required` | ✅                   | ✅（仍需能力）        |
 | `GET /admin/users`、`POST /admin/users`、`PATCH /admin/users/:id`                                       | —    | ❌ 401／403 `forbidden`      | ❌ 403 `forbidden`   | ✅                    |
 | `GET /activities/:id`、`GET /report`                                                                    | —    | 需教室成員                   | 需教室成員           | 需教室成員            |
-| **WS** `/agents/chat/:name`（watch/entries/abort）                                                      | —    | 僅本人 thread                | 可觀察自己帶的班級   | 同 `canManageClasses` |
-| **WS** `submit` op                                                                                      | —    | 僅本人 thread                | ❌ `SubmitForbidden` | ❌ `SubmitForbidden`  |
-| **WS** `btw` op（開新 side session）／`btw {session}`（附掛既有）                                       | —    | 僅本人 thread                | 開新 ❌ `SubmitForbidden`；附掛 ✅ | 同 `canManageClasses` |
+| **WS** `/agents/chat/:name`（watch/entries/abort）                                                      | —    | 僅本人 participant thread    | 可觀察自己帶的班級   | 同 `canManageClasses` |
+| **WS** `submit` op                                                                                      | —    | 僅本人 participant thread    | ❌ `SubmitForbidden` | ❌ `SubmitForbidden`  |
+| **WS** `btw` op（開新 side session）／`btw {session}`（附掛既有）                                       | —    | 僅本人 participant thread    | 開新 ❌ `SubmitForbidden`；附掛 ✅ | 同 `canManageClasses` |
 | `POST /activities/:id/finish`                                                                           | —    | ❌ 403                       | 需教室成員（owner）  | 同 `canManageClasses` |
 
 ## 2. 身分（雙軌：訪客即玩＋帳號選用，#67）
@@ -53,12 +53,31 @@ interface User {
 - 訪客 join 即建 guest user（`canManageClasses: false`）；帳號登入後訪客紀錄認領合併（#60，P1）
 - `GET /me` → `User | null`；停用或 `session_version` 過期的 cookie 回 `null`（視同未登入），其他端點則分別回 403 `account_disabled`／401 `unauthorized`
 
+### 2.1 活動層身分（`activity_participants`，#132）
+
+「誰參加了哪個活動」是獨立的表，不是班級名冊：
+
+| 欄位              | 意義                                                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `activity_id`     | 所屬活動；PK 為 (`activity_id`, `id`)，participant id 只在活動內唯一                                                                                         |
+| `id`              | participant id——**WS thread 與報告的鍵**；新 participant 為 `p_…`，003 backfill 的既有成員等於其 `user_id`（既有 Chat DO thread 與既有報告的鍵因此原樣續用） |
+| `user_id`         | nullable：訪客為 `null`（#133）；`ON DELETE SET NULL`——帳號刪除不帶走 participant，報告不斷鏈                                                                |
+| `kind`            | `member`（班級成員進入活動）、`guest`（#133）、`teacher`（#134 測試模式 slot）                                                                               |
+| `display_name`    | 活動內顯示名；UNIQUE(`activity_id`, `display_name`)                                                                                                          |
+| `tos_accepted_at` | 同意存證（nullable）                                                                                                                                         |
+| `joined_at`       | 進入活動時間；`member` 的 participant 由 `POST /join`／註冊或 `GET /activities/:id` 建立（僅活動進行中）                                                     |
+
+- **報告母體是 participant，不是 `members`**：沒進活動的班級成員不出現在報告，非成員的參與者（訪客、老師）會出現
+- `members` 仍是班級名冊（決定「能不能進入這個班級的活動」）；兩者不可互相取代
+- participant 只描述「活動期間的存在」，活動關閉後不再新增；`kind` 的 `guest`／`teacher` 分別由 #133、#134 生產
+
 ## 3. 入場（唯一閘門，#66/#70）
 
-| Operation                                                            | 說明                                                                                                                                                                                                                                                                                                                                                                                           |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/join/:code` → `{code, classroomName, topic}`               | 直達 URL 載入用（刷新不丟）；無效碼 404 `join_code_invalid`                                                                                                                                                                                                                                                                                                                                    |
-| `POST /api/join` `{code, name?, tosAccepted}` → `{user, activityId}` | 一次完成：身分（無 session 建 guest user）＋ToS 同意存證＋加入教室。**冪等**：同身分重 join → 200（活動結束後仍可 rejoin，供 session 修復與報告回看）。錯誤：`tosAccepted` 非 true → 422 `tos_required`；`name` 教室內唯一（409 `name_taken`）；活動已結束 → 409 `activity_finished`（僅攔新成員）。**任何已登入身分都可加入**（含 `canManageClasses` 帳號——同一人可同時在另一班當學生，#131） |
+| Operation                                                            | 說明                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/join/:code` → `{code, classroomName, topic}`               | 直達 URL 載入用（刷新不丟）；無效碼 404 `join_code_invalid`                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `POST /api/join` `{code, name?, tosAccepted}` → `{user, activityId}` | 一次完成：身分（無 session 建 guest user）＋ToS 同意存證＋加入教室＋建立活動 participant（§2.1）。**冪等**：同身分重 join → 200（活動結束後仍可 rejoin，供 session 修復與報告回看；已結束的活動不再新增 participant）。錯誤：`tosAccepted` 非 true → 422 `tos_required`；`name` 教室內唯一（409 `name_taken`）；活動已結束 → 409 `activity_finished`（僅攔新成員）。**任何已登入身分都可加入**（含 `canManageClasses` 帳號——同一人可同時在另一班當學生，#131） |
+| `GET /api/activities/:id` → `ActivityInfo`                           | `{id, classroomId, classroomName, participantId, topic, finishedAt}`。`participantId` 是**呼叫者在該活動的 participant**（WS thread 名的一半）；班級成員在活動進行中呼叫會取得（必要時建立）自己的 participant，活動已結束或呼叫者是該班老師（非參與者）則為 `null`。非成員 403                                                                                                                                                                                |
 
 ## 4. 老師：主題集與開課（#77）
 
@@ -76,8 +95,8 @@ interface User {
 ### 5.1 通道
 
 - `GET /agents/chat/:name`（WebSocket 升級）——**對話唯一通道**（先前的 SSE 端點已退役）
-- thread name 協定：`{activityId}:{userId}`（一人一 thread；DO name 即路由鍵）
-- 授權：`socrates_session` cookie（升級請求帶 cookie）——onConnect 驗 session＋membership：學生限本人 thread，班級 owner 可觀察全班（watch/entries/abort；**submit 僅限該 thread 的學生本人**——owner 代打 → error frame code `SubmitForbidden`）；未通過 → close 1008（無 hello）；hibernation 喚醒後 reverify 確定撤權（ApiError）→ close 1008；reverify 暫時性錯誤（D1 失敗等）或 watch 遺失（session 驅逐）→ close 1011（客戶端重連即重試）
+- thread name 協定：`{activityId}:{participantId}`（**一人一 thread 已不再是規則**——同一帳號在同一活動可以有多個 participant，#132／#134；DO name 即路由鍵）
+- 授權：`socrates_session` cookie（升級請求帶 cookie）——onConnect 驗 session＋班級關係，再比對該 thread 的 participant：**只有 participant 的 `user_id` 本人可 `submit`**（`ChatSockets` 每次 submit 重讀 participant；老師在自己班代打 → error frame code `SubmitForbidden`），班級 owner 可觀察全班（watch/entries/abort）；未通過 → close 1008（無 hello）；hibernation 喚醒後 reverify 確定撤權（ApiError）→ close 1008；reverify 暫時性錯誤（D1 失敗等）或 watch 遺失（session 驅逐）→ close 1011（客戶端重連即重試）
 - 每則 client message 先做一次**帳號狀態重驗**（#131）：`disabled_at` 非空或 `session_version` 與連線時不符 → close 1008（停用即刻生效，含已建立連線）
 - 一條連線跟一個 session：預設 root；送 `btw` 後該連線改綁 side session（§5.4）。重連後重新 `watch`（partysocket 自動重連，客戶端端 onOpen 重送）
 
@@ -125,7 +144,7 @@ type ServerMessage =
 ## 6. 老師即時面板（#73；本輪不實作，資料源已調查）
 
 - `GET /api/activities/:id/live` → `StudentLive[]`——gate 到 #73：資料源為 Chat DO 的 pi transcript 聚合（`messages`/`violations` 表已隨 v3 退役，migration 003 drop；pi transcript 是唯一真相），實作前不佔端點
-- `StudentLive`：`{id, name, status, rounds, flagged, flagReason?, lastUtterance}`
+- `StudentLive`：`{id, name, status, rounds, flagged, flagReason?, lastUtterance}`——`id` 屆時為 participant id（#132 後 thread 鍵的後半段）
 
 ## 7. 活動結束與報告（#74/#78/#79/#72）
 
@@ -158,8 +177,8 @@ interface ReportPosition {                       // 單人落點：從 classRepo
 interface TeacherReport {
   topicTitle: string;
   classReport: ClassReport | null;               // null＝partial（群體生成失敗，個別報告仍可用）
-  students: Array<{                              // array 保序（joined_at）；10k 班級下回應體積上限由生成端併發與輪詢分頁另議
-    studentId: string;                           // 真實 id——僅老師可見
+  students: Array<{                              // array 保序（joined_at）；只列活動參與者（§2.1）
+    participantId: string;                       // 活動 participant id——僅老師可見（真實身分在 members／users）
     pseudonym: string;
     analysis: StudentAnalysis | null;            // 論點總結（claim/reasons/tension＋turns 出處）
     violations: ViolationSlice[];                 // 違規切片（不經 LLM）
@@ -181,7 +200,8 @@ interface ViolationSlice {
 ```
 
 - **學生不拿 classReport**（設計決策）：學生報告只有自己的 analysis＋violations＋pseudonym；全班視角是老師專屬
-- **`ClassReport.students[].id`／`positions[].id`＝pseudonym**（LLM prompt 餵的就是 pseudonym；嚴禁放 studentId——全班互見會洩漏真實 id，#72）
+- **報告母體＝`activity_participants`**（#132）：未進入活動的班級成員**不產生空報告**，也拿不到報告（404 `not_found`）；`student_reports` 的 JSON key 與 WS thread 名的後半段同為 participant id；pseudonym 序列依 participant 的 `joined_at` 產生
+- **`ClassReport.students[].id`／`positions[].id`＝pseudonym**（LLM prompt 餵的就是 pseudonym；嚴禁放 participantId 或 userId——全班互見會洩漏真實 id，#72）
 - transcript 來源：Chat DO RPC（`stub.transcript()`，DO→DO；外部無 request 面）；violations 同源自 `app.violation` entries——**pi transcript 是唯一真相，violations 不落第二份儲存**
 - 逐生分析與 transcript 抓取以 Router budget 批次進行（`budget("batch")`＝鏈上各 leg maxConcurrency 總和；10k 班級的生成時間與供應端限流考量）
 - hexagon（#78 六角圖）與星座圖（#79）不在本契約——前端圖表從 classReport 的 `at`/`end` 映射，屆時更新本節

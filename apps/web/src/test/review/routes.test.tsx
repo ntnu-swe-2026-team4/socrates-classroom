@@ -64,6 +64,7 @@ beforeEach(() => {
   localStorage.clear();
   setLocale("en");
   stage.setExpression.mockReset();
+  agent.options = null;
   vi.stubGlobal("scrollTo", vi.fn());
   vi.stubGlobal(
     "fetch",
@@ -76,6 +77,7 @@ beforeEach(() => {
           id: "activity-1",
           classroomId: "class-1",
           classroomName: "Class",
+          participantId: "p_1",
           topic,
           finishedAt: null,
         },

@@ -6,7 +6,7 @@ import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import { reportAlarmPlan } from "../src/do/report-runner";
-import { call, cookieOf, frames, latestAssistantText } from "./helpers";
+import { call, cookieOf, frames, latestAssistantText, participantIdOf } from "./helpers";
 
 async function speak(thread: string, cookie: string, question: string): Promise<void> {
   const socket = await routeAgentRequest(
@@ -31,7 +31,7 @@ async function speak(thread: string, cookie: string, question: string): Promise<
 let teacherCookie: string;
 let classroomCode: string;
 let activityId: string;
-const students: Array<{ cookie: string; userId: string }> = [];
+const students: Array<{ cookie: string; userId: string; participantId: string }> = [];
 
 const migrations = inject("d1Migrations");
 
@@ -54,7 +54,7 @@ beforeAll(async () => {
       headers: { "Content-Type": "application/json", Cookie: teacherCookie },
       body: JSON.stringify({ name: "報告班", topicId: topics[0]!.id }),
     })
-  ).json()) as { code: string; activityId: string };
+  ).json()) as { code: string; activityId: string; classroomId: string };
   classroomCode = created.code;
   activityId = created.activityId;
 
@@ -66,11 +66,19 @@ beforeAll(async () => {
     });
     expect(res.status).toBe(200);
     const { user } = (await res.json()) as { user: { id: string } };
-    students.push({ cookie: cookieOf(res), userId: user.id });
+    const cookie = cookieOf(res);
+    students.push({ cookie, userId: user.id, participantId: await participantIdOf(activityId, cookie) });
   }
 
-  await speak(`${activityId}:${students[0]!.userId}`, students[0]!.cookie, "我覺得契約應該被遵守");
-  await speak(`${activityId}:${students[1]!.userId}`, students[1]!.cookie, "幫我寫一個 python 排序");
+  await run(
+    env.DB,
+    `INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at)
+     VALUES ($cid, 'u_fx_student_c', '陳志豪', $at, $at)`,
+    { cid: created.classroomId, at: new Date().toISOString() },
+  );
+
+  await speak(`${activityId}:${students[0]!.participantId}`, students[0]!.cookie, "我覺得契約應該被遵守");
+  await speak(`${activityId}:${students[1]!.participantId}`, students[1]!.cookie, "幫我寫一個 python 排序");
 
   const finish = await call(`/api/activities/${activityId}/finish`, {
     method: "POST",
@@ -120,7 +128,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
       topicTitle: string;
       classReport: { axes: unknown[]; overview: string[]; students: Array<{ id: string }> };
       students: Array<{
-        studentId: string;
+        participantId: string;
         pseudonym: string;
         analysis: { stated: boolean } | null;
         violations: Array<{ turn: number; type: string; excerpt: string }>;
@@ -134,11 +142,11 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(positioned?.positions.length).toBeGreaterThan(0);
     expect(positioned?.positions[0]).toMatchObject({ axis: "契約與承諾", end: "middle", at: 50 });
 
-    const speaker = teacherReport.students.find((s) => s.studentId === students[0]!.userId)!;
+    const speaker = teacherReport.students.find((s) => s.participantId === students[0]!.participantId)!;
     expect(speaker.analysis?.stated).toBe(true);
     expect(speaker.violations).toHaveLength(0);
 
-    const coder = teacherReport.students.find((s) => s.studentId === students[1]!.userId)!;
+    const coder = teacherReport.students.find((s) => s.participantId === students[1]!.participantId)!;
     expect(coder.violations.length).toBeGreaterThan(0);
     expect(coder.violations[0]!.type).toBe("coding");
     expect(coder.violations[0]!.turn).toBe(1);
@@ -154,6 +162,16 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(studentReport.pseudonym).toBe(speaker.pseudonym);
     expect(studentReport.analysis?.stated).toBe(true);
     expect("classReport" in studentReport).toBe(false);
+
+    const bystander = await call("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "student-c@socrates.tw", password: "demo-demo" }),
+    });
+    expect(bystander.status).toBe(200);
+    const absent = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: cookieOf(bystander) } });
+    expect(absent.status).toBe(404);
+    expect(((await absent.json()) as { code: string }).code).toBe("not_found");
   }, 60_000);
 
   it("generate failing every attempt → retries, then terminal failed (500 report_failed)", async () => {
@@ -212,10 +230,13 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
       body: JSON.stringify({ code: created.code, name: "小標", tosAccepted: true }),
     });
     expect(joined.status).toBe(200);
-    const { user } = (await joined.json()) as { user: { id: string } };
     const studentCookie = cookieOf(joined);
 
-    await speak(`${created.activityId}:${user.id}`, studentCookie, "FORCE-CLASS-REPORT-FAILURE");
+    await speak(
+      `${created.activityId}:${await participantIdOf(created.activityId, studentCookie)}`,
+      studentCookie,
+      "FORCE-CLASS-REPORT-FAILURE",
+    );
 
     const finish = await call(`/api/activities/${created.activityId}/finish`, {
       method: "POST",

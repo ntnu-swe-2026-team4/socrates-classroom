@@ -40,12 +40,14 @@ function DialoguePage() {
   const topic = activityQuery.data?.topic;
 
   if (!me.data) return <div className="h-dvh" aria-busy="true" />;
+  if (activityQuery.isPending) return <div className="h-dvh" aria-busy="true" />;
+  const participantId = activityQuery.data?.participantId ?? "";
 
   return (
     <DialogueView
-      key={activityId}
+      key={`${activityId}:${participantId}`}
       activityId={activityId}
-      userId={me.data.id}
+      participantId={participantId}
       eyebrow={topic?.title ? t("dlg_topic_eyebrow") : t("dlg_title")}
       title={topic?.title ?? t("dlg_title")}
       statement={topic?.statement}

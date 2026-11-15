@@ -23,7 +23,7 @@ export type Authorize = (request: Request) => Promise<SocketIdentity | null>;
 export type ReverifyOutcome = "member" | "revoked" | "error";
 export type Reverify = (identity: SocketIdentity) => Promise<ReverifyOutcome>;
 export type Revalidate = (identity: SocketIdentity) => Promise<ReverifyOutcome>;
-export type CanSubmit = (identity: SocketIdentity) => boolean;
+export type CanSubmit = (identity: SocketIdentity) => boolean | Promise<boolean>;
 export type SubmitRoute = (handle: PiSession, input: UserInput, options: PiSubmitOptions) => Promise<PiReceipt>;
 export type OpenBtw = () => Promise<string>;
 
@@ -297,7 +297,7 @@ export class ChatSockets {
       case "submit": {
         if (typeof message.input !== "string") throw new Error("Invalid input");
         const identity = this.#authorized.get(socket);
-        if (identity === undefined || (this.#canSubmit && !this.#canSubmit(identity))) {
+        if (identity === undefined || (this.#canSubmit && !(await this.#canSubmit(identity)))) {
           throw new SubmitForbiddenError();
         }
         const input = DialogueInputSchema.parse({ text: message.input });

@@ -7,13 +7,13 @@ import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
 import { run } from "../src/db/d1";
 import type { Chat } from "../src/do/chat";
-import { assistantText, call, cookieOf, frames, latestView } from "./helpers";
+import { assistantText, call, cookieOf, frames, latestView, participantIdOf } from "./helpers";
 
 let teacherCookie: string;
 let classroomCode: string;
 let activityId: string;
 
-async function joinStudent(name: string): Promise<{ cookie: string; userId: string }> {
+async function joinStudent(name: string): Promise<{ cookie: string; userId: string; participantId: string }> {
   const res = await call("/api/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -21,7 +21,12 @@ async function joinStudent(name: string): Promise<{ cookie: string; userId: stri
   });
   expect(res.status).toBe(200);
   const { user } = (await res.json()) as { user: { id: string } };
-  return { cookie: cookieOf(res), userId: user.id };
+  const cookie = cookieOf(res);
+  const info = (await (await call(`/api/activities/${activityId}`, { headers: { Cookie: cookie } })).json()) as {
+    participantId: string;
+  };
+  expect(info.participantId).toBeTruthy();
+  return { cookie, userId: user.id, participantId: info.participantId };
 }
 
 async function connect(thread: string, cookie?: string): Promise<WebSocket> {
@@ -67,7 +72,7 @@ beforeAll(async () => {
 describe("chat core (real DO + real WebSocket + faux model)", () => {
   it("WS upgrade → hello → watch → submit → answer lands in transcript", async () => {
     const student = await joinStudent("小明");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, student.cookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
@@ -91,7 +96,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
 
   it("reconnect after disconnect: transcript restored persistently from pi storage", async () => {
     const student = await joinStudent("阿華");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, student.cookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
@@ -118,7 +123,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
 
   it("hibernated socket survives eviction and is reused: first frame is not 1008 (#authorized restored on reattach)", async () => {
     const student = await joinStudent("冬眠本人");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, student.cookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
@@ -135,7 +140,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
 
   it("revoked member is refused after hibernation wake (membership re-verified, not trusted from connect time)", async () => {
     const student = await joinStudent("被移出的學生");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, student.cookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
@@ -162,7 +167,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
 
   it("submit bounds: empty string / over 2000 chars → error frame, nothing enters the transcript", async () => {
     const student = await joinStudent("邊界本人");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, student.cookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
@@ -178,7 +183,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
 
   it("a second submit during a run is rejected (ConversationBusy error frame); the connection is unaffected", async () => {
     const student = await joinStudent("小美");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, student.cookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
@@ -196,7 +201,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
 
   it("abort op: replies with a result (one of the three values); connection unaffected", async () => {
     const student = await joinStudent("阿捷");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, student.cookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
@@ -216,7 +221,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
 
   it("entries op: replies with paged items; limit takes effect", async () => {
     const student = await joinStudent("阿查");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, student.cookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
@@ -247,7 +252,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
   it("authorization: no cookie / non-member / another student's thread → rejected (1008, no hello)", async () => {
     const owner = await joinStudent("本人");
     const peer = await joinStudent("同學");
-    const thread = `${activityId}:${owner.userId}`;
+    const thread = `${activityId}:${owner.participantId}`;
 
     const noCookie = await connect(thread);
     const r1 = frames(noCookie);
@@ -256,7 +261,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     noCookie.close();
 
     const stranger = await joinStudent("路人");
-    const strangerThread = `${activityId}:${stranger.userId}`;
+    const strangerThread = `${activityId}:${stranger.participantId}`;
     const asPeer = await connect(strangerThread, peer.cookie);
     const r2 = frames(asPeer);
     await r2.until((f) => f.length > 0 || asPeer.readyState === WebSocket.CLOSED);
@@ -266,7 +271,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
 
   it("transcript guard: externally agents-routed path → 404 (the DO's onRequest only accepts internal shortcuts)", async () => {
     const student = await joinStudent("逐字稿本人");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const res = await routeAgentRequest(
       new Request(`https://example.com/agents/chat/${thread}/transcript`, {
         headers: { Cookie: student.cookie },
@@ -278,7 +283,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
 
   it("authorization race: watch sent after rejection but before close → no view (per-message gate)", async () => {
     const owner = await joinStudent("賽窗本人");
-    const thread = `${activityId}:${owner.userId}`;
+    const thread = `${activityId}:${owner.participantId}`;
     const socket = await connect(thread);
     const rx = frames(socket);
     socket.send(JSON.stringify({ type: "watch" }));
@@ -290,7 +295,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
 
   it("disabled account: the open socket is refused on its next message and reconnects are rejected", async () => {
     const student = await joinStudent("停用本人");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, student.cookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
@@ -321,7 +326,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
 
   it("authorization: a teacher may observe a student thread (hello arrives)", async () => {
     const student = await joinStudent("被觀察");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, teacherCookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
@@ -332,7 +337,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
 describe("teacher thread access: observe and abort yes, submit no (SubmitForbidden)", () => {
   it("teacher submit on a student thread is rejected with code SubmitForbidden; abort still allowed", async () => {
     const student = await joinStudent("代打對象");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, teacherCookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
@@ -377,7 +382,7 @@ describe("btw side session (#121): a fork of the root that never writes back", (
 
   it("student opens a btw session: it sees the root history, its exchange stays out of the root", async () => {
     const student = await joinStudent("副視窗本人");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const main = await opened(thread, student.cookie);
     main.socket.send(JSON.stringify({ type: "watch" }));
     await main.rx.until((f) => f.some((m) => m.type === "view"));
@@ -413,7 +418,7 @@ describe("btw side session (#121): a fork of the root that never writes back", (
 
   it("a hibernated btw socket stays bound to its session after eviction", async () => {
     const student = await joinStudent("副視窗冬眠");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const main = await opened(thread, student.cookie);
     main.socket.send(JSON.stringify({ type: "watch" }));
     await main.rx.until((f) => f.some((m) => m.type === "view"));
@@ -435,7 +440,7 @@ describe("btw side session (#121): a fork of the root that never writes back", (
 
   it("btw before any dialogue → NothingToFork; teacher may attach but not open; root id is not a btw session", async () => {
     const student = await joinStudent("副視窗權限");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const fresh = await opened(thread, student.cookie);
     fresh.socket.send(JSON.stringify({ type: "btw", id: "b0" }));
     await fresh.rx.until((f) => f.some((m) => m.type === "error" && m.id === "b0"));
@@ -466,7 +471,7 @@ describe("btw side session (#121): a fork of the root that never writes back", (
 describe("activity_finished reaches the client as a named error code", () => {
   it("submit after finish → error frame code ActivityFinished (not generic Request failed)", async () => {
     const student = await joinStudent("下課本人");
-    const thread = `${activityId}:${student.userId}`;
+    const thread = `${activityId}:${student.participantId}`;
     const socket = await connect(thread, student.cookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
@@ -504,9 +509,8 @@ describe("WS error-frame hygiene + worker entry CORS", () => {
       body: JSON.stringify({ code: created.code, name: "超長訊息", tosAccepted: true }),
     });
     expect(joined.status).toBe(200);
-    const { user } = (await joined.json()) as { user: { id: string } };
     const cookie = cookieOf(joined);
-    const socket = await connect(`${created.activityId}:${user.id}`, cookie);
+    const socket = await connect(`${created.activityId}:${await participantIdOf(created.activityId, cookie)}`, cookie);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
     socket.send(JSON.stringify({ type: "watch" }));

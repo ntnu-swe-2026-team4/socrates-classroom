@@ -2,6 +2,25 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-16 — #132 activity participant 成為對話與報告的母體（`136-account-classroom-model`）
+
+### Added
+
+- Schema `003_activity_participants.sql`：`activity_participants`（PK `activity_id` + `id`；`user_id` nullable 且 `ON DELETE SET NULL`、`kind`＝`member`／`guest`／`teacher`、`display_name`、`tos_accepted_at`、`joined_at`；UNIQUE(`activity_id`, `display_name`)）
+- Backfill：既有活動以 `members` 建 `kind = 'member'` participant，participant id 即 `user_id`——既有 Chat DO thread（`{activityId}:{userId}`）與既有報告的鍵因此原樣續用
+- `services/members.ts`：`participantOf`／`ensureParticipant`／`requireActivityAccess`（回傳呼叫者在該活動的 participant）
+- 測試：`apps/server/tests/migrations.test.ts`（backfill 對映、帳號刪除後 participant 與 pseudonym 存活）
+
+### Changed
+
+- **thread name 協定**：`{activityId}:{userId}` → `{activityId}:{participantId}`（`do/chat.ts`：`authorize`／`reverify`／submit 的擁有者比對改讀 participant 的 `user_id`；`ChatSockets` 的 `CanSubmit` 可為 async，每次 submit 重驗）；`docs/api-contract.md` §5.1 與 `apps/server/tests/chat.test.ts` 同步——這是刻意的協定變更
+- **報告母體**：`do/report-runner.ts` 改以 `activity_participants` 為母體（pseudonym 序列依 `joined_at`；`student_reports` key 改為 participant id）——沒進活動的成員不再拿到空報告
+- `pseudonyms`：`student_id` → `participant_id`，移除對 `users` 的 FK（改指 participant；訪客消失或帳號刪除都不斷鏈）
+- `TeacherReport.students[].studentId` → `participantId`（`packages/shared`、`routes/activity.ts`、`report.$id.tsx`）
+- `ActivityInfo` 新增 `participantId`：`GET /api/activities/:id` 回傳呼叫者在該活動的 participant（活動進行中且是班級成員時必要則建立）；web 的對話頁等它 resolve 後才掛載 WS
+- `POST /api/join`、`POST /api/auth/register` 一併寫入 participant（活動進行中才寫）
+- Docs：`api-contract.md` §1.1、§2.1（新）、§3、§5.1、§6、§7；`architecture.md`／`feature.md` 的資料表清單
+
 ## 2026-11-16 — #131 能力模型取代 role（`136-account-classroom-model`）
 
 ### Added

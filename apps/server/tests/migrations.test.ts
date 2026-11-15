@@ -1,0 +1,109 @@
+import { env } from "cloudflare:workers";
+import { applyD1Migrations } from "cloudflare:test";
+import { describe, expect, it } from "vitest";
+import { inject } from "vitest";
+import { all, run } from "../src/db/d1";
+
+const migrations = inject("d1Migrations");
+
+describe("migration 003: activity participant backfill", () => {
+  it("existing members become member participants and keep their pseudonyms", async () => {
+    const legacy = migrations.filter((migration) => !migration.name.startsWith("003"));
+    const backfill = migrations.filter((migration) => migration.name.startsWith("003"));
+    expect(backfill).toHaveLength(1);
+    await applyD1Migrations(env.DB, legacy);
+
+    const at = "2026-11-15T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
+       VALUES ('u_t', '林老師', 'teacher', 't@example.com', 'x', 'zh', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
+       VALUES ('u_s', '王小明', 'student', 's@example.com', 'x', 'zh', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO classrooms (id, name, teacher_id, join_code, current_activity_id, created_at)
+       VALUES ('c1', '班', 'u_t', 'code-1', 'a2', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO topics (id, owner_id, title, statement, prompts, created_at)
+       VALUES ('t1', NULL, '題目', '陳述', '["問"]', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ('a1', 'c1', 't1', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ('a2', 'c1', 't1', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at)
+       VALUES ('c1', 'u_s', '王小明', $at, $at)`,
+      { at },
+    );
+    await run(env.DB, `INSERT INTO pseudonyms (activity_id, student_id, pseudonym) VALUES ('a1', 'u_s', '學生1')`);
+
+    await applyD1Migrations(env.DB, backfill);
+
+    const participants = await all<{
+      activity_id: string;
+      id: string;
+      user_id: string;
+      kind: string;
+      display_name: string;
+    }>(env.DB, "SELECT activity_id, id, user_id, kind, display_name FROM activity_participants ORDER BY activity_id");
+    expect(participants).toEqual([
+      { activity_id: "a1", id: "u_s", user_id: "u_s", kind: "member", display_name: "王小明" },
+      { activity_id: "a2", id: "u_s", user_id: "u_s", kind: "member", display_name: "王小明" },
+    ]);
+
+    const pseudonyms = await all<{ activity_id: string; participant_id: string; pseudonym: string }>(
+      env.DB,
+      "SELECT activity_id, participant_id, pseudonym FROM pseudonyms",
+    );
+    expect(pseudonyms).toEqual([{ activity_id: "a1", participant_id: "u_s", pseudonym: "學生1" }]);
+  });
+
+  it("deleting the user keeps the participant (report link) and drops only its user_id", async () => {
+    await run(
+      env.DB,
+      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
+       VALUES ('u_gone', '離場者', 'student', 'gone@example.com', 'x', 'zh', '2026-11-15T00:00:00.000Z')`,
+    );
+    await run(
+      env.DB,
+      `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
+       VALUES ('a1', 'p_gone', 'u_gone', 'member', '離場者', NULL, '2026-11-15T00:00:00.000Z')`,
+    );
+    await run(
+      env.DB,
+      `INSERT INTO pseudonyms (activity_id, participant_id, pseudonym) VALUES ('a1', 'p_gone', '學生2')`,
+    );
+
+    await run(env.DB, "DELETE FROM users WHERE id = 'u_gone'");
+
+    const participant = await all<{ id: string; user_id: string | null }>(
+      env.DB,
+      "SELECT id, user_id FROM activity_participants WHERE id = 'p_gone'",
+    );
+    expect(participant).toEqual([{ id: "p_gone", user_id: null }]);
+    const pseudonym = await all<{ pseudonym: string }>(
+      env.DB,
+      "SELECT pseudonym FROM pseudonyms WHERE participant_id = 'p_gone'",
+    );
+    expect(pseudonym).toEqual([{ pseudonym: "學生2" }]);
+  });
+});

@@ -1,7 +1,7 @@
 import type { User } from "@socrates/shared";
 import type { Db } from "../db/d1";
 import { one } from "../db/d1";
-import { fail } from "../http";
+import { fail, newId, nowIso } from "../http";
 
 export interface ClassroomRow {
   id: string;
@@ -36,6 +36,16 @@ export interface MemberRow {
   joined_at: string;
 }
 
+export interface ParticipantRow {
+  activity_id: string;
+  id: string;
+  user_id: string | null;
+  kind: "member" | "guest" | "teacher";
+  display_name: string;
+  tos_accepted_at: string | null;
+  joined_at: string;
+}
+
 export function parsePrompts(row: TopicRow) {
   return {
     id: row.id,
@@ -65,17 +75,57 @@ export async function topicOf(db: Db, topicId: string): Promise<ReturnType<typeo
   return parsePrompts(row);
 }
 
-export async function requireMembership(
+export async function participantOf(db: Db, activityId: string, participantId: string): Promise<ParticipantRow | null> {
+  return await one<ParticipantRow>(db, "SELECT * FROM activity_participants WHERE activity_id = $aid AND id = $pid", {
+    aid: activityId,
+    pid: participantId,
+  });
+}
+
+async function participantOfUser(db: Db, activityId: string, userId: string): Promise<ParticipantRow | null> {
+  return await one<ParticipantRow>(
+    db,
+    "SELECT * FROM activity_participants WHERE activity_id = $aid AND user_id = $uid ORDER BY joined_at, id LIMIT 1",
+    { aid: activityId, uid: userId },
+  );
+}
+
+export async function ensureParticipant(
+  db: Db,
+  activityId: string,
+  user: Pick<User, "id" | "name">,
+  tosAcceptedAt: string,
+): Promise<ParticipantRow> {
+  const existing = await participantOfUser(db, activityId, user.id);
+  if (existing) return existing;
+  await one(
+    db,
+    `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
+     VALUES ($aid, $pid, $uid, 'member', $name, $tos, $at)
+     ON CONFLICT DO NOTHING RETURNING id`,
+    { aid: activityId, pid: newId("p_"), uid: user.id, name: user.name, tos: tosAcceptedAt, at: nowIso() },
+  );
+  const created = await participantOfUser(db, activityId, user.id);
+  if (!created) fail(409, "name_taken");
+  return created;
+}
+
+export async function requireActivityAccess(
   db: Db,
   activityId: string,
   user: Pick<User, "id">,
-): Promise<{ activity: ActivityRow; classroom: ClassroomRow; member: MemberRow | null; isTeacher: boolean }> {
+): Promise<{
+  activity: ActivityRow;
+  classroom: ClassroomRow;
+  participant: ParticipantRow | null;
+  isTeacher: boolean;
+}> {
   const { activity, classroom } = await activityOf(db, activityId);
-  if (classroom.teacher_id === user.id) return { activity, classroom, member: null, isTeacher: true };
+  if (classroom.teacher_id === user.id) return { activity, classroom, participant: null, isTeacher: true };
   const member = await one<MemberRow>(db, "SELECT * FROM members WHERE classroom_id = $cid AND user_id = $uid", {
     cid: classroom.id,
     uid: user.id,
   });
   if (!member) fail(403, "forbidden");
-  return { activity, classroom, member, isTeacher: false };
+  return { activity, classroom, participant: await participantOfUser(db, activityId, user.id), isTeacher: false };
 }

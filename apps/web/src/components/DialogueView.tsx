@@ -34,7 +34,7 @@ type SidePanel = "term" | "btw" | null;
 
 export interface DialogueViewProps {
   activityId: string;
-  userId: string;
+  participantId: string;
   eyebrow: string;
   title: string;
   statement?: string;
@@ -50,7 +50,7 @@ export interface DialogueViewProps {
 
 export function DialogueView({
   activityId,
-  userId,
+  participantId,
   eyebrow,
   title,
   statement,
@@ -80,7 +80,7 @@ export function DialogueView({
     retryLast,
     replay,
     interrupt,
-  } = useDialogue(activityId, userId);
+  } = useDialogue(activityId, participantId);
 
   const stageRef = useRef<SocratesHandle>(null);
   const [socratesOpen, setSocratesOpen] = usePersistentFlag("socrates_dialogue_panel", true);
@@ -502,7 +502,7 @@ export function DialogueView({
           open={sidePanel === "btw"}
           onClose={() => setSidePanel(null)}
           activityId={activityId}
-          userId={userId}
+          participantId={participantId}
         />
       </div>
     </div>

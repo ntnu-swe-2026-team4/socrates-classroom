@@ -44,6 +44,7 @@ export const ActivityInfoSchema = z.object({
   id: z.string(),
   classroomId: z.string(),
   classroomName: z.string(),
+  participantId: z.string().nullable(),
   topic: TopicSchema,
   finishedAt: z.string().nullable(),
 });
@@ -104,7 +105,7 @@ export interface ReportPosition {
 }
 
 export interface StudentReportEntry {
-  studentId: string;
+  participantId: string;
   pseudonym: string;
   analysis: StudentAnalysis | null;
   violations: ViolationSlice[];

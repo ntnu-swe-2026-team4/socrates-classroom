@@ -154,7 +154,7 @@ function ReportPage() {
             {data.students.map((student, index) => (
               <button
                 type="button"
-                key={student.studentId}
+                key={student.participantId}
                 onClick={() => setStudentIdx(index)}
                 className={cn(
                   "rounded-full border px-3.5 py-1.5 text-[13px] transition-colors",

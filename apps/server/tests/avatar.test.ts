@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import { seedFixture } from "../src/seed";
-import { call, cookieOf, frames, latestView } from "./helpers";
+import { call, cookieOf, frames, latestView, participantIdOf } from "./helpers";
 
 let thread: string;
 let cookie: string;
@@ -47,9 +47,8 @@ beforeAll(async () => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code: created.code, name: "同學", tosAccepted: true }),
   });
-  const { user } = (await joined.json()) as { user: { id: string } };
   cookie = cookieOf(joined);
-  thread = `${created.activityId}:${user.id}`;
+  thread = `${created.activityId}:${await participantIdOf(created.activityId, cookie)}`;
 });
 
 function answerOf(view: ConversationView): string {

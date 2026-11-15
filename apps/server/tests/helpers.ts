@@ -75,3 +75,11 @@ export async function callWith(overrides: Partial<Env>, path: string, init: Requ
 export function cookieOf(res: Response): string {
   return (res.headers.getSetCookie?.()[0] ?? "").split(";")[0]!;
 }
+
+export async function participantIdOf(activityId: string, cookie: string): Promise<string> {
+  const res = await call(`/api/activities/${activityId}`, { headers: { Cookie: cookie } });
+  expect(res.status).toBe(200);
+  const { participantId } = (await res.json()) as { participantId: string | null };
+  expect(participantId).toBeTruthy();
+  return participantId!;
+}

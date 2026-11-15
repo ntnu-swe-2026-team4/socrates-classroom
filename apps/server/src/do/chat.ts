@@ -15,7 +15,7 @@ import { Lifecycle } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
 import { SESSION_COOKIE, accountState, lookupSession } from "../auth";
-import { requireMembership } from "../services/members";
+import { participantOf, requireActivityAccess } from "../services/members";
 import { createAvatarExtension } from "../pi/extensions/avatar";
 import { createJudgmentExtension } from "../pi/extensions/judgment";
 import { createWebSearchExtension } from "../pi/extensions/websearch";
@@ -89,7 +89,7 @@ export class Chat extends DurableObject<Env> {
     (tag) => this.ctx.getWebSockets(tag),
     (request) => this.authorize(request),
     (handle, input, options) => this.routeSubmit(handle, input, options),
-    (identity) => identity.userId === this.studentId,
+    (identity) => this.canSubmit(identity),
     () => forkBtw(this.harness, this.btw),
     (identity) => this.revalidate(identity),
   );
@@ -186,14 +186,17 @@ export class Chat extends DurableObject<Env> {
     return { messages, violations: deduped };
   }
 
-  private get studentId(): string {
-    return this.ctx.id.name?.split(":")[1] ?? "";
+  private async canSubmit(identity: SocketIdentity): Promise<boolean> {
+    const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
+    if (!activityId || !participantId) return false;
+    const participant = await participantOf(this.env.DB, activityId, participantId);
+    return participant?.user_id === identity.userId;
   }
 
   private async authorize(request: Request): Promise<SocketIdentity | null> {
     const name = decodeURIComponent(new URL(request.url).pathname.split("/chat/").at(-1) ?? "");
-    const [activityId, studentId] = name.split(":");
-    if (!activityId || !studentId) return null;
+    const [activityId, participantId] = name.split(":");
+    if (!activityId || !participantId) return null;
     const cookie = request.headers.get("Cookie") ?? "";
     const token = cookie
       .split(";")
@@ -204,21 +207,21 @@ export class Chat extends DurableObject<Env> {
     if (lookup.kind !== "ok") return null;
     const identity: SocketIdentity = { userId: lookup.session.user.id, version: lookup.session.version };
     try {
-      const { isTeacher } = await requireMembership(this.env.DB, activityId, lookup.session.user);
-      return isTeacher || identity.userId === studentId ? identity : null;
+      const { participant, isTeacher } = await requireActivityAccess(this.env.DB, activityId, lookup.session.user);
+      return isTeacher || participant?.user_id === identity.userId ? identity : null;
     } catch {
       return null;
     }
   }
 
   private async reverify(identity: SocketIdentity): Promise<ReverifyOutcome> {
-    const [activityId, studentId] = this.ctx.id.name?.split(":") ?? [];
-    if (!activityId) return "revoked";
+    const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
+    if (!activityId || !participantId) return "revoked";
     try {
       const state = await accountState(this.env.DB, identity.userId);
       if (!state || state.disabled || state.version !== identity.version) return "revoked";
-      const { isTeacher } = await requireMembership(this.env.DB, activityId, { id: identity.userId });
-      return isTeacher || identity.userId === studentId ? "member" : "revoked";
+      const { participant, isTeacher } = await requireActivityAccess(this.env.DB, activityId, { id: identity.userId });
+      return isTeacher || participant?.user_id === identity.userId ? "member" : "revoked";
     } catch (error) {
       return error instanceof ApiError ? "revoked" : "error";
     }

@@ -3,6 +3,7 @@ import { LoginInputSchema, RegisterInputSchema } from "@socrates/shared";
 import { batch, one } from "../db/d1";
 import { DUMMY_HASH, endSession, hashPassword, startSession, toUser, verifyPassword } from "../auth";
 import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, uniqueViolationColumns, type AppEnv } from "../http";
+import { ensureParticipant } from "../services/members";
 
 interface UserRow {
   id: string;
@@ -78,6 +79,7 @@ export function authRoutes() {
         fail(409, "conflict");
       }
       const user = { id, name: input.name, canManageClasses: false, isAdmin: false };
+      await ensureParticipant(c.env.DB, classroom.current_activity_id, user, at);
       await startSession(c, user);
       return c.json(user);
     })

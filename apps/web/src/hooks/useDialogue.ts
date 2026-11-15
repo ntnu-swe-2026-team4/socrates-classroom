@@ -86,7 +86,7 @@ export function liveTextOf(view: ConversationView | null): string {
   return content === undefined ? "" : textOf({ role: "assistant", content } as Message);
 }
 
-export function useDialogue(activityId: string, userId: string) {
+export function useDialogue(activityId: string, participantId: string) {
   const [view, setView] = useState<ConversationView | null>(null);
   const [phase, setPhase] = useState<DialoguePhase>("idle");
   const [error, setError] = useState<DialogueError>(null);
@@ -281,7 +281,7 @@ export function useDialogue(activityId: string, userId: string) {
 
   const socket = useAgent({
     agent: "chat",
-    name: `${activityId}:${userId}`,
+    name: `${activityId}:${participantId}`,
     onOpen: (event) => {
       (event.target as WebSocket).send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
     },

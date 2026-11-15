@@ -3,7 +3,7 @@ import { JoinInputSchema } from "@socrates/shared";
 import { batch, one, run } from "../db/d1";
 import { startSession } from "../auth";
 import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, uniqueViolationColumns, type AppEnv } from "../http";
-import { topicOf, type ClassroomRow } from "../services/members";
+import { ensureParticipant, topicOf, type ClassroomRow } from "../services/members";
 
 export function joinRoutes() {
   return new Hono<AppEnv>()
@@ -39,6 +39,12 @@ export function joinRoutes() {
         : undefined;
 
       if (existing && user) {
+        const activity = await one<{ finished_at: string | null }>(
+          c.env.DB,
+          "SELECT finished_at FROM activities WHERE id = $id",
+          { id: classroom.current_activity_id },
+        );
+        if (!activity?.finished_at) await ensureParticipant(c.env.DB, classroom.current_activity_id, user, nowIso());
         return c.json({ user, activityId: classroom.current_activity_id! });
       }
 
@@ -80,6 +86,7 @@ export function joinRoutes() {
           throw error;
         }
         sessionUser = { id, name, canManageClasses: false, isAdmin: false };
+        await ensureParticipant(c.env.DB, classroom.current_activity_id, sessionUser, at);
         await startSession(c, sessionUser);
         return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
       }
@@ -103,11 +110,15 @@ export function joinRoutes() {
             "SELECT user_id FROM members WHERE classroom_id = $cid AND user_id = $uid",
             { cid: classroom.id, uid: sessionUser.id },
           );
-          if (raced) return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
+          if (raced) {
+            await ensureParticipant(c.env.DB, classroom.current_activity_id, sessionUser, at);
+            return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
+          }
           fail(409, "name_taken");
         }
         throw error;
       }
+      await ensureParticipant(c.env.DB, classroom.current_activity_id, sessionUser, at);
       return c.json({ user: sessionUser, activityId: classroom.current_activity_id! });
     });
 }
