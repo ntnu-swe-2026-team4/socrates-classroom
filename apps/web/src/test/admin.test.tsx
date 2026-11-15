@@ -1,12 +1,15 @@
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AdminDashboard } from "@socrates/shared";
 import { routeTree } from "@/routeTree.gen";
 import { setLocale } from "@/i18n";
-import { event, liveResponse, metricsResponse } from "./opsFixtures";
+import { classroomResponse, event, liveResponse, metricsResponse } from "./opsFixtures";
+
+configure({ asyncUtilTimeout: 4000 });
+vi.setConfig({ testTimeout: 15_000 });
 
 vi.mock("@/components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
 vi.mock("@/landing/LandAnimation", () => ({ LandAnimation: () => null }));
@@ -46,6 +49,7 @@ let sessionStatus = 200;
 let liveStatus = 200;
 let liveBody = liveResponse();
 let metricsBody = metricsResponse();
+let classroomBody = classroomResponse();
 
 beforeEach(() => {
   localStorage.clear();
@@ -56,6 +60,7 @@ beforeEach(() => {
   liveStatus = 200;
   liveBody = liveResponse();
   metricsBody = metricsResponse();
+  classroomBody = classroomResponse();
   vi.stubGlobal("scrollTo", vi.fn());
   vi.stubGlobal(
     "fetch",
@@ -76,6 +81,12 @@ beforeEach(() => {
       if (path === "/api/admin/live")
         return liveStatus === 200 ? json(liveBody) : json({ code: "internal_error", message: "x" }, liveStatus);
       if (path === "/api/admin/metrics") return json(metricsBody);
+      const drill = path.match(/^\/api\/admin\/classrooms\/([^/]+)\/metrics$/);
+      if (drill) {
+        return drill[1] === "missing"
+          ? json({ code: "not_found", message: "x" }, 404)
+          : json({ ...classroomBody, classroom: { id: drill[1], name: "Class A" } });
+      }
       if (path === "/api/classrooms") return json([]);
       throw new Error(`Unexpected request: ${path}`);
     }),
@@ -698,6 +709,106 @@ test("values the page does not know are shown as they are instead of breaking it
     const quotas = screen.getByRole("region", { name: /Quotas/ });
     expect(quotas.textContent).toContain("openrouter/credits");
     expect(quotas.querySelectorAll("meter")).toHaveLength(2);
+  } finally {
+    dispose();
+  }
+});
+
+test("review mode lists the classes busiest first, with unknown tokens and costs as dashes", async () => {
+  const { dispose } = await mountRoute("/admin/ops?mode=review");
+  try {
+    const region = await screen.findByRole("region", { name: /Usage by class/ });
+    const rows = Array.from(region.querySelectorAll("tbody tr"));
+    expect(rows.map((row) => row.querySelector("button")?.textContent)).toEqual(["Class A", "Class B"]);
+    const cells = Array.from(rows[0]!.querySelectorAll("td")).map((cell) => cell.textContent);
+    expect(cells.slice(0, 6)).toEqual(["Class A", "9", "0", "1", "—", "—"]);
+    fireEvent.click(within(region).getByRole("button", { name: /Sort by Class/ }));
+    expect(Array.from(region.querySelectorAll("tbody tr button")).map((b) => b.textContent)).toEqual([
+      "Class A",
+      "Class B",
+    ]);
+    fireEvent.click(within(region).getByRole("button", { name: /Sort by Class/ }));
+    expect(Array.from(region.querySelectorAll("tbody tr button")).map((b) => b.textContent)).toEqual([
+      "Class B",
+      "Class A",
+    ]);
+  } finally {
+    dispose();
+  }
+});
+
+test("live mode has no class table and ignores a classroom in the address", async () => {
+  const { dispose, router } = await mountRoute("/admin/ops?classroom=c1");
+  try {
+    await screen.findByRole("heading", { name: /Degraded/ });
+    expect(screen.queryByRole("region", { name: /Usage by class/ })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(router.state.location.search).toEqual({});
+    expect(requested.some((path) => path.includes("/classrooms/"))).toBe(false);
+  } finally {
+    dispose();
+  }
+});
+
+test("choosing a class opens its drill-down, keeps it in the address and closes it again", async () => {
+  const { dispose, router } = await mountRoute("/admin/ops?mode=review");
+  try {
+    const region = await screen.findByRole("region", { name: /Usage by class/ });
+    fireEvent.click(within(region).getByRole("button", { name: "Class A" }));
+    const dialog = await screen.findByRole("dialog", { name: /Class A · 24 hours/ });
+    await waitFor(() => expect(requestedUrls).toContain("/api/admin/classrooms/c1/metrics?range=24h"));
+    expect(router.state.location.search).toEqual({ mode: "review", classroom: "c1" });
+    expect(
+      await within(dialog).findByText("Only counts, times, channels and reasons; no student identity."),
+    ).toBeTruthy();
+    const stat = (label: string) => within(dialog).getByText(label, { selector: "dt" }).nextElementSibling?.textContent;
+    expect(stat("Turns")).toBe("120");
+    expect(stat("Students saw an error")).toBe("0");
+    expect(within(dialog).getByText("This class's channels")).toBeTruthy();
+    expect(dialog.textContent).toContain("120 attempts, 60 failed (50%)");
+    expect(dialog.textContent).toContain("timeout");
+    expect(dialog.textContent).toContain("GLM 5.3 Flash");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(router.state.location.search).toEqual({ mode: "review" });
+  } finally {
+    dispose();
+  }
+});
+
+test("the drill-down opens straight from the address, closes on Escape and follows the range", async () => {
+  const { dispose, router } = await mountRoute("/admin/ops?mode=review&classroom=c1");
+  try {
+    const dialog = await screen.findByRole("dialog", { name: /Class A/ });
+    fireEvent.click(screen.getByRole("tab", { name: "7 days" }));
+    await waitFor(() => expect(requestedUrls).toContain("/api/admin/classrooms/c1/metrics?range=7d"));
+    expect(await screen.findByRole("dialog", { name: /Class A · 7 days/ })).toBeTruthy();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(router.state.location.search).toEqual({ mode: "review", range: "7d" });
+  } finally {
+    dispose();
+  }
+});
+
+test("a class the server does not know is reported instead of showing an empty panel", async () => {
+  const { dispose } = await mountRoute("/admin/ops?mode=review&classroom=missing");
+  try {
+    expect(await screen.findByText("No data found for this class.")).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
+
+test("leaving review mode closes the drill-down", async () => {
+  const { dispose, router } = await mountRoute("/admin/ops?mode=review&classroom=c1");
+  try {
+    await screen.findByRole("dialog", { name: /Class A/ });
+    fireEvent.click(screen.getByRole("tab", { name: "Live" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(router.state.location.search).toEqual({});
   } finally {
     dispose();
   }

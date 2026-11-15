@@ -9,6 +9,7 @@ export type {
   ClassroomCreated,
   ClassroomSummary,
   JoinInfo,
+  OpsClassroomMetricsResponse,
   OpsLiveResponse,
   OpsMetricsResponse,
   OpsRange,

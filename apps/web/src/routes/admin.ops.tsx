@@ -6,14 +6,14 @@ import { OPS_AXIS_PLAN, OPS_RANGES, OpsRangeSchema, type OpsRange } from "@socra
 import { api } from "@/api";
 import { AdminTabs } from "@/components/AdminTabs";
 import { LiveSummary, QuotaPanel, ReviewSummary } from "@/components/OpsPanels";
-import { EventsPanel } from "@/components/OpsTables";
+import { ClassroomDrilldown, ClassUsagePanel, EventsPanel } from "@/components/OpsTables";
 import { Button, PageHeader, SectionTitle, Segmented, Spinner, cn } from "@/components/ui";
 import { useI18n, type MessageKey } from "@/i18n";
 import { formatDateTime } from "@/lib/adminTime";
 
 const OpsCharts = lazy(() => import("@/components/OpsCharts").then((module) => ({ default: module.OpsCharts })));
 
-type OpsSearch = { mode?: "review"; range?: OpsRange };
+type OpsSearch = { mode?: "review"; range?: OpsRange; classroom?: string };
 type OpsMode = "live" | "review";
 
 const DEFAULT_RANGE: OpsRange = "24h";
@@ -28,9 +28,14 @@ const RANGE_KEYS = {
 export const Route = createFileRoute("/admin/ops")({
   validateSearch: (search: Record<string, unknown>): OpsSearch => {
     const range = OpsRangeSchema.safeParse(search.range);
+    const review = search.mode === "review";
     return {
-      mode: search.mode === "review" ? "review" : undefined,
+      mode: review ? "review" : undefined,
       range: range.success && range.data !== DEFAULT_RANGE ? range.data : undefined,
+      classroom:
+        review && typeof search.classroom === "string" && search.classroom.length > 0 && search.classroom.length <= 100
+          ? search.classroom
+          : undefined,
     };
   },
   component: OpsPage,
@@ -38,7 +43,7 @@ export const Route = createFileRoute("/admin/ops")({
 
 function OpsPage() {
   const { t, locale } = useI18n();
-  const { mode, range = DEFAULT_RANGE } = Route.useSearch();
+  const { mode, range = DEFAULT_RANGE, classroom } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
   const live = mode !== "review";
@@ -60,7 +65,12 @@ function OpsPage() {
   const data = query.data;
 
   const setMode = (next: OpsMode) =>
-    void navigate({ search: (prev) => ({ ...prev, mode: next === "review" ? "review" : undefined }), replace: true });
+    void navigate({
+      search: (prev) => ({ ...prev, mode: next === "review" ? "review" : undefined, classroom: undefined }),
+      replace: true,
+    });
+  const openClassroom = (classroomId: string | undefined) =>
+    void navigate({ search: (prev) => ({ ...prev, classroom: classroomId }), replace: true });
   const setRange = (next: OpsRange) =>
     void navigate({ search: (prev) => ({ ...prev, range: next === DEFAULT_RANGE ? undefined : next }), replace: true });
 
@@ -163,7 +173,16 @@ function OpsPage() {
         {data && (
           <QuotaPanel quotas={data.quotas} channels={data.channels} live={live} etas={liveQuery.data?.now.quotaEta} />
         )}
+        {!live && metricsQuery.data && <ClassUsagePanel usage={metricsQuery.data.classUsage} onOpen={openClassroom} />}
         {data && <EventsPanel events={data.events} channels={data.channels} live={live} />}
+        {!live && classroom && (
+          <ClassroomDrilldown
+            classroomId={classroom}
+            range={range}
+            rangeLabel={t(RANGE_KEYS[range])}
+            onClose={() => openClassroom(undefined)}
+          />
+        )}
       </div>
     </div>
   );

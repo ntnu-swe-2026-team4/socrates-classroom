@@ -5,6 +5,7 @@ import type {
   ClassroomCreated,
   ClassroomSummary,
   JoinInfo,
+  OpsClassroomMetricsResponse,
   OpsLiveResponse,
   OpsMetricsResponse,
   OpsRange,
@@ -67,6 +68,7 @@ export interface Api {
   adminDashboard(): Promise<AdminDashboard>;
   adminLive(): Promise<OpsLiveResponse>;
   adminMetrics(range: OpsRange): Promise<OpsMetricsResponse>;
+  adminClassroomMetrics(classroomId: string, range: OpsRange): Promise<OpsClassroomMetricsResponse>;
   startActivity(classroomId: string, topicId: string): Promise<ClassroomCreated>;
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
@@ -249,6 +251,11 @@ export const httpApi: Api = {
   },
   async adminMetrics(range) {
     return unwrap(await client.admin.metrics.$get({ query: { range } }));
+  },
+  async adminClassroomMetrics(classroomId, range) {
+    return raw<OpsClassroomMetricsResponse>(
+      `/admin/classrooms/${encodeURIComponent(classroomId)}/metrics?range=${range}`,
+    );
   },
   async startActivity(classroomId, topicId) {
     const input = ActivityStartInputSchema.parse({ topicId });
