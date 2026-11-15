@@ -3,6 +3,7 @@ import { expect } from "vitest";
 import worker from "../src/index";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import type { ConversationView } from "@earendil-works/pi-durable";
+import type { Env } from "../src/env";
 import type { ServerMessage } from "../src/ws/protocol";
 
 export function frames(socket: WebSocket): {
@@ -58,6 +59,15 @@ export async function call(path: string, init: RequestInit = {}): Promise<Respon
   return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(
     new Request(`http://worker.test${path}`, init),
     env,
+    { waitUntil: () => {} },
+  );
+}
+
+export async function callWith(overrides: Partial<Env>, path: string, init: RequestInit = {}): Promise<Response> {
+  const scoped = Object.assign(Object.create(env as object), overrides) as unknown as Env;
+  return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(
+    new Request(`http://worker.test${path}`, init),
+    scoped,
     { waitUntil: () => {} },
   );
 }

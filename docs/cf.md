@@ -67,7 +67,7 @@ cf --version
 `cf dev` = Vite（`@cloudflare/vite-plugin`）+ 本地 workerd：D1/R2 是本地模擬、`AI` binding 以 `dev.remote` 打真實 Workers AI。
 
 - 單一 server：`http://localhost:5173`（SPA 與 `/api` 同源，workerd 跑在 vite 內）
-- 首次啟動 D1 是空的：`pnpm seed`（走 `POST /api/dev/seed`，需 `SEED_TOKEN`）
+- 首次啟動 D1 是空的：`pnpm seed`（走 `POST /api/dev/seed`，需 `SEED_TOKEN` 與 `ENVIRONMENT=dev`）
 - `cf dev` 會偵測 `cloudflare.config.ts` 的變更
 
 ## 建置與部署

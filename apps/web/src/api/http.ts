@@ -3,6 +3,7 @@ import type {
   ActivityInfo,
   ClassroomCreated,
   ClassroomSummary,
+  DevAccounts,
   JoinInfo,
   Report,
   TeacherKeyStatus,
@@ -13,6 +14,7 @@ import type {
 import {
   ActivityStartInputSchema,
   ClassroomCreateInputSchema,
+  DevLoginInputSchema,
   ERROR_CODES,
   GenerateTopicsInputSchema,
   JoinInputSchema,
@@ -77,6 +79,8 @@ export interface Api {
   ): Promise<{ provider: string; model: string; last4: string }>;
   deleteTeacherKey(provider: string): Promise<void>;
   orderTeacherKeys(providers: string[]): Promise<void>;
+  devAccounts(): Promise<DevAccounts>;
+  devLogin(email: string): Promise<User>;
 }
 
 const client = hc<RpcApi>("/api", {
@@ -278,5 +282,11 @@ export const httpApi: Api = {
   },
   async orderTeacherKeys(providers) {
     await unwrap(await client.settings.keys.order.$put({ json: { providers } }));
+  },
+  async devAccounts() {
+    return raw<DevAccounts>("/dev/accounts");
+  },
+  async devLogin(email) {
+    return raw<User>("/dev/login", { method: "POST", json: DevLoginInputSchema.parse({ email }) });
   },
 };

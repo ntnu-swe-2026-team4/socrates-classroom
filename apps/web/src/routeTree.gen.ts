@@ -17,6 +17,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ClassroomsIndexRouteImport } from './routes/classrooms.index'
 import { Route as ClassroomsClassroomIdRouteImport } from './routes/classrooms.$classroomId'
+import { Route as DevAccountsRouteImport } from './routes/dev.accounts'
 import { Route as JoinIndexRouteImport } from './routes/join.index'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as ReportIdRouteImport } from './routes/report.$id'
@@ -63,6 +64,11 @@ const ClassroomsClassroomIdRoute = ClassroomsClassroomIdRouteImport.update({
   path: '/classrooms/$classroomId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DevAccountsRoute = DevAccountsRouteImport.update({
+  id: '/dev/accounts',
+  path: '/dev/accounts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const JoinIndexRoute = JoinIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
+  '/dev/accounts': typeof DevAccountsRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
   '/t/setup': typeof TSetupRoute
@@ -111,6 +118,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
+  '/dev/accounts': typeof DevAccountsRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
   '/t/setup': typeof TSetupRoute
@@ -127,6 +135,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
+  '/dev/accounts': typeof DevAccountsRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
   '/t/setup': typeof TSetupRoute
@@ -144,6 +153,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/settings'
     | '/classrooms/$classroomId'
+    | '/dev/accounts'
     | '/join/$code'
     | '/report/$id'
     | '/t/setup'
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/settings'
     | '/classrooms/$classroomId'
+    | '/dev/accounts'
     | '/join/$code'
     | '/report/$id'
     | '/t/setup'
@@ -173,6 +184,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/settings'
     | '/classrooms/$classroomId'
+    | '/dev/accounts'
     | '/join/$code'
     | '/report/$id'
     | '/t/setup'
@@ -189,6 +201,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
   ClassroomsClassroomIdRoute: typeof ClassroomsClassroomIdRoute
+  DevAccountsRoute: typeof DevAccountsRoute
   ReportIdRoute: typeof ReportIdRoute
   TSetupRoute: typeof TSetupRoute
   ClassroomsIndexRoute: typeof ClassroomsIndexRoute
@@ -253,6 +266,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClassroomsClassroomIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dev/accounts': {
+      id: '/dev/accounts'
+      path: '/dev/accounts'
+      fullPath: '/dev/accounts'
+      preLoaderRoute: typeof DevAccountsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/join/': {
       id: '/join/'
       path: '/'
@@ -311,6 +331,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
   ClassroomsClassroomIdRoute: ClassroomsClassroomIdRoute,
+  DevAccountsRoute: DevAccountsRoute,
   ReportIdRoute: ReportIdRoute,
   TSetupRoute: TSetupRoute,
   ClassroomsIndexRoute: ClassroomsIndexRoute,

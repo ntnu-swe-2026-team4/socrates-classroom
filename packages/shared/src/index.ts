@@ -131,6 +131,7 @@ export type TermExplanation = z.infer<typeof TermExplanationSchema>;
 const emailField = z.email().transform((value) => value.toLowerCase());
 
 export const LoginInputSchema = z.object({ email: emailField, password: z.string().min(8).max(128) });
+export const DevLoginInputSchema = z.object({ email: emailField });
 export const RegisterInputSchema = z.object({
   code: z.string().min(4).max(32),
   email: emailField,
@@ -180,6 +181,30 @@ export const ClassroomSummarySchema = z.object({
   createdAt: z.string(),
 });
 export type ClassroomSummary = z.infer<typeof ClassroomSummarySchema>;
+
+export const DEV_FIXTURE_ROLES = ["admin", "teacher", "student"] as const;
+export const DevAccountClassroomSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  role: z.enum(["teacher", "student"]),
+  code: z.string().nullable(),
+  url: z.string().nullable(),
+  activityId: z.string().nullable(),
+});
+export type DevAccountClassroom = z.infer<typeof DevAccountClassroomSchema>;
+
+export const DevAccountSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string(),
+  role: z.enum(["student", "teacher"]),
+  fixtureRole: z.enum(DEV_FIXTURE_ROLES),
+  classrooms: z.array(DevAccountClassroomSchema),
+});
+export type DevAccount = z.infer<typeof DevAccountSchema>;
+
+export const DevAccountsSchema = z.object({ password: z.string(), accounts: z.array(DevAccountSchema) });
+export type DevAccounts = z.infer<typeof DevAccountsSchema>;
 
 export const TeacherKeyStatusSchema = z.object({
   provider: z.string(),

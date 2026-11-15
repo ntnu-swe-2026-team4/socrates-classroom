@@ -220,7 +220,18 @@ interface ViolationSlice {
 ## 11. 端點外的既存通道
 
 - `GET /health` → `{ok: true}`（無需 session；deploy 後煙霧測試用）
-- `POST /api/dev/seed`（server 端設有 `SEED_TOKEN` 即生效；需 header 帶同值 token）——demo 資料播種，運維動作；非 mock 模式且首次建立 demo 老師時，密碼隨機產生並隨回應回傳（重播 seed 不回傳）
+- `POST /api/dev/seed`（需 `ENVIRONMENT=dev`＋server 端 `SEED_TOKEN`；header 帶同值 token）——播種固定 fixture（8 個固定 id 帳號、共用密碼 `demo-demo`、3 個系統題、2 間教室）；冪等 upsert，重跑不改 id、不動既有對話資料
+
+## 11.1 Dev-only 端點（#130；`ENVIRONMENT=dev` 之外一律 404）
+
+| Operation                                | 回應                                                                                                                                                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/dev/accounts`                  | `{password, accounts: DevAccount[]}`——每個 fixture 帳號（`fixtureRole`: admin／teacher／student，`role` 仍為現行 `student`／`teacher`）＋其班級（`role`、老師才有的 `code`／`url`、`activityId`） |
+| `POST /api/dev/login` `{email}` → `User` | 以 fixture 身分發 `socrates_session`（不需密碼）；email 不在 fixture 清單 → 404 `not_found`；未 seed → 404                                                                                        |
+
+- 對應頁面：`/dev/accounts`（`apps/web/src/routes/dev.accounts.tsx`）——一鍵切換身分與入口連結
+- 護欄：router 內每個 handler 先過 `isDev(c.env)`；production build 的 `ENVIRONMENT` 預設 `production`，故 dev 端點不得經任何 production 路徑可達
+- `is_admin` 尚未存在（隨 #131 進 schema）；fixture 的 admin 帳號目前與老師同權
 
 ## 12. 範圍外（明確不在 v1 契約）
 

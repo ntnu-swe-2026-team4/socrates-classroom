@@ -25,6 +25,7 @@ export default defineConfig(({ mode }) => {
         Chat: bindings.durableObject({ worker: "socrates-classroom", exportName: "Chat" }),
         ReportRunner: bindings.durableObject({ worker: "socrates-classroom", exportName: "ReportRunner" }),
         PUBLIC_BASE_URL: text("PUBLIC_BASE_URL", "https://socrates.g36maid.dev"),
+        ENVIRONMENT: bindings.text(local.ENVIRONMENT || (mode === "development" ? "dev" : "production")),
         LLM_PROVIDER: bindings.text(local.LLM_PROVIDER ?? (mode === "development" ? "mock" : "")),
         DGX_BASE_URL: text("DGX_BASE_URL", ""),
         SEED_TOKEN: bindings.secret(),

@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { ApiError } from "@socrates/shared";
 import { localize } from "./messages";
-import { normalizeLang, type AppEnv } from "./http";
-import { seedDemo } from "./seed";
+import { fail, normalizeLang, type AppEnv } from "./http";
+import { seedFixture } from "./seed";
 import { SESSION_COOKIE, userFromSessionToken } from "./auth";
 import { getCookie } from "hono/cookie";
 import { authRoutes } from "./routes/auth";
@@ -13,6 +13,7 @@ import { activityRoutes } from "./routes/activity";
 import { voiceRoutes } from "./routes/voice";
 import { lookupRoutes } from "./routes/lookup";
 import { teacherKeyRoutes } from "./routes/teacher-keys";
+import { devRoutes, isDev } from "./routes/dev";
 import { timingSafeEqual } from "./auth-crypto";
 
 export function createApi() {
@@ -24,7 +25,8 @@ export function createApi() {
     .route("/", activityRoutes())
     .route("/", voiceRoutes())
     .route("/", lookupRoutes())
-    .route("/", teacherKeyRoutes());
+    .route("/", teacherKeyRoutes())
+    .route("/", devRoutes());
 }
 export type RpcApi = ReturnType<typeof createApi>;
 
@@ -39,20 +41,12 @@ export function createApp() {
     .route("/api", createApi())
     .get("/health", (c) => c.json({ ok: true }))
     .post("/api/dev/seed", async (c) => {
+      if (!isDev(c.env)) fail(404, "not_found");
       const token = c.req.header("x-seed-token") ?? "";
       const allowed = !!c.env.SEED_TOKEN && timingSafeEqual(token, c.env.SEED_TOKEN);
-      if (!allowed) {
-        return c.json(
-          { message: localize("not_found", normalizeLang(c.req.header("Accept-Language"))), code: "not_found" },
-          404,
-        );
-      }
-      const mock = c.env.LLM_PROVIDER === "mock";
-      const password = mock
-        ? undefined
-        : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
-      const { teacherCreated } = await seedDemo(c.env.DB, password);
-      return c.json({ seeded: true, ...(teacherCreated && password ? { password } : {}) });
+      if (!allowed) fail(404, "not_found");
+      await seedFixture(c.env.DB);
+      return c.json({ seeded: true });
     })
     .onError((error, c) => {
       const lang = c.get("lang") ?? normalizeLang(c.req.header("Accept-Language"));

@@ -4,7 +4,7 @@ import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { run } from "../src/db/d1";
-import { seedDemo } from "../src/seed";
+import { seedFixture } from "../src/seed";
 import { reportAlarmPlan } from "../src/do/report-runner";
 import { call, cookieOf, frames, latestAssistantText } from "./helpers";
 
@@ -37,7 +37,7 @@ const migrations = inject("d1Migrations");
 
 beforeAll(async () => {
   await applyD1Migrations(env.DB, migrations);
-  await seedDemo(env.DB);
+  await seedFixture(env.DB);
   const login = await call("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

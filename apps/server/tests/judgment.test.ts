@@ -4,7 +4,7 @@ import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import type { ConversationView } from "@earendil-works/pi-durable";
-import { seedDemo } from "../src/seed";
+import { seedFixture } from "../src/seed";
 import { call, cookieOf, frames, latestView } from "./helpers";
 
 let threads: string[];
@@ -27,7 +27,7 @@ const migrations = inject("d1Migrations");
 
 beforeAll(async () => {
   await applyD1Migrations(env.DB, migrations);
-  await seedDemo(env.DB);
+  await seedFixture(env.DB);
   const login = await call("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

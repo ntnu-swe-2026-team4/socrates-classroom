@@ -4,7 +4,7 @@ import { evictDurableObject } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
-import { seedDemo } from "../src/seed";
+import { seedFixture } from "../src/seed";
 import { run } from "../src/db/d1";
 import type { Chat } from "../src/do/chat";
 import { assistantText, call, cookieOf, frames, latestView } from "./helpers";
@@ -41,7 +41,7 @@ const migrations = inject("d1Migrations");
 
 beforeAll(async () => {
   await applyD1Migrations(env.DB, migrations);
-  await seedDemo(env.DB);
+  await seedFixture(env.DB);
   const login = await call("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

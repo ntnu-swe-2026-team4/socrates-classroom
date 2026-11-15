@@ -2,6 +2,21 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-15 — #130 review fixture 與 dev 操作台（`136-account-classroom-model`）
+
+### Added
+
+- `apps/server/src/seed.ts` 改為固定 fixture：1 管理員、2 老師（陳老師同時是「高二哲學選修 A」的成員）、5 學生；固定 id／名稱／共用密碼 `demo-demo`；3 個系統題、2 間教室（一班 3 位成員、一班空）各含進行中活動；不含任何 transcript
+- `GET /api/dev/accounts`、`POST /api/dev/login`（`apps/server/src/routes/dev.ts`）與網頁 `/dev/accounts`：一鍵以 fixture 身分發 session，免密碼
+- `ENVIRONMENT` text binding（`cf dev` = `dev`、build/deploy = `production`）：`/dev/*` 與 `/api/dev/*` 在非 dev 環境一律 404
+
+### Changed
+
+- `POST /api/dev/seed` 也受 `ENVIRONMENT=dev` 閘門；回應不再帶隨機老師密碼（fixture 密碼固定）
+- `seedDemo` → `seedFixture`（測試同步）；seed 以 id／email／教室名稱冪等 upsert，重跑不改 id
+- 測試：新增 `apps/server/tests/dev.test.ts`（fixture 冪等、帳號清單、免密碼登入、非 dev 404）、`helpers.callWith` 可換 env 呼叫 Worker
+- Docs：README quickstart、`development.md`（fixture／`ENVIRONMENT`）、`api-contract.md` §11.1
+
 ## 2026-11-14 — BTW side session（#121，`feat/121-btw-side-chat`）
 
 ### Added
