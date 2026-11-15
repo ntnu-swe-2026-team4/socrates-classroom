@@ -5,6 +5,7 @@ export { ApiError } from "./http";
 export type { Api } from "./http";
 export type {
   ActivityInfo,
+  AdminDashboard,
   ClassroomCreated,
   ClassroomSummary,
   JoinInfo,

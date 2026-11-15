@@ -1,6 +1,7 @@
 import { hc } from "hono/client";
 import type {
   ActivityInfo,
+  AdminDashboard,
   ClassroomCreated,
   ClassroomSummary,
   JoinInfo,
@@ -59,6 +60,8 @@ export interface Api {
   generateTopics(direction: string): Promise<Topic[]>;
   createClassroom(name: string, topicId: string): Promise<ClassroomCreated>;
   listClassrooms(): Promise<ClassroomSummary[]>;
+  adminSession(): Promise<boolean>;
+  adminDashboard(): Promise<AdminDashboard>;
   startActivity(classroomId: string, topicId: string): Promise<ClassroomCreated>;
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
@@ -228,6 +231,13 @@ export const httpApi: Api = {
   },
   async listClassrooms() {
     return unwrap(await client.classrooms.$get());
+  },
+  async adminSession() {
+    const res = await client.admin.session.$get();
+    return res.ok;
+  },
+  async adminDashboard() {
+    return unwrap(await client.admin.dashboard.$get());
   },
   async startActivity(classroomId, topicId) {
     const input = ActivityStartInputSchema.parse({ topicId });

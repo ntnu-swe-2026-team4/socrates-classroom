@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { onOpenAccountSheet } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleUserRound, GraduationCap, Home, KeyRound, Menu, Moon, Sun, X } from "lucide-react";
+import { CircleUserRound, GraduationCap, Home, KeyRound, LayoutDashboard, Menu, Moon, Sun, X } from "lucide-react";
 import { api } from "@/api";
 import { Initial, cn } from "@/components/ui";
 import { LANGS, setLocale, useI18n, type Locale } from "@/i18n";
@@ -23,6 +23,8 @@ const NAV = [
     match: ["/classrooms", "/join", "/dialogue", "/t/", "/report"],
   },
 ] as const;
+
+const ADMIN_NAV = { to: "/admin/dashboard", label: "nav_admin", icon: LayoutDashboard, match: ["/admin"] } as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
@@ -66,6 +68,13 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
     },
   });
   const isTeacher = me.data?.role === "teacher";
+  const adminSession = useQuery({
+    queryKey: ["admin-session", me.data?.id],
+    queryFn: () => api.adminSession(),
+    enabled: isTeacher,
+    staleTime: 60_000,
+  });
+  const navItems = adminSession.data ? [...NAV, ADMIN_NAV] : NAV;
   useEffect(() => onOpenAccountSheet(() => setAccountOpen(true)), []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: close overlays on every navigation
@@ -90,7 +99,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
         </span>
       </button>
 
-      {NAV.map((item) => {
+      {navItems.map((item) => {
         const active = item.match.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
         const Icon = item.icon;
         return (

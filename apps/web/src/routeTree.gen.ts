@@ -10,11 +10,14 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as DialogueRouteImport } from './routes/dialogue'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
 import { Route as ClassroomsIndexRouteImport } from './routes/classrooms.index'
 import { Route as ClassroomsClassroomIdRouteImport } from './routes/classrooms.$classroomId'
 import { Route as JoinIndexRouteImport } from './routes/join.index'
@@ -26,6 +29,11 @@ import { Route as TLiveIdRouteImport } from './routes/t.live.$id'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DialogueRoute = DialogueRouteImport.update({
@@ -52,6 +60,16 @@ const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDashboardRoute = AdminDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AdminRoute,
 } as any)
 const ClassroomsIndexRoute = ClassroomsIndexRouteImport.update({
   id: '/classrooms/',
@@ -91,15 +109,18 @@ const TLiveIdRoute = TLiveIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteWithChildren
   '/dialogue': typeof DialogueRoute
   '/home': typeof HomeRoute
   '/join': typeof JoinRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/admin/dashboard': typeof AdminDashboardRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
   '/t/setup': typeof TSetupRoute
+  '/admin/': typeof AdminIndexRoute
   '/classrooms/': typeof ClassroomsIndexRoute
   '/join/': typeof JoinIndexRoute
   '/t/live/$id': typeof TLiveIdRoute
@@ -110,10 +131,12 @@ export interface FileRoutesByTo {
   '/home': typeof HomeRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/admin/dashboard': typeof AdminDashboardRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
   '/t/setup': typeof TSetupRoute
+  '/admin': typeof AdminIndexRoute
   '/classrooms': typeof ClassroomsIndexRoute
   '/join': typeof JoinIndexRoute
   '/t/live/$id': typeof TLiveIdRoute
@@ -121,15 +144,18 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteWithChildren
   '/dialogue': typeof DialogueRoute
   '/home': typeof HomeRoute
   '/join': typeof JoinRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/admin/dashboard': typeof AdminDashboardRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
   '/t/setup': typeof TSetupRoute
+  '/admin/': typeof AdminIndexRoute
   '/classrooms/': typeof ClassroomsIndexRoute
   '/join/': typeof JoinIndexRoute
   '/t/live/$id': typeof TLiveIdRoute
@@ -138,15 +164,18 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/dialogue'
     | '/home'
     | '/join'
     | '/login'
     | '/settings'
+    | '/admin/dashboard'
     | '/classrooms/$classroomId'
     | '/join/$code'
     | '/report/$id'
     | '/t/setup'
+    | '/admin/'
     | '/classrooms/'
     | '/join/'
     | '/t/live/$id'
@@ -157,25 +186,30 @@ export interface FileRouteTypes {
     | '/home'
     | '/login'
     | '/settings'
+    | '/admin/dashboard'
     | '/classrooms/$classroomId'
     | '/join/$code'
     | '/report/$id'
     | '/t/setup'
+    | '/admin'
     | '/classrooms'
     | '/join'
     | '/t/live/$id'
   id:
     | '__root__'
     | '/'
+    | '/admin'
     | '/dialogue'
     | '/home'
     | '/join'
     | '/login'
     | '/settings'
+    | '/admin/dashboard'
     | '/classrooms/$classroomId'
     | '/join/$code'
     | '/report/$id'
     | '/t/setup'
+    | '/admin/'
     | '/classrooms/'
     | '/join/'
     | '/t/live/$id'
@@ -183,6 +217,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRouteWithChildren
   DialogueRoute: typeof DialogueRoute
   HomeRoute: typeof HomeRoute
   JoinRoute: typeof JoinRouteWithChildren
@@ -202,6 +237,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dialogue': {
@@ -238,6 +280,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/dashboard': {
+      id: '/admin/dashboard'
+      path: '/dashboard'
+      fullPath: '/admin/dashboard'
+      preLoaderRoute: typeof AdminDashboardRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/classrooms/': {
       id: '/classrooms/'
@@ -291,6 +347,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AdminRouteChildren {
+  AdminDashboardRoute: typeof AdminDashboardRoute
+  AdminIndexRoute: typeof AdminIndexRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminDashboardRoute: AdminDashboardRoute,
+  AdminIndexRoute: AdminIndexRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
 interface JoinRouteChildren {
   JoinCodeRoute: typeof JoinCodeRoute
   JoinIndexRoute: typeof JoinIndexRoute
@@ -305,6 +373,7 @@ const JoinRouteWithChildren = JoinRoute._addFileChildren(JoinRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRouteWithChildren,
   DialogueRoute: DialogueRoute,
   HomeRoute: HomeRoute,
   JoinRoute: JoinRouteWithChildren,
