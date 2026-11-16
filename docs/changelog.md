@@ -9,6 +9,7 @@
 - `btw` extension＋`prompts/btw.md`：副視窗 LLM——可直接解釋定義、思想實驗設定與各方立場，但不替學生下結論、不代寫論證；不帶 tool（與 websearch 分離）
 - WS `btw` op：從 root 最新 entry 做 pi fork，該連線改綁 side session；side session 的 entries 不進 root context 與報告（`api-contract.md` §5.4）
 - 錯誤 code `NothingToFork`、`UnknownSession`
+- 前端「順帶一問」：對話頁頂欄按鈕／輸入框 `/btw 問題` 開 `BtwPanel` 右側欄（與查詢面板互斥）；`useBtw` 另開 WS 綁 side session，只顯示 fork 點之後的 entries，回答以 Markdown 呈現；「新話題」重新 fork；session 存 sessionStorage，重整後接回（失效則自動重開）；三語 i18n
 
 ### Changed
 

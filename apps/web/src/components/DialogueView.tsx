@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp, Mic, PanelLeftClose, PanelLeftOpen, Send, TextSearch } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  MessageCircleQuestionMark,
+  Mic,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Send,
+  TextSearch,
+} from "lucide-react";
+import { BtwPanel, type BtwPanelHandle } from "@/components/BtwPanel";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { SocratesStage, type SocratesExpression, type SocratesHandle } from "@/components/SocratesStage";
 import { TopBar, cn } from "@/components/ui";
@@ -17,6 +27,10 @@ const VOICE_ERROR_KEY: Record<"denied" | "unsupported" | "failed", MessageKey> =
 };
 
 const onAmplitudeNoop = () => {};
+
+const BTW_COMMAND = /^\/btw(?:\s+([\s\S]*))?$/i;
+
+type SidePanel = "term" | "btw" | null;
 
 export interface DialogueViewProps {
   activityId: string;
@@ -85,8 +99,13 @@ export function DialogueView({
     stageRef.current?.setExpression(name ?? null, name === undefined ? undefined : { loop: true });
   }, [phase, emotion]);
 
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [sidePanel, setSidePanel] = useState<SidePanel>(null);
+  const panelOpen = sidePanel === "term";
+  const setPanelOpen = useCallback((open: boolean) => setSidePanel(open ? "term" : null), []);
+  const togglePanel = (panel: Exclude<SidePanel, null>) =>
+    setSidePanel((current) => (current === panel ? null : panel));
   const panelRef = useRef<TermPanelHandle>(null);
+  const btwRef = useRef<BtwPanelHandle>(null);
 
   const autoSent = useRef<string | null>(null);
   const lastTerm = useRef<string | null>(null);
@@ -97,7 +116,7 @@ export function DialogueView({
       panelRef.current?.openTerm(openTerm);
       onTermOpened?.();
     }
-  }, [openTerm, onTermOpened]);
+  }, [openTerm, onTermOpened, setPanelOpen]);
   useEffect(() => {
     if (autoSend && autoSent.current !== autoSend && phase === "idle" && ready && viewReady) {
       if (send(autoSend.slice(0, 2000))) {
@@ -157,6 +176,14 @@ export function DialogueView({
             : "";
 
   function submitText() {
+    const command = BTW_COMMAND.exec(text.trim());
+    if (command) {
+      setSidePanel("btw");
+      const question = command[1]?.trim();
+      if (question) btwRef.current?.ask(question);
+      setText("");
+      return;
+    }
     if (!text.trim() || busy || !viewReady) return;
     if (send(text)) setText("");
   }
@@ -180,7 +207,22 @@ export function DialogueView({
             )}
             <button
               type="button"
-              onClick={() => setPanelOpen((v) => !v)}
+              onClick={() => togglePanel("btw")}
+              aria-pressed={sidePanel === "btw"}
+              title={t("btw_slash_hint")}
+              className={cn(
+                "flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs transition-colors",
+                sidePanel === "btw"
+                  ? "border-ember bg-ember-wash text-ember"
+                  : "border-line-strong bg-paper-deep text-ink-soft hover:border-ember-deep hover:text-ink",
+              )}
+            >
+              <MessageCircleQuestionMark className="size-3.5" />
+              {t("btw_panel")}
+            </button>
+            <button
+              type="button"
+              onClick={() => togglePanel("term")}
               aria-pressed={panelOpen}
               title={t("term_panel")}
               className={cn(
@@ -379,6 +421,9 @@ export function DialogueView({
                     </button>
                   </div>
                 )}
+                {text.trimStart().startsWith("/") && !closedNotice && ready && (
+                  <p className="truncate px-4 text-[12.5px] text-ink-faint">{t("btw_slash_hint")}</p>
+                )}
                 {closedNotice ? (
                   <div className="rounded-2xl border border-line bg-card px-4 py-3 text-center text-[13px] text-ink-soft">
                     {closedNotice}
@@ -438,7 +483,7 @@ export function DialogueView({
                     <button
                       type="button"
                       onClick={submitText}
-                      disabled={!text.trim() || busy || !viewReady}
+                      disabled={!text.trim() || ((busy || !viewReady) && !BTW_COMMAND.test(text.trim()))}
                       aria-label={t("common_send")}
                       className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-ember text-on-ember transition hover:brightness-110 disabled:opacity-50"
                     >
@@ -452,6 +497,13 @@ export function DialogueView({
         </div>
 
         <TermPanel ref={panelRef} open={panelOpen} onClose={() => setPanelOpen(false)} />
+        <BtwPanel
+          ref={btwRef}
+          open={sidePanel === "btw"}
+          onClose={() => setSidePanel(null)}
+          activityId={activityId}
+          userId={userId}
+        />
       </div>
     </div>
   );
