@@ -240,10 +240,10 @@ JSON 可解析且通過 schema：`glm-5.3` low 100%、`glm-5.3` high 100%、`glm
 
 換成 `glm-5.3` 結論不變：主 session 的差距 CI 跨 0，BTW、查詢、主題生成都是 high 比 low 好，主題生成的 max 也比 high 差。
 
-- **要改的程式碼**（尚未動手；動到 PiHarness 設定，依 AGENTS.md 先討論）：
-  - `PROFILES.socrates.thinkingLevel` 改成 `"low"`
-  - BTW 沿用 socrates 的 level，主 session 改 low 後 BTW 也會變 low，所以要在 `forkBtw` 的 configure 另外設 `thinkingLevel: "high"`
-  - [`tests/profiles.test.ts`](../apps/server/tests/profiles.test.ts) 斷言所有 profile 都是 `"high"`，要一起改
+- **程式碼調整**（[#145](https://github.com/ntnu-swe-2026-team4/socrates-classroom/pull/145)，PM 2026-11-17 同意）：
+  - `PROFILES.socrates.thinkingLevel` 設為 `"low"`
+  - BTW 原本沿用 root 的 level，所以 `forkBtw` 在 fork 的 agent change 另外設 `BTW_THINKING_LEVEL`（`"high"`）
+  - pi-durable 只在 root conversation 建立時寫入 agent 設定，已存在的 Chat DO 仍是 `"high"`
   - 不要用 `off` 關掉推理：在 Workers AI 上 `off` 等於模型預設，`glm-5.3-flash` 的預設是 max
 
 ---
