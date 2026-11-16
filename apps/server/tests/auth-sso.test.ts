@@ -301,6 +301,8 @@ describe("Google OAuth", () => {
     ["wrong audience", { aud: "someone-else" }, "oauth_failed"],
     ["wrong issuer", { iss: "https://evil.example" }, "oauth_failed"],
     ["expired token", { exp: Math.floor(Date.now() / 1000) - 3600 }, "oauth_failed"],
+    ["missing iat", { iat: undefined }, "oauth_failed"],
+    ["iat in the future", { iat: Math.floor(Date.now() / 1000) + 3600 }, "oauth_failed"],
     ["wrong nonce", { nonce: "replayed" }, "oauth_failed"],
   ])("rejects %s", async (_label, extra, code) => {
     const res = await googleLogin("g-bad", extra);

@@ -123,11 +123,12 @@ export async function verifyGoogleIdToken(
 
   const nowSeconds = Math.floor(now / 1000);
   if (typeof claims.iss !== "string" || !GOOGLE_ISSUERS.includes(claims.iss)) throw new OAuthError("oauth_failed");
+  // Google issues a string `aud` for a single client; accept arrays only if we ever register multiple clients.
   if (claims.aud !== clientId) throw new OAuthError("oauth_failed");
   if (typeof claims.exp !== "number" || claims.exp + CLOCK_SKEW_SECONDS <= nowSeconds) {
     throw new OAuthError("oauth_failed");
   }
-  if (typeof claims.iat === "number" && claims.iat - CLOCK_SKEW_SECONDS > nowSeconds) {
+  if (typeof claims.iat !== "number" || claims.iat - CLOCK_SKEW_SECONDS > nowSeconds) {
     throw new OAuthError("oauth_failed");
   }
   if (typeof claims.nonce !== "string" || claims.nonce !== nonce) throw new OAuthError("oauth_failed");

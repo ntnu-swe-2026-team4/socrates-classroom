@@ -133,8 +133,9 @@ export function authRoutes() {
           },
         ]);
       } catch (error) {
-        if (uniqueViolationColumns(error).length === 0) throw error;
-        fail(409, "email_taken");
+        const pairs = uniqueViolationColumns(error);
+        if (pairs.some(([table, column]) => table === "users" && column === "email")) fail(409, "email_taken");
+        throw error;
       }
       const user: User = { id, name: input.name, canManageClasses: false, isAdmin: false };
       await startSession(c, user);
