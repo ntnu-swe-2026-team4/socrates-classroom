@@ -18,7 +18,7 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import { api } from "@/api";
+import { api, type User } from "@/api";
 import { ADMIN_SECTIONS, type AdminTab } from "@/lib/adminSections";
 import { NotificationBell } from "@/components/Notifications";
 import { SocratesCompanion } from "@/components/SocratesCompanion";
@@ -41,8 +41,49 @@ const NAV = [
 
 const CLASSROOM_MATCH = ["/classrooms", "/join", "/dialogue", "/t/", "/report"];
 
+function useSessionSync() {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    let checking = false;
+    const check = async () => {
+      if (checking || document.visibilityState !== "visible") return;
+      const before = queryClient.getQueryData<User | null>(["me"]);
+      if (before === undefined) return;
+      checking = true;
+      try {
+        const now = await api.me();
+        if ((now?.id ?? null) !== (before?.id ?? null)) {
+          window.location.reload();
+          return;
+        }
+        if (
+          now &&
+          before &&
+          (now.teacherPlan !== before.teacherPlan ||
+            now.teacherMode !== before.teacherMode ||
+            now.admin !== before.admin)
+        ) {
+          queryClient.setQueryData(["me"], now);
+          await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+        }
+      } catch {
+        return;
+      } finally {
+        checking = false;
+      }
+    };
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [queryClient]);
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  useSessionSync();
   if (BARE_ROUTES.some((re) => re.test(pathname))) return <>{children}</>;
   return <RailShell pathname={pathname}>{children}</RailShell>;
 }
