@@ -4,11 +4,6 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ShieldCheck,
-  Building2,
-  LayoutDashboard,
-  Megaphone,
-  UserCheck,
-  Users,
   Eye,
   ArrowLeft,
   BookOpen,
@@ -24,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { api } from "@/api";
+import { ADMIN_SECTIONS, type AdminTab } from "@/lib/adminSections";
 import { NotificationBell } from "@/components/Notifications";
 import { SocratesCompanion } from "@/components/SocratesCompanion";
 import { Button, ConfirmDialog, Initial, cn } from "@/components/ui";
@@ -42,15 +38,6 @@ const NAV = [
   { to: "/home", label: "nav_home", icon: Home, match: ["/home"] },
   { to: "/chat", label: "nav_chat", icon: MessageSquare, match: ["/chat"] },
 ] as const;
-
-export const ADMIN_SECTIONS = [
-  { tab: "overview", label: "admin_tab_overview", icon: LayoutDashboard },
-  { tab: "users", label: "admin_tab_users", icon: Users },
-  { tab: "requests", label: "admin_tab_requests", icon: UserCheck },
-  { tab: "schools", label: "admin_tab_schools", icon: Building2 },
-  { tab: "notify", label: "admin_tab_notify", icon: Megaphone },
-] as const;
-export type AdminTab = (typeof ADMIN_SECTIONS)[number]["tab"];
 
 const CLASSROOM_MATCH = ["/classrooms", "/join", "/dialogue", "/t/", "/report"];
 
@@ -229,23 +216,17 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                 )}
               </>
             )}
-            {me.data?.admin && (
-              <Link to="/admin" className={cn(NAV_BTN, pathname.startsWith("/admin") && NAV_ACTIVE)}>
-                <ShieldCheck className="size-[19px]" />
-                <span>{t("nav_admin")}</span>
-              </Link>
-            )}
           </>
         )}
       </div>
 
       <div className="flex-1" />
 
-      {inAdmin && (
+      {me.data?.admin && !previewRoom && (
         <div className="mb-3 w-full px-1.5">
-          <Link to="/home" data-rail="site" className={NAV_BTN}>
-            <Eye className="size-[19px]" />
-            <span className="text-center leading-tight">{t("nav_back_to_site")}</span>
+          <Link to={inAdmin ? "/home" : "/admin"} data-rail="site" className={NAV_BTN}>
+            {inAdmin ? <Eye className="size-[19px]" /> : <ShieldCheck className="size-[19px]" />}
+            <span className="text-center leading-tight">{t(inAdmin ? "nav_back_to_site" : "nav_manage_site")}</span>
           </Link>
         </div>
       )}

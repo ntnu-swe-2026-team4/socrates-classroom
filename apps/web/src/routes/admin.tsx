@@ -4,7 +4,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { Building2, Plus, Search, UserMinus } from "lucide-react";
 import type { AdminUser, SchoolTeacher } from "@socrates/shared";
 import { api, ApiError } from "@/api";
-import { ADMIN_SECTIONS, type AdminTab } from "@/components/AppShell";
+import { ADMIN_SECTIONS, type AdminTab } from "@/lib/adminSections";
 import { NotificationComposer } from "@/components/Notifications";
 import { Button, Card, cn, ConfirmDialog, Field, Initial, Input, PageHeader, Spinner } from "@/components/ui";
 import { type MessageKey, useFormatDate, useT } from "@/i18n";
