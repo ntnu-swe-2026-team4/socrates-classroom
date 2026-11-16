@@ -99,6 +99,11 @@ beforeEach(() => {
 });
 
 describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
+  it("subscribes to the conversation once when the socket opens", () => {
+    renderHook(() => useDialogue("a_1", "u_1"));
+    expect(agent.sent.map((raw) => JSON.parse(raw)).filter((frame) => frame.type === "watch")).toHaveLength(1);
+  });
+
   it("main flow: result=admission does not complete; the assistant entry landing moves speaking → idle", async () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     expect(JSON.parse(agent.sent[0]!)).toMatchObject({ type: "watch" });
@@ -244,11 +249,32 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     expect(tts).not.toHaveBeenCalled();
   });
 
-  it("C2: reconnect view lacks this round's user entry (not admitted) — pending cleared with an error", () => {
+  it("a watch snapshot from before submit does not fail a pending answer", async () => {
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([]));
+    act(() => {
+      expect(result.current.send("契約是什麼？")).toBe(true);
+    });
+
+    emit(viewFrame([]));
+    expect(result.current.pending).toBe(true);
+    expect(result.current.error).toBeNull();
+
+    emit(opsFrame([userEntry(1, "契約是什麼？"), assistantEntry(2, "先談雙方的承諾。")]));
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    expect(result.current.error).toBeNull();
+  });
+
+  it("C2: reconnect view without this round's user entry waits for an explicit failure", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
     act(() => result.current.send("斷線前的問題"));
     emit(viewFrame([]));
+    expect(result.current.phase).toBe("thinking");
+    expect(result.current.error).toBeNull();
+    expect(result.current.pending).toBe(true);
+
+    emit({ type: "error", id: submitId(), message: "Request failed" });
     expect(result.current.phase).toBe("idle");
     expect(result.current.error).toEqual({ code: "llm_unavailable" });
     expect(result.current.pending).toBe(false);
@@ -351,13 +377,17 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     expect(tts.mock.calls[0]![0]).toBe("跨過 splice 的回答");
   });
 
-  it("sliding window: reconnect view spliced past the baseline — not-admitted verdict still works", () => {
+  it("sliding window: a view past the baseline keeps waiting for the missing turn", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答")]));
     act(() => result.current.send("未被受理的問題"));
     emit(viewFrame([emotionEntry(3)]));
-    expect(result.current.phase).toBe("idle");
-    expect(result.current.error).toEqual({ code: "llm_unavailable" });
+    expect(result.current.phase).toBe("thinking");
+    expect(result.current.error).toBeNull();
+    expect(result.current.pending).toBe(true);
+    emit(opsFrame([emotionEntry(3), userEntry(4, "未被受理的問題"), assistantEntry(5, "現在回答")]));
+    expect(result.current.pending).toBe(false);
+    expect(result.current.error).toBeNull();
   });
 });
 

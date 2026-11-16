@@ -197,7 +197,8 @@ export function useDialogue(activityId: string, userId: string) {
             if (answered(entries)) completePending();
             return;
           }
-          failPending("llm_unavailable");
+          const live = viewRef.current?.docs["pi.live"] as { runFailure?: unknown } | undefined;
+          if (live?.runFailure) failPending("llm_unavailable");
         }
         return;
       }
@@ -208,8 +209,6 @@ export function useDialogue(activityId: string, userId: string) {
       } else if (full) {
         if (tail.some((entry) => entry.kind === "pi.assistant" && !intermediateAssistant(entry))) {
           completePending();
-        } else if (!tail.some((entry) => entry.kind === "pi.user")) {
-          failPending("llm_unavailable");
         } else {
           const live = viewRef.current?.docs["pi.live"] as { runFailure?: unknown } | undefined;
           if (live?.runFailure) failPending("llm_unavailable");
@@ -317,12 +316,6 @@ export function useDialogue(activityId: string, userId: string) {
     };
     socket.addEventListener("close", flush);
     return () => socket.removeEventListener("close", flush);
-  }, [socket]);
-
-  useEffect(() => {
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
-    }
   }, [socket]);
 
   const send = useCallback(
