@@ -4,7 +4,17 @@ import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
-import { call, cookieOf, frames, joinGuest, latestAssistantText, registerStudent, speak } from "./helpers";
+import {
+  call,
+  classroomWithActivity,
+  cookieOf,
+  frames,
+  joinGuest,
+  latestAssistantText,
+  registerStudent,
+  speak,
+  systemTopicId,
+} from "./helpers";
 
 let teacher: string;
 let classroomId: string;
@@ -65,11 +75,8 @@ beforeAll(async () => {
   });
   expect(login.status).toBe(200);
   teacher = cookieOf(login);
-  const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>;
-  topicId = topics[0]!.id;
-  const created = (await (
-    await call("/api/classrooms", jsonInit({ name: "測試模式班", topicId }, teacher))
-  ).json()) as { classroomId: string; code: string; activityId: string };
+  topicId = await systemTopicId(teacher);
+  const created = await classroomWithActivity(teacher, "測試模式班", topicId);
   classroomId = created.classroomId;
   code = created.code;
   liveActivityId = created.activityId;

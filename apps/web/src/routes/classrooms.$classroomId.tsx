@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChartNoAxesColumn, GraduationCap, MessageSquare, SquareActivity, Users } from "lucide-react";
 import { api } from "@/api";
 import type { ClassroomSummary } from "@socrates/shared";
+import { AddTopic, CopyTopic, StartActivity, useClassroomTopics } from "@/components/ClassroomTopics";
 import { QrBlock, absoluteUrl } from "@/components/QrBlock";
-import { Button, Card, Checkbox, SectionTitle, Spinner, cn } from "@/components/ui";
+import { Button, Card, SectionTitle, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/classrooms/$classroomId")({
@@ -87,7 +88,8 @@ function ClassroomPage() {
       >
         <div className="flex min-w-0 flex-col gap-6">
           <CurrentTopic room={data} />
-          {teacher && <NewTopic room={data} />}
+          {teacher && <Topics room={data} />}
+          {teacher && <NewActivity room={data} />}
         </div>
         {teacher && data.url && data.code && (
           <aside className="flex flex-col gap-8 lg:sticky lg:top-6 lg:self-start">
@@ -167,60 +169,48 @@ function CurrentTopic({ room }: { room: ClassroomSummary }) {
   );
 }
 
-function NewTopic({ room }: { room: ClassroomSummary }) {
+function Topics({ room }: { room: ClassroomSummary }) {
+  const t = useT();
+  const topics = useClassroomTopics(room.id);
+  return (
+    <section>
+      <SectionTitle>{t("classroom_topics")}</SectionTitle>
+      <Card className="p-5">
+        {(topics.data ?? []).length === 0 ? (
+          <p className="text-[13px] text-ink-faint">{t("classroom_no_topics")}</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {(topics.data ?? []).map((topic) => (
+              <li key={topic.id} className="rounded-xl bg-paper-deep p-3">
+                <b className="block font-serif text-[15px] font-medium text-ink">{topic.title}</b>
+                <span className="mt-0.5 block text-[13px] leading-relaxed text-ink-soft">{topic.statement}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-5 border-t border-line pt-5">
+          <p className="mb-3 text-[13px] text-ink-soft">{t("classroom_add_topic")}</p>
+          <AddTopic classroomId={room.id} />
+        </div>
+        <CopyTopic classroomId={room.id} />
+      </Card>
+    </section>
+  );
+}
+
+function NewActivity({ room }: { room: ClassroomSummary }) {
   const t = useT();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const topics = useQuery({ queryKey: ["topics"], queryFn: () => api.listTopics(), staleTime: Infinity });
-  const [picked, setPicked] = useState<string | null>(null);
-  const [testMode, setTestMode] = useState(false);
-  const start = useMutation({
-    mutationFn: (topicId: string) => api.startActivity(room.id, topicId, testMode ? "test" : "live"),
-    onSuccess: async (created) => {
-      setPicked(null);
-      await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
-      if (created.mode === "test") {
-        await navigate({ to: "/t/live/$id", params: { id: created.activityId } });
-      }
-    },
-  });
-  const list = (topics.data ?? []).filter((topic) => topic.id !== room.current?.topicId);
-
   return (
     <section>
       <SectionTitle>{t("classroom_new_topic")}</SectionTitle>
-      <Card className="p-5">
-        <p className="mb-3 text-[13px] leading-relaxed text-ink-soft">{t("classroom_new_topic_hint")}</p>
-        <div className="flex max-h-80 flex-col gap-1 overflow-y-auto pr-0.5">
-          {list.map((topic) => (
-            <button
-              type="button"
-              key={topic.id}
-              aria-pressed={picked === topic.id}
-              onClick={() => setPicked(topic.id)}
-              className={cn(
-                "flex w-full cursor-pointer flex-col items-start rounded-xl border p-3 text-left transition-colors",
-                picked === topic.id ? "border-ember-deep bg-ember-wash" : "border-transparent hover:bg-paper-deep",
-              )}
-            >
-              <b className="font-serif text-[15px] font-medium text-ink">{topic.title}</b>
-              <span className="mt-0.5 text-[13px] leading-relaxed text-ink-soft">{topic.statement}</span>
-            </button>
-          ))}
-        </div>
-        <div className="mt-4">
-          <Checkbox label={t("classroom_mode_test")} checked={testMode} onCheckedChange={setTestMode} />
-          {testMode && (
-            <p className="mt-1.5 pl-8 text-[12px] leading-relaxed text-ink-faint">{t("classroom_mode_test_hint")}</p>
-          )}
-        </div>
-        <div className="mt-4 flex items-center justify-between gap-3">
-          {start.isError ? <p className="text-[12.5px] text-flag">{t("common_error")}</p> : <span />}
-          <Button disabled={!picked || start.isPending} onClick={() => picked && start.mutate(picked)}>
-            {start.isPending ? <Spinner /> : testMode ? t("classroom_start_test") : t("classroom_start_topic")}
-          </Button>
-        </div>
-      </Card>
+      <StartActivity
+        classroomId={room.id}
+        allowTest
+        onStarted={(started) => {
+          if (started.mode === "test") void navigate({ to: "/t/live/$id", params: { id: started.activityId } });
+        }}
+      />
     </section>
   );
 }

@@ -4,6 +4,7 @@ import type {
   ActivityInvite,
   ActivityMode,
   ActivitySlots,
+  ActivityStarted,
   AdminUser,
   ClassroomCreated,
   ClassroomSummary,
@@ -16,6 +17,7 @@ import type {
   TeacherKeyStatus,
   TermExplanation,
   Topic,
+  TopicDraft,
   User,
 } from "@socrates/shared";
 import {
@@ -31,6 +33,7 @@ import {
   LoginInputSchema,
   LookupInputSchema,
   SttResultSchema,
+  TopicCopyInputSchema,
   TopicCreateInputSchema,
   TtsInputSchema,
   type ErrorCode,
@@ -71,10 +74,16 @@ export interface Api {
   inviteInfo(token: string): Promise<InviteInfo>;
   joinByInvite(token: string, name: string): Promise<InviteJoined>;
   listTopics(): Promise<Topic[]>;
-  generateTopics(direction: string): Promise<Topic[]>;
-  createClassroom(name: string, topicId: string): Promise<ClassroomCreated>;
+  generateTopics(direction: string): Promise<TopicDraft[]>;
+  createClassroom(name: string): Promise<ClassroomCreated>;
   listClassrooms(): Promise<ClassroomSummary[]>;
-  startActivity(classroomId: string, topicId: string, mode?: ActivityMode): Promise<ClassroomCreated>;
+  listClassroomTopics(classroomId: string): Promise<Topic[]>;
+  createClassroomTopic(
+    classroomId: string,
+    input: { title: string; statement: string; summary?: string; prompts: string[] },
+  ): Promise<Topic>;
+  copyTopic(topicId: string, classroomId: string): Promise<Topic>;
+  startActivity(classroomId: string, topicId: string, mode?: ActivityMode): Promise<ActivityStarted>;
   listActivitySlots(activityId: string): Promise<ActivitySlots>;
   createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
   stt(audio: Blob): Promise<string>;
@@ -265,16 +274,31 @@ export const httpApi: Api = {
   async createTopic(input) {
     return unwrap(await client.topics.$post({ json: TopicCreateInputSchema.parse(input) }));
   },
-  async createClassroom(name, topicId) {
-    const input = ClassroomCreateInputSchema.parse({ name, topicId });
+  async createClassroom(name) {
+    const input = ClassroomCreateInputSchema.parse({ name });
     return unwrap(await client.classrooms.$post({ json: input }));
   },
   async listClassrooms() {
     return unwrap(await client.classrooms.$get());
   },
+  async listClassroomTopics(classroomId) {
+    return await raw<Topic[]>(`/classrooms/${encodeURIComponent(classroomId)}/topics`);
+  },
+  async createClassroomTopic(classroomId, input) {
+    return await raw<Topic>(`/classrooms/${encodeURIComponent(classroomId)}/topics`, {
+      method: "POST",
+      json: TopicCreateInputSchema.parse(input),
+    });
+  },
+  async copyTopic(topicId, classroomId) {
+    return await raw<Topic>(`/topics/${encodeURIComponent(topicId)}/copy`, {
+      method: "POST",
+      json: TopicCopyInputSchema.parse({ classroomId }),
+    });
+  },
   async startActivity(classroomId, topicId, mode = "live") {
     const input = ActivityStartInputSchema.parse({ topicId, mode });
-    return raw<ClassroomCreated>(`/classrooms/${classroomId}/activities`, { method: "POST", json: input });
+    return await raw<ActivityStarted>(`/classrooms/${classroomId}/activities`, { method: "POST", json: input });
   },
   async listActivitySlots(activityId) {
     return raw<ActivitySlots>(`/activities/${encodeURIComponent(activityId)}/slots`);

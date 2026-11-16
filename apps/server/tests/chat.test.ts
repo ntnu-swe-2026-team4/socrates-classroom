@@ -10,6 +10,7 @@ import type { Chat } from "../src/do/chat";
 import {
   assistantText,
   call,
+  classroomWithActivity,
   cookieOf,
   frames,
   joinGuest,
@@ -52,17 +53,7 @@ beforeAll(async () => {
   });
   expect(login.status).toBe(200);
   teacherCookie = cookieOf(login);
-  const topics = (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{
-    id: string;
-  }>;
-  expect(topics.length).toBeGreaterThan(0);
-  const created = (await (
-    await call("/api/classrooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: teacherCookie },
-      body: JSON.stringify({ name: "WS 班", topicId: topics[0]!.id }),
-    })
-  ).json()) as { code: string; activityId: string };
+  const created = await classroomWithActivity(teacherCookie, "WS 班");
   classroomCode = created.code;
   activityId = created.activityId;
 });
@@ -491,16 +482,7 @@ describe("activity_finished reaches the client as a named error code", () => {
 
 describe("WS error-frame hygiene + worker entry CORS", () => {
   it("non-whitelisted error (ZodError from oversized input) yields a generic frame: no code, id echoed", async () => {
-    const topics = (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{
-      id: string;
-    }>;
-    const created = (await (
-      await call("/api/classrooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: teacherCookie },
-        body: JSON.stringify({ name: "錯誤框架班", topicId: topics[0]!.id }),
-      })
-    ).json()) as { code: string; activityId: string };
+    const created = await classroomWithActivity(teacherCookie, "錯誤框架班");
     const joined = await call("/api/join", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

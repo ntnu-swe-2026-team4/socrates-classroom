@@ -16,17 +16,18 @@
 
 ## 學生與老師：帳號與教室
 
-| 功能     | 說明                                                                         | 主要路由 / 頁面                                                                 |
-| -------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| 老師登入 | email＋密碼（PBKDF2）；HMAC cookie session 30 天                             | `POST /api/auth/login`・`/login`                                                |
-| 註冊學生 | 以邀請碼註冊學生帳號（email＋密碼），註冊即成員；同 email 可登入             | `POST /api/auth/register`                                                       |
-| 訪客加入 | 邀請碼＋姓名＋ToS 同意；不建帳號，取得活動層 participant cookie              | `GET /api/join/:code`・`POST /api/join`・`/join`                                |
-| 活動邀請 | 老師產生活動專屬連結／QR；無痕開連結即成活動訪客，不進班級名冊               | `POST /api/activities/:id/invites`・`GET /api/invites/:token`・`/join/a/$token` |
-| 教室清單 | 老師見自己開的教室（含 code/url）；學生見加入中的教室                        | `GET /api/classrooms`・`/classrooms`                                            |
-| 建立教室 | 老師從議題建立教室，自動產生邀請碼與第一個活動                               | `POST /api/classrooms`・`/t/setup`                                              |
-| 重開活動 | 同教室換議題開新活動（`live` 會換掉進行中活動；`test` 不換，見下）           | `POST /api/classrooms/:id/activities`                                           |
-| 測試模式 | 老師建 1–6 個 slot，各自一條獨立對話；學生任何入口都看不到；結束後照常產報告 | `GET/POST /api/activities/:id/slots`・`/t/live/:id`                             |
-| 議題     | 內建議題列表；AI 生成（方向 → 三題）                                         | `GET/POST /api/topics`・`POST /api/topics/generate`                             |
+| 功能     | 說明                                                                         | 主要路由 / 頁面                                                                       |
+| -------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 老師登入 | email＋密碼（PBKDF2）；HMAC cookie session 30 天                             | `POST /api/auth/login`・`/login`                                                      |
+| 註冊學生 | 以邀請碼註冊學生帳號（email＋密碼），註冊即成員；同 email 可登入             | `POST /api/auth/register`                                                             |
+| 訪客加入 | 邀請碼＋姓名＋ToS 同意；不建帳號，取得活動層 participant cookie              | `GET /api/join/:code`・`POST /api/join`・`/join`                                      |
+| 活動邀請 | 老師產生活動專屬連結／QR；無痕開連結即成活動訪客，不進班級名冊               | `POST /api/activities/:id/invites`・`GET /api/invites/:token`・`/join/a/$token`       |
+| 教室清單 | 老師見自己開的教室（含 code/url）；學生見加入中的教室                        | `GET /api/classrooms`・`/classrooms`                                                  |
+| 建立教室 | 老師建立空教室（只建班級、產生邀請碼，不建活動）                             | `POST /api/classrooms`・`/t/setup`                                                    |
+| 議題集   | 議題屬於班級；班級內新增／AI 生成；跨班複製為獨立副本；系統題任何老師可用    | `GET/POST /api/classrooms/:id/topics`・`POST /api/topics/:id/copy`・`/classrooms/:id` |
+| 開活動   | 以班級議題或系統題開新活動（`live` 會換掉進行中活動；`test` 不換，見下）     | `POST /api/classrooms/:id/activities`・`/t/setup`                                     |
+| 測試模式 | 老師建 1–6 個 slot，各自一條獨立對話；學生任何入口都看不到；結束後照常產報告 | `GET/POST /api/activities/:id/slots`・`/t/live/:id`                                   |
+| 議題池   | 系統題＋老師個人題列表；AI 生成候選（未落庫）                                | `GET/POST /api/topics`・`POST /api/topics/generate`                                   |
 
 ## 單人：與蘇格拉底對話
 

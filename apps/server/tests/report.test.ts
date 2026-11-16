@@ -5,7 +5,7 @@ import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import { reportAlarmPlan } from "../src/do/report-runner";
-import { call, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
+import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
 
 let teacherCookie: string;
 let classroomCode: string;
@@ -24,16 +24,7 @@ beforeAll(async () => {
   });
   expect(login.status).toBe(200);
   teacherCookie = cookieOf(login);
-  const topics = (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{
-    id: string;
-  }>;
-  const created = (await (
-    await call("/api/classrooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: teacherCookie },
-      body: JSON.stringify({ name: "報告班", topicId: topics[0]!.id }),
-    })
-  ).json()) as { code: string; activityId: string; classroomId: string };
+  const created = await classroomWithActivity(teacherCookie, "報告班");
   classroomCode = created.code;
   activityId = created.activityId;
 
@@ -165,13 +156,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
         }),
       })
     ).json()) as { id: string };
-    const created = (await (
-      await call("/api/classrooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: teacherCookie },
-        body: JSON.stringify({ name: "重試班", topicId: topic.id }),
-      })
-    ).json()) as { activityId: string };
+    const created = await classroomWithActivity(teacherCookie, "重試班", topic.id);
     const finish = await call(`/api/activities/${created.activityId}/finish`, {
       method: "POST",
       headers: { Cookie: teacherCookie, "CF-Connecting-IP": "198.51.100.21" },
@@ -193,16 +178,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
   }, 60_000);
 
   it("class-report failure with student analyses stored → partial per §7 (200, classReport null, positions empty)", async () => {
-    const topics = (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{
-      id: string;
-    }>;
-    const created = (await (
-      await call("/api/classrooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: teacherCookie },
-        body: JSON.stringify({ name: "partial 班", topicId: topics[0]!.id }),
-      })
-    ).json()) as { code: string; activityId: string };
+    const created = await classroomWithActivity(teacherCookie, "partial 班");
     const joined = await call("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -255,16 +231,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
 
 describe("stored report read-back validation", () => {
   it("a corrupted stored row → 500 report_failed, not an off-contract shape", async () => {
-    const topics = (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{
-      id: string;
-    }>;
-    const created = (await (
-      await call("/api/classrooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: teacherCookie },
-        body: JSON.stringify({ name: "損壞列班", topicId: topics[0]!.id }),
-      })
-    ).json()) as { activityId: string };
+    const created = await classroomWithActivity(teacherCookie, "損壞列班");
     await run(
       env.DB,
       `INSERT INTO reports (activity_id, status, teacher_report, student_reports, created_at, updated_at)

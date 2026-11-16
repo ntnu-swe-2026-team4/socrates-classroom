@@ -25,6 +25,8 @@ export interface ActivityRow {
 export interface TopicRow {
   id: string;
   owner_id: string | null;
+  classroom_id: string | null;
+  copied_from: string | null;
   title: string;
   statement: string;
   summary: string | null;
@@ -52,6 +54,7 @@ export interface ParticipantRow {
 export function parsePrompts(row: TopicRow) {
   return {
     id: row.id,
+    classroomId: row.classroom_id,
     title: row.title,
     statement: row.statement,
     ...(row.summary ? { summary: row.summary } : {}),
@@ -76,6 +79,36 @@ export async function topicOf(db: Db, topicId: string): Promise<ReturnType<typeo
   const row = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id", { id: topicId });
   if (!row) fail(404, "not_found");
   return parsePrompts(row);
+}
+
+export interface ClassroomAccess {
+  classroom: ClassroomRow;
+  isTeacher: boolean;
+}
+
+export async function classroomAccess(db: Db, classroomId: string, user: Pick<User, "id">): Promise<ClassroomAccess> {
+  const classroom = await one<ClassroomRow>(db, "SELECT * FROM classrooms WHERE id = $id", { id: classroomId });
+  if (!classroom) fail(404, "not_found");
+  if (classroom.teacher_id === user.id) return { classroom, isTeacher: true };
+  const member = await one<MemberRow>(db, "SELECT * FROM members WHERE classroom_id = $cid AND user_id = $uid", {
+    cid: classroom.id,
+    uid: user.id,
+  });
+  if (!member) fail(403, "forbidden");
+  return { classroom, isTeacher: false };
+}
+
+export async function topicForActivity(
+  db: Db,
+  topicId: string,
+  classroomId: string,
+  userId: string,
+): Promise<TopicRow> {
+  const topic = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id", { id: topicId });
+  if (!topic) fail(404, "not_found");
+  const systemOrOwn = topic.classroom_id === null && (topic.owner_id === null || topic.owner_id === userId);
+  if (topic.classroom_id !== classroomId && !systemOrOwn) fail(404, "not_found");
+  return topic;
 }
 
 export async function participantOf(db: Db, activityId: string, participantId: string): Promise<ParticipantRow | null> {

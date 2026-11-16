@@ -99,6 +99,46 @@ describe("httpApi contract (browser-side actual code)", () => {
     expect(path).toBe("/api/stt");
   });
 
+  test("classroom topics: create classroom, list/add/copy topics, start activity", async () => {
+    handler.mockImplementation((path, init) => {
+      if (path === "/api/classrooms" && init.method === "POST")
+        return json({ classroomId: "c_1", code: "abcdef", url: "https://x/join/abcdef" }, 201);
+      if (path === "/api/classrooms/c_1/topics" && init.method === "POST")
+        return json({ id: "t_1", classroomId: "c_1", title: "題", statement: "述", prompts: [] }, 201);
+      if (path === "/api/topics/t_1/copy")
+        return json({ id: "t_2", classroomId: "c_2", title: "題", statement: "述", prompts: [] }, 201);
+      if (path === "/api/classrooms/c_1/activities")
+        return json(
+          { classroomId: "c_1", code: "abcdef", url: "https://x/join/abcdef", activityId: "a_1", mode: "live" },
+          201,
+        );
+      return json([]);
+    });
+
+    const classroom = await httpApi.createClassroom("班");
+    expect(handler.mock.calls[0]![0]).toBe("/api/classrooms");
+    expect(JSON.parse(handler.mock.calls[0]![1].body as string)).toEqual({ name: "班" });
+    expect(classroom.classroomId).toBe("c_1");
+
+    await httpApi.listClassroomTopics("c_1");
+    expect(handler.mock.calls[1]![0]).toBe("/api/classrooms/c_1/topics");
+
+    const topic = await httpApi.createClassroomTopic("c_1", { title: "題", statement: "述", prompts: [] });
+    expect(topic.classroomId).toBe("c_1");
+    expect(handler.mock.calls[2]![0]).toBe("/api/classrooms/c_1/topics");
+    expect(handler.mock.calls[2]![1].method).toBe("POST");
+
+    const copy = await httpApi.copyTopic("t_1", "c_2");
+    expect(copy.id).toBe("t_2");
+    expect(handler.mock.calls[3]![0]).toBe("/api/topics/t_1/copy");
+    expect(JSON.parse(handler.mock.calls[3]![1].body as string)).toEqual({ classroomId: "c_2" });
+
+    const started = await httpApi.startActivity("c_1", "t_1");
+    expect(started.activityId).toBe("a_1");
+    expect(handler.mock.calls[4]![0]).toBe("/api/classrooms/c_1/activities");
+    expect(JSON.parse(handler.mock.calls[4]![1].body as string)).toEqual({ topicId: "t_1", mode: "live" });
+  });
+
   test("finishActivity: POST 204 with no body", async () => {
     handler.mockReturnValue(new Response(null, { status: 204 }));
     await expect(httpApi.finishActivity("a_1")).resolves.toBeUndefined();

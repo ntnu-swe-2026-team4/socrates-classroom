@@ -115,6 +115,61 @@ export async function participantIdOf(activityId: string, cookie: string): Promi
   return participantId!;
 }
 
+export interface StartedActivity {
+  classroomId: string;
+  code: string;
+  activityId: string;
+  mode: "live" | "test";
+}
+
+export async function createClassroom(
+  cookie: string,
+  name: string,
+): Promise<{ classroomId: string; code: string; url: string }> {
+  const res = await call("/api/classrooms", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({ name }),
+  });
+  expect(res.status).toBe(201);
+  return (await res.json()) as { classroomId: string; code: string; url: string };
+}
+
+export async function systemTopicId(cookie: string): Promise<string> {
+  const res = await call("/api/topics", { headers: { Cookie: cookie } });
+  expect(res.status).toBe(200);
+  const topics = (await res.json()) as Array<{ id: string }>;
+  expect(topics.length).toBeGreaterThan(0);
+  return topics[0]!.id;
+}
+
+export async function startActivity(
+  cookie: string,
+  classroomId: string,
+  topicId: string,
+  mode: "live" | "test" = "live",
+): Promise<StartedActivity> {
+  const res = await call(`/api/classrooms/${classroomId}/activities`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({ topicId, mode }),
+  });
+  expect(res.status).toBe(201);
+  return (await res.json()) as StartedActivity;
+}
+
+export async function classroomWithActivity(
+  cookie: string,
+  name: string,
+  topicId?: string,
+  mode: "live" | "test" = "live",
+): Promise<StartedActivity> {
+  const classroom = await createClassroom(cookie, name);
+  const topic = topicId ?? (await systemTopicId(cookie));
+  const started = await startActivity(cookie, classroom.classroomId, topic, mode);
+  return { ...started, code: classroom.code };
+}
+
 export async function speak(thread: string, cookie: string, question: string): Promise<void> {
   const response = await routeAgentRequest(
     new Request(`https://example.com/agents/chat/${thread}`, {

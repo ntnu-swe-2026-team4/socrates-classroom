@@ -2,6 +2,26 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-16 — #135 班級、活動、議題解耦（`136-account-classroom-model`）
+
+### Added
+
+- Schema `006_topic_classroom.sql`：`topics.classroom_id`（`NULL` = 系統題／個人題，`ON DELETE CASCADE` 隨班級）、`topics.copied_from`（`ON DELETE SET NULL`）、`topics_classroom` index
+- `GET/POST /api/classrooms/:id/topics`（#135）：該班議題集；讀取需班級成員，寫入需該班 owner＋`canManageClasses`
+- `POST /api/topics/:id/copy` `{classroomId}`：snapshot 成新 id 並歸入目標班級（`copied_from` 記來源）；改任一邊不影響另一邊
+- `TopicSchema` 新增 `classroomId`；`TopicDraftSchema`／`TopicDraft` 供 `POST /api/topics/generate` 的未落庫候選（不含 `classroomId`）
+- `/t/setup` 改成三步（建教室 → 議題集 → 開活動）；教室頁新增議題集（新增／AI 生成／複製既有）與「開新活動」區塊；`apps/web/src/components/ClassroomTopics.tsx` 為兩頁共用元件
+
+### Changed
+
+- **`POST /api/classrooms` 只建班級**：body 由 `{name, topicId}` 改為 `{name}`，回應由 `{classroomId, code, url, activityId, mode}` 改為 `{classroomId, code, url}`（`ClassroomCreated`）；活動建立移到 `POST /api/classrooms/:id/activities`，其回應獨立為 `ActivityStarted`。空班級（無議題、無活動）是合法狀態，`current` 為 `null`、邀請碼 404 `join_code_invalid`
+- `GET /api/topics` 只回 `classroom_id IS NULL` 的系統題與自己的個人題——班級議題集不再混進個人題池；`POST /api/topics` 保留為個人題 legacy 入口
+- `POST /api/classrooms/:id/activities` 驗證 `topicId` 屬於該班或為系統題／自己的個人題（其他班級的議題 → 404）
+- `current` 語意明文化：指標為「最近一次 `live` 活動」（`test` 不寫入、結束不清除，`current.finished` 區分）；文件見 `api-contract.md` §4
+- `activities.topic_id` 的 FK 維持 001 的預設動作：SQLite 的 `NO ACTION`（非 deferrable）與 `ON DELETE RESTRICT` 在本 schema 行為相同，且 topic 刪除不在本批範圍，因此不做 table rebuild
+- 測試：`apps/server/tests/topics.test.ts`（空班級、議題集歸屬、權限、`current` 與 `test` 互斥、複製為獨立副本、系統題可用）；既有測試改走 `tests/helpers.ts` 的 `classroomWithActivity`／`startActivity`
+- Docs：`api-contract.md` §1.1、§4（改寫）；`feature.md`、`frontend.md`、`architecture.md`（migration 清單）
+
 ## 2026-11-16 — #134 教師用測試模式（`136-account-classroom-model`）
 
 ### Added

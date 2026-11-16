@@ -16,12 +16,17 @@ export const UserSchema = z.object({
 });
 export type User = z.infer<typeof UserSchema>;
 
-export const TopicSchema = z.object({
+export const TopicDraftSchema = z.object({
   id: z.string(),
   title: z.string(),
   statement: z.string(),
   summary: z.string().optional(),
   prompts: z.array(z.string()),
+});
+export type TopicDraft = z.infer<typeof TopicDraftSchema>;
+
+export const TopicSchema = TopicDraftSchema.extend({
+  classroomId: z.string().nullable(),
 });
 export type Topic = z.infer<typeof TopicSchema>;
 
@@ -42,10 +47,17 @@ export const ClassroomCreatedSchema = z.object({
   classroomId: z.string(),
   code: z.string(),
   url: z.string(),
+});
+export type ClassroomCreated = z.infer<typeof ClassroomCreatedSchema>;
+
+export const ActivityStartedSchema = z.object({
+  classroomId: z.string(),
+  code: z.string(),
+  url: z.string(),
   activityId: z.string(),
   mode: ActivityModeSchema,
 });
-export type ClassroomCreated = z.infer<typeof ClassroomCreatedSchema>;
+export type ActivityStarted = z.infer<typeof ActivityStartedSchema>;
 
 export const ActivityInviteSchema = z.object({
   token: z.string(),
@@ -248,7 +260,9 @@ export const GenerateTopicsInputSchema = z.object({
 });
 export const ClassroomCreateInputSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  topicId: z.string().min(1),
+});
+export const TopicCopyInputSchema = z.object({
+  classroomId: z.string().min(1),
 });
 export const ActivityStartInputSchema = z.object({
   topicId: z.string().min(1),

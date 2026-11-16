@@ -161,58 +161,71 @@ test("#90: emotion entry maps to SocratesStage expression (happy → Happy, neut
   }
 });
 
-test("t.setup: picking an AI-generated topic persists it before creating the classroom", async () => {
+test("t.setup: create classroom → add an AI topic → start the activity", async () => {
   const generatedTopic = {
     id: "gen_123_0",
     title: "Generated topic",
     statement: "A generated dilemma",
     prompts: ["Why?"],
   };
-  const persisted = { ...generatedTopic, id: "topic-persisted" };
+  const persisted = { ...generatedTopic, id: "topic-persisted", classroomId: "class-9" };
+  const activity = {
+    classroomId: "class-9",
+    code: "code999",
+    url: "http://localhost/join/code999",
+    activityId: "activity-9",
+    mode: "live",
+  };
   const calls: Array<{ path: string; body: unknown }> = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = new URL(String(input), "http://localhost").pathname;
-      if (
-        init?.method === "POST" &&
-        (path === "/api/topics" || path === "/api/topics/generate" || path === "/api/classrooms")
-      ) {
+      if (init?.method === "POST" && path !== "/api/topics/generate") {
         calls.push({ path, body: JSON.parse(String(init.body)) });
       }
+      const topicAdded = calls.some((call) => call.path === "/api/classrooms/class-9/topics");
       const responses: Record<string, unknown> = {
         "/api/me": { id: "teacher-1", name: "Teacher", canManageClasses: true, isAdmin: false },
         "/api/topics": [topic],
         "/api/topics/generate": [generatedTopic],
-        "/api/classrooms": {
-          classroomId: "class-9",
-          code: "code999",
-          url: "http://localhost/join/code999",
-          activityId: "activity-9",
-        },
+        "/api/classrooms": { classroomId: "class-9", code: "code999", url: "http://localhost/join/code999" },
+        "/api/classrooms/class-9/topics": topicAdded ? [persisted] : [],
+        "/api/classrooms/class-9/activities": activity,
       };
-      if (path === "/api/topics" && calls.some((call) => call.path === "/api/topics"))
-        return new Response(JSON.stringify(persisted), { headers: { "Content-Type": "application/json" } });
       if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
-      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify(responses[path]), {
+        status: init?.method === "POST" && path !== "/api/topics/generate" ? 201 : 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }),
   );
   const dispose = await mountRoute("/t/setup");
   try {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Classroom name" }), {
+      target: { value: "My class" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create classroom" }));
+    await screen.findByText(/Classroom created/);
+
     fireEvent.click(await screen.findByRole("tab", { name: "AI generate" }));
     const direction = await screen.findByPlaceholderText("Topic direction");
     fireEvent.change(direction, { target: { value: "justice" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add to topics" }));
+
     fireEvent.click(await screen.findByRole("button", { name: /Generated topic/ }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Classroom name" }), { target: { value: "My class" } });
-    const createButton = screen.getByRole("button", { name: "Create classroom & invite" });
-    await waitFor(() => expect(createButton).toHaveProperty("disabled", false));
-    fireEvent.click(createButton);
-    await waitFor(() =>
-      expect(calls.map((call) => call.path)).toEqual(["/api/topics/generate", "/api/topics", "/api/classrooms"]),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
+    await screen.findByText("Activity ready");
+
+    expect(calls.map((call) => call.path)).toEqual([
+      "/api/classrooms",
+      "/api/classrooms/class-9/topics",
+      "/api/classrooms/class-9/activities",
+    ]);
+    expect(calls[0]!.body).toEqual({ name: "My class" });
     expect(calls[1]!.body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
-    expect(calls[2]!.body).toMatchObject({ topicId: "topic-persisted" });
+    expect(calls[2]!.body).toMatchObject({ topicId: "topic-persisted", mode: "live" });
   } finally {
     dispose();
   }

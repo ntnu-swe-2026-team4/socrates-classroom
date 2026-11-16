@@ -76,7 +76,7 @@ describe("admin capability model (#131)", () => {
 
   test("granting manage_classes takes effect on the existing session (no re-login)", async () => {
     const student = await login("student-c@socrates.tw");
-    const before = await call("/api/classrooms", jsonInit({ name: "提權前", topicId: "t_fx_trolley" }, student));
+    const before = await call("/api/classrooms", jsonInit({ name: "提權前" }, student));
     expect(before.status).toBe(403);
 
     const promoted = await patchUser(admin, "u_fx_student_c", { canManageClasses: true });
@@ -86,7 +86,7 @@ describe("admin capability model (#131)", () => {
     const me = await call("/api/me", { headers: { Cookie: student } });
     expect(((await me.json()) as { canManageClasses: boolean }).canManageClasses).toBe(true);
 
-    const created = await call("/api/classrooms", jsonInit({ name: "提權後班", topicId: "t_fx_trolley" }, student));
+    const created = await call("/api/classrooms", jsonInit({ name: "提權後班" }, student));
     expect(created.status).toBe(201);
   });
 
@@ -122,7 +122,7 @@ describe("admin capability model (#131)", () => {
     const lin = await login("demo@socrates.tw");
     const chen = await login("chen@socrates.tw");
 
-    const created = await call("/api/classrooms", jsonInit({ name: "陳老師的班", topicId: "t_fx_surrogate" }, chen));
+    const created = await call("/api/classrooms", jsonInit({ name: "陳老師的班" }, chen));
     expect(created.status).toBe(201);
 
     const joined = await call("/api/join", jsonInit({ code: "demo-eths", tosAccepted: true }, chen));

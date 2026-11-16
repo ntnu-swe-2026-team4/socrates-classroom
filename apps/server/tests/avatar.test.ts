@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import { seedFixture } from "../src/seed";
-import { call, cookieOf, frames, latestView, participantIdOf } from "./helpers";
+import { call, classroomWithActivity, cookieOf, frames, latestView, participantIdOf } from "./helpers";
 
 let thread: string;
 let cookie: string;
@@ -34,14 +34,7 @@ beforeAll(async () => {
     body: JSON.stringify({ email: "demo@socrates.tw", password: "demo-demo" }),
   });
   const teacher = cookieOf(login);
-  const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>;
-  const created = (await (
-    await call("/api/classrooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ name: "班", topicId: topics[0]!.id }),
-    })
-  ).json()) as { code: string; activityId: string };
+  const created = await classroomWithActivity(teacher, "班");
   const joined = await call("/api/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

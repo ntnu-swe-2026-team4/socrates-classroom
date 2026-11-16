@@ -6,7 +6,16 @@ import { inject } from "vitest";
 import { all, one, run } from "../src/db/d1";
 import { pseudonymRanks } from "../src/do/report-runner";
 import { seedFixture } from "../src/seed";
-import { call, cookieOf, frames, joinGuest, participantIdOf, registerStudent, speak } from "./helpers";
+import {
+  call,
+  classroomWithActivity,
+  cookieOf,
+  frames,
+  joinGuest,
+  participantIdOf,
+  registerStudent,
+  speak,
+} from "./helpers";
 
 let teacherCookie: string;
 let classroomId: string;
@@ -57,16 +66,7 @@ beforeAll(async () => {
   });
   expect(login.status).toBe(200);
   teacherCookie = cookieOf(login);
-  const topics = (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{
-    id: string;
-  }>;
-  const created = (await (
-    await call("/api/classrooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: teacherCookie },
-      body: JSON.stringify({ name: "邀請班", topicId: topics[0]!.id }),
-    })
-  ).json()) as { classroomId: string; code: string; activityId: string };
+  const created = await classroomWithActivity(teacherCookie, "邀請班");
   classroomId = created.classroomId;
   classroomCode = created.code;
   activityId = created.activityId;
@@ -184,18 +184,7 @@ describe("activity invites", () => {
   });
 
   it("logged-in non-member joins as a guest participant and keeps the account session", async () => {
-    const otherClassroom = (await (
-      await call("/api/classrooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: teacherCookie },
-        body: JSON.stringify({
-          name: "他班",
-          topicId: (
-            (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{ id: string }>
-          )[0]!.id,
-        }),
-      })
-    ).json()) as { code: string };
+    const otherClassroom = await classroomWithActivity(teacherCookie, "他班");
     const account = await registerStudent(otherClassroom.code, "他班學生");
 
     const { token } = await createInvite();
@@ -266,18 +255,7 @@ describe("activity invites", () => {
   });
 
   it("a finished activity shows as ended in the preview and refuses new guests", async () => {
-    const created = (await (
-      await call("/api/classrooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: teacherCookie },
-        body: JSON.stringify({
-          name: "收攤班",
-          topicId: (
-            (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{ id: string }>
-          )[0]!.id,
-        }),
-      })
-    ).json()) as { activityId: string };
+    const created = await classroomWithActivity(teacherCookie, "收攤班");
     const { token } = await createInvite(created.activityId);
     const finish = await call(`/api/activities/${created.activityId}/finish`, {
       method: "POST",
@@ -302,18 +280,7 @@ describe("activity invites", () => {
     expect(sorted(reversed)).toEqual(sorted(forward));
     expect(new Set(forward.values()).size).toBe(ids.length);
 
-    const created = (await (
-      await call("/api/classrooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: teacherCookie },
-        body: JSON.stringify({
-          name: "假名班",
-          topicId: (
-            (await (await call("/api/topics", { headers: { Cookie: teacherCookie } })).json()) as Array<{ id: string }>
-          )[0]!.id,
-        }),
-      })
-    ).json()) as { activityId: string };
+    const created = await classroomWithActivity(teacherCookie, "假名班");
     const { token } = await createInvite(created.activityId);
 
     const participants: string[] = [];

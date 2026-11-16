@@ -9,6 +9,7 @@ export type {
   ActivityMode,
   ActivitySlot,
   ActivitySlots,
+  ActivityStarted,
   AdminUser,
   ClassroomCreated,
   ClassroomSummary,
@@ -26,6 +27,7 @@ export type {
   TeacherReport,
   TermExplanation,
   Topic,
+  TopicDraft,
   User,
   ViolationSlice,
 } from "@socrates/shared";

@@ -3,7 +3,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
-import { call, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
+import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
 
 let teacher: string;
 let code: string;
@@ -22,15 +22,7 @@ beforeAll(async () => {
   expect(login.status).toBe(200);
   teacher = cookieOf(login);
 
-  const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>;
-  expect(topics.length).toBeGreaterThan(0);
-  const created = (await (
-    await call("/api/classrooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ name: "R6 班", topicId: topics[0]!.id }),
-    })
-  ).json()) as { code: string; activityId: string; classroomId: string };
+  const created = await classroomWithActivity(teacher, "R6 班");
   code = created.code;
   activityId = created.activityId;
 });
@@ -142,18 +134,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
   });
 
   test("finish → report semantics (pending → 404 report_pending; student IDOR sees only their own)", async () => {
-    const created = (await (
-      await call("/api/classrooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: teacher },
-        body: JSON.stringify({
-          name: "R6 報告班",
-          topicId: (
-            (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>
-          )[0]!.id,
-        }),
-      })
-    ).json()) as { code: string; activityId: string };
+    const created = await classroomWithActivity(teacher, "R6 報告班");
     const student = (await registerStudent(created.code, "R6生報")).cookie;
     await speak(
       `${created.activityId}:${await participantIdOf(created.activityId, student)}`,
@@ -234,18 +215,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     });
     expect(finish.status).toBe(403);
 
-    const otherClassroom = await call("/api/classrooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({
-        name: "R6 他班",
-        topicId: (
-          (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>
-        )[0]!.id,
-      }),
-    });
-    expect(otherClassroom.status).toBe(201);
-    const other = (await otherClassroom.json()) as { code: string };
+    const other = await classroomWithActivity(teacher, "R6 他班");
     const otherStudent = (await registerStudent(other.code, "他班學生")).cookie;
     const crossClass = await call(`/api/activities/${activityId}/report`, {
       headers: { Cookie: otherStudent },
@@ -389,17 +359,11 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
 
 describe("report (#74: finish → pending → ready → GET)", () => {
   test("finish triggers the ReportRunner: pending → ready → role-scoped report", async () => {
-    const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
+    const [topic] = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
       id: string;
       title: string;
     }>;
-    const created = (await (
-      await call("/api/classrooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: teacher },
-        body: JSON.stringify({ name: "Report 班", topicId: topics[0]!.id }),
-      })
-    ).json()) as { code: string; activityId: string };
+    const created = await classroomWithActivity(teacher, "Report 班", topic!.id);
     const student = (await registerStudent(created.code, "報告生")).cookie;
     await speak(
       `${created.activityId}:${await participantIdOf(created.activityId, student)}`,
@@ -427,7 +391,7 @@ describe("report (#74: finish → pending → ready → GET)", () => {
       },
       { timeout: 30_000, interval: 500 },
     );
-    expect(settled.topicTitle).toBe(topics[0]!.title);
+    expect(settled.topicTitle).toBe(topic!.title);
     expect(Array.isArray(settled.students)).toBe(true);
 
     const asStudent = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: student } });
@@ -440,16 +404,7 @@ describe("report (#74: finish → pending → ready → GET)", () => {
 
 describe("rate limiting + register gate (round-6 restores)", () => {
   test("activity finish: calls 1-6 → 204, the 7th inside one minute → 429 rate_limited", async () => {
-    const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
-      id: string;
-    }>;
-    const created = (await (
-      await call("/api/classrooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: teacher },
-        body: JSON.stringify({ name: "限流班", topicId: topics[0]!.id }),
-      })
-    ).json()) as { activityId: string };
+    const created = await classroomWithActivity(teacher, "限流班");
     const ip = "198.51.100.30";
     let last: Response | null = null;
     for (let i = 0; i < 7; i += 1) {
@@ -471,16 +426,7 @@ describe("rate limiting + register gate (round-6 restores)", () => {
   });
 
   test("register after the classroom activity finished → 409 activity_finished (mirrors join)", async () => {
-    const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
-      id: string;
-    }>;
-    const created = (await (
-      await call("/api/classrooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: teacher },
-        body: JSON.stringify({ name: "註冊截止班", topicId: topics[0]!.id }),
-      })
-    ).json()) as { code: string; activityId: string };
+    const created = await classroomWithActivity(teacher, "註冊截止班");
     const finish = await call(`/api/activities/${created.activityId}/finish`, {
       method: "POST",
       headers: { Cookie: teacher, "CF-Connecting-IP": "198.51.100.31" },
