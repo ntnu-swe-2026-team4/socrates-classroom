@@ -51,7 +51,7 @@ function lastAssistantText(view: ConversationView | null): string {
   return "";
 }
 
-interface WindowedEntry {
+export interface WindowedEntry {
   id: number;
   kind: string;
   model?: readonly unknown[];
@@ -59,7 +59,7 @@ interface WindowedEntry {
 
 const ANSWER_STOP_REASONS = new Set(["stop", "length"]);
 
-function intermediateAssistant(entry: WindowedEntry): boolean {
+export function intermediateAssistant(entry: WindowedEntry): boolean {
   const message = entry.model?.[0] as { stopReason?: string; content?: readonly { type?: string }[] } | undefined;
   if (message?.stopReason === undefined) return false;
   if (ANSWER_STOP_REASONS.has(message.stopReason)) return false;
@@ -70,7 +70,7 @@ function intermediateAssistant(entry: WindowedEntry): boolean {
   return true;
 }
 
-function answered(entries: readonly WindowedEntry[]): boolean {
+export function answered(entries: readonly WindowedEntry[]): boolean {
   return entries.some(
     (entry) =>
       entry.kind === "pi.assistant" &&
@@ -79,7 +79,7 @@ function answered(entries: readonly WindowedEntry[]): boolean {
   );
 }
 
-function liveTextOf(view: ConversationView | null): string {
+export function liveTextOf(view: ConversationView | null): string {
   if (!view) return "";
   const live = view.docs["pi.live"] as { generation?: { message?: { content?: readonly unknown[] } } } | undefined;
   const content = live?.generation?.message?.content;

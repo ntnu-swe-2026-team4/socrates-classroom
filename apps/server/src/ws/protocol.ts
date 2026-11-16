@@ -18,6 +18,7 @@ export type ClientMessage =
       readonly operationId?: string;
     }
   | { readonly type: "abort"; readonly id?: string }
+  | { readonly type: "btw"; readonly id?: string; readonly session?: string }
   | { readonly type: "watch"; readonly id?: string; readonly from?: EntryId }
   | {
       readonly type: "entries";
@@ -36,6 +37,12 @@ export type ServerMessage =
   | {
       readonly type: "result";
       readonly id: string;
-      readonly result: PiReceipt | PiOperationResult | Page<EntryRecord, Cursor> | boolean | null;
+      readonly result:
+        | PiReceipt
+        | PiOperationResult
+        | Page<EntryRecord, Cursor>
+        | { readonly session: string }
+        | boolean
+        | null;
     }
   | { readonly type: "error"; readonly id?: string; readonly message: string; readonly code?: string };

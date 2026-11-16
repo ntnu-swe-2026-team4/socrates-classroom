@@ -6,6 +6,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { seedDemo } from "../src/seed";
 import { run } from "../src/db/d1";
+import type { Chat } from "../src/do/chat";
 import { assistantText, call, cookieOf, frames, latestView } from "./helpers";
 
 let teacherCookie: string;
@@ -315,6 +316,119 @@ describe("teacher thread access: observe and abort yes, submit no (SubmitForbidd
     await rx.until((f) => f.some((m) => m.type === "result" && m.id === "t2"));
     expect(socket.readyState).toBe(WebSocket.OPEN);
     socket.close();
+  }, 20_000);
+});
+
+describe("btw side session (#121): a fork of the root that never writes back", () => {
+  function userTexts(view: ReturnType<typeof latestView>): string[] {
+    return (view?.entries ?? [])
+      .filter((entry) => entry.kind === "pi.user")
+      .flatMap((entry) => entry.model ?? [])
+      .map((message) =>
+        typeof message.content === "string"
+          ? message.content
+          : message.content.map((part) => (part.type === "text" ? part.text : "")).join(""),
+      );
+  }
+
+  async function rootUserTexts(thread: string): Promise<string[]> {
+    const chat = env.Chat.get(env.Chat.idFromName(thread)) as unknown as DurableObjectStub<Chat>;
+    const { messages } = await chat.transcript();
+    return messages.filter((message) => message.role === "user").map((message) => message.text);
+  }
+
+  async function opened(thread: string, cookie: string) {
+    const socket = await connect(thread, cookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    return { socket, rx };
+  }
+
+  it("student opens a btw session: it sees the root history, its exchange stays out of the root", async () => {
+    const student = await joinStudent("副視窗本人");
+    const thread = `${activityId}:${student.userId}`;
+    const main = await opened(thread, student.cookie);
+    main.socket.send(JSON.stringify({ type: "watch" }));
+    await main.rx.until((f) => f.some((m) => m.type === "view"));
+    main.socket.send(JSON.stringify({ type: "submit", id: "m1", input: "主對話第一句" }));
+    await main.rx.until((f) => {
+      const view = latestView(f);
+      return view !== undefined && assistantText(view).includes("主對話第一句");
+    });
+
+    const side = await opened(thread, student.cookie);
+    side.socket.send(JSON.stringify({ type: "btw", id: "b1" }));
+    await side.rx.until((f) => f.some((m) => m.type === "result" && m.id === "b1"));
+    const opened1 = side.rx.list.find((m) => m.type === "result" && m.id === "b1");
+    const session = (opened1 as { result: { session: string } }).result.session;
+    expect(typeof session).toBe("string");
+    expect(session).not.toBe("1");
+    expect(userTexts(latestView(side.rx.list))).toContain("主對話第一句");
+
+    side.socket.send(JSON.stringify({ type: "submit", id: "b2", input: "電車難題是什麼" }));
+    await side.rx.until((f) => f.some((m) => m.type === "result" && m.id === "b2"));
+    await side.rx.until((f) => {
+      const view = latestView(f);
+      return view !== undefined && view.entries.filter((entry) => entry.kind === "pi.assistant").length >= 2;
+    });
+    expect(userTexts(latestView(side.rx.list))).toContain("電車難題是什麼");
+
+    expect(userTexts(latestView(main.rx.list))).not.toContain("電車難題是什麼");
+    expect(await rootUserTexts(thread)).toEqual(["主對話第一句"]);
+
+    main.socket.close();
+    side.socket.close();
+  }, 20_000);
+
+  it("a hibernated btw socket stays bound to its session after eviction", async () => {
+    const student = await joinStudent("副視窗冬眠");
+    const thread = `${activityId}:${student.userId}`;
+    const main = await opened(thread, student.cookie);
+    main.socket.send(JSON.stringify({ type: "watch" }));
+    await main.rx.until((f) => f.some((m) => m.type === "view"));
+    main.socket.send(JSON.stringify({ type: "submit", id: "m1", input: "先說一句" }));
+    await main.rx.until((f) => latestView(f)?.entries.some((entry) => entry.kind === "pi.assistant") === true);
+    main.socket.close();
+    const side = await opened(thread, student.cookie);
+    side.socket.send(JSON.stringify({ type: "btw", id: "b1" }));
+    await side.rx.until((f) => f.some((m) => m.type === "result" && m.id === "b1"));
+    await side.rx.until((f) => latestView(f)?.entries.some((entry) => entry.kind === "pi.assistant") === true);
+
+    await evictDurableObject(env.Chat.get(env.Chat.idFromName(thread)));
+
+    side.socket.send(JSON.stringify({ type: "submit", id: "b2", input: "驅逐後的副問題" }));
+    await side.rx.until((f) => f.some((m) => m.type === "result" && m.id === "b2"));
+    expect(await rootUserTexts(thread)).toEqual(["先說一句"]);
+    side.socket.close();
+  }, 20_000);
+
+  it("btw before any dialogue → NothingToFork; teacher may attach but not open; root id is not a btw session", async () => {
+    const student = await joinStudent("副視窗權限");
+    const thread = `${activityId}:${student.userId}`;
+    const fresh = await opened(thread, student.cookie);
+    fresh.socket.send(JSON.stringify({ type: "btw", id: "b0" }));
+    await fresh.rx.until((f) => f.some((m) => m.type === "error" && m.id === "b0"));
+    expect(fresh.rx.list.find((m) => m.type === "error" && m.id === "b0")).toMatchObject({ code: "NothingToFork" });
+    fresh.socket.send(JSON.stringify({ type: "submit", id: "m1", input: "開場" }));
+    await fresh.rx.until((f) => f.some((m) => m.type === "result" && m.id === "m1"));
+    fresh.socket.send(JSON.stringify({ type: "btw", id: "b1" }));
+    await fresh.rx.until((f) => f.some((m) => m.type === "result" && m.id === "b1"));
+    const session = (fresh.rx.list.find((m) => m.type === "result" && m.id === "b1") as { result: { session: string } })
+      .result.session;
+
+    const teacher = await opened(thread, teacherCookie);
+    teacher.socket.send(JSON.stringify({ type: "btw", id: "t1" }));
+    await teacher.rx.until((f) => f.some((m) => m.type === "error" && m.id === "t1"));
+    expect(teacher.rx.list.find((m) => m.type === "error" && m.id === "t1")).toMatchObject({ code: "SubmitForbidden" });
+    teacher.socket.send(JSON.stringify({ type: "btw", id: "t2", session: "1" }));
+    await teacher.rx.until((f) => f.some((m) => m.type === "error" && m.id === "t2"));
+    expect(teacher.rx.list.find((m) => m.type === "error" && m.id === "t2")).toMatchObject({ code: "UnknownSession" });
+    teacher.socket.send(JSON.stringify({ type: "btw", id: "t3", session }));
+    await teacher.rx.until((f) => f.some((m) => m.type === "result" && m.id === "t3"));
+    expect(teacher.rx.list.find((m) => m.type === "result" && m.id === "t3")).toMatchObject({ result: { session } });
+
+    fresh.socket.close();
+    teacher.socket.close();
   }, 20_000);
 });
 

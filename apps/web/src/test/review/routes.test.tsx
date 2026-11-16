@@ -20,8 +20,8 @@ vi.mock("@/components/SocratesStage", () => ({
 
 const agent = vi.hoisted(() => ({ options: null as null | { onMessage?: (event: { data: unknown }) => void } }));
 vi.mock("agents/react", () => ({
-  useAgent: (options: { onMessage?: (event: { data: unknown }) => void }) => {
-    agent.options = options;
+  useAgent: (options: { enabled?: boolean; onMessage?: (event: { data: unknown }) => void }) => {
+    if (options.enabled !== false) agent.options = options;
     return {
       send: () => {},
       readyState: 0,

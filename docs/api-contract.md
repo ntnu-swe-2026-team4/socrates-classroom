@@ -24,16 +24,17 @@
 
 > 「訪客」＝未持 session；訪客入場後取得 guest user（有 session），權利視同學生。
 
-| Operation                                                                                               | 訪客 | 學生（含 guest user） | 老師                 |
-| ------------------------------------------------------------------------------------------------------- | ---- | --------------------- | -------------------- |
-| `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅   | ✅                    | ✅                   |
-| `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —    | ✅                    | ✅                   |
-| `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —    | ❌ 403                | ✅                   |
-| `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —    | —                     | ✅                   |
-| `GET /activities/:id`、`GET /report`                                                                    | —    | 需教室成員            | 需教室成員           |
-| **WS** `/agents/chat/:name`（watch/entries/abort）                                                      | —    | 僅本人 thread         | ✅（可觀察全班）     |
-| **WS** `submit` op                                                                                      | —    | 僅本人 thread         | ❌ `SubmitForbidden` |
-| `POST /activities/:id/finish`                                                                           | —    | ❌ 403                | 需教室成員           |
+| Operation                                                                                               | 訪客 | 學生（含 guest user） | 老師                               |
+| ------------------------------------------------------------------------------------------------------- | ---- | --------------------- | ---------------------------------- |
+| `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅   | ✅                    | ✅                                 |
+| `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —    | ✅                    | ✅                                 |
+| `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —    | ❌ 403                | ✅                                 |
+| `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —    | —                     | ✅                                 |
+| `GET /activities/:id`、`GET /report`                                                                    | —    | 需教室成員            | 需教室成員                         |
+| **WS** `/agents/chat/:name`（watch/entries/abort）                                                      | —    | 僅本人 thread         | ✅（可觀察全班）                   |
+| **WS** `submit` op                                                                                      | —    | 僅本人 thread         | ❌ `SubmitForbidden`               |
+| **WS** `btw` op（開新 side session）／`btw {session}`（附掛既有）                                       | —    | 僅本人 thread         | 開新 ❌ `SubmitForbidden`；附掛 ✅ |
+| `POST /activities/:id/finish`                                                                           | —    | ❌ 403                | 需教室成員                         |
 
 ## 2. 身分（雙軌：訪客即玩＋帳號選用，#67）
 
@@ -73,7 +74,7 @@ interface User {
 - `GET /agents/chat/:name`（WebSocket 升級）——**對話唯一通道**（先前的 SSE 端點已退役）
 - thread name 協定：`{activityId}:{userId}`（一人一 thread；DO name 即路由鍵）
 - 授權：`socrates_session` cookie（升級請求帶 cookie）——onConnect 驗 session＋membership：學生限本人 thread，老師可觀察全班（watch/entries/abort；**submit 僅限該 thread 的學生本人**——老師代打 → error frame code `SubmitForbidden`）；未通過 → close 1008（無 hello）；hibernation 喚醒後 reverify 確定撤權（ApiError）→ close 1008；reverify 暫時性錯誤（D1 失敗等）或 watch 遺失（session 驅逐）→ close 1011（客戶端重連即重試）
-- 一條連線跟一個 session（root）；重連後重新 `watch`（partysocket 自動重連，客戶端端 onOpen 重送）
+- 一條連線跟一個 session：預設 root；送 `btw` 後該連線改綁 side session（§5.4）。重連後重新 `watch`（partysocket 自動重連，客戶端端 onOpen 重送）
 
 ### 5.2 Client → Server
 
@@ -82,6 +83,7 @@ type ClientMessage =
   | { type: "watch"; id?: string; from?: EntryId }                       // 附掛（重連帶 from 續看）
   | { type: "submit"; id?: string; input: string; operationId?: string } // 發言（input＝string；pi 的 content parts 形狀未開放；冪等鍵可選）
   | { type: "abort"; id?: string }
+  | { type: "btw"; id?: string; session?: string }                       // 本連線改綁 side session（§5.4）
   | { type: "entries"; id: string; query: {...}; limit: number };        // 分頁載入歷史（query 必填；上限 100）
 ```
 
@@ -103,6 +105,17 @@ type ServerMessage =
 - **情緒**：`view.entries` 的 `app.emotion` entry（`{emotion, probabilities, confidence}`，#111）——UI 依機率驅動表情，文字零污染
 - **違規**：`app.violation` entry（`{type, probability, excerpt, source}`，#71）——老師面板讀 D1（#73 輪詢），學生端不消費
 - **歷史**：WS `watch` 首個 view（window 預設最新 50 則 entries）或 `entries` 指令；pi transcript（DO storage）為唯一真相
+
+### 5.4 BTW side session（#121）
+
+副視窗的「順帶一問」：學生暫離蘇格拉底，問定義、思想實驗的設定（例：電車難題）、背景事實。
+
+- 實作為 pi 原生 fork：從 root 最新 entry fork 出新 conversation，agent 只選 `btw` extension（`prompts/btw.md`；無 websearch／judgment／avatar）。side session 看得到 fork 點之前的主對話，**它的 entries 只寫在 fork 裡**——不進 root 的 model context，也不進報告 transcript
+- 副視窗**另開一條連線**到同一 thread，送 `{ type: "btw", id }`：server fork 後把該連線綁到 side session，立即推該 session 的 `view`，再回 `result: { session }`。之後該連線的 `watch`／`submit`／`abort`／`entries` 全部作用在 side session，frame 形狀與 root 相同
+- 再接回（副視窗重整、換分頁）：`{ type: "btw", id, session }` 附掛既有 side session；`session` 必須是本 thread root 的 fork，否則 error code `UnknownSession`。綁定存在連線 state，hibernation 喚醒後保留
+- 每次不帶 `session` 的 `btw` 都 fork 新的 side session（fork 點＝當下 root 最新 entry）；舊 side session 留在 DO storage
+- 錯誤 code：`NothingToFork`（root 尚無 entry）、`UnknownSession`、`SubmitForbidden`（開新 side session 與 submit 同權限：限 thread 學生本人；老師可附掛觀察）
+- 規則同 root：no queue（side session 與 root 各自 busy，互不阻擋）、活動結束後 submit → `ActivityFinished`、run 失敗的無 id `llm_unavailable` 廣播只送給綁在該 session 的連線
 
 ## 6. 老師即時面板（#73；本輪不實作，資料源已調查）
 

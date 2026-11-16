@@ -2,6 +2,20 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-14 — BTW side session（#121，`feat/121-btw-side-chat`）
+
+### Added
+
+- `btw` extension＋`prompts/btw.md`：副視窗 LLM——可直接解釋定義、思想實驗設定與各方立場，但不替學生下結論、不代寫論證；不帶 tool（與 websearch 分離）
+- WS `btw` op：從 root 最新 entry 做 pi fork，該連線改綁 side session；side session 的 entries 不進 root context 與報告（`api-contract.md` §5.4）
+- 錯誤 code `NothingToFork`、`UnknownSession`
+- 前端「順帶一問」：對話頁頂欄按鈕／輸入框 `/btw 問題` 開 `BtwPanel` 右側欄（與查詢面板互斥）；`useBtw` 另開 WS 綁 side session，只顯示 fork 點之後的 entries，回答以 Markdown 呈現；「新話題」重新 fork；session 存 sessionStorage，重整後接回（失效則自動重開）；三語 i18n
+
+### Changed
+
+- Chat DO `settings.extensions` 改為 getter：已安裝且非 btw 的 extensions（root 行為不變）
+- routeSubmit 的 model 快取改 per session；`llm_unavailable` 廣播只送綁定該 session 的連線
+
 ## 2026-11-09 — routing/ 更名 gateway/（`experiment/web-next`）
 
 ### Changed

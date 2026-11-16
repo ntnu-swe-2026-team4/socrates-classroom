@@ -21,6 +21,7 @@ import { createJudgmentExtension } from "../pi/extensions/judgment";
 import { createWebSearchExtension } from "../pi/extensions/websearch";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 import { socratesExtension } from "../pi/extensions/socrates";
+import { btwExtension, forkBtw } from "../pi/extensions/btw";
 import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
 import { buildModels } from "../pi/models";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
@@ -40,7 +41,9 @@ export class Chat extends DurableObject<Env> {
   readonly registry = createRegistry();
   readonly models = buildModels(this.env, { teacherOf: () => this.teacherId() });
   #teacherId: string | null | undefined;
-  #sessionModel: { provider: string; id: string } | undefined;
+  readonly #sessionModels = new Map<string, { provider: string; id: string }>();
+
+  readonly btw = btwExtension();
 
   readonly harness = new PiHarness({
     harness: ({ storage, context, onWake }) => {
@@ -52,6 +55,9 @@ export class Chat extends DurableObject<Env> {
         }),
       );
       this.registry.install(createWebSearchExtension(this.env.AI));
+      this.registry.install(this.btw);
+      const registry = this.registry;
+      const btw = this.btw.name;
       return Harness.open(
         storage,
         {
@@ -59,6 +65,12 @@ export class Chat extends DurableObject<Env> {
           registry: this.registry,
           onWake,
           settings: {
+            get extensions() {
+              return registry
+                .snapshot()
+                .installed()
+                .filter((extension) => extension.name !== btw);
+            },
             retry: { enabled: true, maxRetries: 5, baseDelayMs: 1000 },
             afterFailedRun: "continue",
           },
@@ -78,6 +90,7 @@ export class Chat extends DurableObject<Env> {
     (request) => this.authorize(request),
     (handle, input, options) => this.routeSubmit(handle, input, options),
     (userId) => userId === this.studentId,
+    () => forkBtw(this.harness, this.btw),
   );
   readonly webSockets = new WebSockets(this.sockets.options());
   readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.harness);
@@ -122,9 +135,10 @@ export class Chat extends DurableObject<Env> {
     if (!decision) return handle.submit(input, options);
     const model = this.models.models.getModel(decision.entry.provider, decision.model);
     const receipt = await router.withRoute(decision, async () => {
-      if (model && (this.#sessionModel?.provider !== model.provider || this.#sessionModel?.id !== model.id)) {
+      const current = this.#sessionModels.get(handle.id);
+      if (model && (current?.provider !== model.provider || current?.id !== model.id)) {
         await handle.setModel({ provider: model.provider, id: model.id });
-        this.#sessionModel = { provider: model.provider, id: model.id };
+        this.#sessionModels.set(handle.id, { provider: model.provider, id: model.id });
       }
       return handle.submit(input, options);
     });
@@ -133,11 +147,11 @@ export class Chat extends DurableObject<Env> {
       .then((result) => {
         const ok = result.status === "done" || (result.status === "unanswered" && result.reason === "aborted");
         router.settle(decision, ok ? "ok" : "error");
-        if (!ok) this.sockets.notifyRunFailure();
+        if (!ok) this.sockets.notifyRunFailure(handle.id);
       })
       .catch(() => {
         if (router.ledger.inFlight(decision.key) > 0) router.settle(decision, "error");
-        this.sockets.notifyRunFailure();
+        this.sockets.notifyRunFailure(handle.id);
       });
     return receipt;
   }
