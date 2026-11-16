@@ -121,11 +121,12 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       (listView === "teacher" && me.data?.teacherMode === true);
 
   const themeTip = t("theme_toggle");
+  const inAdmin = pathname.startsWith("/admin") && me.data?.admin === true;
 
   const rail = (
     <nav className="flex h-full w-[84px] flex-col items-center border-r border-line bg-card pb-3">
       <Link
-        to="/home"
+        to={inAdmin ? "/admin" : "/home"}
         aria-label={t("app_name")}
         className="flex h-14 w-full shrink-0 items-center justify-center font-serif text-[20px] text-ink"
       >
@@ -139,6 +140,17 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
             <Eye className="size-[19px]" />
             <span className="text-center leading-tight">{t("preview_rail")}</span>
           </Link>
+        ) : inAdmin ? (
+          <>
+            <Link to="/admin" className={cn(NAV_BTN, NAV_ACTIVE)}>
+              <ShieldCheck className="size-[19px]" />
+              <span>{t("nav_admin")}</span>
+            </Link>
+            <Link to="/home" data-rail="site" className={NAV_BTN}>
+              <ArrowLeft className="size-[19px]" />
+              <span className="text-center leading-tight">{t("nav_back_to_site")}</span>
+            </Link>
+          </>
         ) : (
           <>
             {NAV.filter(() => member).map((item) => {
