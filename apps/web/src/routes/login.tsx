@@ -31,7 +31,8 @@ export const Route = createFileRoute("/login")({
     const me = await context.queryClient
       .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
       .catch(() => null);
-    if (me && !me.guest && !me.preview) throw redirect({ href: safeNext(search.next) });
+    if (me && !me.guest && !me.preview)
+      throw redirect({ href: me.admin && !search.next ? "/admin" : safeNext(search.next) });
   },
   component: LoginPage,
 });
@@ -77,7 +78,7 @@ function LoginPage() {
     try {
       const user = await action();
       queryClient.setQueryData(["me"], user);
-      await navigate({ href: next });
+      await navigate({ href: user.admin && !search.next ? "/admin" : next });
     } catch (caught) {
       const code = caught instanceof ApiError ? caught.code : null;
       setError(
@@ -255,14 +256,6 @@ function LoginPage() {
             </div>
             <p className="text-[11.5px] leading-relaxed text-ink-faint">{t("login_guest_hint")}</p>
           </form>
-          <div className="border-t border-line px-5 py-3 text-center">
-            <Link
-              to="/admin/login"
-              className="text-[12.5px] text-ink-faint underline-offset-2 hover:text-ink hover:underline"
-            >
-              {t("admin_login_title")}
-            </Link>
-          </div>
         </div>
       </div>
     </div>

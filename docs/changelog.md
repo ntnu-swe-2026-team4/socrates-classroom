@@ -16,6 +16,17 @@
 - Chat DO `settings.extensions` 改為 getter：已安裝且非 btw 的 extensions（root 行為不變）
 - routeSubmit 的 model 快取改 per session；`llm_unavailable` 廣播只送綁定該 session 的連線
 
+## 2026-11-17 — 單一登入與管理後台側欄（`experiment/web-next`）
+
+### Changed
+
+- 管理後台的側欄改為後台自己的導覽（總覽／使用者／教師申請／學校／系統通知），不再顯示一般使用者的項目；底部「檢視網站」回到一般介面
+- admin 從一般登入頁登入後直接進 `/admin`
+
+### Removed
+
+- `/admin/login` 與登入頁的「管理員登入」連結：登入只有一個入口，權限由帳號決定。未登入開啟 `/admin` 導向 `/login?next=/admin`，非 admin 導向 `/home`
+
 ## 2026-11-17 — 管理後台改版（`experiment/web-next`）
 
 ### Changed

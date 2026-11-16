@@ -4,28 +4,24 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { Building2, Plus, Search, UserMinus } from "lucide-react";
 import type { AdminUser, SchoolTeacher } from "@socrates/shared";
 import { api, ApiError } from "@/api";
+import { ADMIN_SECTIONS, type AdminTab } from "@/components/AppShell";
 import { NotificationComposer } from "@/components/Notifications";
 import { Button, Card, cn, ConfirmDialog, Field, Initial, Input, PageHeader, Spinner } from "@/components/ui";
 import { type MessageKey, useFormatDate, useT } from "@/i18n";
 
-const TABS = ["overview", "users", "requests", "schools", "notify"] as const;
-type Tab = (typeof TABS)[number];
-
-const TAB_LABEL: Record<Tab, MessageKey> = {
-  overview: "admin_tab_overview",
-  users: "admin_tab_users",
-  requests: "admin_tab_requests",
-  schools: "admin_tab_schools",
-  notify: "admin_tab_notify",
-};
+const TABS = ADMIN_SECTIONS.map((section) => section.tab);
+type Tab = AdminTab;
 
 export const Route = createFileRoute("/admin")({
   validateSearch: (search: Record<string, unknown>): { tab?: Tab } => ({
     tab: TABS.find((tab) => tab === search.tab && tab !== "overview"),
   }),
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
-    if (!me?.admin) throw redirect({ to: "/admin/login" });
+    const me = await context.queryClient
+      .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
+      .catch(() => null);
+    if (!me || me.guest) throw redirect({ to: "/login", search: { next: "/admin" } });
+    if (!me.admin) throw redirect({ to: "/home" });
   },
   component: AdminPage,
 });
@@ -37,43 +33,18 @@ function AdminPage() {
   const t = useT();
   const navigate = useNavigate();
   const tab = Route.useSearch().tab ?? "overview";
-  const overview = useQuery({ queryKey: ["admin", "overview"], queryFn: () => api.adminOverview() });
-  const pending = overview.data?.pendingRequests ?? 0;
+  const section = ADMIN_SECTIONS.find((item) => item.tab === tab) ?? ADMIN_SECTIONS[0];
   const go = (next: Tab) => navigate({ to: "/admin", search: next === "overview" ? {} : { tab: next } });
 
   return (
     <div className="flex min-h-full flex-col bg-paper-deep pb-10">
-      <div className="border-b border-line bg-paper">
-        <PageHeader width="max-w-6xl" eyebrow={t("nav_admin")} title={t("admin_title")} description={t("admin_desc")} />
-        <div
-          role="tablist"
-          aria-label={t("admin_title")}
-          className="mx-auto mt-4 flex w-full max-w-6xl gap-1 overflow-x-auto px-4 md:px-6"
-        >
-          {TABS.map((item) => (
-            <button
-              key={item}
-              type="button"
-              role="tab"
-              data-tab={item}
-              aria-selected={tab === item}
-              onClick={() => go(item)}
-              className={cn(
-                "-mb-px flex cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13.5px] transition-colors",
-                tab === item
-                  ? "border-ink font-semibold text-ink"
-                  : "border-transparent text-ink-soft hover:border-line-strong hover:text-ink",
-              )}
-            >
-              {t(TAB_LABEL[item])}
-              {item === "requests" && pending > 0 && (
-                <span className="rounded-md bg-ember px-1.5 py-0.5 text-[11px] font-semibold leading-none text-on-ember">
-                  {pending}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+      <div className="border-b border-line bg-paper pb-5">
+        <PageHeader
+          width="max-w-6xl"
+          eyebrow={t("admin_title")}
+          title={t(section.label)}
+          description={tab === "overview" ? t("admin_desc") : undefined}
+        />
       </div>
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 pt-5 md:px-6">
         {tab === "overview" && <Overview go={go} />}

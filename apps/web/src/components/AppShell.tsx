@@ -4,6 +4,11 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ShieldCheck,
+  Building2,
+  LayoutDashboard,
+  Megaphone,
+  UserCheck,
+  Users,
   Eye,
   ArrowLeft,
   BookOpen,
@@ -25,7 +30,7 @@ import { Button, ConfirmDialog, Initial, cn } from "@/components/ui";
 import { LANGS, setLocale, useI18n, type Locale } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
 
-const BARE_ROUTES = [/^\/$/, /^\/login\/?$/, /^\/admin\/login\/?$/];
+const BARE_ROUTES = [/^\/$/, /^\/login\/?$/];
 
 const NAV_BTN =
   "flex w-full cursor-pointer flex-col items-center gap-1 rounded-lg py-2.5 text-[11.5px] text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink-soft";
@@ -37,6 +42,15 @@ const NAV = [
   { to: "/home", label: "nav_home", icon: Home, match: ["/home"] },
   { to: "/chat", label: "nav_chat", icon: MessageSquare, match: ["/chat"] },
 ] as const;
+
+export const ADMIN_SECTIONS = [
+  { tab: "overview", label: "admin_tab_overview", icon: LayoutDashboard },
+  { tab: "users", label: "admin_tab_users", icon: Users },
+  { tab: "requests", label: "admin_tab_requests", icon: UserCheck },
+  { tab: "schools", label: "admin_tab_schools", icon: Building2 },
+  { tab: "notify", label: "admin_tab_notify", icon: Megaphone },
+] as const;
+export type AdminTab = (typeof ADMIN_SECTIONS)[number]["tab"];
 
 const CLASSROOM_MATCH = ["/classrooms", "/join", "/dialogue", "/t/", "/report"];
 
@@ -122,6 +136,14 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
 
   const themeTip = t("theme_toggle");
   const inAdmin = pathname.startsWith("/admin") && me.data?.admin === true;
+  const adminTab =
+    useRouterState({ select: (state) => (state.location.search as { tab?: AdminTab } | undefined)?.tab }) ?? "overview";
+  const adminOverview = useQuery({
+    queryKey: ["admin", "overview"],
+    queryFn: () => api.adminOverview(),
+    enabled: inAdmin,
+  });
+  const pendingRequests = adminOverview.data?.pendingRequests ?? 0;
 
   const rail = (
     <nav className="flex h-full w-[84px] flex-col items-center border-r border-line bg-card pb-3">
@@ -141,16 +163,27 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
             <span className="text-center leading-tight">{t("preview_rail")}</span>
           </Link>
         ) : inAdmin ? (
-          <>
-            <Link to="/admin" className={cn(NAV_BTN, NAV_ACTIVE)}>
-              <ShieldCheck className="size-[19px]" />
-              <span>{t("nav_admin")}</span>
-            </Link>
-            <Link to="/home" data-rail="site" className={NAV_BTN}>
-              <ArrowLeft className="size-[19px]" />
-              <span className="text-center leading-tight">{t("nav_back_to_site")}</span>
-            </Link>
-          </>
+          ADMIN_SECTIONS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.tab}
+                to="/admin"
+                search={item.tab === "overview" ? {} : { tab: item.tab }}
+                data-tab={item.tab}
+                aria-current={adminTab === item.tab ? "page" : undefined}
+                className={cn(NAV_BTN, "relative", adminTab === item.tab && NAV_ACTIVE)}
+              >
+                <Icon className="size-[19px]" />
+                <span className="text-center leading-tight">{t(item.label)}</span>
+                {item.tab === "requests" && pendingRequests > 0 && (
+                  <span className="absolute top-1.5 right-3 rounded-md bg-ember px-1 py-0.5 text-[10px] font-semibold leading-none text-on-ember">
+                    {pendingRequests}
+                  </span>
+                )}
+              </Link>
+            );
+          })
         ) : (
           <>
             {NAV.filter(() => member).map((item) => {
@@ -208,6 +241,14 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
 
       <div className="flex-1" />
 
+      {inAdmin && (
+        <div className="mb-3 w-full px-1.5">
+          <Link to="/home" data-rail="site" className={NAV_BTN}>
+            <Eye className="size-[19px]" />
+            <span className="text-center leading-tight">{t("nav_back_to_site")}</span>
+          </Link>
+        </div>
+      )}
       <div className="mb-3 flex flex-col items-center gap-2">
         {!guest && <NotificationBell side="beside" />}
         <button type="button" onClick={toggleTheme} aria-label={themeTip} title={themeTip} className={RAIL_ICON_BTN}>
