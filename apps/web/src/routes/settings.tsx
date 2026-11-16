@@ -50,7 +50,7 @@ function SettingsPage() {
         {me.data && !me.data.guest && me.data.kind !== "student" && <TeacherModeCard user={me.data} />}
         <Card className="flex flex-col gap-3 p-5">
           <p className="font-serif text-[15.5px] text-ink">{t("settings_lang")}</p>
-          <div className="inline-flex gap-0.5 self-start rounded-full border border-line-strong bg-paper-deep p-0.5">
+          <div className="inline-flex gap-0.5 self-start rounded-lg border border-line-strong bg-paper-deep p-0.5">
             {locales.map((l: Locale) => (
               <button
                 type="button"

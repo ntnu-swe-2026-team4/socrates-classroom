@@ -248,6 +248,7 @@ const messages = {
     classrooms_filter_all: "全部",
     classrooms_intro: "你開的教室和加入的教室都在這裡。",
     common_cancel: "取消",
+    login_with_password: "使用密碼登入",
     teacher_request_hint: "還沒有開課權限。",
     teacher_request_button: "向管理員申請",
     teacher_request_submit: "同意並送出申請",
@@ -547,7 +548,6 @@ const messages = {
     panel_collapse: "收合側欄",
     panel_expand: "展開側欄",
     account_name_hint: "老師和同學在教室裡會看到這個名字。",
-    login_or: "或",
   },
   en: {
     stage_loading: "Loading model…",
@@ -790,6 +790,7 @@ const messages = {
     classrooms_filter_all: "All",
     classrooms_intro: "Classrooms you teach and classrooms you joined, in one place.",
     common_cancel: "Cancel",
+    login_with_password: "Sign in with a password",
     teacher_request_hint: "You do not have teaching access yet.",
     teacher_request_button: "Request access",
     teacher_request_submit: "Agree and send request",
@@ -1113,7 +1114,6 @@ const messages = {
     panel_collapse: "Collapse panel",
     panel_expand: "Expand panel",
     account_name_hint: "Teachers and classmates see this name in classrooms.",
-    login_or: "or",
   },
   es: {
     stage_loading: "Cargando modelo…",
@@ -1357,6 +1357,7 @@ const messages = {
     classrooms_filter_all: "Todas",
     classrooms_intro: "Las clases que impartes y a las que te uniste, en un solo lugar.",
     common_cancel: "Cancelar",
+    login_with_password: "Entrar con contraseña",
     teacher_request_hint: "Aún no tienes permiso para dar clases.",
     teacher_request_button: "Solicitar acceso",
     teacher_request_submit: "Aceptar y enviar solicitud",
@@ -1680,7 +1681,6 @@ const messages = {
     panel_collapse: "Contraer panel",
     panel_expand: "Expandir panel",
     account_name_hint: "Docentes y compañeros verán este nombre en las aulas.",
-    login_or: "o",
   },
 } as const;
 

@@ -391,7 +391,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
             <div
               role="radiogroup"
               aria-labelledby="account-lang"
-              className="inline-flex gap-0.5 rounded-full border border-line-strong p-0.5"
+              className="inline-flex gap-0.5 rounded-lg border border-line-strong p-0.5"
             >
               {LANGS.map((l) => (
                 // biome-ignore lint/a11y/useSemanticElements: language switch is a button-based radio group
@@ -403,7 +403,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                   lang={l.code}
                   onClick={() => setLocale(l.code as Locale)}
                   className={cn(
-                    "cursor-pointer rounded-full px-3.5 py-1.5 text-[13px]",
+                    "cursor-pointer rounded-md px-3.5 py-1.5 text-[13px]",
                     locale === l.code ? "bg-ink font-semibold text-paper" : "text-ink-soft hover:text-ink",
                   )}
                 >
@@ -428,7 +428,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
             type="button"
             onClick={() => (guest && !me.data?.preview ? setGuestLogout(true) : logout.mutate())}
             disabled={logout.isPending}
-            className="mt-auto h-9 w-full cursor-pointer rounded-full border border-line text-sm font-medium text-flag transition-colors hover:bg-flag-wash"
+            className="mt-auto h-9 w-full cursor-pointer rounded-lg border border-line text-sm font-medium text-flag transition-colors hover:bg-flag-wash"
           >
             {guest && !me.data?.preview ? t("guest_leave_activity") : t("account_logout")}
           </button>

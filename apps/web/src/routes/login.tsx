@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, KeyRound } from "lucide-react";
 import { api, ApiError, guestSession, type User } from "@/api";
 import { NotificationBoard } from "@/components/Notifications";
 import { Button, Checkbox, Field, Input, Segmented, Spinner } from "@/components/ui";
@@ -67,6 +67,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [tos, setTos] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [withPassword, setWithPassword] = useState(Boolean(search.mode));
   const providers = useQuery({ queryKey: ["authProviders"], queryFn: () => api.authProviders(), staleTime: Infinity });
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
 
@@ -144,7 +145,7 @@ function LoginPage() {
                 <a
                   key={provider.id}
                   href={href}
-                  className="flex h-9 items-center justify-center gap-2 rounded-full border border-line-strong bg-paper text-[13.5px] text-ink transition-colors hover:border-ember"
+                  className="flex h-11 items-center justify-center gap-2 rounded-lg border border-line-strong bg-paper text-[14px] font-medium text-ink transition-colors hover:border-ink"
                 >
                   {provider.icon}
                   {t(provider.label)}
@@ -154,23 +155,28 @@ function LoginPage() {
                   key={provider.id}
                   aria-disabled="true"
                   title={t("login_provider_off")}
-                  className="flex h-9 cursor-not-allowed items-center justify-center gap-2 rounded-full border border-line bg-paper text-[13.5px] text-ink-faint"
+                  className="flex h-11 cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-line bg-paper text-[14px] font-medium text-ink-faint"
                 >
                   {provider.icon}
                   {t(provider.label)}
                 </span>
               );
             })}
-          </div>
-
-          <div className="flex items-center gap-3 px-5 py-3 text-[11.5px] text-ink-faint">
-            <span className="h-px flex-1 bg-line" />
-            {t("login_or")}
-            <span className="h-px flex-1 bg-line" />
+            {!withPassword && (
+              <button
+                type="button"
+                onClick={() => setWithPassword(true)}
+                className="flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line-strong bg-paper text-[14px] font-medium text-ink transition-colors hover:border-ink"
+              >
+                <KeyRound className="size-4" aria-hidden />
+                {t("login_with_password")}
+              </button>
+            )}
           </div>
 
           <form
-            className="flex flex-col gap-3 px-5"
+            hidden={!withPassword}
+            className="mt-4 flex flex-col gap-3 border-t border-line px-5 pt-4"
             onSubmit={(event) => {
               event.preventDefault();
               if (!formReady) return;
@@ -261,6 +267,14 @@ function LoginPage() {
             </div>
             <p className="text-[11.5px] leading-relaxed text-ink-faint">{t("login_guest_hint")}</p>
           </form>
+          <div className="border-t border-line px-5 py-3 text-center">
+            <Link
+              to="/admin/login"
+              className="text-[12.5px] text-ink-faint underline-offset-2 hover:text-ink hover:underline"
+            >
+              {t("admin_login_title")}
+            </Link>
+          </div>
         </div>
       </div>
     </div>
