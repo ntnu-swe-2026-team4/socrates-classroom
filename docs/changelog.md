@@ -16,6 +16,17 @@
 - Chat DO `settings.extensions` 改為 getter：已安裝且非 btw 的 extensions（root 行為不變）
 - routeSubmit 的 model 快取改 per session；`llm_unavailable` 廣播只送綁定該 session 的連線
 
+## 2026-11-17 — 管理後台改版（`experiment/web-next`）
+
+### Changed
+
+- `/admin` 改為分頁式後台：總覽（統計卡片、待審核提醒）、使用者（搜尋、身分標籤、開通／收回教師權限）、教師申請、學校、系統通知；分頁記在 `?tab=`
+
+### Added
+
+- API：`GET /api/admin/overview`、`GET /api/admin/users?q=`、`PUT｜DELETE /api/admin/users/:id/teacher`
+- admin 可以收回任何帳號的教師權限（包含申請制上線前就取得試用方案的舊帳號）
+
 ## 2026-11-17 — 教師模式改為申請制、管理員登入獨立（`experiment/web-next`）
 
 ### Changed

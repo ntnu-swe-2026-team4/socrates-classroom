@@ -79,6 +79,34 @@ describe("teacher mode", () => {
     expect(await again.json()).toMatchObject({ teacherRequested: true });
   });
 
+  it("an admin sees the overview and user list, and can grant or take back teaching access", async () => {
+    const account = await registerAccount("被管理的人");
+    const me = (await (await call("/api/me", { headers: { Cookie: account.cookie } })).json()) as { id: string };
+    expect((await send("/api/admin/overview", account.cookie, "GET")).status).toBe(403);
+    expect((await send("/api/admin/users", account.cookie, "GET")).status).toBe(403);
+    const overview = (await (await send("/api/admin/overview", admin, "GET")).json()) as Record<string, number>;
+    expect(overview.users).toBeGreaterThan(1);
+    expect(overview.teachers).toBeGreaterThan(0);
+
+    const found = (await (await send("/api/admin/users?q=被管理", admin, "GET")).json()) as Array<{
+      id: string;
+      teacherPlan: string | null;
+    }>;
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ id: me.id, teacherPlan: null });
+
+    expect((await send(`/api/admin/users/${me.id}/teacher`, account.cookie, "PUT")).status).toBe(403);
+    expect((await send(`/api/admin/users/${me.id}/teacher`, admin, "PUT")).status).toBe(204);
+    const on = await send("/api/me", account.cookie, "PATCH", { teacherMode: true });
+    expect(await on.json()).toMatchObject({ teacherPlan: "trial", teacherMode: true });
+
+    expect((await send(`/api/admin/users/${me.id}/teacher`, admin, "DELETE")).status).toBe(204);
+    const after = (await (await call("/api/me", { headers: { Cookie: cookieOf(on) } })).json()) as object;
+    expect(after).toMatchObject({ teacherPlan: null, teacherMode: false });
+    const adminMe = (await (await call("/api/me", { headers: { Cookie: admin } })).json()) as { id: string };
+    expect((await send(`/api/admin/users/${adminMe.id}/teacher`, admin, "DELETE")).status).toBe(403);
+  });
+
   it("caps trial classrooms; school teachers are not capped", async () => {
     const trial = await enableTeacher((await registerAccount("開好開滿")).cookie);
     for (let index = 0; index < TRIAL_LIMITS.classrooms; index += 1) await openClassroom(trial, `試用班 ${index}`);

@@ -3,6 +3,8 @@ import {
   SchoolInputSchema,
   SchoolTeacherInputSchema,
   StudentsCreateInputSchema,
+  type AdminOverview,
+  type AdminUser,
   type School,
   type SchoolTeacher,
   type StudentCredential,
@@ -132,6 +134,88 @@ export function accountRoutes() {
       });
       const body: StudentCredential = { ...student, password };
       return c.json(body);
+    })
+    .get("/admin/overview", async (c) => {
+      requireAdmin(c);
+      const row = await one<Record<keyof AdminOverview, number>>(
+        c.env.DB,
+        `SELECT
+           (SELECT COUNT(*) FROM users WHERE is_guest = 0 AND student_classroom_id IS NULL) AS users,
+           (SELECT COUNT(*) FROM users WHERE teacher_plan IS NOT NULL) AS teachers,
+           (SELECT COUNT(*) FROM users WHERE student_classroom_id IS NOT NULL) AS students,
+           (SELECT COUNT(*) FROM classrooms) AS classrooms,
+           (SELECT COUNT(*) FROM classrooms c JOIN activities a ON a.id = c.current_activity_id
+              WHERE a.finished_at IS NULL) AS runningActivities,
+           (SELECT COUNT(*) FROM users WHERE teacher_request_at IS NOT NULL AND teacher_plan IS NULL) AS pendingRequests,
+           (SELECT COUNT(*) FROM schools) AS schools`,
+      );
+      if (!row) fail(500, "internal_error");
+      return c.json(row satisfies AdminOverview);
+    })
+    .get("/admin/users", async (c) => {
+      requireAdmin(c);
+      const q = (c.req.query("q") ?? "").trim().slice(0, 80);
+      const rows = await all<{
+        id: string;
+        name: string;
+        email: string | null;
+        is_admin: number;
+        teacher_plan: "trial" | "school" | null;
+        school_name: string | null;
+        classrooms: number;
+        created_at: string;
+      }>(
+        c.env.DB,
+        `SELECT u.id, u.name, u.email, u.is_admin, u.teacher_plan, s.name AS school_name, u.created_at,
+           (SELECT COUNT(*) FROM classrooms c WHERE c.teacher_id = u.id) AS classrooms
+         FROM users u LEFT JOIN schools s ON s.id = u.school_id
+         WHERE u.is_guest = 0 AND u.student_classroom_id IS NULL
+           AND ($q = '' OR u.name LIKE $like OR u.email LIKE $like)
+         ORDER BY u.created_at DESC LIMIT 200`,
+        { q, like: `%${q.replaceAll("%", "").replaceAll("_", "")}%` },
+      );
+      return c.json(
+        rows.map(
+          (row): AdminUser => ({
+            id: row.id,
+            name: row.name,
+            email: row.email,
+            admin: row.is_admin === 1,
+            teacherPlan: row.teacher_plan,
+            schoolName: row.school_name,
+            classrooms: row.classrooms,
+            createdAt: row.created_at,
+          }),
+        ),
+      );
+    })
+    .put("/admin/users/:id/teacher", async (c) => {
+      requireAdmin(c);
+      const found = await one<{ id: string }>(
+        c.env.DB,
+        "SELECT id FROM users WHERE id = $id AND is_guest = 0 AND student_classroom_id IS NULL",
+        { id: c.req.param("id") },
+      );
+      if (!found) fail(404, "not_found");
+      await run(
+        c.env.DB,
+        "UPDATE users SET teacher_plan = COALESCE(teacher_plan, 'trial'), teacher_request_at = NULL WHERE id = $id",
+        { id: found.id },
+      );
+      return c.body(null, 204);
+    })
+    .delete("/admin/users/:id/teacher", async (c) => {
+      const admin = requireAdmin(c);
+      const id = c.req.param("id");
+      if (id === admin.id) fail(403, "forbidden");
+      const found = await one<{ id: string }>(c.env.DB, "SELECT id FROM users WHERE id = $id", { id });
+      if (!found) fail(404, "not_found");
+      await run(
+        c.env.DB,
+        "UPDATE users SET teacher_plan = NULL, teacher_mode = 0, school_id = NULL, teacher_request_at = NULL WHERE id = $id",
+        { id: found.id },
+      );
+      return c.body(null, 204);
     })
     .get("/admin/teacher-requests", async (c) => {
       requireAdmin(c);

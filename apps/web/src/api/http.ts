@@ -12,6 +12,8 @@ import type {
   JoinInfo,
   Report,
   TeacherKeyStatus,
+  AdminOverview,
+  AdminUser,
   LiveBoard,
   Notification,
   NotificationFeed,
@@ -73,6 +75,10 @@ export interface Api {
   register(input: { email: string; password: string; name?: string; code?: string }): Promise<User>;
   updateProfile(input: { name?: string; teacherMode?: boolean }): Promise<User>;
   requestTeacher(): Promise<User>;
+  adminOverview(): Promise<AdminOverview>;
+  adminUsers(q: string): Promise<AdminUser[]>;
+  grantTeacher(userId: string): Promise<void>;
+  revokeTeacher(userId: string): Promise<void>;
   listTeacherRequests(): Promise<TeacherRequest[]>;
   approveTeacherRequest(userId: string): Promise<void>;
   rejectTeacherRequest(userId: string): Promise<void>;
@@ -394,6 +400,18 @@ export const httpApi: Api = {
   },
   async requestTeacher() {
     return raw<User>("/me/teacher-request", { method: "POST", json: { acceptTeacherTerms: true } });
+  },
+  async adminOverview() {
+    return raw<AdminOverview>("/admin/overview");
+  },
+  async adminUsers(q) {
+    return raw<AdminUser[]>(`/admin/users?q=${encodeURIComponent(q)}`);
+  },
+  async grantTeacher(userId) {
+    await rawVoid(`/admin/users/${encodeURIComponent(userId)}/teacher`, { method: "PUT" });
+  },
+  async revokeTeacher(userId) {
+    await rawVoid(`/admin/users/${encodeURIComponent(userId)}/teacher`, { method: "DELETE" });
   },
   async listTeacherRequests() {
     return raw<TeacherRequest[]>("/admin/teacher-requests");

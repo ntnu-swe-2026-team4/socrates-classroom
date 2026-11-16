@@ -213,6 +213,28 @@ export const TeacherRequestSchema = z.object({
 });
 export type TeacherRequest = z.infer<typeof TeacherRequestSchema>;
 
+export const AdminOverviewSchema = z.object({
+  users: z.number(),
+  teachers: z.number(),
+  students: z.number(),
+  classrooms: z.number(),
+  runningActivities: z.number(),
+  pendingRequests: z.number(),
+  schools: z.number(),
+});
+export type AdminOverview = z.infer<typeof AdminOverviewSchema>;
+export const AdminUserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string().nullable(),
+  admin: z.boolean(),
+  teacherPlan: z.enum(TEACHER_PLANS).nullable(),
+  schoolName: z.string().nullable(),
+  classrooms: z.number(),
+  createdAt: z.string(),
+});
+export type AdminUser = z.infer<typeof AdminUserSchema>;
+
 export const NotificationInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   body: z.string().trim().max(2000),
