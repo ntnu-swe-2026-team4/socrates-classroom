@@ -16,6 +16,14 @@
 - Chat DO `settings.extensions` 改為 getter：已安裝且非 btw 的 extensions（root 行為不變）
 - routeSubmit 的 model 快取改 per session；`llm_unavailable` 廣播只送綁定該 session 的連線
 
+## 2026-11-17 — 管理後台的學校頁改為清單 → 詳情（`experiment/web-next`）
+
+### Changed
+
+- 學校頁：學校清單＋「新增學校」對話框；點進學校才看到該校教師與「新增教師」對話框（只填 Email）
+- 使用者表格每列新增「指派學校」
+- `POST /api/admin/teachers` 的 `name` 改為選填；新帳號未給名稱時用 Email 的 `@` 前段
+
 ## 2026-11-17 — 單一登入與管理後台側欄（`experiment/web-next`）
 
 ### Changed

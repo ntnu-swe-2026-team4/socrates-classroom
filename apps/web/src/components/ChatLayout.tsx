@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { SocratesDock } from "@/components/SocratesCompanion";
-import { Segmented, cn } from "@/components/ui";
+import { cn } from "@/components/ui";
 import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useT } from "@/i18n";
 import { useCompanion } from "@/lib/companion";
@@ -131,21 +131,34 @@ export function SidebarHeader({
   const context = useContext(SidebarContext);
   return (
     <div className={cn("flex h-14 shrink-0 items-center gap-1 border-b border-line pr-2 pl-3", className)}>
-      <div className="flex min-w-0 flex-1 items-center truncate text-[14px] font-medium text-ink">
-        {context?.switchable ? (
-          <Segmented
-            label={t("chat_panel_switch")}
-            value={context.showModel ? "model" : "list"}
-            onChange={(value) => context.setShowModel(value === "model")}
-            items={[
-              { value: "list", label: t("chat_panel_list") },
-              { value: "model", label: t("chat_panel_model") },
-            ]}
-          />
-        ) : (
-          title
-        )}
-      </div>
+      {context?.switchable ? (
+        <div role="tablist" aria-label={t("chat_panel_switch")} className="flex min-w-0 flex-1 gap-4 self-stretch">
+          {(
+            [
+              { model: false, label: t("chat_panel_list") },
+              { model: true, label: t("chat_panel_model") },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="tab"
+              aria-selected={context.showModel === item.model}
+              onClick={() => context.setShowModel(item.model)}
+              className={cn(
+                "-mb-px cursor-pointer border-b-2 px-0.5 text-[14px] transition-colors",
+                context.showModel === item.model
+                  ? "border-ink font-semibold text-ink"
+                  : "border-transparent text-ink-faint hover:text-ink-soft",
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center truncate text-[14px] font-medium text-ink">{title}</div>
+      )}
       {actions}
       <SidebarToggle />
     </div>

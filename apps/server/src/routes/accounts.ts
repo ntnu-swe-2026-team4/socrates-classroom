@@ -323,7 +323,7 @@ export function accountRoutes() {
           "INSERT INTO users (id, name, is_guest, email, password_hash, teacher_plan, school_id, teacher_terms_at, lang, created_at) VALUES ($id, $name, 0, $email, $hash, 'school', $sid, $at, $lang, $at)",
           {
             id,
-            name: input.name,
+            name: input.name ?? input.email.split("@")[0] ?? input.email,
             email: input.email,
             hash: await hashPassword(temporaryPassword),
             sid: school.id,

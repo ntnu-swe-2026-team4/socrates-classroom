@@ -92,7 +92,7 @@ export interface Api {
   listSchools(): Promise<School[]>;
   createSchool(name: string): Promise<School>;
   listSchoolTeachers(): Promise<SchoolTeacher[]>;
-  createSchoolTeacher(input: { name: string; email: string; schoolId: string }): Promise<SchoolTeacher>;
+  createSchoolTeacher(input: { name?: string; email: string; schoolId: string }): Promise<SchoolTeacher>;
   removeSchoolTeacher(id: string): Promise<void>;
   authProviders(): Promise<AuthProviders>;
   getClassroom(classroomId: string): Promise<ClassroomSummary>;

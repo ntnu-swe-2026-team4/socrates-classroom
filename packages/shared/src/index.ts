@@ -258,7 +258,7 @@ export const SchoolSchema = z.object({
 });
 export type School = z.infer<typeof SchoolSchema>;
 export const SchoolTeacherInputSchema = z.object({
-  name: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(80).optional(),
   email: emailField,
   schoolId: z.string().min(1),
 });

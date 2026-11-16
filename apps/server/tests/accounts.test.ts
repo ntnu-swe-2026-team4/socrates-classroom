@@ -280,6 +280,15 @@ describe("admin", () => {
       temporaryPassword: null,
     });
 
+    const byEmail = await send("/api/admin/teachers", admin, "POST", {
+      email: `only-mail-${Date.now()}@school.tw`,
+      schoolId: school.id,
+    });
+    expect(byEmail.status).toBe(201);
+    const named = (await byEmail.json()) as { id: string; name: string };
+    expect(named.name).toMatch(/^only-mail-/);
+    expect((await send(`/api/admin/teachers/${named.id}`, admin, "DELETE")).status).toBe(204);
+
     const schools = (await (await call("/api/admin/schools", { headers: { Cookie: admin } })).json()) as Array<{
       id: string;
       teacherCount: number;
