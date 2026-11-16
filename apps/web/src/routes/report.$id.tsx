@@ -17,7 +17,7 @@ function ReportPage() {
   const t = useT();
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const info = useQuery({ queryKey: ["activity", id], queryFn: () => api.activityInfo(id), staleTime: Infinity });
+  const info = useQuery({ queryKey: ["activity", id], queryFn: () => api.activityInfo(id), staleTime: 0 });
   const room = useQuery({
     queryKey: ["classroom", info.data?.classroomId],
     queryFn: () => api.getClassroom(info.data?.classroomId ?? ""),
@@ -26,11 +26,13 @@ function ReportPage() {
   const isTeacher = room.data?.role === "teacher";
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
   const railUser = me.data?.kind === "member" && !me.data.guest;
-  const back = railUser && info.data?.classroomId && (
+  const back = railUser && (
     <BackLink
       label={t("classroom_back_to_room")}
       onClick={() =>
-        void navigate({ to: "/classrooms/$classroomId", params: { classroomId: info.data?.classroomId ?? "" } })
+        info.data?.classroomId
+          ? void navigate({ to: "/classrooms/$classroomId", params: { classroomId: info.data.classroomId } })
+          : void navigate({ to: "/classrooms" })
       }
     />
   );
@@ -41,13 +43,33 @@ function ReportPage() {
     queryFn: () => api.report(id),
     retry: (failureCount, error) => error instanceof ApiError && error.code === "report_pending" && failureCount < 30,
     retryDelay: 4000,
+    enabled: info.isError || Boolean(info.data?.finishedAt),
   });
+
+  if (info.data && !info.data.finishedAt) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-4 text-center text-[15px] text-ink-soft">
+        {back}
+        <p>{t("report_not_finished")}</p>
+        {isTeacher && (
+          <button
+            type="button"
+            onClick={() => void navigate({ to: "/t/live/$id", params: { id } })}
+            className="cursor-pointer rounded-lg border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
+          >
+            {t("live_title")}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   if (report.isPending) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
         {back}
         <Spinner className="h-6 w-6" />
+        {report.failureCount > 0 && <p className="text-[14px] text-ink-soft">{t("report_generating")}</p>}
       </div>
     );
   }

@@ -361,7 +361,7 @@ function PreviewButton({ room }: { room: ClassroomSummary }) {
       className="h-7 px-2.5 text-[12px] font-normal"
     >
       {preview.isPending ? <Spinner /> : <Eye className="size-3.5" />}
-      {t("preview_start")}
+      <span className="max-sm:sr-only">{t("preview_start")}</span>
     </Button>
   );
 }

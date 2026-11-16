@@ -3,7 +3,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { BellRing, X } from "lucide-react";
 import type { StudentLive } from "@socrates/shared";
-import { api } from "@/api";
+import { api, ApiError } from "@/api";
 import { BackLink, Button, Card, PageHeader, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
@@ -36,7 +36,8 @@ function LivePage() {
   const board = useQuery({
     queryKey: ["live", id],
     queryFn: () => api.liveBoard(id),
-    refetchInterval: (query) => (query.state.data?.finished ? false : POLL_MS),
+    refetchInterval: (query) => (query.state.data?.finished || query.state.error ? false : POLL_MS),
+    retry: (failureCount, error) => !(error instanceof ApiError) && failureCount < 2,
   });
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const known = useRef<Set<string> | null>(null);
@@ -102,6 +103,15 @@ function LivePage() {
   const active = sorted.filter((student) => student.status === "active").length;
   const silent = sorted.filter((student) => student.rounds === 0).length;
   const flagged = sorted.filter((student) => student.flags.length > 0).length;
+
+  if (board.error instanceof ApiError && !board.data) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-[15px] text-ink-soft">
+        <BackLink onClick={backToRoom} label={t("classroom_back_to_room")} />
+        <p>{board.error.message}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-full flex-col bg-paper-deep pb-10">

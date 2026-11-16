@@ -360,6 +360,16 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
   });
 }
 
+export const SESSION_SIGNAL_KEY = "socrates_session_changed";
+
+function announceSession() {
+  try {
+    localStorage.setItem(SESSION_SIGNAL_KEY, String(Date.now()));
+  } catch {
+    return;
+  }
+}
+
 export const httpApi: Api = {
   async me() {
     try {
@@ -375,13 +385,18 @@ export const httpApi: Api = {
     }
   },
   async login(identifier, password) {
-    return raw<User>("/auth/login", { method: "POST", json: { identifier: identifier.trim(), password } });
+    const user = await raw<User>("/auth/login", { method: "POST", json: { identifier: identifier.trim(), password } });
+    announceSession();
+    return user;
   },
   async logout() {
     await unwrap(await client.auth.logout.$post());
+    announceSession();
   },
   async register(input) {
-    return raw<User>("/auth/register", { method: "POST", json: { ...input, tosAccepted: true } });
+    const user = await raw<User>("/auth/register", { method: "POST", json: { ...input, tosAccepted: true } });
+    announceSession();
+    return user;
   },
   async updateProfile(input) {
     return raw<User>("/me", { method: "PATCH", json: input });

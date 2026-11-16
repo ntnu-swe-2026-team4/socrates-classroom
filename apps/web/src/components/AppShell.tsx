@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { api, type User } from "@/api";
+import { SESSION_SIGNAL_KEY } from "@/api/http";
 import { ADMIN_SECTIONS, type AdminTab } from "@/lib/adminSections";
 import { NotificationBell } from "@/components/Notifications";
 import { SocratesCompanion } from "@/components/SocratesCompanion";
@@ -45,8 +46,8 @@ function useSessionSync() {
   const queryClient = useQueryClient();
   useEffect(() => {
     let checking = false;
-    const check = async () => {
-      if (checking || document.visibilityState !== "visible") return;
+    const check = async (force = false) => {
+      if (checking || (!force && document.visibilityState !== "visible")) return;
       const before = queryClient.getQueryData<User | null>(["me"]);
       if (before === undefined) return;
       checking = true;
@@ -72,11 +73,17 @@ function useSessionSync() {
         checking = false;
       }
     };
-    window.addEventListener("focus", check);
-    document.addEventListener("visibilitychange", check);
+    const onVisible = () => void check();
+    const onSignal = (event: StorageEvent) => {
+      if (event.key === SESSION_SIGNAL_KEY) void check(true);
+    };
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("storage", onSignal);
     return () => {
-      window.removeEventListener("focus", check);
-      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("storage", onSignal);
     };
   }, [queryClient]);
 }
