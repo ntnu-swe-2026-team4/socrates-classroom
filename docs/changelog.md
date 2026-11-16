@@ -22,7 +22,7 @@
 
 - 教師模式預設關閉且不能自行開啟：使用者在設定頁申請（`POST /api/me/teacher-request`），admin 在管理頁核准或婉拒後才能切換；`010_teacher_requests.sql`
 - 新增 `/admin/login` 管理員登入頁；未登入或非 admin 開啟 `/admin` 會導向該頁
-- 登入頁改為按鈕式：「使用 Google 登入」「使用密碼登入」（點開才顯示表單）、邀請碼、底部「管理員登入」連結
+- 登入頁底部新增「管理員登入」連結
 - 登入頁的第三方登入只保留 Google（Apple、Facebook 按鈕移除；server 端 provider 尚未移除）
 
 ## 2026-11-14 — 老師即時面板與立場分佈圖（`experiment/web-next`）

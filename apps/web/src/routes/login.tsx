@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, KeyRound } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { api, ApiError, guestSession, type User } from "@/api";
 import { NotificationBoard } from "@/components/Notifications";
 import { Button, Checkbox, Field, Input, Segmented, Spinner } from "@/components/ui";
@@ -67,7 +67,6 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [tos, setTos] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [withPassword, setWithPassword] = useState(Boolean(search.mode));
   const providers = useQuery({ queryKey: ["authProviders"], queryFn: () => api.authProviders(), staleTime: Infinity });
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
 
@@ -162,20 +161,9 @@ function LoginPage() {
                 </span>
               );
             })}
-            {!withPassword && (
-              <button
-                type="button"
-                onClick={() => setWithPassword(true)}
-                className="flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line-strong bg-paper text-[14px] font-medium text-ink transition-colors hover:border-ink"
-              >
-                <KeyRound className="size-4" aria-hidden />
-                {t("login_with_password")}
-              </button>
-            )}
           </div>
 
           <form
-            hidden={!withPassword}
             className="mt-4 flex flex-col gap-3 border-t border-line px-5 pt-4"
             onSubmit={(event) => {
               event.preventDefault();
