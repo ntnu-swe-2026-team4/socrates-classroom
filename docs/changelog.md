@@ -16,6 +16,14 @@
 - Chat DO `settings.extensions` 改為 getter：已安裝且非 btw 的 extensions（root 行為不變）
 - routeSubmit 的 model 快取改 per session；`llm_unavailable` 廣播只送綁定該 session 的連線
 
+## 2026-11-17 — 教師模式改為申請制、管理員登入獨立（`experiment/web-next`）
+
+### Changed
+
+- 教師模式預設關閉且不能自行開啟：使用者在設定頁申請（`POST /api/me/teacher-request`），admin 在管理頁核准或婉拒後才能切換；`010_teacher_requests.sql`
+- 新增 `/admin/login` 管理員登入頁；未登入或非 admin 開啟 `/admin` 會導向該頁
+- 登入頁的第三方登入只保留 Google（Apple、Facebook 按鈕移除；server 端 provider 尚未移除）
+
 ## 2026-11-14 — 老師即時面板與立場分佈圖（`experiment/web-next`）
 
 ### Added

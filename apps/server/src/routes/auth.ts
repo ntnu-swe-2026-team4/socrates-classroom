@@ -1,5 +1,11 @@
 import { Hono } from "hono";
-import { LoginInputSchema, ProfileInputSchema, RegisterInputSchema, type User } from "@socrates/shared";
+import {
+  LoginInputSchema,
+  ProfileInputSchema,
+  RegisterInputSchema,
+  TeacherRequestInputSchema,
+  type User,
+} from "@socrates/shared";
 import { one, run } from "../db/d1";
 import { DUMMY_HASH, endSession, hashPassword, loadAccount, startSession, verifyPassword } from "../auth";
 import {
@@ -9,6 +15,7 @@ import {
   newId,
   nowIso,
   parseBody,
+  requireMember,
   requireUser,
   uniqueViolationColumns,
   type AppEnv,
@@ -79,19 +86,23 @@ export function authRoutes() {
       if (input.teacherMode !== undefined) {
         if (current.kind !== "member")
           fail(403, current.kind === "student" ? "student_restricted" : "account_required");
-        if (input.teacherMode && !current.teacherPlan) {
-          if (!input.acceptTeacherTerms) fail(422, "teacher_terms_required");
-          await run(
-            c.env.DB,
-            "UPDATE users SET teacher_plan = 'trial', teacher_mode = 1, teacher_terms_at = $at WHERE id = $id",
-            { id: current.id, at: nowIso() },
-          );
-        } else {
-          await run(c.env.DB, "UPDATE users SET teacher_mode = $mode WHERE id = $id", {
-            id: current.id,
-            mode: input.teacherMode ? 1 : 0,
-          });
-        }
+        if (input.teacherMode && !current.teacherPlan) fail(403, "teacher_approval_required");
+        await run(c.env.DB, "UPDATE users SET teacher_mode = $mode WHERE id = $id", {
+          id: current.id,
+          mode: input.teacherMode ? 1 : 0,
+        });
+      }
+      return c.json(await sessionFor(c, current.id));
+    })
+    .post("/me/teacher-request", async (c) => {
+      const current = requireMember(c);
+      await parseBody(c, TeacherRequestInputSchema);
+      if (!current.teacherPlan) {
+        await run(
+          c.env.DB,
+          "UPDATE users SET teacher_request_at = COALESCE(teacher_request_at, $at), teacher_terms_at = $at WHERE id = $id",
+          { id: current.id, at: nowIso() },
+        );
       }
       return c.json(await sessionFor(c, current.id));
     })

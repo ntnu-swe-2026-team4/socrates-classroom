@@ -2,38 +2,10 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { TRIAL_LIMITS } from "@socrates/shared";
 import { api, type User } from "@/api";
-import { Card, ConfirmDialog, cn } from "@/components/ui";
+import { Button, Card, ConfirmDialog, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
-export function useTeacherMode(onEnabled?: (user: User) => void) {
-  const queryClient = useQueryClient();
-  const [termsOpen, setTermsOpen] = useState(false);
-  const update = useMutation({
-    mutationFn: (input: { teacherMode: boolean; acceptTeacherTerms?: true }) => api.updateProfile(input),
-    onSuccess: (user) => {
-      queryClient.setQueryData(["me"], user);
-      void queryClient.invalidateQueries({ queryKey: ["classrooms"] });
-      if (user.teacherMode) onEnabled?.(user);
-    },
-  });
-  const request = (user: User, on: boolean) => {
-    if (on && !user.teacherPlan) setTermsOpen(true);
-    else update.mutate({ teacherMode: on });
-  };
-  const dialog = (
-    <TeacherTermsDialog
-      open={termsOpen}
-      onCancel={() => setTermsOpen(false)}
-      onAccept={() => {
-        setTermsOpen(false);
-        update.mutate({ teacherMode: true, acceptTeacherTerms: true });
-      }}
-    />
-  );
-  return { request, dialog, pending: update.isPending, failed: update.isError };
-}
-
-export function TeacherTermsDialog({
+function TeacherTermsDialog({
   open,
   onAccept,
   onCancel,
@@ -55,7 +27,7 @@ export function TeacherTermsDialog({
           <li>{t("teacher_terms_limits", limits)}</li>
         </ul>
       }
-      confirmLabel={t("teacher_terms_accept")}
+      confirmLabel={t("teacher_request_submit")}
       cancelLabel={t("common_cancel")}
       onCancel={onCancel}
       onConfirm={onAccept}
@@ -65,7 +37,18 @@ export function TeacherTermsDialog({
 
 export function TeacherModeCard({ user }: { user: User }) {
   const t = useT();
-  const { request, dialog, pending, failed } = useTeacherMode();
+  const queryClient = useQueryClient();
+  const [termsOpen, setTermsOpen] = useState(false);
+  const store = (next: User) => {
+    queryClient.setQueryData(["me"], next);
+    void queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+  };
+  const toggle = useMutation({
+    mutationFn: (teacherMode: boolean) => api.updateProfile({ teacherMode }),
+    onSuccess: store,
+  });
+  const request = useMutation({ mutationFn: () => api.requestTeacher(), onSuccess: store });
+  const approved = Boolean(user.teacherPlan);
   const on = user.teacherMode === true;
   return (
     <Card className="flex flex-col gap-3 p-5">
@@ -79,10 +62,10 @@ export function TeacherModeCard({ user }: { user: User }) {
           role="switch"
           aria-checked={on}
           aria-label={t("teacher_mode_title")}
-          disabled={pending}
-          onClick={() => request(user, !on)}
+          disabled={!approved || toggle.isPending}
+          onClick={() => toggle.mutate(!on)}
           className={cn(
-            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember disabled:opacity-60",
+            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember disabled:cursor-not-allowed disabled:opacity-50",
             on ? "bg-ember" : "bg-paper-shade",
           )}
         >
@@ -95,7 +78,7 @@ export function TeacherModeCard({ user }: { user: User }) {
           />
         </button>
       </div>
-      {user.teacherPlan && (
+      {approved ? (
         <p className="rounded-xl bg-paper-deep/60 px-3 py-2 text-[12.5px] leading-relaxed text-ink-soft">
           {user.teacherPlan === "school"
             ? t("teacher_plan_school", { school: user.schoolName ?? "" })
@@ -104,13 +87,32 @@ export function TeacherModeCard({ user }: { user: User }) {
                 members: TRIAL_LIMITS.membersPerClassroom,
               })}
         </p>
+      ) : user.teacherRequested ? (
+        <p role="status" className="rounded-xl bg-ember-wash px-3 py-2 text-[12.5px] leading-relaxed text-ink">
+          {t("teacher_request_pending")}
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl bg-paper-deep/60 px-3 py-2">
+          <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-ink-soft">{t("teacher_request_hint")}</p>
+          <Button size="sm" disabled={request.isPending} onClick={() => setTermsOpen(true)}>
+            {request.isPending ? <Spinner /> : null}
+            {t("teacher_request_button")}
+          </Button>
+        </div>
       )}
-      {failed && (
+      {(toggle.isError || request.isError) && (
         <p role="alert" className="text-[12.5px] text-flag">
           {t("common_error")}
         </p>
       )}
-      {dialog}
+      <TeacherTermsDialog
+        open={termsOpen}
+        onCancel={() => setTermsOpen(false)}
+        onAccept={() => {
+          setTermsOpen(false);
+          request.mutate();
+        }}
+      />
     </Card>
   );
 }

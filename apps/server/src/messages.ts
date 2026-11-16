@@ -96,6 +96,11 @@ const M: Record<ErrorCode, Entry> = {
     en: "Turn on teacher mode in Settings first.",
     es: "Activa primero el modo docente en Ajustes.",
   },
+  teacher_approval_required: {
+    zh: "教師模式需要先向管理員申請，核准後才能開啟。",
+    en: "Teacher mode needs an administrator’s approval before it can be turned on.",
+    es: "El modo docente requiere la aprobación de un administrador antes de activarse.",
+  },
   teacher_terms_required: {
     zh: "開啟教師模式前需要先同意教師條款。",
     en: "Accept the teacher terms before turning on teacher mode.",

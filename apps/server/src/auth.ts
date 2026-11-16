@@ -128,6 +128,7 @@ interface AccountRow {
   is_admin: number;
   teacher_plan: "trial" | "school" | null;
   teacher_mode: number;
+  teacher_request_at: string | null;
   school_name: string | null;
   username: string | null;
   student_classroom_id: string | null;
@@ -136,7 +137,7 @@ interface AccountRow {
   guest_activity_open: number | null;
 }
 
-const ACCOUNT_SQL = `SELECT u.id, u.name, u.is_guest, u.is_admin, u.teacher_plan, u.teacher_mode, s.name AS school_name,
+const ACCOUNT_SQL = `SELECT u.id, u.name, u.is_guest, u.is_admin, u.teacher_plan, u.teacher_mode, u.teacher_request_at, s.name AS school_name,
   u.username, u.student_classroom_id, u.guest_activity_id, u.preview_classroom_id,
   CASE WHEN a.id IS NOT NULL AND (a.finished_at IS NULL OR a.finished_at > $cutoff) THEN 1 ELSE 0 END AS guest_activity_open
   FROM users u
@@ -154,6 +155,7 @@ function accountUser(row: AccountRow): User {
     admin: row.is_admin === 1,
     teacherPlan: row.teacher_plan,
     teacherMode: row.teacher_plan !== null && row.teacher_mode === 1,
+    teacherRequested: row.teacher_plan === null && row.teacher_request_at !== null,
     schoolName: row.school_name,
     username: row.username,
     classroomId: row.student_classroom_id,

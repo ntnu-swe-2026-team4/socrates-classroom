@@ -87,10 +87,14 @@ export async function registerAccount(name?: string): Promise<{ cookie: string; 
 }
 
 export async function enableTeacher(cookie: string): Promise<string> {
+  const me = (await (await call("/api/me", { headers: { Cookie: cookie } })).json()) as { id: string };
+  await env.DB.prepare("UPDATE users SET teacher_plan = COALESCE(teacher_plan, 'trial') WHERE id = ?")
+    .bind(me.id)
+    .run();
   const res = await call("/api/me", {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Cookie: cookie },
-    body: JSON.stringify({ teacherMode: true, acceptTeacherTerms: true }),
+    body: JSON.stringify({ teacherMode: true }),
   });
   expect(res.status).toBe(200);
   return cookieOf(res);

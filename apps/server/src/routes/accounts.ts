@@ -6,6 +6,7 @@ import {
   type School,
   type SchoolTeacher,
   type StudentCredential,
+  type TeacherRequest,
 } from "@socrates/shared";
 import { all, batch, one, run, type Db } from "../db/d1";
 import { hashPassword } from "../auth";
@@ -131,6 +132,48 @@ export function accountRoutes() {
       });
       const body: StudentCredential = { ...student, password };
       return c.json(body);
+    })
+    .get("/admin/teacher-requests", async (c) => {
+      requireAdmin(c);
+      const rows = await all<{ id: string; name: string; email: string | null; teacher_request_at: string }>(
+        c.env.DB,
+        `SELECT id, name, email, teacher_request_at FROM users
+         WHERE teacher_request_at IS NOT NULL AND teacher_plan IS NULL ORDER BY teacher_request_at`,
+      );
+      return c.json(
+        rows.map(
+          (row): TeacherRequest => ({
+            id: row.id,
+            name: row.name,
+            email: row.email,
+            requestedAt: row.teacher_request_at,
+          }),
+        ),
+      );
+    })
+    .post("/admin/teacher-requests/:id/approve", async (c) => {
+      requireAdmin(c);
+      const found = await one<{ id: string }>(
+        c.env.DB,
+        "SELECT id FROM users WHERE id = $id AND teacher_request_at IS NOT NULL AND teacher_plan IS NULL",
+        { id: c.req.param("id") },
+      );
+      if (!found) fail(404, "not_found");
+      await run(c.env.DB, "UPDATE users SET teacher_plan = 'trial', teacher_request_at = NULL WHERE id = $id", {
+        id: found.id,
+      });
+      return c.body(null, 204);
+    })
+    .delete("/admin/teacher-requests/:id", async (c) => {
+      requireAdmin(c);
+      const found = await one<{ id: string }>(
+        c.env.DB,
+        "SELECT id FROM users WHERE id = $id AND teacher_request_at IS NOT NULL AND teacher_plan IS NULL",
+        { id: c.req.param("id") },
+      );
+      if (!found) fail(404, "not_found");
+      await run(c.env.DB, "UPDATE users SET teacher_request_at = NULL WHERE id = $id", { id: found.id });
+      return c.body(null, 204);
     })
     .get("/admin/schools", async (c) => {
       requireAdmin(c);

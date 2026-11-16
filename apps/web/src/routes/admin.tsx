@@ -11,7 +11,7 @@ import { useFormatDate, useT } from "@/i18n";
 export const Route = createFileRoute("/admin")({
   beforeLoad: async ({ context }) => {
     const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
-    if (!me?.admin) throw redirect({ to: "/home" });
+    if (!me?.admin) throw redirect({ to: "/admin/login" });
   },
   component: AdminPage,
 });
@@ -57,6 +57,9 @@ function AdminPage() {
     <div className="flex min-h-full flex-col bg-paper-deep pb-10">
       <PageHeader width="max-w-4xl" eyebrow={t("nav_admin")} title={t("admin_title")} description={t("admin_desc")} />
       <div className="mx-auto w-full max-w-4xl px-4 pt-5 md:px-6">
+        <TeacherRequests />
+      </div>
+      <div className="mx-auto w-full max-w-4xl px-4 pt-4 md:px-6">
         <NotificationComposer />
       </div>
       <div className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-5 md:grid-cols-[1fr_1.4fr] md:px-6">
@@ -201,5 +204,54 @@ function AdminPage() {
         }}
       />
     </div>
+  );
+}
+
+function TeacherRequests() {
+  const t = useT();
+  const formatDate = useFormatDate();
+  const queryClient = useQueryClient();
+  const requests = useQuery({ queryKey: ["admin", "teacherRequests"], queryFn: () => api.listTeacherRequests() });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["admin", "teacherRequests"] });
+  const approve = useMutation({ mutationFn: (id: string) => api.approveTeacherRequest(id), onSettled: refresh });
+  const reject = useMutation({ mutationFn: (id: string) => api.rejectTeacherRequest(id), onSettled: refresh });
+  const busy = approve.isPending || reject.isPending;
+  return (
+    <Card className="flex flex-col gap-3 p-5">
+      <h2 className="font-serif text-[16px] text-ink">
+        {t("admin_requests_title")}
+        {requests.data && requests.data.length > 0 && (
+          <span className="ml-2 rounded-md bg-ember px-1.5 py-0.5 font-sans text-[11.5px] font-semibold text-on-ember">
+            {requests.data.length}
+          </span>
+        )}
+      </h2>
+      <ul className="flex flex-col">
+        {requests.data?.map((item) => (
+          <li key={item.id} data-request={item.id} className="flex items-center gap-3 border-t border-line py-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13.5px] text-ink">{item.name}</p>
+              <p className="truncate text-[11.5px] text-ink-faint">
+                {item.email ?? "—"} · {formatDate(item.requestedAt)}
+              </p>
+            </div>
+            <Button size="sm" disabled={busy} onClick={() => approve.mutate(item.id)}>
+              {t("admin_requests_approve")}
+            </Button>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => reject.mutate(item.id)}>
+              {t("admin_requests_reject")}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {requests.isSuccess && requests.data.length === 0 && (
+        <p className="text-[13px] text-ink-faint">{t("admin_requests_empty")}</p>
+      )}
+      {(approve.isError || reject.isError || requests.isError) && (
+        <p role="alert" className="text-[12.5px] text-flag">
+          {t("common_error")}
+        </p>
+      )}
+    </Card>
   );
 }

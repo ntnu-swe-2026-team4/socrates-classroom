@@ -17,6 +17,7 @@ import { Route as HomeRouteImport } from './routes/home'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as AdminLoginRouteImport } from './routes/admin_.login'
 import { Route as ChatIndexRouteImport } from './routes/chat.index'
 import { Route as ChatChatIdRouteImport } from './routes/chat.$chatId'
 import { Route as ClassroomsIndexRouteImport } from './routes/classrooms.index'
@@ -64,6 +65,11 @@ const LoginRoute = LoginRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminLoginRoute = AdminLoginRouteImport.update({
+  id: '/admin_/login',
+  path: '/admin/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatIndexRoute = ChatIndexRouteImport.update({
@@ -116,6 +122,7 @@ export interface FileRoutesByFullPath {
   '/join': typeof JoinRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/admin/login': typeof AdminLoginRoute
   '/chat/$chatId': typeof ChatChatIdRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/join/$code': typeof JoinCodeRoute
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/home': typeof HomeRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/admin/login': typeof AdminLoginRoute
   '/chat/$chatId': typeof ChatChatIdRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/join/$code': typeof JoinCodeRoute
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   '/join': typeof JoinRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/admin_/login': typeof AdminLoginRoute
   '/chat/$chatId': typeof ChatChatIdRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/join/$code': typeof JoinCodeRoute
@@ -171,6 +180,7 @@ export interface FileRouteTypes {
     | '/join'
     | '/login'
     | '/settings'
+    | '/admin/login'
     | '/chat/$chatId'
     | '/classrooms/$classroomId'
     | '/join/$code'
@@ -187,6 +197,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/login'
     | '/settings'
+    | '/admin/login'
     | '/chat/$chatId'
     | '/classrooms/$classroomId'
     | '/join/$code'
@@ -205,6 +216,7 @@ export interface FileRouteTypes {
     | '/join'
     | '/login'
     | '/settings'
+    | '/admin_/login'
     | '/chat/$chatId'
     | '/classrooms/$classroomId'
     | '/join/$code'
@@ -224,6 +236,7 @@ export interface RootRouteChildren {
   JoinRoute: typeof JoinRouteWithChildren
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
+  AdminLoginRoute: typeof AdminLoginRoute
   ClassroomsClassroomIdRoute: typeof ClassroomsClassroomIdRoute
   ReportIdRoute: typeof ReportIdRoute
   ClassroomsIndexRoute: typeof ClassroomsIndexRoute
@@ -286,6 +299,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin_/login': {
+      id: '/admin_/login'
+      path: '/admin/login'
+      fullPath: '/admin/login'
+      preLoaderRoute: typeof AdminLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat/': {
@@ -380,6 +400,7 @@ const rootRouteChildren: RootRouteChildren = {
   JoinRoute: JoinRouteWithChildren,
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
+  AdminLoginRoute: AdminLoginRoute,
   ClassroomsClassroomIdRoute: ClassroomsClassroomIdRoute,
   ReportIdRoute: ReportIdRoute,
   ClassroomsIndexRoute: ClassroomsIndexRoute,

@@ -32,6 +32,7 @@
 | `007_teacher_key_entries.sql` | `teacher_key_entries` 取代 `teacher_keys`：多把 key × 多個 model，舊資料自動搬移                                                                    |
 | `008_account_roles.sql`       | 帳號角色：`schools`、`users.is_admin／teacher_plan／school_id／teacher_mode／username／student_classroom_id／guest_activity_id`（見 `accounts.md`） |
 | `009_notifications.sql`       | 系統通知：`notifications` 資料表、`users.notifications_seen_at`                                                                                     |
+| `010_teacher_requests.sql`    | 教師模式申請：`users.teacher_request_at`                                                                                                            |
 
 > `003` 會**刪除 `users.role` 欄位**：既有帳號依「有無 email」換算為正式帳號／訪客；舊 session 的 `role` claim 仍可登入（student → 訪客、teacher → 正式帳號）。
 

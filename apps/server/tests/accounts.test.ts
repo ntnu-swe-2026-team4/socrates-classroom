@@ -41,22 +41,42 @@ beforeAll(async () => {
 });
 
 describe("teacher mode", () => {
-  it("needs the teacher terms the first time, then toggles freely and keeps the trial plan", async () => {
+  it("stays off until an admin approves a request, then toggles freely on the trial plan", async () => {
     const account = await registerAccount("試用老師");
-    const me = (await (await call("/api/me", { headers: { Cookie: account.cookie } })).json()) as object;
+    const me = (await (await call("/api/me", { headers: { Cookie: account.cookie } })).json()) as { id: string };
     expect(me).toMatchObject({ kind: "member", teacherPlan: null, teacherMode: false, admin: false });
 
-    const noTerms = await send("/api/me", account.cookie, "PATCH", { teacherMode: true });
-    expect(noTerms.status).toBe(422);
-    expect(await codeOf(noTerms)).toBe("teacher_terms_required");
+    const direct = await send("/api/me", account.cookie, "PATCH", { teacherMode: true });
+    expect(direct.status).toBe(403);
+    expect(await codeOf(direct)).toBe("teacher_approval_required");
+    expect((await send("/api/me/teacher-request", account.cookie, "POST", {})).status).toBe(422);
 
-    const on = await enableTeacher(account.cookie);
-    const off = await send("/api/me", on, "PATCH", { teacherMode: false });
+    const asked = await send("/api/me/teacher-request", account.cookie, "POST", { acceptTeacherTerms: true });
+    expect(await asked.json()).toMatchObject({ teacherPlan: null, teacherMode: false, teacherRequested: true });
+    expect((await send("/api/admin/teacher-requests", account.cookie, "GET")).status).toBe(403);
+    const queue = (await (await send("/api/admin/teacher-requests", admin, "GET")).json()) as Array<{ id: string }>;
+    expect(queue.some((item) => item.id === me.id)).toBe(true);
+    expect((await send(`/api/admin/teacher-requests/${me.id}/approve`, account.cookie, "POST")).status).toBe(403);
+    expect((await send(`/api/admin/teacher-requests/${me.id}/approve`, admin, "POST")).status).toBe(204);
+    expect((await send(`/api/admin/teacher-requests/${me.id}/approve`, admin, "POST")).status).toBe(404);
+
+    const on = await send("/api/me", account.cookie, "PATCH", { teacherMode: true });
+    expect(await on.json()).toMatchObject({ teacherPlan: "trial", teacherMode: true, teacherRequested: false });
+    const off = await send("/api/me", cookieOf(on), "PATCH", { teacherMode: false });
     expect(await off.json()).toMatchObject({ teacherPlan: "trial", teacherMode: false });
     const blocked = await send("/api/classrooms", cookieOf(off), "POST", { name: "關閉時", topicId });
     expect(await codeOf(blocked)).toBe("teacher_required");
-    const again = await send("/api/me", cookieOf(off), "PATCH", { teacherMode: true });
-    expect(await again.json()).toMatchObject({ teacherPlan: "trial", teacherMode: true });
+  });
+
+  it("an admin can turn a request down, and the user may ask again", async () => {
+    const account = await registerAccount("被婉拒的人");
+    const me = (await (await call("/api/me", { headers: { Cookie: account.cookie } })).json()) as { id: string };
+    await send("/api/me/teacher-request", account.cookie, "POST", { acceptTeacherTerms: true });
+    expect((await send(`/api/admin/teacher-requests/${me.id}`, admin, "DELETE")).status).toBe(204);
+    const after = (await (await call("/api/me", { headers: { Cookie: account.cookie } })).json()) as object;
+    expect(after).toMatchObject({ teacherPlan: null, teacherRequested: false });
+    const again = await send("/api/me/teacher-request", account.cookie, "POST", { acceptTeacherTerms: true });
+    expect(await again.json()).toMatchObject({ teacherRequested: true });
   });
 
   it("caps trial classrooms; school teachers are not capped", async () => {

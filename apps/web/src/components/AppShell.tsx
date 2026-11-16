@@ -25,7 +25,7 @@ import { Button, ConfirmDialog, Initial, cn } from "@/components/ui";
 import { LANGS, setLocale, useI18n, type Locale } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
 
-const BARE_ROUTES = [/^\/$/, /^\/login\/?$/];
+const BARE_ROUTES = [/^\/$/, /^\/login\/?$/, /^\/admin\/login\/?$/];
 
 const NAV_BTN =
   "flex w-full cursor-pointer flex-col items-center gap-1 rounded-lg py-2.5 text-[11.5px] text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink-soft";

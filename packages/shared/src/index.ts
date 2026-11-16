@@ -22,6 +22,7 @@ export const UserSchema = z.object({
   admin: z.boolean().optional(),
   teacherPlan: z.enum(TEACHER_PLANS).nullable().optional(),
   teacherMode: z.boolean().optional(),
+  teacherRequested: z.boolean().optional(),
   schoolName: z.string().nullable().optional(),
   username: z.string().nullable().optional(),
   classroomId: z.string().nullable().optional(),
@@ -203,6 +204,15 @@ export const StudentCredentialSchema = z.object({
   password: z.string(),
 });
 export type StudentCredential = z.infer<typeof StudentCredentialSchema>;
+export const TeacherRequestInputSchema = z.object({ acceptTeacherTerms: z.literal(true) });
+export const TeacherRequestSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string().nullable(),
+  requestedAt: z.string(),
+});
+export type TeacherRequest = z.infer<typeof TeacherRequestSchema>;
+
 export const NotificationInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   body: z.string().trim().max(2000),
@@ -379,6 +389,7 @@ export const ERROR_CODES = [
   "oauth_failed",
   "teacher_required",
   "teacher_terms_required",
+  "teacher_approval_required",
   "trial_limit",
   "student_restricted",
   "guest_session_expired",

@@ -18,6 +18,7 @@ import type {
   School,
   SchoolTeacher,
   StudentCredential,
+  TeacherRequest,
   TermExplanation,
   Topic,
   User,
@@ -70,7 +71,11 @@ export interface Api {
   login(identifier: string, password: string): Promise<User>;
   logout(): Promise<void>;
   register(input: { email: string; password: string; name?: string; code?: string }): Promise<User>;
-  updateProfile(input: { name?: string; teacherMode?: boolean; acceptTeacherTerms?: true }): Promise<User>;
+  updateProfile(input: { name?: string; teacherMode?: boolean }): Promise<User>;
+  requestTeacher(): Promise<User>;
+  listTeacherRequests(): Promise<TeacherRequest[]>;
+  approveTeacherRequest(userId: string): Promise<void>;
+  rejectTeacherRequest(userId: string): Promise<void>;
   createStudents(classroomId: string, names: string[]): Promise<StudentCredential[]>;
   resetStudentPassword(classroomId: string, userId: string): Promise<StudentCredential>;
   liveBoard(activityId: string): Promise<LiveBoard>;
@@ -386,6 +391,18 @@ export const httpApi: Api = {
       `/classrooms/${encodeURIComponent(classroomId)}/students/${encodeURIComponent(userId)}/password`,
       { method: "POST" },
     );
+  },
+  async requestTeacher() {
+    return raw<User>("/me/teacher-request", { method: "POST", json: { acceptTeacherTerms: true } });
+  },
+  async listTeacherRequests() {
+    return raw<TeacherRequest[]>("/admin/teacher-requests");
+  },
+  async approveTeacherRequest(userId) {
+    await rawVoid(`/admin/teacher-requests/${encodeURIComponent(userId)}/approve`, { method: "POST" });
+  },
+  async rejectTeacherRequest(userId) {
+    await rawVoid(`/admin/teacher-requests/${encodeURIComponent(userId)}`, { method: "DELETE" });
   },
   async liveBoard(activityId) {
     return raw<LiveBoard>(`/activities/${encodeURIComponent(activityId)}/live`);
