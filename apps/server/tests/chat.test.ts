@@ -1,12 +1,15 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
-import { evictDurableObject } from "cloudflare:test";
+import { evictDurableObject, runInDurableObject } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { ROOT_CONVERSATION_ID, type ConversationId } from "@earendil-works/pi-durable";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
 import { run } from "../src/db/d1";
 import type { Chat } from "../src/do/chat";
+import { BTW_THINKING_LEVEL, PROFILES } from "../src/pi/agents/profiles";
 import {
   assistantText,
   call,
@@ -389,6 +392,15 @@ describe("btw side session (#121): a fork of the root that never writes back", (
     expect(typeof session).toBe("string");
     expect(session).not.toBe("1");
     expect(userTexts(latestView(side.rx.list))).toContain("主對話第一句");
+
+    const stub = env.Chat.get(env.Chat.idFromName(thread)) as unknown as DurableObjectStub<Chat>;
+    const levels = await runInDurableObject(stub, async (instance) => {
+      const pi = await instance.harness.pi();
+      const levelOf = async (id: ConversationId) =>
+        (await (await pi.conversation(id, BACKGROUND_CONTEXT))?.agent(BACKGROUND_CONTEXT))?.thinkingLevel;
+      return { root: await levelOf(ROOT_CONVERSATION_ID), btw: await levelOf(Number(session) as ConversationId) };
+    });
+    expect(levels).toEqual({ root: PROFILES.socrates.thinkingLevel, btw: BTW_THINKING_LEVEL });
 
     side.socket.send(JSON.stringify({ type: "submit", id: "b2", input: "電車難題是什麼" }));
     await side.rx.until((f) => f.some((m) => m.type === "result" && m.id === "b2"));
