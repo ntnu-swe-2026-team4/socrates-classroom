@@ -2,6 +2,12 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-17 — 帳號選單（`frontend/web-next`）
+
+### Changed
+
+- 點 rail 底部的頭像不再拉出右側整片的帳號面板，改為頭像旁的小選單：目前帳號、設定、登出（訪客為建立正式帳號、退出活動）；介面語言只留在設定頁
+
 ## 2026-11-17 — 設定頁改為分類導覽（`frontend/web-next`）
 
 ### Changed

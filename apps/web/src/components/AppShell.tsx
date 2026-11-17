@@ -16,7 +16,6 @@ import {
   Moon,
   Sun,
   UserPlus,
-  X,
 } from "lucide-react";
 import { api, type User } from "@/api";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
@@ -24,7 +23,7 @@ import { ADMIN_SECTIONS, type AdminTab } from "@/lib/adminSections";
 import { NotificationBell } from "@/components/Notifications";
 import { SocratesCompanion } from "@/components/SocratesCompanion";
 import { Button, ConfirmDialog, Initial, cn } from "@/components/ui";
-import { LANGS, setLocale, useI18n, type Locale } from "@/i18n";
+import { useI18n } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
 
 const BARE_ROUTES = [/^\/$/, /^\/login\/?$/];
@@ -96,7 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 function RailShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const theme = useTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -309,7 +308,11 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       </div>
       <button
         type="button"
-        onClick={() => setAccountOpen(true)}
+        onClick={() => {
+          setDrawerOpen(false);
+          setAccountOpen(true);
+        }}
+        aria-haspopup="dialog"
         aria-label={t("account_title")}
         title={me.data?.name}
         className="flex w-full cursor-pointer flex-col items-center gap-1 border-t border-line pt-3 text-ink-soft hover:text-ink"
@@ -375,93 +378,52 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
         <TrapDialog
           ref={accountRef}
           ariaLabelledBy="account-title"
-          className="anim-sheet absolute inset-y-0 right-0 flex w-full max-w-sm flex-col gap-3 border-l border-line bg-paper p-5 shadow-xl"
+          plain
+          className="anim-rise absolute bottom-3 left-3 flex w-64 flex-col rounded-xl border border-line bg-paper p-1.5 shadow-xl md:left-[92px]"
           onClose={() => setAccountOpen(false)}
         >
-          <div className="flex items-center justify-between">
-            <h2 id="account-title" className="font-serif text-lg">
-              {t("account_title")}
-            </h2>
-            <button
-              type="button"
-              aria-label={t("common_back")}
-              onClick={() => setAccountOpen(false)}
-              className="flex size-8 cursor-pointer items-center justify-center rounded-full text-ink-faint hover:bg-paper-deep hover:text-ink"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
-
+          <h2 id="account-title" className="sr-only">
+            {t("account_title")}
+          </h2>
           {me.data && (
-            <div className="flex items-center gap-3 rounded-2xl border border-line bg-card px-3 py-3">
-              <Initial name={me.data.name} className="size-11 text-lg" />
+            <div className="flex items-center gap-3 px-2.5 py-2.5">
+              <Initial name={me.data.name} className="size-9 text-[14px]" />
               <div className="min-w-0 flex-1">
-                <div className="truncate font-serif text-[15px]">{me.data.name}</div>
-                {accountLabel && <div className="text-[12px] text-ink-faint">{accountLabel}</div>}
+                <div className="truncate text-[14px] font-medium text-ink">{me.data.name}</div>
+                {accountLabel && <div className="truncate text-[12px] text-ink-faint">{accountLabel}</div>}
               </div>
             </div>
           )}
-
+          <div className="my-1 h-px bg-line" aria-hidden />
           {guest && !me.data?.preview && (
             <Link
               to="/login"
               search={{ mode: "register" }}
-              className="flex items-center gap-3 rounded-2xl border border-ember bg-ember-wash px-3 py-2.5 text-sm text-ink hover:brightness-105"
+              className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] text-ink transition-colors hover:bg-paper-deep"
             >
               <UserPlus className="size-4 text-ember" />
-              <span className="flex-1">
-                <span className="block">{t("account_upgrade")}</span>
-                <span className="block text-[12px] text-ink-soft">{t("account_upgrade_hint")}</span>
-              </span>
+              <span className="flex-1">{t("account_upgrade")}</span>
             </Link>
           )}
-
-          <div className="rounded-2xl border border-line bg-card px-3 py-3 text-sm">
-            <div className="mb-2 text-[12.5px] text-ink-soft" id="account-lang">
-              {t("settings_lang")}
-            </div>
-            <div
-              role="radiogroup"
-              aria-labelledby="account-lang"
-              className="inline-flex gap-0.5 rounded-lg border border-line-strong p-0.5"
-            >
-              {LANGS.map((l) => (
-                // biome-ignore lint/a11y/useSemanticElements: language switch is a button-based radio group
-                <button
-                  key={l.code}
-                  type="button"
-                  role="radio"
-                  aria-checked={locale === l.code}
-                  lang={l.code}
-                  onClick={() => setLocale(l.code as Locale)}
-                  className={cn(
-                    "cursor-pointer rounded-md px-3.5 py-1.5 text-[13px]",
-                    locale === l.code ? "bg-ink font-semibold text-paper" : "text-ink-soft hover:text-ink",
-                  )}
-                >
-                  {l.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {!me.data?.preview && (
             <Link
               to="/settings"
-              className="flex items-center gap-3 rounded-2xl border border-line bg-card px-3 py-2.5 text-sm hover:text-ember"
+              data-menu="settings"
+              className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] text-ink transition-colors hover:bg-paper-deep"
             >
-              <Settings className="size-4" />
+              <Settings className="size-4 text-ink-soft" />
               <span className="flex-1">{t("settings_title")}</span>
-              <span aria-hidden="true">›</span>
             </Link>
           )}
-
+          <div className="my-1 h-px bg-line" aria-hidden />
           <button
             type="button"
+            data-menu="logout"
             onClick={() => (guest && !me.data?.preview ? setGuestLogout(true) : logout.mutate())}
             disabled={logout.isPending}
-            className="mt-auto h-9 w-full cursor-pointer rounded-lg border border-line text-sm font-medium text-flag transition-colors hover:bg-flag-wash"
+            className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] text-flag transition-colors hover:bg-flag-wash"
           >
+            <LogOut className="size-4" />
             {guest && !me.data?.preview ? t("guest_leave_activity") : t("account_logout")}
           </button>
         </TrapDialog>
@@ -532,17 +494,19 @@ function TrapDialog({
   className,
   onClose,
   ariaLabelledBy,
+  plain,
   children,
 }: {
   ref: RefObject<HTMLDivElement | null>;
   className: string;
   onClose: () => void;
   ariaLabelledBy?: string;
+  plain?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className="fixed inset-0 z-50">
-      <div className="anim-fade absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className={cn("absolute inset-0", !plain && "anim-fade bg-black/40")} onClick={onClose} />
       <div
         ref={ref}
         role="dialog"
