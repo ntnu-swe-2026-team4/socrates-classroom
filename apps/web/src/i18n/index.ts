@@ -299,6 +299,7 @@ const messages = {
     classrooms_filter_all: "全部",
     classrooms_intro: "你開的教室和加入的教室都在這裡。",
     common_cancel: "取消",
+    teacher_plan_open: "這個帳號已開通教師權限，可以建立與管理教室。",
     admin_create_desc: "直接幫對方建立一個可以登入的帳號，初始密碼至少 8 個字元，請自行轉交。",
     admin_create_failed: "建立失敗：這個 Email 可能已經被使用。",
     admin_disable_title: "停用「{name}」的帳號？",
@@ -977,6 +978,7 @@ const messages = {
     classrooms_filter_all: "All",
     classrooms_intro: "Classrooms you teach and classrooms you joined, in one place.",
     common_cancel: "Cancel",
+    teacher_plan_open: "This account has teaching access and can create and manage classrooms.",
     admin_create_desc:
       "Create a sign-in account for someone. The initial password needs at least 8 characters; pass it on yourself.",
     admin_create_failed: "Could not create the account: this email may already be in use.",
@@ -1686,6 +1688,7 @@ const messages = {
     classrooms_filter_all: "Todas",
     classrooms_intro: "Las clases que impartes y a las que te uniste, en un solo lugar.",
     common_cancel: "Cancelar",
+    teacher_plan_open: "Esta cuenta tiene acceso docente y puede crear y gestionar aulas.",
     admin_create_desc:
       "Crea una cuenta para otra persona. La contraseña inicial necesita al menos 8 caracteres; entrégasela tú.",
     admin_create_failed: "No se pudo crear la cuenta: puede que este correo ya esté en uso.",

@@ -16,7 +16,18 @@ import {
 } from "lucide-react";
 import { api, type ClassroomActivity, type ClassroomSummary } from "@/api";
 import { QrBlock, absoluteUrl } from "@/components/QrBlock";
-import { Button, Checkbox, ConfirmDialog, Field, FormDialog, Initial, Input, Spinner, cn } from "@/components/ui";
+import {
+  Button,
+  Checkbox,
+  ConfirmDialog,
+  Field,
+  FormDialog,
+  HalftoneFade,
+  Initial,
+  Input,
+  Spinner,
+  cn,
+} from "@/components/ui";
 import { useFormatDate, useT } from "@/i18n";
 import { AddTopic, CopyTopic, useClassroomTopics } from "@/components/ClassroomTopics";
 import { TopicPicker } from "@/components/TopicPicker";
@@ -100,13 +111,8 @@ function ClassroomPage() {
     <div className="min-h-full bg-paper-deep pb-10">
       <div className="mx-auto w-full max-w-6xl px-4 pt-14 md:px-6 md:pt-5">
         <header className="overflow-hidden rounded-xl border border-line bg-paper shadow-sm">
-          <div className="relative flex min-h-[150px] flex-col justify-end gap-2 overflow-hidden bg-comic-night [&>:not(img):not(a)]:relative px-5 py-4 [--color-ink-faint:rgb(255_255_255/0.65)] [--color-ink-soft:rgb(255_255_255/0.8)] [--color-ink:#ffffff] [--color-paper-deep:rgb(255_255_255/0.14)] md:px-7 md:py-5">
-            <img
-              src="/greek/banner.webp"
-              alt=""
-              decoding="async"
-              className="pointer-events-none absolute top-0 right-0 h-full max-sm:opacity-40"
-            />
+          <div className="relative flex min-h-[150px] flex-col justify-end gap-2 overflow-hidden border-b border-line bg-paper px-5 py-4 md:px-7 md:py-5 [&>:not([aria-hidden]):not(a)]:relative">
+            <HalftoneFade />
             <Link
               to="/classrooms"
               search={{ view: teacher ? "teacher" : "student" }}

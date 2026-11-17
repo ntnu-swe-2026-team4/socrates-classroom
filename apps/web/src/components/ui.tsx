@@ -60,6 +60,18 @@ export function Field({ label, children }: { label: string; children: React.Reac
   );
 }
 
+export function HalftoneFade({ className }: { className?: string }) {
+  return (
+    <div
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute inset-0 bg-[radial-gradient(var(--color-ink)_1.2px,transparent_1.6px)] bg-size-[11px_11px] opacity-45 [mask-image:linear-gradient(to_left,black,transparent_62%)]",
+        className,
+      )}
+    />
+  );
+}
+
 export function Card({ className, ...props }: React.ComponentProps<"div">) {
   return <div className={cn("rounded-xl border border-line bg-paper shadow-sm", className)} {...props} />;
 }

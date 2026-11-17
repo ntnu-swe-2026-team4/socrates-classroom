@@ -3,7 +3,7 @@ import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-ro
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Users } from "lucide-react";
 import { api, ApiError, type ClassroomSummary } from "@/api";
-import { Button, ConfirmDialog, Initial, Input, PageHeader, Spinner, cn } from "@/components/ui";
+import { Button, ConfirmDialog, HalftoneFade, Initial, Input, PageHeader, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
 
@@ -151,19 +151,6 @@ function RoomGroup({ title, rooms, empty }: { title: string | null; rooms: Class
   );
 }
 
-const COVER_TONES = [
-  "bg-ember-wash text-ember",
-  "bg-moss-wash text-moss",
-  "bg-flag-wash text-flag",
-  "bg-paper-deep text-ink-soft",
-] as const;
-
-function toneOf(id: string): (typeof COVER_TONES)[number] {
-  let hash = 0;
-  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return COVER_TONES[hash % COVER_TONES.length]!;
-}
-
 function ClassroomCard({ room }: { room: ClassroomSummary }) {
   const t = useT();
   const teacher = room.role === "teacher";
@@ -174,25 +161,10 @@ function ClassroomCard({ room }: { room: ClassroomSummary }) {
       params={{ classroomId: room.id }}
       className="group flex flex-col rounded-xl border border-line bg-card transition-shadow hover:shadow-md"
     >
-      <div className={cn("relative aspect-[16/9] rounded-t-2xl", toneOf(room.id))}>
+      <div className="relative aspect-[21/9] rounded-t-2xl border-b border-line bg-paper">
         <div className="absolute inset-0 overflow-hidden rounded-t-2xl">
-          <svg
-            aria-hidden
-            viewBox="0 0 160 90"
-            preserveAspectRatio="xMidYMid slice"
-            className="absolute inset-0 size-full"
-          >
-            <g fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="0.8">
-              <circle cx="132" cy="18" r="34" />
-              <circle cx="132" cy="18" r="22" />
-              <path d="M0 70 C40 50 70 88 110 66 S160 58 160 58" />
-              <path d="M0 80 C40 60 70 98 110 76 S160 68 160 68" />
-            </g>
-          </svg>
-          <span
-            aria-hidden
-            className="absolute top-3 left-4 font-serif text-[56px] leading-none opacity-40 select-none"
-          >
+          <HalftoneFade className="[mask-image:linear-gradient(to_top_left,black,transparent_70%)]" />
+          <span aria-hidden className="absolute top-3 left-4 font-serif text-[56px] leading-none text-ink select-none">
             {room.name.slice(0, 1)}
           </span>
         </div>
@@ -200,7 +172,7 @@ function ClassroomCard({ room }: { room: ClassroomSummary }) {
           <span
             className={cn(
               "absolute top-3 right-3 rounded-lg px-2 py-0.5 text-[11px] font-medium",
-              running ? "bg-moss text-paper" : "bg-paper/80 text-ink-faint",
+              running ? "bg-moss text-paper" : "border border-line bg-paper text-ink-soft",
             )}
           >
             {running ? t("classroom_running") : t("classroom_finished")}

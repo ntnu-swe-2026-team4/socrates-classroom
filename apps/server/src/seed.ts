@@ -215,7 +215,7 @@ async function ensureUser(db: Db, account: FixtureAccount, hash: string, at: str
     await run(
       db,
       `UPDATE users SET name = $name, email = $email, password_hash = $hash,
-         can_manage_classes = $can, is_admin = $admin, disabled_at = NULL
+         can_manage_classes = $can, teacher_mode = $can, is_admin = $admin, disabled_at = NULL
        WHERE id = $id`,
       { ...params, id: existing.id },
     );
@@ -223,8 +223,8 @@ async function ensureUser(db: Db, account: FixtureAccount, hash: string, at: str
   }
   await run(
     db,
-    `INSERT INTO users (id, name, email, password_hash, can_manage_classes, is_admin, created_at)
-     VALUES ($id, $name, $email, $hash, $can, $admin, $at)`,
+    `INSERT INTO users (id, name, email, password_hash, can_manage_classes, teacher_mode, is_admin, created_at)
+     VALUES ($id, $name, $email, $hash, $can, $can, $admin, $at)`,
     { ...params, id: account.id, at },
   );
   return account.id;

@@ -18,6 +18,12 @@
 - 登入頁的註冊改呼叫 `/auth/signup`（`/auth/register` 現在必須帶邀請碼）
 - 收回教師權限時一併清除 `can_manage_classes`
 - 帳號選單不再被模型蓋住
+- 有 `can_manage_classes` 但沒有 `teacher_plan` 的帳號（seed 教師、後台直接建立的教師）可以切換教師模式，關閉後不會失去權限；seed 教師預設開啟教師模式
+
+### Changed
+
+- 教室橫幅與教室卡片封面改用主題的半色調圓點（`HalftoneFade`），移除彩色神殿插圖 `public/greek/banner.webp`
+- 深色版配色改為中性深灰，外框線加強，重點色統一為黃棕
 
 ### Removed
 

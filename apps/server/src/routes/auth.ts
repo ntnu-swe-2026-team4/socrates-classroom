@@ -80,11 +80,16 @@ export function authRoutes() {
       }
       if (input.teacherMode !== undefined) {
         if (current.kind === "student") fail(403, "student_restricted");
-        if (input.teacherMode && !current.teacherPlan) fail(403, "teacher_approval_required");
-        await run(c.env.DB, "UPDATE users SET teacher_mode = $mode, can_manage_classes = $mode WHERE id = $id", {
-          id: current.id,
-          mode: input.teacherMode ? 1 : 0,
-        });
+        if (input.teacherMode && !current.teacherPlan && !current.canManageClasses) {
+          fail(403, "teacher_approval_required");
+        }
+        await run(
+          c.env.DB,
+          `UPDATE users SET teacher_mode = $mode,
+             can_manage_classes = CASE WHEN teacher_plan IS NULL THEN can_manage_classes ELSE $mode END
+           WHERE id = $id`,
+          { id: current.id, mode: input.teacherMode ? 1 : 0 },
+        );
       }
       return c.json(await accountFor(c, current.id));
     })
