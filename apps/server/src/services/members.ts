@@ -1,7 +1,7 @@
 import { getCookie } from "hono/cookie";
 import { ApiError, type ActivityMode, type User } from "@socrates/shared";
 import type { Db } from "../db/d1";
-import { one } from "../db/d1";
+import { one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, type ParticipantIdentity } from "../auth";
 import { fail, newId, nowIso, type Ctx } from "../http";
 
@@ -134,17 +134,51 @@ export async function ensureParticipant(
   kind: "member" | "guest" = "member",
 ): Promise<ParticipantRow> {
   const existing = await participantOfUser(db, activityId, user.id);
-  if (existing) return existing;
-  await one(
-    db,
-    `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
-     VALUES ($aid, $pid, $uid, $kind, $name, $tos, $at)
-     ON CONFLICT DO NOTHING RETURNING id`,
-    { aid: activityId, pid: newId("p_"), uid: user.id, kind, name: user.name, tos: tosAcceptedAt, at: nowIso() },
-  );
-  const created = await participantOfUser(db, activityId, user.id);
-  if (!created) fail(409, "name_taken");
-  return created;
+  if (existing) {
+    if (kind === "member" && existing.kind === "guest") {
+      await run(db, "UPDATE activity_participants SET kind = 'member' WHERE id = $pid AND user_id = $uid", {
+        pid: existing.id,
+        uid: user.id,
+      });
+      return { ...existing, kind: "member" };
+    }
+    return existing;
+  }
+  let candidate = user.name;
+  for (let attempt = 1; attempt <= 8; attempt++) {
+    const created = await one<ParticipantRow>(
+      db,
+      `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
+       VALUES ($aid, $pid, $uid, $kind, $name, $tos, $at)
+       ON CONFLICT DO NOTHING RETURNING *`,
+      { aid: activityId, pid: newId("p_"), uid: user.id, kind, name: candidate, tos: tosAcceptedAt, at: nowIso() },
+    );
+    if (created) return created;
+    const holder = await one<ParticipantRow>(
+      db,
+      "SELECT * FROM activity_participants WHERE activity_id = $aid AND display_name = $name",
+      { aid: activityId, name: candidate },
+    );
+    if (holder?.user_id === null && holder.kind === "guest" && (await yieldGuestName(db, activityId, candidate))) {
+      continue;
+    }
+    candidate = `${user.name} ${attempt + 1}`;
+  }
+  fail(409, "name_taken");
+}
+
+async function yieldGuestName(db: Db, activityId: string, name: string): Promise<boolean> {
+  for (let n = 1; n <= 9; n++) {
+    const renamed = n === 1 ? `${name}（訪客）` : `${name}（訪客 ${n}）`;
+    const result = await run(
+      db,
+      `UPDATE activity_participants SET display_name = $new
+       WHERE activity_id = $aid AND display_name = $old AND user_id IS NULL AND kind = 'guest'`,
+      { aid: activityId, old: name, new: renamed },
+    );
+    if ((result.meta?.changes ?? 0) > 0) return true;
+  }
+  return false;
 }
 
 export async function createGuestParticipant(

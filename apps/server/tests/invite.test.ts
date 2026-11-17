@@ -226,6 +226,87 @@ describe("activity invites", () => {
     await speak(`${activityId}:${joined.participantId}`, browserCookie, "這樣算參與嗎？");
   }, 20_000);
 
+  it("a member reclaims their display_name from a squatting guest", async () => {
+    const squatter = await joinGuest(classroomCode, "搶名學生");
+    const account = await registerStudent(classroomCode, "搶名學生");
+
+    const res = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: account.cookie },
+      body: JSON.stringify({ code: classroomCode, name: "搶名學生", tosAccepted: true }),
+    });
+    expect(res.status).toBe(200);
+    const joined = (await res.json()) as { participantId: string; kind: string };
+    expect(joined.kind).toBe("member");
+    expect(joined.participantId).not.toBe(squatter.participantId);
+
+    const rows = await all<{ id: string; user_id: string | null; kind: string; display_name: string }>(
+      env.DB,
+      "SELECT id, user_id, kind, display_name FROM activity_participants WHERE activity_id = $aid",
+      { aid: activityId },
+    );
+    const member = rows.find((row) => row.id === joined.participantId);
+    const guest = rows.find((row) => row.id === squatter.participantId);
+    expect(member).toMatchObject({ user_id: account.userId, kind: "member", display_name: "搶名學生" });
+    expect(guest).toMatchObject({ user_id: null, kind: "guest", display_name: "搶名學生（訪客）" });
+  });
+
+  it("a logged-in joiner whose display_name is held by another account keeps joining with a suffix", async () => {
+    const classA = await classroomWithActivity(teacherCookie, "同名甲班");
+    const classB = await classroomWithActivity(teacherCookie, "同名乙班");
+    const first = await registerStudent(classA.code, "同名學生");
+    const second = await registerStudent(classB.code, "同名學生");
+    const { token } = await createInvite();
+
+    const firstRes = await call(`/api/invites/${token}/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: first.cookie },
+      body: JSON.stringify({ tosAccepted: true }),
+    });
+    expect(firstRes.status).toBe(200);
+    expect(((await firstRes.json()) as { displayName: string }).displayName).toBe("同名學生");
+
+    const secondRes = await call(`/api/invites/${token}/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: second.cookie },
+      body: JSON.stringify({ tosAccepted: true }),
+    });
+    expect(secondRes.status).toBe(200);
+    expect(((await secondRes.json()) as { displayName: string }).displayName).toBe("同名學生 2");
+  });
+
+  it("an invite-joined participant upgrades to member kind once the account joins the roster", async () => {
+    const other = await classroomWithActivity(teacherCookie, "升級班");
+    const account = await registerStudent(other.code, "升級學生");
+    const { token } = await createInvite();
+
+    const inviteRes = await call(`/api/invites/${token}/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: account.cookie },
+      body: JSON.stringify({ tosAccepted: true }),
+    });
+    expect(inviteRes.status).toBe(200);
+    const invited = (await inviteRes.json()) as { participantId: string; kind: string };
+    expect(invited.kind).toBe("guest");
+
+    const joinRes = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: account.cookie },
+      body: JSON.stringify({ code: classroomCode, name: "升級學生", tosAccepted: true }),
+    });
+    expect(joinRes.status).toBe(200);
+    const joined = (await joinRes.json()) as { participantId: string; kind: string };
+    expect(joined.kind).toBe("member");
+    expect(joined.participantId).toBe(invited.participantId);
+
+    const participant = await one<{ kind: string }>(
+      env.DB,
+      "SELECT kind FROM activity_participants WHERE activity_id = $aid AND id = $pid",
+      { aid: activityId, pid: invited.participantId },
+    );
+    expect(participant).toEqual({ kind: "member" });
+  });
+
   it("revoked and expired invites are rejected with their own codes", async () => {
     const at = new Date().toISOString();
     await run(
