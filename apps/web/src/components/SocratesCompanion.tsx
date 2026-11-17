@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Square, UserRound } from "lucide-react";
+import { type KeyboardEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, GripHorizontal, Square, UserRound } from "lucide-react";
+import { cn } from "@/components/ui";
 import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useT } from "@/i18n";
 import { getCompanion, onExpression, useCompanion } from "@/lib/companion";
@@ -14,32 +15,129 @@ interface DockRect {
   size: number;
 }
 
-export function SocratesPanel() {
+const HEIGHT_KEY = "socrates_window_y";
+const EDGE_GAP = 8;
+const DRAG_SLOP = 4;
+const KEY_STEP = 0.05;
+const OPEN_HEIGHT = "calc(2.25rem + 3px + min(196px, 26dvh))";
+
+const unit = (value: number) => Math.min(1, Math.max(0, value));
+
+function readHeight(): number {
+  try {
+    const value = Number.parseFloat(localStorage.getItem(HEIGHT_KEY) ?? "");
+    return Number.isFinite(value) ? unit(value) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function SocratesWindow({ bottomInset = 0 }: { bottomInset?: number }) {
   const t = useT();
   const { visible } = useCompanion();
-  const [open, setOpen] = usePersistentFlag("socrates_panel_open", true);
+  const wide = typeof window === "undefined" || !window.matchMedia?.("(max-width: 767px)").matches;
+  const [open, setOpen] = usePersistentFlag("socrates_panel_open", wide);
+  const [settled, setSettled] = useState(true);
+  const [height, setHeight] = useState(readHeight);
+  const rootRef = useRef<HTMLElement>(null);
+  const dragged = useRef(false);
+
   if (!visible) return null;
+
+  const place = (next: number) => {
+    const value = unit(next);
+    setHeight(value);
+    try {
+      localStorage.setItem(HEIGHT_KEY, String(value));
+    } catch {}
+  };
+
+  const startDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const node = rootRef.current;
+    const frame = node?.offsetParent?.getBoundingClientRect();
+    if (!node || !frame) return;
+    const startY = event.clientY;
+    const grab = startY - node.getBoundingClientRect().top;
+    const full = 39 + Math.min(196, window.innerHeight * 0.26);
+    const span = frame.height - bottomInset - EDGE_GAP * 2 - full;
+    dragged.current = false;
+    const move = (moveEvent: PointerEvent) => {
+      if (!dragged.current && Math.abs(moveEvent.clientY - startY) < DRAG_SLOP) return;
+      dragged.current = true;
+      place(span > 0 ? (moveEvent.clientY - grab - frame.top - EDGE_GAP) / span : 0);
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  };
+
+  const nudge = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    place(height + (event.key === "ArrowUp" ? -KEY_STEP : KEY_STEP));
+  };
+
+  const toggle = () => {
+    if (dragged.current) {
+      dragged.current = false;
+      return;
+    }
+    setSettled(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true);
+    setOpen(!open);
+  };
+
   const label = open ? t("companion_hide") : t("companion_show");
-  const Icon = open ? ChevronDown : ChevronUp;
+  const Icon = open ? ChevronRight : ChevronLeft;
   return (
     <section
+      ref={rootRef}
       data-companion-panel={open ? "open" : "closed"}
-      className="m-2 shrink-0 border border-line-strong bg-paper"
+      onTransitionEnd={(event) => {
+        if (event.target === event.currentTarget) setSettled(true);
+      }}
+      className={cn(
+        "absolute right-0 z-10 w-[min(247px,64vw)] border border-r-0 border-line-strong bg-paper shadow-sm transition-transform duration-200 motion-reduce:transition-none",
+        !open && "translate-x-[calc(100%-2.25rem)]",
+      )}
+      style={{
+        top: `calc(${EDGE_GAP}px + ${height} * (100% - ${bottomInset + EDGE_GAP * 2}px - ${OPEN_HEIGHT}))`,
+      }}
     >
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        aria-label={label}
-        title={label}
-        className="flex h-9 w-full cursor-pointer items-center gap-2 px-2.5 text-[12.5px] text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
-      >
-        <span className="min-w-0 flex-1 truncate text-left">{t("dlg_socrates")}</span>
-        <Icon className="size-4 shrink-0" aria-hidden />
-      </button>
+      <div className="flex h-9 items-stretch">
+        <button
+          type="button"
+          data-companion-toggle
+          onPointerDown={startDrag}
+          onClick={toggle}
+          aria-expanded={open}
+          aria-label={label}
+          title={label}
+          className="flex w-9 shrink-0 cursor-pointer touch-none items-center justify-center border-r border-line text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
+        >
+          <Icon className="size-4" aria-hidden />
+        </button>
+        <button
+          type="button"
+          data-companion-drag
+          tabIndex={open ? 0 : -1}
+          onPointerDown={startDrag}
+          onKeyDown={nudge}
+          aria-label={t("companion_move")}
+          title={t("companion_move")}
+          className="flex min-w-0 flex-1 cursor-ns-resize touch-none items-center gap-1.5 px-2 text-[12.5px] text-ink-soft outline-none transition-colors hover:text-ink focus-visible:bg-paper-deep"
+        >
+          <span className="min-w-0 flex-1 truncate text-left">{t("dlg_socrates")}</span>
+          <GripHorizontal className="size-3.5 shrink-0 text-ink-faint" aria-hidden />
+        </button>
+      </div>
       {open && (
         <div className="flex h-[min(196px,26dvh)] items-end justify-center overflow-hidden border-t border-line">
-          <div {...{ [COMPANION_DOCK_ATTR]: "" }} className="aspect-square h-full" />
+          {settled && <div {...{ [COMPANION_DOCK_ATTR]: "" }} className="aspect-square h-full" />}
         </div>
       )}
     </section>
@@ -56,6 +154,7 @@ function useDockRect(): DockRect | null {
       const next =
         box && box.width > 0 ? { x: Math.round(box.left), y: Math.round(box.top), size: Math.round(box.width) } : null;
       setRect((prev) => (prev?.x === next?.x && prev?.y === next?.y && prev?.size === next?.size ? prev : next));
+      if (box) frame = requestAnimationFrame(measure);
     };
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(measure);
@@ -127,7 +226,7 @@ function CompanionBody({ dock }: { dock: DockRect }) {
 
   return (
     <div
-      className="pointer-events-none fixed z-[45]"
+      className="pointer-events-none fixed z-30"
       style={{ left: dock.x, top: dock.y, width: dock.size, height: dock.size }}
     >
       <div

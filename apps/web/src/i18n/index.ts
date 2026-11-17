@@ -299,6 +299,7 @@ const messages = {
     classrooms_filter_all: "全部",
     classrooms_intro: "你開的教室和加入的教室都在這裡。",
     common_cancel: "取消",
+    companion_move: "上下拖曳調整位置（也可以用上下方向鍵）",
     teacher_plan_open: "這個帳號已開通教師權限，可以建立與管理教室。",
     admin_create_desc: "直接幫對方建立一個可以登入的帳號，初始密碼至少 8 個字元，請自行轉交。",
     admin_create_failed: "建立失敗：這個 Email 可能已經被使用。",
@@ -443,7 +444,7 @@ const messages = {
     settings_model_on: "使用模型",
     settings_model_off: "不使用模型",
     settings_model_hint:
-      "開啟時，對話頁左側清單的下方會有一個蘇格拉底的 3D 頭像框，可以上下收合；關閉後整個介面不會出現模型，語音朗讀不受影響。",
+      "開啟時，對話畫面右邊緣會有一個蘇格拉底的 3D 頭像小窗：可以上下拖曳調整位置、向右收合成一顆小鈕，也可以拖曳模型轉動。關閉後整個介面不會出現模型，語音朗讀不受影響。",
     comic_skip: "跳到結尾",
     comic_desert: "一群工程師走進沙漠，朝著那尊半埋在沙裡的雕像前進。",
     comic_revived: "他醒了。",
@@ -978,6 +979,7 @@ const messages = {
     classrooms_filter_all: "All",
     classrooms_intro: "Classrooms you teach and classrooms you joined, in one place.",
     common_cancel: "Cancel",
+    companion_move: "Drag up or down to move (the up and down arrow keys also work)",
     teacher_plan_open: "This account has teaching access and can create and manage classrooms.",
     admin_create_desc:
       "Create a sign-in account for someone. The initial password needs at least 8 characters; pass it on yourself.",
@@ -1131,7 +1133,7 @@ const messages = {
     settings_model_on: "Model on",
     settings_model_off: "Model off",
     settings_model_hint:
-      "When on, a framed 3D portrait of Socrates sits at the bottom of the list beside a dialogue and can be folded away. When off, the model never appears; voice readout is unaffected.",
+      "When on, a small window with a 3D portrait of Socrates sits on the right edge of the dialogue: drag it up or down, tuck it away to the right, or drag the model to turn it. When off, the model never appears; voice readout is unaffected.",
     comic_skip: "Skip to the end",
     comic_desert: "A group of engineers set out across the desert, toward the statue half-buried in the sand.",
     comic_revived: "He is awake.",
@@ -1688,6 +1690,7 @@ const messages = {
     classrooms_filter_all: "Todas",
     classrooms_intro: "Las clases que impartes y a las que te uniste, en un solo lugar.",
     common_cancel: "Cancelar",
+    companion_move: "Arrastra hacia arriba o abajo para mover (también con las flechas)",
     teacher_plan_open: "Esta cuenta tiene acceso docente y puede crear y gestionar aulas.",
     admin_create_desc:
       "Crea una cuenta para otra persona. La contraseña inicial necesita al menos 8 caracteres; entrégasela tú.",
@@ -1842,7 +1845,7 @@ const messages = {
     settings_model_on: "Modelo activado",
     settings_model_off: "Modelo desactivado",
     settings_model_hint:
-      "Si está activado, un retrato 3D de Sócrates aparece en un marco al pie de la lista junto al diálogo y se puede plegar. Si está desactivado, el modelo no aparece; la lectura en voz alta no cambia.",
+      "Si está activado, una ventanita con un retrato 3D de Sócrates aparece en el borde derecho del diálogo: arrástrala arriba o abajo, pliégala hacia la derecha o arrastra el modelo para girarlo. Si está desactivado, el modelo no aparece; la lectura en voz alta no cambia.",
     comic_skip: "Saltar al final",
     comic_desert: "Un grupo de ingenieros cruzó el desierto hacia la estatua medio enterrada en la arena.",
     comic_revived: "Ha despertado.",

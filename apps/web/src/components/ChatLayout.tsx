@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { SocratesPanel } from "@/components/SocratesCompanion";
 import { cn } from "@/components/ui";
 import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useT } from "@/i18n";
@@ -72,7 +71,6 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
           }}
         >
           {sidebar}
-          {open && <SocratesPanel />}
         </aside>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
       </div>

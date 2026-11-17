@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { Keyboard, MessageCircleQuestionMark, Mic, Send, Square, TextSearch } from "lucide-react";
 import { BtwPanel, type BtwPanelHandle } from "@/components/BtwPanel";
 import { SidebarToggle, useSidebarOverlay } from "@/components/ChatLayout";
+import { SocratesWindow } from "@/components/SocratesCompanion";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { cn } from "@/components/ui";
 import { textOf, useDialogue } from "@/hooks/useDialogue";
@@ -301,66 +302,69 @@ export function DialogueView({
           </button>
         </header>
 
-        <div
-          ref={scrollRef}
-          onScroll={onScroll}
-          className={cn("stream-scroll min-h-0 flex-1 overflow-y-auto px-4 md:px-8")}
-          style={overlayHeight ? { paddingBottom: overlayHeight } : undefined}
-          aria-busy={busy}
-        >
-          <div className="flex w-full flex-col gap-4 py-5">
-            {showIntro && statement && (
-              <>
-                <Turn speaker="assistant" text={statement} />
-                {prompts.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pl-11">
-                    {prompts.map((prompt) => (
-                      <button
-                        type="button"
-                        key={prompt}
-                        disabled={awaitingReply || !viewReady || Boolean(closedNotice)}
-                        onClick={() => void submit(prompt)}
-                        className="cursor-pointer rounded-full border border-line-strong px-4 py-1.5 text-[13px] text-ink-soft transition-colors hover:border-ember hover:text-ink disabled:opacity-50"
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-            {canLoadEarlier && (
-              <button
-                type="button"
-                onClick={loadEarlier}
-                className="mx-auto cursor-pointer rounded-full border border-line-strong px-3 py-1 text-[12.5px] text-ink-soft transition-colors hover:text-ink"
-              >
-                {t("dlg_load_earlier")}
-              </button>
-            )}
-            {items.map((item) => {
-              if (item.kind === "gap") {
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          <SocratesWindow bottomInset={overlayHeight} />
+          <div
+            ref={scrollRef}
+            onScroll={onScroll}
+            className={cn("stream-scroll min-h-0 flex-1 overflow-y-auto px-4 md:px-8")}
+            style={overlayHeight ? { paddingBottom: overlayHeight } : undefined}
+            aria-busy={busy}
+          >
+            <div className="flex w-full flex-col gap-4 py-5">
+              {showIntro && statement && (
+                <>
+                  <Turn speaker="assistant" text={statement} />
+                  {prompts.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pl-11">
+                      {prompts.map((prompt) => (
+                        <button
+                          type="button"
+                          key={prompt}
+                          disabled={awaitingReply || !viewReady || Boolean(closedNotice)}
+                          onClick={() => void submit(prompt)}
+                          className="cursor-pointer rounded-full border border-line-strong px-4 py-1.5 text-[13px] text-ink-soft transition-colors hover:border-ember hover:text-ink disabled:opacity-50"
+                        >
+                          {prompt}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+              {canLoadEarlier && (
+                <button
+                  type="button"
+                  onClick={loadEarlier}
+                  className="mx-auto cursor-pointer rounded-full border border-line-strong px-3 py-1 text-[12.5px] text-ink-soft transition-colors hover:text-ink"
+                >
+                  {t("dlg_load_earlier")}
+                </button>
+              )}
+              {items.map((item) => {
+                if (item.kind === "gap") {
+                  return (
+                    <button
+                      type="button"
+                      key={`gap-${item.after}-${item.upTo}`}
+                      onClick={() => void fillGap(item)}
+                      className="mx-auto cursor-pointer rounded-full border border-line-strong px-3 py-1 text-[12.5px] text-ink-soft transition-colors hover:text-ink"
+                    >
+                      {t("dlg_load_missing")}
+                    </button>
+                  );
+                }
+                if (item.kind !== "entry") return null;
+                const entry = item.entry;
+                if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") return null;
+                const content = textOf((entry.model?.[0] ?? undefined) as Message | undefined);
+                if (content === "") return null;
                 return (
-                  <button
-                    type="button"
-                    key={`gap-${item.after}-${item.upTo}`}
-                    onClick={() => void fillGap(item)}
-                    className="mx-auto cursor-pointer rounded-full border border-line-strong px-3 py-1 text-[12.5px] text-ink-soft transition-colors hover:text-ink"
-                  >
-                    {t("dlg_load_missing")}
-                  </button>
+                  <Turn key={`e${entry.id}`} speaker={entry.kind === "pi.user" ? "user" : "assistant"} text={content} />
                 );
-              }
-              if (item.kind !== "entry") return null;
-              const entry = item.entry;
-              if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") return null;
-              const content = textOf((entry.model?.[0] ?? undefined) as Message | undefined);
-              if (content === "") return null;
-              return (
-                <Turn key={`e${entry.id}`} speaker={entry.kind === "pi.user" ? "user" : "assistant"} text={content} />
-              );
-            })}
-            <div aria-live="polite">{draft && <Turn speaker="assistant" text={draft} caret={streaming} />}</div>
+              })}
+              <div aria-live="polite">{draft && <Turn speaker="assistant" text={draft} caret={streaming} />}</div>
+            </div>
           </div>
         </div>
 
