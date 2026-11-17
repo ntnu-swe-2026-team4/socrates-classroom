@@ -2,6 +2,13 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-17 — 設定頁改為分類導覽（`frontend/web-next`）
+
+### Changed
+
+- `/settings` 由單欄卡片改為左側分類清單＋右側內容：一般（個人資料、介面語言）／對話體驗（3D 模型、語音朗讀）／教師模式／API keys／用量；分類記在 `?section=`，手機為橫向捲動的分類列
+- 訪客與學生只有「一般」與「對話體驗」
+
 ## 2026-11-17 — 額度設定與額度警示（`frontend/web-next`）
 
 ### Added

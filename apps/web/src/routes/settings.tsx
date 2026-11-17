@@ -1,10 +1,10 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TeacherKeyStatus } from "@socrates/shared";
 import { useState } from "react";
 import { api } from "@/api";
 import { Button, Card, ConfirmDialog, Field, Input, PageHeader, Segmented, Spinner } from "@/components/ui";
-import { locales, setLocale, useI18n, useT, type Locale } from "@/i18n";
+import { locales, setLocale, useI18n, useT, type Locale, type MessageKey } from "@/i18n";
 import { companion, useCompanion } from "@/lib/companion";
 import { TeacherModeCard } from "@/components/TeacherMode";
 import { UsageCard } from "@/components/UsageCard";
@@ -13,7 +13,11 @@ import {
   ChevronUp,
   Copy,
   GripVertical,
+  Gauge,
   KeyRound,
+  MessagesSquare,
+  GraduationCap,
+  SlidersHorizontal,
   Plus,
   Trash2,
   Volume1,
@@ -22,7 +26,19 @@ import {
 } from "lucide-react";
 import { cn } from "@/components/ui";
 
+const SECTIONS = [
+  { id: "general", label: "settings_nav_general", icon: SlidersHorizontal, account: false },
+  { id: "dialogue", label: "settings_nav_dialogue", icon: MessagesSquare, account: false },
+  { id: "teacher", label: "settings_nav_teacher", icon: GraduationCap, account: true },
+  { id: "keys", label: "settings_nav_keys", icon: KeyRound, account: true },
+  { id: "usage", label: "usage_title", icon: Gauge, account: true },
+] as const satisfies ReadonlyArray<{ id: string; label: MessageKey; icon: typeof Gauge; account: boolean }>;
+type Section = (typeof SECTIONS)[number]["id"];
+
 export const Route = createFileRoute("/settings")({
+  validateSearch: (search: Record<string, unknown>): { section?: Section } => ({
+    section: SECTIONS.find((item) => item.id === search.section && item.id !== "general")?.id,
+  }),
   beforeLoad: async ({ context }) => {
     const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
     if (me?.preview && me.previewClassroomId) {
@@ -36,45 +52,89 @@ export const Route = createFileRoute("/settings")({
 function SettingsPage() {
   const t = useT();
   const { locale } = useI18n();
+  const navigate = useNavigate();
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const account = Boolean(me.data) && !me.data?.guest && me.data?.kind !== "student";
+  const sections = SECTIONS.filter((item) => account || !item.account);
+  const wanted = Route.useSearch().section ?? "general";
+  const section = sections.some((item) => item.id === wanted) ? wanted : "general";
+  const current = sections.find((item) => item.id === section) ?? sections[0]!;
 
   return (
     <div className="flex min-h-full flex-col bg-paper-deep pb-10">
-      <PageHeader width="max-w-2xl" title={t("settings_title")} />
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-5 md:px-6">
-        {me.data &&
-          (me.data.kind === "student" ? (
-            <StudentProfileCard name={me.data.name} username={me.data.username ?? ""} />
-          ) : (
-            <ProfileCard key={me.data.name} name={me.data.name} />
-          ))}
-        {me.data && !me.data.guest && me.data.kind !== "student" && <TeacherModeCard user={me.data} />}
-        <Card className="flex flex-col gap-3 p-5">
-          <p className="font-serif text-[15.5px] text-ink">{t("settings_lang")}</p>
-          <div className="inline-flex gap-0.5 self-start rounded-lg border border-line-strong bg-paper-deep p-0.5">
-            {locales.map((l: Locale) => (
+      <PageHeader width="max-w-5xl" title={t("settings_title")} />
+      <div className="mx-auto grid w-full max-w-5xl gap-x-8 gap-y-4 px-4 py-5 md:grid-cols-[200px_minmax(0,1fr)] md:px-6">
+        <nav
+          aria-label={t("settings_title")}
+          className="flex gap-1 overflow-x-auto md:sticky md:top-4 md:flex-col md:self-start md:overflow-visible"
+        >
+          {sections.map((item) => {
+            const Icon = item.icon;
+            return (
               <button
+                key={item.id}
                 type="button"
-                key={l}
-                onClick={() => setLocale(l)}
+                data-section={item.id}
+                aria-current={section === item.id ? "page" : undefined}
+                onClick={() =>
+                  void navigate({ to: "/settings", search: item.id === "general" ? {} : { section: item.id } })
+                }
                 className={cn(
-                  "cursor-pointer rounded-lg px-4 py-1.5 text-[13px] transition-colors",
-                  l === locale ? "bg-ink font-semibold text-paper" : "text-ink-soft hover:text-ink",
+                  "flex shrink-0 cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px] whitespace-nowrap transition-colors",
+                  section === item.id
+                    ? "bg-paper font-semibold text-ink shadow-sm"
+                    : "text-ink-soft hover:bg-paper/60 hover:text-ink",
                 )}
               >
-                {l === "zh-TW" ? "繁體中文" : l === "en" ? "English" : "Español"}
+                <Icon className="size-4 shrink-0" />
+                {t(item.label)}
               </button>
-            ))}
-          </div>
-        </Card>
-        <ModelCard />
-        <VoiceCard />
-        {me.data && !me.data.guest && me.data.kind !== "student" && (
-          <>
-            <TeacherKeysCard />
-            <UsageCard />
-          </>
-        )}
+            );
+          })}
+        </nav>
+
+        <section aria-labelledby="settings-section" className="flex min-w-0 max-w-2xl flex-col gap-4">
+          <h2 id="settings-section" className="text-[17px] font-semibold text-ink">
+            {t(current.label)}
+          </h2>
+          {section === "general" && (
+            <>
+              {me.data &&
+                (me.data.kind === "student" ? (
+                  <StudentProfileCard name={me.data.name} username={me.data.username ?? ""} />
+                ) : (
+                  <ProfileCard key={me.data.name} name={me.data.name} />
+                ))}
+              <Card className="flex flex-col gap-3 p-5">
+                <p className="font-serif text-[15.5px] text-ink">{t("settings_lang")}</p>
+                <div className="inline-flex gap-0.5 self-start rounded-lg border border-line-strong bg-paper-deep p-0.5">
+                  {locales.map((l: Locale) => (
+                    <button
+                      type="button"
+                      key={l}
+                      onClick={() => setLocale(l)}
+                      className={cn(
+                        "cursor-pointer rounded-lg px-4 py-1.5 text-[13px] transition-colors",
+                        l === locale ? "bg-ink font-semibold text-paper" : "text-ink-soft hover:text-ink",
+                      )}
+                    >
+                      {l === "zh-TW" ? "繁體中文" : l === "en" ? "English" : "Español"}
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            </>
+          )}
+          {section === "dialogue" && (
+            <>
+              <ModelCard />
+              <VoiceCard />
+            </>
+          )}
+          {section === "teacher" && me.data && <TeacherModeCard user={me.data} />}
+          {section === "keys" && <TeacherKeysCard />}
+          {section === "usage" && <UsageCard />}
+        </section>
       </div>
     </div>
   );
