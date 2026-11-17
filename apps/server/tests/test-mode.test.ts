@@ -4,6 +4,7 @@ import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
+import { run } from "../src/db/d1";
 import {
   call,
   classroomWithActivity,
@@ -150,6 +151,22 @@ describe("test mode (#134): teacher slots", () => {
 
     const liveSlots = await call(`/api/activities/${liveActivityId}/slots`, { headers: { Cookie: teacher } });
     expect(liveSlots.status).toBe(409);
+  });
+
+  it("slot names skip display names already taken in the activity", async () => {
+    const activityId = await newTestActivity();
+    const at = new Date().toISOString();
+    await run(
+      env.DB,
+      `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
+       VALUES ($aid, $pid, NULL, 'guest', '測試 2', $at, $at)`,
+      { aid: activityId, pid: "p_slotcollide", at },
+    );
+
+    const created = await call(`/api/activities/${activityId}/slots`, jsonInit({ count: 3 }, teacher));
+    expect(created.status).toBe(201);
+    const payload = (await created.json()) as { slots: Array<{ name: string }> };
+    expect(payload.slots.map((slot) => slot.name).sort()).toEqual(["測試 1", "測試 3", "測試 4"]);
   });
 
   it("the teacher reads a slot through GET /activities/:id?participantId=…", async () => {

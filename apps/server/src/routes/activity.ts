@@ -8,7 +8,17 @@ import {
   StoredTeacherReportSchema,
 } from "@socrates/shared";
 import { all, batch, one, run } from "../db/d1";
-import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, requireUser, type AppEnv } from "../http";
+import {
+  enforceIpLimit,
+  fail,
+  langOf,
+  newId,
+  nowIso,
+  parseBody,
+  requireUser,
+  uniqueViolationColumns,
+  type AppEnv,
+} from "../http";
 import type { Env } from "../env";
 import { activityAccess, activityAccessOf, ensureParticipant, participantOf, topicOf } from "../services/members";
 
@@ -115,20 +125,53 @@ export function activityRoutes() {
       if (taken + input.count > ACTIVITY_SLOT_MAX) fail(409, "conflict");
       const label = SLOT_NAME[langOf(c)];
       const at = nowIso();
-      await batch(
-        c.env.DB,
-        Array.from({ length: input.count }, (_unused, index) => ({
-          sql: `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
-                VALUES ($aid, $pid, $uid, 'teacher', $name, $at, $at)`,
-          params: {
-            aid: activity.id,
-            pid: newId("p_"),
-            uid: user.id,
-            name: `${label} ${taken + index + 1}`,
-            at,
-          },
-        })),
+      const used = new Set(
+        (
+          await all<{ display_name: string }>(
+            c.env.DB,
+            "SELECT display_name FROM activity_participants WHERE activity_id = $aid",
+            { aid: activity.id },
+          )
+        ).map((row) => row.display_name),
       );
+      let next = taken + 1;
+      try {
+        await batch(
+          c.env.DB,
+          Array.from({ length: input.count }, (_unused, index) => {
+            while (used.has(`${label} ${next}`)) next++;
+            const name = `${label} ${next}`;
+            used.add(name);
+            next++;
+            return {
+              sql: `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
+                    SELECT $aid, $pid, $uid, 'teacher', $name, $at, $at
+                    WHERE (SELECT COUNT(*) FROM activity_participants
+                           WHERE activity_id = $aid AND kind = 'teacher') < $room`,
+              params: {
+                aid: activity.id,
+                pid: newId("p_"),
+                uid: user.id,
+                name,
+                at,
+                room: ACTIVITY_SLOT_MAX - taken - index,
+              },
+            };
+          }),
+        );
+      } catch (error) {
+        const stolen = uniqueViolationColumns(error).some(
+          ([table, column]) => table === "activity_participants" && column === "display_name",
+        );
+        if (stolen) fail(409, "name_taken");
+        throw error;
+      }
+      const created = await one<{ n: number }>(
+        c.env.DB,
+        "SELECT COUNT(*) AS n FROM activity_participants WHERE activity_id = $aid AND kind = 'teacher'",
+        { aid: activity.id },
+      );
+      if (Number(created?.n ?? 0) !== taken + input.count) fail(409, "conflict");
       return c.json(await slotsPayload(c.env, activity.id), 201);
     })
     .post("/activities/:id/finish", async (c) => {
