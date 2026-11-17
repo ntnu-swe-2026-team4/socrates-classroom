@@ -1,6 +1,6 @@
 # LLM Providers 紀錄
 
-> 查證日期：2026-11-03（providers.md 首版；後續查證見各節標注）｜ 更新日期：2026-11-08｜ 狀態：供 LLM 組與後端共用的 provider 參考
+> 查證日期：2026-11-03（providers.md 首版；後續查證見各節標注）｜ 更新日期：2026-11-17｜ 狀態：供 LLM 組與後端共用的 provider 參考
 > 配套文件：[`cf.md`](./cf.md)（Cloudflare CLI）、[`pi.md`](./pi.md)（Pi Durable）
 
 ## Pool 定位
@@ -151,6 +151,119 @@
 3. **平台鏈模型白名單**（可進 fallback 的）：GLM-5.3-Flash、GLM-5.3、GLM-5.2、Kimi／Qwen／MiniMax／MiMo 等 0-day retention 模型。禁入：Muse Spark、Iceman（會訓練）、Grok／GPT Luna／Claude Haiku（30 天）。
 4. **開發流量**：Coding Plan 優先（額度大、離峰五折），任何 provider 皆可。
 5. **應用層記帳**：ledger 以 (provider, model, credential) 記帳——teacher leg 用 `teacher:<userId>` credential 獨立記；連續 5 次 error 開 60s cooldown（pi 不提供結構化錯誤狀態，無法分類 429/401，誠實只記 ok/error）。settle 由 run 完成回呼驅動（fire-and-forget）：DO 在 run 中途被 evict 時該次不結帳，inFlight 計數洩漏至 isolate 結束為止——cooldown 因此「保守慢」而非即時；ledger 生命週期＝isolate 生命週期，後果有界。
+
+## 8. Search providers（搜尋供應商）
+
+狀態：retention 查證與中英文初步測試已記錄；正式選型仍有待確認事項。
+
+### 8.1 Retention 查證
+
+| 候選／使用路徑 | 官方證據與適用範圍 | 本專案判定 |
+| --- | --- | --- |
+| Cloudflare Web Search API → Ceramic | Cloudflare provider 表標示 `Zero Data Retention: Yes`；參考價 $0.25／1,000 requests | 有官方 ZDR 標示的候選；繁中查詢錯誤 |
+| Cloudflare Web Search API → Linkup | 同表標示 `Zero Data Retention: Yes`；參考價 $5／1,000 requests | 有官方 ZDR 標示的備選；本輪未測品質 |
+| Cloudflare Web Search API → Exa | 同表標示 `Zero Data Retention: No` | 此路徑不通過目前 ZDR 門檻 |
+| Ceramic | 一般條款未建立本專案所需的 API 零保留承諾，詳見下文 | ZDR 未證實；不能沿用 CF 路徑的標示 |
+| Serper | 已檢查公開 Privacy Policy，未找到明確的 API 查詢／回應零保留承諾及保存期限 | ZDR 未證實；需取得供應商書面確認 |
+
+### 8.2 中英文測試方法
+
+每個語言／provider 組合各查詢 10 個詞組。
+
+中文：存在主義、辯證法、實證主義、功利主義、現象學、形上學、知識論、定言命令、詮釋學、虛無主義。
+
+英文：existentialism、positivism、dialectic、utilitarianism、phenomenology、metaphysics、epistemology、categorical imperative、hermeneutics、nihilism。
+
+測試路徑與參數：
+
+| 組合 | 路徑 | 請求參數 |
+| --- | --- | --- |
+| 英文／Ceramic | `POST https://api.ceramic.ai/search` | `query: 原始詞彙`；未指定地區及回傳數量 |
+| 中文／Serper | `POST https://google.serper.dev/search` | `q: 原始詞彙`、`gl: tw`、`hl: zh-tw`、`num: 10` |
+| 英文／Serper | 同上 | `q: 原始詞彙`、`gl: us`、`hl: en`、`num: 10` |
+
+所有查詢均未加入 `site:` 或額外定義關鍵字。保留原始排名，取前五筆檢查標題、URL 與回傳摘要；未逐頁驗證全文。
+
+本輪指標：
+
+- **API 成功率：** HTTP 成功且結果陣列解析成功的比例。
+- **白名單涵蓋率：** 前五筆至少包含一筆允許網域的查詢比例。
+- **概念對應：** 人工檢查結果是否針對原詞，而非較窄子概念或其他領域。
+- **延遲：** 本機腳本量測請求至讀完回應的耗時。
+
+白名單評估使用：
+
+- 中文：`zh.wikipedia.org`、`terms.naer.edu.tw`。
+- 英文：`en.wikipedia.org`、`plato.stanford.edu`。
+
+### 8.3 測試結果
+
+| 指標 | 中文 Serper | 英文 Serper | 英文 Ceramic |
+| --- | ---: | ---: | ---: |
+| 平均耗時 | 2.286 秒 | 2.909 秒 | 0.500 秒 |
+| 耗時中位數 | 2.282 秒 | 2.571 秒 | 0.501 秒 |
+| 前五筆白名單涵蓋 | 10／10 | 10／10 | 6／10 |
+| 第一筆為對應通用概念的維基條目 | 10／10 | 10／10 | 4／10 |
+
+**中文 Serper**
+
+十個詞第一筆皆為對應中文維基條目，包含「功利主義 → 效益主義」、「知識論 → 認識論」、「定言命令 → 定言令式」、「詮釋學 → 解釋學」等別名。
+
+前五筆未出現國教院來源，故尚未證明 `terms.naer.edu.tw` 的召回能力。其他結果混有社群、影片及商品頁，仍需程式過濾；摘要較短，不能直接推定足以支持完整解釋。
+
+**英文 Serper**
+
+十個詞第一筆皆為對應通用概念的英文維基條目；七個查詢前五筆另含 Stanford 哲學百科。相較本輪 Ceramic 結果，較容易取得直接解釋原詞的來源。
+
+仍有 Reddit、影片及特定宗教／心理學脈絡的結果。例如 `hermeneutics` 的維基摘要偏社會學，須綜合其他來源判斷，不能直接採用第一筆摘要作為唯一解釋。
+
+**英文 Ceramic**
+
+回應較快，但 `dialectic`、`phenomenology`、`metaphysics`、`epistemology` 的前五筆皆未包含本輪白名單來源。
+
+另有概念範圍偏移：
+
+- `positivism` 首筆為 `Logical positivism`。
+- `nihilism` 的白名單結果為 `Existential nihilism`。
+- 部分結果為活動、商品或關鍵字列表頁。
+- `nihilism` 有一筆含暴力煽動文字的非教學來源，不適合直接送入學生解釋 prompt。
+
+白名單也排除了部分相關的 IEP、Britannica、Routledge Encyclopedia 結果；這屬白名單範圍與來源審核問題，不能全部視為搜尋無效。
+
+### 8.4 其他測試觀察與限制
+
+- **Ceramic 繁中：** 「存在主義」重複回傳 HTTP 500 `internal_error`；英文 `existentialism` 成功。
+- **西班牙文：** 僅完成 `existencialismo` 單詞初測，API 成功，但前五筆沒有西文維基，且內容有跨語言及主題偏移。尚未完成多詞品質驗證。
+- Serper 指定地區／語言，Ceramic 未指定，參數條件不同。
+
+### 8.5 選型建議
+
+**品質面：建議 Serper 作為中英文搜尋的優先候選；合規面：其 ZDR 尚未證實。**
+
+| 路徑 | 建議定位 | 尚缺條件 |
+| --- | --- | --- |
+| Serper | 中英文品質優先候選 | Retention／ZDR 書面證據、正式來源與內容驗證 |
+| CF → Ceramic | 保留為有官方 ZDR 標示的候選 | 繁中查詢錯誤 |
+| CF → Linkup | 備選 | 中英文及其他支援語言的品質實測 |
+
+白名單建議：
+
+- 接受合法的中文維基 `/wiki/` 與 `/zh-tw/` 等語言變體路徑。
+
+### 8.6 待確認事項
+
+- [ ] 取得 Serper 的 retention 查證 (去信確認)。
+- [ ] 西班牙語的多詞測試。
+
+### 8.7 官方來源
+
+- [Cloudflare Web Search Providers](https://developers.cloudflare.com/web-search/providers/)：各 CF 路徑的 ZDR 標示與價格。
+- [Cloudflare Web Search 使用方式](https://developers.cloudflare.com/web-search/how-to-use/)：binding、Gateway、認證及 BYOK。
+- [Ceramic Terms of Service](https://www.ceramic.ai/terms-of-service)：資料用途、DPA、測試及結果使用限制。
+- [Ceramic Privacy Policy](https://www.ceramic.ai/privacy-policy)：API 資料處理及企業協議適用範圍。
+- [Ceramic API Quickstart](https://docs.ceramic.ai/api/search/quickstart)：直連介面與回應格式。
+- [Serper Privacy Policy](https://serper.dev/privacy)：一般個資處理與保存原則。
+- [Serper 官方網站](https://serper.dev/)：服務與搜尋結果格式。
 
 ## 設定與運維
 
