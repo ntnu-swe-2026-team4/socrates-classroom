@@ -227,9 +227,7 @@ function LoginPage() {
                     }}
                     className={cn(
                       "cursor-pointer px-3.5 py-1.5 text-[13px] not-first:border-l-[1.5px] not-first:border-comic-ink",
-                      mode === value
-                        ? "bg-comic-ink font-bold text-comic-paper"
-                        : "bg-comic-paper hover:bg-comic-ground",
+                      mode === value ? "bg-comic-ochre font-bold" : "bg-comic-paper hover:bg-comic-ground",
                       FOCUS,
                     )}
                   >
@@ -327,17 +325,22 @@ function LoginPage() {
                   </button>
                 </span>
               </label>
-              {mode === "register" && (
-                <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px] leading-relaxed">
-                  <input
-                    type="checkbox"
-                    checked={tos}
-                    onChange={(event) => setTos(event.target.checked)}
-                    className={cn("mt-1 size-4 shrink-0 cursor-pointer accent-comic-ink", FOCUS)}
-                  />
-                  {t("join_tos")}
-                </label>
-              )}
+              <label
+                aria-hidden={mode === "login"}
+                className={cn(
+                  "flex cursor-pointer items-start gap-2.5 text-[12.5px] leading-relaxed",
+                  mode === "login" && "invisible",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={tos}
+                  disabled={mode === "login"}
+                  onChange={(event) => setTos(event.target.checked)}
+                  className={cn("mt-1 size-4 shrink-0 cursor-pointer accent-comic-ink", FOCUS)}
+                />
+                {t("join_tos")}
+              </label>
               {error && (
                 <p role="alert" className="text-[12.5px] text-vermilion">
                   {error}
@@ -349,13 +352,13 @@ function LoginPage() {
                 aria-busy={busy}
                 className={cn(
                   BOX,
-                  "flex h-[46px] cursor-pointer items-center justify-between bg-comic-ink px-[18px] text-[15px] font-bold text-comic-paper enabled:hover:bg-vermilion enabled:hover:border-vermilion disabled:cursor-not-allowed disabled:opacity-45",
+                  "flex h-[46px] cursor-pointer items-center justify-between bg-comic-ochre px-[18px] text-[15px] font-bold enabled:hover:shadow-[3px_3px_0_var(--color-comic-ink)] disabled:cursor-not-allowed disabled:opacity-55",
                   FOCUS,
                 )}
               >
                 {mode === "login" ? t("login_title") : t("register_submit")}
                 {busy ? (
-                  <Spinner className="border-comic-paper/30 border-t-comic-paper" />
+                  <Spinner className="border-comic-ink/25 border-t-comic-ink" />
                 ) : (
                   <span aria-hidden className="font-dot tracking-[0.2em]">
                     ● ● ●
