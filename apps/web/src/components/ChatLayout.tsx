@@ -1,19 +1,14 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { SocratesDock } from "@/components/SocratesCompanion";
 import { cn } from "@/components/ui";
 import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useT } from "@/i18n";
-import { useCompanion } from "@/lib/companion";
 
 const MOBILE_QUERY = "(max-width: 767px)";
 
 const SidebarContext = createContext<{
   open: boolean;
   toggle: () => void;
-  switchable: boolean;
-  showModel: boolean;
-  setShowModel: (next: boolean) => void;
   overlay: boolean;
 } | null>(null);
 
@@ -38,14 +33,10 @@ function useIsMobile(): boolean {
 export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; children: ReactNode }) {
   const t = useT();
   const mobile = useIsMobile();
-  const { visible: switchable } = useCompanion();
   const [desktopOpen, setDesktopOpen] = usePersistentFlag("chat_sidebar_open", true);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [desktopModel, setDesktopModel] = usePersistentFlag("chat_sidebar_model", true);
-  const [mobileModel, setMobileModel] = useState(false);
   const open = mobile ? mobileOpen : desktopOpen;
   const toggle = () => (mobile ? setMobileOpen((value) => !value) : setDesktopOpen(!desktopOpen));
-  const showModel = switchable && (mobile ? mobileModel : desktopModel);
 
   useEffect(() => {
     if (!mobile) setMobileOpen(false);
@@ -54,16 +45,7 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
   if (!sidebar) return <div className="flex h-full min-h-0 flex-col">{children}</div>;
 
   return (
-    <SidebarContext.Provider
-      value={{
-        open,
-        toggle,
-        switchable,
-        showModel,
-        setShowModel: mobile ? setMobileModel : setDesktopModel,
-        overlay: mobile && open,
-      }}
-    >
+    <SidebarContext.Provider value={{ open, toggle, overlay: mobile && open }}>
       <div className="flex h-full min-h-0">
         {open && mobile && (
           <button
@@ -88,14 +70,7 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
             if (mobile && (event.target as HTMLElement).closest("a")) setMobileOpen(false);
           }}
         >
-          {showModel ? (
-            <>
-              <SidebarHeader title={t("dlg_socrates")} />
-              {open && <SocratesDock className="min-h-0 flex-1" />}
-            </>
-          ) : (
-            sidebar
-          )}
+          {sidebar}
         </aside>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
       </div>
@@ -105,11 +80,6 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
 
 export function useSidebarOverlay(): boolean {
   return useContext(SidebarContext)?.overlay ?? false;
-}
-
-export function useSidebarModel(): boolean {
-  const context = useContext(SidebarContext);
-  return Boolean(context?.showModel && context.open);
 }
 
 export function SidebarToggle({ className }: { className?: string }) {
@@ -144,38 +114,9 @@ export function SidebarHeader({
   actions?: ReactNode;
   className?: string;
 }) {
-  const t = useT();
-  const context = useContext(SidebarContext);
   return (
     <div className={cn("flex h-14 shrink-0 items-center gap-1 border-b border-line pr-2 pl-3", className)}>
-      {context?.switchable ? (
-        <div role="tablist" aria-label={t("chat_panel_switch")} className="flex min-w-0 flex-1 gap-4 self-stretch">
-          {(
-            [
-              { model: false, label: t("chat_panel_list") },
-              { model: true, label: t("chat_panel_model") },
-            ] as const
-          ).map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="tab"
-              aria-selected={context.showModel === item.model}
-              onClick={() => context.setShowModel(item.model)}
-              className={cn(
-                "-mb-px cursor-pointer border-b-2 px-0.5 text-[14px] transition-colors",
-                context.showModel === item.model
-                  ? "border-ink font-semibold text-ink"
-                  : "border-transparent text-ink-faint hover:text-ink-soft",
-              )}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="flex min-w-0 flex-1 items-center truncate text-[14px] font-medium text-ink">{title}</div>
-      )}
+      <h2 className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{title}</h2>
       {actions}
       <SidebarToggle />
     </div>

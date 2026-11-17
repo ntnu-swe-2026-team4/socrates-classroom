@@ -189,7 +189,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const pendingRequests = adminOverview.data?.pendingRequests ?? 0;
 
   const rail = (
-    <nav className="flex h-full w-[88px] flex-col items-center overflow-y-auto border-r-[1.5px] border-ht-line bg-ht-surface py-4 font-comic-sans">
+    <nav className="flex h-full w-[88px] flex-col items-center overflow-x-hidden overflow-y-auto border-r-[1.5px] border-ht-line bg-ht-surface py-4 font-comic-sans">
       <Link
         to={inAdmin ? "/admin" : "/home"}
         aria-label={t("app_name")}
@@ -329,9 +329,8 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
         }}
         aria-haspopup="dialog"
         aria-label={t("account_title")}
-        title={me.data?.name}
         className={cn(
-          "comic-sink flex w-full shrink-0 hover:bg-ht-hover cursor-pointer flex-col items-center gap-[5px] border-t-2 border-dotted border-ht-dotted pt-3.5 pb-1 text-ht-ink",
+          "flex w-full shrink-0 cursor-pointer flex-col transition-colors hover:bg-ht-hover items-center gap-[5px] border-t-2 border-dotted border-ht-dotted pt-3.5 pb-1 text-ht-ink",
           RAIL_FOCUS,
         )}
       >

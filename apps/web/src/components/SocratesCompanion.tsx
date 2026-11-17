@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Square, UserRound } from "lucide-react";
-import { cn } from "@/components/ui";
+import { Minus, Square, UserRound } from "lucide-react";
+import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useT } from "@/i18n";
 import { getCompanion, onExpression, useCompanion } from "@/lib/companion";
 import { createSocratesScene } from "@/lib/socrates/scene";
@@ -14,44 +14,48 @@ interface DockRect {
   size: number;
 }
 
-const BACKDROP = "url(/stage/back.webp)";
+export function useSocratesTile(): { enabled: boolean; open: boolean; setOpen: (next: boolean) => void } {
+  const { visible } = useCompanion();
+  const wide = typeof window === "undefined" || !window.matchMedia?.("(max-width: 767px)").matches;
+  const [open, setOpen] = usePersistentFlag("socrates_tile_open", wide);
+  return { enabled: visible, open, setOpen };
+}
 
-export function SocratesDock({ className, compact }: { className?: string; compact?: boolean }) {
+export function SocratesTile({ open, setOpen }: { open: boolean; setOpen: (next: boolean) => void }) {
+  const t = useT();
+  if (!open) {
+    return (
+      <button
+        type="button"
+        data-companion-tile="closed"
+        onClick={() => setOpen(true)}
+        aria-label={t("companion_show")}
+        title={t("companion_show")}
+        className="absolute top-[4.25rem] right-3 z-10 flex size-10 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-paper text-ink-soft shadow-sm transition-colors hover:text-ink"
+      >
+        <UserRound className="size-[18px]" aria-hidden />
+      </button>
+    );
+  }
   return (
-    <div aria-hidden className={cn("relative overflow-hidden", className)}>
-      <div
-        className="absolute inset-0 bg-ink/15"
-        style={{
-          maskImage: BACKDROP,
-          WebkitMaskImage: BACKDROP,
-          maskSize: compact ? "contain" : "cover",
-          WebkitMaskSize: compact ? "contain" : "cover",
-          maskRepeat: "no-repeat",
-          WebkitMaskRepeat: "no-repeat",
-          maskPosition: "center bottom",
-          WebkitMaskPosition: "center bottom",
-        }}
-      />
-      <div className="absolute inset-x-0 bottom-0 h-[16%] bg-gradient-to-t from-paper to-transparent" />
-      <div className="absolute inset-x-0 bottom-[4%] flex flex-col items-center">
-        <div
-          className={cn(
-            "relative aspect-square",
-            compact ? "mb-[calc(min(80%,21dvh)*-0.07)] w-[min(80%,21dvh)]" : "-mb-[7%] w-[min(94%,40dvh)]",
-          )}
+    <div
+      data-companion-tile="open"
+      className="absolute top-[4.25rem] right-3 z-10 w-[120px] overflow-hidden rounded-xl border border-line-strong bg-paper shadow-md md:w-[168px]"
+    >
+      <div className="relative aspect-square bg-paper-deep">
+        <div {...{ [COMPANION_DOCK_ATTR]: "" }} className="absolute inset-0" />
+      </div>
+      <div className="flex items-center gap-1 border-t border-line py-0.5 pr-0.5 pl-2.5">
+        <span className="min-w-0 flex-1 truncate text-[12px] text-ink-soft">{t("dlg_socrates")}</span>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          aria-label={t("companion_hide")}
+          title={t("companion_hide")}
+          className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink"
         >
-          <span className="absolute -inset-[6%] rounded-full bg-paper blur-2xl" />
-          <div {...{ [COMPANION_DOCK_ATTR]: "" }} className="absolute inset-0" />
-        </div>
-        <span className={cn("relative block", compact ? "w-[min(52%,13dvh)]" : "w-[min(60%,26dvh)]")}>
-          <span className="absolute inset-x-[4%] -bottom-[3%] h-[14%] rounded-[50%] bg-ink/25 blur-md" />
-          <img
-            src="/stage/pedestal.webp"
-            alt=""
-            decoding="async"
-            className="relative block w-full [[data-theme=dark]_&]:brightness-75"
-          />
-        </span>
+          <Minus className="size-3.5" aria-hidden />
+        </button>
       </div>
     </div>
   );
@@ -132,7 +136,7 @@ function CompanionBody({ dock }: { dock: DockRect }) {
   }, [state.speaking]);
 
   return (
-    <div className="fixed z-[55]" style={{ left: dock.x, top: dock.y, width: dock.size, height: dock.size }}>
+    <div className="fixed z-30" style={{ left: dock.x, top: dock.y, width: dock.size, height: dock.size }}>
       <div
         role="img"
         aria-label={t("dlg_socrates")}
@@ -154,7 +158,7 @@ function CompanionBody({ dock }: { dock: DockRect }) {
       </div>
 
       {state.speakingSource && (
-        <div className="anim-fade absolute -top-3 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-line-strong bg-paper py-0.5 pr-0.5 pl-2.5 text-[11.5px] text-ink-soft shadow-sm">
+        <div className="anim-fade absolute bottom-1 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-line-strong bg-paper py-0.5 pr-0.5 pl-2.5 text-[11.5px] text-ink-soft shadow-sm">
           <span className="size-1.5 shrink-0 rounded-full bg-ember motion-safe:animate-pulse" aria-hidden />
           <span role="status">{t("companion_speaking")}</span>
           <button

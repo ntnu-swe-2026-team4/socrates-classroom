@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Keyboard, MessageCircleQuestionMark, Mic, Send, Square, TextSearch } from "lucide-react";
 import { BtwPanel, type BtwPanelHandle } from "@/components/BtwPanel";
-import { SidebarToggle, useSidebarModel, useSidebarOverlay } from "@/components/ChatLayout";
-import { SocratesDock } from "@/components/SocratesCompanion";
+import { SidebarToggle, useSidebarOverlay } from "@/components/ChatLayout";
+import { SocratesTile, useSocratesTile } from "@/components/SocratesCompanion";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { cn } from "@/components/ui";
 import { textOf, useDialogue } from "@/hooks/useDialogue";
 import { useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useT, type MessageKey } from "@/i18n";
-import { companion, useCompanion } from "@/lib/companion";
+import { companion } from "@/lib/companion";
 import type { Message } from "@earendil-works/pi-ai";
 
 const VOICE_ERROR_KEY: Record<"denied" | "unsupported" | "failed", MessageKey> = {
@@ -157,9 +157,8 @@ export function DialogueView({
   }, [ready, voice.state, voice.stop]);
 
   const [voiceMode, setVoiceMode] = useState(false);
-  const { visible: portraitEnabled } = useCompanion();
   const sidebarOverlay = useSidebarOverlay();
-  const sidebarModel = useSidebarModel();
+  const tile = useSocratesTile();
   const holdRef = useRef<HTMLButtonElement>(null);
   const modeSwitched = useRef(false);
   useEffect(() => {
@@ -255,6 +254,7 @@ export function DialogueView({
   return (
     <div className="flex min-h-0 flex-1">
       <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {tile.enabled && !sidebarOverlay && <SocratesTile open={tile.open} setOpen={tile.setOpen} />}
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line pr-3 pl-14 md:pl-2">
           <SidebarToggle />
           <div className="min-w-0 flex-1 pl-1">
@@ -307,7 +307,10 @@ export function DialogueView({
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="stream-scroll min-h-0 flex-1 overflow-y-auto px-4 md:px-8"
+          className={cn(
+            "stream-scroll min-h-0 flex-1 overflow-y-auto px-4 md:px-8",
+            tile.enabled && (tile.open ? "max-md:pt-[156px] md:pr-[196px]" : "max-md:pt-10 md:pr-16"),
+          )}
           style={overlayHeight ? { paddingBottom: overlayHeight } : undefined}
           aria-busy={busy}
         >
@@ -428,15 +431,10 @@ export function DialogueView({
               <Notice text={connectGraceOver ? t("dlg_offline") : t("dlg_connecting")} />
             ) : voiceMode ? (
               <div className="flex flex-col items-center">
-                {portraitEnabled && !sidebarModel && (
-                  <div className="h-[34dvh] w-full">
-                    {!sidebarOverlay && <SocratesDock compact className="size-full" />}
-                  </div>
-                )}
                 <div
                   className={cn(
                     "relative grid w-full grid-cols-[1fr_auto_1fr] items-center gap-3 pt-2",
-                    !sidebarOverlay && "z-[56]",
+                    !sidebarOverlay && "z-[1]",
                   )}
                 >
                   <button
@@ -493,7 +491,7 @@ export function DialogueView({
                     <span />
                   )}
                 </div>
-                <p className={cn("relative pt-1 text-[12px] text-ink-faint", !sidebarOverlay && "z-[56]")}>
+                <p className={cn("relative pt-1 text-[12px] text-ink-faint", !sidebarOverlay && "z-[1]")}>
                   {voice.state === "listening" ? t("dlg_listening") : t("dlg_hold_to_talk")}
                 </p>
               </div>

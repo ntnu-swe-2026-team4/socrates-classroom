@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { api, ApiError, guestSession, type User } from "@/api";
 import { StoaField } from "@/components/StoaField";
 import { cn, Spinner } from "@/components/ui";
-import { useT, type MessageKey } from "@/i18n";
+import { locales, setLocale, useI18n, useT, type Locale, type MessageKey } from "@/i18n";
 import type { AuthProvider } from "@socrates/shared";
 
 type Mode = "login" | "register";
@@ -101,6 +101,7 @@ function NoticeBar() {
 
 function LoginPage() {
   const t = useT();
+  const { locale } = useI18n();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const search = Route.useSearch();
@@ -171,6 +172,25 @@ function LoginPage() {
             <ArrowLeft className="size-3.5" />
             {t("login_back_to_story")}
           </Link>
+          <fieldset data-lang-switch className={cn(BOX, "m-0 flex h-10 p-0")}>
+            <legend className="sr-only">{t("settings_lang")}</legend>
+            {locales.map((code: Locale) => (
+              <button
+                key={code}
+                type="button"
+                lang={code}
+                aria-pressed={locale === code}
+                onClick={() => setLocale(code)}
+                className={cn(
+                  "cursor-pointer px-3 text-[12.5px] not-first:border-l-[1.5px] not-first:border-comic-ink",
+                  locale === code ? "bg-comic-ink font-bold text-comic-paper" : "bg-comic-paper hover:bg-comic-ground",
+                  FOCUS,
+                )}
+              >
+                {code === "zh-TW" ? "中" : code === "en" ? "EN" : "ES"}
+              </button>
+            ))}
+          </fieldset>
           <span className="flex-1" />
           {me.data && (
             <button

@@ -2,6 +2,24 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-17 — 蘇格拉底模型改為對話頁角落的小窗（`frontend/web-next`）
+
+### Changed
+
+- 3D 模型只出現在對話頁右上角的小窗（`SocratesTile`）：可收合成一顆按鈕，狀態記在 `socrates_tile_open`；手機預設收合；訊息區會讓出小窗的位置
+- `/login` 頂列新增語言切換（中／EN／ES）
+
+### Removed
+
+- 左側面板的「提問／對話」切換與面板內的模型舞台
+- 語音模式上方的 3D 肖像（語音模式本身保留）
+- `public/stage/`（底座與柱廊背景）
+
+### Fixed
+
+- rail 的通知鈴鐺彈出框被 rail 的捲動容器裁切：改為 `position: fixed` 並貼齊 rail 右緣
+- rail 底部的頭像按鈕 hover／按下時位移造成 rail 出現橫向捲軸；移除重複的 `title` 提示
+
 ## 2026-11-17 — 內部頁面套用 halftone 主題（`frontend/web-next`）
 
 ### Changed
