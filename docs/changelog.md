@@ -540,4 +540,4 @@
 
 ### Migrations
 
-`frontend/web-next` 的 002–011 重編為 007–016，`216f62f` 的 002–006 維持原編號（production 已套用），main 的 `user_identities` 置於 017；`is_guest`／`guest_activity_id` 與 `users.role` 一併移除（`008_solo_chats.sql` 負責 drop role）
+`frontend/web-next` 的 002–011 重編為 008–016，`216f62f` 的 002–006 與 main 的 `007_user_identities` 維持原編號（production 已套用）；`is_guest`／`guest_activity_id` 與 `users.role` 一併移除（`009_solo_chats.sql` 負責 drop role）

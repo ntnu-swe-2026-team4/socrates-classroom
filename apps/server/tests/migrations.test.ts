@@ -108,9 +108,9 @@ describe("migration 003: activity participant backfill", () => {
   });
 });
 
-describe("migration 017: user identities", () => {
+describe("migration 007: user identities", () => {
   it("provider identity is unique and cascades with its user", async () => {
-    expect(migrations.some((migration) => migration.name === "017_user_identities.sql")).toBe(true);
+    expect(migrations.some((migration) => migration.name === "007_user_identities.sql")).toBe(true);
 
     const at = "2026-11-15T00:00:00.000Z";
     await run(
