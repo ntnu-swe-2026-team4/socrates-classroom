@@ -79,6 +79,11 @@ export function answered(entries: readonly WindowedEntry[]): boolean {
   );
 }
 
+export function runFailureOf(view: ConversationView | null): unknown {
+  const live = view?.docs["pi.live"] as { runFailure?: unknown } | undefined;
+  return live?.runFailure;
+}
+
 export function liveTextOf(view: ConversationView | null): string {
   if (!view) return "";
   const live = view.docs["pi.live"] as { generation?: { message?: { content?: readonly unknown[] } } } | undefined;
@@ -197,8 +202,7 @@ export function useDialogue(activityId: string, userId: string) {
             if (answered(entries)) completePending();
             return;
           }
-          const live = viewRef.current?.docs["pi.live"] as { runFailure?: unknown } | undefined;
-          if (live?.runFailure) failPending("llm_unavailable");
+          if (runFailureOf(viewRef.current)) failPending("llm_unavailable");
         }
         return;
       }
@@ -210,8 +214,7 @@ export function useDialogue(activityId: string, userId: string) {
         if (tail.some((entry) => entry.kind === "pi.assistant" && !intermediateAssistant(entry))) {
           completePending();
         } else {
-          const live = viewRef.current?.docs["pi.live"] as { runFailure?: unknown } | undefined;
-          if (live?.runFailure) failPending("llm_unavailable");
+          if (runFailureOf(viewRef.current)) failPending("llm_unavailable");
         }
       }
     },
