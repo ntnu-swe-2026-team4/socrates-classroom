@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Square, UserRound } from "lucide-react";
+import { cn } from "@/components/ui";
 import { useT } from "@/i18n";
 import { getCompanion, onExpression, useCompanion } from "@/lib/companion";
 import { createSocratesScene } from "@/lib/socrates/scene";
@@ -15,27 +16,34 @@ interface DockRect {
 
 const BACKDROP = "url(/stage/back.webp)";
 
-export function SocratesDock() {
+export function SocratesDock({ className, compact }: { className?: string; compact?: boolean }) {
   return (
-    <div aria-hidden className="relative min-h-0 flex-1 overflow-hidden">
+    <div aria-hidden className={cn("relative overflow-hidden", className)}>
       <div
         className="absolute inset-0 bg-ink/15"
         style={{
           maskImage: BACKDROP,
           WebkitMaskImage: BACKDROP,
-          maskSize: "cover",
-          WebkitMaskSize: "cover",
+          maskSize: compact ? "contain" : "cover",
+          WebkitMaskSize: compact ? "contain" : "cover",
+          maskRepeat: "no-repeat",
+          WebkitMaskRepeat: "no-repeat",
           maskPosition: "center bottom",
           WebkitMaskPosition: "center bottom",
         }}
       />
-      <div className="absolute inset-x-0 bottom-0 h-[16%] bg-gradient-to-t from-card to-transparent" />
-      <div className="absolute inset-x-0 bottom-[5%] flex flex-col items-center">
-        <div className="relative -mb-[7%] aspect-square w-[min(94%,40dvh)]">
-          <span className="absolute -inset-[6%] rounded-full bg-card blur-2xl" />
+      <div className="absolute inset-x-0 bottom-0 h-[16%] bg-gradient-to-t from-paper to-transparent" />
+      <div className="absolute inset-x-0 bottom-[4%] flex flex-col items-center">
+        <div
+          className={cn(
+            "relative aspect-square",
+            compact ? "mb-[calc(min(80%,21dvh)*-0.07)] w-[min(80%,21dvh)]" : "-mb-[7%] w-[min(94%,40dvh)]",
+          )}
+        >
+          <span className="absolute -inset-[6%] rounded-full bg-paper blur-2xl" />
           <div {...{ [COMPANION_DOCK_ATTR]: "" }} className="absolute inset-0" />
         </div>
-        <span className="relative block w-[min(60%,26dvh)]">
+        <span className={cn("relative block", compact ? "w-[min(52%,13dvh)]" : "w-[min(60%,26dvh)]")}>
           <span className="absolute inset-x-[4%] -bottom-[3%] h-[14%] rounded-[50%] bg-ink/25 blur-md" />
           <img
             src="/stage/pedestal.webp"

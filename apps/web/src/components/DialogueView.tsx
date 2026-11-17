@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { MessageCircleQuestionMark, Mic, Send, Square, TextSearch } from "lucide-react";
+import { Keyboard, MessageCircleQuestionMark, Mic, Send, Square, TextSearch } from "lucide-react";
 import { BtwPanel, type BtwPanelHandle } from "@/components/BtwPanel";
-import { SidebarToggle } from "@/components/ChatLayout";
+import { SidebarToggle, useSidebarModel, useSidebarOverlay } from "@/components/ChatLayout";
+import { SocratesDock } from "@/components/SocratesCompanion";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { cn } from "@/components/ui";
 import { textOf, useDialogue } from "@/hooks/useDialogue";
 import { useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useT, type MessageKey } from "@/i18n";
-import { companion } from "@/lib/companion";
+import { companion, useCompanion } from "@/lib/companion";
 import type { Message } from "@earendil-works/pi-ai";
 
 const VOICE_ERROR_KEY: Record<"denied" | "unsupported" | "failed", MessageKey> = {
@@ -28,6 +29,8 @@ const onAmplitudeNoop = () => {};
 const BTW_COMMAND = /^\/btw(?:\s+([\s\S]*))?$/i;
 
 type SidePanel = "term" | "btw" | null;
+
+const VEIL_MASK = "linear-gradient(to bottom, transparent, black 5rem)";
 
 export interface DialogueViewProps {
   threadId: string;
@@ -153,6 +156,40 @@ export function DialogueView({
     if (!ready && voice.state === "listening") void voice.stop();
   }, [ready, voice.state, voice.stop]);
 
+  const [voiceMode, setVoiceMode] = useState(false);
+  const { visible: portraitEnabled } = useCompanion();
+  const sidebarOverlay = useSidebarOverlay();
+  const sidebarModel = useSidebarModel();
+  const holdRef = useRef<HTMLButtonElement>(null);
+  const modeSwitched = useRef(false);
+  useEffect(() => {
+    if (!modeSwitched.current) return;
+    if (voiceMode) holdRef.current?.focus();
+    else inputRef.current?.focus();
+  }, [voiceMode]);
+
+  const voiceOverlay = voiceMode && ready && !closedNotice;
+  const footerRef = useRef<HTMLElement>(null);
+  const [overlayHeight, setOverlayHeight] = useState(0);
+  useLayoutEffect(() => {
+    const element = footerRef.current;
+    if (!voiceOverlay || !element) {
+      setOverlayHeight(0);
+      return;
+    }
+    const measure = () => setOverlayHeight(element.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [voiceOverlay]);
+
+  function switchMode(next: boolean) {
+    modeSwitched.current = true;
+    if (!next && voice.state === "listening") void voice.stop();
+    setVoiceMode(next);
+  }
+
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -217,7 +254,7 @@ export function DialogueView({
 
   return (
     <div className="flex min-h-0 flex-1">
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line pr-3 pl-14 md:pl-2">
           <SidebarToggle />
           <div className="min-w-0 flex-1 pl-1">
@@ -271,6 +308,7 @@ export function DialogueView({
           ref={scrollRef}
           onScroll={onScroll}
           className="stream-scroll min-h-0 flex-1 overflow-y-auto px-4 md:px-8"
+          style={overlayHeight ? { paddingBottom: overlayHeight } : undefined}
           aria-busy={busy}
         >
           <div className="flex w-full flex-col gap-4 py-5">
@@ -340,8 +378,21 @@ export function DialogueView({
           </button>
         )}
 
-        <footer className="shrink-0 border-t border-line px-4 pt-3 pb-4 md:px-8">
-          <div className="flex w-full flex-col gap-2">
+        <footer
+          ref={footerRef}
+          className={cn(
+            "px-4 pb-4 md:px-8",
+            voiceOverlay ? "absolute inset-x-0 bottom-0 pt-20" : "shrink-0 border-t border-line pt-3",
+          )}
+        >
+          {voiceOverlay && (
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-paper/70 backdrop-blur-xl"
+              style={{ maskImage: VEIL_MASK, WebkitMaskImage: VEIL_MASK }}
+            />
+          )}
+          <div className="relative flex w-full flex-col gap-2">
             {voice.interim && (
               <p className="truncate rounded-full bg-paper-deep px-4 py-1.5 text-center text-[13px] text-ink-faint">
                 {voice.interim}
@@ -375,35 +426,86 @@ export function DialogueView({
               <Notice text={closedNotice} />
             ) : !ready ? (
               <Notice text={connectGraceOver ? t("dlg_offline") : t("dlg_connecting")} />
+            ) : voiceMode ? (
+              <div className="flex flex-col items-center">
+                {portraitEnabled && !sidebarModel && (
+                  <div className="h-[34dvh] w-full">
+                    {!sidebarOverlay && <SocratesDock compact className="size-full" />}
+                  </div>
+                )}
+                <div
+                  className={cn(
+                    "relative grid w-full grid-cols-[1fr_auto_1fr] items-center gap-3 pt-2",
+                    !sidebarOverlay && "z-[56]",
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => switchMode(false)}
+                    aria-label={t("dlg_text_mode")}
+                    title={t("dlg_text_mode")}
+                    className="flex size-10 shrink-0 cursor-pointer items-center justify-center justify-self-end rounded-full border border-line-strong bg-paper-deep text-ink-soft transition-colors hover:border-ember-deep hover:text-ink"
+                  >
+                    <Keyboard className="size-4" />
+                  </button>
+                  <button
+                    ref={holdRef}
+                    type="button"
+                    aria-label={t("dlg_hold_to_talk")}
+                    title={t("dlg_hold_to_talk")}
+                    disabled={awaitingReply || !viewReady}
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      void voice.start();
+                    }}
+                    onPointerUp={() => void voice.stop()}
+                    onPointerCancel={() => void voice.stop()}
+                    onPointerLeave={() => voice.state === "listening" && void voice.stop()}
+                    onKeyDown={(event) => {
+                      if (event.key === " " || event.key === "Enter") {
+                        event.preventDefault();
+                        void voice.start();
+                      }
+                    }}
+                    onKeyUp={() => voice.state === "listening" && void voice.stop()}
+                    onBlur={() => voice.state === "listening" && void voice.stop()}
+                    style={{ touchAction: "none" }}
+                    className={cn(
+                      "flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors disabled:opacity-50",
+                      voice.state === "listening"
+                        ? "border-ember bg-ember text-on-ember"
+                        : "border-line-strong bg-paper-deep text-ink-soft hover:border-ember-deep hover:text-ink",
+                    )}
+                  >
+                    <Mic className="size-5" />
+                  </button>
+                  {awaitingReply ? (
+                    <button
+                      type="button"
+                      onClick={interrupt}
+                      aria-label={t("dlg_tap_to_interrupt")}
+                      title={t("dlg_tap_to_interrupt")}
+                      className="flex size-10 shrink-0 cursor-pointer items-center justify-center justify-self-start rounded-full bg-ink text-paper"
+                    >
+                      <Square className="size-3.5" />
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+                </div>
+                <p className={cn("relative pt-1 text-[12px] text-ink-faint", !sidebarOverlay && "z-[56]")}>
+                  {voice.state === "listening" ? t("dlg_listening") : t("dlg_hold_to_talk")}
+                </p>
+              </div>
             ) : (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  aria-label={t("dlg_hold_to_talk")}
-                  title={t("dlg_hold_to_talk")}
-                  disabled={awaitingReply || !viewReady}
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    void voice.start();
-                  }}
-                  onPointerUp={() => void voice.stop()}
-                  onPointerCancel={() => void voice.stop()}
-                  onPointerLeave={() => voice.state === "listening" && void voice.stop()}
-                  onKeyDown={(event) => {
-                    if (event.key === " " || event.key === "Enter") {
-                      event.preventDefault();
-                      void voice.start();
-                    }
-                  }}
-                  onKeyUp={() => voice.state === "listening" && void voice.stop()}
-                  onBlur={() => voice.state === "listening" && void voice.stop()}
-                  style={{ touchAction: "none" }}
-                  className={cn(
-                    "flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors disabled:opacity-50",
-                    voice.state === "listening"
-                      ? "border-ember bg-ember text-on-ember"
-                      : "border-line-strong bg-paper-deep text-ink-soft hover:border-ember-deep hover:text-ink",
-                  )}
+                  onClick={() => switchMode(true)}
+                  aria-label={t("dlg_voice_mode")}
+                  title={t("dlg_voice_mode")}
+                  disabled={!viewReady}
+                  className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-paper-deep text-ink-soft transition-colors hover:border-ember-deep hover:text-ink disabled:opacity-50"
                 >
                   <Mic className="size-4" />
                 </button>
@@ -499,15 +601,17 @@ function Turn({ speaker, text, caret }: { speaker: "user" | "assistant"; text: s
       <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-line-strong bg-paper-deep font-serif text-sm text-ember">
         {mine ? t("bubble_me") : t("bubble_socrates")}
       </span>
-      <p
+      <div
         className={cn(
-          "max-w-[min(80%,56rem)] whitespace-pre-wrap rounded-2xl border border-line px-4 py-2.5 font-serif text-[14.5px] leading-7 text-ink",
-          mine ? "bg-ember-wash" : "bg-paper-deep",
+          "whitespace-pre-wrap font-serif text-[14.5px] leading-7 text-ink",
+          mine
+            ? "max-w-[min(80%,56rem)] rounded-2xl border border-line bg-ember-wash px-4 py-2.5"
+            : "min-w-0 max-w-[56rem] flex-1 pt-0.5",
           caret && "caret",
         )}
       >
         {text}
-      </p>
+      </div>
     </div>
   );
 }

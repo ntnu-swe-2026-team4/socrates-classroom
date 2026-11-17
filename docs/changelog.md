@@ -2,6 +2,19 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-17 — 內部頁面套用 halftone 主題（`frontend/web-next`）
+
+### Changed
+
+- 合併 `new-graphic` 分支的內部頁面主題：`.ht-theme`（方角、1.5px 邊框、serif 標題、黃棕色主按鈕、按下時下沉）、`DotField` 點陣背景、rail 與首頁改版、蘇格拉底回覆改為無框文字
+- 主題套用範圍：`/home`、`/chat`、`/classrooms`、`/dialogue`、`/admin`，以及 `/t/`、`/report`、`/settings`、`/join`（後四者為合併時補上，避免與新 rail 不一致）
+- 對話頁新增語音模式：麥克風按鈕切換成「按住說話」的大按鈕；左側面板顯示列表時，語音模式上方會顯示蘇格拉底 3D 肖像
+
+### 合併時保留
+
+- 左側面板的「提問／對話」切換、「順帶一問」、訪客與學生的 rail、管理後台 rail、帳號選單、通知鈴鐺（含訪客）
+- `SocratesDock` 新增 `compact`：語音模式用小尺寸，左側面板維持原尺寸；兩處不會同時顯示模型
+
 ## 2026-11-17 — 帳號選單（`frontend/web-next`）
 
 ### Changed

@@ -14,6 +14,7 @@ const SidebarContext = createContext<{
   switchable: boolean;
   showModel: boolean;
   setShowModel: (next: boolean) => void;
+  overlay: boolean;
 } | null>(null);
 
 function mediaQuery(): MediaQueryList | null {
@@ -54,7 +55,14 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
 
   return (
     <SidebarContext.Provider
-      value={{ open, toggle, switchable, showModel, setShowModel: mobile ? setMobileModel : setDesktopModel }}
+      value={{
+        open,
+        toggle,
+        switchable,
+        showModel,
+        setShowModel: mobile ? setMobileModel : setDesktopModel,
+        overlay: mobile && open,
+      }}
     >
       <div className="flex h-full min-h-0">
         {open && mobile && (
@@ -83,7 +91,7 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
           {showModel ? (
             <>
               <SidebarHeader title={t("dlg_socrates")} />
-              {open && <SocratesDock />}
+              {open && <SocratesDock className="min-h-0 flex-1" />}
             </>
           ) : (
             sidebar
@@ -93,6 +101,15 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
       </div>
     </SidebarContext.Provider>
   );
+}
+
+export function useSidebarOverlay(): boolean {
+  return useContext(SidebarContext)?.overlay ?? false;
+}
+
+export function useSidebarModel(): boolean {
+  const context = useContext(SidebarContext);
+  return Boolean(context?.showModel && context.open);
 }
 
 export function SidebarToggle({ className }: { className?: string }) {

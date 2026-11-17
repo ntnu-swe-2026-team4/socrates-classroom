@@ -14,8 +14,9 @@ export const buttonStyles = cva(
   {
     variants: {
       variant: {
-        primary: "bg-ink font-semibold text-paper hover:bg-ember hover:text-on-ember",
-        outline: "border border-line-strong bg-paper-deep text-ink-soft hover:border-ember-deep hover:text-ink",
+        primary: "btn-primary bg-ink font-semibold text-paper hover:bg-ember hover:text-on-ember",
+        outline:
+          "btn-outline border border-line-strong bg-paper-deep text-ink-soft hover:border-ember-deep hover:text-ink",
         ghost: "text-ink-soft hover:bg-paper-deep hover:text-ink",
       },
       size: {
