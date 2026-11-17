@@ -2,6 +2,20 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-17 — code review 修復（`136-account-classroom-model`）
+
+### Fixed
+
+- **成員 display_name 優先**（#142 review W1）：訪客搶先以成員姓名入活動後，成員本人 join 原被 UNIQUE(`activity_id`, `display_name`) 擋成 409 `name_taken`；`ensureParticipant` 現在把 account-less 訪客列改名（`原名（訪客）`，再撞則 `（訪客 2）`…）讓成員取名原名
+- 已綁帳號 participant 間的撞名改為新參與者加後綴（`原名 2`、`原名 3`…）而非 409；邀請連結加入的 `guest`（已綁 `user_id`）在帳號入班後由 `ensureParticipant` 升級 `kind` 為 `member`
+- **slot 名稱撞名回 409 而非 500**（W2）：`POST /api/activities/:id/slots` 建名前先查活動內既有 display_name 跳號（`測試 1`、`測試 3`…）；併發撞 UNIQUE 時經 `uniqueViolationColumns` 轉 409 `name_taken`
+- **slot 上限改為 batch 內原子護欄**（W3）：每條 INSERT 以 `WHERE (SELECT COUNT(*) …) < ACTIVITY_SLOT_MAX - i` 條件插入（D1 batch 同一交易，COUNT 含前面已插入列），併發兩次 POST 不再可能超過上限；未足額建立回 409 `conflict`
+- ReportRunner 的 pseudonym HMAC secret 改用 `secretOf()`（AUTH_SECRET 缺失即 fail-fast，原 `?? ""` 會靜默退化為固定排序）
+
+### Changed
+
+- Docs：`api-contract.md` §2.1 明寫 `GET /activities/:id` 的 auto-join 寫入副作用、成員 display_name 優先規則與 `guest`→`member` 升級；測試：`invite.test.ts`（搶名回收、同名著被後綴、kind 升級）、`test-mode.test.ts`（slot 跳號）
+
 ## 2026-11-16 — #135 班級、活動、議題解耦（`136-account-classroom-model`）
 
 ### Added

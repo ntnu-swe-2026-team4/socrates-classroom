@@ -78,7 +78,9 @@ interface User {
 
 - **報告母體是 participant，不是 `members`**：沒進活動的班級成員不出現在報告，非成員的參與者（訪客、老師）會出現
 - `members` 仍是班級名冊（決定「能不能進入這個班級的活動」）；兩者不可互相取代
-- participant 只描述「活動期間的存在」，活動關閉後不再新增；`kind` 的 `guest`／`teacher` 分別由 #133、#134 生產
+- participant 只描述「活動期間的存在」，活動關閉後不再新增；`kind` 的 `guest`／`teacher` 分別由 #133、#134 生產；邀請連結加入的 `guest`（已綁 `user_id`）在帳號入班後由 `ensureParticipant` 升級為 `member`
+- `GET /activities/:id` 對已登入的教室成員帶**寫入副作用**：冪等建立 participant（auto-join）
+- **成員 display_name 優先**（UNIQUE(`activity_id`, `display_name`) 撞名時）：被 account-less 訪客搶佔的名字——訪客列改名為 `原名（訪客）`（再撞則 `（訪客 2）`…），成員取名原 名；與其他已綁帳號的 participant 撞名——新參與者改用後綴 `原名 2`、`原名 3`…，既色列不動
 - 同一帳號在**同一個活動**可以有多個 participant（#134 的 1–6 個 `teacher` slot）：`activity_participants` 的 PK 是 (`activity_id`, `id`)，不是 (`activity_id`, `user_id`)；`ensureParticipant` 的「一人一個」只約束 `member`／`guest` 的入場路徑
 
 ## 3. 入場（唯一閘門，#66/#70）
