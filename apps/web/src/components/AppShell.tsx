@@ -4,8 +4,8 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ShieldCheck,
+  LogOut,
   Eye,
-  ArrowLeft,
   BookOpen,
   GraduationCap,
   MessageCircleQuestion,
@@ -242,6 +242,15 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                   <span>{t("nav_activity")}</span>
                 </Link>
               )
+            ) : student && me.data?.classroomId ? (
+              <Link
+                to="/classrooms/$classroomId"
+                params={{ classroomId: me.data.classroomId }}
+                className={cn(NAV_BTN, inClassrooms && NAV_ACTIVE)}
+              >
+                <BookOpen className="size-[19px]" />
+                <span>{t("nav_learning")}</span>
+              </Link>
             ) : (
               <>
                 <Link
@@ -264,12 +273,26 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                 )}
               </>
             )}
+            {(guest || student) && (
+              <Link to="/settings" className={cn(NAV_BTN, pathname.startsWith("/settings") && NAV_ACTIVE)}>
+                <Settings className="size-[19px]" />
+                <span>{t("settings_title")}</span>
+              </Link>
+            )}
           </>
         )}
       </div>
 
       <div className="flex-1" />
 
+      {guest && me.data && !previewRoom && (
+        <div className="mb-3 w-full px-1.5">
+          <button type="button" data-rail="leave" onClick={() => setGuestLogout(true)} className={NAV_BTN}>
+            <LogOut className="size-[19px]" />
+            <span className="text-center leading-tight">{t("guest_leave_activity")}</span>
+          </button>
+        </div>
+      )}
       {me.data?.admin && !previewRoom && (
         <div className="mb-3 w-full px-1.5">
           <Link to={inAdmin ? "/home" : "/admin"} data-rail="site" className={NAV_BTN}>
@@ -279,7 +302,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
         </div>
       )}
       <div className="mb-3 flex flex-col items-center gap-2">
-        {!guest && <NotificationBell side="beside" />}
+        {me.data && <NotificationBell side="beside" />}
         <button type="button" onClick={toggleTheme} aria-label={themeTip} title={themeTip} className={RAIL_ICON_BTN}>
           {theme === "dark" ? <Moon className="size-[17px]" /> : <Sun className="size-[17px]" />}
         </button>
@@ -299,96 +322,23 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
     </nav>
   );
 
-  const focused = Boolean(me.data) && !me.data?.preview && (guest || me.data?.kind === "student");
-  const topBar = (
-    <header className="shrink-0 border-b border-line bg-card">
-      <div className="flex h-12 items-center gap-2 px-3 md:px-5">
-        <span className="font-serif text-[19px] leading-none text-ink">{t("app_mark")}</span>
-        {student && me.data?.classroomId ? (
-          <>
-            {!pathname.startsWith("/classrooms") && (
-              <Link
-                to="/classrooms/$classroomId"
-                params={{ classroomId: me.data.classroomId }}
-                className="flex shrink-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-[12.5px] text-ink-soft hover:bg-paper-deep hover:text-ink"
-              >
-                <ArrowLeft className="size-3.5" />
-                {t("classroom_back_to_room")}
-              </Link>
-            )}
-            <span className="min-w-0 flex-1 truncate font-serif text-[16px] text-ink">
-              {rooms.data?.find((room) => room.id === me.data?.classroomId)?.name}
-            </span>
-          </>
-        ) : (
-          <>
-            {guest && me.data?.activityId && !pathname.startsWith("/dialogue") && (
-              <Link
-                to="/dialogue"
-                search={{ activityId: me.data.activityId }}
-                className="flex shrink-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-[12.5px] text-ink-soft hover:bg-paper-deep hover:text-ink"
-              >
-                <ArrowLeft className="size-3.5" />
-                {t("common_back")}
-              </Link>
-            )}
-            <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-soft">
-              {guest ? t("guest_bar_label", { name: me.data?.name ?? "" }) : t("app_name")}
-            </span>
-          </>
-        )}
-        {!guest && <NotificationBell className="size-8" />}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label={themeTip}
-          title={themeTip}
-          className={cn(RAIL_ICON_BTN, "size-8")}
-        >
-          {theme === "dark" ? <Moon className="size-4" /> : <Sun className="size-4" />}
-        </button>
-        {guest ? (
-          <Button variant="outline" size="sm" disabled={logout.isPending} onClick={() => logout.mutate()}>
-            {t("guest_leave_activity")}
-          </Button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setAccountOpen(true)}
-            aria-label={t("account_title")}
-            title={me.data?.name}
-            className="cursor-pointer rounded-full"
-          >
-            <Initial name={me.data?.name} className="size-8 text-[13px]" />
-          </button>
-        )}
-      </div>
-    </header>
-  );
-
   return (
-    <div className={cn("flex h-dvh bg-paper text-ink [--font-serif:var(--font-sans)]", focused && "flex-col")}>
-      {focused ? (
-        topBar
-      ) : (
-        <>
-          <aside className="relative hidden h-dvh shrink-0 md:block">{rail}</aside>
+    <div className="flex h-dvh bg-paper text-ink [--font-serif:var(--font-sans)]">
+      <aside className="relative hidden h-dvh shrink-0 md:block">{rail}</aside>
 
-          <button
-            type="button"
-            aria-label={t("menu_open")}
-            onClick={() => setDrawerOpen(true)}
-            className="fixed top-3 left-3 z-30 flex size-8 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-card text-ink-soft md:hidden"
-          >
-            <Menu className="size-[17px]" />
-          </button>
+      <button
+        type="button"
+        aria-label={t("menu_open")}
+        onClick={() => setDrawerOpen(true)}
+        className="fixed top-3 left-3 z-30 flex size-8 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-card text-ink-soft md:hidden"
+      >
+        <Menu className="size-[17px]" />
+      </button>
 
-          {drawerOpen && (
-            <TrapDialog ref={drawerRef} className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
-              {rail}
-            </TrapDialog>
-          )}
-        </>
+      {drawerOpen && (
+        <TrapDialog ref={drawerRef} className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
+          {rail}
+        </TrapDialog>
       )}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">

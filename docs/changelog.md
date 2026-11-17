@@ -2,6 +2,13 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-17 — 訪客與學生改用側欄（`frontend/web-next`）
+
+### Changed
+
+- 訪客與學生帳號不再使用上方的 top bar，改為與一般帳號相同的左側 rail：訪客為「活動／設定」，學生為「學習／設定」；訪客的「退出活動」移到 rail 底部
+- 訪客也有通知鈴鐺（訪客沒有未讀數）
+
 ## 2026-11-17 — 第三方登入只保留 Google（`frontend/web-next`）
 
 ### Removed
