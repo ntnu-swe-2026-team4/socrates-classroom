@@ -16,7 +16,7 @@
 因此有兩個行為與「開發時曾改過的版本」不同，請留意：
 
 - **本機 dev 需要 Cloudflare 遠端連線**：原版 config 在 dev 也宣告 `AI` binding，cf CLI 會走 remote mode。若出現「You need to register a workers.dev subdomain」，需到 Cloudflare 註冊 workers.dev 子網域，或在 `pnpm dev` 終端機按 `l` 切成 local。
-- **第三方登入（Google／Apple／Facebook）停用**：server 已實作，但 config 未宣告對應 bindings。啟用步驟見 [`cf.md` §OAuth 登入](./cf.md#oauth-登入googlefacebookapple選用)。登入頁三顆按鈕會顯示為「尚未設定」，其他登入方式不受影響。
+- **Google 登入停用**：server 已實作，但 config 未宣告對應 bindings。啟用步驟見 [`cf.md` §OAuth 登入](./cf.md#oauth-登入google選用)。登入頁的 Google 按鈕會顯示為「尚未設定」，其他登入方式不受影響。
 
 ## 2. 資料庫 migrations（新增 7 支）
 
@@ -77,7 +77,6 @@
 
 - [ ] GitHub repo secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`、`PROD_SECRETS_FILE`（內容為 `AUTH_SECRET`、`BYOK_ENC_KEY`、`SEED_TOKEN` 的 dotenv）。**未設定前 push 到 `main` 會讓 Deploy workflow 失敗**（屬預期，不會部署任何東西）
 - [ ] 網域：config 綁定 `socrates.g36maid.dev`；若部署到不同的 Cloudflare 帳號，需擁有該網域或另議
-- [ ] 確認 Facebook Graph API 版本（`routes/oauth.ts` 的 `FACEBOOK_VERSION`，目前 `v24.0`）仍有效（啟用 FB 登入時）
 
 ## 7. 已知限制
 

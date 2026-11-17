@@ -32,7 +32,7 @@ export const UserSchema = z.object({
 });
 export type User = z.infer<typeof UserSchema>;
 
-export const AUTH_PROVIDERS = ["google", "apple", "facebook"] as const;
+export const AUTH_PROVIDERS = ["google"] as const;
 export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
 export type AuthProviders = Record<AuthProvider, boolean>;
 

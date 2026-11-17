@@ -2,6 +2,17 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-17 — 第三方登入只保留 Google（`frontend/web-next`）
+
+### Removed
+
+- server 端的 Apple／Facebook OAuth（`routes/oauth.ts`、`oauth-config.ts`、`env.ts` 的對應欄位、`AUTH_PROVIDERS`）；`GET /api/auth/providers` 改回 `{google}`
+- OAuth callback 不再接受 POST（原為 Apple `form_post` 所需）
+
+### Changed
+
+- OAuth state cookie 由 `SameSite=None` 改為 `SameSite=Lax`
+
 ## 2026-11-17 — 管理後台的學校頁改為清單 → 詳情（`experiment/web-next`）
 
 ### Changed

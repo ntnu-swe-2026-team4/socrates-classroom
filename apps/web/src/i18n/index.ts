@@ -486,7 +486,7 @@ const messages = {
     room_leave_body: "退出後需要邀請碼才能再次加入，你發表過的討論會保留。",
     join_choose: "要用哪個身分加入這間教室？",
     join_option_account: "使用我的帳號",
-    join_option_account_hint: "登入或註冊（Email、Google、Apple、Facebook），紀錄跟著帳號走",
+    join_option_account_hint: "登入或註冊（Email 或 Google），紀錄跟著帳號走",
     join_option_guest: "以訪客身分加入",
     join_option_guest_hint: "只參加這一場活動，不需註冊；活動結束 24 小時後失效。",
     join_choose_again: "重新選擇身分",
@@ -1075,8 +1075,7 @@ const messages = {
     room_leave_body: "You'll need an invite code to rejoin. Your posts stay.",
     join_choose: "How do you want to join this classroom?",
     join_option_account: "Use my account",
-    join_option_account_hint:
-      "Sign in or register (email, Google, Apple, Facebook) — your history stays with your account",
+    join_option_account_hint: "Sign in or register (email or Google) — your history stays with your account",
     join_option_guest: "Join as a guest",
     join_option_guest_hint: "Join just this activity, no sign-up. Expires 24 hours after the activity ends.",
     join_choose_again: "Choose again",
@@ -1673,8 +1672,7 @@ const messages = {
     room_leave_body: "Necesitarás un código de invitación para volver a unirte. Tus publicaciones se conservan.",
     join_choose: "¿Cómo quieres unirte a esta aula?",
     join_option_account: "Usar mi cuenta",
-    join_option_account_hint:
-      "Inicia sesión o regístrate (correo, Google, Apple, Facebook); tu historial queda en tu cuenta",
+    join_option_account_hint: "Inicia sesión o regístrate (correo o Google); tu historial queda en tu cuenta",
     join_option_guest: "Unirme como invitado",
     join_option_guest_hint: "Solo esta actividad, sin registro. Caduca 24 horas después de que termine.",
     join_choose_again: "Elegir de nuevo",

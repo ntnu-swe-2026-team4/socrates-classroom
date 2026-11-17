@@ -5,13 +5,7 @@ import { inject } from "vitest";
 import worker from "../src/index";
 import { fromB64url } from "../src/auth";
 import { one, run } from "../src/db/d1";
-import {
-  appleClientSecret,
-  OAUTH_STATE_COOKIE,
-  resolveOAuthAccount,
-  type OAuthProfile,
-  type OAuthState,
-} from "../src/routes/oauth";
+import { OAUTH_STATE_COOKIE, resolveOAuthAccount, type OAuthProfile, type OAuthState } from "../src/routes/oauth";
 import { call, cookieOf } from "./helpers";
 
 const configured = { ...env, GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret" };
@@ -48,9 +42,9 @@ beforeAll(async () => {
 describe("OAuth sign-in routes", () => {
   test("providers are all disabled without credentials", async () => {
     const res = await call("/api/auth/providers");
-    expect(await res.json()).toEqual({ google: false, apple: false, facebook: false });
+    expect(await res.json()).toEqual({ google: false });
     const enabled = await callWith(configured, "/api/auth/providers");
-    expect(await enabled.json()).toEqual({ google: true, apple: false, facebook: false });
+    expect(await enabled.json()).toEqual({ google: true });
   });
 
   test("start for an unconfigured or unknown provider redirects to oauth_unavailable", async () => {
@@ -61,7 +55,7 @@ describe("OAuth sign-in routes", () => {
     }
   });
 
-  test("start for a configured provider redirects to Google with state, PKCE and a SameSite=None cookie", async () => {
+  test("start for a configured provider redirects to Google with state, PKCE and a SameSite=Lax cookie", async () => {
     const res = await callWith(configured, "/api/auth/oauth/google/start?next=/classrooms/abc");
     expect(res.status).toBe(302);
     const location = new URL(res.headers.get("Location")!);
@@ -74,7 +68,7 @@ describe("OAuth sign-in routes", () => {
     const header = res.headers.getSetCookie()[0]!;
     expect(header).toMatch(/HttpOnly/i);
     expect(header).toMatch(/Secure/i);
-    expect(header).toMatch(/SameSite=None/i);
+    expect(header).toMatch(/SameSite=Lax/i);
     expect(header).toMatch(/Path=\/api\/auth\/oauth/);
     const state = stateOf(cookieOf(res));
     expect(state.p).toBe("google");
@@ -102,15 +96,8 @@ describe("OAuth sign-in routes", () => {
       ["/api/auth/oauth/google/callback?code=c&state=wrong", { headers: { Cookie: cookie } }],
       [`/api/auth/oauth/google/callback?state=${state}`, { headers: { Cookie: cookie } }],
       [`/api/auth/oauth/facebook/callback?code=c&state=${state}`, { headers: { Cookie: cookie } }],
+      [`/api/auth/oauth/apple/callback?code=c&state=${state}`, { headers: { Cookie: cookie } }],
       [`/api/auth/oauth/google/callback?code=c&state=${state}`, { headers: { Cookie: `${cookie}x` } }],
-      [
-        "/api/auth/oauth/google/callback",
-        {
-          method: "POST",
-          headers: { Cookie: cookie, "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ code: "c", state: "wrong" }),
-        },
-      ],
     ];
     for (const [path, init] of cases) {
       const res = await callWith(configured, path, init);
@@ -128,7 +115,7 @@ describe("resolveOAuthAccount", () => {
     expect((await guestRow(first.id))?.is_guest).toBe(0);
     const again = await resolveOAuthAccount(env.DB, profile("sub-new", { name: "Renamed" }), { lang: "zh" });
     expect(again.id).toBe(first.id);
-    const other = await resolveOAuthAccount(env.DB, profile("sub-new", { provider: "facebook" }), { lang: "zh" });
+    const other = await resolveOAuthAccount(env.DB, profile("sub-other"), { lang: "zh" });
     expect(other.id).not.toBe(first.id);
   });
 
@@ -146,7 +133,7 @@ describe("resolveOAuthAccount", () => {
 
     const unverified = await resolveOAuthAccount(
       env.DB,
-      profile("sub-mail-2", { provider: "apple", email: "mail@example.com", emailVerified: false }),
+      profile("sub-mail-2", { email: "mail@example.com", emailVerified: false }),
       { lang: "en" },
     );
     expect(unverified.id).not.toBe("u_mail");
@@ -187,55 +174,5 @@ describe("resolveOAuthAccount", () => {
     expect(byEmail.name).toBe("local.part");
     const byLabel = await resolveOAuthAccount(env.DB, profile("sub-name-2", { name: null }), { lang: "en" });
     expect(byLabel.name).toBe("Google user");
-  });
-});
-
-describe("appleClientSecret", () => {
-  test("produces an ES256 JWT verifiable with the matching public key", async () => {
-    const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
-      "sign",
-      "verify",
-    ])) as CryptoKeyPair;
-    const pkcs8 = new Uint8Array((await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer);
-    const base64 = btoa(String.fromCharCode(...pkcs8));
-    const pem = `-----BEGIN PRIVATE KEY-----\n${base64.match(/.{1,64}/g)!.join("\n")}\n-----END PRIVATE KEY-----`;
-
-    const jwt = await appleClientSecret(
-      {
-        APPLE_CLIENT_ID: "tw.example.web",
-        APPLE_TEAM_ID: "TEAM123456",
-        APPLE_KEY_ID: "KEY1234567",
-        APPLE_PRIVATE_KEY: pem,
-      },
-      1_000,
-    );
-    const [header, payload, signature] = jwt.split(".") as [string, string, string];
-    const decode = (part: string) => JSON.parse(new TextDecoder().decode(fromB64url(part)));
-    expect(decode(header)).toEqual({ alg: "ES256", kid: "KEY1234567" });
-    expect(decode(payload)).toEqual({
-      iss: "TEAM123456",
-      iat: 1_000,
-      exp: 1_300,
-      aud: "https://appleid.apple.com",
-      sub: "tw.example.web",
-    });
-    const ok = await crypto.subtle.verify(
-      { name: "ECDSA", hash: "SHA-256" },
-      pair.publicKey,
-      fromB64url(signature) as BufferSource,
-      new TextEncoder().encode(`${header}.${payload}`),
-    );
-    expect(ok).toBe(true);
-
-    const escaped = await appleClientSecret(
-      {
-        APPLE_CLIENT_ID: "tw.example.web",
-        APPLE_TEAM_ID: "TEAM123456",
-        APPLE_KEY_ID: "KEY1234567",
-        APPLE_PRIVATE_KEY: pem.replaceAll("\n", "\\n"),
-      },
-      1_000,
-    );
-    expect(escaped.split(".").slice(0, 2)).toEqual([header, payload]);
   });
 });

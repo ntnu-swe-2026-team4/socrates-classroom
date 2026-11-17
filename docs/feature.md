@@ -18,7 +18,7 @@
 
 | 功能         | 說明                                                                                                                                                                                    | 主要路由 / 頁面                                                                                                           |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 登入         | 訪客（一鍵）、Email＋密碼（PBKDF2）、Google／Apple／Facebook OAuth（未設定時按鈕停用）；HMAC cookie session 30 天                                                                       | `POST /api/auth/guest`・`POST /api/auth/login`・`/api/auth/oauth/:provider/*`・`/login`                                   |
+| 登入         | 訪客（一鍵）、Email＋密碼（PBKDF2）、Google OAuth（未設定時按鈕停用）；HMAC cookie session 30 天                                                                                        | `POST /api/auth/guest`・`POST /api/auth/login`・`/api/auth/oauth/:provider/*`・`/login`                                   |
 | 註冊         | Email＋密碼註冊正式帳號（邀請碼選填）；目前是訪客則原地升級、保留對話與教室                                                                                                             | `POST /api/auth/register`・`/login?mode=register`                                                                         |
 | 加入教室     | 邀請碼＋ToS 同意（未登入需輸入姓名、已登入沿用帳號名）；加入後進教室內頁                                                                                                                | `GET /api/join/:code`・`POST /api/join`・`/join/:code`・教室列表的邀請碼欄                                                |
 | 教室清單     | 自己開的與已加入的教室一起列出，`role` 為該教室中的身分；可篩選                                                                                                                         | `GET /api/classrooms`・`/classrooms`                                                                                      |
@@ -44,13 +44,13 @@
 
 ## 活動與報告
 
-| 功能     | 說明                                                                     | 路由 / 頁面                                     |
-| -------- | ------------------------------------------------------------------------ | ----------------------------------------------- |
-| 活動詳情 | 教室＋議題＋結束時間                                                     | `GET /api/activities/:id`                       |
-| 即時面板 | 資料源（#73）尚未接線——頁面顯示待上線提示；結束活動按鈕可用              | `/t/live/:id`                                   |
-| 結束活動 | 老師觸發報告生成（ReportRunner DO，alarm 驅動）                          | `POST /api/activities/:id/finish`               |
-| 報告輪詢 | 生成中 404 `report_pending`（前端輪詢）；失敗 500 `report_failed`        | `GET /api/activities/:id/report`・`/report/:id` |
-| 角色分流 | 老師見全班（classReport＋每人 analysis）；學生只見自己（analysis＋假名） | 同上；形狀見 `api-contract.md` §7               |
+| 功能     | 說明                                                                                                               | 路由 / 頁面                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| 活動詳情 | 教室＋議題＋結束時間                                                                                               | `GET /api/activities/:id`                       |
+| 即時面板 | 每 5 秒輪詢 `GET /api/activities/:id/live`：學生狀態、輪數、違規標記、最後一句，依需要注意的程度排序；結束活動按鈕 | `/t/live/:id`                                   |
+| 結束活動 | 老師觸發報告生成（ReportRunner DO，alarm 驅動）                                                                    | `POST /api/activities/:id/finish`               |
+| 報告輪詢 | 生成中 404 `report_pending`（前端輪詢）；失敗 500 `report_failed`                                                  | `GET /api/activities/:id/report`・`/report/:id` |
+| 角色分流 | 老師見全班（classReport＋每人 analysis）；學生只見自己（analysis＋假名）                                           | 同上；形狀見 `api-contract.md` §7               |
 
 ## 對話引擎（Pi Durable）
 
