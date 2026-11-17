@@ -10,6 +10,7 @@ import {
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import type { Env } from "../env";
+import { secretOf } from "../auth";
 import { buildModels } from "../pi/models";
 import { runProfile } from "../pi/agents/profiles";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
@@ -245,7 +246,7 @@ export class ReportRunner extends DurableObject<Env> {
 
     const pseudonyms = new Map<string, string>();
     const ranks = await pseudonymRanks(
-      this.env.AUTH_SECRET ?? "",
+      secretOf({ env: this.env }),
       activityId,
       roster.map((p) => p.id),
     );

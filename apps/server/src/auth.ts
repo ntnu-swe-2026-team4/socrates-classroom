@@ -64,7 +64,7 @@ function hmacKey(secret: string): Promise<CryptoKey> {
   return key;
 }
 
-function secretOf(ctx: { env: { AUTH_SECRET?: string } }): string {
+export function secretOf(ctx: { env: { AUTH_SECRET?: string } }): string {
   const secret = ctx.env.AUTH_SECRET;
   if (!secret) throw new Error("AUTH_SECRET is not set");
   return secret;
