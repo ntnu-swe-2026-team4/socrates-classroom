@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { Keyboard, MessageCircleQuestionMark, Mic, Send, Square, TextSearch } from "lucide-react";
 import { BtwPanel, type BtwPanelHandle } from "@/components/BtwPanel";
 import { SidebarToggle, useSidebarOverlay } from "@/components/ChatLayout";
-import { SocratesTile, useSocratesTile } from "@/components/SocratesCompanion";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { cn } from "@/components/ui";
 import { textOf, useDialogue } from "@/hooks/useDialogue";
@@ -158,7 +157,6 @@ export function DialogueView({
 
   const [voiceMode, setVoiceMode] = useState(false);
   const sidebarOverlay = useSidebarOverlay();
-  const tile = useSocratesTile();
   const holdRef = useRef<HTMLButtonElement>(null);
   const modeSwitched = useRef(false);
   useEffect(() => {
@@ -254,7 +252,6 @@ export function DialogueView({
   return (
     <div className="flex min-h-0 flex-1">
       <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        {tile.enabled && !sidebarOverlay && <SocratesTile open={tile.open} setOpen={tile.setOpen} />}
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line pr-3 pl-14 md:pl-2">
           <SidebarToggle />
           <div className="min-w-0 flex-1 pl-1">
@@ -307,10 +304,7 @@ export function DialogueView({
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className={cn(
-            "stream-scroll min-h-0 flex-1 overflow-y-auto px-4 md:px-8",
-            tile.enabled && (tile.open ? "max-md:pt-[156px] md:pr-[196px]" : "max-md:pt-10 md:pr-16"),
-          )}
+          className={cn("stream-scroll min-h-0 flex-1 overflow-y-auto px-4 md:px-8")}
           style={overlayHeight ? { paddingBottom: overlayHeight } : undefined}
           aria-busy={busy}
         >

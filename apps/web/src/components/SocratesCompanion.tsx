@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Minus, Square, UserRound } from "lucide-react";
+import { ChevronDown, ChevronUp, Square, UserRound } from "lucide-react";
 import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useT } from "@/i18n";
 import { getCompanion, onExpression, useCompanion } from "@/lib/companion";
@@ -14,50 +14,35 @@ interface DockRect {
   size: number;
 }
 
-export function useSocratesTile(): { enabled: boolean; open: boolean; setOpen: (next: boolean) => void } {
-  const { visible } = useCompanion();
-  const wide = typeof window === "undefined" || !window.matchMedia?.("(max-width: 767px)").matches;
-  const [open, setOpen] = usePersistentFlag("socrates_tile_open", wide);
-  return { enabled: visible, open, setOpen };
-}
-
-export function SocratesTile({ open, setOpen }: { open: boolean; setOpen: (next: boolean) => void }) {
+export function SocratesPanel() {
   const t = useT();
-  if (!open) {
-    return (
+  const { visible } = useCompanion();
+  const [open, setOpen] = usePersistentFlag("socrates_panel_open", true);
+  if (!visible) return null;
+  const label = open ? t("companion_hide") : t("companion_show");
+  const Icon = open ? ChevronDown : ChevronUp;
+  return (
+    <section
+      data-companion-panel={open ? "open" : "closed"}
+      className="m-2 shrink-0 border border-line-strong bg-paper"
+    >
       <button
         type="button"
-        data-companion-tile="closed"
-        onClick={() => setOpen(true)}
-        aria-label={t("companion_show")}
-        title={t("companion_show")}
-        className="absolute top-[4.25rem] right-3 z-10 flex size-10 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-paper text-ink-soft shadow-sm transition-colors hover:text-ink"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-label={label}
+        title={label}
+        className="flex h-9 w-full cursor-pointer items-center gap-2 px-2.5 text-[12.5px] text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
       >
-        <UserRound className="size-[18px]" aria-hidden />
+        <span className="min-w-0 flex-1 truncate text-left">{t("dlg_socrates")}</span>
+        <Icon className="size-4 shrink-0" aria-hidden />
       </button>
-    );
-  }
-  return (
-    <div
-      data-companion-tile="open"
-      className="absolute top-[4.25rem] right-3 z-10 w-[120px] overflow-hidden rounded-xl border border-line-strong bg-paper shadow-md md:w-[168px]"
-    >
-      <div className="relative aspect-square bg-paper-deep">
-        <div {...{ [COMPANION_DOCK_ATTR]: "" }} className="absolute inset-0" />
-      </div>
-      <div className="flex items-center gap-1 border-t border-line py-0.5 pr-0.5 pl-2.5">
-        <span className="min-w-0 flex-1 truncate text-[12px] text-ink-soft">{t("dlg_socrates")}</span>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          aria-label={t("companion_hide")}
-          title={t("companion_hide")}
-          className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink"
-        >
-          <Minus className="size-3.5" aria-hidden />
-        </button>
-      </div>
-    </div>
+      {open && (
+        <div className="flex h-[min(196px,26dvh)] items-end justify-center overflow-hidden border-t border-line">
+          <div {...{ [COMPANION_DOCK_ATTR]: "" }} className="aspect-square h-full" />
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -76,7 +61,12 @@ function useDockRect(): DockRect | null {
       if (!frame) frame = requestAnimationFrame(measure);
     };
     const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style"],
+    });
     window.addEventListener("resize", schedule);
     measure();
     return () => {
@@ -136,14 +126,21 @@ function CompanionBody({ dock }: { dock: DockRect }) {
   }, [state.speaking]);
 
   return (
-    <div className="fixed z-30" style={{ left: dock.x, top: dock.y, width: dock.size, height: dock.size }}>
+    <div
+      className="pointer-events-none fixed z-[55]"
+      style={{ left: dock.x, top: dock.y, width: dock.size, height: dock.size }}
+    >
       <div
         role="img"
         aria-label={t("dlg_socrates")}
         aria-busy={modelState === "loading"}
-        className="pointer-events-none relative size-full select-none"
+        className="relative size-full select-none"
       >
-        <span ref={stageRef} className="absolute inset-0 block" />
+        <span
+          ref={stageRef}
+          title={t("companion_rotate")}
+          className="pointer-events-auto absolute inset-0 block cursor-grab touch-none active:cursor-grabbing"
+        />
         {modelState === "loading" && (
           <span className="absolute inset-x-0 bottom-1 text-center text-[11px] text-ink-faint">
             {t("companion_loading")}
@@ -158,7 +155,7 @@ function CompanionBody({ dock }: { dock: DockRect }) {
       </div>
 
       {state.speakingSource && (
-        <div className="anim-fade absolute bottom-1 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-line-strong bg-paper py-0.5 pr-0.5 pl-2.5 text-[11.5px] text-ink-soft shadow-sm">
+        <div className="anim-fade pointer-events-auto absolute bottom-1 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-line-strong bg-paper py-0.5 pr-0.5 pl-2.5 text-[11.5px] text-ink-soft shadow-sm">
           <span className="size-1.5 shrink-0 rounded-full bg-ember motion-safe:animate-pulse" aria-hidden />
           <span role="status">{t("companion_speaking")}</span>
           <button
