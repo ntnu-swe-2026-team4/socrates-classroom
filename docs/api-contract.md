@@ -39,6 +39,7 @@
 | `GET /activities/:id`、`GET /report`                                                                     | —          | 僅綁定的那場活動          | 所屬班級                                   | owner 或成員                                                            |
 | **WS** `/agents/chat/:name`（watch/entries/abort）                                                       | —          | 僅本人 thread（綁定活動） | 僅本人 thread                              | 本人 thread；owner 可觀察全班                                           |
 | **WS** `submit` op                                                                                       | —          | 僅本人 thread             | 僅本人 thread                              | 僅本人 thread（owner ❌ `SubmitForbidden`）                             |
+| **WS** `btw` op（開新 side session）／`btw {session}`（附掛既有）                                        | —          | 僅本人 thread             | 僅本人 thread                              | 僅本人 thread（owner 開新 ❌ `SubmitForbidden`；附掛 ✅）               |
 
 ## 2. 身分
 

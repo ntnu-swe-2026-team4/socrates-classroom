@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Mic, Send, Square, TextSearch } from "lucide-react";
+import { MessageCircleQuestionMark, Mic, Send, Square, TextSearch } from "lucide-react";
+import { BtwPanel, type BtwPanelHandle } from "@/components/BtwPanel";
 import { SidebarToggle } from "@/components/ChatLayout";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { cn } from "@/components/ui";
@@ -23,6 +24,10 @@ const EXPRESSIONS: Record<string, "Happy" | "Angry" | "Confused"> = {
 };
 
 const onAmplitudeNoop = () => {};
+
+const BTW_COMMAND = /^\/btw(?:\s+([\s\S]*))?$/i;
+
+type SidePanel = "term" | "btw" | null;
 
 export interface DialogueViewProps {
   threadId: string;
@@ -91,7 +96,12 @@ export function DialogueView({
     if (name) companion.playExpression(name);
   }, [phase, emotion]);
 
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [sidePanel, setSidePanel] = useState<SidePanel>(null);
+  const panelOpen = sidePanel === "term";
+  const setPanelOpen = useCallback((open: boolean) => setSidePanel(open ? "term" : null), []);
+  const togglePanel = (panel: Exclude<SidePanel, null>) =>
+    setSidePanel((current) => (current === panel ? null : panel));
+  const btwRef = useRef<BtwPanelHandle>(null);
   const [connectGraceOver, setConnectGraceOver] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => setConnectGraceOver(true), 3000);
@@ -108,7 +118,7 @@ export function DialogueView({
       panelRef.current?.openTerm(openTerm);
       onTermOpened?.();
     }
-  }, [openTerm, onTermOpened]);
+  }, [openTerm, onTermOpened, setPanelOpen]);
 
   const hasEntries = items.some((item) => item.kind === "entry");
   const submit = useCallback(
@@ -191,6 +201,14 @@ export function DialogueView({
             : "";
 
   function submitText() {
+    const command = BTW_COMMAND.exec(text.trim());
+    if (command) {
+      setSidePanel("btw");
+      const question = command[1]?.trim();
+      if (question) btwRef.current?.ask(question);
+      setText("");
+      return;
+    }
     if (!text.trim() || awaitingReply || !viewReady) return;
     if (submit(text)) setText("");
   }
@@ -219,7 +237,22 @@ export function DialogueView({
           {headerActions}
           <button
             type="button"
-            onClick={() => setPanelOpen((v) => !v)}
+            onClick={() => togglePanel("btw")}
+            aria-pressed={sidePanel === "btw"}
+            title={t("btw_slash_hint")}
+            className={cn(
+              "flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors",
+              sidePanel === "btw"
+                ? "border-ember bg-ember-wash text-ember"
+                : "border-line-strong text-ink-soft hover:border-ember-deep hover:text-ink",
+            )}
+          >
+            <MessageCircleQuestionMark className="size-3.5" />
+            <span className="hidden sm:inline">{t("btw_panel")}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => togglePanel("term")}
             aria-pressed={panelOpen}
             title={t("term_panel")}
             className={cn(
@@ -335,6 +368,9 @@ export function DialogueView({
             {ttsSkipped && !ttsFailed && !error && (
               <Notice text={t("dlg_tts_skipped")} action={{ label: t("dlg_replay"), onClick: replay }} />
             )}
+            {text.trimStart().startsWith("/") && !closedNotice && ready && (
+              <p className="truncate px-4 text-[12.5px] text-ink-faint">{t("btw_slash_hint")}</p>
+            )}
             {closedNotice ? (
               <Notice text={closedNotice} />
             ) : !ready ? (
@@ -402,7 +438,7 @@ export function DialogueView({
                   <button
                     type="button"
                     onClick={submitText}
-                    disabled={!text.trim() || !viewReady}
+                    disabled={!text.trim() || (!viewReady && !BTW_COMMAND.test(text.trim()))}
                     aria-label={t("common_send")}
                     className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-ink text-paper transition-colors hover:bg-ember hover:text-on-ember disabled:opacity-50"
                   >
@@ -416,6 +452,13 @@ export function DialogueView({
       </section>
 
       <TermPanel ref={panelRef} open={panelOpen} onClose={() => setPanelOpen(false)} />
+      <BtwPanel
+        ref={btwRef}
+        open={sidePanel === "btw"}
+        onClose={() => setSidePanel(null)}
+        activityId={threadId}
+        userId={userId}
+      />
     </div>
   );
 }

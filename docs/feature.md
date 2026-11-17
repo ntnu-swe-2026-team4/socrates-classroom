@@ -39,6 +39,7 @@
 | 語音輸入     | MediaRecorder 錄音 → whisper STT → 文字                                                                                                                                                                                                                                                                                                                             | `POST /api/stt`・`useVoiceInput`                      |
 | 語音朗讀     | 單一語音通道（`lib/speech.ts`）：整個 App 同時只有一段聲音，嘴型跟著正在播的那段；「使用者最後主動做的事」優先——新的主動朗讀會打斷舊的，非主動的自動朗讀不打斷別人（略過時顯示「唸給我聽」）；對話自動朗讀、問 AI 每則回答有「朗讀」鈕；小幫手顯示「正在朗讀：來源」可一鍵停止；跨分頁用 `BroadcastChannel`，一個分頁開始說話其他分頁自動停止；設定頁可關閉或調音量 | `POST /api/tts`・`lib/speech.ts`・`SocratesCompanion` |
 | 名詞查詢     | 選取文字 → 查詢面板（prose oneshot，失敗回 fallback 文字）；查詢紀錄持久化                                                                                                                                                                                                                                                                                          | `POST /api/lookup`・`TermPanel`                       |
+| 順帶一問     | 頂欄按鈕或在輸入框打 `/btw 問題` 開側欄，暫離蘇格拉底問定義／背景（例：電車難題）；fork 主對話，內容不回寫主對話與報告；「新話題」重新 fork                                                                                                                                                                                                                         | `BtwPanel`・`useBtw`・WS `btw` op                     |
 | 對話歷史     | pi transcript 永久保存於 DO；重連 watch 即恢復完整 view                                                                                                                                                                                                                                                                                                             | `watch`（無獨立歷史端點）                             |
 
 ## 活動與報告
@@ -53,15 +54,16 @@
 
 ## 對話引擎（Pi Durable）
 
-| 能力           | 說明                                                                                                  | 位置                                       |
-| -------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| Durable 對話   | 每執行緒一個 Chat DO：transcript/admission/retry/恢復存於 DO SQLite（pi_* 表）；no queue（busy 拒絕） | `apps/server/src/do/chat.ts`               |
-| WebSocket      | `session.watch()` → view + chord ops；客戶端 `applyImmutable` 套用；斷線 `onConnectionError` 復原     | `apps/server/src/ws/`・`useDialogue`       |
-| 情緒協議       | avatar extension：Clef choice 題 → `app.emotion` entry（機率）；文字零污染（#111）                    | `apps/server/src/pi/extensions/avatar/`    |
-| 違規偵測       | judgment extension：逐輪 Clef 分類＋`report_violation` 自報 tool → `app.violation` entry（#71）       | `apps/server/src/pi/extensions/judgment/`  |
-| 網路搜尋       | websearch extension：`web_search`／`fetch_content`／`get_search_content`（allowlist＋SSRF 防護）      | `apps/server/src/pi/extensions/websearch/` |
-| Agent profiles | socrates／lookup／topic-gen／report-analyst——角色欄位，model 由 gateway 依 traffic class 解析（#113） | `apps/server/src/pi/agents/profiles.ts`    |
-| 供 mock 測試   | pi-ai faux provider（`LLM_PROVIDER=mock`）                                                            | `apps/server/src/pi/models.ts`             |
+| 能力             | 說明                                                                                                                 | 位置                                       |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Durable 對話     | 每執行緒一個 Chat DO：transcript/admission/retry/恢復存於 DO SQLite（pi_* 表）；no queue（busy 拒絕）                | `apps/server/src/do/chat.ts`               |
+| WebSocket        | `session.watch()` → view + chord ops；客戶端 `applyImmutable` 套用；斷線 `onConnectionError` 復原                    | `apps/server/src/ws/`・`useDialogue`       |
+| 情緒協議         | avatar extension：Clef choice 題 → `app.emotion` entry（機率）；文字零污染（#111）                                   | `apps/server/src/pi/extensions/avatar/`    |
+| 違規偵測         | judgment extension：逐輪 Clef 分類＋`report_violation` 自報 tool → `app.violation` entry（#71）                      | `apps/server/src/pi/extensions/judgment/`  |
+| BTW side session | btw extension：root 的 pi fork，只選 `btw`（`prompts/btw.md`）；host 預設 selection 排除 btw，主對話不受影響（#121） | `apps/server/src/pi/extensions/btw.ts`     |
+| 網路搜尋         | websearch extension：`web_search`／`fetch_content`／`get_search_content`（allowlist＋SSRF 防護）                     | `apps/server/src/pi/extensions/websearch/` |
+| Agent profiles   | socrates／lookup／topic-gen／report-analyst——角色欄位，model 由 gateway 依 traffic class 解析（#113）                | `apps/server/src/pi/agents/profiles.ts`    |
+| 供 mock 測試     | pi-ai faux provider（`LLM_PROVIDER=mock`）                                                                           | `apps/server/src/pi/models.ts`             |
 
 詳細：[`pi.md`](./pi.md)
 
