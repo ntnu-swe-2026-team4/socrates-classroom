@@ -27,7 +27,8 @@ import { buildModels } from "../pi/models";
 import { teacherLegsOf, teacherOfActivity, withPinnedCredential, type TeacherLeg } from "../pi/credentials";
 import { one, run } from "../db/d1";
 import { SOLO_PREFIX, ownedSoloChat } from "../routes/solo";
-import { getRouter } from "../gateway/router";
+import { recordUsage } from "../routes/usage";
+import { getRouter, isTeacherCredential } from "../gateway/router";
 import { ApiError } from "@socrates/shared";
 import { ChatSockets } from "../ws/sockets";
 
@@ -163,12 +164,34 @@ export class Chat extends DurableObject<Env> {
         const ok = result.status === "done" || (result.status === "unanswered" && result.reason === "aborted");
         router.settle(decision, ok ? "ok" : "error");
         if (!ok) this.sockets.notifyRunFailure(handle.id);
+        if (result.status === "done" && isTeacherCredential(decision.entry.credential)) {
+          this.ctx.waitUntil(this.meterTurn(handle));
+        }
       })
       .catch(() => {
         if (router.ledger.inFlight(decision.key) > 0) router.settle(decision, "error");
         this.sockets.notifyRunFailure(handle.id);
       });
     return receipt;
+  }
+
+  private async meterTurn(handle: PiSession): Promise<void> {
+    try {
+      const ownerId = await this.teacherId();
+      if (!ownerId) return;
+      const items = await handle.messages();
+      let tokens = 0;
+      for (let index = items.length - 1; index >= 0; index -= 1) {
+        const entry = items[index] as { kind: string; model?: readonly Message[] };
+        if (entry.kind === "pi.user") break;
+        if (entry.kind !== "pi.assistant") continue;
+        const message = entry.model?.[0];
+        if (message?.role === "assistant") tokens += message.usage?.totalTokens ?? 0;
+      }
+      await recordUsage(this.env, ownerId, tokens);
+    } catch (error) {
+      console.warn("[usage] metering failed", error instanceof Error ? error.message : "unknown error");
+    }
   }
 
   async transcript(): Promise<{

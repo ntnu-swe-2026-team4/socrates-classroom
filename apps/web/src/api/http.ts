@@ -13,7 +13,9 @@ import type {
   Report,
   TeacherKeyStatus,
   AdminOverview,
+  AdminUsageAlert,
   AdminUser,
+  Usage,
   LiveBoard,
   Notification,
   NotificationFeed,
@@ -77,6 +79,9 @@ export interface Api {
   requestTeacher(): Promise<User>;
   adminOverview(): Promise<AdminOverview>;
   adminUsers(q: string): Promise<AdminUser[]>;
+  usage(): Promise<Usage>;
+  setUsageQuota(tokens: number | null): Promise<Usage>;
+  adminUsageAlerts(): Promise<AdminUsageAlert[]>;
   grantTeacher(userId: string): Promise<void>;
   revokeTeacher(userId: string): Promise<void>;
   listTeacherRequests(): Promise<TeacherRequest[]>;
@@ -421,6 +426,15 @@ export const httpApi: Api = {
   },
   async adminUsers(q) {
     return raw<AdminUser[]>(`/admin/users?q=${encodeURIComponent(q)}`);
+  },
+  async usage() {
+    return raw<Usage>("/settings/usage");
+  },
+  async setUsageQuota(tokens) {
+    return raw<Usage>("/settings/usage/quota", { method: "PUT", json: { tokens } });
+  },
+  async adminUsageAlerts() {
+    return raw<AdminUsageAlert[]>("/admin/usage-alerts");
   },
   async grantTeacher(userId) {
     await rawVoid(`/admin/users/${encodeURIComponent(userId)}/teacher`, { method: "PUT" });

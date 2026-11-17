@@ -33,6 +33,7 @@
 | `008_account_roles.sql`       | 帳號角色：`schools`、`users.is_admin／teacher_plan／school_id／teacher_mode／username／student_classroom_id／guest_activity_id`（見 `accounts.md`） |
 | `009_notifications.sql`       | 系統通知：`notifications` 資料表、`users.notifications_seen_at`                                                                                     |
 | `010_teacher_requests.sql`    | 教師模式申請：`users.teacher_request_at`                                                                                                            |
+| `011_usage_quota.sql`         | 額度與用量：`users.usage_quota_tokens`、`usage_months`、`usage_alerts`                                                                              |
 
 > `003` 會**刪除 `users.role` 欄位**：既有帳號依「有無 email」換算為正式帳號／訪客；舊 session 的 `role` claim 仍可登入（student → 訪客、teacher → 正式帳號）。
 
@@ -67,11 +68,12 @@
 
 ## 5. 無法在不改雲端設定下完成的項目
 
-| 項目                        | 需要什麼                                                                                                        |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| 第三方登入                  | `cloudflare.config.ts` 宣告 bindings、各平台申請 client、CI 提供 public id 與 secrets（[`cf.md`](./cf.md)）     |
-| 真正的老年男聲              | 換成提供聲線選擇的 TTS；新增 provider 需先通過 ZDR 審查（[`providers.md`](./providers.md)）。目前為前端聲音處理 |
-| 本機 dev 免 Cloudflare 帳號 | 需在 config 讓 dev 不宣告 `AI` binding（曾試行，已依決定還原）                                                  |
+| 項目                        | 需要什麼                                                                                                                                                 |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 第三方登入                  | `cloudflare.config.ts` 宣告 bindings、各平台申請 client、CI 提供 public id 與 secrets（[`cf.md`](./cf.md)）                                              |
+| 額度警示 email              | `cloudflare.config.ts` 宣告 send email binding `ALERT_EMAIL`、設定 `ALERT_EMAIL_FROM`（寄件網域需在 Cloudflare 完成驗證）；要定時補寄則另需 cron trigger |
+| 真正的老年男聲              | 換成提供聲線選擇的 TTS；新增 provider 需先通過 ZDR 審查（[`providers.md`](./providers.md)）。目前為前端聲音處理                                          |
+| 本機 dev 免 Cloudflare 帳號 | 需在 config 讓 dev 不宣告 `AI` binding（曾試行，已依決定還原）                                                                                           |
 
 ## 6. 新 repo 上線前檢查清單
 

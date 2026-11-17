@@ -213,6 +213,35 @@ export const TeacherRequestSchema = z.object({
 });
 export type TeacherRequest = z.infer<typeof TeacherRequestSchema>;
 
+export const USAGE_THRESHOLDS = [60, 80, 100] as const;
+export const UsageSchema = z.object({
+  month: z.string(),
+  tokens: z.number(),
+  requests: z.number(),
+  quota: z.number().nullable(),
+  resetsAt: z.string(),
+  emailReady: z.boolean(),
+  thresholds: z.array(
+    z.object({ threshold: z.number(), reachedAt: z.string().nullable(), emailedAt: z.string().nullable() }),
+  ),
+});
+export type Usage = z.infer<typeof UsageSchema>;
+export const UsageQuotaInputSchema = z.object({
+  tokens: z.number().int().min(1000).max(100_000_000_000).nullable(),
+});
+export const AdminUsageAlertSchema = z.object({
+  ownerId: z.string(),
+  name: z.string(),
+  email: z.string().nullable(),
+  month: z.string(),
+  threshold: z.number(),
+  tokens: z.number(),
+  quota: z.number().nullable(),
+  createdAt: z.string(),
+  emailedAt: z.string().nullable(),
+});
+export type AdminUsageAlert = z.infer<typeof AdminUsageAlertSchema>;
+
 export const AdminOverviewSchema = z.object({
   users: z.number(),
   teachers: z.number(),

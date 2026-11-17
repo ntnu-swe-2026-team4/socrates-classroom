@@ -2,6 +2,22 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-17 — 額度設定與額度警示（`frontend/web-next`）
+
+### Added
+
+- `011_usage_quota.sql`：`users.usage_quota_tokens`、`usage_months`（owner × UTC 月份的 tokens／requests）、`usage_alerts`（owner × 月份 × 門檻，primary key 保證同一水位只記一次）
+- 用量記帳：Chat DO 在一輪對話完成且該輪由 teacher credential 服務時，把該輪 assistant message 的 `usage.totalTokens` 累加到 owner 的當月用量（`routes/usage.ts` 的 `recordUsage`）
+- 門檻偵測：用量達額度的 60%／80%／100% 時寫入 `usage_alerts`，並寄 email 給 owner 與所有 admin；寄出後記 `emailed_at`，未寄出的留待下次 `flushUsageAlerts`
+- Worker 新增 `scheduled` handler（呼叫 `flushUsageAlerts`）；cron trigger 尚未宣告
+- API：`GET /api/settings/usage`、`PUT /api/settings/usage/quota`、`GET /api/admin/usage-alerts`
+- 設定頁「用量」區塊（進度條、額度設定、三個門檻狀態）；管理後台總覽的「額度警示」清單
+
+### 尚未啟用
+
+- Email 寄送需要 `ALERT_EMAIL`（send email binding）與 `ALERT_EMAIL_FROM`，`cloudflare.config.ts` 尚未宣告；未設定時警示只顯示在設定頁與管理後台
+- 只計入主對話中由 teacher keys 服務的輪次；judgment、lookup、topic-gen、report 與平台鏈的用量不計
+
 ## 2026-11-17 — 登入頁改為 dither 柱廊風格（`frontend/web-next`）
 
 ### Changed

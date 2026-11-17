@@ -7,6 +7,7 @@ import { Button, Card, ConfirmDialog, Field, Input, PageHeader, Segmented, Spinn
 import { locales, setLocale, useI18n, useT, type Locale } from "@/i18n";
 import { companion, useCompanion } from "@/lib/companion";
 import { TeacherModeCard } from "@/components/TeacherMode";
+import { UsageCard } from "@/components/UsageCard";
 import {
   ChevronDown,
   ChevronUp,
@@ -68,7 +69,12 @@ function SettingsPage() {
         </Card>
         <ModelCard />
         <VoiceCard />
-        {me.data && !me.data.guest && me.data.kind !== "student" && <TeacherKeysCard />}
+        {me.data && !me.data.guest && me.data.kind !== "student" && (
+          <>
+            <TeacherKeysCard />
+            <UsageCard />
+          </>
+        )}
       </div>
     </div>
   );

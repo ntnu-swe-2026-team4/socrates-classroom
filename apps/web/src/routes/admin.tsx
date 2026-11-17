@@ -6,6 +6,7 @@ import type { AdminUser, SchoolTeacher } from "@socrates/shared";
 import { api, ApiError } from "@/api";
 import { ADMIN_SECTIONS, type AdminTab } from "@/lib/adminSections";
 import { NotificationComposer } from "@/components/Notifications";
+import { AdminUsageAlerts } from "@/components/UsageCard";
 import {
   Button,
   Card,
@@ -134,6 +135,7 @@ function Overview({ go }: { go: (tab: Tab) => void }) {
           );
         })}
       </div>
+      <AdminUsageAlerts />
     </>
   );
 }

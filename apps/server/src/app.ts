@@ -18,6 +18,7 @@ import { soloRoutes } from "./routes/solo";
 import { communityRoutes } from "./routes/community";
 import { accountRoutes } from "./routes/accounts";
 import { notificationRoutes } from "./routes/notifications";
+import { usageRoutes } from "./routes/usage";
 import { timingSafeEqual } from "./auth-crypto";
 
 export function createApi() {
@@ -34,7 +35,8 @@ export function createApi() {
     .route("/", soloRoutes())
     .route("/", communityRoutes())
     .route("/", accountRoutes())
-    .route("/", notificationRoutes());
+    .route("/", notificationRoutes())
+    .route("/", usageRoutes());
 }
 export type RpcApi = ReturnType<typeof createApi>;
 

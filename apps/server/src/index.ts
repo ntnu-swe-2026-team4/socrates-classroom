@@ -3,6 +3,7 @@ import { createApp } from "./app";
 import { Chat } from "./do/chat";
 import { ReportRunner } from "./do/report-runner";
 import type { Env } from "./env";
+import { flushUsageAlerts } from "./routes/usage";
 
 export { Chat, ReportRunner };
 export type { RpcApp } from "./app";
@@ -19,5 +20,8 @@ export default {
       console.error("chat request failed", error);
       return Response.json({ error: "internal_error" }, { status: 500 });
     }
+  },
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(flushUsageAlerts(env));
   },
 } satisfies ExportedHandler<Env>;
