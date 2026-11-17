@@ -47,7 +47,7 @@ const PROVIDERS: Array<{ id: AuthProvider; name: string; label: MessageKey }> = 
   { id: "google", name: "Google", label: "login_google" },
 ];
 
-const RIGHT_COLUMN_PX = 520;
+const RIGHT_COLUMN_PX = 680;
 const BOX = "border-[1.5px] border-comic-ink";
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vermilion";
 const INPUT = cn(
@@ -148,17 +148,30 @@ function LoginPage() {
   const title = mode === "login" ? t("login_title") : t("register_title");
 
   return (
-    <div className="relative flex min-h-dvh flex-col overflow-x-hidden bg-comic-ground bg-[radial-gradient(var(--color-comic-dot)_1.1px,transparent_1.5px)] bg-size-[12px_12px] font-sans text-comic-ink [color-scheme:light] lg:grid lg:min-h-[max(100dvh,640px)] lg:grid-cols-[1fr_520px] lg:overflow-hidden">
-      <StoaField reserve={RIGHT_COLUMN_PX} className="max-lg:hidden" />
+    <div className="relative flex min-h-dvh flex-col overflow-x-hidden bg-comic-ground bg-[radial-gradient(var(--color-comic-dot)_1.1px,transparent_1.5px)] bg-size-[12px_12px] font-sans text-comic-ink [color-scheme:light] lg:grid lg:min-h-[max(100dvh,640px)] lg:grid-cols-[minmax(0,1fr)_minmax(600px,58%)] lg:overflow-hidden">
+      <StoaField reserve={RIGHT_COLUMN_PX} className="opacity-35 max-lg:hidden" />
 
       <section className="relative flex flex-col gap-6 px-4 pt-6 sm:px-8 lg:px-16 lg:pt-14">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Link to="/" className={cn(BOX, "inline-flex items-center gap-3 bg-comic-paper pr-3.5", FOCUS)}>
             <span className="flex size-10 items-center justify-center bg-comic-ink text-[20px] font-bold text-comic-paper">
               {t("app_mark")}
             </span>
             <span className="text-[13px] font-bold tracking-[0.3em] uppercase">{t("brand_name")}</span>
           </Link>
+          <Link
+            to="/"
+            data-story-link
+            className={cn(
+              BOX,
+              "flex h-10 items-center gap-1.5 bg-comic-paper px-3 text-[12.5px] hover:bg-comic-ink hover:text-comic-paper",
+              FOCUS,
+            )}
+          >
+            <ArrowLeft className="size-3.5" />
+            {t("login_back_to_story")}
+          </Link>
+          <span className="flex-1" />
           {me.data && (
             <button
               type="button"
@@ -177,10 +190,8 @@ function LoginPage() {
 
         <div className="flex max-w-[520px] flex-col gap-4 lg:absolute lg:bottom-16 lg:left-16 lg:w-[calc(100%-8rem)]">
           <NoticeBar />
-          <div
-            className={cn(BOX, "bg-comic-paper px-6 py-5 shadow-[6px_6px_0_var(--color-comic-ink)] lg:px-7 lg:py-6")}
-          >
-            <h1 className="font-serif text-[40px] leading-[1.15] font-black tracking-[-0.01em] whitespace-pre-line lg:text-[64px]">
+          <div className={cn(BOX, "bg-comic-paper/85 px-6 py-5 lg:px-7 lg:py-6")}>
+            <h1 className="font-serif text-[32px] leading-[1.2] font-black tracking-[-0.01em] whitespace-pre-line lg:text-[44px]">
               {t("login_hero_title")}
             </h1>
             <p className="mt-4 text-end font-dot text-[14px] tracking-[0.12em] text-comic-soft lg:text-[15px]">
@@ -191,7 +202,7 @@ function LoginPage() {
         </div>
       </section>
 
-      <section className="relative mx-auto flex w-full max-w-[560px] flex-col justify-center gap-5 px-4 py-8 sm:px-8 lg:mx-0 lg:max-w-none lg:py-12 lg:pr-16 lg:pl-0">
+      <section className="relative mx-auto flex w-full max-w-[560px] flex-col justify-center gap-5 px-4 py-8 sm:px-8 lg:mx-0 lg:max-w-none lg:px-12 lg:py-12 lg:*:mx-auto lg:*:w-full lg:*:max-w-[460px]">
         {guestSession.expired && (
           <p role="status" className={cn(BOX, "bg-comic-ochre/30 px-5 py-3 text-[12.5px] leading-relaxed")}>
             {t("guest_expired_notice")}
@@ -199,10 +210,7 @@ function LoginPage() {
         )}
 
         <div className="relative">
-          <div
-            aria-hidden
-            className="absolute inset-[12px_-12px_-12px_12px] bg-[radial-gradient(var(--color-comic-ink)_1.6px,transparent_2px)] bg-size-[6px_6px] max-sm:inset-[8px_-8px_-8px_8px]"
-          />
+          <div aria-hidden className="absolute inset-[8px_-8px_-8px_8px] bg-comic-ink" />
           <div className={cn(BOX, "relative bg-comic-paper p-5 sm:p-7")}>
             <div className="flex items-center justify-between gap-3">
               <h2 className="font-serif text-[28px] leading-tight font-black">{title}</h2>
@@ -219,7 +227,9 @@ function LoginPage() {
                     }}
                     className={cn(
                       "cursor-pointer px-3.5 py-1.5 text-[13px] not-first:border-l-[1.5px] not-first:border-comic-ink",
-                      mode === value ? "bg-comic-ochre font-bold" : "bg-comic-paper hover:bg-comic-ground",
+                      mode === value
+                        ? "bg-comic-ink font-bold text-comic-paper"
+                        : "bg-comic-paper hover:bg-comic-ground",
                       FOCUS,
                     )}
                   >
@@ -339,13 +349,13 @@ function LoginPage() {
                 aria-busy={busy}
                 className={cn(
                   BOX,
-                  "flex h-[46px] cursor-pointer items-center justify-between bg-comic-ochre px-[18px] text-[15px] font-bold enabled:hover:shadow-[3px_3px_0_var(--color-comic-ink)] disabled:cursor-not-allowed disabled:opacity-55",
+                  "flex h-[46px] cursor-pointer items-center justify-between bg-comic-ink px-[18px] text-[15px] font-bold text-comic-paper enabled:hover:bg-vermilion enabled:hover:border-vermilion disabled:cursor-not-allowed disabled:opacity-45",
                   FOCUS,
                 )}
               >
                 {mode === "login" ? t("login_title") : t("register_submit")}
                 {busy ? (
-                  <Spinner className="border-comic-ink/25 border-t-comic-ink" />
+                  <Spinner className="border-comic-paper/30 border-t-comic-paper" />
                 ) : (
                   <span aria-hidden className="font-dot tracking-[0.2em]">
                     ● ● ●
