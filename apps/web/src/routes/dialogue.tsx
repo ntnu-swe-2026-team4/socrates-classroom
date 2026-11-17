@@ -10,17 +10,22 @@ import { cn } from "@/components/ui";
 import { useFormatDate, useT } from "@/i18n";
 
 export const Route = createFileRoute("/dialogue")({
-  validateSearch: (search: Record<string, unknown>): { activityId?: string; q?: string; term?: string } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { activityId?: string; slot?: string; q?: string; term?: string } => ({
     activityId: typeof search.activityId === "string" ? search.activityId : undefined,
+    slot: typeof search.slot === "string" ? search.slot : undefined,
     q: typeof search.q === "string" ? search.q : undefined,
     term: typeof search.term === "string" ? search.term : undefined,
   }),
   beforeLoad: async ({ search, context, location }) => {
     const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
-    if (!me) throw redirect({ to: "/login", search: { next: location.href } });
     const activityId = search.activityId ?? readActivityId();
-    if (!activityId) throw redirect({ to: "/classrooms" });
-    if (me.preview) return;
+    if (!activityId) {
+      if (!me) throw redirect({ to: "/login", search: { next: location.href } });
+      throw redirect({ to: "/classrooms" });
+    }
+    if (!me || me.preview || search.slot) return;
     const info = await context.queryClient.fetchQuery({
       queryKey: ["activity", activityId],
       queryFn: () => api.activityInfo(activityId),
@@ -41,11 +46,11 @@ function DialoguePage() {
   const t = useT();
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
-  const { activityId: activityParam, q, term } = Route.useSearch();
+  const { activityId: activityParam, slot, q, term } = Route.useSearch();
   const activityId = activityParam ?? readActivityId() ?? "";
   const activityQuery = useQuery({
-    queryKey: ["activity", activityId],
-    queryFn: () => api.activityInfo(activityId),
+    queryKey: slot ? ["activity", activityId, slot] : ["activity", activityId],
+    queryFn: () => api.activityInfo(activityId, slot),
     enabled: activityId !== "",
     staleTime: Infinity,
   });
@@ -53,11 +58,12 @@ function DialoguePage() {
   const info = activityQuery.data;
   const topic = info?.topic;
   const finished = Boolean(info?.finishedAt);
+  const participantId = info?.participantId ?? me.data?.id ?? "";
 
   return (
     <ChatLayout
       sidebar={
-        me.data?.guest && !me.data.preview ? (
+        !me.data || (me.data.guest && !me.data.preview) ? (
           <ActivityTopic title={topic?.title} finished={finished} />
         ) : (
           <ClassroomTopics
@@ -69,11 +75,11 @@ function DialoguePage() {
         )
       }
     >
-      {me.data ? (
+      {!me.isPending && !activityQuery.isPending ? (
         <DialogueView
-          key={activityId}
+          key={`${activityId}:${participantId}`}
           threadId={activityId}
-          userId={me.data.id}
+          userId={participantId}
           title={topic?.title ?? t("dlg_title")}
           subtitle={info?.classroomName}
           statement={topic?.statement}

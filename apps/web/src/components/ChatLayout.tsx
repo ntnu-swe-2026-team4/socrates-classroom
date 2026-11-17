@@ -62,7 +62,7 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
           className={cn(
             "flex shrink-0 flex-col border-line bg-card",
             mobile
-              ? cn("fixed inset-y-0 left-0 z-50 w-[82%] max-w-[300px] border-r", !open && "hidden")
+              ? cn("fixed inset-y-0 left-0 z-40 w-[82%] max-w-[300px] border-r", !open && "hidden")
               : open
                 ? "w-[264px] border-r"
                 : "hidden",

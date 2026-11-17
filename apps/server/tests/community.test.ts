@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { seedDemo } from "../src/seed";
 import { SESSION_COOKIE } from "../src/auth";
+import { run } from "../src/db/d1";
 import { call, cookieOf, registerAccount, enableTeacher } from "./helpers";
 
 const json = { "Content-Type": "application/json" };
@@ -21,15 +22,22 @@ interface PostShape {
   replies: Array<Omit<PostShape, "replies">>;
 }
 
-async function classroom(name: string): Promise<{ id: string; code: string }> {
+async function classroom(name: string): Promise<{ id: string; code: string; activityId: string }> {
   const res = await call("/api/classrooms", {
     method: "POST",
     headers: { ...json, Cookie: teacher },
-    body: JSON.stringify({ name, topicId }),
+    body: JSON.stringify({ name }),
   });
   expect(res.status).toBe(201);
   const body = (await res.json()) as { classroomId: string; code: string };
-  return { id: body.classroomId, code: body.code };
+  const started = await call(`/api/classrooms/${body.classroomId}/activities`, {
+    method: "POST",
+    headers: { ...json, Cookie: teacher },
+    body: JSON.stringify({ topicId }),
+  });
+  expect(started.status).toBe(201);
+  const activity = (await started.json()) as { activityId: string };
+  return { id: body.classroomId, code: body.code, activityId: activity.activityId };
 }
 
 async function student(code: string, name: string): Promise<{ cookie: string; id: string }> {
@@ -66,6 +74,7 @@ beforeAll(async () => {
     body: JSON.stringify({ email: "demo@socrates.tw", password: "demo-demo" }),
   });
   teacher = await enableTeacher(cookieOf(login));
+  await run(env.DB, "UPDATE users SET teacher_plan = 'school' WHERE email = 'demo@socrates.tw'");
   const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>;
   topicId = topics[0]!.id;
 });

@@ -1,5 +1,3 @@
-ALTER TABLE users ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 1;
-UPDATE users SET is_guest = 0 WHERE email IS NOT NULL;
 ALTER TABLE users DROP COLUMN role;
 
 CREATE TABLE solo_chats (

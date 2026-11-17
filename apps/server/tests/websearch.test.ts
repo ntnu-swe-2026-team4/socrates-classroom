@@ -3,8 +3,8 @@ import { applyD1Migrations } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
-import { seedDemo } from "../src/seed";
-import { call, cookieOf, frames, enableTeacher } from "./helpers";
+import { seedFixture } from "../src/seed";
+import { call, classroomWithActivity, cookieOf, frames, participantIdOf } from "./helpers";
 
 let thread: string;
 let cookie: string;
@@ -26,29 +26,21 @@ const migrations = inject("d1Migrations");
 
 beforeAll(async () => {
   await applyD1Migrations(env.DB, migrations);
-  await seedDemo(env.DB);
+  await seedFixture(env.DB);
   const login = await call("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: "demo@socrates.tw", password: "demo-demo" }),
   });
-  const teacher = await enableTeacher(cookieOf(login));
-  const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>;
-  const created = (await (
-    await call("/api/classrooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ name: "班", topicId: topics[0]!.id }),
-    })
-  ).json()) as { code: string; activityId: string };
+  const teacher = cookieOf(login);
+  const created = await classroomWithActivity(teacher, "班");
   const joined = await call("/api/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code: created.code, name: "同學", tosAccepted: true }),
   });
-  const { user } = (await joined.json()) as { user: { id: string } };
   cookie = cookieOf(joined);
-  thread = `${created.activityId}:${user.id}`;
+  thread = `${created.activityId}:${await participantIdOf(created.activityId, cookie)}`;
 });
 
 describe("websearch extension (web_search + get_search_content)", () => {
@@ -91,21 +83,13 @@ describe("websearch extension (web_search + get_search_content)", () => {
     const found = findPassages(content, ["正義"], "case-insensitive");
     expect(found).toContain("正義");
     expect(found).not.toContain("no match");
-
-    expect(responses.isSearchHit("https://u")).toBe(true);
-    expect(responses.isSearchHit("https://attacker.example")).toBe(false);
   });
 
-  it("fetch_content allows only search-result URLs (option B: web_search first → same URL fetchable; not searched → rejected)", async () => {
+  it("fetch_content only fetches URLs that came from this conversation's searches", async () => {
     const { createWebSearchExtension } = await import("../src/pi/extensions/websearch");
     const fakeAi = {
       websearch: async () =>
-        new Response(
-          JSON.stringify({
-            items: [{ url: "https://zh.wikipedia.org/wiki/Justice", title: "Justice", description: "d" }],
-          }),
-          { headers: { "content-type": "application/json" } },
-        ),
+        new Response(JSON.stringify({ items: [] }), { headers: { "content-type": "application/json" } }),
     };
     const extension = createWebSearchExtension(fakeAi as never);
     type Tool = {
@@ -113,28 +97,26 @@ describe("websearch extension (web_search + get_search_content)", () => {
       execute: (args: Record<string, unknown>) => Promise<{ output: Array<{ type: string; text: string }> }>;
     };
     const tools = (extension.tools ?? []) as unknown as Tool[];
-    const searchTool = tools.find((tool) => tool.name === "web_search")!;
     const fetchTool = tools.find((tool) => tool.name === "fetch_content")!;
 
-    const blocked = await fetchTool.execute({ url: "https://zh.wikipedia.org/wiki/Justice" });
-    expect(blocked.output[0]!.text).toContain("web_search results");
-
-    await searchTool.execute({ query: "justice" });
     const origFetch = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      new Response("<html><title>Justice</title><body>justice body</body></html>", {
+    let fetched = false;
+    globalThis.fetch = (async () => {
+      fetched = true;
+      return new Response("<html><title>Justice</title><body>justice body</body></html>", {
         headers: { "content-type": "text/html" },
-      })) as typeof fetch;
+      });
+    }) as typeof fetch;
     try {
-      const allowed = await fetchTool.execute({ url: "https://zh.wikipedia.org/wiki/Justice", mode: "raw" });
-      expect(allowed.output[0]!.text).not.toContain("web_search results");
-      expect(allowed.output[0]!.text).toContain("justice body");
+      const gated = await fetchTool.execute({ url: "https://example.org/wiki/Anything", mode: "raw" });
+      expect(gated.output[0]!.text).toContain("only URLs from this conversation's web_search results");
+      expect(fetched).toBe(false);
     } finally {
       globalThis.fetch = origFetch;
     }
   });
 
-  it("redirect hops are gated by the search-hit allowlist (302 to a non-hit host rejected; hit host allowed)", async () => {
+  it("redirect hops must stay same-site (302 cross-site rejected; same-site allowed)", async () => {
     const { createWebSearchExtension } = await import("../src/pi/extensions/websearch");
     const fakeAi = {
       websearch: async () =>

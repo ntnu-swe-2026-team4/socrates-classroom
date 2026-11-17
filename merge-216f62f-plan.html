@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>216f62f → frontend/web-next 合併規劃</title>
+<style>
+  :root { --ink:#1b1f24; --muted:#5b6675; --line:#e3e7ec; --accent:#8a3b12; }
+  * { box-sizing: border-box; }
+  body {
+    max-width: 900px; margin: 40px auto; padding: 0 20px 80px;
+    background: #f8f9fa; color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+    line-height: 1.72; font-size: 16px;
+  }
+  h1 {
+    font-size: 26px; line-height: 1.35; margin: 0 0 6px;
+    padding-left: 14px; border-left: 6px solid var(--accent);
+  }
+  h2 {
+    font-size: 20px; margin: 44px 0 10px; padding-bottom: 6px;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 16.5px; margin: 26px 0 6px; color: #2c3540; }
+  h4 { font-size: 15px; margin: 18px 0 4px; color: var(--muted); font-weight: 600; }
+  p, li { color: #252b33; }
+  .meta { color: var(--muted); font-size: 13.5px; margin: 0 0 8px; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+    background: #eceff2; padding: 1px 5px; border-radius: 4px;
+  }
+  pre {
+    background: #1e242c; color: #e6ebf1; padding: 14px 16px; border-radius: 8px;
+    overflow-x: auto; font-size: 13px; line-height: 1.6;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #eef1f4; font-weight: 600; }
+  tbody tr:nth-child(even) { background: #fbfcfd; }
+  .box { border-radius: 8px; padding: 14px 18px; margin: 18px 0; border-left: 5px solid; }
+  .highlight { background: #fff8e1; border-color: #e0a800; }
+  .danger { background: #fdecea; border-color: #c62828; }
+  .success { background: #eaf6ec; border-color: #2e7d32; }
+  .info { background: #e8f0fb; border-color: #2f5d9e; }
+  .box p:first-child { margin-top: 0; }
+  .box p:last-child, .box ul:last-child { margin-bottom: 0; }
+  .tag {
+    display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: .04em;
+    padding: 1px 7px; border-radius: 999px; vertical-align: 1px; white-space: nowrap;
+  }
+  .t-ours { background: #e3f0e5; color: #1f5c2a; }
+  .t-theirs { background: #ece5f7; color: #4a2d80; }
+  .t-hand { background: #fdeaea; color: #a11f1f; }
+  .t-gen { background: #e6eef8; color: #1f4a7a; }
+  .num { font-variant-numeric: tabular-nums; text-align: right; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+  .kpi { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; }
+  .kpi b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--muted); font-size: 13px; }
+  ul.tight li { margin: 3px 0; }
+  .phase { border-left: 4px solid var(--line); padding-left: 16px; margin: 22px 0; }
+  .phase h3 { margin-top: 0; }
+  .phase .when { color: var(--muted); font-size: 13px; }
+  .check { list-style: none; padding-left: 0; }
+  .check li::before { content: "☐ "; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<h1>把 <code>216f62f</code> 合進 <code>frontend/web-next</code> 的執行規劃</h1>
+<p class="meta">
+  產出時間：2026-11-17 ｜ 目標分支：<code>frontend/web-next</code>（HEAD <code>899b3d7</code>）｜
+  來源 commit：<code>216f62f</code> feat(server): rebuild the account and classroom model (#136) (#142)
+</p>
+
+<div class="box danger">
+  <p><strong>結論先講：這不是一次「解衝突」的合併，是一次「兩套模型對撞」的整合。</strong></p>
+  <ul class="tight">
+    <li>試合併 <code>216f62f</code>：<strong>46 個衝突檔、155 個 conflict marker</strong>（另有 1 個 delete/modify 衝突）。</li>
+    <li>更麻煩的是<strong>沒有衝突的地方也壞了</strong>：migration 編號 002–006 兩邊各有一套（合併後目錄裡有 16 支檔案、5 組重複序號），D1 套用順序直接失效。</li>
+    <li>根因是兩邊各自重寫了同一件事：<strong>身分／帳號模型</strong>。<code>web-next</code> 有 <code>docs/accounts.md</code> 定案模型（<code>teacher_plan</code>／<code>teacher_mode</code>／guest 帳號列）；<code>216f62f</code> 用 capability flags ＋ <code>activity_participants</code>（無帳號 guest ＋ participant cookie）。</li>
+    <li>因此建議：<strong>先用半天做決策（D0–D5），再動手解衝突</strong>，並拆成 server PR ＋ web PR 兩段落地。</li>
+  </ul>
+</div>
+
+<div class="grid2">
+  <div class="kpi"><b>46</b><span>衝突檔（merge 216f62f）</span></div>
+  <div class="kpi"><b>155</b><span>conflict marker 總數</span></div>
+  <div class="kpi"><b>16</b><span>合併後 migrations 檔數（應為 11 + 5）</span></div>
+  <div class="kpi"><b>26–30h</b><span>預估工時（單人，含驗證）</span></div>
+</div>
+
+<h2>1. 分歧現況</h2>
+
+<table>
+  <thead><tr><th>項目</th><th>值</th><th>備註</th></tr></thead>
+  <tbody>
+    <tr><td>merge base</td><td><code>94bbaaf</code>（11/16 19:50，PR #121 btw side session）</td><td>web-next 就是從這裡長出去的</td></tr>
+    <tr><td><code>frontend/web-next</code></td><td>領先 32 commits，動了 <strong>319 檔</strong>（其中 <code>apps/web</code> 115 檔、<code>apps/server</code> 57 檔）</td><td>前端全面改版 ＋ 一批後端新功能（solo／community／notifications／usage／OAuth／teacher_plan）</td></tr>
+    <tr><td><code>216f62f</code></td><td>領先 1 commit（squash 了 #130–#136），動了 <strong>76 檔</strong></td><td>帳號能力化、participants、invite links、test mode、topics 解耦</td></tr>
+    <tr><td><code>origin/main</code></td><td><code>2f85645</code>，比 merge base 多 4 個 commit</td><td>除 <code>216f62f</code> 外還有 <code>eb70f9d</code>(OAuth)、<code>cc476d6</code>(stale watch)、<code>2f85645</code>(thinking levels)</td></tr>
+  </tbody>
+</table>
+
+<div class="box highlight">
+  <p><strong>要注意的事情：使用者要求的是 merge <code>216f62f</code>，但 main 已經又往前走了 3 個 commit。</strong></p>
+  <p>實測：merge <code>216f62f</code> → 46 衝突檔 / 155 markers；merge 整個 <code>origin/main</code> → 47 衝突檔 / 164 markers（只多一個 <code>docs/cf.md</code>，瑣碎）。<strong>建議直接 merge <code>origin/main</code></strong>，避免下週再來一次。</p>
+</div>
+
+<h2>2. 試合併實測（在暫時 worktree 跑過，未污染工作目錄）</h2>
+
+<pre><code>git worktree add /tmp/mw -b trial/merge 216f62f
+cd /tmp/mw &amp;&amp; git merge --no-ff frontend/web-next
+# → exit 1 · 46 conflicted files · 46 CONFLICT lines · 155 markers
+# → 1 個 delete/modify 衝突：apps/web/src/routes/t.setup.tsx
+# → migrations/ 目錄變成 16 支檔案（002_capabilities 與 002_preview_student 並存…）</code></pre>
+
+<h3>衝突分布的「形狀」</h3>
+<p>46 個衝突檔裡，真正需要人工判斷的其實不多：大約 <strong>14 檔是雙邊大改（HAND）</strong>，其餘可以整檔取一邊。兩邊改動規模對照（<code>+/-</code> 行數）：</p>
+
+<table>
+  <thead><tr><th>檔案</th><th class="num">web-next</th><th class="num">216f62f</th><th>判讀</th></tr></thead>
+  <tbody>
+    <tr><td><code>apps/server/src/auth.ts</code></td><td class="num">135+/9−</td><td class="num">130+/10−</td><td>兩套 session 實作正面對撞</td></tr>
+    <tr><td><code>packages/shared/src/index.ts</code></td><td class="num">236+/10−</td><td class="num">146+/6−</td><td>契約 SSOT，必須逐段裁決</td></tr>
+    <tr><td><code>apps/server/src/services/members.ts</code></td><td class="num">44+/8−</td><td class="num">206+/11−</td><td>participants 是新概念，以 216f62f 為底</td></tr>
+    <tr><td><code>apps/server/src/do/chat.ts</code></td><td class="num">115+/17−</td><td class="num">74+/30−</td><td>thread key 換成 <code>{activityId}:{participantId}</code>，撞到 web-next 的 solo／btw 改寫</td></tr>
+    <tr><td><code>apps/server/src/do/report-runner.ts</code></td><td class="num">1+/1−</td><td class="num">121+/65−</td><td>幾乎整檔取 216f62f，再補 1 行 preview 過濾</td></tr>
+    <tr><td><code>apps/server/src/routes/classrooms.ts</code></td><td class="num">199+/31−</td><td class="num">80+/57−</td><td>owned ∪ joined ＋ 建班級/開活動拆開，兩邊都大改</td></tr>
+    <tr><td><code>apps/web/src/routes/settings.tsx</code></td><td class="num">662+/162−</td><td class="num">1+/1−</td><td>整檔取 web-next</td></tr>
+    <tr><td><code>apps/web/src/i18n/index.ts</code></td><td class="num">1204+/20−</td><td class="num">254+/32−</td><td>取 web-next ＋ 移植 216f62f 新字串（三語齊全）</td></tr>
+    <tr><td><code>apps/web/src/routes/t.setup.tsx</code></td><td class="num">0+/249−（刪除）</td><td class="num">80+/159−（重寫）</td><td>delete/modify：流程設計要拍板（D4）</td></tr>
+  </tbody>
+</table>
+
+<h2>3. 六個結構性衝突（機械解衝突救不了的部分）</h2>
+
+<h3>C1 · 兩套帳號模型並存於同一張 <code>users</code> 表</h3>
+<table>
+  <thead><tr><th>概念</th><th><code>frontend/web-next</code>（<code>docs/accounts.md</code> 定案）</th><th><code>216f62f</code></th></tr></thead>
+  <tbody>
+    <tr><td>誰能開課</td><td><code>teacher_plan</code>（<code>trial</code>／<code>school</code>）＋ <code>teacher_mode</code> 開關</td><td><code>can_manage_classes</code> 單一 flag（原 <code>role</code> 回填）</td></tr>
+    <tr><td>admin</td><td><code>users.is_admin</code>（011 支線的 <code>008_account_roles.sql</code>）</td><td><code>users.is_admin</code>（<code>002_capabilities.sql</code>）</td></tr>
+    <tr><td>guest</td><td>真的 <code>users</code> 列：<code>is_guest</code>、<code>guest_activity_id</code>，24h 後失效</td><td><strong>沒有 users 列</strong>：<code>activity_participants(user_id NULL)</code> ＋ <code>socrates_participant</code> cookie</td></tr>
+    <tr><td>session</td><td><code>sealClaims/openClaims</code>，token 帶 <code>name/guest/role/preview</code>，每請求 <code>resolveSession</code> 回讀 D1</td><td><code>issueSessionToken(user, version)</code>，token 只帶 <code>uid/ver</code>，每請求 <code>lookupSession</code> 回讀 capability／disabled／version</td></tr>
+    <tr><td>撤銷</td><td>admin 改資料 → 下一請求即生效（無 session 版號）</td><td><code>disabled_at</code> ＋ <code>session_version</code>，WS 每則訊息重驗</td></tr>
+    <tr><td>老師自測</td><td>「學生視角預覽」<code>preview_classroom_id</code>（測試學生掛老師名下）</td><td><code>mode='test'</code> 活動 ＋ <code>kind='teacher'</code> slot（最多 6 條並行對話）</td></tr>
+  </tbody>
+</table>
+<p>兩邊都已經做到「每請求回讀 D1」——好消息是心智模型一致，<strong>可以合成一套</strong>；壞消息是欄位名、語意、migration 都不同，不能 union。</p>
+
+<h3>C2 · migration 編號相撞，而且合併後不會有 conflict</h3>
+<div class="box danger">
+  <p><code>001_init.sql</code> 兩邊都沒動，所以 git 對 migrations 目錄<strong>一個衝突都不報</strong>，直接產生：</p>
+  <pre><code>002_capabilities.sql       002_preview_student.sql
+003_activity_participants  003_accounts_solo.sql
+004_activity_invites       004_oauth.sql
+005_activity_mode          005_topic_i18n.sql
+006_topic_classroom        006_community.sql
+                           007_teacher_key_entries … 011_usage_quota</code></pre>
+  <p>而且內容互相踩：<code>003_accounts_solo.sql</code> 做 <code>ALTER TABLE users DROP COLUMN role</code>，<code>002_capabilities.sql</code> 卻用 <code>UPDATE users SET can_manage_classes = 1 WHERE role = 'teacher'</code> 回填；<code>is_admin</code> 在兩支 migration 都被 <code>ADD COLUMN</code>。順序一換就炸，順序對也可能炸。</p>
+</div>
+
+<h3>C3 · <code>only_student</code> 的語意是相反的</h3>
+<p><code>web-next</code> 保留 <code>only_student</code>（owner 不能用自己的帳號加入自己的班級，責任歸屬考量，<code>docs/accounts.md</code> 有寫）；<code>216f62f</code> 把它<strong>刪掉</strong>，改成「任何已登入身分都能加入，老師用 test slot 自測」。API 錯誤碼表、前端 i18n（<code>join_only_student</code> 三語）、兩邊的測試都咬住這個字串。</p>
+
+<h3>C4 · <code>/t/setup</code> 的生死</h3>
+<p><code>web-next</code> 刪了 <code>/t/setup</code>（改成「創建課程 → 直接進教室頁編輯」）；<code>216f62f</code> 把它拆成 classroom → 議題集 → 開活動 三步，而且 <code>POST /api/classrooms</code> 改成<strong>只建班級</strong>（活動走 <code>POST /api/classrooms/:id/activities</code>）。這不是文字衝突，是<strong>前端呼叫端一定要重寫</strong>。</p>
+
+<h3>C5 · thread／report 的 key 換代價</h3>
+<p><code>216f62f</code> 把 thread key 改成 <code>{activityId}:{participantId}</code>（<code>ActivityInfo.participantId</code> 是 WS thread 名的一半，<code>apps/web/src/routes/dialogue.tsx</code> 要等 info resolve 才掛 socket）。<code>AGENTS.md</code> 明寫「<code>ws/protocol.ts</code> 的協定與 <code>tests/chat.test.ts</code> 絕不能壞」——這是本合併的最高風險點，<code>do/chat.ts</code>、<code>ws/sockets.ts</code>、<code>useDialogue.ts</code>、<code>chat.test.ts</code> 要一起看。</p>
+
+<h3>C6 · admin 兩套 UI／兩套 API</h3>
+<p><code>web-next</code>：<code>/admin</code> tabbed console（overview／user table／schools／teacher 開通）；<code>216f62f</code>：<code>/admin/users</code> ＋ <code>routes/admin.ts</code>（<code>is_admin</code>、停用即踢線、<code>session_version</code>）。兩份都要收斂成一個 endpoint 組 ＋ 一個 UI。</p>
+
+<h2>4. 動手前必須拍板的決策</h2>
+
+<table>
+  <thead><tr><th>#</th><th>決策</th><th>建議</th><th>成本</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>D0</strong></td>
+      <td>生產 D1 目前套到哪一支 lineage？（決定 migration 誰讓誰）</td>
+      <td><strong>先查</strong> <code>cf d1 migrations list &lt;D1_ID&gt; --remote</code>。若 main 已部署過（<code>216f62f</code> 已在 main 上），代表 prod 已有 <code>002_capabilities…006_topic_classroom</code>，那就<strong>不能改這 5 支檔名</strong>，要改的是把 web-next 的 <code>002–011</code> 重編成 <code>007–016</code>，並修掉重複的 <code>ADD COLUMN is_admin</code> 與 <code>DROP role</code> 前後的依賴。</td>
+      <td>0.5h（查）＋3h（改寫）</td>
+    </tr>
+    <tr>
+      <td><strong>D1</strong></td>
+      <td>帳號模型誰是 SSOT？</td>
+      <td><strong>A（建議）</strong>：以 <code>web-next</code> 的 <code>docs/accounts.md</code> 為產品模型（<code>is_guest</code>／<code>is_admin</code>／<code>teacher_plan</code>／<code>teacher_mode</code>／<code>schools</code>／<code>student_classroom_id</code>／<code>guest_activity_id</code>），把 <code>216f62f</code> 的 <code>disabled_at</code>／<code>session_version</code> 併進 <code>resolveSession</code>，<code>can_manage_classes</code> 改成 <code>teacher_plan IS NOT NULL</code> 的投影（或直接廢欄位）。理由：quota／notifications／admin console／11 支 migration／UI 全部咬住 <code>teacher_plan</code>。<br><strong>B</strong>：反過來以 capability flags 為 SSOT，改寫 <code>accounts.md</code>＋admin UI＋quota 依賴（成本約多一倍）。</td>
+      <td>A：2h 決策落地<br>B：+1 天</td>
+    </tr>
+    <tr>
+      <td><strong>D2</strong></td>
+      <td><code>activity_participants</code> 與 web-next 的 guest <code>users</code> 列要不要並存？</td>
+      <td>讓 <code>activity_participants</code> 當<strong>活動層唯一的 roster key</strong>（thread／report 已經是 <code>participantId</code>，跑不掉）；guest 一律是 participant，<code>is_guest</code> 帳號列只保留給「已註冊但未升級」與 ToS 存證。並存是可以的，但要寫清楚「哪張表是名冊真相」。</td>
+      <td>含在 D1 內</td>
+    </tr>
+    <tr>
+      <td><strong>D3</strong></td>
+      <td><code>only_student</code> 去或留？</td>
+      <td><strong>留</strong>（live 活動 owner 不能加入自己的班），並把 <code>216f62f</code> 的 test slot 當成老師自測的正式路徑。兩者不衝突，只是要同時在 <code>messages.ts</code>／api-contract／i18n 保留 <code>only_student</code> 並新增 <code>capability_required</code>／<code>account_disabled</code>。</td>
+      <td>0.5h</td>
+    </tr>
+    <tr>
+      <td><strong>D4</strong></td>
+      <td>要不要復活 <code>/t/setup</code>？</td>
+      <td><strong>不復活</strong>。保留 web-next 的 <code>/classrooms/:id</code> 為單一入口，把「議題集 ＋ 開活動（live／test）」做成教室頁的分頁／抽屜（<code>216f62f</code> 的 <code>ClassroomTopics.tsx</code> 可以整支搬過去）。API 依 216f62f 的 <code>POST /classrooms</code> ＋ <code>POST /classrooms/:id/activities</code>。</td>
+      <td>含在 Phase 5</td>
+    </tr>
+    <tr>
+      <td><strong>D5</strong></td>
+      <td>「學生視角預覽」與 test mode 二選一？</td>
+      <td><strong>兩者都留</strong>（用途不同：預覽＝看學生畫面；test slots＝老師多路練跑），但預覽學生要從 test／live roster 排除（216f62f 已有 <code>preview_classroom_id IS NULL</code> 的過濾可搬）。</td>
+      <td>0.5h</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>5. 執行計畫</h2>
+
+<div class="box info">
+  <p><strong>方向定調：</strong>在 <code>frontend/web-next</code> 上開整合分支，把 <code>origin/main</code>（含 <code>216f62f</code>）merge 進來，落地成 merge commit（保留 web-next 32 個 commit 的歷史），再開 PR 回 <code>frontend/web-next</code> 觸發 CI。</p>
+  <pre><code>git switch frontend/web-next
+git tag web-next/pre-main-merge &amp;&amp; git push origin web-next/pre-main-merge
+git switch -c integration/web-next-main
+git merge origin/main     # ours = web-next，theirs = main
+# 解衝突規則：apps/web → 取 ours 再移植；apps/server → 逐檔裁決（見 §6）</code></pre>
+</div>
+
+<div class="phase">
+  <h3>Phase 0 · 準備（0.5h）</h3>
+  <ul class="check">
+    <li>打 tag 備份 web-next，推 origin</li>
+    <li>查生產 D1 的 applied migrations（D0 的唯一依據）</li>
+    <li><code>git config rerere.enabled true</code>（重跑衝突時省力）</li>
+    <li>確認 <code>pnpm test</code> 在乾淨的 web-next 上是綠的（baseline 數字記下來：server 115／web 63）</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3>Phase 1 · 決策定稿，先寫文件再寫 code（4h，無 code）</h3>
+  <p class="when">產出：<code>docs/accounts.md</code> 增修 §身分一覽、<code>docs/api-contract.md</code> 的錯誤碼與端點表。先 commit 決策，後面的衝突才有裁決依據。</p>
+  <ul class="check">
+    <li>D0 → 決定 migration 編號方向</li>
+    <li>D1 / D2 → 身分模型與名冊真相</li>
+    <li>D3 / D4 / D5 → 錯誤碼、setup 流程、自測路徑</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3>Phase 2 · 資料層 migrations（3h）</h3>
+  <ul class="check">
+    <li>依 D0 重新編號；把 <code>ADD COLUMN is_admin</code>、<code>DROP COLUMN role</code> 與 <code>can_manage_classes</code> 回填的依賴整理成單一路徑</li>
+    <li><code>216f62f:apps/server/tests/migrations.test.ts</code> 直接搬過來，改成對新編號的斷言（它會抓 <code>003</code> 前綴，重編後要改）</li>
+    <li>驗證：清空 <code>apps/web/.cloudflare/state</code> → <code>pnpm migrate</code> 全綠；再跑一次確認 idempotent</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3>Phase 3 · 契約層 <code>packages/shared</code>（2h）</h3>
+  <p class="when">6 個 hunk。原則：<strong>以 D1 決策後的 schema 為準，不做 union</strong>——<code>User</code>、<code>ActivityInfo</code>、<code>ActivitySlot</code>、<code>AdminUser</code>、錯誤碼陣列。</p>
+</div>
+
+<div class="phase">
+  <h3>Phase 4 · server（6h，PR ①）</h3>
+  <p class="when">建議順序（依賴由內而外）：<code>auth.ts</code> → <code>http.ts</code>／<code>messages.ts</code> → <code>services/members.ts</code> → <code>routes/*</code> → <code>ws/sockets.ts</code> → <code>do/chat.ts</code> → <code>do/report-runner.ts</code> → <code>seed.ts</code> → <code>tests/*</code>。</p>
+  <ul class="check">
+    <li><code>app.ts</code>：route 取聯集（admin／dev ＋ solo／community／accounts／notifications／usage＋oauth）</li>
+    <li><code>auth.ts</code>：<code>sealClaims/openClaims</code> 為底，加入 <code>ver</code> claim ＋ <code>disabled_at</code>／<code>session_version</code> 檢查；<code>PARTICIPANT_COOKIE</code> 與 <code>PREVIEW_RETURN_COOKIE</code> 並存</li>
+    <li><code>do/chat.ts</code>：thread key 改 <code>{activityId}:{participantId}</code>，保留 web-next 的 solo／btw 分支</li>
+    <li>此階段結束時 web 仍以 ours 為主 → <code>typecheck</code> 會因為契約變動而紅，屬預期；以 <code>pnpm --filter @socrates/server test</code> 為閘門</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3>Phase 5 · web（6h，PR ②）</h3>
+  <p class="when">所有 <code>apps/web</code> 衝突檔取 ours（web-next），再手動移植 216f62f 的新東西。</p>
+  <ul class="check">
+    <li>移植頁面：<code>dev.accounts.tsx</code>（dev 身分切換）、<code>join.a.$token.tsx</code>（活動邀請連結）、<code>ClassroomTopics.tsx</code>（議題集 → D4 的教室分頁）、invite QR card</li>
+    <li>改寫呼叫端：<code>POST /classrooms</code> 只建班級、開活動走 <code>POST /classrooms/:id/activities</code>；<code>dialogue.tsx</code> 等 <code>ActivityInfo.participantId</code> 才掛 socket</li>
+    <li><code>routes/admin.users.tsx</code> 併進 web-next 的 <code>/admin</code> console，不新增第二個 admin 入口</li>
+    <li><code>i18n/index.ts</code>：取 web-next 的 1204 行版本 ＋ 手動補 216f62f 的新字串（<strong>三語齊全</strong>，zh-TW／en／es）</li>
+    <li><code>routeTree.gen.ts</code>：<strong>不要手動解</strong>，刪掉後由 dev／build 重新生成</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3>Phase 6 · docs（2h）</h3>
+  <ul class="check">
+    <li><code>docs/api-contract.md</code>（181+/151− 手工，以 Phase 1 決策為準）</li>
+    <li><code>docs/changelog.md</code>：兩邊都是純新增（222+ / 132+），依日期串接</li>
+    <li><code>feature.md</code>／<code>frontend.md</code>／<code>architecture.md</code>／<code>development.md</code></li>
+    <li><code>AGENTS.md</code> 補一條 migration 編號規則（重複序號事故的预防）</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3>Phase 7 · 驗證與 PR（3h）</h3>
+  <pre><code>pnpm install            # pnpm-lock 自動合併過，必須重跑驗證
+pnpm lint &amp;&amp; pnpm typecheck
+pnpm test               # server + web；chat.test.ts 為 P0 閘門
+cd apps/web &amp;&amp; rm -rf .cloudflare/state &amp;&amp; pnpm migrate
+pnpm dev                # 手動 smoke</code></pre>
+  <p class="when">手動 smoke 清單：8 個 fixed fixture 帳號切換 → 邀請連結（含 QR）入場 → test slot 開 2 條對話 → admin 停用帳號後既有 WS 立即斷線 → 報告頁顯示真名／無聲 participant 不出現 → 教室議題集分頁。</p>
+  <p>PR 目標 <code>frontend/web-next</code>（<code>ci.yml</code> 對 <code>pull_request</code> 會跑全套）。<strong>不要直接合 main</strong>：<code>deploy.yml</code> 只認 <code>push main</code>，部署時機另外排。</p>
+</div>
+
+<h2>6. 46 個衝突檔的處置表</h2>
+<p><span class="tag t-ours">OURS</span> 整檔取 web-next　<span class="tag t-theirs">THEIRS</span> 整檔取 216f62f（再補小 delta）　<span class="tag t-hand">HAND</span> 人工裁決　<span class="tag t-gen">GEN</span> 重新產生</p>
+
+<table>
+  <thead><tr><th>分類</th><th>檔案</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="tag t-ours">OURS</span></td>
+      <td><code>web/src/routes/settings.tsx</code>、<code>routes/home.tsx</code>、<code>components/AppShell.tsx</code>、<code>routes/classrooms.index.tsx</code>、<code>routes/report.$id.tsx</code>、<code>hooks/useDialogue.ts</code>、<code>api/index.ts</code>、<code>api/http.ts</code>、<code>server/src/routes/teacher-keys.ts</code></td>
+      <td>web-next 大幅改寫、216f62f 只動 1–7 行；取 ours 後把對方的 delta 手動貼回</td>
+    </tr>
+    <tr>
+      <td><span class="tag t-theirs">THEIRS</span></td>
+      <td><code>server/src/do/report-runner.ts</code>、<code>routes/topics.ts</code>、<code>routes/activity.ts</code>、<code>services/members.ts</code>、<code>tests/helpers.ts</code>、<code>tests/report.test.ts</code>、<code>tests/avatar.test.ts</code>、<code>tests/judgment.test.ts</code>、<code>tests/websearch.test.ts</code></td>
+      <td>216f62f 幾乎整檔重寫；只需補回 web-next 的個位數行（<code>report-runner</code> 的 <code>preview_classroom_id IS NULL</code>、<code>topic i18n</code>、<code>websearch</code> 的 gateway 調整、<code>helpers.enableTeacher</code>）</td>
+    </tr>
+    <tr>
+      <td><span class="tag t-hand">HAND</span></td>
+      <td><code>packages/shared/src/index.ts</code>、<code>server/src/auth.ts</code>、<code>server/src/app.ts</code>、<code>server/src/http.ts</code>、<code>server/src/messages.ts</code>、<code>server/src/do/chat.ts</code>、<code>server/src/routes/{classrooms,join,auth}.ts</code>、<code>server/src/seed.ts</code>、<code>server/src/ws</code>(自動但需複核)、<code>server/tests/{rest,chat}.test.ts</code>、<code>web/src/i18n/index.ts</code>、<code>web/src/components/DialogueView.tsx</code>、<code>web/src/routes/{classrooms.$classroomId,dialogue,t.live.$id,join.$code}.tsx</code>、<code>web/src/test/{api.e2e,review/routes,review/logout}.*</code></td>
+      <td>兩邊都大改，需依 §4 決策逐段拼；<code>chat.test.ts</code> 屬於 P0（WS 協定）</td>
+    </tr>
+    <tr>
+      <td><span class="tag t-gen">GEN</span></td>
+      <td><code>web/src/routeTree.gen.ts</code></td>
+      <td>TanStack 產生檔，刪除後由 <code>pnpm dev</code>／build 重建</td>
+    </tr>
+    <tr>
+      <td><span class="tag t-hand">HAND</span></td>
+      <td><code>docs/api-contract.md</code>、<code>docs/changelog.md</code>、<code>docs/feature.md</code>、<code>docs/frontend.md</code>、<code>docs/architecture.md</code>、<code>docs/development.md</code></td>
+      <td>文件以決策後的契約重寫，不做 union</td>
+    </tr>
+    <tr>
+      <td><span class="tag t-hand">HAND</span></td>
+      <td><code>web/src/routes/t.setup.tsx</code>（UD）</td>
+      <td>web-next 刪／216f62f 改寫 → 依 D4 保留刪除，把內容改造成教室頁分頁</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="box highlight">
+  <p><strong>別漏掉的「自動合併但有毒」清單：</strong></p>
+  <ul class="tight">
+    <li><code>apps/server/migrations/</code> —— 零衝突、5 組重複序號（C2）</li>
+    <li><code>pnpm-lock.yaml</code> —— 自動合併成功，但 216f62f 帶了 <code>packageManager</code> 欄位，必須重跑 <code>pnpm install</code> 驗證</li>
+    <li><code>apps/server/src/env.ts</code>、<code>apps/web/.env.example</code> —— 自動合併成功，但 <code>ENVIRONMENT</code> binding（dev endpoints 的 gate）要在 <code>cloudflare.config.ts</code> 對齊，否則 <code>/api/dev/*</code> 在 dev 會 404、或在 prod 意外開啟</li>
+  </ul>
+</div>
+
+<h2>7. 不只是衝突的功能面重工</h2>
+<table>
+  <thead><tr><th>工作</th><th>來源</th><th>規模</th></tr></thead>
+  <tbody>
+    <tr><td>建班級 → 議題集 → 開活動 三段流程（呼叫端重寫）</td><td>#135</td><td>M</td></tr>
+    <tr><td>活動邀請連結頁 ＋ QR card</td><td>#133</td><td>M</td></tr>
+    <tr><td>test mode 即時面板（slots、rounds、成本提示）</td><td>#134</td><td>M</td></tr>
+    <tr><td><code>/dev/accounts</code> 身分切換頁</td><td>#130</td><td>S</td></tr>
+    <tr><td>admin 帳號／能力／停用（併進既有 console）</td><td>#131</td><td>M</td></tr>
+    <tr><td>報告頁真名 ＋ 靜默 participant 過濾</td><td>#132</td><td>S</td></tr>
+    <tr><td>participant 身分接進 solo／community／notifications 既有權限檢查</td><td>整合</td><td>M</td></tr>
+  </tbody>
+</table>
+
+<h2>8. 驗證閘門</h2>
+<table>
+  <thead><tr><th>等級</th><th>閘門</th></tr></thead>
+  <tbody>
+    <tr><td><strong>P0</strong></td><td><code>pnpm test</code> 全綠，特別是 <code>apps/server/tests/chat.test.ts</code>（WS view＋chord 協定）與 <code>migrations.test.ts</code></td></tr>
+    <tr><td><strong>P0</strong></td><td>乾淨 state 上 <code>pnpm migrate</code> 成功；生產 D1 的 lineage 與分支一致（D0）</td></tr>
+    <tr><td><strong>P0</strong></td><td>沒有任何 API key 落在 <code>apps/web</code>；AI Gateway 仍關閉 logging／caching（ZDR）</td></tr>
+    <tr><td><strong>P1</strong></td><td><code>pnpm lint &amp;&amp; pnpm typecheck</code>；i18n 三語鍵數一致（<code>web/src/test/i18n.test.ts</code>）</td></tr>
+    <tr><td><strong>P1</strong></td><td><code>pnpm dev</code> 手動 smoke（§Phase 7 清單）</td></tr>
+  </tbody>
+</table>
+
+<h2>9. 風險登錄</h2>
+<table>
+  <thead><tr><th>風險</th><th>等級</th><th>對策</th></tr></thead>
+  <tbody>
+    <tr><td>WS 協定在 <code>do/chat.ts</code> 整合時破損（AGENTS 列為不可破壞）</td><td>高</td><td><code>chat.test.ts</code> 先跑 baseline，每次改 DO 就重跑；thread key 改動單獨一個 commit</td></tr>
+    <tr><td>migration 在生產重跑／順序錯 → D1 壞掉</td><td>高</td><td>D0 先查遠端狀態；不改已套用的檔名；在乾淨 local state 上驗證兩次</td></tr>
+    <tr><td>guest 雙軌（users 列 ＋ participant）造成重複名冊／重複報告</td><td>中</td><td>D2 寫死「名冊真相」是哪張表，並補一支測試覆蓋同一 guest 重複 join</td></tr>
+    <tr><td>web 115 檔取 ours 時，漏掉 216f62f 的細微 delta（例如 api client 少了新端點）</td><td>中</td><td>以「<code>git diff 94bbaaf..216f62f -- apps/web</code> 逐檔勾稽」當 checklist，不靠衝突提示</td></tr>
+    <tr><td>兩個 admin 入口並存的中間狀態</td><td>低</td><td>Phase 5 一次做完，不留 TODO</td></tr>
+    <tr><td>merge commit 太大（76 檔帶入、數千行）不好 review</td><td>中</td><td>拆 server（PR①）／web（PR②）兩段，各自的 typecheck 範圍不同但都能綠</td></tr>
+  </tbody>
+</table>
+
+<h2>10. 工時與里程碑</h2>
+<table>
+  <thead><tr><th>Phase</th><th class="num">估時</th><th>完成條件</th></tr></thead>
+  <tbody>
+    <tr><td>0 準備</td><td class="num">0.5h</td><td>tag、D0 查詢、baseline 測試</td></tr>
+    <tr><td>1 決策</td><td class="num">4h</td><td>D0–D5 寫進 <code>docs/</code> 並 commit</td></tr>
+    <tr><td>2 migrations</td><td class="num">3h</td><td>乾淨 state <code>pnpm migrate</code> ＋ <code>migrations.test.ts</code> 綠</td></tr>
+    <tr><td>3 契約</td><td class="num">2h</td><td><code>packages/shared</code> 一致、server＋web typecheck 對得上</td></tr>
+    <tr><td>4 server</td><td class="num">6h</td><td>server 測試全綠（PR① 可送）</td></tr>
+    <tr><td>5 web</td><td class="num">6h</td><td>web 測試全綠、smoke 清單過（PR② 可送）</td></tr>
+    <tr><td>6 docs</td><td class="num">2h</td><td>api-contract／changelog／feature 對齊</td></tr>
+    <tr><td>7 驗證</td><td class="num">3h</td><td><code>lint</code>／<code>typecheck</code>／<code>test</code>／migrate／smoke 全綠，PR CI 綠</td></tr>
+    <tr><td><strong>合計</strong></td><td class="num"><strong>26.5h</strong></td><td>約 <strong>3–4 個工作日</strong>（單人、含來回）</td></tr>
+  </tbody>
+</table>
+
+<h2>11. 替代路線（為什麼不選）</h2>
+<table>
+  <thead><tr><th>路線</th><th>評價</th></tr></thead>
+  <tbody>
+    <tr><td><strong>A. merge commit（建議）</strong></td><td>衝突只解一次、歷史保留、CI 有閘門。46 檔裡真正要人工的約 14 檔。</td></tr>
+    <tr><td>B. 把 web-next rebase 到 main</td><td><span style="color:#a11f1f">不建議</span>：32 個 commit 會逐一重跑同樣的衝突，且 <code>216f62f</code> 是 squash commit，沒有可重放的中間點。</td></tr>
+    <tr><td>C. 以 main 為底重 port web-next 的 32 commits</td><td><span style="color:#a11f1f">不建議</span>：等於重寫前端改版，成本遠高於 A。</td></tr>
+    <tr><td>D. 只取 activity 層（#132–#135），暫不取帳號能力層（#131）</td><td><strong>可用的 fallback</strong>：如果 D1 決策（<code>teacher_plan</code> vs <code>can_manage_classes</code>）一時談不攏，先合 participants／invites／test mode／topics 這四塊，帳號能力留在 main 不動。可把風險與工時切成兩半，但會多一次 migrations 編號調整。</td></tr>
+  </tbody>
+</table>
+
+<div class="box success">
+  <p><strong>一句話建議：</strong>先花半天把 D0–D5 寫進 <code>docs/accounts.md</code> 與 <code>docs/api-contract.md</code>，然後在 <code>integration/web-next-main</code> 上 merge <code>origin/main</code>，<strong>server 與 web 拆成兩個 PR</strong>落地。<code>apps/web</code> 一律取 web-next 再移植、<code>apps/server</code> 逐檔裁決、<code>routeTree.gen.ts</code> 重新產生、migrations 依 D0 重編。</p>
+</div>
+
+</body>
+</html>

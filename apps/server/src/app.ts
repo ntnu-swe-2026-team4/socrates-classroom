@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import { ApiError } from "@socrates/shared";
 import { localize } from "./messages";
-import { normalizeLang, type AppEnv } from "./http";
-import { seedDemo } from "./seed";
-import { SESSION_COOKIE, resolveSession } from "./auth";
+import { fail, normalizeLang, type AppEnv } from "./http";
+import { seedFixture } from "./seed";
+import { lookupSession, SESSION_COOKIE } from "./auth";
 import { getCookie } from "hono/cookie";
 import { authRoutes } from "./routes/auth";
-import { oauthRoutes } from "./routes/oauth";
 import { joinRoutes } from "./routes/join";
+import { inviteRoutes } from "./routes/invites";
 import { topicsRoutes } from "./routes/topics";
 import { classroomsRoutes } from "./routes/classrooms";
 import { activityRoutes } from "./routes/activity";
@@ -19,13 +19,15 @@ import { communityRoutes } from "./routes/community";
 import { accountRoutes } from "./routes/accounts";
 import { notificationRoutes } from "./routes/notifications";
 import { usageRoutes } from "./routes/usage";
+import { adminRoutes } from "./routes/admin";
+import { devRoutes, isDev } from "./routes/dev";
 import { timingSafeEqual } from "./auth-crypto";
 
 export function createApi() {
   return new Hono<AppEnv>()
     .route("/", authRoutes())
-    .route("/", oauthRoutes())
     .route("/", joinRoutes())
+    .route("/", inviteRoutes())
     .route("/", topicsRoutes())
     .route("/", classroomsRoutes())
     .route("/", activityRoutes())
@@ -36,7 +38,9 @@ export function createApi() {
     .route("/", communityRoutes())
     .route("/", accountRoutes())
     .route("/", notificationRoutes())
-    .route("/", usageRoutes());
+    .route("/", usageRoutes())
+    .route("/", adminRoutes())
+    .route("/", devRoutes());
 }
 export type RpcApi = ReturnType<typeof createApi>;
 
@@ -44,32 +48,20 @@ export function createApp() {
   return new Hono<AppEnv>()
     .use("/api/*", async (c, next) => {
       c.set("lang", normalizeLang(c.req.header("Accept-Language")));
-      const token = getCookie(c, SESSION_COOKIE);
-      const session = await resolveSession(c.env, token);
-      c.set("user", session.user);
-      c.set("sessionExpired", session.expired);
+      const lookup = await lookupSession(c.env, getCookie(c, SESSION_COOKIE));
+      c.set("user", lookup.kind === "ok" ? lookup.session.user : null);
+      c.set("sessionIssue", lookup.kind === "ok" || lookup.kind === "missing" ? null : lookup.kind);
       await next();
     })
     .route("/api", createApi())
     .get("/health", (c) => c.json({ ok: true }))
     .post("/api/dev/seed", async (c) => {
+      if (!isDev(c.env)) fail(404, "not_found");
       const token = c.req.header("x-seed-token") ?? "";
-      const allowed =
-        (c.env.LLM_PROVIDER === "mock" || c.env.DGX_BASE_URL) &&
-        !!c.env.SEED_TOKEN &&
-        timingSafeEqual(token, c.env.SEED_TOKEN);
-      if (!allowed) {
-        return c.json(
-          { message: localize("not_found", normalizeLang(c.req.header("Accept-Language"))), code: "not_found" },
-          404,
-        );
-      }
-      const mock = c.env.LLM_PROVIDER === "mock";
-      const password = mock
-        ? undefined
-        : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
-      const { teacherCreated } = await seedDemo(c.env.DB, password);
-      return c.json({ seeded: true, ...(teacherCreated && password ? { password } : {}) });
+      const allowed = !!c.env.SEED_TOKEN && timingSafeEqual(token, c.env.SEED_TOKEN);
+      if (!allowed) fail(404, "not_found");
+      await seedFixture(c.env.DB);
+      return c.json({ seeded: true });
     })
     .onError((error, c) => {
       const lang = c.get("lang") ?? normalizeLang(c.req.header("Accept-Language"));

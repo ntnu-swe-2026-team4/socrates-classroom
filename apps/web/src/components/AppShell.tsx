@@ -4,6 +4,7 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ShieldCheck,
+  LogIn,
   LogOut,
   Eye,
   BookOpen,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { api, type User } from "@/api";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
+import { readActivityId } from "@/api/local";
 import { ADMIN_SECTIONS, type AdminTab } from "@/lib/adminSections";
 import { NotificationBell } from "@/components/Notifications";
 import { SocratesCompanion } from "@/components/SocratesCompanion";
@@ -69,7 +71,7 @@ function useSessionSync() {
           before &&
           (now.teacherPlan !== before.teacherPlan ||
             now.teacherMode !== before.teacherMode ||
-            now.admin !== before.admin)
+            now.isAdmin !== before.isAdmin)
         ) {
           queryClient.setQueryData(["me"], now);
           await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
@@ -139,6 +141,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
     },
   });
   const guest = me.data?.guest ?? true;
+  const guestActivityId = me.data ? me.data.activityId : readActivityId();
   const member = (me.data?.kind ?? "member") === "member" && !guest;
   const student = me.data?.kind === "student";
   const accountLabel =
@@ -178,7 +181,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       (listView === "teacher" && me.data?.teacherMode === true);
 
   const themeTip = t("theme_toggle");
-  const inAdmin = pathname.startsWith("/admin") && me.data?.admin === true;
+  const inAdmin = pathname.startsWith("/admin") && me.data?.isAdmin === true;
   const adminTab =
     useRouterState({ select: (state) => (state.location.search as { tab?: AdminTab } | undefined)?.tab }) ?? "overview";
   const adminOverview = useQuery({
@@ -246,10 +249,10 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
               );
             })}
             {guest ? (
-              me.data?.activityId && (
+              guestActivityId && (
                 <Link
                   to="/dialogue"
-                  search={{ activityId: me.data.activityId }}
+                  search={{ activityId: guestActivityId }}
                   className={cn(NAV_BTN, pathname.startsWith("/dialogue") && NAV_ACTIVE)}
                 >
                   <MessageCircleQuestion className="size-[19px]" />
@@ -287,7 +290,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                 )}
               </>
             )}
-            {(guest || student) && (
+            {(guest || student) && me.data && (
               <Link to="/settings" className={cn(NAV_BTN, pathname.startsWith("/settings") && NAV_ACTIVE)}>
                 <Settings className="size-[19px]" />
                 <span>{t("settings_title")}</span>
@@ -307,7 +310,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           </button>
         </div>
       )}
-      {me.data?.admin && !previewRoom && (
+      {me.data?.isAdmin && !previewRoom && (
         <div className="mb-3 flex w-full justify-center">
           <Link to={inAdmin ? "/home" : "/admin"} data-rail="site" className={NAV_BTN}>
             {inAdmin ? <Eye className="size-[19px]" /> : <ShieldCheck className="size-[19px]" />}
@@ -321,27 +324,43 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           {theme === "dark" ? <Moon className="size-[17px]" /> : <Sun className="size-[17px]" />}
         </button>
       </div>
-      <button
-        type="button"
-        onClick={() => {
-          setDrawerOpen(false);
-          setAccountOpen(true);
-        }}
-        aria-haspopup="dialog"
-        aria-label={t("account_title")}
-        className={cn(
-          "flex w-full shrink-0 cursor-pointer flex-col transition-colors hover:bg-ht-hover items-center gap-[5px] border-t-2 border-dotted border-ht-dotted pt-3.5 pb-1 text-ht-ink",
-          RAIL_FOCUS,
-        )}
-      >
-        <Initial
-          name={me.data?.name}
-          className="size-8 rounded-none bg-ht-solid font-comic-serif text-[14px] font-bold text-ht-on-solid"
-        />
-        <span className="line-clamp-1 max-w-[76px] break-all text-center text-[11px] leading-tight">
-          {me.data?.name}
-        </span>
-      </button>
+      {me.data ? (
+        <button
+          type="button"
+          onClick={() => {
+            setDrawerOpen(false);
+            setAccountOpen(true);
+          }}
+          aria-haspopup="dialog"
+          aria-label={t("account_title")}
+          className={cn(
+            "flex w-full shrink-0 cursor-pointer flex-col transition-colors hover:bg-ht-hover items-center gap-[5px] border-t-2 border-dotted border-ht-dotted pt-3.5 pb-1 text-ht-ink",
+            RAIL_FOCUS,
+          )}
+        >
+          <Initial
+            name={me.data?.name}
+            className="size-8 rounded-none bg-ht-solid font-comic-serif text-[14px] font-bold text-ht-on-solid"
+          />
+          <span className="line-clamp-1 max-w-[76px] break-all text-center text-[11px] leading-tight">
+            {me.data?.name}
+          </span>
+        </button>
+      ) : (
+        me.isSuccess && (
+          <Link
+            to="/login"
+            data-rail="login"
+            className={cn(
+              "flex w-full shrink-0 flex-col items-center gap-[5px] border-t-2 border-dotted border-ht-dotted pt-3.5 pb-2 text-ht-ink transition-colors hover:bg-ht-hover",
+              RAIL_FOCUS,
+            )}
+          >
+            <LogIn className="size-[19px]" />
+            <span className="text-[11px] leading-tight">{t("login_title")}</span>
+          </Link>
+        )
+      )}
     </nav>
   );
 

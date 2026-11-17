@@ -2,6 +2,27 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-18 — 併入 `integration/web-next-142`，補齊新帳號模型的前端（`frontend/web-next`）
+
+### Added
+
+- 教室頁可以用「測試模式」開始活動；即時面板在測試活動顯示「測試對話」面板（新增、開啟各條對話），`/dialogue?slot=` 讓教師進入指定的測試對話
+- 教室頁新增「單次活動邀請」卡片：產生 invite link 與 QR code，沒有帳號的人可以只加入目前這個活動
+- 管理後台「使用者」分頁可以建立帳號、停用與恢復帳號（原本獨立的 `/admin/users` 頁併入此分頁）
+- 蘇格拉底模型改放在對話清單下方的框內，可以上下收合，也可以左右拖曳轉動
+
+### Fixed
+
+- 教室對話的 WebSocket 改用 `participantId` 連線（先前誤用 user id，新帳號模型下連不上）
+- 沒有帳號的訪客用邀請碼或 invite link 加入後可以直接進入對話，不再被導向 `/login`；側欄對未登入者顯示「登入」
+- 登入頁的註冊改呼叫 `/auth/signup`（`/auth/register` 現在必須帶邀請碼）
+- 收回教師權限時一併清除 `can_manage_classes`
+- 帳號選單不再被模型蓋住
+
+### Removed
+
+- 對話頁右上角的模型小窗（`SocratesTile`）
+
 ## 2026-11-17 — 蘇格拉底模型改為對話頁角落的小窗（`frontend/web-next`）
 
 ### Changed
@@ -130,6 +151,147 @@
 - 登入頁底部新增「管理員登入」連結
 - 登入頁的第三方登入只保留 Google（Apple、Facebook 按鈕移除；server 端 provider 尚未移除）
 
+## 2026-11-17 — 各模式 thinkingLevel 依 #122 實測調整（`feat/122-thinking-levels`）
+
+### Changed
+
+- `PROFILES.socrates.thinkingLevel` 由 `"high"` 改為 `"low"`：#122 實測 high 只多 0.25 分，TTFT p50 卻從 4.5 秒拉長到 11.8 秒（實測結果見 #144 的 `providers.md` §8）
+- BTW 不再沿用 root 的 level：`forkBtw` 在 fork 的 agent change 設 `BTW_THINKING_LEVEL`（`"high"`）
+- lookup、topic-gen、student-report、class-report 維持 `"high"`
+- 只影響新建立的 root conversation：已存在的 Chat DO 在 root 建立時寫入的 `"high"` 不會被改寫
+
+## 2026-11-17 — code review 修復（`136-account-classroom-model`）
+
+### Fixed
+
+- **成員 display_name 優先**（#142 review W1）：訪客搶先以成員姓名入活動後，成員本人 join 原被 UNIQUE(`activity_id`, `display_name`) 擋成 409 `name_taken`；`ensureParticipant` 現在把 account-less 訪客列改名（`原名（訪客）`，再撞則 `（訪客 2）`…）讓成員取名原名
+- 已綁帳號 participant 間的撞名改為新參與者加後綴（`原名 2`、`原名 3`…）而非 409；邀請連結加入的 `guest`（已綁 `user_id`）在帳號入班後由 `ensureParticipant` 升級 `kind` 為 `member`
+- **slot 名稱撞名回 409 而非 500**（W2）：`POST /api/activities/:id/slots` 建名前先查活動內既有 display_name 跳號（`測試 1`、`測試 3`…）；併發撞 UNIQUE 時經 `uniqueViolationColumns` 轉 409 `name_taken`
+- **slot 上限改為 batch 內原子護欄**（W3）：每條 INSERT 以 `WHERE (SELECT COUNT(*) …) < ACTIVITY_SLOT_MAX - i` 條件插入（D1 batch 同一交易，COUNT 含前面已插入列），併發兩次 POST 不再可能超過上限；未足額建立回 409 `conflict`
+- ReportRunner 的 pseudonym HMAC secret 改用 `secretOf()`（AUTH_SECRET 缺失即 fail-fast，原 `?? ""` 會靜默退化為固定排序）
+
+### Changed
+
+- Docs：`api-contract.md` §2.1 明寫 `GET /activities/:id` 的 auto-join 寫入副作用、成員 display_name 優先規則與 `guest`→`member` 升級；測試：`invite.test.ts`（搶名回收、同名著被後綴、kind 升級）、`test-mode.test.ts`（slot 跳號）
+
+## 2026-11-16 — #135 班級、活動、議題解耦（`136-account-classroom-model`）
+
+### Added
+
+- Schema `006_topic_classroom.sql`：`topics.classroom_id`（`NULL` = 系統題／個人題，`ON DELETE CASCADE` 隨班級）、`topics.copied_from`（`ON DELETE SET NULL`）、`topics_classroom` index
+- `GET/POST /api/classrooms/:id/topics`（#135）：該班議題集；讀取需班級成員，寫入需該班 owner＋`canManageClasses`
+- `POST /api/topics/:id/copy` `{classroomId}`：snapshot 成新 id 並歸入目標班級（`copied_from` 記來源）；改任一邊不影響另一邊
+- `TopicSchema` 新增 `classroomId`；`TopicDraftSchema`／`TopicDraft` 供 `POST /api/topics/generate` 的未落庫候選（不含 `classroomId`）
+- `/t/setup` 改成三步（建教室 → 議題集 → 開活動）；教室頁新增議題集（新增／AI 生成／複製既有）與「開新活動」區塊；`apps/web/src/components/ClassroomTopics.tsx` 為兩頁共用元件
+
+### Changed
+
+- **`POST /api/classrooms` 只建班級**：body 由 `{name, topicId}` 改為 `{name}`，回應由 `{classroomId, code, url, activityId, mode}` 改為 `{classroomId, code, url}`（`ClassroomCreated`）；活動建立移到 `POST /api/classrooms/:id/activities`，其回應獨立為 `ActivityStarted`。空班級（無議題、無活動）是合法狀態，`current` 為 `null`、邀請碼 404 `join_code_invalid`
+- `GET /api/topics` 只回 `classroom_id IS NULL` 的系統題與自己的個人題——班級議題集不再混進個人題池；`POST /api/topics` 保留為個人題 legacy 入口
+- `POST /api/classrooms/:id/activities` 驗證 `topicId` 屬於該班或為系統題／自己的個人題（其他班級的議題 → 404）
+- `current` 語意明文化：指標為「最近一次 `live` 活動」（`test` 不寫入、結束不清除，`current.finished` 區分）；文件見 `api-contract.md` §4
+- `activities.topic_id` 的 FK 維持 001 的預設動作：SQLite 的 `NO ACTION`（非 deferrable）與 `ON DELETE RESTRICT` 在本 schema 行為相同，且 topic 刪除不在本批範圍，因此不做 table rebuild
+- 測試：`apps/server/tests/topics.test.ts`（空班級、議題集歸屬、權限、`current` 與 `test` 互斥、複製為獨立副本、系統題可用）；既有測試改走 `tests/helpers.ts` 的 `classroomWithActivity`／`startActivity`
+- Docs：`api-contract.md` §1.1、§4（改寫）；`feature.md`、`frontend.md`、`architecture.md`（migration 清單）
+
+## 2026-11-16 — #134 教師用測試模式（`136-account-classroom-model`）
+
+### Added
+
+- Schema `005_activity_mode.sql`：`activities.mode`（`live` | `test`，預設 `live`）
+- `POST /api/classrooms/:id/activities` 接受 `{topicId, mode?}`：`live` 照舊更新 `classrooms.current_activity_id`，**`test` 不更新**——班級邀請碼、`GET /classrooms` 的 `current` 與首頁都不會看到測試活動
+- `GET/POST /api/activities/:id/slots`（老師、該班 owner、僅 `test` 活動）：建立 1–6 個 `kind = 'teacher'`、`user_id` = 老師的 participant slot，伺服器依 `Accept-Language` 命名（`測試 1`／`Test 1`／`Prueba 1`）；回傳 `{activityId, mode, maxSlots, slots: [{id, name, rounds, lastUtterance}]}`，rounds 由 Chat DO transcript 即時彙總。總數上限 6（`ACTIVITY_SLOT_MAX`），超出 409 `conflict`
+- `GET /api/activities/:id?participantId=`：老師可指定自己的 test slot，取得 WS thread 名的後半段（非本人 slot → 403）
+- 教室頁「換一個主題」新增測試模式勾選（建完直接進 `/t/live/:id`）；`/t/live/:id` 對 `test` 活動渲染 slot 列表、建立數量選擇（含「建立後共 N 份學生分析」成本提示）與每個 slot 的獨立對話視窗；`/dialogue` 接受 `slot` search param
+- 錯誤字串 `live_*`／`classroom_mode_*`（zh-TW／en／es）
+- 測試：`apps/server/tests/test-mode.test.ts`（test 活動不進 `current`、學生／訪客 403、invite 409、slot 上限與權限、同一帳號 3 條互不干擾的 thread、結束後報告 3 位 pseudonym 且不影響 `live` 的 `current`）
+
+### Changed
+
+- `activityAccess` 對 `mode = 'test'` 的活動只放行該班 owner：`GET /activities/:id`、`/report`、`/slots`、`/invites`、WS 升級全部在源頭擋下（其他人 403／close 1008）
+- `POST /api/activities/:id/invites` 對 `test` 活動回 409 `conflict`（測試活動沒有對外邀請入口）
+- `ActivityInfo` 新增 `mode`；`ClassroomCreated` 新增 `mode`；`ActivityStartInputSchema` 新增 `mode`（預設 `live`）
+- `apps/server/src/seed.ts` 的既有活動走 `mode` 預設值 `live`，fixture 不變
+- Docs：`api-contract.md` §1.1、§2.1、§3、§4、§6（改寫）、§7、§12；`feature.md`、`frontend.md`、`architecture.md`（migration 清單）
+
+## 2026-11-16 — #133 活動邀請連結與無帳號訪客（`136-account-classroom-model`）
+
+### Added
+
+- Schema `004_activity_invites.sql`：`activity_invites`（`token` PK、`activity_id`、`created_by`、`created_at`、`expires_at` nullable、`revoked_at`）；token 為 32 hex（128 bits），每個活動只有一條有效邀請
+- `POST /api/activities/:id/invites`（老師／該班 owner）→ `ActivityInvite`；`GET /api/invites/:token` → `InviteInfo`（活動已結束仍回 200，前端顯示結束）；`POST /api/invites/:token/join` → `InviteJoined`（`apps/server/src/routes/invites.ts`）
+- 獨立 cookie `socrates_participant`（`HttpOnly`、`SameSite=Lax`、7 天；簽章只帶 `aid`／`pid`／`exp`）與 `lookupParticipant`（`apps/server/src/auth.ts`）——**不覆寫 `socrates_session`**
+- `/join/a/$token` 入場頁（`apps/web/src/routes/join.a.$token.tsx`）：活動預覽、姓名＋ToS、結束狀態；教室頁新增「活動邀請」卡（`QrBlock` 產生 QR，無新增圖片端點）
+- 錯誤碼 `invite_invalid`／`invite_revoked`／`invite_expired`（404／410／410；`messages.ts` 三語同步）
+- 測試：`apps/server/tests/invite.test.ts`（邀請穩定性、訪客不建 `users`／`members`、session 不被覆寫、thread slot 擁有權、撤回／過期、活動結束、pseudonym 序號）
+
+### Changed
+
+- **匿名加入不再建 guest user**（`POST /join`）：未登入者取得 `kind = 'guest'` participant 與 `socrates_participant` cookie，`users`／`members` 不新增列；回傳改為 `{user, activityId, participantId, kind}`（`JoinResult`）。已登入者仍走名冊（`kind = 'member'`）
+- `GET /api/activities/:id` 接受 participant cookie（訪客只讀自己的 participant）；`GET /api/activities/:id/report` 對訪客一律 403——訪客事後回看報告不在本輪範圍
+- WS 授權（`do/chat.ts`、`ws/sockets.ts`）：`SocketIdentity` 改為 `{userId: string | null, participantId, version: number | null}`；`authorize` 同時接受兩顆 cookie，`submit` 的擁有者規則改為「該 participant slot 屬於這條連線」（`user_id` 本人或無帳號訪客的 participant cookie）；reverify／每則 message 的重驗對訪客改讀 participant
+- **pseudonym 序號改由 HMAC 決定**（`pseudonymRanks`）：以 `HMAC(AUTH_SECRET, activityId:participantId)` 排序後配 1..n，不再等於報到順序；既有 pseudonym 不變
+- `pseudonym 序列依 joined_at` 的舊敘述同步為 HMAC 規則（`api-contract.md` §7）
+- `POST /api/auth/register` 不變（帳號註冊仍建 member 與 participant）；`activity_participants` 的 `guest` kind 自本輪開始生產
+- Docs：`api-contract.md` §1（cookie）、§1.1 授權矩陣、§2、§2.1、§3、§3.1（新）、§5.1、§7、§10、§12；`feature.md`、`architecture.md`（資料表清單）
+
+## 2026-11-16 — #132 activity participant 成為對話與報告的母體（`136-account-classroom-model`）
+
+### Added
+
+- Schema `003_activity_participants.sql`：`activity_participants`（PK `activity_id` + `id`；`user_id` nullable 且 `ON DELETE SET NULL`、`kind`＝`member`／`guest`／`teacher`、`display_name`、`tos_accepted_at`、`joined_at`；UNIQUE(`activity_id`, `display_name`)）
+- Backfill：既有活動以 `members` 建 `kind = 'member'` participant，participant id 即 `user_id`——既有 Chat DO thread（`{activityId}:{userId}`）與既有報告的鍵因此原樣續用
+- `services/members.ts`：`participantOf`／`ensureParticipant`／`requireActivityAccess`（回傳呼叫者在該活動的 participant）
+- 測試：`apps/server/tests/migrations.test.ts`（backfill 對映、帳號刪除後 participant 與 pseudonym 存活）
+
+### Changed
+
+- **thread name 協定**：`{activityId}:{userId}` → `{activityId}:{participantId}`（`do/chat.ts`：`authorize`／`reverify`／submit 的擁有者比對改讀 participant 的 `user_id`；`ChatSockets` 的 `CanSubmit` 可為 async，每次 submit 重驗）；`docs/api-contract.md` §5.1 與 `apps/server/tests/chat.test.ts` 同步——這是刻意的協定變更
+- **報告母體**：`do/report-runner.ts` 改以 `activity_participants` 為母體，且只納入真有對話（transcript 有發言）的參與者——沒進活動的成員、進了活動但一句沒說的參與者都不再拿到空分析（本人報告頁 404）；pseudonym 序列與 `student_reports` key 均以 participant id 為準
+- `pseudonyms`：`student_id` → `participant_id`，移除對 `users` 的 FK（改指 participant；訪客消失或帳號刪除都不斷鏈）
+- `TeacherReport.students[].studentId` → `participantId`，並新增 `participantName`（`StudentReport` 亦有）：老師的個別頁以真實名稱列人（pseudonym 作為副標），學生自己的報告頁改顯示本人名稱（pseudonym 對學生無定位用途）；`StudentReportEntrySchema.participantName` 為 optional，舊 stored report 回退到 pseudonym
+- `ActivityInfo` 新增 `participantId`：`GET /api/activities/:id` 回傳呼叫者在該活動的 participant（活動進行中且是班級成員時必要則建立）；web 的對話頁等它 resolve 後才掛載 WS
+- `POST /api/join`、`POST /api/auth/register` 一併寫入 participant（活動進行中才寫）
+- Docs：`api-contract.md` §1.1、§2.1（新）、§3、§5.1、§6、§7；`architecture.md`／`feature.md` 的資料表清單
+
+## 2026-11-16 — #131 能力模型取代 role（`136-account-classroom-model`）
+
+### Added
+
+- Schema `002_capabilities.sql`：`users.can_manage_classes`（由 `role = 'teacher'` backfill）、`is_admin`、`disabled_at`、`session_version`
+- `GET/POST /api/admin/users`、`PATCH /api/admin/users/:id`（`apps/server/src/routes/admin.ts`）：列表、建立帳號、切換 `canManageClasses`、停用／復用；`is_admin` 只能由 seed 建立
+- `/admin/users` 管理頁（`apps/web/src/routes/admin.users.tsx`）與帳號面板的 admin 入口
+- 測試：`apps/server/tests/admin.test.ts`（能力即時生效、停用即斷 session、雙重身分、建立帳號、自我停用防呆、`isAdmin` 不可提權）；`chat.test.ts` 新增停用帳號的 WS 拒絕案例
+
+### Changed
+
+- `UserSchema`：`role` → `canManageClasses` / `isAdmin`（`packages/shared`）；web 的 `.role` 讀取全部改為能力判斷（`AppShell`、`home`、`classrooms.index`、`report.$id`、`dialogue`、`settings`、`t.live.$id`、`t.setup`）
+- Token 只帶 `uid`／`ver`／`exp`：`requireUser` 的人民讀取改到 middleware（每次帶 session 的請求一次 `SELECT`），能力與停用狀態以 DB 為真相
+- `requireTeacher` → `requireCapability(c, "manage_classes")`；`topics`、`teacher_keys`、`POST /classrooms`、`POST /classrooms/:id/activities` 同步換閘
+- `GET /classrooms` 改為 owned **UNION** joined：同一帳號可同時是 A 班老師、B 班學生
+- `POST /join` 移除 `only_student`：任何已登入身分都可加入班級成為學生（含 `canManageClasses`）
+- WS：`do/chat.ts` 的 `reverify` 併入 `disabled_at` 與 `session_version`；另加每則 message 的帳號狀態重驗——停用後連線上的下一個 frame 即 1008 關閉，重連亦被拒
+- 錯誤碼：移除 `only_student`，新增 `account_disabled`、`capability_required`（`messages.ts` 三語同步）
+- Seed fixture：帳號改帶 `canManageClasses`／`isAdmin`（admin 兩個都有）；`DevAccount` 以能力取代 `role`
+- 部署後既有 session 失效一次（舊 token 無 `ver` claim → `session_version` 不符），使用者需重新登入；此後能力／停用變更皆即時生效
+- `POST /api/dev/login` 修正 fixture 的 `is_admin` 漂移：舊 seed 建的 row 在 migration 002 後 `is_admin` 仍是 0（migration 只 backfill `can_manage_classes`），管理員一鍵登入會看到 `/admin/users` 被導回 `/classrooms`
+- Docs：`api-contract.md` §1（token／每請求 D1 read）、§1.1 授權矩陣（能力欄）、§2 `User`、§3 入場、§4 `GET /classrooms` scope、§5.1 WS 重驗、§9.1 管理員端點、§10 錯誤碼、§11.1
+
+## 2026-11-15 — #130 review fixture 與 dev 操作台（`136-account-classroom-model`）
+
+### Added
+
+- `apps/server/src/seed.ts` 改為固定 fixture：1 管理員、2 老師（陳老師同時是「高二哲學選修 A」的成員）、5 學生；固定 id／名稱／共用密碼 `demo-demo`；3 個系統題、2 間教室（一班 3 位成員、一班空）各含進行中活動；不含任何 transcript
+- `GET /api/dev/accounts`、`POST /api/dev/login`（`apps/server/src/routes/dev.ts`）與網頁 `/dev/accounts`：一鍵以 fixture 身分發 session，免密碼
+- `ENVIRONMENT` text binding（`cf dev` = `dev`、build/deploy = `production`）：`/dev/*` 與 `/api/dev/*` 在非 dev 環境一律 404
+
+### Changed
+
+- `POST /api/dev/seed` 也受 `ENVIRONMENT=dev` 閘門；回應不再帶隨機老師密碼（fixture 密碼固定）
+- `seedDemo` → `seedFixture`（測試同步）；seed 以 id／email／教室名稱冪等 upsert，重跑不改 id
+- 測試：新增 `apps/server/tests/dev.test.ts`（fixture 冪等、帳號清單、免密碼登入、非 dev 404）、`helpers.callWith` 可換 env 呼叫 Worker
+- Docs：README quickstart、`development.md`（fixture／`ENVIRONMENT`）、`api-contract.md` §11.1
+
 ## 2026-11-14 — BTW side session（#121，`feat/121-btw-side-chat`）
 
 ### Added
@@ -143,6 +305,18 @@
 
 - Chat DO `settings.extensions` 改為 getter：已安裝且非 btw 的 extensions（root 行為不變）
 - routeSubmit 的 model 快取改 per session；`llm_unavailable` 廣播只送綁定該 session 的連線
+## 2026-11-14 — SSO 登入：Email 自行註冊＋Google（#124，`feat/124-sso-login`）
+
+### Added
+
+- `POST /api/auth/signup`：不需邀請碼的 email＋密碼註冊，建獨立帳號（不屬於任何教室、無能力；加入班級後即一般學生）
+- Google 登入：`GET /api/auth/oauth/:provider/start`／`callback`（OIDC authorization code＋PKCE S256＋state＋nonce；ID token 以 JWKS 驗簽並驗 `iss`／`aud`／`exp`／`nonce`／`email_verified`）；`src/oauth.ts` 為 provider 共用流程，日後加 provider 只需新增 adapter
+- Migration `007_user_identities.sql`：第三方登入身分表（`user_identities`，PK (`provider`, `provider_user_id`)，隨帳號 cascade 刪除）
+- 錯誤碼 `oauth_unavailable`／`oauth_state_invalid`／`oauth_email_unverified`／`oauth_failed`（三語）；binding `GOOGLE_CLIENT_ID`（text）／`GOOGLE_CLIENT_SECRET`（secret，留空＝停用）
+- 錯誤碼 `email_taken`（三語）：`POST /auth/signup` 信箱重複回 409 `email_taken`，取代語意模糊的 `conflict`；邀請碼註冊 `POST /auth/register` 維持 `conflict` 不變
+- `assets.runWorkerFirst: ["/api/*", "/health"]`：SPA `notFoundHandling` 會把瀏覽器 navigation（`Sec-Fetch-Mode: navigate`）直接回 `index.html`，導致整頁跳轉的 `/api/auth/oauth/*` 永遠到不了 Worker
+- 新增 [`google-oauth.md`](./google-oauth.md)（建立用戶端、本機／正式設定、secret 輪替、常見錯誤）；`.env.example` 補 `GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET`
+- 測試：`tests/auth-sso.test.ts`（signup、OAuth 成功／state 竄改／簽章偽造／aud・iss・exp・nonce・未驗證 email）、`tests/migrations.test.ts`（user_identities 唯一性與 cascade）
 
 ## 2026-11-14 — 老師即時面板與立場分佈圖（`experiment/web-next`）
 
@@ -404,3 +578,18 @@
 - Provider pool 閘門隨呼叫重建導致限流失效（gate 改 module-level 常駐，pool 按 env 簽名快取；mock 模式維持原語意）
 - CI：pnpm 12 非互動環境未核准建置腳本導致 `ERR_PNPM_IGNORED_BUILDS`
 - 移除 npm lockfile 遺留物與 `package.json` 死欄位 `pnpm.onlyBuiltDependencies`
+
+## 2026-11-17 — 合併 `216f62f`（帳號／教室模型重寫）進 `frontend/web-next`（`integration/web-next-142`）
+
+### Changed
+
+- 身分模型以 `216f62f` 的 capability ＋ participant 版本為準：`users.can_manage_classes`／`is_admin`／`disabled_at`／`session_version` 決定授權；`activity_participants` 是活動名冊與 WS thread／報告的鍵；訪客＝無帳號的 participant＋`socrates_participant` cookie，不再建 `users` 列
+- `only_student` 退場：任何已登入身分都能加入班級；老師自測改走 `test` 活動與 slot（`GET/POST /activities/:id/slots`）
+- `POST /classrooms` 只建班級；活動改由 `POST /classrooms/:id/activities` 開啟（回應為 `ActivityStarted`）；議題屬於班級（`GET/POST /classrooms/:id/topics`、`POST /topics/:id/copy`）
+- `teacherMode` 與 `can_manage_classes` 同步開關（`PATCH /me`），教師申請／核准仍走 `docs/accounts.md` 的 `teacher_plan` 流程
+- Google 登入採 `216f62f` 之後 main 的實作（`src/oauth.ts`、`user_identities` 017），`frontend/web-next` 的 `oauth_identities` 分支移除
+- web 全面保留 `frontend/web-next` 的設計；`/t/setup` 維持移除，議題集與開活動併入教室頁（`TopicSet`）；新增 `/dev/accounts`、`/admin/users`、`/join/a/$token`
+
+### Migrations
+
+`frontend/web-next` 的 002–011 重編為 008–016，`216f62f` 的 002–006 與 main 的 `007_user_identities` 維持原編號（production 已套用）；`is_guest`／`guest_activity_id` 與 `users.role` 一併移除（`009_solo_chats.sql` 負責 drop role）

@@ -127,7 +127,7 @@ function CompanionBody({ dock }: { dock: DockRect }) {
 
   return (
     <div
-      className="pointer-events-none fixed z-[55]"
+      className="pointer-events-none fixed z-[45]"
       style={{ left: dock.x, top: dock.y, width: dock.size, height: dock.size }}
     >
       <div

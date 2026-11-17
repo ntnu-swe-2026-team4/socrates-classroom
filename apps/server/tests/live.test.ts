@@ -31,9 +31,14 @@ describe("live board", () => {
     const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
       id: string;
     }>;
-    const created = (await (
-      await send("/api/classrooms", teacher, "POST", { name: "即時面板班", topicId: topics[0]!.id })
-    ).json()) as { classroomId: string; code: string; activityId: string };
+    const room = (await (await send("/api/classrooms", teacher, "POST", { name: "即時面板班" })).json()) as {
+      classroomId: string;
+      code: string;
+    };
+    const started = (await (
+      await send(`/api/classrooms/${room.classroomId}/activities`, teacher, "POST", { topicId: topics[0]!.id })
+    ).json()) as { activityId: string };
+    const created = { ...room, activityId: started.activityId };
 
     const empty = (await (
       await send(`/api/activities/${created.activityId}/live`, teacher, "GET")
@@ -45,7 +50,7 @@ describe("live board", () => {
     const guest = cookieOf(joined);
 
     const denied = await send(`/api/activities/${created.activityId}/live`, guest, "GET");
-    expect(denied.status).toBe(403);
+    expect(denied.status).toBe(401);
     expect((await send(`/api/activities/${created.activityId}/live`, null, "GET")).status).toBe(401);
 
     const res = await send(`/api/activities/${created.activityId}/live`, teacher, "GET");

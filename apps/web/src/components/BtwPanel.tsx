@@ -13,11 +13,11 @@ interface BtwPanelProps {
   open: boolean;
   onClose: () => void;
   activityId: string;
-  userId: string;
+  participantId: string;
 }
 
 export const BtwPanel = forwardRef<BtwPanelHandle, BtwPanelProps>(function BtwPanel(
-  { open, onClose, activityId, userId },
+  { open, onClose, activityId, participantId },
   ref,
 ) {
   const t = useT();
@@ -27,7 +27,7 @@ export const BtwPanel = forwardRef<BtwPanelHandle, BtwPanelProps>(function BtwPa
   }, [open]);
   const { messages, draft, phase, error, ready, ask, retryLast, interrupt, newTopic } = useBtw(
     activityId,
-    userId,
+    participantId,
     connected,
   );
   const [text, setText] = useState("");

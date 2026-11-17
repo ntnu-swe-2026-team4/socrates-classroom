@@ -1,3 +1,4 @@
+import { run } from "../src/db/d1";
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
@@ -42,6 +43,7 @@ beforeAll(async () => {
     body: JSON.stringify({ email: "demo@socrates.tw", password: "demo-demo" }),
   });
   teacher = await enableTeacher(cookieOf(login));
+  await run(env.DB, "UPDATE users SET teacher_plan = 'school' WHERE email = 'demo@socrates.tw'");
 });
 
 describe("unified accounts", () => {
@@ -56,7 +58,7 @@ describe("unified accounts", () => {
       body: JSON.stringify({ name: "還不是老師", topicId: topics[0]!.id }),
     });
     expect(blocked.status).toBe(403);
-    expect(((await blocked.json()) as { code: string }).code).toBe("teacher_required");
+    expect(((await blocked.json()) as { code: string }).code).toBe("capability_required");
 
     const cookie = await enableTeacher(visitor.cookie);
     const opened = await call("/api/classrooms", {
@@ -68,7 +70,7 @@ describe("unified accounts", () => {
   });
 
   it("registration needs no display name; PATCH /me renames and re-issues the session", async () => {
-    const fresh = await call("/api/auth/register", {
+    const fresh = await call("/api/auth/signup", {
       method: "POST",
       headers: json,
       body: JSON.stringify({
@@ -85,7 +87,7 @@ describe("unified accounts", () => {
       body: JSON.stringify({ name: "新名字" }),
     });
     expect(renamed.status).toBe(200);
-    const me = (await (await call("/api/me", { headers: { Cookie: cookieOf(renamed) } })).json()) as {
+    const me = (await (await call("/api/me", { headers: { Cookie: cookieOf(fresh) } })).json()) as {
       name: string;
       guest: boolean;
     };
@@ -104,7 +106,7 @@ describe("unified accounts", () => {
     const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
       id: string;
     }>;
-    const register = await call("/api/auth/register", {
+    const register = await call("/api/auth/signup", {
       method: "POST",
       headers: json,
       body: JSON.stringify({
@@ -126,17 +128,26 @@ describe("unified accounts", () => {
       await call("/api/classrooms", {
         method: "POST",
         headers: { ...json, Cookie: teacher },
-        body: JSON.stringify({ name: "林老師的班", topicId: topics[1]!.id }),
+        body: JSON.stringify({ name: "林老師的班" }),
       })
     ).json()) as { classroomId: string; code: string };
+    await call(`/api/classrooms/${own.classroomId}/activities`, {
+      method: "POST",
+      headers: { ...json, Cookie: cookie },
+      body: JSON.stringify({ topicId: topics[0]!.id }),
+    });
 
     const ownJoin = await call("/api/join", {
       method: "POST",
       headers: { ...json, Cookie: cookie },
       body: JSON.stringify({ code: own.code, tosAccepted: true }),
     });
-    expect(ownJoin.status).toBe(403);
-    expect(((await ownJoin.json()) as { code: string }).code).toBe("only_student");
+    expect(ownJoin.status).toBe(200);
+    await call(`/api/classrooms/${other.classroomId}/activities`, {
+      method: "POST",
+      headers: { ...json, Cookie: teacher },
+      body: JSON.stringify({ topicId: topics[1]!.id }),
+    });
 
     const joined = await call("/api/join", {
       method: "POST",
@@ -260,9 +271,14 @@ describe("classroom deletion and topic translations", () => {
       await call("/api/classrooms", {
         method: "POST",
         headers: { ...json, Cookie: teacher },
-        body: JSON.stringify({ name: "要刪的班", topicId: topics[0]!.id }),
+        body: JSON.stringify({ name: "要刪的班" }),
       })
     ).json()) as { classroomId: string; code: string };
+    await call(`/api/classrooms/${created.classroomId}/activities`, {
+      method: "POST",
+      headers: { ...json, Cookie: teacher },
+      body: JSON.stringify({ topicId: topics[0]!.id }),
+    });
     const student = await registerAccount("將被移除");
     await call("/api/join", {
       method: "POST",
@@ -315,7 +331,7 @@ describe("create-then-edit courses", () => {
     });
     expect(created.status).toBe(201);
     const body = (await created.json()) as { classroomId: string; code: string; activityId: string | null };
-    expect(body.activityId).toBeNull();
+    expect(body.activityId).toBeUndefined();
     const detail = (await (
       await call(`/api/classrooms/${body.classroomId}`, { headers: { Cookie: teacher } })
     ).json()) as {

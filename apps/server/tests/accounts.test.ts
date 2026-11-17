@@ -3,7 +3,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { TRIAL_LIMITS } from "@socrates/shared";
-import { run } from "../src/db/d1";
+import { one, run } from "../src/db/d1";
 import { seedDemo } from "../src/seed";
 import { call, cookieOf, enableTeacher, registerAccount } from "./helpers";
 
@@ -21,9 +21,13 @@ function send(path: string, cookie: string | null, method: string, body?: unknow
 }
 
 async function openClassroom(cookie: string, name: string) {
-  const res = await send("/api/classrooms", cookie, "POST", { name, topicId });
+  const res = await send("/api/classrooms", cookie, "POST", { name });
   expect(res.status).toBe(201);
-  return (await res.json()) as { classroomId: string; code: string; activityId: string };
+  const created = (await res.json()) as { classroomId: string; code: string; url: string };
+  const started = await send(`/api/classrooms/${created.classroomId}/activities`, cookie, "POST", { topicId });
+  expect(started.status).toBe(201);
+  const activity = (await started.json()) as { activityId: string };
+  return { ...created, activityId: activity.activityId };
 }
 
 async function codeOf(res: Response): Promise<string> {
@@ -34,8 +38,9 @@ beforeAll(async () => {
   await applyD1Migrations(env.DB, migrations);
   await seedDemo(env.DB);
   admin = await enableTeacher(
-    cookieOf(await send("/api/auth/login", null, "POST", { email: "demo@socrates.tw", password: "demo-demo" })),
+    cookieOf(await send("/api/auth/login", null, "POST", { email: "admin@socrates.tw", password: "demo-demo" })),
   );
+  await run(env.DB, "UPDATE users SET teacher_plan = 'school' WHERE email = 'admin@socrates.tw'");
   topicId = ((await (await call("/api/topics", { headers: { Cookie: admin } })).json()) as Array<{ id: string }>)[0]!
     .id;
 });
@@ -44,7 +49,7 @@ describe("teacher mode", () => {
   it("stays off until an admin approves a request, then toggles freely on the trial plan", async () => {
     const account = await registerAccount("試用老師");
     const me = (await (await call("/api/me", { headers: { Cookie: account.cookie } })).json()) as { id: string };
-    expect(me).toMatchObject({ kind: "member", teacherPlan: null, teacherMode: false, admin: false });
+    expect(me).toMatchObject({ kind: "member", teacherPlan: null, teacherMode: false, isAdmin: false });
 
     const direct = await send("/api/me", account.cookie, "PATCH", { teacherMode: true });
     expect(direct.status).toBe(403);
@@ -62,10 +67,10 @@ describe("teacher mode", () => {
 
     const on = await send("/api/me", account.cookie, "PATCH", { teacherMode: true });
     expect(await on.json()).toMatchObject({ teacherPlan: "trial", teacherMode: true, teacherRequested: false });
-    const off = await send("/api/me", cookieOf(on), "PATCH", { teacherMode: false });
+    const off = await send("/api/me", account.cookie, "PATCH", { teacherMode: false });
     expect(await off.json()).toMatchObject({ teacherPlan: "trial", teacherMode: false });
-    const blocked = await send("/api/classrooms", cookieOf(off), "POST", { name: "關閉時", topicId });
-    expect(await codeOf(blocked)).toBe("teacher_required");
+    const blocked = await send("/api/classrooms", account.cookie, "POST", { name: "關閉時" });
+    expect(await codeOf(blocked)).toBe("capability_required");
   });
 
   it("an admin can turn a request down, and the user may ask again", async () => {
@@ -101,7 +106,7 @@ describe("teacher mode", () => {
     expect(await on.json()).toMatchObject({ teacherPlan: "trial", teacherMode: true });
 
     expect((await send(`/api/admin/users/${me.id}/teacher`, admin, "DELETE")).status).toBe(204);
-    const after = (await (await call("/api/me", { headers: { Cookie: cookieOf(on) } })).json()) as object;
+    const after = (await (await call("/api/me", { headers: { Cookie: account.cookie } })).json()) as object;
     expect(after).toMatchObject({ teacherPlan: null, teacherMode: false });
     const adminMe = (await (await call("/api/me", { headers: { Cookie: admin } })).json()) as { id: string };
     expect((await send(`/api/admin/users/${adminMe.id}/teacher`, admin, "DELETE")).status).toBe(403);
@@ -197,52 +202,37 @@ describe("student accounts", () => {
 });
 
 describe("guests", () => {
-  it("a guest is scoped to one activity and expires after it ends (with a grace window for the report)", async () => {
+  it("an account-less guest joins through the join code without a users row", async () => {
     const room = await openClassroom(admin, "訪客班");
+    const before = await one<{ n: number }>(env.DB, "SELECT COUNT(*) AS n FROM users");
     const joined = await send("/api/join", null, "POST", { code: room.code, name: "路過的人", tosAccepted: true });
     expect(joined.status).toBe(200);
     const guest = cookieOf(joined);
-    expect(await (await call("/api/me", { headers: { Cookie: guest } })).json()).toMatchObject({
-      kind: "guest",
-      activityId: room.activityId,
-    });
-    expect((await call("/api/solo/chats", { headers: { Cookie: guest } })).status).toBe(403);
+    const body = (await joined.json()) as { user: unknown; participantId: string; kind: string };
+    expect(body).toMatchObject({ user: null, kind: "guest" });
+    expect(body.participantId).toBeTruthy();
+    const after = await one<{ n: number }>(env.DB, "SELECT COUNT(*) AS n FROM users");
+    expect(Number(after?.n)).toBe(Number(before?.n));
+
+    expect(await (await call("/api/me", { headers: { Cookie: guest } })).json()).toBeNull();
+    expect((await call("/api/solo/chats", { headers: { Cookie: guest } })).status).toBe(401);
     expect(
       (await call(`/api/classrooms/${room.classroomId}/announcements`, { headers: { Cookie: guest } })).status,
-    ).toBe(403);
+    ).toBe(401);
+    expect((await call(`/api/activities/${room.activityId}`, { headers: { Cookie: guest } })).status).toBe(200);
 
     const next = await send(`/api/classrooms/${room.classroomId}/activities`, admin, "POST", { topicId });
     const nextId = ((await next.json()) as { activityId: string }).activityId;
-    expect((await call(`/api/activities/${nextId}`, { headers: { Cookie: guest } })).status).toBe(403);
-    expect((await call(`/api/activities/${room.activityId}`, { headers: { Cookie: guest } })).status).toBe(200);
-
-    await run(env.DB, "UPDATE activities SET finished_at = $at WHERE id = $id", {
-      id: room.activityId,
-      at: new Date().toISOString(),
-    });
-    expect((await call(`/api/activities/${room.activityId}`, { headers: { Cookie: guest } })).status).toBe(200);
-
-    await run(env.DB, "UPDATE activities SET finished_at = $at WHERE id = $id", {
-      id: room.activityId,
-      at: new Date(Date.now() - 25 * 3600_000).toISOString(),
-    });
-    const expired = await call("/api/me", { headers: { Cookie: guest } });
-    expect(expired.status).toBe(401);
-    expect(await codeOf(expired)).toBe("guest_session_expired");
+    expect((await call(`/api/activities/${nextId}`, { headers: { Cookie: guest } })).status).toBe(401);
   });
 
-  it("registering never takes over the guest row", async () => {
-    const room = await openClassroom(admin, "註冊不接手");
-    const guest = cookieOf(
-      await send("/api/join", null, "POST", { code: room.code, name: "訪客甲", tosAccepted: true }),
-    );
-    const guestId = ((await (await call("/api/me", { headers: { Cookie: guest } })).json()) as { id: string }).id;
-    const registered = await send("/api/auth/register", guest, "POST", {
-      email: `fresh-${Date.now()}@socrates.tw`,
-      password: "fresh-pass-12",
-      tosAccepted: true,
-    });
-    expect(((await registered.json()) as { id: string }).id).not.toBe(guestId);
+  it("a guest name stays unique inside one activity", async () => {
+    const room = await openClassroom(admin, "訪客重名班");
+    const first = await send("/api/join", null, "POST", { code: room.code, name: "訪客甲", tosAccepted: true });
+    expect(first.status).toBe(200);
+    const again = await send("/api/join", null, "POST", { code: room.code, name: "訪客甲", tosAccepted: true });
+    expect(again.status).toBe(409);
+    expect(await codeOf(again)).toBe("name_taken");
   });
 });
 
@@ -269,7 +259,8 @@ describe("admin", () => {
     expect(await login.json()).toMatchObject({ teacherPlan: "school", teacherMode: false, schoolName: "蘇格拉底高中" });
 
     const email = `promote-${Date.now()}@socrates.tw`;
-    const existing = await send("/api/auth/register", null, "POST", {
+    const existing = await send("/api/auth/signup", null, "POST", {
+      name: "升任",
       email,
       password: "promote-pass-1",
       tosAccepted: true,

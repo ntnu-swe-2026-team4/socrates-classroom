@@ -1,5 +1,7 @@
 # 交接：與原版的差異與上線待辦
 
+> **注意（2026-11-17 合併 `216f62f` 後）**：本文件的 migration 編號與「Google 登入停用」段落已過時——`frontend/web-next` 的 002–011 重編為 008–016，main 的 `007_user_identities` 保留，`004_oauth.sql`（`oauth_identities`）已移除，Google 登入改走 `src/oauth.ts`。現況以 [`api-contract.md`](./api-contract.md)、[`accounts.md`](./accounts.md) 與 [`changelog.md`](./changelog.md) 的 2026-11-17 合併條目為準。
+>
 > 基準：2026-11-10 下載的 `experiment/web-next`（以下稱「原版」）。本文件只列**差異與待辦**；細節以各 SSOT 為準——功能清單見 [`feature.md`](./feature.md)、API 格式見 [`api-contract.md`](./api-contract.md)、逐條變更見 [`changelog.md`](./changelog.md)。
 
 ## 1. 雲端與部署設定：維持原版

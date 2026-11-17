@@ -14,10 +14,17 @@ import type { UserInput } from "@earendil-works/pi-durable";
 import { DialogueInputSchema } from "@socrates/shared";
 import type { ClientMessage, ServerMessage } from "./protocol";
 
-export type Authorize = (request: Request) => Promise<string | null>;
+export interface SocketIdentity {
+  userId: string | null;
+  participantId: string;
+  version: number | null;
+}
+
+export type Authorize = (request: Request) => Promise<SocketIdentity | null>;
 export type ReverifyOutcome = "member" | "revoked" | "error";
-export type Reverify = (userId: string) => Promise<ReverifyOutcome>;
-export type CanSubmit = (userId: string) => boolean;
+export type Reverify = (identity: SocketIdentity) => Promise<ReverifyOutcome>;
+export type Revalidate = (identity: SocketIdentity) => Promise<ReverifyOutcome>;
+export type CanSubmit = (identity: SocketIdentity) => boolean | Promise<boolean>;
 export type SubmitRoute = (handle: PiSession, input: UserInput, options: PiSubmitOptions) => Promise<PiReceipt>;
 export type OpenBtw = () => Promise<string>;
 
@@ -37,6 +44,16 @@ export class UnknownSessionError extends Error {
 
 const OPEN = 1;
 
+function isSocketIdentity(value: unknown): value is SocketIdentity {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<SocketIdentity>;
+  return (
+    (typeof candidate.userId === "string" || candidate.userId === null) &&
+    typeof candidate.participantId === "string" &&
+    (candidate.version === null || Number.isInteger(candidate.version))
+  );
+}
+
 const KNOWN_ERROR_NAMES = new Set([
   "ConversationBusy",
   "ActivityFinished",
@@ -46,7 +63,7 @@ const KNOWN_ERROR_NAMES = new Set([
   "UnknownSession",
 ]);
 
-type SocketState = { auth?: string; session?: string };
+type SocketState = { auth?: SocketIdentity; session?: string };
 
 function resumeAfter(view: ConversationView): ConversationWindow {
   const newest = view.entries.at(-1)?.id ?? view.before;
@@ -78,8 +95,9 @@ export class ChatSockets {
   readonly #submitRoute?: SubmitRoute;
   readonly #canSubmit?: CanSubmit;
   readonly #openBtw?: OpenBtw;
+  readonly #revalidate?: Revalidate;
   readonly #watches = new Map<WebSocket, ConversationWatch>();
-  readonly #authorized = new Map<WebSocket, string>();
+  readonly #authorized = new Map<WebSocket, SocketIdentity>();
   readonly #sessions = new Map<WebSocket, string>();
 
   constructor(
@@ -90,6 +108,7 @@ export class ChatSockets {
     submitRoute?: SubmitRoute,
     canSubmit?: CanSubmit,
     openBtw?: OpenBtw,
+    revalidate?: Revalidate,
   ) {
     this.#harness = harness;
     this.#registry = registry;
@@ -98,6 +117,7 @@ export class ChatSockets {
     this.#submitRoute = submitRoute;
     this.#canSubmit = canSubmit;
     this.#openBtw = openBtw;
+    this.#revalidate = revalidate;
   }
 
   options(): WebSocketsOptions {
@@ -114,7 +134,12 @@ export class ChatSockets {
   async reattach(connections: Iterable<Connection>, reverify?: Reverify): Promise<void> {
     for (const connection of connections) {
       const { auth, session } = (connection.state as SocketState | null) ?? {};
-      const outcome = !auth ? "revoked" : reverify ? await reverify(auth) : "member";
+      const identity = isSocketIdentity(auth) ? auth : null;
+      if (identity === null) {
+        this.#refuse(connection);
+        continue;
+      }
+      const outcome: ReverifyOutcome = reverify ? await reverify(identity) : "member";
       if (outcome === "revoked") {
         this.#refuse(connection);
         continue;
@@ -123,7 +148,7 @@ export class ChatSockets {
         this.#unavailable(connection);
         continue;
       }
-      this.#authorized.set(connection, auth!);
+      this.#authorized.set(connection, identity);
       if (session !== undefined) this.#sessions.set(connection, session);
       await this.#watchOrClose(connection);
     }
@@ -171,13 +196,13 @@ export class ChatSockets {
 
   async #onConnect(connection: Connection, ctx: ConnectionContext): Promise<void> {
     if (this.#authorize) {
-      const userId = await this.#authorize(ctx.request);
-      if (!userId) {
+      const identity = await this.#authorize(ctx.request);
+      if (!identity) {
         this.#refuse(connection);
         return;
       }
-      connection.setState({ auth: userId } satisfies SocketState);
-      this.#authorized.set(connection, userId);
+      connection.setState({ auth: identity } satisfies SocketState);
+      this.#authorized.set(connection, identity);
     }
     send(connection, {
       type: "hello",
@@ -243,7 +268,12 @@ export class ChatSockets {
 
   async #onMessage(connection: Connection, raw: WebSocketMessage): Promise<void> {
     if (typeof raw !== "string") return;
-    if (this.#authorize && !this.#authorized.has(connection)) {
+    const identity = this.#authorized.get(connection);
+    if (this.#authorize && !identity) {
+      this.#refuse(connection);
+      return;
+    }
+    if (identity && this.#revalidate && (await this.#revalidate(identity)) === "revoked") {
       this.#refuse(connection);
       return;
     }
@@ -276,8 +306,8 @@ export class ChatSockets {
     switch (message.type) {
       case "submit": {
         if (typeof message.input !== "string") throw new Error("Invalid input");
-        const userId = this.#authorized.get(socket);
-        if (userId === undefined || (this.#canSubmit && !this.#canSubmit(userId))) {
+        const identity = this.#authorized.get(socket);
+        if (identity === undefined || (this.#canSubmit && !(await this.#canSubmit(identity)))) {
           throw new SubmitForbiddenError();
         }
         const input = DialogueInputSchema.parse({ text: message.input });
@@ -296,8 +326,8 @@ export class ChatSockets {
       case "btw": {
         let session: string;
         if (message.session === undefined) {
-          const userId = this.#authorized.get(socket);
-          if (!this.#openBtw || userId === undefined || (this.#canSubmit && !this.#canSubmit(userId))) {
+          const identity = this.#authorized.get(socket);
+          if (!this.#openBtw || identity === undefined || (this.#canSubmit && !(await this.#canSubmit(identity)))) {
             throw new SubmitForbiddenError();
           }
           session = await this.#openBtw();

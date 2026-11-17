@@ -551,7 +551,7 @@ export function DialogueView({
         open={sidePanel === "btw"}
         onClose={() => setSidePanel(null)}
         activityId={threadId}
-        userId={userId}
+        participantId={userId}
       />
     </div>
   );

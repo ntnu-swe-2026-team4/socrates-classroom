@@ -1,27 +1,94 @@
 import type { Db } from "./db/d1";
-import { all, batch, one, run } from "./db/d1";
+import { batch, one, run } from "./db/d1";
 import { hashPassword } from "./auth";
-import { newId, nowIso } from "./http";
+import { nowIso } from "./http";
 
-export const DEMO_TEACHER = { email: "demo@socrates.tw", password: "demo-demo", name: "林老師" };
-const DEMO_SCHOOL = "示範學校";
+export const FIXTURE_PASSWORD = "demo-demo";
 
-const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
-const CODE_MAX = 256 - (256 % CODE_ALPHABET.length);
+export type FixtureRole = "admin" | "teacher" | "student";
 
-function newCode(): string {
-  let code = "";
-  while (code.length < 6) {
-    const [byte] = crypto.getRandomValues(new Uint8Array(1));
-    if (byte === undefined || byte >= CODE_MAX) continue;
-    code += CODE_ALPHABET[byte % CODE_ALPHABET.length]!;
-  }
-  return code;
+export interface FixtureAccount {
+  id: string;
+  name: string;
+  email: string;
+  canManageClasses: boolean;
+  isAdmin: boolean;
+  fixtureRole: FixtureRole;
 }
 
-const SYSTEM_TOPICS = [
+export const FIXTURE_ACCOUNTS: readonly FixtureAccount[] = [
   {
+    id: "u_fx_admin",
+    name: "系統管理員",
+    email: "admin@socrates.tw",
+    canManageClasses: true,
+    isAdmin: true,
+    fixtureRole: "admin",
+  },
+  {
+    id: "u_fx_lin",
+    name: "林老師",
+    email: "demo@socrates.tw",
+    canManageClasses: true,
+    isAdmin: false,
+    fixtureRole: "teacher",
+  },
+  {
+    id: "u_fx_chen",
+    name: "陳老師",
+    email: "chen@socrates.tw",
+    canManageClasses: true,
+    isAdmin: false,
+    fixtureRole: "teacher",
+  },
+  {
+    id: "u_fx_student_a",
+    name: "王小明",
+    email: "student-a@socrates.tw",
+    canManageClasses: false,
+    isAdmin: false,
+    fixtureRole: "student",
+  },
+  {
+    id: "u_fx_student_b",
+    name: "李美玲",
+    email: "student-b@socrates.tw",
+    canManageClasses: false,
+    isAdmin: false,
+    fixtureRole: "student",
+  },
+  {
+    id: "u_fx_student_c",
+    name: "陳志豪",
+    email: "student-c@socrates.tw",
+    canManageClasses: false,
+    isAdmin: false,
+    fixtureRole: "student",
+  },
+  {
+    id: "u_fx_student_d",
+    name: "林怡君",
+    email: "student-d@socrates.tw",
+    canManageClasses: false,
+    isAdmin: false,
+    fixtureRole: "student",
+  },
+  {
+    id: "u_fx_student_e",
+    name: "張家維",
+    email: "student-e@socrates.tw",
+    canManageClasses: false,
+    isAdmin: false,
+    fixtureRole: "student",
+  },
+];
+
+export const FIXTURE_TOPICS = [
+  {
+    id: "t_fx_trolley",
     title: "電車難題：你會拉桿嗎？",
+    statement: "一輛失控電車即將撞上五個人；你可以拉桿讓它轉向另一條軌道，但會撞死一個人。你拉嗎？",
+    prompts: ["你的直覺是拉還是不拉？為什麼？", "如果那一個人是你的家人呢？", "如果那五個人是罪犯呢？"],
     i18n: {
       en: {
         title: "The trolley problem: would you pull the lever?",
@@ -44,11 +111,12 @@ const SYSTEM_TOPICS = [
         ],
       },
     },
-    statement: "一輛失控電車即將撞上五個人；你可以拉桿讓它轉向另一條軌道，但會撞死一個人。你拉嗎？",
-    prompts: ["你的直覺是拉還是不拉？為什麼？", "如果那一個人是你的家人呢？", "如果那五個人是罪犯呢？"],
   },
   {
+    id: "t_fx_surrogate",
     title: "代理孕母的承諾",
+    statement: "孕母在契約中同意放棄孩子，生產後卻想留下他。契約應該被遵守嗎？",
+    prompts: ["契約成立的前提是什麼？", "身體可以成為契約標的嗎？", "孩子的利益算誰的？"],
     i18n: {
       en: {
         title: "The surrogate’s promise",
@@ -71,11 +139,12 @@ const SYSTEM_TOPICS = [
         ],
       },
     },
-    statement: "孕母在契約中同意放棄孩子，生產後卻想留下他。契約應該被遵守嗎？",
-    prompts: ["契約成立的前提是什麼？", "身體可以成為契約標的嗎？", "孩子的利益算誰的？"],
   },
   {
+    id: "t_fx_ai_rights",
     title: "AI 應該有權利嗎？",
+    statement: "如果 AI 表現出與人無異的痛苦，我們有義務顧慮它嗎？",
+    prompts: ["權利來自什麼？", "表現出痛苦等於擁有痛苦嗎？", "你的判斷依賴後果還是原則？"],
     i18n: {
       en: {
         title: "Should AI have rights?",
@@ -96,103 +165,152 @@ const SYSTEM_TOPICS = [
         ],
       },
     },
-    statement: "如果 AI 表現出與人無異的痛苦，我們有義務顧慮它嗎？",
-    prompts: ["權利來自什麼？", "表現出痛苦等於擁有痛苦嗎？", "你的判斷依賴後果還是原則？"],
   },
-];
+] as const;
 
-const DEMO_CLASSROOMS = ["高二哲學選修 A", "倫理學讀書會"];
-
-export interface DemoClassroom {
+export interface FixtureClassroom {
+  id: string;
   name: string;
   code: string;
   activityId: string;
-  topicId: string;
+  topicTitle: string;
+  teacherEmail: string;
+  members: readonly string[];
 }
 
-export async function seedDemo(db: Db, teacherPassword = DEMO_TEACHER.password): Promise<{ teacherCreated: boolean }> {
-  const at = nowIso();
-  let teacherId = (
-    await one<{ id: string }>(db, "SELECT id FROM users WHERE email = $email", { email: DEMO_TEACHER.email })
-  )?.id;
-  let teacherCreated = false;
-  if (!teacherId) {
-    teacherCreated = true;
-    teacherId = newId("u_");
-    const hash = await hashPassword(teacherPassword);
+export const FIXTURE_CLASSROOMS: readonly FixtureClassroom[] = [
+  {
+    id: "c_fx_philosophy",
+    name: "高二哲學選修 A",
+    code: "demo-phil",
+    activityId: "a_fx_philosophy",
+    topicTitle: "電車難題：你會拉桿嗎？",
+    teacherEmail: "demo@socrates.tw",
+    members: ["chen@socrates.tw", "student-a@socrates.tw", "student-b@socrates.tw"],
+  },
+  {
+    id: "c_fx_ethics",
+    name: "倫理學讀書會",
+    code: "demo-eths",
+    activityId: "a_fx_ethics",
+    topicTitle: "代理孕母的承諾",
+    teacherEmail: "demo@socrates.tw",
+    members: [],
+  },
+];
+
+async function ensureUser(db: Db, account: FixtureAccount, hash: string, at: string): Promise<string> {
+  const existing = await one<{ id: string }>(db, "SELECT id FROM users WHERE id = $id OR email = $email", {
+    id: account.id,
+    email: account.email,
+  });
+  const params = {
+    name: account.name,
+    email: account.email,
+    hash,
+    can: account.canManageClasses ? 1 : 0,
+    admin: account.isAdmin ? 1 : 0,
+  };
+  if (existing) {
     await run(
       db,
-      "INSERT INTO users (id, name, is_guest, email, password_hash, created_at) VALUES ($id, $name, 0, $email, $hash, $at)",
-      { id: teacherId, name: DEMO_TEACHER.name, email: DEMO_TEACHER.email, hash, at },
+      `UPDATE users SET name = $name, email = $email, password_hash = $hash,
+         can_manage_classes = $can, is_admin = $admin, disabled_at = NULL
+       WHERE id = $id`,
+      { ...params, id: existing.id },
     );
-  }
-
-  let schoolId = (await one<{ id: string }>(db, "SELECT id FROM schools WHERE name = $name", { name: DEMO_SCHOOL }))
-    ?.id;
-  if (!schoolId) {
-    schoolId = newId("sch_");
-    await run(db, "INSERT INTO schools (id, name, created_at) VALUES ($id, $name, $at)", {
-      id: schoolId,
-      name: DEMO_SCHOOL,
-      at,
-    });
+    return existing.id;
   }
   await run(
     db,
-    "UPDATE users SET is_admin = 1, teacher_plan = 'school', school_id = $sid, teacher_terms_at = COALESCE(teacher_terms_at, $at) WHERE id = $id",
-    { id: teacherId, sid: schoolId, at },
+    `INSERT INTO users (id, name, email, password_hash, can_manage_classes, is_admin, created_at)
+     VALUES ($id, $name, $email, $hash, $can, $admin, $at)`,
+    { ...params, id: account.id, at },
   );
+  return account.id;
+}
 
-  const topicCount = await one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM topics WHERE owner_id IS NULL");
-  if ((topicCount?.n ?? 0) === 0) {
-    for (const topic of SYSTEM_TOPICS) {
+async function ensureTopic(db: Db, topic: (typeof FIXTURE_TOPICS)[number], at: string): Promise<string> {
+  const existing = await one<{ id: string }>(db, "SELECT id FROM topics WHERE title = $title AND owner_id IS NULL", {
+    title: topic.title,
+  });
+  if (existing) return existing.id;
+  await run(
+    db,
+    "INSERT INTO topics (id, owner_id, title, statement, prompts, i18n, created_at) VALUES ($id, NULL, $title, $statement, $prompts, $i18n, $at)",
+    {
+      id: topic.id,
+      title: topic.title,
+      statement: topic.statement,
+      prompts: JSON.stringify(topic.prompts),
+      i18n: JSON.stringify(topic.i18n),
+      at,
+    },
+  );
+  return topic.id;
+}
+
+async function ensureClassroom(
+  db: Db,
+  spec: FixtureClassroom,
+  teacherId: string,
+  topicId: string,
+  at: string,
+): Promise<string> {
+  const existing = await one<{ id: string; join_code: string; current_activity_id: string | null }>(
+    db,
+    "SELECT id, join_code, current_activity_id FROM classrooms WHERE id = $id OR (teacher_id = $tid AND name = $name)",
+    { id: spec.id, tid: teacherId, name: spec.name },
+  );
+  if (!existing) {
+    await run(
+      db,
+      "INSERT INTO classrooms (id, name, teacher_id, join_code, current_activity_id, created_at) VALUES ($id, $name, $tid, $code, NULL, $at)",
+      { id: spec.id, name: spec.name, tid: teacherId, code: spec.code, at },
+    );
+  }
+  const classroomId = existing?.id ?? spec.id;
+  const activityId = existing?.current_activity_id ?? spec.activityId;
+  await batch(db, [
+    {
+      sql: "INSERT OR IGNORE INTO activities (id, classroom_id, topic_id, created_at) VALUES ($aid, $cid, $tid, $at)",
+      params: { aid: activityId, cid: classroomId, tid: topicId, at },
+    },
+    {
+      sql: "UPDATE classrooms SET current_activity_id = $aid WHERE id = $cid",
+      params: { aid: activityId, cid: classroomId },
+    },
+  ]);
+  return classroomId;
+}
+
+export async function seedFixture(db: Db): Promise<void> {
+  const at = nowIso();
+  const hash = await hashPassword(FIXTURE_PASSWORD);
+  const userIds = new Map<string, string>();
+  for (const account of FIXTURE_ACCOUNTS) {
+    userIds.set(account.email, await ensureUser(db, account, hash, at));
+  }
+  const topicIds = new Map<string, string>();
+  for (const topic of FIXTURE_TOPICS) {
+    topicIds.set(topic.title, await ensureTopic(db, topic, at));
+  }
+  for (const spec of FIXTURE_CLASSROOMS) {
+    const teacherId = userIds.get(spec.teacherEmail);
+    const topicId = topicIds.get(spec.topicTitle);
+    if (!teacherId || !topicId) continue;
+    const classroomId = await ensureClassroom(db, spec, teacherId, topicId, at);
+    for (const email of spec.members) {
+      const userId = userIds.get(email);
+      const account = FIXTURE_ACCOUNTS.find((entry) => entry.email === email);
+      if (!userId || !account) continue;
       await run(
         db,
-        "INSERT INTO topics (id, owner_id, title, statement, prompts, i18n, created_at) VALUES ($id, NULL, $title, $statement, $prompts, $i18n, $at)",
-        {
-          id: newId("t_"),
-          title: topic.title,
-          statement: topic.statement,
-          prompts: JSON.stringify(topic.prompts),
-          i18n: JSON.stringify(topic.i18n),
-          at,
-        },
+        "INSERT OR IGNORE INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
+        { cid: classroomId, uid: userId, name: account.name, at },
       );
     }
   }
-  for (const topic of SYSTEM_TOPICS) {
-    await run(db, "UPDATE topics SET i18n = $i18n WHERE owner_id IS NULL AND title = $title AND i18n IS NULL", {
-      title: topic.title,
-      i18n: JSON.stringify(topic.i18n),
-    });
-  }
-
-  const topics = await all<{ id: string; title: string }>(
-    db,
-    "SELECT id, title FROM topics WHERE owner_id IS NULL ORDER BY created_at",
-  );
-  const classrooms = await all<{ name: string }>(db, "SELECT name FROM classrooms WHERE teacher_id = $tid", {
-    tid: teacherId,
-  });
-  const existingNames = new Set(classrooms.map((row) => row.name));
-
-  for (const [index, name] of DEMO_CLASSROOMS.entries()) {
-    if (existingNames.has(name)) continue;
-    const topic = topics[index % topics.length];
-    if (!topic) break;
-    const classroomId = newId("c_");
-    const activityId = newId("a_");
-    const code = newCode();
-    await batch(db, [
-      {
-        sql: "INSERT INTO classrooms (id, name, teacher_id, join_code, current_activity_id, created_at) VALUES ($id, $name, $tid, $code, $aid, $at)",
-        params: { id: classroomId, name, tid: teacherId, code, aid: activityId, at },
-      },
-      {
-        sql: "INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ($id, $cid, $tid, $at)",
-        params: { id: activityId, cid: classroomId, tid: topic.id, at },
-      },
-    ]);
-  }
-  return { teacherCreated };
 }
+
+export { seedFixture as seedDemo };

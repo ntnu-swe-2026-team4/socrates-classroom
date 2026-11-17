@@ -36,6 +36,21 @@ const M: Record<ErrorCode, Entry> = {
     en: "This invite link is not valid.",
     es: "Este enlace de invitación no es válido.",
   },
+  invite_invalid: {
+    zh: "活動邀請連結無效。",
+    en: "This activity invite link is not valid.",
+    es: "Este enlace de invitación a la actividad no es válido.",
+  },
+  invite_revoked: {
+    zh: "這個活動邀請連結已被撤回。",
+    en: "This activity invite link has been revoked.",
+    es: "Este enlace de invitación a la actividad fue revocado.",
+  },
+  invite_expired: {
+    zh: "這個活動邀請連結已過期。",
+    en: "This activity invite link has expired.",
+    es: "Este enlace de invitación a la actividad ha caducado.",
+  },
   tos_required: {
     zh: "需要同意使用條款才能進入。",
     en: "You must accept the Terms of Service to continue.",
@@ -46,10 +61,15 @@ const M: Record<ErrorCode, Entry> = {
     en: "That name is already taken in this classroom.",
     es: "Ese nombre ya está en uso en esta clase.",
   },
-  only_student: {
-    zh: "你是這間教室的老師，請從教室頁進入。",
-    en: "You teach this classroom — open it from the classroom page.",
-    es: "Eres docente de esta clase: entra desde la página de la clase.",
+  account_disabled: {
+    zh: "這個帳號已停用，請聯絡管理員。",
+    en: "This account is disabled. Contact an administrator.",
+    es: "Esta cuenta está deshabilitada. Contacta a un administrador.",
+  },
+  capability_required: {
+    zh: "你沒有管理班級的權限。",
+    en: "You do not have permission to manage classrooms.",
+    es: "No tienes permiso para administrar clases.",
   },
   already_streaming: {
     zh: "上一則回覆還在產生中。",
@@ -91,6 +111,26 @@ const M: Record<ErrorCode, Entry> = {
     en: "This provider is not supported.",
     es: "Este proveedor no es compatible.",
   },
+  email_taken: {
+    zh: "這個信箱已經註冊過了，請直接登入。",
+    en: "This email is already registered. Please sign in instead.",
+    es: "Este correo ya está registrado. Inicia sesión.",
+  },
+  oauth_unavailable: {
+    zh: "這個登入方式目前無法使用。",
+    en: "This sign-in method is not available right now.",
+    es: "Este método de inicio de sesión no está disponible ahora.",
+  },
+  oauth_state_invalid: {
+    zh: "登入請求已失效，請重新登入。",
+    en: "The sign-in request expired. Please try again.",
+    es: "La solicitud de inicio de sesión caducó. Inténtalo de nuevo.",
+  },
+  oauth_email_unverified: {
+    zh: "這個帳號的信箱尚未驗證，無法登入。",
+    en: "This account's email is not verified.",
+    es: "El correo de esta cuenta no está verificado.",
+  },
   teacher_required: {
     zh: "請先在設定開啟教師模式。",
     en: "Turn on teacher mode in Settings first.",
@@ -126,15 +166,10 @@ const M: Record<ErrorCode, Entry> = {
     en: "Sign in with a full account to open a classroom.",
     es: "Inicia sesión con una cuenta completa para abrir una clase.",
   },
-  oauth_unavailable: {
-    zh: "這個登入方式尚未設定。",
-    en: "This sign-in method is not configured.",
-    es: "Este método de inicio de sesión no está configurado.",
-  },
   oauth_failed: {
     zh: "第三方登入失敗，請再試一次。",
     en: "Third-party sign-in failed. Please try again.",
-    es: "Falló el inicio de sesión externo. Inténtalo de nuevo.",
+    es: "El inicio de sesión externo falló. Inténtalo de nuevo.",
   },
 };
 

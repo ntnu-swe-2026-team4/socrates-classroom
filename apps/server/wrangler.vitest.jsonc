@@ -12,11 +12,14 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Chat", "ReportRunner"] }],
   "vars": {
     // Test-only fixtures sharing names with production secrets; never real credentials.
+    "ENVIRONMENT": "dev",
     "LLM_PROVIDER": "mock",
     "FAUX_TOKENS_PER_SECOND": "4",
     "PUBLIC_BASE_URL": "",
     "SEED_TOKEN": "dev-seed-token",
     "AUTH_SECRET": "test-auth-secret",
-    "BYOK_ENC_KEY": "test-byok-enc-key"
+    "BYOK_ENC_KEY": "test-byok-enc-key",
+    "GOOGLE_CLIENT_ID": "test-google-client-id",
+    "GOOGLE_CLIENT_SECRET": "test-google-client-secret"
   }
 }

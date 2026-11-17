@@ -6,16 +6,73 @@ import { one, type Db } from "./db/d1";
 
 export const SESSION_COOKIE = "socrates_session";
 export const PREVIEW_RETURN_COOKIE = "socrates_preview_return";
+export const PARTICIPANT_COOKIE = "socrates_participant";
 const SESSION_DAYS = 30;
+const PARTICIPANT_DAYS = 7;
 
 interface TokenClaims {
   uid: string;
-  name: string;
-  g?: 1;
-  role?: "student" | "teacher";
-  pv?: 1;
-  pc?: string;
+  ver: number;
   exp: number;
+}
+
+export interface Session {
+  user: User;
+  version: number;
+}
+
+export type SessionLookup =
+  | { kind: "ok"; session: Session }
+  | { kind: "missing" }
+  | { kind: "stale" }
+  | { kind: "disabled" };
+
+export interface SessionEnv {
+  AUTH_SECRET?: string;
+  DB: Db;
+}
+
+interface UserRow {
+  id: string;
+  name: string;
+  can_manage_classes: number;
+  is_admin: number;
+  disabled_at: string | null;
+  session_version: number;
+  teacher_plan: "trial" | "school" | null;
+  teacher_mode: number;
+  teacher_request_at: string | null;
+  school_name: string | null;
+  username: string | null;
+  student_classroom_id: string | null;
+  preview_classroom_id: string | null;
+}
+
+const USER_COLUMNS = `u.id, u.name, u.can_manage_classes, u.is_admin, u.disabled_at, u.session_version,
+  u.teacher_plan, u.teacher_mode, u.teacher_request_at, s.name AS school_name, u.username,
+  u.student_classroom_id, u.preview_classroom_id`;
+
+const USER_JOIN = "FROM users u LEFT JOIN schools s ON s.id = u.school_id";
+
+export type AccountRow = Pick<UserRow, "id" | "name" | "can_manage_classes" | "is_admin"> & Partial<UserRow>;
+
+export function toUser(row: AccountRow): User {
+  const kind = row.student_classroom_id ? "student" : "member";
+  return {
+    id: row.id,
+    name: row.name,
+    canManageClasses: row.can_manage_classes === 1,
+    isAdmin: row.is_admin === 1,
+    guest: false,
+    kind,
+    teacherPlan: row.teacher_plan,
+    teacherMode: row.can_manage_classes === 1 && row.teacher_mode === 1,
+    teacherRequested: row.teacher_plan === null && row.teacher_request_at !== null,
+    schoolName: row.school_name,
+    username: row.username,
+    classroomId: row.student_classroom_id,
+    ...(row.preview_classroom_id ? { preview: true, previewClassroomId: row.preview_classroom_id } : {}),
+  };
 }
 
 const encoder = new TextEncoder();
@@ -33,7 +90,7 @@ function hmacKey(secret: string): Promise<CryptoKey> {
   return key;
 }
 
-function secretOf(ctx: { env: { AUTH_SECRET?: string } }): string {
+export function secretOf(ctx: { env: { AUTH_SECRET?: string } }): string {
   const secret = ctx.env.AUTH_SECRET;
   if (!secret) throw new Error("AUTH_SECRET is not set");
   return secret;
@@ -57,19 +114,20 @@ async function sign(payload: string, secret: string): Promise<string> {
   return b64url(new Uint8Array(mac));
 }
 
-export async function sealClaims(ctx: { env: { AUTH_SECRET?: string } }, claims: object): Promise<string> {
-  const payload = b64url(encoder.encode(JSON.stringify(claims)));
+export async function sealPayload(ctx: { env: { AUTH_SECRET?: string } }, data: unknown): Promise<string> {
+  const payload = b64url(encoder.encode(JSON.stringify(data)));
   return `${payload}.${await sign(payload, secretOf(ctx))}`;
 }
 
-export async function openClaims<T>(
+export async function openPayload<T>(
   ctx: { env: { AUTH_SECRET?: string } },
   token: string | undefined,
 ): Promise<T | null> {
   if (!token) return null;
-  const [payload, sig, extra] = token.split(".");
-  if (!payload || !sig || extra !== undefined) return null;
-  if (!timingSafeEqual(await sign(payload, secretOf(ctx)), sig)) return null;
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return null;
+  const expected = await sign(payload, secretOf(ctx));
+  if (!timingSafeEqual(expected, sig)) return null;
   try {
     return JSON.parse(new TextDecoder().decode(fromB64url(payload))) as T;
   } catch {
@@ -77,13 +135,14 @@ export async function openClaims<T>(
   }
 }
 
-export async function issueSessionToken(ctx: { env: { AUTH_SECRET?: string } }, user: User): Promise<string> {
+export async function issueSessionToken(
+  ctx: { env: { AUTH_SECRET?: string } },
+  user: User,
+  version: number,
+): Promise<string> {
   const claims: TokenClaims = {
     uid: user.id,
-    name: user.name,
-    ...(user.guest ? { g: 1 as const } : {}),
-    ...(user.preview ? { pv: 1 as const } : {}),
-    ...(user.previewClassroomId ? { pc: user.previewClassroomId } : {}),
+    ver: version,
     exp: Date.now() + SESSION_DAYS * 864e5,
   };
   const payload = b64url(encoder.encode(JSON.stringify(claims)));
@@ -91,10 +150,10 @@ export async function issueSessionToken(ctx: { env: { AUTH_SECRET?: string } }, 
   return `${payload}.${sig}`;
 }
 
-export async function userFromSessionToken(
+async function tokenClaims(
   ctx: { env: { AUTH_SECRET?: string } },
   token: string | undefined,
-): Promise<User | null> {
+): Promise<TokenClaims | null> {
   if (!token) return null;
   try {
     const [payload, sig] = token.split(".");
@@ -108,88 +167,56 @@ export async function userFromSessionToken(
     if (diff !== 0) return null;
     const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as TokenClaims;
     if (claims.exp < Date.now()) return null;
-    const guest = claims.g === 1 || (claims.g === undefined && claims.role === "student");
-    return {
-      id: claims.uid,
-      name: claims.name,
-      guest,
-      ...(claims.pv ? { preview: true } : {}),
-      ...(claims.pc ? { previewClassroomId: claims.pc } : {}),
-    };
+    return claims;
   } catch {
     return null;
   }
 }
 
-interface AccountRow {
-  id: string;
-  name: string;
-  is_guest: number;
-  is_admin: number;
-  teacher_plan: "trial" | "school" | null;
-  teacher_mode: number;
-  teacher_request_at: string | null;
-  school_name: string | null;
-  username: string | null;
-  student_classroom_id: string | null;
-  guest_activity_id: string | null;
-  preview_classroom_id: string | null;
-  guest_activity_open: number | null;
+export async function lookupSession(env: SessionEnv, token: string | undefined): Promise<SessionLookup> {
+  const claims = await tokenClaims({ env }, token);
+  if (!claims) return { kind: "missing" };
+  const row = await one<UserRow>(env.DB, `SELECT ${USER_COLUMNS} ${USER_JOIN} WHERE u.id = $id`, { id: claims.uid });
+  if (!row) return { kind: "missing" };
+  if (row.disabled_at !== null) return { kind: "disabled" };
+  if (row.session_version !== claims.ver) return { kind: "stale" };
+  return { kind: "ok", session: { user: toUser(row), version: row.session_version } };
 }
-
-const ACCOUNT_SQL = `SELECT u.id, u.name, u.is_guest, u.is_admin, u.teacher_plan, u.teacher_mode, u.teacher_request_at, s.name AS school_name,
-  u.username, u.student_classroom_id, u.guest_activity_id, u.preview_classroom_id,
-  CASE WHEN a.id IS NOT NULL AND (a.finished_at IS NULL OR a.finished_at > $cutoff) THEN 1 ELSE 0 END AS guest_activity_open
-  FROM users u
-  LEFT JOIN schools s ON s.id = u.school_id
-  LEFT JOIN activities a ON a.id = u.guest_activity_id
-  WHERE u.id = $id`;
-
-function accountUser(row: AccountRow): User {
-  const kind = row.student_classroom_id ? "student" : row.is_guest === 1 ? "guest" : "member";
-  return {
-    id: row.id,
-    name: row.name,
-    guest: kind === "guest",
-    kind,
-    admin: row.is_admin === 1,
-    teacherPlan: row.teacher_plan,
-    teacherMode: row.teacher_plan !== null && row.teacher_mode === 1,
-    teacherRequested: row.teacher_plan === null && row.teacher_request_at !== null,
-    schoolName: row.school_name,
-    username: row.username,
-    classroomId: row.student_classroom_id,
-    activityId: row.guest_activity_id,
-    ...(row.preview_classroom_id ? { preview: true, previewClassroomId: row.preview_classroom_id } : {}),
-  };
-}
-
-const GUEST_GRACE_MS = 24 * 3600_000;
-
-const accountRow = (db: Db, id: string) =>
-  one<AccountRow>(db, ACCOUNT_SQL, { id, cutoff: new Date(Date.now() - GUEST_GRACE_MS).toISOString() });
 
 export async function loadAccount(db: Db, id: string): Promise<User | null> {
-  const row = await accountRow(db, id);
-  return row ? accountUser(row) : null;
+  const row = await one<UserRow>(db, `SELECT ${USER_COLUMNS} ${USER_JOIN} WHERE u.id = $id`, { id });
+  return row ? toUser(row) : null;
 }
 
-export interface SessionState {
-  user: User | null;
-  expired: boolean;
+export interface AccountState {
+  disabled: boolean;
+  version: number;
 }
 
-export async function resolveSession(
-  env: { AUTH_SECRET?: string; DB: D1Database },
-  token: string | undefined,
-): Promise<SessionState> {
-  const claims = await userFromSessionToken({ env }, token);
-  if (!claims) return { user: null, expired: false };
-  const row = await accountRow(env.DB, claims.id);
-  if (!row) return { user: null, expired: false };
-  const user = accountUser(row);
-  if (user.kind === "guest" && !user.preview && row.guest_activity_open !== 1) return { user: null, expired: true };
-  return { user, expired: false };
+export async function accountState(db: Db, userId: string): Promise<AccountState | null> {
+  const row = await one<{ disabled_at: string | null; session_version: number }>(
+    db,
+    "SELECT disabled_at, session_version FROM users WHERE id = $id",
+    { id: userId },
+  );
+  return row ? { disabled: row.disabled_at !== null, version: row.session_version } : null;
+}
+
+export async function startSession(c: Ctx, user: User): Promise<void> {
+  const state = await accountState(c.env.DB, user.id);
+  const token = await issueSessionToken({ env: c.env }, user, state?.version ?? 0);
+  setCookie(c, SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: SESSION_DAYS * 86400,
+    secure: true,
+  });
+}
+
+export function endSession(c: Ctx): void {
+  deleteCookie(c, SESSION_COOKIE, { path: "/" });
+  deleteCookie(c, PREVIEW_RETURN_COOKIE, { path: "/" });
 }
 
 function setTokenCookie(c: Ctx, name: string, token: string): void {
@@ -202,15 +229,6 @@ function setTokenCookie(c: Ctx, name: string, token: string): void {
   });
 }
 
-export async function startSession(c: Ctx, user: User): Promise<void> {
-  setTokenCookie(c, SESSION_COOKIE, await issueSessionToken({ env: c.env }, user));
-}
-
-export function endSession(c: Ctx): void {
-  deleteCookie(c, SESSION_COOKIE, { path: "/" });
-  deleteCookie(c, PREVIEW_RETURN_COOKIE, { path: "/" });
-}
-
 export async function enterPreviewSession(c: Ctx, teacherToken: string | undefined, student: User): Promise<void> {
   if (teacherToken) setTokenCookie(c, PREVIEW_RETURN_COOKIE, teacherToken);
   await startSession(c, student);
@@ -218,14 +236,70 @@ export async function enterPreviewSession(c: Ctx, teacherToken: string | undefin
 
 export async function leavePreviewSession(c: Ctx): Promise<User | null> {
   const token = getCookie(c, PREVIEW_RETURN_COOKIE);
-  const teacher = await userFromSessionToken({ env: c.env }, token);
   deleteCookie(c, PREVIEW_RETURN_COOKIE, { path: "/" });
-  if (!token || !teacher || teacher.preview) {
+  if (!token) {
+    deleteCookie(c, SESSION_COOKIE, { path: "/" });
+    return null;
+  }
+  const lookup = await lookupSession(c.env, token);
+  if (lookup.kind !== "ok") {
     deleteCookie(c, SESSION_COOKIE, { path: "/" });
     return null;
   }
   setTokenCookie(c, SESSION_COOKIE, token);
-  return teacher;
+  return lookup.session.user;
+}
+
+interface ParticipantClaims {
+  aid: string;
+  pid: string;
+  exp: number;
+}
+
+export interface ParticipantIdentity {
+  activityId: string;
+  participantId: string;
+}
+
+export async function startParticipantSession(c: Ctx, activityId: string, participantId: string): Promise<void> {
+  const claims: ParticipantClaims = {
+    aid: activityId,
+    pid: participantId,
+    exp: Date.now() + PARTICIPANT_DAYS * 864e5,
+  };
+  const payload = b64url(encoder.encode(JSON.stringify(claims)));
+  const sig = await sign(payload, secretOf(c));
+  setCookie(c, PARTICIPANT_COOKIE, `${payload}.${sig}`, {
+    httpOnly: true,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: PARTICIPANT_DAYS * 86400,
+    secure: true,
+  });
+}
+
+export async function lookupParticipant(
+  env: { AUTH_SECRET?: string },
+  token: string | undefined,
+): Promise<ParticipantIdentity | null> {
+  if (!token) return null;
+  try {
+    const [payload, sig] = token.split(".");
+    if (!payload || !sig) return null;
+    const expected = await sign(payload, secretOf({ env }));
+    if (expected.length !== sig.length) return null;
+    const a = fromB64url(sig);
+    const b = fromB64url(expected);
+    let diff = 0;
+    for (let i = 0; i < a.length; i += 1) diff |= a[i]! ^ b[i]!;
+    if (diff !== 0) return null;
+    const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as ParticipantClaims;
+    if (claims.exp < Date.now()) return null;
+    if (typeof claims.aid !== "string" || typeof claims.pid !== "string") return null;
+    return { activityId: claims.aid, participantId: claims.pid };
+  } catch {
+    return null;
+  }
 }
 
 // OWASP recommends 600k PBKDF2-SHA256 iterations; Workers CPU limits make

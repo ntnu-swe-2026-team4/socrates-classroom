@@ -14,8 +14,8 @@ import { PiHarness, type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_S
 import { Lifecycle } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
-import { SESSION_COOKIE, resolveSession } from "../auth";
-import { requireMembership } from "../services/members";
+import { SESSION_COOKIE, PARTICIPANT_COOKIE, accountState, lookupParticipant, lookupSession } from "../auth";
+import { activityAccess, participantOf } from "../services/members";
 import { createAvatarExtension } from "../pi/extensions/avatar";
 import { createJudgmentExtension } from "../pi/extensions/judgment";
 import { createWebSearchExtension } from "../pi/extensions/websearch";
@@ -24,13 +24,15 @@ import { socratesExtension } from "../pi/extensions/socrates";
 import { btwExtension, forkBtw } from "../pi/extensions/btw";
 import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
 import { buildModels } from "../pi/models";
-import { teacherLegsOf, teacherOfActivity, withPinnedCredential, type TeacherLeg } from "../pi/credentials";
+import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import { one, run } from "../db/d1";
+import { getRouter, isTeacherCredential } from "../gateway/router";
 import { SOLO_PREFIX, ownedSoloChat } from "../routes/solo";
 import { recordUsage } from "../routes/usage";
-import { getRouter, isTeacherCredential } from "../gateway/router";
 import { ApiError } from "@socrates/shared";
-import { ChatSockets } from "../ws/sockets";
+import { ChatSockets, type ReverifyOutcome, type SocketIdentity } from "../ws/sockets";
+
+const LAST_ACTIVE_KEY = "lastActiveAt";
 
 class ActivityFinishedError extends Error {
   constructor() {
@@ -38,8 +40,6 @@ class ActivityFinishedError extends Error {
     this.name = "ActivityFinished";
   }
 }
-
-const LAST_ACTIVE_KEY = "lastActiveAt";
 
 export class Chat extends DurableObject<Env> {
   readonly registry = createRegistry();
@@ -93,8 +93,9 @@ export class Chat extends DurableObject<Env> {
     (tag) => this.ctx.getWebSockets(tag),
     (request) => this.authorize(request),
     (handle, input, options) => this.routeSubmit(handle, input, options),
-    (userId) => userId === this.studentId,
+    (identity) => this.canSubmit(identity),
     () => forkBtw(this.harness, this.btw),
+    (identity) => this.revalidate(identity),
   );
   readonly webSockets = new WebSockets(this.sockets.options());
   readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.harness);
@@ -108,7 +109,7 @@ export class Chat extends DurableObject<Env> {
   }
 
   async onStart(): Promise<void> {
-    await this.sockets.reattach(this.webSockets.getConnections(), (userId) => this.reverify(userId));
+    await this.sockets.reattach(this.webSockets.getConnections(), (identity) => this.reverify(identity));
   }
 
   private async teacherId(): Promise<string | null> {
@@ -156,7 +157,7 @@ export class Chat extends DurableObject<Env> {
         await handle.setModel({ provider: model.provider, id: model.id });
         this.#sessionModels.set(handle.id, { provider: model.provider, id: model.id });
       }
-      return withPinnedCredential(decision.entry.credential, () => handle.submit(input, options));
+      return handle.submit(input, options);
     });
     void handle
       .wait(receipt.operationId)
@@ -164,7 +165,7 @@ export class Chat extends DurableObject<Env> {
         const ok = result.status === "done" || (result.status === "unanswered" && result.reason === "aborted");
         router.settle(decision, ok ? "ok" : "error");
         if (!ok) this.sockets.notifyRunFailure(handle.id);
-        if (result.status === "done" && isTeacherCredential(decision.entry.credential)) {
+        if (ok && isTeacherCredential(decision.entry.credential)) {
           this.ctx.waitUntil(this.meterTurn(handle));
         }
       })
@@ -192,6 +193,22 @@ export class Chat extends DurableObject<Env> {
     } catch (error) {
       console.warn("[usage] metering failed", error instanceof Error ? error.message : "unknown error");
     }
+  }
+
+  async live(): Promise<{
+    rounds: number;
+    lastUtterance: string;
+    lastActiveAt: string | null;
+    flags: Array<{ turn: number; type: string; excerpt: string }>;
+  }> {
+    const { messages, violations } = await this.transcript();
+    const said = messages.filter((message) => message.role === "user");
+    return {
+      rounds: said.length,
+      lastUtterance: said.at(-1)?.text ?? "",
+      lastActiveAt: (await this.ctx.storage.get<string>(LAST_ACTIVE_KEY)) ?? null,
+      flags: violations,
+    };
   }
 
   async transcript(): Promise<{
@@ -223,70 +240,111 @@ export class Chat extends DurableObject<Env> {
     return { messages, violations: deduped };
   }
 
-  async live(): Promise<{
-    rounds: number;
-    lastUtterance: string;
-    lastActiveAt: string | null;
-    flags: Array<{ turn: number; type: string; excerpt: string }>;
-  }> {
-    const { messages, violations } = await this.transcript();
-    const said = messages.filter((message) => message.role === "user");
-    return {
-      rounds: said.length,
-      lastUtterance: said.at(-1)?.text ?? "",
-      lastActiveAt: (await this.ctx.storage.get<string>(LAST_ACTIVE_KEY)) ?? null,
-      flags: violations,
-    };
-  }
-
-  private get studentId(): string {
-    return this.ctx.id.name?.split(":")[1] ?? "";
-  }
-
-  private async authorize(request: Request): Promise<string | null> {
-    const name = decodeURIComponent(new URL(request.url).pathname.split("/chat/").at(-1) ?? "");
-    const [activityId, studentId] = name.split(":");
-    if (!activityId || !studentId) return null;
-    const cookie = request.headers.get("Cookie") ?? "";
-    const token = cookie
-      .split(";")
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${SESSION_COOKIE}=`))
-      ?.slice(SESSION_COOKIE.length + 1);
-    const { user } = await resolveSession(this.env, token);
-    if (!user) return null;
+  private async canSubmit(identity: SocketIdentity): Promise<boolean> {
+    const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
+    if (!activityId || !participantId || identity.participantId !== participantId) return false;
     if (activityId.startsWith(SOLO_PREFIX)) {
-      return user.id === studentId && (await ownedSoloChat(this.env.DB, activityId, user.id)) ? user.id : null;
+      return identity.userId !== null && identity.userId === participantId;
     }
-    try {
-      const { isTeacher } = await requireMembership(this.env.DB, activityId, user);
-      return isTeacher || user.id === studentId ? user.id : null;
-    } catch {
-      return null;
-    }
+    const participant = await participantOf(this.env.DB, activityId, participantId);
+    if (!participant) return false;
+    return participant.user_id === identity.userId;
   }
 
-  private async reverify(userId: string): Promise<"member" | "revoked" | "error"> {
-    const [activityId, studentId] = this.ctx.id.name?.split(":") ?? [];
-    if (!activityId) return "revoked";
+  private async authorize(request: Request): Promise<SocketIdentity | null> {
+    const name = decodeURIComponent(new URL(request.url).pathname.split("/chat/").at(-1) ?? "");
+    const [activityId, participantId] = name.split(":");
+    if (!activityId || !participantId) return null;
+    const cookie = request.headers.get("Cookie") ?? "";
+    const lookup = await lookupSession(this.env, cookieValue(cookie, SESSION_COOKIE));
+    if (activityId.startsWith(SOLO_PREFIX)) {
+      if (lookup.kind !== "ok") return null;
+      const owner = lookup.session.user.id;
+      if (owner !== participantId || !(await ownedSoloChat(this.env.DB, activityId, owner))) return null;
+      return { userId: owner, participantId, version: lookup.session.version };
+    }
+    if (lookup.kind === "ok") {
+      const identity: SocketIdentity = {
+        userId: lookup.session.user.id,
+        participantId,
+        version: lookup.session.version,
+      };
+      const access = await activityAccess(this.env.DB, activityId, {
+        user: lookup.session.user,
+        participant: null,
+      }).catch(() => null);
+      if (access && (access.isTeacher || access.participant?.id === participantId)) return identity;
+      const ownedHere = await participantOf(this.env.DB, activityId, participantId);
+      return ownedHere?.user_id === lookup.session.user.id ? identity : null;
+    }
+    if (lookup.kind !== "missing") return null;
+    const held = await lookupParticipant(this.env, cookieValue(cookie, PARTICIPANT_COOKIE));
+    if (!held || held.activityId !== activityId || held.participantId !== participantId) return null;
+    const participant = await participantOf(this.env.DB, activityId, participantId);
+    if (!participant || participant.user_id !== null) return null;
+    return { userId: null, participantId, version: null };
+  }
+
+  private async reverify(identity: SocketIdentity): Promise<ReverifyOutcome> {
+    const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
+    if (!activityId || !participantId || identity.participantId !== participantId) return "revoked";
     if (activityId.startsWith(SOLO_PREFIX)) {
       try {
-        return userId === studentId && (await ownedSoloChat(this.env.DB, activityId, userId)) ? "member" : "revoked";
+        const state = identity.userId === null ? null : await accountState(this.env.DB, identity.userId);
+        if (!state || state.disabled || state.version !== identity.version) return "revoked";
+        return (await ownedSoloChat(this.env.DB, activityId, identity.userId!)) ? "member" : "revoked";
       } catch {
         return "error";
       }
     }
     try {
-      const { isTeacher } = await requireMembership(this.env.DB, activityId, {
-        id: userId,
-        name: "",
-        guest: true,
+      if (identity.userId === null) {
+        const participant = await participantOf(this.env.DB, activityId, participantId);
+        return participant && participant.user_id === null ? "member" : "revoked";
+      }
+      const state = await accountState(this.env.DB, identity.userId);
+      if (!state || state.disabled || state.version !== identity.version) return "revoked";
+      const participant = await participantOf(this.env.DB, activityId, participantId);
+      if (participant?.user_id === identity.userId) return "member";
+      const access = await activityAccess(this.env.DB, activityId, {
+        user: { id: identity.userId },
+        participant: null,
       });
-      return isTeacher || userId === studentId ? "member" : "revoked";
+      return access.isTeacher ? "member" : "revoked";
     } catch (error) {
       return error instanceof ApiError ? "revoked" : "error";
     }
   }
+
+  private async revalidate(identity: SocketIdentity): Promise<ReverifyOutcome> {
+    try {
+      const [soloId] = this.ctx.id.name?.split(":") ?? [];
+      if (soloId?.startsWith(SOLO_PREFIX)) {
+        const state = identity.userId === null ? null : await accountState(this.env.DB, identity.userId);
+        if (!state || state.disabled || state.version !== identity.version) return "revoked";
+        return (await ownedSoloChat(this.env.DB, soloId, identity.userId!)) ? "member" : "revoked";
+      }
+      if (identity.userId === null) {
+        const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
+        if (!activityId || !participantId || identity.participantId !== participantId) return "revoked";
+        const participant = await participantOf(this.env.DB, activityId, participantId);
+        return participant && participant.user_id === null ? "member" : "revoked";
+      }
+      const state = await accountState(this.env.DB, identity.userId);
+      if (!state || state.disabled || state.version !== identity.version) return "revoked";
+      return "member";
+    } catch {
+      return "error";
+    }
+  }
+}
+
+function cookieValue(header: string, name: string): string | undefined {
+  return header
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
 }
 
 function fauxSocraticScript(context: TranscriptContext): AssistantMessage {
@@ -297,41 +355,7 @@ function fauxSocraticScript(context: TranscriptContext): AssistantMessage {
       stopReason: "toolUse",
     });
   }
-  const userTurns = context.messages.filter((message) => message.role === "user");
-  const lastUser = userTurns.at(-1);
-  const replies = FAUX_REPLY[languageOf(lastUser ? textOf(lastUser.content) : "")];
-  const reply = replies[Math.max(0, userTurns.length - 1) % replies.length]!;
-  return fauxAssistantMessage([fauxText(reply(said))]);
-}
-
-const FAUX_REPLY = {
-  zh: [
-    (said: string) => `你提到「${said}」。先別急著找標準答案——你的直覺判斷是什麼？為什麼？`,
-    (said: string) => `「${said}」——這句話背後，你先假設了什麼？`,
-    (said: string) => `如果有人反對「${said}」，他最可能怎麼說？你會怎麼回應？`,
-    (said: string) => `你說「${said}」。能舉一個具體的例子嗎？`,
-    (said: string) => `在什麼情況下，「${said}」會不成立？`,
-  ],
-  en: [
-    (said: string) => `You said “${said}”. Don’t rush to a textbook answer — what is your gut judgment, and why?`,
-    (said: string) => `“${said}” — what are you assuming before you even say that?`,
-    (said: string) => `If someone disagreed with “${said}”, what would they say, and how would you answer?`,
-    (said: string) => `You said “${said}”. Can you give me a concrete example?`,
-    (said: string) => `When would “${said}” stop being true?`,
-  ],
-  es: [
-    (said: string) => `Dijiste «${said}». No busques aún la respuesta de manual: ¿cuál es tu intuición y por qué?`,
-    (said: string) => `«${said}»: ¿qué das por supuesto antes de decirlo?`,
-    (said: string) => `Si alguien no estuviera de acuerdo con «${said}», ¿qué diría y cómo responderías?`,
-    (said: string) => `Dijiste «${said}». ¿Puedes darme un ejemplo concreto?`,
-    (said: string) => `¿En qué caso «${said}» dejaría de ser cierto?`,
-  ],
-} as const;
-
-function languageOf(text: string): keyof typeof FAUX_REPLY {
-  if (/[\u3400-\u9fff]/.test(text)) return "zh";
-  if (/[¿¡ñáéíóú]/i.test(text)) return "es";
-  return /[a-z]/i.test(text) ? "en" : "zh";
+  return fauxAssistantMessage([fauxText(`你提到「${said}」。先別急著找標準答案——你的直覺判斷是什麼？為什麼？`)]);
 }
 
 function textOf(content: Message["content"]): string {

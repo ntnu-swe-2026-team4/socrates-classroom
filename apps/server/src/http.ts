@@ -7,8 +7,8 @@ export interface AppEnv {
   Bindings: Env;
   Variables: {
     user: User | null;
-    sessionExpired: boolean;
     lang: Lang;
+    sessionIssue: "stale" | "disabled" | null;
   };
 }
 
@@ -52,8 +52,9 @@ export async function parseBody<S extends z.ZodType>(c: Ctx, schema: S): Promise
 
 export function requireUser(c: Ctx): User {
   const user = c.get("user");
-  if (!user) fail(401, c.get("sessionExpired") ? "guest_session_expired" : "unauthorized");
-  return user;
+  if (user) return user;
+  if (c.get("sessionIssue") === "disabled") fail(403, "account_disabled");
+  fail(401, "unauthorized");
 }
 
 export function uniqueViolationColumns(error: unknown): Array<[string, string]> {
@@ -76,6 +77,24 @@ export function uniqueViolationColumns(error: unknown): Array<[string, string]> 
   return [];
 }
 
+export function requireAdmin(c: Ctx): User {
+  const user = requireUser(c);
+  if (!user.isAdmin) fail(403, "forbidden");
+  return user;
+}
+
+const CAPABILITY_FLAGS = {
+  manage_classes: "canManageClasses",
+} as const satisfies Record<string, keyof User>;
+
+export type Capability = keyof typeof CAPABILITY_FLAGS;
+
+export function requireCapability(c: Ctx, capability: Capability): User {
+  const user = requireUser(c);
+  if (!user[CAPABILITY_FLAGS[capability]]) fail(403, "capability_required");
+  return user;
+}
+
 export function requireAccount(c: Ctx): User {
   const user = requireUser(c);
   if (user.guest || user.preview) fail(403, "account_required");
@@ -89,14 +108,8 @@ export function requireMember(c: Ctx): User {
 }
 
 export function requireTeacher(c: Ctx): User {
-  const user = requireMember(c);
-  if (!user.teacherPlan || !user.teacherMode) fail(403, "teacher_required");
-  return user;
-}
-
-export function requireAdmin(c: Ctx): User {
   const user = requireAccount(c);
-  if (!user.admin) fail(403, "forbidden");
+  if (!user.canManageClasses) fail(403, "capability_required");
   return user;
 }
 

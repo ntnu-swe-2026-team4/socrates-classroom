@@ -149,11 +149,10 @@ export function communityRoutes() {
         name: string;
         joined_at: string;
         username: string | null;
-        is_guest: number;
         student_classroom_id: string | null;
       }>(
         c.env.DB,
-        `SELECT m.user_id, m.name, m.joined_at, u.username, u.is_guest, u.student_classroom_id
+        `SELECT m.user_id, m.name, m.joined_at, u.username, u.student_classroom_id
          FROM members m JOIN users u ON u.id = m.user_id
          WHERE m.classroom_id = $cid AND u.preview_classroom_id IS NULL
          ORDER BY m.joined_at ASC, m.rowid ASC`,
@@ -165,7 +164,7 @@ export function communityRoutes() {
           id: row.user_id,
           name: row.name,
           joinedAt: row.joined_at,
-          kind: row.student_classroom_id ? "student" : row.is_guest === 1 ? "guest" : "member",
+          kind: row.student_classroom_id ? "student" : "member",
           ...(room.owner ? { username: row.username } : {}),
         })),
       };

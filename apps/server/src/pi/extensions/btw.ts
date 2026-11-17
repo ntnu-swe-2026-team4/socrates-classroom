@@ -2,6 +2,7 @@ import BTW_RAW from "../../prompts/btw.md?raw";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Extension } from "@earendil-works/pi-durable";
 import type { PiHarness } from "agents/harness/pi";
+import { BTW_THINKING_LEVEL } from "../agents/profiles";
 
 export class NothingToForkError extends Error {
   constructor() {
@@ -28,7 +29,7 @@ export async function forkBtw(harness: PiHarness, btw: Extension): Promise<strin
   if (!newest) throw new NothingToForkError();
   const fork = await root.fork(
     newest.id,
-    { ownership: { kind: "ownerless" }, agent: { extensions: [btw] } },
+    { ownership: { kind: "ownerless" }, agent: { extensions: [btw], thinkingLevel: BTW_THINKING_LEVEL } },
     BACKGROUND_CONTEXT,
   );
   return String(fork.id);

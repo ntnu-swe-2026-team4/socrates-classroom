@@ -6,6 +6,7 @@ import {
   ChartNoAxesColumn,
   Copy,
   Eye,
+  Link2,
   Pencil,
   MessageSquare,
   Plus,
@@ -15,8 +16,9 @@ import {
 } from "lucide-react";
 import { api, type ClassroomActivity, type ClassroomSummary } from "@/api";
 import { QrBlock, absoluteUrl } from "@/components/QrBlock";
-import { Button, ConfirmDialog, Field, FormDialog, Initial, Input, Spinner, cn } from "@/components/ui";
+import { Button, Checkbox, ConfirmDialog, Field, FormDialog, Initial, Input, Spinner, cn } from "@/components/ui";
 import { useFormatDate, useT } from "@/i18n";
+import { AddTopic, CopyTopic, useClassroomTopics } from "@/components/ClassroomTopics";
 import { TopicPicker } from "@/components/TopicPicker";
 import {
   AnnouncementsPanel,
@@ -162,6 +164,9 @@ function ClassroomPage() {
           {teacher && data.url && data.code ? (
             <>
               <InviteCard url={data.url} code={data.code} ready={Boolean(data.current)} />
+              {running && data.current && (
+                <ActivityInviteCard key={data.current.activityId} activityId={data.current.activityId} />
+              )}
               <Section title={t("students_card_title")}>
                 <div className="flex flex-col gap-2 p-3">
                   <p className="text-[12.5px] leading-relaxed text-ink-soft">{t("students_card_desc")}</p>
@@ -191,6 +196,7 @@ function ClassroomPage() {
                 />
               )}
               {teacher && <NewTopic room={data} />}
+              {teacher && <TopicSet room={data} />}
             </>
           )}
           {tab === "announcements" && <AnnouncementsPanel room={data} />}
@@ -343,6 +349,46 @@ function TopicHistory({
   );
 }
 
+function TopicSet({ room }: { room: ClassroomSummary }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const topics = useClassroomTopics(room.id);
+  return (
+    <Section
+      title={t("setup_topic_system")}
+      actions={
+        <Button variant="ghost" size="sm" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+          <Plus className="size-3.5" />
+          {open ? t("common_cancel") : t("setup_topic_add")}
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-3 p-3">
+        {topics.isPending ? (
+          <div className="flex justify-center py-4">
+            <Spinner />
+          </div>
+        ) : (topics.data ?? []).length === 0 ? (
+          <p className="text-[12.5px] text-ink-faint">{t("setup_topics_empty")}</p>
+        ) : (
+          (topics.data ?? []).map((topic) => (
+            <div key={topic.id} className="rounded-xl bg-paper-deep px-3 py-2">
+              <b className="font-serif text-[14px] font-medium text-ink">{topic.title}</b>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-soft">{topic.statement}</p>
+            </div>
+          ))
+        )}
+        {open && (
+          <div className="flex flex-col gap-4 border-t border-line pt-3">
+            <AddTopic classroomId={room.id} />
+            <CopyTopic classroomId={room.id} />
+          </div>
+        )}
+      </div>
+    </Section>
+  );
+}
+
 function PreviewButton({ room }: { room: ClassroomSummary }) {
   const t = useT();
   const preview = useMutation({
@@ -369,8 +415,10 @@ function PreviewButton({ room }: { room: ClassroomSummary }) {
 function NewTopic({ room }: { room: ClassroomSummary }) {
   const t = useT();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const first = !room.current;
   const [open, setOpen] = useState(first);
+  const [testMode, setTestMode] = useState(false);
   return (
     <Section
       title={first ? t("classroom_first_topic") : t("classroom_new_topic")}
@@ -390,14 +438,22 @@ function NewTopic({ room }: { room: ClassroomSummary }) {
           </p>
           <TopicPicker
             excludeId={room.current?.topicId}
-            submitLabel={t("classroom_start_topic")}
+            submitLabel={testMode ? t("classroom_start_test") : t("classroom_start_topic")}
             onPicked={async (topicId) => {
-              await api.startActivity(room.id, topicId);
+              const started = await api.startActivity(room.id, topicId, testMode ? "test" : "live");
               setOpen(false);
               await queryClient.invalidateQueries({ queryKey: ["classroom", room.id] });
+              await queryClient.invalidateQueries({ queryKey: ["classroom-activities", room.id] });
               await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+              if (testMode) await navigate({ to: "/t/live/$id", params: { id: started.activityId } });
             }}
           />
+          <div data-test-mode className="mt-3 border-t border-line pt-3">
+            <Checkbox label={t("classroom_mode_test")} checked={testMode} onCheckedChange={setTestMode} />
+            {testMode && (
+              <p className="mt-1.5 pl-8 text-[12px] leading-relaxed text-ink-faint">{t("classroom_mode_test_hint")}</p>
+            )}
+          </div>
         </div>
       ) : (
         <p className="px-3 py-2.5 text-[12.5px] text-ink-faint">{t("classroom_new_topic_hint")}</p>
@@ -435,6 +491,57 @@ function InviteCard({ url, code, ready }: { url: string; code: string; ready: bo
         {!ready && (
           <p className="rounded-xl bg-ember-wash px-3 py-2 text-[12px] leading-relaxed text-ink-soft">
             {t("classroom_invite_needs_topic")}
+          </p>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+function ActivityInviteCard({ activityId }: { activityId: string }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const create = useMutation({ mutationFn: () => api.activityInvite(activityId) });
+  const url = create.data?.url;
+  async function copy(full: string) {
+    try {
+      await navigator.clipboard.writeText(full);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  }
+  return (
+    <Section title={t("classroom_activity_invite_title")}>
+      <div data-activity-invite className="flex flex-col gap-3 p-3">
+        <p className="text-[12.5px] leading-relaxed text-ink-soft">{t("classroom_activity_invite_hint")}</p>
+        {url ? (
+          <div className="flex flex-col items-center gap-3 text-center">
+            <QrBlock url={url} />
+            <code className="w-full truncate rounded-lg bg-paper-deep px-3 py-1 font-mono text-[11.5px] text-ink-soft">
+              {absoluteUrl(url)}
+            </code>
+            <Button variant="outline" size="sm" className="w-full" onClick={() => void copy(absoluteUrl(url))}>
+              <Copy className="size-3.5" />
+              {copied ? t("setup_copied") : t("setup_copy")}
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            disabled={create.isPending}
+            onClick={() => create.mutate()}
+          >
+            {create.isPending ? <Spinner /> : <Link2 className="size-3.5" />}
+            {t("classroom_activity_invite")}
+          </Button>
+        )}
+        {create.isError && (
+          <p role="alert" className="text-[12.5px] text-flag">
+            {t("common_error")}
           </p>
         )}
       </div>
