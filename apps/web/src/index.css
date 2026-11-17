@@ -30,6 +30,12 @@
   --color-comic-paper: #ffffff;
   --color-comic-night: #202022;
   --color-comic-ochre: #ceae62;
+  --color-comic-ground: #f3f3f1;
+  --color-comic-dot: #cfcfcb;
+  --color-comic-graphite: #5e5d58;
+  --color-comic-soft: #4a4a4a;
+
+  --font-dot: "DotGothic16", "Noto Sans TC Variable", ui-monospace, monospace;
 }
 
 [data-theme="dark"] {

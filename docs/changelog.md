@@ -2,6 +2,17 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-17 — 登入頁改為 dither 柱廊風格（`frontend/web-next`）
+
+### Changed
+
+- `/login` 套用 `new-graphic` 分支的設計：`StoaField`（canvas 繪製的 Floyd–Steinberg 風格柱廊，滑鼠可推開顆粒）、歡迎標題、單行公告列；登入行為沿用現況（Email 與 Google、admin 登入後進 `/admin`、邀請碼入口）
+- 大螢幕下頁面高度補滿視窗
+
+### Removed
+
+- 舊的登入頁公告欄 `NotificationBoard` 與 `public/greek/hero.webp`
+
 ## 2026-11-17 — 訪客與學生改用側欄（`frontend/web-next`）
 
 ### Changed
