@@ -58,7 +58,7 @@ function JoinPage() {
       const { activityId, user } = await api.joinAsGuest(code, signedIn ? undefined : name.trim());
       queryClient.setQueryData(["me"], user);
       await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
-      if (draft || user.guest) {
+      if (draft || !user) {
         await navigate({ to: "/dialogue", search: { activityId, ...(draft ? { q: draft } : {}) } });
         return;
       }
@@ -71,11 +71,9 @@ function JoinPage() {
           ? t("join_err_name_taken")
           : code === "activity_finished"
             ? t("join_err_finished")
-            : code === "only_student"
-              ? t("join_only_student")
-              : code === "student_restricted" || code === "trial_limit"
-                ? (error as ApiError).message
-                : t("join_failed"),
+            : code === "student_restricted" || code === "trial_limit"
+              ? (error as ApiError).message
+              : t("join_failed"),
       );
     } finally {
       setSubmitting(false);
@@ -96,9 +94,7 @@ function JoinPage() {
               <p className="text-[15px] text-ink-soft">
                 {info.error instanceof ApiError && info.error.code === "rate_limited"
                   ? t("join_failed")
-                  : info.error instanceof ApiError && info.error.code === "only_student"
-                    ? t("join_only_student")
-                    : t("join_invalid")}
+                  : t("join_invalid")}
               </p>
               <Button variant="outline" onClick={() => void navigate({ to: "/classrooms" })}>
                 {t("common_back")}

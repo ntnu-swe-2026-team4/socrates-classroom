@@ -45,8 +45,8 @@ if (!res.ok) {
   process.exit(1);
 }
 if (body.seeded) {
-  console.log(`示範資料已建立：老師 demo@socrates.tw（密碼 demo-demo）、兩間教室（各含進行中活動）。`);
-  console.log(`學生流程：登入老師帳號在教室頁看邀請碼，或直接用 /join 連結以訪客加入。`);
+  console.log("fixture 已建立：8 個固定帳號（共用密碼 demo-demo）、2 間教室（其中一班 3 位成員）。");
+  console.log("切換身分：開 http://localhost:5173/dev/accounts（dev-only，免密碼）。");
 } else {
-  console.log("資料庫已有示範資料，跳過。");
+  console.log("seed 未執行。");
 }

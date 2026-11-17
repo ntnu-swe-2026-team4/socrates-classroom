@@ -1,13 +1,27 @@
 import { Hono } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
   LoginInputSchema,
   ProfileInputSchema,
   RegisterInputSchema,
+  SignupInputSchema,
   TeacherRequestInputSchema,
+  type ErrorCode,
   type User,
 } from "@socrates/shared";
-import { one, run } from "../db/d1";
-import { DUMMY_HASH, endSession, hashPassword, loadAccount, startSession, verifyPassword } from "../auth";
+import { batch, one, run } from "../db/d1";
+import {
+  DUMMY_HASH,
+  endSession,
+  hashPassword,
+  loadAccount,
+  openPayload,
+  sealPayload,
+  startSession,
+  toUser,
+  verifyPassword,
+} from "../auth";
+import { enabledProviders } from "./oauth-config";
 import {
   enforceIpLimit,
   fail,
@@ -15,64 +29,45 @@ import {
   newId,
   nowIso,
   parseBody,
-  requireMember,
   requireUser,
   uniqueViolationColumns,
   type AppEnv,
   type Ctx,
 } from "../http";
-import { assertSeats } from "../services/members";
-import { enabledProviders } from "./oauth-config";
+import { ensureParticipant } from "../services/members";
+import {
+  OAuthError,
+  googleAuthorizeUrl,
+  googleProfile,
+  isOAuthProvider,
+  randomToken,
+  type GoogleConfig,
+  type OAuthPending,
+  type OAuthProfile,
+  type OAuthProvider,
+} from "../oauth";
 
-interface JoinTarget {
+const OAUTH_COOKIE = "socrates_oauth";
+const OAUTH_COOKIE_PATH = "/api/auth/oauth";
+const OAUTH_TTL_SECONDS = 600;
+const OAUTH_SUCCESS_PATH = "/home";
+
+interface UserRow {
   id: string;
-  teacher_id: string;
-}
-
-async function joinTarget(c: Ctx, code: string, name: string): Promise<JoinTarget> {
-  const classroom = await one<{ id: string; teacher_id: string; current_activity_id: string | null }>(
-    c.env.DB,
-    "SELECT id, teacher_id, current_activity_id FROM classrooms WHERE join_code = $code",
-    { code },
-  );
-  if (!classroom?.current_activity_id) fail(404, "join_code_invalid");
-  const activity = await one<{ finished_at: string | null }>(
-    c.env.DB,
-    "SELECT finished_at FROM activities WHERE id = $id",
-    { id: classroom.current_activity_id },
-  );
-  if (activity?.finished_at) fail(409, "activity_finished");
-  const clash = await one<{ user_id: string }>(
-    c.env.DB,
-    "SELECT user_id FROM members WHERE classroom_id = $cid AND name = $name",
-    { cid: classroom.id, name },
-  );
-  if (clash) fail(409, "name_taken");
-  await assertSeats(c.env.DB, classroom.id, 1);
-  return { id: classroom.id, teacher_id: classroom.teacher_id };
-}
-
-async function addMember(c: Ctx, target: JoinTarget, userId: string, name: string): Promise<void> {
-  if (target.teacher_id === userId) return;
-  const at = nowIso();
-  await run(
-    c.env.DB,
-    "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at) ON CONFLICT (classroom_id, user_id) DO NOTHING",
-    { cid: target.id, uid: userId, name, at },
-  );
-}
-
-async function sessionFor(c: Ctx, id: string): Promise<User> {
-  const user = await loadAccount(c.env.DB, id);
-  if (!user) fail(401, "unauthorized");
-  await startSession(c, user);
-  return user;
+  name: string;
+  email: string | null;
+  password_hash: string | null;
+  can_manage_classes: number;
+  is_admin: number;
+  disabled_at: string | null;
 }
 
 export function authRoutes() {
   return new Hono<AppEnv>()
     .get("/me", (c) => {
-      if (c.get("sessionExpired")) fail(401, "guest_session_expired");
+      const issue = c.get("sessionIssue");
+      if (issue === "disabled") fail(403, "account_disabled");
+      if (issue === "stale") fail(401, "unauthorized");
       return c.json(c.get("user"));
     })
     .patch("/me", async (c) => {
@@ -84,71 +79,224 @@ export function authRoutes() {
         await run(c.env.DB, "UPDATE users SET name = $name WHERE id = $id", { id: current.id, name: input.name });
       }
       if (input.teacherMode !== undefined) {
-        if (current.kind !== "member")
-          fail(403, current.kind === "student" ? "student_restricted" : "account_required");
+        if (current.kind === "student") fail(403, "student_restricted");
         if (input.teacherMode && !current.teacherPlan) fail(403, "teacher_approval_required");
-        await run(c.env.DB, "UPDATE users SET teacher_mode = $mode WHERE id = $id", {
+        await run(c.env.DB, "UPDATE users SET teacher_mode = $mode, can_manage_classes = $mode WHERE id = $id", {
           id: current.id,
           mode: input.teacherMode ? 1 : 0,
         });
       }
-      return c.json(await sessionFor(c, current.id));
+      return c.json(await accountFor(c, current.id));
     })
     .post("/me/teacher-request", async (c) => {
-      const current = requireMember(c);
+      const current = requireUser(c);
+      if (current.kind === "student") fail(403, "student_restricted");
       await parseBody(c, TeacherRequestInputSchema);
       if (!current.teacherPlan) {
+        const at = nowIso();
         await run(
           c.env.DB,
           "UPDATE users SET teacher_request_at = COALESCE(teacher_request_at, $at), teacher_terms_at = $at WHERE id = $id",
-          { id: current.id, at: nowIso() },
+          { id: current.id, at },
         );
       }
-      return c.json(await sessionFor(c, current.id));
+      return c.json(await accountFor(c, current.id));
     })
     .get("/auth/providers", (c) => c.json(enabledProviders(c.env)))
     .post("/auth/login", async (c) => {
       await enforceIpLimit(c, "login", 30);
       const input = await parseBody(c, LoginInputSchema);
-      const byEmail = input.identifier.includes("@");
-      const row = await one<{ id: string; password_hash: string | null }>(
+      const row = await one<UserRow>(
         c.env.DB,
-        byEmail
-          ? "SELECT id, password_hash FROM users WHERE email = $identifier"
-          : "SELECT id, password_hash FROM users WHERE username = $identifier",
+        input.identifier.includes("@")
+          ? "SELECT * FROM users WHERE email = $identifier"
+          : "SELECT * FROM users WHERE username = $identifier",
         { identifier: input.identifier },
       );
       const ok = await verifyPassword(input.password, row?.password_hash ?? DUMMY_HASH);
       if (!row || !ok) fail(401, "unauthorized");
-      return c.json(await sessionFor(c, row.id));
+      if (row.disabled_at !== null) fail(403, "account_disabled");
+      const user = await accountFor(c, row.id);
+      await startSession(c, user);
+      return c.json(user);
     })
     .post("/auth/register", async (c) => {
       await enforceIpLimit(c, "register", 30);
       const input = await parseBody(c, RegisterInputSchema);
       if (!input.tosAccepted) fail(422, "tos_required");
+      const classroom = await one<{ id: string; current_activity_id: string | null }>(
+        c.env.DB,
+        "SELECT id, current_activity_id FROM classrooms WHERE join_code = $code",
+        { code: input.code },
+      );
+      if (!classroom?.current_activity_id) fail(404, "join_code_invalid");
+      const activity = await one<{ finished_at: string | null }>(
+        c.env.DB,
+        "SELECT finished_at FROM activities WHERE id = $id",
+        { id: classroom.current_activity_id },
+      );
+      if (activity?.finished_at) fail(409, "activity_finished");
+      const hash = await hashPassword(input.password);
+      const clash = await one<{ id: string }>(
+        c.env.DB,
+        "SELECT user_id AS id FROM members WHERE classroom_id = $cid AND name = $name",
+        { cid: classroom.id, name: input.name },
+      );
+      if (clash) fail(409, "name_taken");
       const emailTaken = await one<{ id: string }>(c.env.DB, "SELECT id FROM users WHERE email = $email", {
         email: input.email,
       });
       if (emailTaken) fail(409, "conflict");
+      const id = newId("u_");
+      const at = nowIso();
+      try {
+        await batch(c.env.DB, [
+          {
+            sql: "INSERT INTO users (id, name, email, password_hash, lang, created_at) VALUES ($id, $name, $email, $hash, $lang, $at)",
+            params: { id, name: input.name, email: input.email, hash, at, lang: langOf(c) },
+          },
+          {
+            sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
+            params: { cid: classroom.id, uid: id, name: input.name, at },
+          },
+        ]);
+      } catch (error) {
+        const pairs = uniqueViolationColumns(error);
+        if (pairs.length === 0) throw error;
+        if (pairs.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
+        fail(409, "conflict");
+      }
+      const user = await accountFor(c, id);
+      await ensureParticipant(c.env.DB, classroom.current_activity_id, user, at);
+      await startSession(c, user);
+      return c.json(user);
+    })
+    .post("/auth/signup", async (c) => {
+      await enforceIpLimit(c, "register", 30);
+      const input = await parseBody(c, SignupInputSchema);
+      if (!input.tosAccepted) fail(422, "tos_required");
       const name = input.name ?? input.email.split("@")[0]!.slice(0, 80);
-      const target = input.code ? await joinTarget(c, input.code, name) : null;
       const hash = await hashPassword(input.password);
       const id = newId("u_");
       try {
-        await run(
-          c.env.DB,
-          "INSERT INTO users (id, name, is_guest, email, password_hash, lang, created_at) VALUES ($id, $name, 0, $email, $hash, $lang, $at)",
-          { id, name, email: input.email, hash, lang: langOf(c), at: nowIso() },
-        );
+        await batch(c.env.DB, [
+          {
+            sql: "INSERT INTO users (id, name, email, password_hash, lang, created_at) VALUES ($id, $name, $email, $hash, $lang, $at)",
+            params: { id, name, email: input.email, hash, lang: langOf(c), at: nowIso() },
+          },
+        ]);
       } catch (error) {
-        if (uniqueViolationColumns(error).length === 0) throw error;
-        fail(409, "conflict");
+        const pairs = uniqueViolationColumns(error);
+        if (pairs.some(([table, column]) => table === "users" && column === "email")) fail(409, "email_taken");
+        throw error;
       }
-      if (target) await addMember(c, target, id, name);
-      return c.json(await sessionFor(c, id));
+      const user = await accountFor(c, id);
+      await startSession(c, user);
+      return c.json(user);
+    })
+    .get("/auth/oauth/:provider/start", async (c) => {
+      await enforceIpLimit(c, "oauth", 30);
+      const provider = c.req.param("provider");
+      if (!isOAuthProvider(provider)) fail(404, "not_found");
+      const config = googleConfig(c);
+      if (!config) return oauthFailure(c, "oauth_unavailable");
+      const pending: OAuthPending = {
+        provider,
+        state: randomToken(),
+        verifier: randomToken(48),
+        nonce: randomToken(),
+        exp: Date.now() + OAUTH_TTL_SECONDS * 1000,
+      };
+      setCookie(c, OAUTH_COOKIE, await sealPayload({ env: c.env }, pending), {
+        httpOnly: true,
+        secure: true,
+        sameSite: "Lax",
+        path: OAUTH_COOKIE_PATH,
+        maxAge: OAUTH_TTL_SECONDS,
+      });
+      return c.redirect(await googleAuthorizeUrl(config, pending), 302);
+    })
+    .get("/auth/oauth/:provider/callback", async (c) => {
+      await enforceIpLimit(c, "oauth", 30);
+      const provider = c.req.param("provider");
+      if (!isOAuthProvider(provider)) fail(404, "not_found");
+      const pending = await openPayload<OAuthPending>({ env: c.env }, getCookie(c, OAUTH_COOKIE));
+      deleteCookie(c, OAUTH_COOKIE, { path: OAUTH_COOKIE_PATH, secure: true });
+      const state = c.req.query("state");
+      const code = c.req.query("code");
+      if (!pending || pending.provider !== provider || pending.exp < Date.now() || !state || state !== pending.state) {
+        return oauthFailure(c, "oauth_state_invalid");
+      }
+      if (c.req.query("error") || !code) return oauthFailure(c, "oauth_failed");
+      const config = googleConfig(c);
+      if (!config) return oauthFailure(c, "oauth_unavailable");
+      let profile: OAuthProfile;
+      try {
+        profile = await googleProfile(config, code, pending);
+      } catch (error) {
+        if (error instanceof OAuthError) return oauthFailure(c, error.code);
+        throw error;
+      }
+      const user = await userForIdentity(c, provider, profile);
+      await startSession(c, user);
+      return c.redirect(OAUTH_SUCCESS_PATH, 302);
     })
     .post("/auth/logout", (c) => {
       endSession(c);
       return c.body(null, 204);
     });
+}
+
+function googleConfig(c: Ctx): GoogleConfig | null {
+  const clientId = c.env.GOOGLE_CLIENT_ID;
+  const clientSecret = c.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+  const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
+  return { clientId, clientSecret, redirectUri: `${base}/api/auth/oauth/google/callback` };
+}
+
+function oauthFailure(c: Ctx, code: ErrorCode): Response {
+  return c.redirect(`/login?error=${code}`, 302);
+}
+
+async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthProfile): Promise<User> {
+  const findSql =
+    "SELECT u.id, u.name, u.can_manage_classes, u.is_admin FROM user_identities i JOIN users u ON u.id = i.user_id WHERE i.provider = $provider AND i.provider_user_id = $subject";
+  const key = { provider, subject: profile.subject };
+  const existing = await one<{ id: string; name: string; can_manage_classes: number; is_admin: number }>(
+    c.env.DB,
+    findSql,
+    key,
+  );
+  if (existing) return toUser(existing);
+  const id = newId("u_");
+  const at = nowIso();
+  try {
+    await batch(c.env.DB, [
+      {
+        sql: "INSERT INTO users (id, name, lang, created_at) VALUES ($id, $name, $lang, $at)",
+        params: { id, name: profile.name, lang: langOf(c), at },
+      },
+      {
+        sql: "INSERT INTO user_identities (provider, provider_user_id, user_id, email, created_at) VALUES ($provider, $subject, $id, $email, $at)",
+        params: { ...key, id, email: profile.email, at },
+      },
+    ]);
+  } catch (error) {
+    if (!uniqueViolationColumns(error).some(([table]) => table === "user_identities")) throw error;
+    const raced = await one<{ id: string; name: string; can_manage_classes: number; is_admin: number }>(
+      c.env.DB,
+      findSql,
+      key,
+    );
+    if (!raced) throw error;
+    return toUser(raced);
+  }
+  return await accountFor(c, id);
+}
+
+async function accountFor(c: Ctx, id: string): Promise<User> {
+  const user = await loadAccount(c.env.DB, id);
+  if (!user) fail(401, "unauthorized");
+  return user;
 }

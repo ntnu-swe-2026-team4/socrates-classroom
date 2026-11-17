@@ -13,8 +13,8 @@ interface StoredSession {
   forkHead: number;
 }
 
-function storageKey(activityId: string, userId: string): string {
-  return `btw:${activityId}:${userId}`;
+function storageKey(activityId: string, participantId: string): string {
+  return `btw:${activityId}:${participantId}`;
 }
 
 function readStored(key: string): StoredSession | null {
@@ -43,8 +43,8 @@ function writeStored(key: string, value: StoredSession | null): void {
  * The side window opens its own socket to the same thread and sends `btw`, which binds that socket to a fork of the
  * root (docs/api-contract.md §5.4). Entries up to the fork point are the main dialogue; only later ones belong here.
  */
-export function useBtw(activityId: string, userId: string, enabled: boolean) {
-  const key = storageKey(activityId, userId);
+export function useBtw(activityId: string, participantId: string, enabled: boolean) {
+  const key = storageKey(activityId, participantId);
   const [view, setView] = useState<ConversationView | null>(null);
   const [phase, setPhase] = useState<BtwPhase>("idle");
   const [error, setError] = useState<{ code: string } | null>(null);
@@ -185,7 +185,7 @@ export function useBtw(activityId: string, userId: string, enabled: boolean) {
 
   const socket = useAgent({
     agent: "chat",
-    name: `${activityId}:${userId}`,
+    name: `${activityId}:${participantId}`,
     enabled,
     onOpen: (event) => open(event.target as WebSocket, false),
     onMessage: (event) => onFrame(event.data),

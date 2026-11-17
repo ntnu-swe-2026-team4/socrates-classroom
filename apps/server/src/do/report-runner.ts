@@ -10,6 +10,7 @@ import {
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import type { Env } from "../env";
+import { secretOf } from "../auth";
 import { buildModels } from "../pi/models";
 import { runProfile } from "../pi/agents/profiles";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
@@ -34,6 +35,28 @@ export type ReportAlarmPlan =
   | { action: "terminal" }
   | { action: "rearm"; delayMs: number }
   | { action: "generate"; backoffMs: number };
+
+interface RawTranscript {
+  messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
+  turns: number;
+  violations: ViolationSlice[];
+}
+
+function renderTranscript(
+  participantId: string,
+  transcript: RawTranscript | undefined,
+  pseudonyms: Map<string, string>,
+): { text: string; violations: ViolationSlice[] } {
+  const pseudonym = pseudonyms.get(participantId) ?? participantId;
+  const text = (transcript?.messages ?? [])
+    .map((message) =>
+      message.role === "user"
+        ? `${pseudonym}（${message.turn}）：${indentedContinuations(message.text)}`
+        : `AI：${message.text}`,
+    )
+    .join("\n");
+  return { text, violations: transcript?.violations ?? [] };
+}
 
 export function reportAlarmPlan(input: {
   attempts: number;
@@ -181,9 +204,9 @@ export class ReportRunner extends DurableObject<Env> {
   async generate(activityId: string): Promise<void> {
     const { report } = gatewayConfig;
     const db = this.env.DB;
-    const activity = await one<{ title: string; statement: string; classroom_id: string }>(
+    const activity = await one<{ title: string; statement: string }>(
       db,
-      `SELECT t.title, t.statement, a.classroom_id
+      `SELECT t.title, t.statement
        FROM activities a JOIN topics t ON t.id = a.topic_id WHERE a.id = $id`,
       { id: activityId },
     );
@@ -191,48 +214,24 @@ export class ReportRunner extends DurableObject<Env> {
     if (this.models.faux && activity.statement.includes(FAUX_GENERATE_FAILURE_MARKER)) {
       throw new Error("faux_report_generate_failure");
     }
-    const members = await all<{ user_id: string; name: string; lang: "zh" | "en" | "es" }>(
+    const participants = await all<{ id: string; display_name: string; lang: Lang }>(
       db,
-      "SELECT m.user_id, m.name, u.lang FROM members m JOIN users u ON u.id = m.user_id WHERE m.classroom_id = $cid AND u.preview_classroom_id IS NULL ORDER BY m.joined_at, m.user_id",
-      { cid: activity.classroom_id },
+      `SELECT p.id, p.display_name, COALESCE(u.lang, 'zh') AS lang
+       FROM activity_participants p
+       LEFT JOIN users u ON u.id = p.user_id
+       WHERE p.activity_id = $aid
+       ORDER BY p.joined_at, p.id`,
+      { aid: activityId },
     );
 
-    const pseudonyms = new Map<string, string>();
-    for (const [index, member] of members.entries()) {
-      const existing = await one<{ pseudonym: string }>(
-        db,
-        "SELECT pseudonym FROM pseudonyms WHERE activity_id = $aid AND student_id = $sid",
-        { aid: activityId, sid: member.user_id },
-      );
-      let pseudonym = existing?.pseudonym ?? "";
-      if (!pseudonym) {
-        let serial = index + 1;
-        while ([...pseudonyms.values()].includes(`${report.pseudonymPrefix}${serial}`)) serial += 1;
-        pseudonym = `${report.pseudonymPrefix}${serial}`;
-      }
-      pseudonyms.set(member.user_id, pseudonym);
-      if (!existing) {
-        await run(
-          db,
-          "INSERT INTO pseudonyms (activity_id, student_id, pseudonym) VALUES ($aid, $sid, $p) ON CONFLICT DO NOTHING",
-          {
-            aid: activityId,
-            sid: member.user_id,
-            p: pseudonym,
-          },
-        );
-      }
-    }
-
     const legs = await this.teacherLegs();
-    const teacherLang = await this.teacherLanguage();
-    const batch = this.batchSize(members.length, legs);
-    const transcripts = new Map<string, { text: string; violations: ViolationSlice[] }>();
-    for (let i = 0; i < members.length; i += batch) {
+    const batch = this.batchSize(participants.length, legs);
+    const transcripts = new Map<string, RawTranscript>();
+    for (let i = 0; i < participants.length; i += batch) {
       await Promise.all(
-        members.slice(i, i + batch).map(async (member) => {
+        participants.slice(i, i + batch).map(async (participant) => {
           try {
-            transcripts.set(member.user_id, await this.transcriptOf(activityId, member.user_id, pseudonyms));
+            transcripts.set(participant.id, await this.transcriptOf(activityId, participant.id));
           } catch (error) {
             console.error("[report] transcript fetch failed", error instanceof Error ? error.name : typeof error);
           }
@@ -240,14 +239,57 @@ export class ReportRunner extends DurableObject<Env> {
       );
     }
 
+    const roster = participants.filter((participant) => {
+      const transcript = transcripts.get(participant.id);
+      return transcript === undefined || transcript.turns > 0;
+    });
+
+    const pseudonyms = new Map<string, string>();
+    const ranks = await pseudonymRanks(
+      secretOf({ env: this.env }),
+      activityId,
+      roster.map((p) => p.id),
+    );
+    for (const participant of roster) {
+      const existing = await one<{ pseudonym: string }>(
+        db,
+        "SELECT pseudonym FROM pseudonyms WHERE activity_id = $aid AND participant_id = $pid",
+        { aid: activityId, pid: participant.id },
+      );
+      let pseudonym = existing?.pseudonym ?? "";
+      if (!pseudonym) {
+        let serial = ranks.get(participant.id) ?? 1;
+        while ([...pseudonyms.values()].includes(`${report.pseudonymPrefix}${serial}`)) serial += 1;
+        pseudonym = `${report.pseudonymPrefix}${serial}`;
+      }
+      pseudonyms.set(participant.id, pseudonym);
+      if (!existing) {
+        await run(
+          db,
+          "INSERT INTO pseudonyms (activity_id, participant_id, pseudonym) VALUES ($aid, $pid, $p) ON CONFLICT DO NOTHING",
+          {
+            aid: activityId,
+            pid: participant.id,
+            p: pseudonym,
+          },
+        );
+      }
+    }
+
+    const teacherLang = await this.teacherLanguage();
+    const rendered = new Map<string, { text: string; violations: ViolationSlice[] }>();
+    for (const participant of roster) {
+      rendered.set(participant.id, renderTranscript(participant.id, transcripts.get(participant.id), pseudonyms));
+    }
+
     const harness = await this.openHarness();
     const studentAnalyses = new Map<string, StudentAnalysis | null>();
-    for (let i = 0; i < members.length; i += batch) {
+    for (let i = 0; i < roster.length; i += batch) {
       await Promise.all(
-        members.slice(i, i + batch).map(async (member) => {
-          const transcript = transcripts.get(member.user_id)?.text ?? "";
+        roster.slice(i, i + batch).map(async (participant) => {
+          const transcript = rendered.get(participant.id)?.text ?? "";
           if (!transcript.trim()) {
-            studentAnalyses.set(member.user_id, null);
+            studentAnalyses.set(participant.id, null);
             return;
           }
           try {
@@ -257,28 +299,28 @@ export class ReportRunner extends DurableObject<Env> {
                 "student-report",
                 this.studentReportPrompt(activity, transcript),
                 legs,
-                { lang: member.lang, submitTool: SUBMIT_STUDENT_ANALYSIS },
+                { lang: participant.lang, submitTool: SUBMIT_STUDENT_ANALYSIS },
               );
               try {
-                studentAnalyses.set(member.user_id, StudentAnalysisSchema.parse(payloadOf(text, payload, "report")));
+                studentAnalyses.set(participant.id, StudentAnalysisSchema.parse(payloadOf(text, payload, "report")));
                 break;
               } catch (error) {
                 console.error(
                   "[report] student analysis parse failed",
                   error instanceof Error ? error.name : typeof error,
                 );
-                if (attempt === report.studentAttempts - 1) studentAnalyses.set(member.user_id, null);
+                if (attempt === report.studentAttempts - 1) studentAnalyses.set(participant.id, null);
               }
             }
           } catch (error) {
             console.error("[report] student analysis failed", error instanceof Error ? error.name : typeof error);
-            studentAnalyses.set(member.user_id, null);
+            studentAnalyses.set(participant.id, null);
           }
         }),
       );
     }
 
-    const classInput = this.classReportPrompt(activity, members, transcripts, pseudonyms);
+    const classInput = this.classReportPrompt(activity, roster, rendered, pseudonyms);
     try {
       const { text: classText, payload: classPayload } = await this.runAgent(
         harness,
@@ -288,10 +330,10 @@ export class ReportRunner extends DurableObject<Env> {
         { lang: teacherLang, submitTool: SUBMIT_CLASS_REPORT },
       );
       const classReport = ClassReportSchema.parse(payloadOf(classText, classPayload));
-      await this.persist(activityId, activity.title, classReport, members, studentAnalyses, pseudonyms, transcripts);
+      await this.persist(activityId, activity.title, classReport, roster, studentAnalyses, pseudonyms, rendered);
     } catch (error) {
       console.error("[report] class report failed", error instanceof Error ? error.name : typeof error);
-      await this.persist(activityId, activity.title, null, members, studentAnalyses, pseudonyms, transcripts);
+      await this.persist(activityId, activity.title, null, roster, studentAnalyses, pseudonyms, rendered);
       throw error;
     }
   }
@@ -330,32 +372,21 @@ export class ReportRunner extends DurableObject<Env> {
     return row?.lang ?? "zh";
   }
 
-  private batchSize(memberCount: number, legs: TeacherLeg[]): number {
+  private batchSize(participantCount: number, legs: TeacherLeg[]): number {
     const budget = getRouter(this.env).budget("batch", legs);
-    return budget > 0 ? Math.min(budget, memberCount) : Math.min(8, memberCount);
+    return budget > 0 ? Math.min(budget, participantCount) : Math.min(8, participantCount);
   }
 
   private async teacherLegs(): Promise<TeacherLeg[]> {
     return teacherLegsOf(this.env, await teacherOfActivity(this.env, this.ctx.id.name ?? ""));
   }
 
-  private async transcriptOf(
-    activityId: string,
-    studentId: string,
-    pseudonyms: Map<string, string>,
-  ): Promise<{ text: string; violations: ViolationSlice[] }> {
-    const stub = this.env.Chat.get(this.env.Chat.idFromName(`${activityId}:${studentId}`));
+  private async transcriptOf(activityId: string, participantId: string): Promise<RawTranscript> {
+    const stub = this.env.Chat.get(this.env.Chat.idFromName(`${activityId}:${participantId}`));
     const data = await stub.transcript();
-    const pseudonym = pseudonyms.get(studentId) ?? studentId;
-    const text = data.messages
-      .map((message) =>
-        message.role === "user"
-          ? `${pseudonym}（${message.turn}）：${indentedContinuations(message.text)}`
-          : `AI：${message.text}`,
-      )
-      .join("\n");
     return {
-      text,
+      messages: data.messages,
+      turns: data.messages.filter((message) => message.role === "user").length,
       violations: data.violations.map((violation) => ({
         turn: violation.turn,
         type: violation.type as ViolationType,
@@ -370,35 +401,36 @@ export class ReportRunner extends DurableObject<Env> {
 
   private classReportPrompt(
     activity: { title: string; statement: string },
-    members: Array<{ user_id: string }>,
+    roster: Array<{ id: string }>,
     transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
     pseudonyms: Map<string, string>,
   ): string {
-    const roster = members.map((m) => pseudonyms.get(m.user_id) ?? "").filter(Boolean);
-    const conversations = members
-      .map((m) => `### ${pseudonyms.get(m.user_id) ?? m.user_id}\n${transcripts.get(m.user_id)?.text ?? ""}`)
+    const names = roster.map((p) => pseudonyms.get(p.id) ?? "").filter(Boolean);
+    const conversations = roster
+      .map((p) => `### ${pseudonyms.get(p.id) ?? p.id}\n${transcripts.get(p.id)?.text ?? ""}`)
       .join("\n\n");
-    return `## Topic: ${activity.title}\n${activity.statement}\n\n## Roster: ${roster.length} students in the class\n${roster.join(", ")}\n\n## The whole class's conversations\n${conversations}`;
+    return `## Topic: ${activity.title}\n${activity.statement}\n\n## Roster: ${names.length} students in the class\n${names.join(", ")}\n\n## The whole class's conversations\n${conversations}`;
   }
 
   private async persist(
     activityId: string,
     topicTitle: string,
     classReport: ClassReport | null,
-    members: Array<{ user_id: string }>,
+    roster: Array<{ id: string; display_name: string }>,
     studentAnalyses: Map<string, StudentAnalysis | null>,
     pseudonyms: Map<string, string>,
     transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
   ): Promise<void> {
     const students: Record<string, unknown> = {};
-    for (const member of members) {
-      const studentId = member.user_id;
-      const analysis = studentAnalyses.get(studentId) ?? null;
-      const pseudonym = pseudonyms.get(studentId) ?? studentId;
-      students[studentId] = {
+    for (const participant of roster) {
+      const participantId = participant.id;
+      const analysis = studentAnalyses.get(participantId) ?? null;
+      const pseudonym = pseudonyms.get(participantId) ?? participantId;
+      students[participantId] = {
+        participantName: participant.display_name,
         pseudonym,
         analysis,
-        violations: transcripts.get(studentId)?.violations ?? [],
+        violations: transcripts.get(participantId)?.violations ?? [],
         positions: positionsOf(classReport, pseudonym),
       };
     }
@@ -417,6 +449,30 @@ export class ReportRunner extends DurableObject<Env> {
       },
     );
   }
+}
+
+export async function pseudonymRanks(
+  secret: string,
+  activityId: string,
+  participantIds: readonly string[],
+): Promise<Map<string, number>> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const ranked = await Promise.all(
+    participantIds.map(async (id) => {
+      const mac = new Uint8Array(
+        await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${activityId}:${id}`)),
+      );
+      return { id, digest: [...mac].map((byte) => byte.toString(16).padStart(2, "0")).join("") };
+    }),
+  );
+  ranked.sort((a, b) => (a.digest === b.digest ? a.id.localeCompare(b.id) : a.digest < b.digest ? -1 : 1));
+  return new Map(ranked.map((entry, index) => [entry.id, index + 1]));
 }
 
 function positionsOf(classReport: ClassReport | null, pseudonym: string): ReportPosition[] {

@@ -61,7 +61,7 @@ function useSessionSync() {
           before &&
           (now.teacherPlan !== before.teacherPlan ||
             now.teacherMode !== before.teacherMode ||
-            now.admin !== before.admin)
+            now.isAdmin !== before.isAdmin)
         ) {
           queryClient.setQueryData(["me"], now);
           await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
@@ -169,7 +169,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       (listView === "teacher" && me.data?.teacherMode === true);
 
   const themeTip = t("theme_toggle");
-  const inAdmin = pathname.startsWith("/admin") && me.data?.admin === true;
+  const inAdmin = pathname.startsWith("/admin") && me.data?.isAdmin === true;
   const adminTab =
     useRouterState({ select: (state) => (state.location.search as { tab?: AdminTab } | undefined)?.tab }) ?? "overview";
   const adminOverview = useQuery({
@@ -292,7 +292,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           </button>
         </div>
       )}
-      {me.data?.admin && !previewRoom && (
+      {me.data?.isAdmin && !previewRoom && (
         <div className="mb-3 w-full px-1.5">
           <Link to={inAdmin ? "/home" : "/admin"} data-rail="site" className={NAV_BTN}>
             {inAdmin ? <Eye className="size-[19px]" /> : <ShieldCheck className="size-[19px]" />}

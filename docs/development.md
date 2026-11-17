@@ -9,7 +9,7 @@
 - Node 26 由 `devEngines`（root `package.json`）保證：`pnpm install` 自動下載對應 runtime；shell 互動（`node`／`cf` 直呼）用 [fnm](https://github.com/Schniz/fnm) 等 version manager（`eval "$(fnm env --use-on-cd --shell zsh)"`）
 
 - `pnpm dev` 啟動時**自動套用 D1 migrations**（vite `configureServer` 跑 `pnpm migrate`，冪等約 1s）；手動 `pnpm migrate` 等價
-- `pnpm seed` 需要 **dev server 運行中**；SEED_TOKEN 自動讀 `apps/web/.env.local`（或環境變數）。在 `LLM_PROVIDER=mock`（預設）或設了 `DGX_BASE_URL` 時可用；灌入老師帳號＋兩間含進行中活動的教室
+- `pnpm seed` 需要 **dev server 運行中**；SEED_TOKEN 自動讀 `apps/web/.env.local`（或環境變數）。server 端設了 `SEED_TOKEN` 且 `ENVIRONMENT=dev` 時才可用（與 LLM 模式無關）；灌入固定 fixture：8 個帳號、3 個系統題、2 間教室
 
 ## 不需要 Cloudflare 帳號
 
@@ -27,6 +27,18 @@
 - `<DB_ID>` 是 `cloudflare.config.ts` 裡 `bindings.d1({ id })` 宣告的固定 UUID，與指令保持一致
 - **Persistence scope 陷阱**：改 `cloudflare.config.ts`（bindings、compat date、flags）會讓本地資料「消失」——這是 scope 隨 config hash 變化的正常行為，重啟 dev（自動 migrate）或手動 `pnpm migrate` 即可
 
+## Fixture 與 dev 操作台（#130）
+
+- Fixture 的 SSOT 是 `apps/server/src/seed.ts`：8 個**固定 id、固定名稱、共用密碼 `demo-demo`** 的帳號（1 管理員、2 老師、5 學生；陳老師同時是「高二哲學選修 A」的成員）、3 個系統題、2 間教室（「高二哲學選修 A」3 位成員、「倫理學讀書會」空班級），每間教室各有一個進行中的活動
+- `pnpm seed` → `POST /api/dev/seed`（需 `SEED_TOKEN`＋`ENVIRONMENT=dev`）：冪等 upsert（以 id／email／教室名稱找既有 row），重跑不會改 id、不會動既有對話資料；fixture 不含任何 transcript
+- `/dev/accounts`：列出 fixture 帳號，每列「以此身分開啟」（`POST /api/dev/login` 發 session，不需密碼）與班級／邀請連結入口。切換會覆蓋目前 session；要同時扮演多個角色請開無痕視窗
+- 管理員帳號帶 `is_admin`＋`can_manage_classes`（#131）：在 `/admin/users` 可切換他人的班級管理權限、停用／復用帳號、建立新帳號；能力與停用對已登入的 session 立刻生效（不必重新登入，停用則下一個請求即 403）
+- `POST /api/dev/login` 會把 fixture 的 `is_admin` 校正回 spec（舊 seed 建的 row 在 migration 002 之後是 0，`/admin/users` 會被擋）；`can_manage_classes` 不校正——那可能正是審查中手動提權的結果。要整份重來就是 `pnpm seed`
+
+### `ENVIRONMENT` binding
+
+`/dev/accounts` 與 `/api/dev/*` **只在 `ENVIRONMENT=dev` 時存在**，其餘環境一律 404（`apps/server/src/routes/dev.ts` 的 `isDev` 逐一閘門）。`cloudflare.config.ts` 的預設：`pnpm dev` = `dev`、build/deploy = `production`；`.env.local` 可覆寫（空值視同未設）。因此 production dry-run（`cf build`）可用來確認 dev 端點不存在。
+
 ## 對話功能（LLM）在本地
 
 `.env.local`（gitignored，範本見 `.env.example`；僅 dev 讀取——build/deploy 用 config 預設，生產設定走 `cf deploy --secrets-file`）。預設 `LLM_PROVIDER=mock`（離線 faux 模型，零帳號）——要真對話，三選一：
@@ -37,7 +49,8 @@
 | CF Workers AI | `CF_REMOTE_AI=true`（需 `cf auth login`） | Workers AI 計費（neurons）      |
 | Workers AI    | `CF_REMOTE_AI=true` ＋ `cf login`         | 免費 Neurons 額度               |
 
-都不設真 LLM 時用 mock；`pnpm seed` 在 mock 和 DGX 模式下都可用（`DGX_BASE_URL` 目前僅開 seed 閘門——dgx 腿已隨 provider block 暫時移除，設定 URL 不會註冊模型腿）。
+都不設真 LLM 時用 mock；`pnpm seed` 只要 `SEED_TOKEN` 與 `ENVIRONMENT=dev` 成立就可用（與 LLM 模式無關）。
+- **fixture 帳號被改壞** → 重跑 `pnpm seed`：fixture 帳號（含密碼 `demo-demo`）與教室會被 upsert 回固定值，id 不變
 
 ## 常見問題
 

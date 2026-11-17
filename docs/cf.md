@@ -67,7 +67,7 @@ cf --version
 `cf dev` = Vite（`@cloudflare/vite-plugin`）+ 本地 workerd：D1/R2 是本地模擬、`AI` binding 以 `dev.remote` 打真實 Workers AI。
 
 - 單一 server：`http://localhost:5173`（SPA 與 `/api` 同源，workerd 跑在 vite 內）
-- 首次啟動 D1 是空的：`pnpm seed`（走 `POST /api/dev/seed`，需 `SEED_TOKEN`）
+- 首次啟動 D1 是空的：`pnpm seed`（走 `POST /api/dev/seed`，需 `SEED_TOKEN` 與 `ENVIRONMENT=dev`）
 - `cf dev` 會偵測 `cloudflare.config.ts` 的變更
 
 ## 建置與部署
@@ -96,19 +96,22 @@ pnpm migrate     # = cf d1 migrations apply <固定 DB_ID> --local --persist-to 
 cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations   # 在 apps/web/ 下執行
 ```
 
-Schema 的 SSOT 是 `apps/server/migrations/*.sql`（`001_init.sql` 起依序編號）；本地與遠端由同一批檔案驅動。
+Schema 的 SSOT 是 `apps/server/migrations/*.sql`（`001_init.sql` 起依序前向套用）；本地與遠端由同一批檔案驅動。production 已部署（2026-11-10 起），schema 變更一律新增前向 migration，不得改寫已套用的檔案。D1 不允許關閉 foreign keys，`DROP TABLE` 父表會觸發 `ON DELETE CASCADE`——重建被參照的表須先備份、由葉節點往上 drop、重建後依序回填（`tests/migrations.test.ts` 驗證資料不流失）。
 
 ## Secrets
 
 本專案 secrets（`cloudflare.config.ts` 宣告為 `bindings.secret()`）：
 
-| Secret         | 用途                                                 | 產生方式                  |
-| -------------- | ---------------------------------------------------- | ------------------------- |
-| `AUTH_SECRET`  | HMAC session cookie 簽章（必填，缺了 fail-fast）     | `openssl rand -base64 32` |
-| `BYOK_ENC_KEY` | teacher keys 的 AES-GCM 金鑰（必填，缺了 fail-fast） | `openssl rand -base64 32` |
-| `SEED_TOKEN`   | `POST /api/dev/seed` 閘門（production 留空即可禁用） | 任意亂數                  |
+| Secret                 | 用途                                                                        | 產生方式                            |
+| ---------------------- | --------------------------------------------------------------------------- | ----------------------------------- |
+| `AUTH_SECRET`          | HMAC session cookie 簽章（必填，缺了 fail-fast）                            | `openssl rand -base64 32`           |
+| `BYOK_ENC_KEY`         | teacher keys 的 AES-GCM 金鑰（必填，缺了 fail-fast）                        | `openssl rand -base64 32`           |
+| `SEED_TOKEN`           | `POST /api/dev/seed` 閘門（production 留空即可禁用）                        | 任意亂數                            |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret（留空＝Google 登入停用，回 `oauth_unavailable`） | Google Cloud Console → OAuth 用戶端 |
 
-OAuth 第三方登入的 bindings **目前未宣告**在 `cloudflare.config.ts`（雲端設定維持原版），因此 Google 登入停用；啟用方式見下方 [OAuth 登入](#oauth-登入google選用)。
+Google 登入另需 text binding `GOOGLE_CLIENT_ID`（`cloudflare.config.ts`，dev 由 `.env.local` override），並在 Google Cloud Console 登錄 redirect URI `<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`；本地開發需在 `.env.local` 設 `PUBLIC_BASE_URL=http://localhost:5173`。建立用戶端、正式環境設定與 secret 輪替步驟見 [`google-oauth.md`](./google-oauth.md)。
+
+Google 登入的 bindings 已在 `cloudflare.config.ts` 宣告：`GOOGLE_CLIENT_ID` 為 text binding（dev 由 `.env.local` override），`GOOGLE_CLIENT_SECRET` 在 production 為 secret、在 development 讀 `.env.local`（留空＝登入頁按鈕停用）。啟用步驟見下方 [OAuth 登入](#oauth-登入google選用)。
 
 ```bash
 # 一次上傳（dotenv 格式；.env.production.local 不會進 dev/git）
@@ -117,7 +120,7 @@ cf deploy --prebuilt --mode production --secrets-file .env.production.local
 
 ### OAuth 登入（Google，選用）
 
-> **目前狀態：未啟用。** server 端（`routes/oauth.ts`）已實作，但 `apps/web/cloudflare.config.ts` 尚未宣告下表的 bindings。要啟用，需在 `worker.env` 加入 public id（`bindings.text`）與 secret（`bindings.secret()`——注意 secret 宣告後即為 required，dev 未提供會啟動失敗），並在 CI build 環境提供 public id、在 `PROD_SECRETS_FILE` 加入 secret。
+> **目前狀態：選用，預設停用。** server 端為 `src/oauth.ts`＋`routes/auth.ts` 的 `GET /auth/oauth/:provider/start|callback`，身分表為 `user_identities`（017）。要啟用，需在部署環境提供 `GOOGLE_CLIENT_ID`（public）與 `GOOGLE_CLIENT_SECRET`（`PROD_SECRETS_FILE`）。
 
 選用：兩個值**都**設齊才會在 `GET /api/auth/providers` 回 `true`、登入頁按鈕才可按；未設則 `/api/auth/oauth/<provider>/start` 直接 302 回 `/login?error=oauth_unavailable`。
 

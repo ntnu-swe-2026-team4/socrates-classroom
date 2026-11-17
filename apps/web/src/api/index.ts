@@ -5,10 +5,18 @@ export { ApiError, guestSession } from "./http";
 export type { Api } from "./http";
 export type {
   ActivityInfo,
+  ActivityInvite,
+  ActivitySlot,
+  ActivitySlots,
+  AdminUser,
   AuthProviders,
   ClassroomActivity,
   ClassroomCreated,
   ClassroomSummary,
+  DevAccount,
+  DevAccounts,
+  InviteInfo,
+  InviteJoined,
   JoinInfo,
   Report,
   ReportPosition,
@@ -18,6 +26,7 @@ export type {
   TeacherReport,
   TermExplanation,
   Topic,
+  TopicDraft,
   User,
   ViolationSlice,
 } from "@socrates/shared";

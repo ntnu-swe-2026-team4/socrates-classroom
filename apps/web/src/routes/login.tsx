@@ -32,7 +32,7 @@ export const Route = createFileRoute("/login")({
       .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
       .catch(() => null);
     if (me && !me.guest && !me.preview) {
-      throw redirect({ href: me.admin && !search.next ? "/admin" : safeNext(search.next) });
+      throw redirect({ href: me.isAdmin && !search.next ? "/admin" : safeNext(search.next) });
     }
   },
   component: LoginPage,
@@ -123,7 +123,7 @@ function LoginPage() {
     try {
       const user = await action();
       queryClient.setQueryData(["me"], user);
-      await navigate({ href: user.admin && !search.next ? "/admin" : next });
+      await navigate({ href: user.isAdmin && !search.next ? "/admin" : next });
     } catch (caught) {
       const code = caught instanceof ApiError ? caught.code : null;
       setError(

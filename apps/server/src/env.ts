@@ -6,15 +6,16 @@ export interface Env {
   ReportRunner: DurableObjectNamespace<import("./do/report-runner").ReportRunner>;
   AI?: Ai;
   PUBLIC_BASE_URL?: string;
+  ENVIRONMENT?: string;
   AUTH_SECRET?: string;
   LLM_PROVIDER?: string;
   DGX_BASE_URL?: string;
   TTS_MODEL?: string;
   BYOK_ENC_KEY?: string;
   SEED_TOKEN?: string;
-  FAUX_TOKENS_PER_SECOND?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  FAUX_TOKENS_PER_SECOND?: string;
   ALERT_EMAIL?: unknown;
   ALERT_EMAIL_FROM?: string;
 }

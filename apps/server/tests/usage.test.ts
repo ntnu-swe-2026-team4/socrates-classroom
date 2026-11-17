@@ -34,7 +34,7 @@ function outbox() {
 beforeAll(async () => {
   await applyD1Migrations(env.DB, inject("d1Migrations"));
   await seedDemo(env.DB);
-  admin = cookieOf(await send("/api/auth/login", null, "POST", { email: "demo@socrates.tw", password: "demo-demo" }));
+  admin = cookieOf(await send("/api/auth/login", null, "POST", { email: "admin@socrates.tw", password: "demo-demo" }));
 });
 
 describe("usage quota and alerts", () => {
@@ -67,8 +67,8 @@ describe("usage quota and alerts", () => {
     await recordUsage(env, account.id, 1_500, { sender: mail.sender });
     expect(mail.sent).toHaveLength(1);
     expect(mail.sent[0]?.subject).toContain("60%");
-    expect(mail.sent[0]?.to).toContain("demo@socrates.tw");
-    expect(mail.sent[0]?.to.some((address) => address !== "demo@socrates.tw")).toBe(true);
+    expect(mail.sent[0]?.to).toContain("admin@socrates.tw");
+    expect(mail.sent[0]?.to.some((address) => address !== "admin@socrates.tw")).toBe(true);
 
     await recordUsage(env, account.id, 500, { sender: mail.sender });
     expect(mail.sent).toHaveLength(1);

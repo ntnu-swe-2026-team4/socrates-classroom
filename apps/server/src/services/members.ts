@@ -1,7 +1,9 @@
-import { TRIAL_LIMITS, type Lang, type User } from "@socrates/shared";
+import { getCookie } from "hono/cookie";
+import { ApiError, TRIAL_LIMITS, type ActivityMode, type Lang, type User } from "@socrates/shared";
 import type { Db } from "../db/d1";
-import { one } from "../db/d1";
-import { fail } from "../http";
+import { one, run } from "../db/d1";
+import { PARTICIPANT_COOKIE, lookupParticipant, type ParticipantIdentity } from "../auth";
+import { fail, newId, nowIso, type Ctx } from "../http";
 
 export interface ClassroomRow {
   id: string;
@@ -15,6 +17,7 @@ export interface ActivityRow {
   id: string;
   classroom_id: string;
   topic_id: string;
+  mode: ActivityMode;
   created_at: string;
   finished_at: string | null;
 }
@@ -22,6 +25,8 @@ export interface ActivityRow {
 export interface TopicRow {
   id: string;
   owner_id: string | null;
+  classroom_id: string | null;
+  copied_from: string | null;
   title: string;
   statement: string;
   summary: string | null;
@@ -34,6 +39,16 @@ export interface MemberRow {
   user_id: string;
   name: string;
   tos_accepted_at: string;
+  joined_at: string;
+}
+
+export interface ParticipantRow {
+  activity_id: string;
+  id: string;
+  user_id: string | null;
+  kind: "member" | "guest" | "teacher";
+  display_name: string;
+  tos_accepted_at: string | null;
   joined_at: string;
 }
 
@@ -59,6 +74,7 @@ export function parsePrompts(row: TopicRow, lang: Lang = "zh") {
   const summary = local.summary ?? row.summary;
   return {
     id: row.id,
+    classroomId: row.classroom_id,
     title: local.title ?? row.title,
     statement: local.statement ?? row.statement,
     ...(summary ? { summary } : {}),
@@ -85,20 +101,198 @@ export async function topicOf(db: Db, topicId: string, lang: Lang = "zh"): Promi
   return parsePrompts(row, lang);
 }
 
-export async function requireMembership(
-  db: Db,
-  activityId: string,
-  user: User,
-): Promise<{ activity: ActivityRow; classroom: ClassroomRow; member: MemberRow | null; isTeacher: boolean }> {
-  const { activity, classroom } = await activityOf(db, activityId);
-  if (user.kind === "guest" && !user.preview && user.activityId !== activityId) fail(403, "forbidden");
-  if (classroom.teacher_id === user.id) return { activity, classroom, member: null, isTeacher: true };
+export interface ClassroomAccess {
+  classroom: ClassroomRow;
+  isTeacher: boolean;
+}
+
+export async function classroomAccess(db: Db, classroomId: string, user: Pick<User, "id">): Promise<ClassroomAccess> {
+  const classroom = await one<ClassroomRow>(db, "SELECT * FROM classrooms WHERE id = $id", { id: classroomId });
+  if (!classroom) fail(404, "not_found");
+  if (classroom.teacher_id === user.id) return { classroom, isTeacher: true };
   const member = await one<MemberRow>(db, "SELECT * FROM members WHERE classroom_id = $cid AND user_id = $uid", {
     cid: classroom.id,
     uid: user.id,
   });
   if (!member) fail(403, "forbidden");
-  return { activity, classroom, member, isTeacher: false };
+  return { classroom, isTeacher: false };
+}
+
+export async function topicForActivity(
+  db: Db,
+  topicId: string,
+  classroomId: string,
+  userId: string,
+): Promise<TopicRow> {
+  const topic = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id", { id: topicId });
+  if (!topic) fail(404, "not_found");
+  const systemOrOwn = topic.classroom_id === null && (topic.owner_id === null || topic.owner_id === userId);
+  if (topic.classroom_id !== classroomId && !systemOrOwn) fail(404, "not_found");
+  return topic;
+}
+
+export async function participantOf(db: Db, activityId: string, participantId: string): Promise<ParticipantRow | null> {
+  return await one<ParticipantRow>(db, "SELECT * FROM activity_participants WHERE activity_id = $aid AND id = $pid", {
+    aid: activityId,
+    pid: participantId,
+  });
+}
+
+async function participantOfUser(db: Db, activityId: string, userId: string): Promise<ParticipantRow | null> {
+  return await one<ParticipantRow>(
+    db,
+    "SELECT * FROM activity_participants WHERE activity_id = $aid AND user_id = $uid ORDER BY joined_at, id LIMIT 1",
+    { aid: activityId, uid: userId },
+  );
+}
+
+export async function ensureParticipant(
+  db: Db,
+  activityId: string,
+  user: Pick<User, "id" | "name">,
+  tosAcceptedAt: string,
+  kind: "member" | "guest" = "member",
+): Promise<ParticipantRow> {
+  const existing = await participantOfUser(db, activityId, user.id);
+  if (existing) {
+    if (kind === "member" && existing.kind === "guest") {
+      await run(db, "UPDATE activity_participants SET kind = 'member' WHERE id = $pid AND user_id = $uid", {
+        pid: existing.id,
+        uid: user.id,
+      });
+      return { ...existing, kind: "member" };
+    }
+    return existing;
+  }
+  let candidate = user.name;
+  for (let attempt = 1; attempt <= 8; attempt++) {
+    const created = await one<ParticipantRow>(
+      db,
+      `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
+       VALUES ($aid, $pid, $uid, $kind, $name, $tos, $at)
+       ON CONFLICT DO NOTHING RETURNING *`,
+      { aid: activityId, pid: newId("p_"), uid: user.id, kind, name: candidate, tos: tosAcceptedAt, at: nowIso() },
+    );
+    if (created) return created;
+    const holder = await one<ParticipantRow>(
+      db,
+      "SELECT * FROM activity_participants WHERE activity_id = $aid AND display_name = $name",
+      { aid: activityId, name: candidate },
+    );
+    if (holder?.user_id === null && holder.kind === "guest" && (await yieldGuestName(db, activityId, candidate))) {
+      continue;
+    }
+    candidate = `${user.name} ${attempt + 1}`;
+  }
+  fail(409, "name_taken");
+}
+
+async function yieldGuestName(db: Db, activityId: string, name: string): Promise<boolean> {
+  for (let n = 1; n <= 9; n++) {
+    const renamed = n === 1 ? `${name}（訪客）` : `${name}（訪客 ${n}）`;
+    const result = await run(
+      db,
+      `UPDATE activity_participants SET display_name = $new
+       WHERE activity_id = $aid AND display_name = $old AND user_id IS NULL AND kind = 'guest'`,
+      { aid: activityId, old: name, new: renamed },
+    );
+    if ((result.meta?.changes ?? 0) > 0) return true;
+  }
+  return false;
+}
+
+export async function createGuestParticipant(
+  db: Db,
+  activityId: string,
+  displayName: string,
+  tosAcceptedAt: string,
+): Promise<ParticipantRow> {
+  const created = await one<ParticipantRow>(
+    db,
+    `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
+     VALUES ($aid, $pid, NULL, 'guest', $name, $tos, $at)
+     ON CONFLICT DO NOTHING RETURNING *`,
+    { aid: activityId, pid: newId("p_"), name: displayName, tos: tosAcceptedAt, at: nowIso() },
+  );
+  if (!created) fail(409, "name_taken");
+  return created;
+}
+
+export interface ActivityAccess {
+  activity: ActivityRow;
+  classroom: ClassroomRow;
+  participant: ParticipantRow | null;
+  member: MemberRow | null;
+  isTeacher: boolean;
+  user: Pick<User, "id"> | null;
+}
+
+export interface ActivityAccessor {
+  user: Pick<User, "id"> | null;
+  participant: ParticipantIdentity | null;
+}
+
+export async function activityAccess(db: Db, activityId: string, accessor: ActivityAccessor): Promise<ActivityAccess> {
+  const { activity, classroom } = await activityOf(db, activityId);
+  if (activity.mode === "test" && classroom.teacher_id !== accessor.user?.id) fail(403, "forbidden");
+  if (accessor.user) {
+    if (classroom.teacher_id === accessor.user.id) {
+      return { activity, classroom, participant: null, member: null, isTeacher: true, user: accessor.user };
+    }
+    const member = await one<MemberRow>(db, "SELECT * FROM members WHERE classroom_id = $cid AND user_id = $uid", {
+      cid: classroom.id,
+      uid: accessor.user.id,
+    });
+    if (!member) fail(403, "forbidden");
+    return {
+      activity,
+      classroom,
+      participant: await participantOfUser(db, activityId, accessor.user.id),
+      member,
+      isTeacher: false,
+      user: accessor.user,
+    };
+  }
+  if (accessor.participant && accessor.participant.activityId === activityId) {
+    const participant = await participantOf(db, activityId, accessor.participant.participantId);
+    if (participant) return { activity, classroom, participant, member: null, isTeacher: false, user: null };
+  }
+  fail(401, "unauthorized");
+}
+
+export async function activityAccessOf(c: Ctx, activityId: string): Promise<ActivityAccess> {
+  const user = c.get("user");
+  const participant = await lookupParticipant(c.env, getCookie(c, PARTICIPANT_COOKIE));
+  if (user) {
+    try {
+      return await activityAccess(c.env.DB, activityId, { user, participant: null });
+    } catch (error) {
+      const cookieOnlyGuest = participant !== null && error instanceof ApiError && error.code === "forbidden";
+      if (!cookieOnlyGuest) throw error;
+    }
+  }
+  return await activityAccess(c.env.DB, activityId, { user: null, participant });
+}
+
+export interface InviteRow {
+  token: string;
+  activity_id: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+}
+
+export async function resolveInvite(
+  db: Db,
+  token: string,
+): Promise<{ invite: InviteRow; activity: ActivityRow; classroom: ClassroomRow }> {
+  const invite = await one<InviteRow>(db, "SELECT * FROM activity_invites WHERE token = $token", { token });
+  if (!invite) fail(404, "invite_invalid");
+  if (invite.revoked_at) fail(410, "invite_revoked");
+  if (invite.expires_at && invite.expires_at <= nowIso()) fail(410, "invite_expired");
+  const { activity, classroom } = await activityOf(db, invite.activity_id);
+  return { invite, activity, classroom };
 }
 
 export const TRIAL_LIMIT_VARS = { classrooms: TRIAL_LIMITS.classrooms, members: TRIAL_LIMITS.membersPerClassroom };

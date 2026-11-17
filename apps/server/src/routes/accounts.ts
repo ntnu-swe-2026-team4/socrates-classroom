@@ -4,7 +4,6 @@ import {
   SchoolTeacherInputSchema,
   StudentsCreateInputSchema,
   type AdminOverview,
-  type AdminUser,
   type School,
   type SchoolTeacher,
   type StudentCredential,
@@ -100,7 +99,7 @@ export function accountRoutes() {
         created.push({ id, name, username, password });
         statements.push(
           {
-            sql: "INSERT INTO users (id, name, is_guest, username, password_hash, student_classroom_id, lang, created_at) VALUES ($id, $name, 0, $username, $hash, $cid, $lang, $at)",
+            sql: "INSERT INTO users (id, name, username, password_hash, student_classroom_id, lang, created_at) VALUES ($id, $name, $username, $hash, $cid, $lang, $at)",
             params: { id, name, username, hash: await hashPassword(password), cid: classroom.id, lang, at },
           },
           {
@@ -140,8 +139,8 @@ export function accountRoutes() {
       const row = await one<Record<keyof AdminOverview, number>>(
         c.env.DB,
         `SELECT
-           (SELECT COUNT(*) FROM users WHERE is_guest = 0 AND student_classroom_id IS NULL) AS users,
-           (SELECT COUNT(*) FROM users WHERE teacher_plan IS NOT NULL) AS teachers,
+           (SELECT COUNT(*) FROM users WHERE can_manage_classes = 0 AND student_classroom_id IS NULL) AS users,
+           (SELECT COUNT(*) FROM users WHERE can_manage_classes = 1) AS teachers,
            (SELECT COUNT(*) FROM users WHERE student_classroom_id IS NOT NULL) AS students,
            (SELECT COUNT(*) FROM classrooms) AS classrooms,
            (SELECT COUNT(*) FROM classrooms c JOIN activities a ON a.id = c.current_activity_id
@@ -152,48 +151,11 @@ export function accountRoutes() {
       if (!row) fail(500, "internal_error");
       return c.json(row satisfies AdminOverview);
     })
-    .get("/admin/users", async (c) => {
-      requireAdmin(c);
-      const q = (c.req.query("q") ?? "").trim().slice(0, 80);
-      const rows = await all<{
-        id: string;
-        name: string;
-        email: string | null;
-        is_admin: number;
-        teacher_plan: "trial" | "school" | null;
-        school_name: string | null;
-        classrooms: number;
-        created_at: string;
-      }>(
-        c.env.DB,
-        `SELECT u.id, u.name, u.email, u.is_admin, u.teacher_plan, s.name AS school_name, u.created_at,
-           (SELECT COUNT(*) FROM classrooms c WHERE c.teacher_id = u.id) AS classrooms
-         FROM users u LEFT JOIN schools s ON s.id = u.school_id
-         WHERE u.is_guest = 0 AND u.student_classroom_id IS NULL
-           AND ($q = '' OR u.name LIKE $like OR u.email LIKE $like)
-         ORDER BY u.created_at DESC LIMIT 200`,
-        { q, like: `%${q.replaceAll("%", "").replaceAll("_", "")}%` },
-      );
-      return c.json(
-        rows.map(
-          (row): AdminUser => ({
-            id: row.id,
-            name: row.name,
-            email: row.email,
-            admin: row.is_admin === 1,
-            teacherPlan: row.teacher_plan,
-            schoolName: row.school_name,
-            classrooms: row.classrooms,
-            createdAt: row.created_at,
-          }),
-        ),
-      );
-    })
     .put("/admin/users/:id/teacher", async (c) => {
       requireAdmin(c);
       const found = await one<{ id: string }>(
         c.env.DB,
-        "SELECT id FROM users WHERE id = $id AND is_guest = 0 AND student_classroom_id IS NULL",
+        "SELECT id FROM users WHERE id = $id AND student_classroom_id IS NULL",
         { id: c.req.param("id") },
       );
       if (!found) fail(404, "not_found");
@@ -301,12 +263,12 @@ export function accountRoutes() {
         id: input.schoolId,
       });
       if (!school) fail(404, "not_found");
-      const existing = await one<{ id: string; is_guest: number; student_classroom_id: string | null }>(
+      const existing = await one<{ id: string; student_classroom_id: string | null }>(
         c.env.DB,
-        "SELECT id, is_guest, student_classroom_id FROM users WHERE email = $email",
+        "SELECT id, student_classroom_id FROM users WHERE email = $email",
         { email: input.email },
       );
-      if (existing && (existing.is_guest === 1 || existing.student_classroom_id)) fail(409, "conflict");
+      if (existing?.student_classroom_id) fail(409, "conflict");
       const at = nowIso();
       let temporaryPassword: string | null = null;
       const id = existing?.id ?? newId("u_");
@@ -320,7 +282,7 @@ export function accountRoutes() {
         temporaryPassword = newPassword(12);
         await run(
           c.env.DB,
-          "INSERT INTO users (id, name, is_guest, email, password_hash, teacher_plan, school_id, teacher_terms_at, lang, created_at) VALUES ($id, $name, 0, $email, $hash, 'school', $sid, $at, $lang, $at)",
+          "INSERT INTO users (id, name, email, password_hash, teacher_plan, school_id, teacher_terms_at, can_manage_classes, teacher_mode, lang, created_at) VALUES ($id, $name, $email, $hash, 'school', $sid, $at, 1, 0, $lang, $at)",
           {
             id,
             name: input.name ?? input.email.split("@")[0] ?? input.email,

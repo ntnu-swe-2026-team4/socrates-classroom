@@ -6,7 +6,7 @@ import {
   type TeacherKeyStatus,
 } from "@socrates/shared";
 import { all, batch, one, run, type Db } from "../db/d1";
-import { fail, newId, nowIso, parseBody, requireMember, type AppEnv } from "../http";
+import { fail, newId, nowIso, parseBody, requireTeacher, type AppEnv } from "../http";
 import { encryptKey } from "../auth-crypto";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 
@@ -62,21 +62,21 @@ async function ownedEntry(db: Db, userId: string, id: string): Promise<TeacherKe
 export function teacherKeyRoutes() {
   return new Hono<AppEnv>()
     .get("/settings/keys", async (c) => {
-      const user = requireMember(c);
+      const user = requireTeacher(c);
       return c.json((await entriesOf(c.env.DB, user.id)).map(toStatus));
     })
     .get("/settings/keys/providers", async (c) => {
-      requireMember(c);
+      requireTeacher(c);
       return c.json(keyableProviders.map((provider) => ({ id: provider.id, name: provider.name })));
     })
     .get("/settings/keys/providers/:provider/models", async (c) => {
-      requireMember(c);
+      requireTeacher(c);
       const provider = keyableProvider(c.req.param("provider"));
       if (!provider) fail(404, "not_found");
       return c.json(provider.getModels().map((model) => ({ id: model.id, name: model.name })));
     })
     .post("/settings/keys", async (c) => {
-      const user = requireMember(c);
+      const user = requireTeacher(c);
       const input = await parseBody(c, TeacherKeyCreateInputSchema);
       assertModel(input.provider, input.model);
       const existing = await entriesOf(c.env.DB, user.id);
@@ -121,7 +121,7 @@ export function teacherKeyRoutes() {
       return c.json(toStatus(row), 201);
     })
     .put("/settings/keys/order", async (c) => {
-      const user = requireMember(c);
+      const user = requireTeacher(c);
       const input = await parseBody(c, TeacherKeyOrderInputSchema);
       const owned = await entriesOf(c.env.DB, user.id);
       const ownedIds = new Set(owned.map((row) => row.id));
@@ -140,7 +140,7 @@ export function teacherKeyRoutes() {
       return c.json({ ids: ordered });
     })
     .patch("/settings/keys/:id", async (c) => {
-      const user = requireMember(c);
+      const user = requireTeacher(c);
       const input = await parseBody(c, TeacherKeyUpdateInputSchema);
       const row = await ownedEntry(c.env.DB, user.id, c.req.param("id"));
       const model = input.model ?? row.model;
@@ -156,7 +156,7 @@ export function teacherKeyRoutes() {
       return c.json(toStatus(updated));
     })
     .delete("/settings/keys/:id", async (c) => {
-      const user = requireMember(c);
+      const user = requireTeacher(c);
       const row = await ownedEntry(c.env.DB, user.id, c.req.param("id"));
       await run(c.env.DB, "DELETE FROM teacher_key_entries WHERE id = $id", { id: row.id });
       return c.body(null, 204);

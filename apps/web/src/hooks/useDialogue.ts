@@ -77,6 +77,11 @@ export function answered(entries: readonly WindowedEntry[]): boolean {
   );
 }
 
+export function runFailureOf(view: ConversationView | null): unknown {
+  const live = view?.docs["pi.live"] as { runFailure?: unknown } | undefined;
+  return live?.runFailure;
+}
+
 export function liveTextOf(view: ConversationView | null): string {
   if (!view) return "";
   const live = view.docs["pi.live"] as { generation?: { message?: { content?: readonly unknown[] } } } | undefined;
@@ -84,7 +89,7 @@ export function liveTextOf(view: ConversationView | null): string {
   return content === undefined ? "" : textOf({ role: "assistant", content } as Message);
 }
 
-export function useDialogue(activityId: string, userId: string) {
+export function useDialogue(activityId: string, participantId: string) {
   const [view, setView] = useState<ConversationView | null>(null);
   const [phase, setPhase] = useState<DialoguePhase>("idle");
   const [error, setError] = useState<DialogueError>(null);
@@ -188,7 +193,7 @@ export function useDialogue(activityId: string, userId: string) {
             if (answered(entries)) completePending();
             return;
           }
-          failPending("llm_unavailable");
+          if (runFailureOf(viewRef.current)) failPending("llm_unavailable");
         }
         return;
       }
@@ -199,11 +204,8 @@ export function useDialogue(activityId: string, userId: string) {
       } else if (full) {
         if (tail.some((entry) => entry.kind === "pi.assistant" && !intermediateAssistant(entry))) {
           completePending();
-        } else if (!tail.some((entry) => entry.kind === "pi.user")) {
-          failPending("llm_unavailable");
         } else {
-          const live = viewRef.current?.docs["pi.live"] as { runFailure?: unknown } | undefined;
-          if (live?.runFailure) failPending("llm_unavailable");
+          if (runFailureOf(viewRef.current)) failPending("llm_unavailable");
         }
       }
     },
@@ -272,7 +274,7 @@ export function useDialogue(activityId: string, userId: string) {
 
   const socket = useAgent({
     agent: "chat",
-    name: `${activityId}:${userId}`,
+    name: `${activityId}:${participantId}`,
     onOpen: (event) => {
       (event.target as WebSocket).send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
     },
@@ -309,12 +311,6 @@ export function useDialogue(activityId: string, userId: string) {
     };
     socket.addEventListener("close", flush);
     return () => socket.removeEventListener("close", flush);
-  }, [socket]);
-
-  useEffect(() => {
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
-    }
   }, [socket]);
 
   const send = useCallback(

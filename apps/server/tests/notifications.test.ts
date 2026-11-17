@@ -27,7 +27,7 @@ async function feedOf(cookie: string): Promise<NotificationFeed> {
 beforeAll(async () => {
   await applyD1Migrations(env.DB, migrations);
   await seedDemo(env.DB);
-  admin = cookieOf(await send("/api/auth/login", null, "POST", { email: "demo@socrates.tw", password: "demo-demo" }));
+  admin = cookieOf(await send("/api/auth/login", null, "POST", { email: "admin@socrates.tw", password: "demo-demo" }));
 });
 
 describe("system notifications", () => {

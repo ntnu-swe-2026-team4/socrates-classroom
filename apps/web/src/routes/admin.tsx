@@ -34,7 +34,7 @@ export const Route = createFileRoute("/admin")({
       .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
       .catch(() => null);
     if (!me || me.guest) throw redirect({ to: "/login", search: { next: "/admin" } });
-    if (!me.admin) throw redirect({ to: "/home" });
+    if (!me.isAdmin) throw redirect({ to: "/home" });
   },
   component: AdminPage,
 });
@@ -141,7 +141,7 @@ function Overview({ go }: { go: (tab: Tab) => void }) {
 }
 
 function roleKey(user: AdminUser): MessageKey {
-  if (user.admin) return "admin_role_admin";
+  if (user.isAdmin) return "admin_role_admin";
   if (user.teacherPlan === "school") return "admin_role_school";
   if (user.teacherPlan === "trial") return "admin_role_trial";
   return "admin_role_member";
@@ -233,7 +233,7 @@ function Users() {
                     <span
                       className={cn(
                         "inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[12px]",
-                        user.admin
+                        user.isAdmin
                           ? "bg-ink text-paper"
                           : user.teacherPlan
                             ? "bg-ember-wash text-ink"

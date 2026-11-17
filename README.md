@@ -25,7 +25,7 @@ cp apps/web/.env.example apps/web/.env.local   # 改完要重啟 dev（server �
 pnpm seed                                     # 需要 dev server 運行中；SEED_TOKEN 自動讀 .env.local
 ```
 
-示範資料：老師帳號 `demo@socrates.tw`（密碼 `demo-demo`）＋兩間教室（高二哲學選修 A、倫理學讀書會，各含進行中活動）。老師登入 `/login`；學生從老師教室頁拿邀請碼，走 `/join` 以訪客加入對話。對話功能的 LLM 設定三選一見 [`docs/development.md`](docs/development.md)。
+示範資料（fixture）：8 個固定帳號（共用密碼 `demo-demo`，id 固定所以重跑 seed 不會變）＋ 2 間教室（高二哲學選修 A 含 3 位成員、倫理學讀書會空班）。`pnpm seed` 後開 `/dev/accounts` 就能一鍵切換身分（免密碼）；該頁與 `/api/dev/*` 只在 `ENVIRONMENT=dev` 時存在。對話功能的 LLM 設定三選一見 [`docs/development.md`](docs/development.md)。
 
 選配——git pre-commit hooks（需先安裝 [prek](https://github.com/j178/prek)：`pipx install prek` 或 `uv tool install prek`）：
 

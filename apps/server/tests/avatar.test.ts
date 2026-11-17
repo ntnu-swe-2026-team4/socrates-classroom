@@ -4,8 +4,8 @@ import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import type { ConversationView } from "@earendil-works/pi-durable";
-import { seedDemo } from "../src/seed";
-import { call, cookieOf, frames, latestView, enableTeacher } from "./helpers";
+import { seedFixture } from "../src/seed";
+import { call, classroomWithActivity, cookieOf, frames, latestView, participantIdOf } from "./helpers";
 
 let thread: string;
 let cookie: string;
@@ -27,29 +27,21 @@ const migrations = inject("d1Migrations");
 
 beforeAll(async () => {
   await applyD1Migrations(env.DB, migrations);
-  await seedDemo(env.DB);
+  await seedFixture(env.DB);
   const login = await call("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: "demo@socrates.tw", password: "demo-demo" }),
   });
-  const teacher = await enableTeacher(cookieOf(login));
-  const topics = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>;
-  const created = (await (
-    await call("/api/classrooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ name: "班", topicId: topics[0]!.id }),
-    })
-  ).json()) as { code: string; activityId: string };
+  const teacher = cookieOf(login);
+  const created = await classroomWithActivity(teacher, "班");
   const joined = await call("/api/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code: created.code, name: "同學", tosAccepted: true }),
   });
-  const { user } = (await joined.json()) as { user: { id: string } };
   cookie = cookieOf(joined);
-  thread = `${created.activityId}:${user.id}`;
+  thread = `${created.activityId}:${await participantIdOf(created.activityId, cookie)}`;
 });
 
 function answerOf(view: ConversationView): string {

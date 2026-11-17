@@ -17,6 +17,7 @@ import { api, type ClassroomActivity, type ClassroomSummary } from "@/api";
 import { QrBlock, absoluteUrl } from "@/components/QrBlock";
 import { Button, ConfirmDialog, Field, FormDialog, Initial, Input, Spinner, cn } from "@/components/ui";
 import { useFormatDate, useT } from "@/i18n";
+import { AddTopic, CopyTopic, useClassroomTopics } from "@/components/ClassroomTopics";
 import { TopicPicker } from "@/components/TopicPicker";
 import {
   AnnouncementsPanel,
@@ -191,6 +192,7 @@ function ClassroomPage() {
                 />
               )}
               {teacher && <NewTopic room={data} />}
+              {teacher && <TopicSet room={data} />}
             </>
           )}
           {tab === "announcements" && <AnnouncementsPanel room={data} />}
@@ -339,6 +341,46 @@ function TopicHistory({
           })}
         </ol>
       )}
+    </Section>
+  );
+}
+
+function TopicSet({ room }: { room: ClassroomSummary }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const topics = useClassroomTopics(room.id);
+  return (
+    <Section
+      title={t("setup_topic_system")}
+      actions={
+        <Button variant="ghost" size="sm" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+          <Plus className="size-3.5" />
+          {open ? t("common_cancel") : t("setup_topic_add")}
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-3 p-3">
+        {topics.isPending ? (
+          <div className="flex justify-center py-4">
+            <Spinner />
+          </div>
+        ) : (topics.data ?? []).length === 0 ? (
+          <p className="text-[12.5px] text-ink-faint">{t("setup_topics_empty")}</p>
+        ) : (
+          (topics.data ?? []).map((topic) => (
+            <div key={topic.id} className="rounded-xl bg-paper-deep px-3 py-2">
+              <b className="font-serif text-[14px] font-medium text-ink">{topic.title}</b>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-soft">{topic.statement}</p>
+            </div>
+          ))
+        )}
+        {open && (
+          <div className="flex flex-col gap-4 border-t border-line pt-3">
+            <AddTopic classroomId={room.id} />
+            <CopyTopic classroomId={room.id} />
+          </div>
+        )}
+      </div>
     </Section>
   );
 }
