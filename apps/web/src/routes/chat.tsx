@@ -5,6 +5,7 @@ import { Check, Pencil, Search, SquarePen, Trash2, X } from "lucide-react";
 import { api, type SoloChat } from "@/api";
 import { ChatLayout, SidebarHeader } from "@/components/ChatLayout";
 import { ConfirmDialog, cn } from "@/components/ui";
+import { useNow } from "@/hooks/useSubscription";
 import { useT, type MessageKey } from "@/i18n";
 
 export const Route = createFileRoute("/chat")({
@@ -45,6 +46,7 @@ function SoloSidebar() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const chats = useQuery({ queryKey: ["chats"], queryFn: () => api.listChats() });
   const [filter, setFilter] = useState("");
+  const now = useNow(60_000);
   const remove = useMutation({
     mutationFn: (chatId: string) => api.deleteChat(chatId),
     onSuccess: async (_, chatId) => {
@@ -54,7 +56,6 @@ function SoloSidebar() {
   });
 
   const groups = useMemo(() => {
-    const now = Date.now();
     const needle = filter.trim().toLowerCase();
     const result: Array<{ key: MessageKey; chats: SoloChat[] }> = [];
     for (const chat of chats.data ?? []) {
@@ -65,7 +66,7 @@ function SoloSidebar() {
       else result.push({ key, chats: [chat] });
     }
     return result;
-  }, [chats.data, filter]);
+  }, [chats.data, filter, now]);
 
   return (
     <>

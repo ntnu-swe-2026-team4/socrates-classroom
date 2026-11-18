@@ -1,10 +1,11 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BellRing, MessageSquare, Minus, Plus, X } from "lucide-react";
 import { ACTIVITY_SLOT_MAX, type StudentLive } from "@socrates/shared";
 import { api, ApiError } from "@/api";
 import { BackLink, Button, Card, PageHeader, Spinner, buttonStyles, cn } from "@/components/ui";
+import { useNow } from "@/hooks/useSubscription";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/t/live/$id")({
@@ -40,15 +41,15 @@ function LivePage() {
     retry: (failureCount, error) => !(error instanceof ApiError) && failureCount < 2,
   });
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const known = useRef<Set<string> | null>(null);
+  const [knownKeys, setKnownKeys] = useState<Set<string> | null>(null);
+  const now = useNow(QUIET_MS);
 
   const students = board.data?.students;
-  if (students) {
-    const now = Date.now();
-    const current: Alert[] = [];
-    for (const student of students) {
+  const current = useMemo(() => {
+    const list: Alert[] = [];
+    for (const student of students ?? []) {
       for (const flag of student.flags) {
-        current.push({
+        list.push({
           key: `flag:${student.id}:${flag.turn}:${flag.type}`,
           studentId: student.id,
           name: student.name,
@@ -57,7 +58,7 @@ function LivePage() {
         });
       }
       if (student.rounds > 0 && student.lastActiveAt && now - Date.parse(student.lastActiveAt) > QUIET_MS) {
-        current.push({
+        list.push({
           key: `quiet:${student.id}:${student.rounds}`,
           studentId: student.id,
           name: student.name,
@@ -66,23 +67,23 @@ function LivePage() {
         });
       }
     }
-    if (known.current === null) {
-      known.current = new Set(current.map((alert) => alert.key));
-    } else {
-      const fresh = current.filter((alert) => !known.current?.has(alert.key));
-      if (fresh.length > 0) {
-        for (const alert of fresh) known.current.add(alert.key);
-        setAlerts((list) => [...fresh, ...list].slice(0, 6));
-      }
-    }
+    return list;
+  }, [students, now]);
+
+  if (students && knownKeys === null) setKnownKeys(new Set(current.map((alert) => alert.key)));
+  const fresh = knownKeys === null ? [] : current.filter((alert) => !knownKeys.has(alert.key));
+  if (fresh.length > 0) {
+    const next = new Set(knownKeys);
+    for (const alert of fresh) next.add(alert.key);
+    setKnownKeys(next);
+    setAlerts((list) => [...fresh, ...list].slice(0, 6));
   }
 
   const sorted = useMemo(() => {
-    const now = Date.now();
     return [...(students ?? [])].sort(
       (a, b) => attention(a, now) - attention(b, now) || a.rounds - b.rounds || a.name.localeCompare(b.name),
     );
-  }, [students]);
+  }, [students, now]);
 
   const backToRoom = () =>
     info.data?.classroomId

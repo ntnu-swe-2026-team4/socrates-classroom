@@ -1,4 +1,3 @@
-import { useCallback } from "react";
 import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChartNoAxesColumn } from "lucide-react";
@@ -54,7 +53,9 @@ function DialoguePage() {
     enabled: activityId !== "",
     staleTime: Infinity,
   });
-  const activityRefetch = useCallback(() => void activityQuery.refetch(), [activityQuery.refetch]);
+  function activityRefetch() {
+    void activityQuery.refetch();
+  }
   const info = activityQuery.data;
   const topic = info?.topic;
   const finished = Boolean(info?.finishedAt);
