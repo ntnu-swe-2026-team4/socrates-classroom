@@ -63,7 +63,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     extensions: ["socrates", "avatar", "judgment", "websearch"],
     maxTurns: 8,
     trafficClass: "interactive",
-    thinkingLevel: "high",
+    thinkingLevel: "low",
   },
   "topic-gen": {
     name: "topic-gen",
@@ -98,6 +98,8 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     thinkingLevel: "high",
   },
 };
+
+export const BTW_THINKING_LEVEL: ModelThinkingLevel = "high";
 
 export function profileRegistry(profile: AgentProfile, env: Env): Registry {
   const registry = createRegistry();

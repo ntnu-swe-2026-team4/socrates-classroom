@@ -2,6 +2,15 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-17 — 各模式 thinkingLevel 依 #122 實測調整（`feat/122-thinking-levels`）
+
+### Changed
+
+- `PROFILES.socrates.thinkingLevel` 由 `"high"` 改為 `"low"`：#122 實測 high 只多 0.25 分，TTFT p50 卻從 4.5 秒拉長到 11.8 秒（實測結果見 #144 的 `providers.md` §8）
+- BTW 不再沿用 root 的 level：`forkBtw` 在 fork 的 agent change 設 `BTW_THINKING_LEVEL`（`"high"`）
+- lookup、topic-gen、student-report、class-report 維持 `"high"`
+- 只影響新建立的 root conversation：已存在的 Chat DO 在 root 建立時寫入的 `"high"` 不會被改寫
+
 ## 2026-11-17 — code review 修復（`136-account-classroom-model`）
 
 ### Fixed

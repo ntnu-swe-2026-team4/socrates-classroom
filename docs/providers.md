@@ -144,6 +144,108 @@
 - **Jev 經 Workers AI**：Data usage 頁寫「Cloudflare does not create or train the third-party AI models made available through Workers AI. Those models may be subject to open source, acceptable use policies, or other license terms between you and the model provider.」，同頁沒有寫明 ZDR 是否適用第三方託管模型（[Data usage](https://developers.cloudflare.com/workers-ai/platform/data-usage/)；2026-11-08 查證）。⚠️ 託管方與資料條款未知；`typesafe/jev` 是否真的由 Workers AI 提供尚未確認
 - **Jev 結論與約束**：直連路徑未通過 ZDR 硬門檻，經 OpenCode、經 Workers AI 兩條路徑未證實。⚠️ `providers.config.yaml` 的 `classifiers`（以及任何 provider catalog）**不得加入 Jev**（`jev-latest`、OpenCode 的 `jev-1.13*`、`typesafe/jev*` 皆是）；日後若取得 TypeSafe 的 enterprise ZDR 書面承諾，或 OpenCode／Cloudflare 對 Jev 提出專屬的 zero-retention 聲明，再重新評估（依據：上列各條與其來源）
 
+## 8. Reasoning effort（各模式，#122）
+
+- **基準**：2026-11-16 實測，程式碼基準 `94bbaaf`（[#122](https://github.com/ntnu-swe-2026-team4/socrates-classroom/issues/122)）；測試腳本與原始輸出未入庫
+- **⚠️ 模型即將下架**：`@cf/zai-org/glm-5.3-flash` 在 Cloudflare 的下架清單上，2026-11-20 起回 `410 Gone`（error code 5028）。官方建議的替代模型是 `@cf/deepseek-ai/deepseek-v4.1-flash-1017` 與 `@cf/zai-org/glm-5.3`（[2026-11-05 changelog](https://developers.cloudflare.com/changelog/post/2026-11-05-planned-model-deprecations/)；2026-11-16 查證）。本節一併測了 `glm-5.3`；手上沒有能呼叫 `deepseek-v4.1-flash-1017` 的 key，未測
+- **模式對應**：
+  - 主 session：Chat DO 的 root session，level 來自 `PROFILES.socrates.thinkingLevel`（[`chat.ts`](../apps/server/src/do/chat.ts) 的 PiHarness defaults）
+  - BTW：`forkBtw` 從 root fork，configure 只改 extensions，所以沿用 socrates 的 level（[`btw.ts`](../apps/server/src/pi/extensions/btw.ts)）
+  - 查詢：`lookup` profile；主題生成：`topic-gen` profile
+  - 現況四個模式都是 `"high"`（[`profiles.ts`](../apps/server/src/pi/agents/profiles.ts)）
+- **thinkingLevel 實際送出的值**（`agents` 0.33.0 的 `effortForLevel` 先經 pi-ai 的 `clampThinkingLevel`；模型頁 2026-11-16 查證）：
+  - `glm-5.3-flash` 在 Workers AI 只接受 low／high／max，預設 max（[模型頁](https://developers.cloudflare.com/workers-ai/models/glm-5.3-flash/)）
+  - minimal、low 送 `low`；medium 送 `high`，因為這顆模型的 thinkingLevelMap 把 medium 設成 null，clamp 會往上取；high、xhigh、max 都送 `high`；off 則完全不送 `reasoning_effort`，模型照預設跑 max
+  - 也就是說，現行程式碼在 Workers AI 上只送得出 low 或 high：max 送不出去，設 `off` 反而等於 max
+  - `deepseek-v4.1-flash-1017` 接受 none／low／high／max，預設 high（[模型頁](https://developers.cloudflare.com/workers-ai/models/deepseek-v4.1-flash-1017/)）。換模型後要重查 pi catalog 裡它的 thinkingLevelMap
+- **測試方法**：
+  - 每個模式照 app 實際送出的 request 重建：同一份 system prompt（`prompts/*.md`，lookup 與 topic-gen 外層包 `<instructions>`）、同樣的 tool definitions（主 session 4 個、查詢與主題生成 3 個、BTW 沒有工具）、同樣的 user message 樣板，查詢與主題生成照各自的 maxTurns 3 與 6
+  - 搜尋工具改回傳固定的搜尋結果（每題 3 筆），排除搜尋本身的變異
+  - 題組：主 session 6 題（開場、前後矛盾、要答案、離題、追問定義、新原則）；BTW 6 題（思想實驗、名詞、蘇格拉底的問題在問什麼、該選哪邊、離題作業、人名年代）；查詢 5 個名詞；主題生成 3 個方向
+  - 2 個模型 × low／high／max × 每題 3 次，共 360 次，全部取得回應。其中 3 次主題生成的 stream 在推理途中斷線，已重跑
+  - 品質採盲評：同一題的 18 個回應打亂順序、隱藏模型與 effort，由兩位評審（Claude Opus 5.5，看到的順序不同）各自依該模式的 rubric 打 1-5 分，並標出不可用的回應（事實錯誤、替學生選邊、捏造、app 無法解析、簡體字）。表中品質是兩位評審的平均；360 個回應裡 99% 兩位評審的分數差在 1 分以內
+  - TTFT＝使用者看到第一個字的時間，包含前面的工具回合；total＝整個回應結束的時間
+  - 成本以 Workers AI 單價（每 M tokens：`glm-5.3-flash` input $0.15、output $0.50；`glm-5.3` input $1.40、output $4.40）乘實測 token，reasoning tokens 算 output，沒有扣 cache 折扣
+- **⚠️ 限制**：
+  - 模型經 GLM Coding Plan（`api.z.ai`）呼叫，不是 Workers AI。模型相同但伺服器不同，延遲絕對值不能直接套到正式環境，要看檔位之間的相對差距與 reasoning tokens
+  - 併發 4，TTFT 含排隊；循序單發時 low 的 TTFT 約 1.2-1.7 秒
+  - 樣本小，主題生成每格只有 3 題 × 3 次，CI 寬。評審是 LLM，兩位又是同一個模型，一致度可能偏高
+  - 搜尋結果固定，真實搜尋的品質與延遲沒有測
+- **結果**：
+
+**主 session**
+
+| 模型            | effort | n   | 品質（1-5） | 不可用率 | TTFT p50／p95（s） | total p50／p95（s） | reasoning tokens | 每千次（USD） |
+| --------------- | ------ | --- | ----------- | -------- | ------------------ | ------------------- | ---------------- | ------------- |
+| `glm-5.3`       | low    | 18  | 3.39        | 0%       | 5.0／7.4           | 5.9／9.1            | 13               | 1.72          |
+| `glm-5.3`       | high   | 18  | 3.61        | 0%       | 8.0／14.8          | 8.7／14.8           | 241              | 2.78          |
+| `glm-5.3`       | max    | 18  | 3.67        | 0%       | 9.5／15.6          | 10.4／15.6          | 292              | 3.02          |
+| `glm-5.3-flash` | low    | 18  | 3.44        | 0%       | 4.5／6.1           | 5.6／7.4            | 21               | 0.18          |
+| `glm-5.3-flash` | high   | 18  | 3.69        | 0%       | 11.8／20.8         | 12.8／21.2          | 284              | 0.33          |
+| `glm-5.3-flash` | max    | 18  | 3.72        | 0%       | 11.1／21.1         | 12.1／22.3          | 334              | 0.35          |
+
+品質差（按題 bootstrap 95% CI）：`glm-5.3-flash` high-low +0.25［0.11, 0.39］；`glm-5.3-flash` max-high +0.03［-0.31, 0.36］；`glm-5.3` high-low +0.22［-0.36, 0.83］；`glm-5.3` max-high +0.06［-0.39, 0.53］
+
+**BTW**
+
+| 模型            | effort | n   | 品質（1-5） | 不可用率 | TTFT p50／p95（s） | total p50／p95（s） | reasoning tokens | 每千次（USD） |
+| --------------- | ------ | --- | ----------- | -------- | ------------------ | ------------------- | ---------------- | ------------- |
+| `glm-5.3`       | low    | 18  | 3.25        | 14%      | 2.3／5.8           | 6.0／10.4           | 13               | 1.73          |
+| `glm-5.3`       | high   | 18  | 4.25        | 6%       | 5.8／15.6          | 9.4／18.5           | 340              | 3.16          |
+| `glm-5.3`       | max    | 18  | 4.56        | 0%       | 8.4／18.6          | 11.5／20.3          | 452              | 3.61          |
+| `glm-5.3-flash` | low    | 18  | 3.86        | 11%      | 1.2／1.8           | 5.6／7.0            | 33               | 0.16          |
+| `glm-5.3-flash` | high   | 18  | 4.19        | 6%       | 6.8／18.2          | 11.2／20.7          | 343              | 0.33          |
+| `glm-5.3-flash` | max    | 18  | 4.44        | 0%       | 7.3／17.6          | 11.1／21.2          | 354              | 0.34          |
+
+品質差（按題 bootstrap 95% CI）：`glm-5.3-flash` high-low +0.33［0.00, 0.67］；`glm-5.3-flash` max-high +0.25［-0.17, 0.67］；`glm-5.3` high-low +1.00［0.56, 1.44］；`glm-5.3` max-high +0.31［-0.00, 0.61］
+
+**查詢**
+
+| 模型            | effort | n   | 品質（1-5） | 不可用率 | TTFT p50／p95（s） | total p50／p95（s） | reasoning tokens | 每千次（USD） |
+| --------------- | ------ | --- | ----------- | -------- | ------------------ | ------------------- | ---------------- | ------------- |
+| `glm-5.3`       | low    | 15  | 4.03        | 7%       | 5.9／11.7          | 9.3／14.8           | 3                | 3.74          |
+| `glm-5.3`       | high   | 15  | 4.33        | 0%       | 10.9／14.1         | 14.3／17.6          | 179              | 5.41          |
+| `glm-5.3`       | max    | 15  | 4.43        | 0%       | 12.0／15.3         | 15.8／18.5          | 214              | 5.62          |
+| `glm-5.3-flash` | low    | 15  | 3.23        | 3%       | 4.6／8.4           | 10.4／13.2          | 250              | 0.29          |
+| `glm-5.3-flash` | high   | 15  | 4.40        | 0%       | 13.6／17.4         | 19.0／21.7          | 216              | 0.60          |
+| `glm-5.3-flash` | max    | 15  | 4.53        | 0%       | 12.6／16.4         | 18.4／21.9          | 226              | 0.61          |
+
+品質差（按題 bootstrap 95% CI）：`glm-5.3-flash` high-low +1.17［0.83, 1.47］；`glm-5.3-flash` max-high +0.13［-0.10, 0.37］；`glm-5.3` high-low +0.30［-0.27, 1.10］；`glm-5.3` max-high +0.10［-0.30, 0.37］
+
+有呼叫 web_search 的比例：`glm-5.3` low 80%、`glm-5.3` high 100%、`glm-5.3` max 100%、`glm-5.3-flash` low 33%、`glm-5.3-flash` high 100%、`glm-5.3-flash` max 100%
+
+**主題生成**
+
+| 模型            | effort | n   | 品質（1-5） | 不可用率 | TTFT p50／p95（s） | total p50／p95（s） | reasoning tokens | 每千次（USD） |
+| --------------- | ------ | --- | ----------- | -------- | ------------------ | ------------------- | ---------------- | ------------- |
+| `glm-5.3`       | low    | 9   | 3.89        | 0%       | 8.8／12.2          | 15.2／18.3          | 17               | 6.31          |
+| `glm-5.3`       | high   | 9   | 4.33        | 0%       | 35.8／46.3         | 40.8／50.8          | 1269             | 19.61         |
+| `glm-5.3`       | max    | 9   | 3.94        | 0%       | 30.0／36.7         | 36.7／43.0          | 1153             | 19.43         |
+| `glm-5.3-flash` | low    | 9   | 3.28        | 22%      | 10.7／15.1         | 20.3／25.0          | 436              | 0.63          |
+| `glm-5.3-flash` | high   | 9   | 4.06        | 0%       | 54.6／67.9         | 60.9／74.8          | 1703             | 2.42          |
+| `glm-5.3-flash` | max    | 9   | 2.94        | 11%      | 53.8／89.8         | 67.7／96.7          | 1785             | 2.74          |
+
+品質差（按題 bootstrap 95% CI）：`glm-5.3-flash` high-low +0.78［0.17, 1.33］；`glm-5.3-flash` max-high -1.11［-1.33, -0.83］；`glm-5.3` high-low +0.44［0.33, 0.50］；`glm-5.3` max-high -0.39［-0.83, -0.17］
+
+JSON 可解析且通過 schema：`glm-5.3` low 100%、`glm-5.3` high 100%、`glm-5.3` max 100%、`glm-5.3-flash` low 78%、`glm-5.3-flash` high 100%、`glm-5.3-flash` max 89%
+
+- **建議**：
+
+| 模式       | 建議 | 依據                                                                                                                                                                   |
+| ---------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 主 session | low  | high 只多 0.25 分（CI 0.11 到 0.39），TTFT p50 卻從 4.5 秒拉長到 11.8 秒，p95 到 20.8 秒。回覆要朗讀，多等 7 秒以上比品質差距更傷體驗；low 沒有出現不可用的回應        |
+| BTW        | high | low 的不可用率 11%（捏造情境細節、人名時序錯誤、簡體字），high 降到 6%。BTW 顯示在側欄、不朗讀，多等幾秒可以接受。max 再好 0.25 分但 CI 跨 0，而且現行程式碼送不出 max |
+| 查詢       | high | low 只有 33% 會去搜尋，品質低 1.17 分（CI 0.83 到 1.47），還出現把雙重效果原則的條件寫反                                                                               |
+| 主題生成   | high | low 有 22% 的 JSON 解析失敗；max 比 high 低 1.11 分，原因是 JSON 欄位寫壞和捏造搜尋結果以外的案例。這是 batch 流量，等 60 秒可以接受                                   |
+
+換成 `glm-5.3` 結論不變：主 session 的差距 CI 跨 0，BTW、查詢、主題生成都是 high 比 low 好，主題生成的 max 也比 high 差。
+
+- **程式碼調整**（[#145](https://github.com/ntnu-swe-2026-team4/socrates-classroom/pull/145)，PM 2026-11-17 同意）：
+  - `PROFILES.socrates.thinkingLevel` 設為 `"low"`
+  - BTW 原本沿用 root 的 level，所以 `forkBtw` 在 fork 的 agent change 另外設 `BTW_THINKING_LEVEL`（`"high"`）
+  - pi-durable 只在 root conversation 建立時寫入 agent 設定，已存在的 Chat DO 仍是 `"high"`
+  - 不要用 `off` 關掉推理：在 Workers AI 上 `off` 等於模型預設，`glm-5.3-flash` 的預設是 max
+
 ---
 
 1. **學生流量（平台鏈）**：`providers.config.yaml` 的 availability 鏈（workers-ai ×2，2026-11-10 起 dgx-spark 暫時移除）；平台 credential 的段落全部 ZDR（Workers AI＝官方 ZDR），這是平台能保證的部分。
@@ -300,6 +402,7 @@ pnpm --filter @socrates/server run gen-config
 
 ## 待辦 / 未定
 
+- [ ] `glm-5.3-flash` 2026-11-20 下架：選定替代模型並更新 `providers.config.yaml`（見 §8）
 - [ ] 上線前 email OpenCode 確認 Go 用於非 coding-agent 產品後端的立場
 - [ ] Cloudflare Tunnel 設定（團隊自建）——記得套 Access policy 限制僅自家 Worker 可呼叫
 - [ ] opencode-go 的實際併發實測（官方無數字）

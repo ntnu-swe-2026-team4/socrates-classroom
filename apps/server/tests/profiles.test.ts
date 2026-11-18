@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createRegistry, Harness } from "@earendil-works/pi-durable";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
-import { runProfile, PROFILES, profileRegistry } from "../src/pi/agents/profiles";
+import { BTW_THINKING_LEVEL, runProfile, PROFILES, profileRegistry } from "../src/pi/agents/profiles";
 import { SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../src/pi/extensions/report-submit";
 
 describe("agent profiles (#113: role definitions, models resolved by gateway)", () => {
@@ -110,10 +110,13 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(payload).toMatchObject({ overview: ["全班立場一致"] });
   }, 20_000);
 
-  it("every profile pins its thinkingLevel — the product decision lives in the table, not in DO code", () => {
-    for (const profile of Object.values(PROFILES)) {
-      expect(profile.thinkingLevel).toBe("high");
-    }
+  it("every profile pins its thinkingLevel — the product decision lives in the table, not in DO code (#122)", () => {
+    expect(PROFILES.socrates.thinkingLevel).toBe("low");
+    expect(PROFILES.lookup.thinkingLevel).toBe("high");
+    expect(PROFILES["topic-gen"].thinkingLevel).toBe("high");
+    expect(PROFILES["student-report"].thinkingLevel).toBe("high");
+    expect(PROFILES["class-report"].thinkingLevel).toBe("high");
+    expect(BTW_THINKING_LEVEL).toBe("high");
   });
 });
 
