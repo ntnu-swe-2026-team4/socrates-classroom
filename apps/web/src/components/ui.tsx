@@ -266,6 +266,12 @@ function trapDialogFocus(node: HTMLElement | null): (() => void) | undefined {
       (element) => element.offsetParent !== null || element === document.activeElement,
     );
   focusables()[0]?.focus();
+  const inerted: Element[] = [];
+  for (const child of document.body.children) {
+    if (child.contains(node)) continue;
+    child.setAttribute("inert", "");
+    inerted.push(child);
+  }
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "Tab") return;
     const items = focusables();
@@ -278,6 +284,7 @@ function trapDialogFocus(node: HTMLElement | null): (() => void) | undefined {
   node.addEventListener("keydown", onKeyDown);
   return () => {
     node.removeEventListener("keydown", onKeyDown);
+    for (const child of inerted) child.removeAttribute("inert");
     previous?.focus();
   };
 }
@@ -304,7 +311,7 @@ export function ConfirmDialog({
   onCancel: () => void;
 }) {
   if (!open) return null;
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="anim-fade absolute inset-0 bg-black/40" onClick={onCancel} />
       <div
@@ -340,7 +347,8 @@ export function ConfirmDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -368,7 +376,7 @@ export function FormDialog({
   children: React.ReactNode;
 }) {
   if (!open) return null;
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="anim-fade absolute inset-0 bg-black/40" onClick={onCancel} />
       <form
@@ -404,6 +412,7 @@ export function FormDialog({
           </Button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }
