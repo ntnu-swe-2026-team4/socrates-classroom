@@ -13,6 +13,7 @@ import { useT } from "@/i18n";
 import { attachScene, useCompanion } from "@/lib/companion";
 import { createSocratesScene } from "@/lib/socrates/scene";
 import { stopSpeech } from "@/lib/speech";
+import { createFrameLoop } from "@/lib/frameLoop";
 
 export const COMPANION_DOCK_ATTR = "data-companion-dock";
 
@@ -163,7 +164,6 @@ function useDockRect(): DockRect | null {
     return cacheRef.current;
   };
   const subscribe = useCallback((notify: () => void) => {
-    let raf = 0;
     const sync = () => {
       const prev = cacheRef.current ?? null;
       const next = measureDock();
@@ -172,14 +172,11 @@ function useDockRect(): DockRect | null {
         notify();
       }
     };
-    const step = () => {
-      raf = 0;
+    const loop = createFrameLoop(() => {
       sync();
-      if (cacheRef.current) raf = requestAnimationFrame(step);
-    };
-    const schedule = () => {
-      if (!raf) raf = requestAnimationFrame(step);
-    };
+      return cacheRef.current !== null;
+    });
+    const schedule = loop.wake;
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, {
       childList: true,
@@ -192,7 +189,7 @@ function useDockRect(): DockRect | null {
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", schedule);
-      cancelAnimationFrame(raf);
+      loop.stop();
     };
   }, []);
   return useSyncExternalStore(subscribe, read, () => null);
@@ -209,31 +206,30 @@ function CompanionBody({ dock }: { dock: DockRect }) {
   const t = useT();
   const state = useCompanion();
   const [modelState, setModelState] = useState<"loading" | "ready" | "error">("loading");
-  const sceneRef = useRef<ReturnType<typeof createSocratesScene> | null>(null);
 
   const attachStage = useCallback((stage: HTMLSpanElement | null) => {
     if (!stage) return;
     const canvas = document.createElement("canvas");
     canvas.className = "block size-full";
     stage.prepend(canvas);
-    let scene: ReturnType<typeof createSocratesScene>;
+    let detach: () => void = () => {};
+    let dispose: () => void = () => {};
     try {
-      scene = createSocratesScene(canvas, stage, {
+      const scene = createSocratesScene(canvas, stage, {
         mini: true,
         onReady: () => setModelState("ready"),
         onError: () => setModelState("error"),
       });
+      detach = attachScene(scene);
+      dispose = () => scene.dispose();
     } catch {
       canvas.remove();
       setModelState("error");
       return;
     }
-    sceneRef.current = scene;
-    const detach = attachScene(scene);
     return () => {
       detach();
-      scene.dispose();
-      sceneRef.current = null;
+      dispose();
       canvas.remove();
     };
   }, []);

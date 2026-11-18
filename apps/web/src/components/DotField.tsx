@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { cn } from "@/components/ui";
+import { createFrameLoop } from "@/lib/frameLoop";
 
 const PITCH = 12;
 const RADIUS = 1.45;
@@ -88,19 +89,18 @@ export function DotField({ className }: { className?: string }) {
 
     const start = performance.now();
     let last = Number.NEGATIVE_INFINITY;
-    let frame = 0;
-    const loop = (now: number) => {
+    const loop = createFrameLoop((now: number) => {
       if (now - last >= FRAME_MS) {
         last = now;
         draw((now - start) / 1000);
       }
-      frame = requestAnimationFrame(loop);
-    };
+      return true;
+    });
     if (still) draw(0);
-    else frame = requestAnimationFrame(loop);
+    else loop.wake();
 
     return () => {
-      cancelAnimationFrame(frame);
+      loop.stop();
       observer.disconnect();
       themeObserver.disconnect();
     };

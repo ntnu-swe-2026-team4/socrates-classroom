@@ -1,8 +1,9 @@
-import { useCallback, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { cn } from "@/components/ui";
 import { LANGS, setLocale, useI18n, type Locale, type MessageKey } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
+import { createFrameLoop } from "@/lib/frameLoop";
 
 export const Route = createFileRoute("/")({
   component: ComicLanding,
@@ -249,7 +250,6 @@ function LoopCanvas({
       const still = prefersStill();
       let ready = false;
       let visible = false;
-      let raf = 0;
       let started = 0;
       let drawn = -1;
 
@@ -268,15 +268,15 @@ function LoopCanvas({
           sheet.height,
         );
       };
-      const tick = (now: number) => {
+      const tick = createFrameLoop((now: number) => {
         if (!started) started = now;
         draw(Math.floor(((now - started) / 1000) * fps) % frames);
-        raf = visible ? requestAnimationFrame(tick) : 0;
-      };
+        return visible;
+      });
       const sync = () => {
         if (!ready) return;
         if (drawn < 0) draw(0);
-        if (!still && visible && !raf) raf = requestAnimationFrame(tick);
+        if (!still && visible) tick.wake();
       };
       let asked = false;
       const unwatch = whileVisible(view, "50% 0px", (next) => {
@@ -292,7 +292,7 @@ function LoopCanvas({
       });
       return () => {
         unwatch();
-        cancelAnimationFrame(raf);
+        tick.stop();
       };
     },
     [sheets, frames, columns, fps],
@@ -334,10 +334,9 @@ function EyesInset({ label }: { label: string }) {
     const gaze = { x: 0, y: 0 };
     const want = { x: 0, y: 0 };
     let visible = false;
-    let raf = 0;
     let lastInput = Number.NEGATIVE_INFINITY;
 
-    const tick = (now: number) => {
+    const tick = createFrameLoop((now: number) => {
       const idle = now - lastInput > 2600;
       if (idle && !still) {
         want.x = 0.92 * Math.sin(now / 1500);
@@ -348,10 +347,10 @@ function EyesInset({ label }: { label: string }) {
       const shift = `translate(${(-50 + gaze.x * IRIS.reachX * 100).toFixed(1)}%,${(-50 + gaze.y * IRIS.reachY * 100).toFixed(1)}%)`;
       for (const iris of irises) iris.style.transform = shift;
       const settled = Math.abs(want.x - gaze.x) < 0.002 && Math.abs(want.y - gaze.y) < 0.002;
-      raf = visible && (!still || !settled) ? requestAnimationFrame(tick) : 0;
-    };
+      return visible && (!still || !settled);
+    });
     const wake = () => {
-      if (!raf && visible) raf = requestAnimationFrame(tick);
+      if (visible) tick.wake();
     };
     const onPointer = (event: PointerEvent) => {
       const rect = view.getBoundingClientRect();
@@ -368,7 +367,7 @@ function EyesInset({ label }: { label: string }) {
     window.addEventListener("pointerdown", onPointer, { passive: true });
     return () => {
       unwatch();
-      cancelAnimationFrame(raf);
+      tick.stop();
       window.removeEventListener("pointermove", onPointer);
       window.removeEventListener("pointerdown", onPointer);
     };
@@ -483,7 +482,6 @@ function WindCanvas({ seed, className }: { seed: number; className?: string }) {
       }));
       const STEPS = 8;
       let visible = false;
-      let raf = 0;
 
       const draw = (time: number) => {
         const width = view.width;
@@ -521,15 +519,15 @@ function WindCanvas({ seed, className }: { seed: number; className?: string }) {
         }
       };
       let painted = 0;
-      const tick = (now: number) => {
+      const tick = createFrameLoop((now: number) => {
         if (now - painted >= PAINT_MS) {
           painted = now;
           draw(now / 1000);
         }
-        raf = visible && !still ? requestAnimationFrame(tick) : 0;
-      };
+        return visible && !still;
+      });
       const wake = () => {
-        if (!raf && visible && !still) raf = requestAnimationFrame(tick);
+        if (visible && !still) tick.wake();
       };
       const resize = () => {
         const ratio = Math.min(window.devicePixelRatio || 1, 2);
@@ -548,7 +546,7 @@ function WindCanvas({ seed, className }: { seed: number; className?: string }) {
       return () => {
         observer?.disconnect();
         unwatch();
-        cancelAnimationFrame(raf);
+        tick.stop();
       };
     },
     [seed],
@@ -900,7 +898,6 @@ function InkFlames({ flip = false }: { flip?: boolean }) {
       let pitch = 8;
       let density = 1;
       let visible = false;
-      let raf = 0;
 
       const draw = (time: number) => {
         const width = view.width;
@@ -964,15 +961,15 @@ function InkFlames({ flip = false }: { flip?: boolean }) {
         context.fillRect(0, height - 3 * density, width, 3 * density + 1);
       };
       let painted = 0;
-      const tick = (now: number) => {
+      const tick = createFrameLoop((now: number) => {
         if (now - painted >= PAINT_MS) {
           painted = now;
           draw(now / 1000);
         }
-        raf = visible && !still ? requestAnimationFrame(tick) : 0;
-      };
+        return visible && !still;
+      });
       const wake = () => {
-        if (!raf && visible && !still) raf = requestAnimationFrame(tick);
+        if (visible && !still) tick.wake();
       };
       const resize = () => {
         const ratio = Math.min(window.devicePixelRatio || 1, 2);
@@ -993,7 +990,7 @@ function InkFlames({ flip = false }: { flip?: boolean }) {
       return () => {
         observer?.disconnect();
         unwatch();
-        cancelAnimationFrame(raf);
+        tick.stop();
       };
     },
     [flip],
@@ -1019,7 +1016,9 @@ function Tornado({ label, ariaLabel, onAwake }: { label: string; ariaLabel: stri
   const tag = useRef<HTMLButtonElement>(null);
   const [pressed, setPressed] = useState(false);
   const awake = useRef(onAwake);
-  awake.current = onAwake;
+  useLayoutEffect(() => {
+    awake.current = onAwake;
+  });
 
   const attach = useCallback((frame: HTMLDivElement | null) => {
     if (!frame) return;
@@ -1072,7 +1071,6 @@ function Tornado({ label, ariaLabel, onAwake }: { label: string; ariaLabel: stri
     let ready = false;
     let visible = false;
     let holding = false;
-    let raf = 0;
     let last = 0;
     let rotation = 0;
     let spin = still ? 0 : HEAD_SPIN.idle;
@@ -1161,7 +1159,7 @@ function Tornado({ label, ariaLabel, onAwake }: { label: string; ariaLabel: stri
       }
     };
 
-    const tick = (now: number) => {
+    const tick = createFrameLoop((now: number) => {
       const elapsed = Math.min(0.05, (now - last) / 1000);
       last = now;
       const rest = still ? 0 : HEAD_SPIN.idle;
@@ -1187,12 +1185,12 @@ function Tornado({ label, ariaLabel, onAwake }: { label: string; ariaLabel: stri
       }
       const settling =
         holding || spin > rest + 0.01 || Math.abs(aim.x - spot.x) > 0.001 || Math.abs(aim.y - spot.y) > 0.001;
-      raf = visible && (!still || settling) ? requestAnimationFrame(tick) : 0;
-    };
+      return visible && (!still || settling);
+    });
     const wake = () => {
-      if (raf || !visible) return;
+      if (tick.running() || !visible) return;
       last = performance.now();
-      raf = requestAnimationFrame(tick);
+      tick.wake();
     };
     const resize = () => {
       const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -1274,7 +1272,7 @@ function Tornado({ label, ariaLabel, onAwake }: { label: string; ariaLabel: stri
     return () => {
       observer?.disconnect();
       unwatch();
-      cancelAnimationFrame(raf);
+      tick.stop();
       frame.removeEventListener("pointermove", onMove);
       frame.removeEventListener("pointerleave", onLeave);
       frame.removeEventListener("pointerdown", onFrameDown);
@@ -1337,7 +1335,6 @@ function HoldTurn({
     let finished = false;
     let progress = 0;
     let drawn = -1;
-    let raf = 0;
     let last = 0;
 
     const draw = () => {
@@ -1357,7 +1354,7 @@ function HoldTurn({
         sheet.height,
       );
     };
-    const tick = (now: number) => {
+    const tick = createFrameLoop((now: number) => {
       const elapsed = Math.min(64, now - last);
       last = now;
       if (holding && !finished) {
@@ -1376,12 +1373,12 @@ function HoldTurn({
       draw();
       follower.style.transform = `translate3d(${(spot.x * 100).toFixed(2)}%,${(spot.y * 100).toFixed(2)}%,0)`;
       const settled = Math.abs(aim.x - spot.x) < 0.001 && Math.abs(aim.y - spot.y) < 0.001;
-      raf = holding || (!finished && progress > 0) || !settled ? requestAnimationFrame(tick) : 0;
-    };
+      return holding || (!finished && progress > 0) || !settled;
+    });
     const wake = () => {
-      if (raf) return;
+      if (tick.running()) return;
       last = performance.now();
-      raf = requestAnimationFrame(tick);
+      tick.wake();
     };
     let asked = false;
     const load = () => {
@@ -1448,7 +1445,7 @@ function HoldTurn({
     button.addEventListener("contextmenu", noMenu);
     return () => {
       unwatch();
-      cancelAnimationFrame(raf);
+      tick.stop();
       frame.removeEventListener("pointermove", onMove);
       frame.removeEventListener("pointerleave", onLeave);
       frame.removeEventListener("pointerdown", onFrameDown);
@@ -1548,15 +1545,13 @@ function ComicLanding() {
     if (shifts) for (const scene of scenes) scene.node.style.willChange = "transform";
     const pointer = { x: 0, y: 0 };
     const eased = { x: 0, y: 0 };
-    let frame = 0;
 
-    const render = () => {
-      frame = 0;
+    const render = createFrameLoop(() => {
       const height = root.clientHeight;
       const range = root.scrollHeight - height;
       const p = range > 0 ? clamp01(root.scrollTop / range) : 0;
       if (bar) bar.style.transform = `scaleX(${p.toFixed(4)})`;
-      if (still) return;
+      if (still) return false;
       eased.x += (pointer.x - eased.x) * 0.1;
       eased.y += (pointer.y - eased.y) * 0.1;
       if (root.scrollTop < height * 1.2) {
@@ -1566,15 +1561,13 @@ function ComicLanding() {
           if (layer.fade) layer.node.style.opacity = (1 - clamp01(lift * 1.6)).toFixed(3);
         }
       }
-      if (!shifts) return;
+      if (!shifts) return false;
       const dx = (-eased.x * SCENE_SHIFT).toFixed(2);
       const dy = (-eased.y * SCENE_SHIFT).toFixed(2);
       for (const scene of scenes) scene.node.style.transform = `translate3d(${dx}%,${dy}%,0) scale(${scene.scale})`;
-      if (Math.abs(pointer.x - eased.x) > 0.002 || Math.abs(pointer.y - eased.y) > 0.002) schedule();
-    };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(render);
-    };
+      return Math.abs(pointer.x - eased.x) > 0.002 || Math.abs(pointer.y - eased.y) > 0.002;
+    });
+    const schedule = render.wake;
     const onPointer = (event: PointerEvent) => {
       if (event.pointerType !== "mouse") return;
       pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -1593,7 +1586,7 @@ function ComicLanding() {
       unwatch();
       root.removeEventListener("scroll", schedule);
       window.removeEventListener("pointermove", onPointer);
-      cancelAnimationFrame(frame);
+      render.stop();
     };
   }, []);
 
