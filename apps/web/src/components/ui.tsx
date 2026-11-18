@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import type React from "react";
 import { cva } from "class-variance-authority";
 import { clsx } from "clsx";
 import { ArrowLeft } from "lucide-react";
@@ -255,6 +255,33 @@ export function Initial({ name, className }: { name?: string | null; className?:
   );
 }
 
+const FOCUSABLE_SELECTOR =
+  "a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])";
+
+function trapDialogFocus(node: HTMLElement | null): (() => void) | undefined {
+  if (!node) return;
+  const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const focusables = () =>
+    Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+      (element) => element.offsetParent !== null || element === document.activeElement,
+    );
+  focusables()[0]?.focus();
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Tab") return;
+    const items = focusables();
+    if (items.length === 0) return;
+    event.preventDefault();
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    const next = event.shiftKey ? items[(index <= 0 ? items.length : index) - 1] : items[(index + 1) % items.length];
+    next?.focus();
+  };
+  node.addEventListener("keydown", onKeyDown);
+  return () => {
+    node.removeEventListener("keydown", onKeyDown);
+    previous?.focus();
+  };
+}
+
 export function ConfirmDialog({
   open,
   title,
@@ -276,14 +303,12 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const focusCancel = useCallback((node: HTMLButtonElement | null) => {
-    node?.focus();
-  }, []);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="anim-fade absolute inset-0 bg-black/40" onClick={onCancel} />
       <div
+        ref={trapDialogFocus}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-title"
@@ -300,7 +325,7 @@ export function ConfirmDialog({
         </h2>
         {body && <div className="mt-1.5 text-[13.5px] leading-relaxed text-ink-soft">{body}</div>}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <Button ref={focusCancel} variant="ghost" onClick={onCancel}>
+          <Button variant="ghost" onClick={onCancel}>
             {cancelLabel}
           </Button>
           {extra}
@@ -347,6 +372,7 @@ export function FormDialog({
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="anim-fade absolute inset-0 bg-black/40" onClick={onCancel} />
       <form
+        ref={trapDialogFocus}
         role="dialog"
         aria-modal="true"
         aria-labelledby="form-dialog-title"
