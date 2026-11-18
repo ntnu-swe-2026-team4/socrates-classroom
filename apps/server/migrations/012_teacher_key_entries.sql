@@ -12,7 +12,6 @@ CREATE INDEX teacher_key_entries_user ON teacher_key_entries(user_id, sort_order
 
 INSERT INTO teacher_key_entries (id, user_id, provider_id, key_enc, last4, model, sort_order, updated_at)
 SELECT 'k_' || lower(hex(randomblob(16))), user_id, provider_id, key_enc, last4, model, sort_order, updated_at
-FROM teacher_keys
-WHERE model != '';
+FROM teacher_keys;
 
 DROP TABLE teacher_keys;
