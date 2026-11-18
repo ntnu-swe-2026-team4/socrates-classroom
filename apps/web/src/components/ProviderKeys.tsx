@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TeacherKeyStatus } from "@socrates/shared";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { api } from "@/api";
 import { Card, cn } from "@/components/ui";
 import { useT } from "@/i18n";
@@ -181,13 +181,10 @@ function ProviderSheet({
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const keyRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (picked) keyRef.current?.focus();
-    else searchRef.current?.focus();
-  }, [picked]);
+  const focusInput = useCallback((element: HTMLInputElement | null) => {
+    element?.focus();
+  }, []);
 
   const f = query.trim().toLowerCase();
   const matches = (entry: { id: string; name: string }) =>
@@ -260,7 +257,7 @@ function ProviderSheet({
           {!picked ? (
             <input
               type="search"
-              ref={searchRef}
+              ref={focusInput}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t("settings_keys_find")}
@@ -286,7 +283,7 @@ function ProviderSheet({
               <span className="text-[12px] font-medium text-ink-soft">{t("settings_keys_key")}</span>
               <input
                 type="password"
-                ref={keyRef}
+                ref={focusInput}
                 value={key}
                 onChange={(event) => setKey(event.target.value)}
                 autoComplete="off"

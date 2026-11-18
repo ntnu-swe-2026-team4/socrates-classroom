@@ -28,7 +28,6 @@ import vertexai from "@/assets/providers/google-vertex.svg";
 import xai from "@/assets/providers/xai.svg";
 import xiaomi from "@/assets/providers/xiaomi.svg";
 
-// Provider icons vendored from yetone/magpie (MIT), one file per pi provider id.
 const icons: Record<string, string> = {
   "amazon-bedrock": amazonBedrock,
   anthropic,

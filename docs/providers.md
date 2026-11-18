@@ -395,10 +395,11 @@ pnpm --filter @socrates/server run gen-config
 
 ### Teacher keys（老師自帶 key）
 
-- **設定入口**：老師登入 → `/settings` → Teacher keys 卡片——選 provider（pi builtin catalog）→ 選 model（該 provider 的 model 清單）→ 貼 key；一 provider 一把 key，上下拖曳排序（`sort_order`＝teacher legs 鏈序，老師鏈在前、平台鏈墕後）
+- **設定入口**：老師登入 → `/settings` → Teacher keys 卡片 →「＋ 新增 provider」sheet（Vendors／Relays／Platform 分組磁磚，已加的顯示 ✓）→ 貼 key；一 provider 一把 key，providers 拖曳排序（`teacher_keys.sort_order`＝teacher legs 鏈序，老師鏈在前、平台鏈墊後）
+- **Model legs**：每個 provider row 內新增多個 model leg（每 (provider, model) 一條，`teacher_key_models`），各自的 `max_concurrency`（NULL＝跟隨預設 4）與 leg 內 `sort_order`；API 形狀見 [`api-contract.md`](./api-contract.md) §9
+- **圖示**：設定頁 provider 圖示 vendored 自 yetone/magpie（MIT），一個 pi provider id 一檔（`apps/web/src/assets/providers/`）；UI 互動仿 magpie Providers 頁
 - **儲存**：D1 AES-GCM（金鑰 `BYOK_ENC_KEY`）；明文永不回傳（只回 last4）
 - **責任**：老師鏈流量 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；學生無 BYOK 入口（#82）
-- API 形狀見 [`api-contract.md`](./api-contract.md) §9
 
 ## 待辦 / 未定
 
