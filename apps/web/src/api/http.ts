@@ -141,7 +141,7 @@ export interface Api {
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
   createTopic(input: { title: string; statement: string; summary?: string; prompts: string[] }): Promise<Topic>;
-  activityInfo(activityId: string): Promise<ActivityInfo>;
+  activityInfo(activityId: string, participantId?: string): Promise<ActivityInfo>;
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
   lookupTerm(term: string): Promise<TermExplanation>;
@@ -431,7 +431,10 @@ export const httpApi: Api = {
     announceSession();
   },
   async register(input) {
-    const user = await raw<User>("/auth/register", { method: "POST", json: { ...input, tosAccepted: true } });
+    const user = await raw<User>(input.code ? "/auth/register" : "/auth/signup", {
+      method: "POST",
+      json: { ...input, tosAccepted: true },
+    });
     announceSession();
     return user;
   },
@@ -641,8 +644,9 @@ export const httpApi: Api = {
     return SttResultSchema.parse(await res.json()).text;
   },
   tts: playTts,
-  async activityInfo(activityId) {
-    return unwrap(await client.activities[":id"].$get({ param: { id: activityId } }));
+  async activityInfo(activityId, participantId) {
+    const query = participantId ? `?participantId=${encodeURIComponent(participantId)}` : "";
+    return raw<ActivityInfo>(`/activities/${encodeURIComponent(activityId)}${query}`);
   },
   async finishActivity(activityId) {
     await unwrap(await client.activities[":id"].finish.$post({ param: { id: activityId } }));
@@ -694,7 +698,12 @@ export const httpApi: Api = {
   },
   async joinByInvite(token, input) {
     const payload = InviteJoinInputSchema.parse(input);
-    return raw<InviteJoined>(`/invites/${encodeURIComponent(token)}/join`, { method: "POST", json: payload });
+    const joined = await raw<InviteJoined>(`/invites/${encodeURIComponent(token)}/join`, {
+      method: "POST",
+      json: payload,
+    });
+    persistActivityId(joined.activityId);
+    return joined;
   },
   async listActivitySlots(activityId) {
     return raw<ActivitySlots>(`/activities/${encodeURIComponent(activityId)}/slots`);

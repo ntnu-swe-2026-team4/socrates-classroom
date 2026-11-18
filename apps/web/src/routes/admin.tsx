@@ -10,6 +10,7 @@ import { AdminUsageAlerts } from "@/components/UsageCard";
 import {
   Button,
   Card,
+  Checkbox,
   cn,
   ConfirmDialog,
   Field,
@@ -143,7 +144,7 @@ function Overview({ go }: { go: (tab: Tab) => void }) {
 function roleKey(user: AdminUser): MessageKey {
   if (user.isAdmin) return "admin_role_admin";
   if (user.teacherPlan === "school") return "admin_role_school";
-  if (user.teacherPlan === "trial") return "admin_role_trial";
+  if (user.teacherPlan === "trial" || user.canManageClasses) return "admin_role_trial";
   return "admin_role_member";
 }
 
@@ -171,7 +172,29 @@ function Users() {
     onSuccess: () => setAssigning(null),
     onSettled: refresh,
   });
-  const busy = grant.isPending || revoke.isPending || assign.isPending;
+  const [disabling, setDisabling] = useState<AdminUser | null>(null);
+  const setDisabled = useMutation({
+    mutationFn: (input: { id: string; disabled: boolean }) =>
+      api.updateAdminUser(input.id, { disabled: input.disabled }),
+    onSettled: refresh,
+  });
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState({ name: "", email: "", password: "", canManageClasses: false });
+  const create = useMutation({
+    mutationFn: () =>
+      api.createAdminUser({
+        name: draft.name.trim(),
+        email: draft.email.trim(),
+        password: draft.password,
+        canManageClasses: draft.canManageClasses,
+      }),
+    onSuccess: () => {
+      setCreating(false);
+      setDraft({ name: "", email: "", password: "", canManageClasses: false });
+    },
+    onSettled: refresh,
+  });
+  const busy = grant.isPending || revoke.isPending || assign.isPending || setDisabled.isPending;
   const rows = users.data ?? [];
 
   return (
@@ -191,9 +214,21 @@ function Users() {
             className="pl-9"
           />
         </div>
-        <span className="text-[12.5px] text-ink-faint">{t("admin_users_count", { count: rows.length })}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[12.5px] text-ink-faint">{t("admin_users_count", { count: rows.length })}</span>
+          <Button
+            size="sm"
+            onClick={() => {
+              create.reset();
+              setCreating(true);
+            }}
+          >
+            <Plus className="size-3.5" />
+            {t("admin_create_title")}
+          </Button>
+        </div>
       </div>
-      {(grant.isError || revoke.isError || assign.isError || users.isError) && (
+      {(grant.isError || revoke.isError || assign.isError || setDisabled.isError || users.isError) && (
         <p role="alert" className="px-5 pt-3 text-[12.5px] text-flag">
           {t("common_error")}
         </p>
@@ -224,7 +259,16 @@ function Users() {
                     <span className="flex items-center gap-3">
                       <Initial name={user.name} className="size-8 text-[13px]" />
                       <span className="min-w-0">
-                        <span className="block truncate text-ink">{user.name}</span>
+                        <span className="flex items-center gap-2">
+                          <span className={cn("truncate text-ink", user.disabled && "text-ink-faint line-through")}>
+                            {user.name}
+                          </span>
+                          {user.disabled && (
+                            <span className="shrink-0 rounded-md bg-flag-wash px-1.5 py-0.5 text-[11px] text-flag">
+                              {t("admin_badge_disabled")}
+                            </span>
+                          )}
+                        </span>
                         <span className="block truncate text-[12px] text-ink-faint">{user.email ?? "—"}</span>
                       </span>
                     </span>
@@ -235,7 +279,7 @@ function Users() {
                         "inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[12px]",
                         user.isAdmin
                           ? "bg-ink text-paper"
-                          : user.teacherPlan
+                          : user.teacherPlan || user.canManageClasses
                             ? "bg-ember-wash text-ink"
                             : "bg-paper-deep text-ink-soft",
                       )}
@@ -261,7 +305,21 @@ function Users() {
                           {t("admin_assign_school")}
                         </Button>
                       )}
-                      {user.teacherPlan ? (
+                      {user.id !== me.data?.id && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busy}
+                          data-toggle-disabled
+                          onClick={() =>
+                            user.disabled ? setDisabled.mutate({ id: user.id, disabled: false }) : setDisabling(user)
+                          }
+                          className={cn(!user.disabled && "hover:bg-flag-wash hover:text-flag")}
+                        >
+                          {t(user.disabled ? "admin_enable" : "admin_disable")}
+                        </Button>
+                      )}
+                      {user.teacherPlan || user.canManageClasses ? (
                         user.id !== me.data?.id && (
                           <Button
                             size="sm"
@@ -314,6 +372,56 @@ function Users() {
           </select>
         </Field>
       </FormDialog>
+      <FormDialog
+        open={creating}
+        title={t("admin_create_title")}
+        description={create.isError ? t("admin_create_failed") : t("admin_create_desc")}
+        submitLabel={t("admin_create_submit")}
+        cancelLabel={t("common_cancel")}
+        canSubmit={draft.name.trim() !== "" && draft.email.trim() !== "" && draft.password.length >= 8}
+        submitting={create.isPending}
+        onCancel={() => setCreating(false)}
+        onSubmit={() => create.mutate()}
+      >
+        <Field label={t("admin_create_name")}>
+          <Input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+        </Field>
+        <Field label={t("admin_create_email")}>
+          <Input
+            type="email"
+            autoComplete="off"
+            value={draft.email}
+            onChange={(event) => setDraft({ ...draft, email: event.target.value })}
+          />
+        </Field>
+        <Field label={t("admin_create_password")}>
+          <Input
+            type="text"
+            autoComplete="off"
+            minLength={8}
+            value={draft.password}
+            onChange={(event) => setDraft({ ...draft, password: event.target.value })}
+          />
+        </Field>
+        <Checkbox
+          label={t("admin_create_can_manage")}
+          checked={draft.canManageClasses}
+          onCheckedChange={(next) => setDraft({ ...draft, canManageClasses: next })}
+        />
+      </FormDialog>
+      <ConfirmDialog
+        open={disabling !== null}
+        danger
+        title={t("admin_disable_title", { name: disabling?.name ?? "" })}
+        body={t("admin_disable_body")}
+        confirmLabel={t("admin_disable")}
+        cancelLabel={t("common_cancel")}
+        onCancel={() => setDisabling(null)}
+        onConfirm={() => {
+          if (disabling) setDisabled.mutate({ id: disabling.id, disabled: true });
+          setDisabling(null);
+        }}
+      />
       <ConfirmDialog
         open={revoking !== null}
         danger

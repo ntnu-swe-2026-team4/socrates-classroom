@@ -6,6 +6,7 @@ import {
   ChartNoAxesColumn,
   Copy,
   Eye,
+  Link2,
   Pencil,
   MessageSquare,
   Plus,
@@ -15,7 +16,18 @@ import {
 } from "lucide-react";
 import { api, type ClassroomActivity, type ClassroomSummary } from "@/api";
 import { QrBlock, absoluteUrl } from "@/components/QrBlock";
-import { Button, ConfirmDialog, Field, FormDialog, Initial, Input, Spinner, cn } from "@/components/ui";
+import {
+  Button,
+  Checkbox,
+  ConfirmDialog,
+  Field,
+  FormDialog,
+  HalftoneFade,
+  Initial,
+  Input,
+  Spinner,
+  cn,
+} from "@/components/ui";
 import { useFormatDate, useT } from "@/i18n";
 import { AddTopic, CopyTopic, useClassroomTopics } from "@/components/ClassroomTopics";
 import { TopicPicker } from "@/components/TopicPicker";
@@ -99,13 +111,8 @@ function ClassroomPage() {
     <div className="min-h-full bg-paper-deep pb-10">
       <div className="mx-auto w-full max-w-6xl px-4 pt-14 md:px-6 md:pt-5">
         <header className="overflow-hidden rounded-xl border border-line bg-paper shadow-sm">
-          <div className="relative flex min-h-[150px] flex-col justify-end gap-2 overflow-hidden bg-comic-night [&>:not(img):not(a)]:relative px-5 py-4 [--color-ink-faint:rgb(255_255_255/0.65)] [--color-ink-soft:rgb(255_255_255/0.8)] [--color-ink:#ffffff] [--color-paper-deep:rgb(255_255_255/0.14)] md:px-7 md:py-5">
-            <img
-              src="/greek/banner.webp"
-              alt=""
-              decoding="async"
-              className="pointer-events-none absolute top-0 right-0 h-full max-sm:opacity-40"
-            />
+          <div className="relative flex min-h-[150px] flex-col justify-end gap-2 overflow-hidden border-b border-line bg-paper px-5 py-4 md:px-7 md:py-5 [&>:not([aria-hidden]):not(a)]:relative">
+            <HalftoneFade />
             <Link
               to="/classrooms"
               search={{ view: teacher ? "teacher" : "student" }}
@@ -163,6 +170,9 @@ function ClassroomPage() {
           {teacher && data.url && data.code ? (
             <>
               <InviteCard url={data.url} code={data.code} ready={Boolean(data.current)} />
+              {running && data.current && (
+                <ActivityInviteCard key={data.current.activityId} activityId={data.current.activityId} />
+              )}
               <Section title={t("students_card_title")}>
                 <div className="flex flex-col gap-2 p-3">
                   <p className="text-[12.5px] leading-relaxed text-ink-soft">{t("students_card_desc")}</p>
@@ -411,8 +421,10 @@ function PreviewButton({ room }: { room: ClassroomSummary }) {
 function NewTopic({ room }: { room: ClassroomSummary }) {
   const t = useT();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const first = !room.current;
   const [open, setOpen] = useState(first);
+  const [testMode, setTestMode] = useState(false);
   return (
     <Section
       title={first ? t("classroom_first_topic") : t("classroom_new_topic")}
@@ -432,14 +444,22 @@ function NewTopic({ room }: { room: ClassroomSummary }) {
           </p>
           <TopicPicker
             excludeId={room.current?.topicId}
-            submitLabel={t("classroom_start_topic")}
+            submitLabel={testMode ? t("classroom_start_test") : t("classroom_start_topic")}
             onPicked={async (topicId) => {
-              await api.startActivity(room.id, topicId);
+              const started = await api.startActivity(room.id, topicId, testMode ? "test" : "live");
               setOpen(false);
               await queryClient.invalidateQueries({ queryKey: ["classroom", room.id] });
+              await queryClient.invalidateQueries({ queryKey: ["classroom-activities", room.id] });
               await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+              if (testMode) await navigate({ to: "/t/live/$id", params: { id: started.activityId } });
             }}
           />
+          <div data-test-mode className="mt-3 border-t border-line pt-3">
+            <Checkbox label={t("classroom_mode_test")} checked={testMode} onCheckedChange={setTestMode} />
+            {testMode && (
+              <p className="mt-1.5 pl-8 text-[12px] leading-relaxed text-ink-faint">{t("classroom_mode_test_hint")}</p>
+            )}
+          </div>
         </div>
       ) : (
         <p className="px-3 py-2.5 text-[12.5px] text-ink-faint">{t("classroom_new_topic_hint")}</p>
@@ -477,6 +497,57 @@ function InviteCard({ url, code, ready }: { url: string; code: string; ready: bo
         {!ready && (
           <p className="rounded-xl bg-ember-wash px-3 py-2 text-[12px] leading-relaxed text-ink-soft">
             {t("classroom_invite_needs_topic")}
+          </p>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+function ActivityInviteCard({ activityId }: { activityId: string }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const create = useMutation({ mutationFn: () => api.activityInvite(activityId) });
+  const url = create.data?.url;
+  async function copy(full: string) {
+    try {
+      await navigator.clipboard.writeText(full);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  }
+  return (
+    <Section title={t("classroom_activity_invite_title")}>
+      <div data-activity-invite className="flex flex-col gap-3 p-3">
+        <p className="text-[12.5px] leading-relaxed text-ink-soft">{t("classroom_activity_invite_hint")}</p>
+        {url ? (
+          <div className="flex flex-col items-center gap-3 text-center">
+            <QrBlock url={url} />
+            <code className="w-full truncate rounded-lg bg-paper-deep px-3 py-1 font-mono text-[11.5px] text-ink-soft">
+              {absoluteUrl(url)}
+            </code>
+            <Button variant="outline" size="sm" className="w-full" onClick={() => void copy(absoluteUrl(url))}>
+              <Copy className="size-3.5" />
+              {copied ? t("setup_copied") : t("setup_copy")}
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            disabled={create.isPending}
+            onClick={() => create.mutate()}
+          >
+            {create.isPending ? <Spinner /> : <Link2 className="size-3.5" />}
+            {t("classroom_activity_invite")}
+          </Button>
+        )}
+        {create.isError && (
+          <p role="alert" className="text-[12.5px] text-flag">
+            {t("common_error")}
           </p>
         )}
       </div>

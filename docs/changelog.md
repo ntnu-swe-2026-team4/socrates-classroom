@@ -2,6 +2,64 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-18 — 併入 `integration/web-next-142`，補齊新帳號模型的前端（`frontend/web-next`）
+
+### Added
+
+- 教室頁可以用「測試模式」開始活動；即時面板在測試活動顯示「測試對話」面板（新增、開啟各條對話），`/dialogue?slot=` 讓教師進入指定的測試對話
+- 教室頁新增「單次活動邀請」卡片：產生 invite link 與 QR code，沒有帳號的人可以只加入目前這個活動
+- 管理後台「使用者」分頁可以建立帳號、停用與恢復帳號（原本獨立的 `/admin/users` 頁併入此分頁）
+- 蘇格拉底模型改為對話訊息區右邊緣的小窗（`SocratesWindow`）：有框、可以上下拖曳調整位置、向右收合成邊緣上的小鈕、拖曳模型可以轉動；不佔對話寬度，和「查詢」「順帶一問」面板可以同時使用
+
+### Fixed
+
+- 教室對話的 WebSocket 改用 `participantId` 連線（先前誤用 user id，新帳號模型下連不上）
+- 沒有帳號的訪客用邀請碼或 invite link 加入後可以直接進入對話，不再被導向 `/login`；側欄對未登入者顯示「登入」
+- 登入頁的註冊改呼叫 `/auth/signup`（`/auth/register` 現在必須帶邀請碼）
+- 收回教師權限時一併清除 `can_manage_classes`
+- 帳號選單不再被模型蓋住
+- 有 `can_manage_classes` 但沒有 `teacher_plan` 的帳號（seed 教師、後台直接建立的教師）可以切換教師模式，關閉後不會失去權限；seed 教師預設開啟教師模式
+
+### Changed
+
+- 教室橫幅與教室卡片封面改用主題的半色調圓點（`HalftoneFade`），移除彩色神殿插圖 `public/greek/banner.webp`
+- 深色版配色改為中性深灰，外框線加強，重點色統一為黃棕
+
+### Removed
+
+- 對話頁右上角的模型小窗（`SocratesTile`）
+
+## 2026-11-17 — 蘇格拉底模型改為對話頁角落的小窗（`frontend/web-next`）
+
+### Changed
+
+- 3D 模型只出現在對話頁右上角的小窗（`SocratesTile`）：可收合成一顆按鈕，狀態記在 `socrates_tile_open`；手機預設收合；訊息區會讓出小窗的位置
+- `/login` 頂列新增語言切換（中／EN／ES）
+
+### Removed
+
+- 左側面板的「提問／對話」切換與面板內的模型舞台
+- 語音模式上方的 3D 肖像（語音模式本身保留）
+- `public/stage/`（底座與柱廊背景）
+
+### Fixed
+
+- rail 的通知鈴鐺彈出框被 rail 的捲動容器裁切：改為 `position: fixed` 並貼齊 rail 右緣
+- rail 底部的頭像按鈕 hover／按下時位移造成 rail 出現橫向捲軸；移除重複的 `title` 提示
+
+## 2026-11-17 — 內部頁面套用 halftone 主題（`frontend/web-next`）
+
+### Changed
+
+- 合併 `new-graphic` 分支的內部頁面主題：`.ht-theme`（方角、1.5px 邊框、serif 標題、黃棕色主按鈕、按下時下沉）、`DotField` 點陣背景、rail 與首頁改版、蘇格拉底回覆改為無框文字
+- 主題套用範圍：`/home`、`/chat`、`/classrooms`、`/dialogue`、`/admin`，以及 `/t/`、`/report`、`/settings`、`/join`（後四者為合併時補上，避免與新 rail 不一致）
+- 對話頁新增語音模式：麥克風按鈕切換成「按住說話」的大按鈕；左側面板顯示列表時，語音模式上方會顯示蘇格拉底 3D 肖像
+
+### 合併時保留
+
+- 左側面板的「提問／對話」切換、「順帶一問」、訪客與學生的 rail、管理後台 rail、帳號選單、通知鈴鐺（含訪客）
+- `SocratesDock` 新增 `compact`：語音模式用小尺寸，左側面板維持原尺寸；兩處不會同時顯示模型
+
 ## 2026-11-17 — 帳號選單（`frontend/web-next`）
 
 ### Changed

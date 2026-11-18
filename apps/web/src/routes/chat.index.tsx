@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SidebarToggle } from "@/components/ChatLayout";
+import { SocratesWindow } from "@/components/SocratesCompanion";
 import { StartChat } from "@/components/StartChat";
 import { useT } from "@/i18n";
 
@@ -15,11 +16,14 @@ function NewChatPage() {
         <SidebarToggle />
         <h1 className="truncate pl-1 text-[14.5px] font-medium text-ink">{t("chat_new")}</h1>
       </header>
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-4 py-8">
-        <div className="w-full max-w-2xl">
-          <p className="text-[12.5px] text-ember">{t("dlg_socrates")}</p>
-          <h2 className="mt-1 mb-4 font-serif text-[28px] leading-snug text-ink">{t("home_question")}</h2>
-          <StartChat autoFocus />
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        <SocratesWindow />
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-4 py-8">
+          <div className="w-full max-w-2xl">
+            <p className="text-[12.5px] text-ember">{t("dlg_socrates")}</p>
+            <h2 className="mt-1 mb-4 font-serif text-[28px] leading-snug text-ink">{t("home_question")}</h2>
+            <StartChat autoFocus />
+          </div>
         </div>
       </div>
     </div>

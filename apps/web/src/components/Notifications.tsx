@@ -14,6 +14,7 @@ export function NotificationBell({ className, side = "below" }: { className?: st
   const formatDate = useFormatDate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const feed = useQuery({ queryKey: FEED_KEY, queryFn: () => api.notifications(), refetchInterval: REFRESH_MS });
   const seen = useMutation({
@@ -41,6 +42,15 @@ export function NotificationBell({ className, side = "below" }: { className?: st
 
   function toggle() {
     if (!open && unread > 0 && !seen.isPending) seen.mutate();
+    const box = rootRef.current?.getBoundingClientRect();
+    setAnchor(
+      side === "beside" && box
+        ? {
+            left: Math.round((rootRef.current?.closest("nav")?.getBoundingClientRect().right ?? box.right) + 8),
+            bottom: Math.max(8, Math.round(window.innerHeight - box.bottom)),
+          }
+        : null,
+    );
     setOpen(!open);
   }
 
@@ -66,9 +76,14 @@ export function NotificationBell({ className, side = "below" }: { className?: st
           role="dialog"
           aria-label={t("notify_title")}
           className={cn(
-            "anim-rise absolute z-[60] flex max-h-[min(70vh,460px)] w-[min(86vw,340px)] flex-col overflow-hidden rounded-xl border border-line-strong bg-paper shadow-xl",
-            side === "beside" ? "bottom-0 left-full ml-3" : "top-full right-0 mt-2",
+            "anim-rise z-[60] flex max-h-[min(70vh,460px)] w-[min(86vw,340px)] flex-col overflow-hidden rounded-xl border border-line-strong bg-paper shadow-xl",
+            anchor ? "fixed max-w-[calc(100vw-1rem)]" : "absolute top-full right-0 mt-2",
           )}
+          style={
+            anchor
+              ? { left: `min(${anchor.left}px, calc(100vw - min(86vw, 340px) - 8px))`, bottom: anchor.bottom }
+              : undefined
+          }
         >
           <p className="shrink-0 border-b border-line px-4 py-3 font-serif text-[15px] text-ink">{t("notify_title")}</p>
           <ul className="min-h-0 flex-1 overflow-y-auto">

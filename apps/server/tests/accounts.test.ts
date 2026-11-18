@@ -46,6 +46,26 @@ beforeAll(async () => {
 });
 
 describe("teacher mode", () => {
+  it("lets an account with class access but no plan switch the mode without losing the access", async () => {
+    const email = `granted-${crypto.randomUUID()}@example.com`;
+    const created = await send("/api/admin/users", admin, "POST", {
+      name: "直接開通",
+      email,
+      password: "password-123",
+      canManageClasses: true,
+    });
+    expect(created.status).toBe(201);
+    const login = await send("/api/auth/login", null, "POST", { identifier: email, password: "password-123" });
+    const cookie = cookieOf(login);
+    expect(await login.json()).toMatchObject({ teacherPlan: null, canManageClasses: true, teacherMode: true });
+
+    const off = await send("/api/me", cookie, "PATCH", { teacherMode: false });
+    expect(await off.json()).toMatchObject({ teacherPlan: null, canManageClasses: true, teacherMode: false });
+    const on = await send("/api/me", cookie, "PATCH", { teacherMode: true });
+    expect(on.status).toBe(200);
+    expect(await on.json()).toMatchObject({ teacherPlan: null, canManageClasses: true, teacherMode: true });
+  });
+
   it("stays off until an admin approves a request, then toggles freely on the trial plan", async () => {
     const account = await registerAccount("試用老師");
     const me = (await (await call("/api/me", { headers: { Cookie: account.cookie } })).json()) as { id: string };

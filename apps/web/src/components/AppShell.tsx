@@ -4,6 +4,7 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ShieldCheck,
+  LogIn,
   LogOut,
   Eye,
   BookOpen,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { api, type User } from "@/api";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
+import { readActivityId } from "@/api/local";
 import { ADMIN_SECTIONS, type AdminTab } from "@/lib/adminSections";
 import { NotificationBell } from "@/components/Notifications";
 import { SocratesCompanion } from "@/components/SocratesCompanion";
@@ -28,16 +30,24 @@ import { toggleTheme, useTheme } from "@/theme";
 
 const BARE_ROUTES = [/^\/$/, /^\/login\/?$/];
 
-const NAV_BTN =
-  "flex w-full cursor-pointer flex-col items-center gap-1 rounded-lg py-2.5 text-[11.5px] text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink-soft";
-const NAV_ACTIVE = "bg-ember-wash text-ember hover:bg-ember-wash hover:text-ember";
-const RAIL_ICON_BTN =
-  "flex size-9 cursor-pointer items-center justify-center rounded-full border border-line-strong text-ink-soft transition-colors hover:border-ember hover:text-ember";
+const RAIL_FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vermilion";
+const NAV_BTN = cn(
+  "comic-sink flex w-16 cursor-pointer flex-col items-center gap-1 border-[1.5px] border-transparent py-[9px] text-[11.5px] text-ht-soft hover:border-ht-line hover:bg-ht-hover hover:text-ht-ink",
+  RAIL_FOCUS,
+);
+const NAV_ACTIVE =
+  "border-ht-accent-line bg-ht-accent font-bold text-ht-on-accent hover:bg-ht-accent hover:text-ht-on-accent";
+const RAIL_SQUARE_BTN = cn(
+  "comic-sink flex size-10 cursor-pointer items-center justify-center rounded-none border-[1.5px] border-ht-line bg-ht-surface text-ht-ink hover:border-ht-line hover:bg-ht-hover hover:text-ht-ink",
+  RAIL_FOCUS,
+);
 
 const NAV = [
   { to: "/home", label: "nav_home", icon: Home, match: ["/home"] },
   { to: "/chat", label: "nav_chat", icon: MessageSquare, match: ["/chat"] },
 ] as const;
+
+const HALFTONE_MATCH = ["/home", "/chat", "/classrooms", "/dialogue", "/admin", "/t/", "/report", "/settings", "/join"];
 
 const CLASSROOM_MATCH = ["/classrooms", "/join", "/dialogue", "/t/", "/report"];
 
@@ -131,6 +141,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
     },
   });
   const guest = me.data?.guest ?? true;
+  const guestActivityId = me.data ? me.data.activityId : readActivityId();
   const member = (me.data?.kind ?? "member") === "member" && !guest;
   const student = me.data?.kind === "student";
   const accountLabel =
@@ -153,6 +164,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   }, [pathname]);
 
   const inClassrooms = CLASSROOM_MATCH.some((prefix) => pathname.startsWith(prefix));
+  const halftone = HALFTONE_MATCH.some((prefix) => pathname.startsWith(prefix));
   const listView = useRouterState({
     select: (state) => (state.location.search as { view?: string } | undefined)?.view,
   });
@@ -180,17 +192,23 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const pendingRequests = adminOverview.data?.pendingRequests ?? 0;
 
   const rail = (
-    <nav className="flex h-full w-[84px] flex-col items-center border-r border-line bg-card pb-3">
+    <nav className="flex h-full w-[88px] flex-col items-center overflow-x-hidden overflow-y-auto border-r-[1.5px] border-ht-line bg-ht-surface py-4 font-comic-sans">
       <Link
         to={inAdmin ? "/admin" : "/home"}
         aria-label={t("app_name")}
-        className="flex h-14 w-full shrink-0 items-center justify-center font-serif text-[20px] text-ink"
+        className={cn(
+          "flex size-11 shrink-0 items-center justify-center bg-ht-solid font-comic-serif text-[21px] font-black text-ht-on-solid",
+          RAIL_FOCUS,
+        )}
       >
         {t("app_mark")}
       </Link>
-      <div className="mb-2 h-px w-8 bg-line-strong" aria-hidden />
+      <span aria-hidden className="mt-1.5 font-dot text-[10px] tracking-[0.25em] text-ht-ink uppercase">
+        {t("brand_name")}
+      </span>
+      <i aria-hidden className="my-3.5 block w-11 shrink-0 border-t-2 border-dotted border-ht-dotted" />
 
-      <div className="flex w-full flex-col gap-2 px-1.5">
+      <div className="flex flex-col items-center gap-1.5">
         {previewRoom ? (
           <Link to="/classrooms/$classroomId" params={{ classroomId: previewRoom }} className={cn(NAV_BTN, NAV_ACTIVE)}>
             <Eye className="size-[19px]" />
@@ -231,10 +249,10 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
               );
             })}
             {guest ? (
-              me.data?.activityId && (
+              guestActivityId && (
                 <Link
                   to="/dialogue"
-                  search={{ activityId: me.data.activityId }}
+                  search={{ activityId: guestActivityId }}
                   className={cn(NAV_BTN, pathname.startsWith("/dialogue") && NAV_ACTIVE)}
                 >
                   <MessageCircleQuestion className="size-[19px]" />
@@ -272,7 +290,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                 )}
               </>
             )}
-            {(guest || student) && (
+            {(guest || student) && me.data && (
               <Link to="/settings" className={cn(NAV_BTN, pathname.startsWith("/settings") && NAV_ACTIVE)}>
                 <Settings className="size-[19px]" />
                 <span>{t("settings_title")}</span>
@@ -285,7 +303,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       <div className="flex-1" />
 
       {guest && me.data && !previewRoom && (
-        <div className="mb-3 w-full px-1.5">
+        <div className="mb-3 flex w-full justify-center">
           <button type="button" data-rail="leave" onClick={() => setGuestLogout(true)} className={NAV_BTN}>
             <LogOut className="size-[19px]" />
             <span className="text-center leading-tight">{t("guest_leave_activity")}</span>
@@ -293,35 +311,56 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
         </div>
       )}
       {me.data?.isAdmin && !previewRoom && (
-        <div className="mb-3 w-full px-1.5">
+        <div className="mb-3 flex w-full justify-center">
           <Link to={inAdmin ? "/home" : "/admin"} data-rail="site" className={NAV_BTN}>
             {inAdmin ? <Eye className="size-[19px]" /> : <ShieldCheck className="size-[19px]" />}
             <span className="text-center leading-tight">{t(inAdmin ? "nav_back_to_site" : "nav_manage_site")}</span>
           </Link>
         </div>
       )}
-      <div className="mb-3 flex flex-col items-center gap-2">
-        {me.data && <NotificationBell side="beside" />}
-        <button type="button" onClick={toggleTheme} aria-label={themeTip} title={themeTip} className={RAIL_ICON_BTN}>
+      <div className="mb-3.5 flex flex-col items-center gap-2 pt-3">
+        {me.data && <NotificationBell side="beside" className={RAIL_SQUARE_BTN} />}
+        <button type="button" onClick={toggleTheme} aria-label={themeTip} title={themeTip} className={RAIL_SQUARE_BTN}>
           {theme === "dark" ? <Moon className="size-[17px]" /> : <Sun className="size-[17px]" />}
         </button>
       </div>
-      <button
-        type="button"
-        onClick={() => {
-          setDrawerOpen(false);
-          setAccountOpen(true);
-        }}
-        aria-haspopup="dialog"
-        aria-label={t("account_title")}
-        title={me.data?.name}
-        className="flex w-full cursor-pointer flex-col items-center gap-1 border-t border-line pt-3 text-ink-soft hover:text-ink"
-      >
-        <Initial name={me.data?.name} className="size-8 text-[13px]" />
-        <span className="line-clamp-1 max-w-[76px] break-all text-center text-[11px] leading-tight">
-          {me.data?.name}
-        </span>
-      </button>
+      {me.data ? (
+        <button
+          type="button"
+          onClick={() => {
+            setDrawerOpen(false);
+            setAccountOpen(true);
+          }}
+          aria-haspopup="dialog"
+          aria-label={t("account_title")}
+          className={cn(
+            "flex w-full shrink-0 cursor-pointer flex-col transition-colors hover:bg-ht-hover items-center gap-[5px] border-t-2 border-dotted border-ht-dotted pt-3.5 pb-1 text-ht-ink",
+            RAIL_FOCUS,
+          )}
+        >
+          <Initial
+            name={me.data?.name}
+            className="size-8 rounded-none bg-ht-solid font-comic-serif text-[14px] font-bold text-ht-on-solid"
+          />
+          <span className="line-clamp-1 max-w-[76px] break-all text-center text-[11px] leading-tight">
+            {me.data?.name}
+          </span>
+        </button>
+      ) : (
+        me.isSuccess && (
+          <Link
+            to="/login"
+            data-rail="login"
+            className={cn(
+              "flex w-full shrink-0 flex-col items-center gap-[5px] border-t-2 border-dotted border-ht-dotted pt-3.5 pb-2 text-ht-ink transition-colors hover:bg-ht-hover",
+              RAIL_FOCUS,
+            )}
+          >
+            <LogIn className="size-[19px]" />
+            <span className="text-[11px] leading-tight">{t("login_title")}</span>
+          </Link>
+        )
+      )}
     </nav>
   );
 
@@ -346,7 +385,9 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {me.data?.preview && <PreviewBanner classroomId={previewRoom} pathname={pathname} />}
-        <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
+        <main className={cn("relative min-h-0 min-w-0 flex-1 overflow-y-auto", halftone && "ht-theme")}>
+          {children}
+        </main>
       </div>
 
       <SocratesCompanion />

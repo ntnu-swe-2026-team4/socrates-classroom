@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Avatar } from "./avatar";
 
 type GLTF = { scene: THREE.Object3D; animations: THREE.AnimationClip[] };
@@ -105,6 +106,14 @@ export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElemen
   scene.add(key, fill, rim, new THREE.HemisphereLight(0xfff6ea, 0x2a221c, 0.4));
 
   const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 20);
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.enablePan = false;
+  controls.enableZoom = false;
+  controls.minPolarAngle = Math.PI / 2;
+  controls.maxPolarAngle = Math.PI / 2;
+  const viewDirection = new THREE.Vector3(0, 0, 1);
   let modelCenter = new THREE.Vector3(0, 0, 0);
   let modelHeight = 1;
 
@@ -117,7 +126,11 @@ export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElemen
     const fovRad = (camera.fov * Math.PI) / 180;
     const desiredScreenFrac = mini ? 1.1 : 1.25;
     const distance = (modelHeight * desiredScreenFrac) / (2 * Math.tan(fovRad / 2));
-    camera.position.set(modelCenter.x, modelCenter.y, modelCenter.z + distance);
+    if (camera.position.distanceToSquared(controls.target) > 0) {
+      viewDirection.subVectors(camera.position, controls.target).normalize();
+    }
+    controls.target.copy(modelCenter);
+    camera.position.copy(modelCenter).addScaledVector(viewDirection, distance);
     camera.lookAt(modelCenter);
     camera.updateProjectionMatrix();
     kick();
@@ -183,6 +196,7 @@ export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElemen
       }
       avatar.update(dt);
     }
+    controls.update();
     renderer.render(scene, camera);
     raf = requestAnimationFrame(frame);
   }
@@ -222,6 +236,7 @@ export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElemen
       document.removeEventListener("visibilitychange", onVisibility);
       io.disconnect();
       ro.disconnect();
+      controls.dispose();
       pmrem.dispose();
       scene.environment?.dispose();
       for (const material of stoneMaterials) material.dispose();

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { BellRing, X } from "lucide-react";
-import type { StudentLive } from "@socrates/shared";
+import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BellRing, MessageSquare, Minus, Plus, X } from "lucide-react";
+import { ACTIVITY_SLOT_MAX, type StudentLive } from "@socrates/shared";
 import { api, ApiError } from "@/api";
-import { BackLink, Button, Card, PageHeader, Spinner, cn } from "@/components/ui";
+import { BackLink, Button, Card, PageHeader, Spinner, buttonStyles, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/t/live/$id")({
@@ -99,6 +99,7 @@ function LivePage() {
     await navigate({ to: "/report/$id", params: { id } });
   }
 
+  const testMode = info.data?.mode === "test";
   const total = sorted.length;
   const active = sorted.filter((student) => student.status === "active").length;
   const silent = sorted.filter((student) => student.rounds === 0).length;
@@ -135,7 +136,8 @@ function LivePage() {
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {testMode && <SlotPanel activityId={id} finished={Boolean(info.data?.finishedAt)} />}
+        <div className={cn("grid grid-cols-2 gap-3 md:grid-cols-4", testMode && "hidden")}>
           {(
             [
               ["live_stat_total", total, false],
@@ -151,7 +153,7 @@ function LivePage() {
           ))}
         </div>
 
-        <div aria-live="polite" className="flex flex-col gap-2">
+        <div aria-live="polite" className={cn("flex flex-col gap-2", testMode && "hidden")}>
           {alerts.map((alert) => (
             <div
               key={alert.key}
@@ -181,7 +183,7 @@ function LivePage() {
           ))}
         </div>
 
-        <Card className="overflow-hidden">
+        <Card className={cn("overflow-hidden", testMode && "hidden")}>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-[13.5px]">
               <thead className="border-b border-line text-[12px] text-ink-faint">
@@ -246,8 +248,131 @@ function LivePage() {
           )}
           {board.isError && <p className="px-4 py-10 text-center text-[13.5px] text-flag">{t("common_error")}</p>}
         </Card>
-        <p className="text-[12px] text-ink-faint">{t("live_note")}</p>
+        {!testMode && <p className="text-[12px] text-ink-faint">{t("live_note")}</p>}
       </div>
     </div>
+  );
+}
+
+function SlotPanel({ activityId, finished }: { activityId: string; finished: boolean }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [count, setCount] = useState(1);
+  const slots = useQuery({
+    queryKey: ["activity-slots", activityId],
+    queryFn: () => api.listActivitySlots(activityId),
+  });
+  const create = useMutation({
+    mutationFn: (amount: number) => api.createActivitySlots(activityId, amount),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["activity-slots", activityId], data);
+      setCount(1);
+    },
+  });
+  const list = slots.data?.slots ?? [];
+  const max = slots.data?.maxSlots ?? ACTIVITY_SLOT_MAX;
+  const remaining = Math.max(max - list.length, 0);
+  const planned = Math.min(Math.max(count, 1), Math.max(remaining, 1));
+  const locked = remaining === 0 || create.isPending || !slots.data;
+
+  return (
+    <Card data-slot-panel className="overflow-hidden">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-3">
+        <h2 className="text-[14.5px] font-semibold text-ink">{t("live_slots_title")}</h2>
+        <span className="rounded-md bg-ember-wash px-2 py-0.5 text-[11.5px] font-medium text-ink">
+          {t("live_test_badge")}
+        </span>
+        <span className="ml-auto text-[12px] tabular-nums text-ink-faint">
+          {list.length} / {max}
+        </span>
+      </div>
+      <p className="px-4 pt-3 text-[13px] leading-relaxed text-ink-soft">{t("live_test_body")}</p>
+
+      {slots.isPending && (
+        <p className="flex justify-center px-4 py-8">
+          <Spinner />
+        </p>
+      )}
+      {slots.isError && <p className="px-4 py-8 text-center text-[13.5px] text-flag">{t("common_error")}</p>}
+      {slots.isSuccess && list.length === 0 && (
+        <p className="px-4 py-8 text-center text-[13.5px] text-ink-faint">{t("live_slots_empty")}</p>
+      )}
+      {list.length > 0 && (
+        <ul className="mt-3 border-t border-line">
+          {list.map((slot) => (
+            <li
+              key={slot.id}
+              data-slot={slot.id}
+              className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px] font-medium text-ink">{slot.name}</span>
+                <span className="mt-0.5 block truncate text-[12.5px] text-ink-faint">
+                  {slot.rounds > 0 ? t("live_slot_rounds", { n: slot.rounds }) : t("live_slot_no_utterance")}
+                  {slot.lastUtterance ? ` · ${slot.lastUtterance}` : ""}
+                </span>
+              </span>
+              <Link
+                to="/dialogue"
+                search={{ activityId, slot: slot.id }}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={t("live_slot_open_named", { name: slot.name })}
+                className={buttonStyles({ variant: "outline", size: "sm" })}
+              >
+                <MessageSquare className="size-3.5" aria-hidden />
+                {t("live_slot_open")}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3 border-t border-line bg-paper-deep px-4 py-3">
+        {finished ? (
+          <p className="text-[13px] text-ink-faint">{t("live_slots_finished")}</p>
+        ) : (
+          <>
+            <div className="flex items-center rounded-lg border border-line-strong bg-paper">
+              <button
+                type="button"
+                aria-label={t("live_slots_fewer")}
+                disabled={locked || planned <= 1}
+                onClick={() => setCount(planned - 1)}
+                className="flex size-8 cursor-pointer items-center justify-center text-ink-soft hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Minus className="size-3.5" aria-hidden />
+              </button>
+              <output
+                aria-label={t("live_slots_count")}
+                className="w-8 text-center text-[13.5px] tabular-nums text-ink"
+              >
+                {planned}
+              </output>
+              <button
+                type="button"
+                aria-label={t("live_slots_more")}
+                disabled={locked || planned >= remaining}
+                onClick={() => setCount(planned + 1)}
+                className="flex size-8 cursor-pointer items-center justify-center text-ink-soft hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Plus className="size-3.5" aria-hidden />
+              </button>
+            </div>
+            <Button size="sm" disabled={locked} onClick={() => create.mutate(planned)}>
+              {create.isPending ? <Spinner /> : <Plus className="size-3.5" />}
+              {t("live_slots_create")}
+            </Button>
+            <p className={cn("text-[12.5px] text-ink-faint", create.isError && "text-flag")}>
+              {create.isError
+                ? t("common_error")
+                : remaining === 0
+                  ? t("live_slots_cap", { max })
+                  : t("live_slots_cost", { n: list.length + planned })}
+            </p>
+          </>
+        )}
+      </div>
+    </Card>
   );
 }

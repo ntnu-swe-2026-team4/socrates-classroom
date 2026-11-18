@@ -48,7 +48,7 @@ export function TeacherModeCard({ user }: { user: User }) {
     onSuccess: store,
   });
   const request = useMutation({ mutationFn: () => api.requestTeacher(), onSuccess: store });
-  const approved = Boolean(user.teacherPlan);
+  const approved = Boolean(user.teacherPlan) || user.canManageClasses;
   const on = user.teacherMode === true;
   return (
     <Card className="flex flex-col gap-3 p-5">
@@ -82,10 +82,12 @@ export function TeacherModeCard({ user }: { user: User }) {
         <p className="rounded-xl bg-paper-deep/60 px-3 py-2 text-[12.5px] leading-relaxed text-ink-soft">
           {user.teacherPlan === "school"
             ? t("teacher_plan_school", { school: user.schoolName ?? "" })
-            : t("teacher_plan_trial", {
-                classrooms: TRIAL_LIMITS.classrooms,
-                members: TRIAL_LIMITS.membersPerClassroom,
-              })}
+            : !user.teacherPlan
+              ? t("teacher_plan_open")
+              : t("teacher_plan_trial", {
+                  classrooms: TRIAL_LIMITS.classrooms,
+                  members: TRIAL_LIMITS.membersPerClassroom,
+                })}
         </p>
       ) : user.teacherRequested ? (
         <p role="status" className="rounded-xl bg-ember-wash px-3 py-2 text-[12.5px] leading-relaxed text-ink">

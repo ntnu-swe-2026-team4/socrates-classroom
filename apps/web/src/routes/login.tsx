@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { api, ApiError, guestSession, type User } from "@/api";
 import { StoaField } from "@/components/StoaField";
 import { cn, Spinner } from "@/components/ui";
-import { useT, type MessageKey } from "@/i18n";
+import { locales, setLocale, useI18n, useT, type Locale, type MessageKey } from "@/i18n";
 import type { AuthProvider } from "@socrates/shared";
 
 type Mode = "login" | "register";
@@ -101,6 +101,7 @@ function NoticeBar() {
 
 function LoginPage() {
   const t = useT();
+  const { locale } = useI18n();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const search = Route.useSearch();
@@ -171,6 +172,25 @@ function LoginPage() {
             <ArrowLeft className="size-3.5" />
             {t("login_back_to_story")}
           </Link>
+          <fieldset data-lang-switch className={cn(BOX, "m-0 flex h-10 p-0")}>
+            <legend className="sr-only">{t("settings_lang")}</legend>
+            {locales.map((code: Locale) => (
+              <button
+                key={code}
+                type="button"
+                lang={code}
+                aria-pressed={locale === code}
+                onClick={() => setLocale(code)}
+                className={cn(
+                  "cursor-pointer px-3 text-[12.5px] not-first:border-l-[1.5px] not-first:border-comic-ink",
+                  locale === code ? "bg-comic-ink font-bold text-comic-paper" : "bg-comic-paper hover:bg-comic-ground",
+                  FOCUS,
+                )}
+              >
+                {code === "zh-TW" ? "中" : code === "en" ? "EN" : "ES"}
+              </button>
+            ))}
+          </fieldset>
           <span className="flex-1" />
           {me.data && (
             <button
@@ -204,7 +224,7 @@ function LoginPage() {
 
       <section className="relative mx-auto flex w-full max-w-[560px] flex-col justify-center gap-5 px-4 py-8 sm:px-8 lg:mx-0 lg:max-w-none lg:px-12 lg:py-12 lg:*:mx-auto lg:*:w-full lg:*:max-w-[460px]">
         {guestSession.expired && (
-          <p role="status" className={cn(BOX, "bg-comic-ochre/30 px-5 py-3 text-[12.5px] leading-relaxed")}>
+          <p role="status" className={cn(BOX, "bg-ht-accent/30 px-5 py-3 text-[12.5px] leading-relaxed")}>
             {t("guest_expired_notice")}
           </p>
         )}
@@ -227,7 +247,7 @@ function LoginPage() {
                     }}
                     className={cn(
                       "cursor-pointer px-3.5 py-1.5 text-[13px] not-first:border-l-[1.5px] not-first:border-comic-ink",
-                      mode === value ? "bg-comic-ochre font-bold" : "bg-comic-paper hover:bg-comic-ground",
+                      mode === value ? "bg-ht-accent font-bold" : "bg-comic-paper hover:bg-comic-ground",
                       FOCUS,
                     )}
                   >
@@ -352,7 +372,7 @@ function LoginPage() {
                 aria-busy={busy}
                 className={cn(
                   BOX,
-                  "flex h-[46px] cursor-pointer items-center justify-between bg-comic-ochre px-[18px] text-[15px] font-bold enabled:hover:shadow-[3px_3px_0_var(--color-comic-ink)] disabled:cursor-not-allowed disabled:opacity-55",
+                  "flex h-[46px] cursor-pointer items-center justify-between bg-ht-accent px-[18px] text-[15px] font-bold enabled:hover:shadow-[3px_3px_0_var(--color-comic-ink)] disabled:cursor-not-allowed disabled:opacity-55",
                   FOCUS,
                 )}
               >

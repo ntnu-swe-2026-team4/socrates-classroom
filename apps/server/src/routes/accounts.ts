@@ -174,7 +174,7 @@ export function accountRoutes() {
       if (!found) fail(404, "not_found");
       await run(
         c.env.DB,
-        "UPDATE users SET teacher_plan = NULL, teacher_mode = 0, school_id = NULL, teacher_request_at = NULL WHERE id = $id",
+        "UPDATE users SET teacher_plan = NULL, teacher_mode = 0, can_manage_classes = 0, school_id = NULL, teacher_request_at = NULL WHERE id = $id",
         { id: found.id },
       );
       return c.body(null, 204);

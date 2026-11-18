@@ -14,8 +14,9 @@ export const buttonStyles = cva(
   {
     variants: {
       variant: {
-        primary: "bg-ink font-semibold text-paper hover:bg-ember hover:text-on-ember",
-        outline: "border border-line-strong bg-paper-deep text-ink-soft hover:border-ember-deep hover:text-ink",
+        primary: "btn-primary bg-ink font-semibold text-paper hover:bg-ember hover:text-on-ember",
+        outline:
+          "btn-outline border border-line-strong bg-paper-deep text-ink-soft hover:border-ember-deep hover:text-ink",
         ghost: "text-ink-soft hover:bg-paper-deep hover:text-ink",
       },
       size: {
@@ -56,6 +57,18 @@ export function Field({ label, children }: { label: string; children: React.Reac
       <span className="text-xs text-ink-soft">{label}</span>
       {children}
     </label>
+  );
+}
+
+export function HalftoneFade({ className }: { className?: string }) {
+  return (
+    <div
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute inset-0 bg-[radial-gradient(var(--color-ink)_1.2px,transparent_1.6px)] bg-size-[11px_11px] opacity-45 [mask-image:linear-gradient(to_left,black,transparent_62%)]",
+        className,
+      )}
+    />
   );
 }
 
