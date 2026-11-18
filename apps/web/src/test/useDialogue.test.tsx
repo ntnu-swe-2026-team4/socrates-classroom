@@ -440,3 +440,48 @@ describe("lain round-3: reconnect rollover + empty assistant entries", () => {
     expect(result.current.error).toBeNull();
   });
 });
+
+describe("useDialogue (autoSend: queued first question)", () => {
+  it("auto-sends once the first view arrives and never resends on later frames", () => {
+    const onAutoSent = vi.fn();
+    const { result } = renderHook(() => useDialogue("a_1", "u_1", { autoSend: "什麼是正義？", onAutoSent }));
+
+    emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答")]));
+
+    const submits = () =>
+      agent.sent
+        .map((raw) => JSON.parse(raw) as { type: string; input?: string })
+        .filter((frame) => frame.type === "submit");
+    expect(submits()).toHaveLength(1);
+    expect(submits()[0]!.input).toBe("什麼是正義？");
+    expect(result.current.pending).toBe(true);
+    expect(onAutoSent).toHaveBeenCalledTimes(1);
+
+    emit(opsFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答"), userEntry(3, "什麼是正義？")]));
+    emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答"), userEntry(3, "什麼是正義？")]));
+    expect(submits()).toHaveLength(1);
+    expect(onAutoSent).toHaveBeenCalledTimes(1);
+  });
+
+  it("resends the same question after the autoSend prop clears and returns", () => {
+    let autoSend: string | undefined = "什麼是正義？";
+    const { rerender } = renderHook(() => useDialogue("a_1", "u_1", { autoSend }));
+
+    emit(viewFrame([]));
+    const submits = () =>
+      agent.sent.map((raw) => JSON.parse(raw) as { type: string }).filter((frame) => frame.type === "submit");
+    expect(submits()).toHaveLength(1);
+
+    emit(opsFrame([userEntry(1, "什麼是正義？"), assistantEntry(2, "先想想看")]));
+
+    autoSend = undefined;
+    rerender();
+    emit(viewFrame([]));
+    expect(submits()).toHaveLength(1);
+
+    autoSend = "什麼是正義？";
+    rerender();
+    emit(viewFrame([]));
+    expect(submits()).toHaveLength(2);
+  });
+});

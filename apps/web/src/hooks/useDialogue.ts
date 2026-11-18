@@ -330,7 +330,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
     name: `${activityId}:${participantId}`,
     onOpen: (event) => {
       (event.target as WebSocket).send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
-      tryAutoSend();
+      queueMicrotask(() => tryAutoSend());
     },
     onMessage: (event) => onFrame(event.data),
     onConnectionError: () => {
