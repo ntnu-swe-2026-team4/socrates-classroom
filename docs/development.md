@@ -50,6 +50,7 @@
 | Workers AI    | `CF_REMOTE_AI=true` ＋ `cf login`         | 免費 Neurons 額度               |
 
 都不設真 LLM 時用 mock；`pnpm seed` 只要 `SEED_TOKEN` 與 `ENVIRONMENT=dev` 成立就可用（與 LLM 模式無關）。
+
 - **fixture 帳號被改壞** → 重跑 `pnpm seed`：fixture 帳號（含密碼 `demo-demo`）與教室會被 upsert 回固定值，id 不變
 
 ## 常見問題

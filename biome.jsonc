@@ -20,7 +20,8 @@
       "!.agents",
       "!.claude",
       "!.playwright-cli",
-      "!socrate-classroom"
+      "!socrate-classroom",
+      "!apps/server/src/prompts"
     ]
   },
   "formatter": {
@@ -65,6 +66,9 @@
       },
       "complexity": {
         "noVoid": "off"
+      },
+      "nursery": {
+        "useReactCompiler": "error"
       },
       "a11y": {
         "useKeyWithClickEvents": "off",
