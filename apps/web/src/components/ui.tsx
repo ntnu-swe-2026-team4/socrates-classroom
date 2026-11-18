@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback } from "react";
 import { cva } from "class-variance-authority";
 import { clsx } from "clsx";
 import { ArrowLeft } from "lucide-react";
@@ -276,10 +276,9 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (open) cancelRef.current?.focus();
-  }, [open]);
+  const focusCancel = useCallback((node: HTMLButtonElement | null) => {
+    node?.focus();
+  }, []);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
@@ -301,7 +300,7 @@ export function ConfirmDialog({
         </h2>
         {body && <div className="mt-1.5 text-[13.5px] leading-relaxed text-ink-soft">{body}</div>}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <Button ref={cancelRef} variant="ghost" onClick={onCancel}>
+          <Button ref={focusCancel} variant="ghost" onClick={onCancel}>
             {cancelLabel}
           </Button>
           {extra}

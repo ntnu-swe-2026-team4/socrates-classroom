@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
-import { onOpenAccountSheet } from "@/lib/accountSheet";
+import { useCallback, useRef, useState, type Ref } from "react";
+import { useAccountSheetRequest } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -25,6 +25,7 @@ import { ADMIN_SECTIONS, type AdminTab } from "@/lib/adminSections";
 import { NotificationBell } from "@/components/Notifications";
 import { SocratesCompanion } from "@/components/SocratesCompanion";
 import { Button, ConfirmDialog, Initial, cn } from "@/components/ui";
+import { useDomEvent } from "@/hooks/useSubscription";
 import { useI18n } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
 
@@ -53,48 +54,39 @@ const CLASSROOM_MATCH = ["/classrooms", "/join", "/dialogue", "/t/", "/report"];
 
 function useSessionSync() {
   const queryClient = useQueryClient();
-  useEffect(() => {
-    let checking = false;
-    const check = async (force = false) => {
-      if (checking || (!force && document.visibilityState !== "visible")) return;
-      const before = queryClient.getQueryData<User | null>(["me"]);
-      if (before === undefined) return;
-      checking = true;
-      try {
-        const now = await api.me();
-        if ((now?.id ?? null) !== (before?.id ?? null)) {
-          window.location.reload();
-          return;
-        }
-        if (
-          now &&
-          before &&
-          (now.teacherPlan !== before.teacherPlan ||
-            now.teacherMode !== before.teacherMode ||
-            now.isAdmin !== before.isAdmin)
-        ) {
-          queryClient.setQueryData(["me"], now);
-          await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
-        }
-      } catch {
+  const checking = useRef(false);
+  const check = async (force = false) => {
+    if (checking.current || (!force && document.visibilityState !== "visible")) return;
+    const before = queryClient.getQueryData<User | null>(["me"]);
+    if (before === undefined) return;
+    checking.current = true;
+    try {
+      const now = await api.me();
+      if ((now?.id ?? null) !== (before?.id ?? null)) {
+        window.location.reload();
         return;
-      } finally {
-        checking = false;
       }
-    };
-    const onVisible = () => void check();
-    const onSignal = (event: StorageEvent) => {
-      if (event.key === SESSION_SIGNAL_KEY) void check(true);
-    };
-    window.addEventListener("focus", onVisible);
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("storage", onSignal);
-    return () => {
-      window.removeEventListener("focus", onVisible);
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("storage", onSignal);
-    };
-  }, [queryClient]);
+      if (
+        now &&
+        before &&
+        (now.teacherPlan !== before.teacherPlan ||
+          now.teacherMode !== before.teacherMode ||
+          now.isAdmin !== before.isAdmin)
+      ) {
+        queryClient.setQueryData(["me"], now);
+        await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+      }
+    } catch {
+      return;
+    } finally {
+      checking.current = false;
+    }
+  };
+  useDomEvent(window, "focus", () => void check());
+  useDomEvent(document, "visibilitychange", () => void check());
+  useDomEvent(window, "storage", (event: StorageEvent) => {
+    if (event.key === SESSION_SIGNAL_KEY) void check(true);
+  });
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -112,23 +104,8 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [guestLogout, setGuestLogout] = useState(false);
-  const focusRestoreRef = useRef<HTMLElement | null>(null);
-  const drawerRef = useRef<HTMLDivElement>(null);
-  const accountRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const open = drawerOpen || accountOpen;
-    if (!open) return;
-    focusRestoreRef.current = document.activeElement as HTMLElement | null;
-    const target = drawerOpen ? drawerRef.current : accountRef.current;
-    target?.focus();
-  }, [drawerOpen, accountOpen]);
-
-  useEffect(() => {
-    if (drawerOpen || accountOpen) return;
-    focusRestoreRef.current?.focus();
-    focusRestoreRef.current = null;
-  }, [drawerOpen, accountOpen]);
+  const drawerDialogRef = useDialogFocus();
+  const accountDialogRef = useDialogFocus();
 
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
   const logout = useMutation({
@@ -155,13 +132,19 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
             ? t("account_plan_trial")
             : null;
   const previewRoom = me.data?.preview ? me.data.previewClassroomId : undefined;
-  useEffect(() => onOpenAccountSheet(() => setAccountOpen(true)), []);
+  const accountRequest = useAccountSheetRequest();
+  const [prevAccountRequest, setPrevAccountRequest] = useState(accountRequest);
+  if (accountRequest !== prevAccountRequest) {
+    setPrevAccountRequest(accountRequest);
+    setAccountOpen(true);
+  }
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: close overlays on every navigation
-  useEffect(() => {
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
     setDrawerOpen(false);
     setAccountOpen(false);
-  }, [pathname]);
+  }
 
   const inClassrooms = CLASSROOM_MATCH.some((prefix) => pathname.startsWith(prefix));
   const halftone = HALFTONE_MATCH.some((prefix) => pathname.startsWith(prefix));
@@ -378,7 +361,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       </button>
 
       {drawerOpen && (
-        <TrapDialog ref={drawerRef} className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
+        <TrapDialog ref={drawerDialogRef} className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
           {rail}
         </TrapDialog>
       )}
@@ -417,7 +400,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
 
       {accountOpen && (
         <TrapDialog
-          ref={accountRef}
+          ref={accountDialogRef}
           ariaLabelledBy="account-title"
           plain
           className="anim-rise absolute bottom-3 left-3 flex w-64 flex-col rounded-xl border border-line bg-paper p-1.5 shadow-xl md:left-[92px]"
@@ -530,6 +513,17 @@ function PreviewBanner({ classroomId, pathname }: { classroomId?: string; pathna
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+function useDialogFocus() {
+  return useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    const restore = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    node.focus();
+    return () => {
+      restore?.focus();
+    };
+  }, []);
+}
+
 function TrapDialog({
   ref,
   className,
@@ -538,7 +532,7 @@ function TrapDialog({
   plain,
   children,
 }: {
-  ref: RefObject<HTMLDivElement | null>;
+  ref?: Ref<HTMLDivElement>;
   className: string;
   onClose: () => void;
   ariaLabelledBy?: string;

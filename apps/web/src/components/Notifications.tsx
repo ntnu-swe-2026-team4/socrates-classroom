@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Trash2 } from "lucide-react";
 import type { NotificationFeed } from "@socrates/shared";
 import { api } from "@/api";
 import { Button, Card, Field, Input, Spinner, cn } from "@/components/ui";
+import { useDomEvent } from "@/hooks/useSubscription";
 import { useFormatDate, useT } from "@/i18n";
 
 const FEED_KEY = ["notifications"];
@@ -24,21 +25,17 @@ export function NotificationBell({ className, side = "below" }: { className?: st
   });
   const unread = feed.data?.unread ?? 0;
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  useDomEvent(
+    document,
+    "pointerdown",
+    (event: PointerEvent) => {
+      if (open && !rootRef.current?.contains(event.target as Node)) setOpen(false);
+    },
+    true,
+  );
+  useDomEvent(document, "keydown", (event: KeyboardEvent) => {
+    if (open && event.key === "Escape") setOpen(false);
+  });
 
   function toggle() {
     if (!open && unread > 0 && !seen.isPending) seen.mutate();
