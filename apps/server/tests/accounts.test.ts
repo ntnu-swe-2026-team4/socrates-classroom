@@ -246,13 +246,21 @@ describe("guests", () => {
     expect((await call(`/api/activities/${nextId}`, { headers: { Cookie: guest } })).status).toBe(401);
   });
 
-  it("a guest name stays unique inside one activity", async () => {
+  it("a guest name stays unique inside one activity; a clash joins under a suffixed name", async () => {
     const room = await openClassroom(admin, "訪客重名班");
     const first = await send("/api/join", null, "POST", { code: room.code, name: "訪客甲", tosAccepted: true });
     expect(first.status).toBe(200);
     const again = await send("/api/join", null, "POST", { code: room.code, name: "訪客甲", tosAccepted: true });
-    expect(again.status).toBe(409);
-    expect(await codeOf(again)).toBe("name_taken");
+    expect(again.status).toBe(200);
+    const firstId = ((await first.json()) as { participantId: string }).participantId;
+    const againId = ((await again.json()) as { participantId: string }).participantId;
+    expect(againId).not.toBe(firstId);
+    const suffixed = await one<{ display_name: string }>(
+      env.DB,
+      "SELECT display_name FROM activity_participants WHERE activity_id = $aid AND id = $pid",
+      { aid: room.activityId, pid: againId },
+    );
+    expect(suffixed?.display_name).toBe("訪客甲 (2)");
   });
 });
 

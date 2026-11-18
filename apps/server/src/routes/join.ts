@@ -5,6 +5,7 @@ import { one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, startParticipantSession } from "../auth";
 import { enforceIpLimit, fail, nowIso, parseBody, uniqueViolationColumns, type AppEnv } from "../http";
 import {
+  assertSeats,
   createGuestParticipant,
   ensureParticipant,
   participantOf,
@@ -54,6 +55,7 @@ export function joinRoutes() {
         );
         if (!existing) {
           if (finished) fail(409, "activity_finished");
+          await assertSeats(c.env.DB, classroom.id, 1);
           const clash = await one<{ user_id: string }>(
             c.env.DB,
             "SELECT user_id FROM members WHERE classroom_id = $cid AND name = $name",

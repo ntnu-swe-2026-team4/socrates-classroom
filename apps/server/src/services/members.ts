@@ -207,15 +207,18 @@ export async function createGuestParticipant(
   displayName: string,
   tosAcceptedAt: string,
 ): Promise<ParticipantRow> {
-  const created = await one<ParticipantRow>(
-    db,
-    `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
-     VALUES ($aid, $pid, NULL, 'guest', $name, $tos, $at)
-     ON CONFLICT DO NOTHING RETURNING *`,
-    { aid: activityId, pid: newId("p_"), name: displayName, tos: tosAcceptedAt, at: nowIso() },
-  );
-  if (!created) fail(409, "name_taken");
-  return created;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const name = attempt === 0 ? displayName : `${displayName} (${attempt + 1})`;
+    const created = await one<ParticipantRow>(
+      db,
+      `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
+       VALUES ($aid, $pid, NULL, 'guest', $name, $tos, $at)
+       ON CONFLICT DO NOTHING RETURNING *`,
+      { aid: activityId, pid: newId("p_"), name, tos: tosAcceptedAt, at: nowIso() },
+    );
+    if (created) return created;
+  }
+  fail(409, "name_taken");
 }
 
 export interface ActivityAccess {
