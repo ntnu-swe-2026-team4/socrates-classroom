@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Keyboard, MessageCircleQuestionMark, Mic, Send, Square, TextSearch } from "lucide-react";
 import { BtwPanel, type BtwPanelHandle } from "@/components/BtwPanel";
 import { SidebarToggle, useSidebarOverlay } from "@/components/ChatLayout";
@@ -7,21 +7,15 @@ import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { cn } from "@/components/ui";
 import { textOf, useDialogue } from "@/hooks/useDialogue";
 import { useSelectionPopover } from "@/hooks/useSelectionPopover";
+import { useElapsed } from "@/hooks/useSubscription";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useT, type MessageKey } from "@/i18n";
-import { companion } from "@/lib/companion";
 import type { Message } from "@earendil-works/pi-ai";
 
 const VOICE_ERROR_KEY: Record<"denied" | "unsupported" | "failed", MessageKey> = {
   denied: "voice_denied",
   unsupported: "voice_unsupported",
   failed: "voice_failed",
-};
-
-const EXPRESSIONS: Record<string, "Happy" | "Angry" | "Confused"> = {
-  happy: "Happy",
-  angry: "Angry",
-  confused: "Confused",
 };
 
 const onAmplitudeNoop = () => {};
@@ -66,12 +60,12 @@ export function DialogueView({
   closedNotice,
 }: DialogueViewProps) {
   const t = useT();
+  const stopVoiceRef = useRef<() => void>(() => {});
   const {
     items,
     draft,
     phase,
     error,
-    emotion,
     ttsFailed,
     ttsSkipped,
     ready,
@@ -83,21 +77,12 @@ export function DialogueView({
     retryLast,
     replay,
     interrupt,
-  } = useDialogue(threadId, userId);
-
-  const sentRef = useRef(false);
-  const playedEmotionRef = useRef<unknown>(null);
-  useEffect(() => {
-    if (!emotion || emotion === playedEmotionRef.current) return;
-    if (!sentRef.current) {
-      playedEmotionRef.current = emotion;
-      return;
-    }
-    if (phase === "thinking" || phase === "streaming") return;
-    playedEmotionRef.current = emotion;
-    const name = EXPRESSIONS[emotion.emotion];
-    if (name) companion.playExpression(name);
-  }, [phase, emotion]);
+  } = useDialogue(threadId, userId, {
+    autoSend,
+    onAutoSent,
+    onActivityFinished,
+    onDisconnect: () => stopVoiceRef.current(),
+  });
 
   const [sidePanel, setSidePanel] = useState<SidePanel>(null);
   const panelOpen = sidePanel === "term";
@@ -105,16 +90,11 @@ export function DialogueView({
   const togglePanel = (panel: Exclude<SidePanel, null>) =>
     setSidePanel((current) => (current === panel ? null : panel));
   const btwRef = useRef<BtwPanelHandle>(null);
-  const [connectGraceOver, setConnectGraceOver] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setConnectGraceOver(true), 3000);
-    return () => clearTimeout(timer);
-  }, []);
+  const connectGraceOver = useElapsed(3000);
   const panelRef = useRef<TermPanelHandle>(null);
 
-  const autoSent = useRef<string | null>(null);
   const lastTerm = useRef<string | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (openTerm && openTerm !== lastTerm.current) {
       lastTerm.current = openTerm;
       setPanelOpen(true);
@@ -127,44 +107,24 @@ export function DialogueView({
   const submit = useCallback(
     (value: string) => {
       const sent = send(value.slice(0, 2000));
-      if (sent) sentRef.current = true;
       if (sent && !hasEntries) onFirstSend?.(value);
       return sent;
     },
     [send, hasEntries, onFirstSend],
   );
 
-  useEffect(() => {
-    if (autoSend && autoSent.current !== autoSend && phase === "idle" && ready && viewReady) {
-      if (send(autoSend.slice(0, 2000))) {
-        sentRef.current = true;
-        autoSent.current = autoSend;
-        onAutoSent?.();
-      }
-    } else if (!autoSend) {
-      autoSent.current = null;
-    }
-  }, [autoSend, phase, ready, viewReady, send, onAutoSent]);
-
-  useEffect(() => {
-    if (error?.code === "ActivityFinished") onActivityFinished?.();
-  }, [error, onActivityFinished]);
-
   const onVoiceFinal = useCallback((text: string) => void submit(text), [submit]);
   const voice = useVoiceInput(onVoiceFinal, onAmplitudeNoop);
-  useEffect(() => {
-    if (!ready && voice.state === "listening") void voice.stop();
-  }, [ready, voice.state, voice.stop]);
+  stopVoiceRef.current = () => void voice.stop();
 
   const [voiceMode, setVoiceMode] = useState(false);
   const sidebarOverlay = useSidebarOverlay();
-  const holdRef = useRef<HTMLButtonElement>(null);
   const modeSwitched = useRef(false);
-  useEffect(() => {
-    if (!modeSwitched.current) return;
-    if (voiceMode) holdRef.current?.focus();
-    else inputRef.current?.focus();
-  }, [voiceMode]);
+  const attachHold = useCallback((node: HTMLButtonElement | null) => {
+    if (!modeSwitched.current || !node) return;
+    modeSwitched.current = false;
+    node.focus();
+  }, []);
 
   const voiceOverlay = voiceMode && ready && !closedNotice;
   const footerRef = useRef<HTMLElement>(null);
@@ -190,6 +150,12 @@ export function DialogueView({
 
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const attachInput = useCallback((node: HTMLTextAreaElement | null) => {
+    inputRef.current = node;
+    if (!modeSwitched.current || !node) return;
+    modeSwitched.current = false;
+    node.focus();
+  }, []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
   const { selection, clear: clearSelection } = useSelectionPopover(scrollRef);
@@ -201,7 +167,7 @@ export function DialogueView({
     clearSelection();
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = scrollRef.current;
     if (!element || !pinnedRef.current) return;
     element.scrollTop = element.scrollHeight;
@@ -445,7 +411,7 @@ export function DialogueView({
                     <Keyboard className="size-4" />
                   </button>
                   <button
-                    ref={holdRef}
+                    ref={attachHold}
                     type="button"
                     aria-label={t("dlg_hold_to_talk")}
                     title={t("dlg_hold_to_talk")}
@@ -506,7 +472,7 @@ export function DialogueView({
                   <Mic className="size-4" />
                 </button>
                 <textarea
-                  ref={inputRef}
+                  ref={attachInput}
                   rows={1}
                   value={text}
                   aria-label={t("dlg_input_placeholder")}
