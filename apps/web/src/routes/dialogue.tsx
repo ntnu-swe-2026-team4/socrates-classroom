@@ -18,23 +18,30 @@ export const Route = createFileRoute("/dialogue")({
     term: typeof search.term === "string" ? search.term : undefined,
   }),
   beforeLoad: async ({ search, context, location }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await context.queryClient
+      .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
+      .catch(() => null);
     const activityId = search.activityId ?? readActivityId();
     if (!activityId) {
       if (!me) throw redirect({ to: "/login", search: { next: location.href } });
       throw redirect({ to: "/classrooms" });
     }
     if (!me || me.preview || search.slot) return;
-    const info = await context.queryClient.fetchQuery({
-      queryKey: ["activity", activityId],
-      queryFn: () => api.activityInfo(activityId),
-      staleTime: Infinity,
-    });
-    const room = await context.queryClient.fetchQuery({
-      queryKey: ["classroom", info.classroomId],
-      queryFn: () => api.getClassroom(info.classroomId),
-    });
-    if (room.role === "teacher") {
+    const info = await context.queryClient
+      .fetchQuery({
+        queryKey: ["activity", activityId],
+        queryFn: () => api.activityInfo(activityId),
+        staleTime: Infinity,
+      })
+      .catch(() => null);
+    if (!info) return;
+    const room = await context.queryClient
+      .fetchQuery({
+        queryKey: ["classroom", info.classroomId],
+        queryFn: () => api.getClassroom(info.classroomId),
+      })
+      .catch(() => null);
+    if (room?.role === "teacher") {
       throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: info.classroomId } });
     }
   },

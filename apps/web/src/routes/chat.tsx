@@ -10,7 +10,9 @@ import { useT, type MessageKey } from "@/i18n";
 
 export const Route = createFileRoute("/chat")({
   beforeLoad: async ({ context, location }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await context.queryClient
+      .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
+      .catch(() => null);
     if (!me) throw redirect({ to: "/login", search: { next: location.href } });
     if (me?.preview && me.previewClassroomId) {
       throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: me.previewClassroomId } });

@@ -7,7 +7,9 @@ import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/report/$id")({
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await context.queryClient
+      .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
+      .catch(() => null);
     if (!me) throw redirect({ to: "/login" });
   },
   component: ReportPage,
