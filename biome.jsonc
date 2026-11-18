@@ -57,7 +57,7 @@
             "paths": {
               "react": {
                 "importNames": ["useEffect"],
-                "message": "useEffect is banned in apps/web. Use stores + useSyncExternalStore (src/hooks/useSubscription.ts), ref callbacks with cleanup, event handlers, or state adjustment during render. See apps/web/AGENTS.md."
+                "message": "useEffect is banned in apps/web"
               }
             }
           }
