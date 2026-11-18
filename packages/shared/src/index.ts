@@ -323,12 +323,19 @@ export type DevAccount = z.infer<typeof DevAccountSchema>;
 export const DevAccountsSchema = z.object({ password: z.string(), accounts: z.array(DevAccountSchema) });
 export type DevAccounts = z.infer<typeof DevAccountsSchema>;
 
+export const TeacherKeyModelSchema = z.object({
+  model: z.string(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+  sortOrder: z.number(),
+});
+export type TeacherKeyModel = z.infer<typeof TeacherKeyModelSchema>;
+
 export const TeacherKeyStatusSchema = z.object({
   provider: z.string(),
-  model: z.string(),
   last4: z.string(),
   sortOrder: z.number(),
   updatedAt: z.string(),
+  models: z.array(TeacherKeyModelSchema),
 });
 export type TeacherKeyStatus = z.infer<typeof TeacherKeyStatusSchema>;
 
