@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useOnUnmount } from "@/hooks/useSubscription";
 import { api } from "@/api";
 
 type VoiceState = "idle" | "listening" | "processing";
@@ -47,12 +48,8 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
 
   const onFinalRef = useRef(onFinal);
   const onAmplitudeRef = useRef(onAmplitude);
-  useEffect(() => {
-    onFinalRef.current = onFinal;
-  });
-  useEffect(() => {
-    onAmplitudeRef.current = onAmplitude;
-  });
+  onFinalRef.current = onFinal;
+  onAmplitudeRef.current = onAmplitude;
 
   const stopEverything = useCallback((target: typeof session.current = session.current) => {
     const s = target;
@@ -71,24 +68,13 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     onAmplitudeRef.current(0);
   }, []);
 
-  const stopEverythingRef = useRef(stopEverything);
-  useEffect(() => {
-    stopEverythingRef.current = stopEverything;
-  }, [stopEverything]);
-
   const stopRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const stopRequestedRef = useRef(false);
-  useEffect(() => {
-    stopRef.current = stop;
-  });
 
-  useEffect(
-    () => () => {
-      stopRequestedRef.current = true;
-      stopEverythingRef.current();
-    },
-    [],
-  );
+  useOnUnmount(() => {
+    stopRequestedRef.current = true;
+    stopEverything();
+  });
 
   const beginSession = useCallback(async () => {
     setInterim("");
@@ -276,6 +262,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
       setInterim("");
     }
   }, [stopEverything]);
+  stopRef.current = stop;
 
   return { state, interim, error, start, stop };
 }
