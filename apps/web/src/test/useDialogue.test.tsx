@@ -7,6 +7,7 @@ import type { ServerMessage } from "@server/ws/protocol";
 type AgentOptions = {
   onOpen?: (event: { target: unknown }) => void;
   onMessage?: (event: { data: unknown }) => void;
+  onClose?: () => void;
 };
 
 const agent = vi.hoisted(() => ({
@@ -518,5 +519,44 @@ describe("useDialogue (autoSend: queued first question)", () => {
     });
     await waitFor(() => expect(submits()).toHaveLength(2));
     expect(submits()[1]!.input).toBe("第二題");
+  });
+});
+
+describe("useDialogue (session callbacks)", () => {
+  it("invokes onDisconnect when the socket closes", () => {
+    const onDisconnect = vi.fn();
+    renderHook(() => useDialogue("a_1", "u_1", { onDisconnect }));
+    act(() => {
+      agent.options?.onClose?.();
+    });
+    expect(onDisconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports onActivityFinished when the run fails with ActivityFinished", async () => {
+    const onActivityFinished = vi.fn();
+    const { result } = renderHook(() => useDialogue("a_1", "u_1", { onActivityFinished }));
+    emit(viewFrame([]));
+    act(() => {
+      expect(result.current.send("問題")).toBe(true);
+    });
+    emit({ type: "error", code: "ActivityFinished" } as ServerMessage);
+    expect(onActivityFinished).toHaveBeenCalledTimes(1);
+    expect(result.current.error?.code).toBe("ActivityFinished");
+  });
+
+  it("marks tts skipped when a higher-priority playback preempts the answer", async () => {
+    const { markIntent, speak } = await import("@/lib/speech");
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([]));
+    act(() => {
+      result.current.send("問題");
+    });
+    markIntent("assistant");
+    tts.mockImplementationOnce(() => new Promise<void>(() => {}));
+    void speak("assistant", "佔用中的播報");
+
+    emit(opsFrame([userEntry(1, "問題"), assistantEntry(2, "回答")]));
+    await waitFor(() => expect(result.current.ttsSkipped).toBe(true));
+    expect(result.current.ttsFailed).toBe(false);
   });
 });
