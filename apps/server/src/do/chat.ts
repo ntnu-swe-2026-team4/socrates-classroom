@@ -46,6 +46,7 @@ export class Chat extends DurableObject<Env> {
   readonly models = buildModels(this.env, { teacherOf: () => this.teacherId() });
   #teacherId: string | null | undefined;
   readonly #sessionModels = new Map<string, { provider: string; id: string }>();
+  readonly #meteredUpTo = new Map<string, number>();
 
   readonly btw = btwExtension();
 
@@ -181,15 +182,19 @@ export class Chat extends DurableObject<Env> {
       const ownerId = await this.teacherId();
       if (!ownerId) return;
       const items = await handle.messages();
+      const meteredUpTo = this.#meteredUpTo.get(handle.id) ?? 0;
       let tokens = 0;
       for (let index = items.length - 1; index >= 0; index -= 1) {
-        const entry = items[index] as { kind: string; model?: readonly Message[] };
+        const entry = items[index] as { id?: number; kind: string; model?: readonly Message[] };
+        if (entry.id !== undefined && entry.id <= meteredUpTo) break;
         if (entry.kind === "pi.user") break;
         if (entry.kind !== "pi.assistant") continue;
         const message = entry.model?.[0];
         if (message?.role === "assistant") tokens += message.usage?.totalTokens ?? 0;
       }
-      await recordUsage(this.env, ownerId, tokens);
+      const newest = (items.at(-1) as { id?: number } | undefined)?.id ?? meteredUpTo;
+      this.#meteredUpTo.set(handle.id, Math.max(meteredUpTo, newest));
+      if (tokens > 0) await recordUsage(this.env, ownerId, tokens);
     } catch (error) {
       console.warn("[usage] metering failed", error instanceof Error ? error.message : "unknown error");
     }
