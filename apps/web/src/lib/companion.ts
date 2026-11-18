@@ -61,6 +61,20 @@ let state: CompanionState = {
 
 const listeners = new Set<() => void>();
 const expressionListeners = new Set<(name: CompanionExpression | null) => void>();
+const scenes = new Set<CompanionScene>();
+
+export interface CompanionScene {
+  setSpeaking(speaking: boolean): void;
+  setExpression(name: CompanionExpression | null, options: { loop: boolean }): void;
+}
+
+export function attachScene(scene: CompanionScene): () => void {
+  scenes.add(scene);
+  scene.setSpeaking(state.speaking);
+  return () => {
+    scenes.delete(scene);
+  };
+}
 
 export function onExpression(listener: (name: CompanionExpression | null) => void): () => void {
   expressionListeners.add(listener);
@@ -124,9 +138,11 @@ export const companion = {
   setSpeakingSource(source: SpeechSource | null) {
     if (state.speakingSource === source) return;
     update({ speakingSource: source, speaking: source !== null });
+    for (const scene of scenes) scene.setSpeaking(source !== null);
   },
   playExpression(name: CompanionManualExpression | null) {
     const clip = name === "neutral" ? null : name;
     for (const listener of expressionListeners) listener(clip);
+    for (const scene of scenes) scene.setExpression(clip, { loop: false });
   },
 };
