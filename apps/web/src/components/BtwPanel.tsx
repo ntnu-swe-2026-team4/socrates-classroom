@@ -8,7 +8,6 @@ import { useT } from "@/i18n";
 export interface BtwPanelHandle {
   ask(question: string): void;
 }
-
 interface BtwPanelProps {
   open: boolean;
   onClose: () => void;
@@ -21,16 +20,10 @@ export const BtwPanel = forwardRef<BtwPanelHandle, BtwPanelProps>(function BtwPa
   ref,
 ) {
   const t = useT();
-  const [connected, setConnected] = useState(false);
-  const [prevOpen, setPrevOpen] = useState(open);
-  if (open !== prevOpen) {
-    setPrevOpen(open);
-    if (open) setConnected(true);
-  }
   const { messages, draft, phase, error, ready, ask, retryLast, interrupt, newTopic } = useBtw(
     activityId,
     participantId,
-    connected,
+    open,
   );
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -39,7 +32,6 @@ export const BtwPanel = forwardRef<BtwPanelHandle, BtwPanelProps>(function BtwPa
 
   useImperativeHandle(ref, () => ({
     ask(question: string) {
-      setConnected(true);
       ask(question);
     },
   }));
