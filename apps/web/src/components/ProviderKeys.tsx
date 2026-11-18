@@ -1,0 +1,528 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { TeacherKeyStatus } from "@socrates/shared";
+import { useMemo, useState } from "react";
+import { api } from "@/api";
+import { Card, cn } from "@/components/ui";
+import { useT } from "@/i18n";
+import { providerIcon, providerKind, type ProviderKind } from "@/lib/providers";
+
+export function ProviderIcon({ id, className }: { id: string; className?: string }) {
+  const icon = providerIcon(id);
+  if (!icon) {
+    return (
+      <span
+        aria-hidden
+        className={cn(
+          "flex items-center justify-center rounded-md border border-line-strong bg-paper-deep font-serif text-[11px] font-semibold text-ink-soft",
+          className,
+        )}
+      >
+        {id.slice(0, 1).toUpperCase()}
+      </span>
+    );
+  }
+  return <img src={icon} alt="" aria-hidden className={cn("rounded-md object-contain", className)} />;
+}
+
+const kindOrder: ProviderKind[] = ["vendor", "relay", "platform"];
+
+export function ProviderKeys() {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const keys = useQuery({ queryKey: ["teacherKeys"], queryFn: () => api.listTeacherKeys() });
+  const providers = useQuery({
+    queryKey: ["keyProviders"],
+    queryFn: () => api.listKeyProviders(),
+    staleTime: Infinity,
+  });
+
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [addProvider, setAddProvider] = useState("");
+  const [addKey, setAddKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [armed, setArmed] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const byKind = useMemo(() => {
+    const map = new Map<ProviderKind, { id: string; name: string }[]>();
+    for (const entry of providers.data ?? []) {
+      const kind = providerKind(entry.id);
+      map.set(kind, [...(map.get(kind) ?? []), entry]);
+    }
+    return map;
+  }, [providers.data]);
+
+  const nameOf = useMemo(() => {
+    const map = new Map((providers.data ?? []).map((entry) => [entry.id, entry.name]));
+    return (id: string) => map.get(id) ?? id;
+  }, [providers.data]);
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["teacherKeys"] });
+
+  const run = async (action: () => Promise<void>) => {
+    setError(null);
+    try {
+      await action();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!addProvider || !addKey) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.putTeacherKey(addProvider, addKey);
+      setAddKey("");
+      setExpanded(addProvider);
+      setAddProvider("");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const list = keys.data ?? [];
+
+  const move = (id: string, delta: -1 | 1) =>
+    run(async () => {
+      const providers = list.map((entry) => entry.provider);
+      const from = providers.indexOf(id);
+      const to = from + delta;
+      if (from < 0 || to < 0 || to >= providers.length) return;
+      providers.splice(to, 0, ...providers.splice(from, 1));
+      await api.orderTeacherKeys(providers);
+    });
+
+  const dropOn = (target: string) =>
+    run(async () => {
+      const source = dragId;
+      setDragId(null);
+      setArmed(null);
+      if (!source || source === target) return;
+      const ids = list.map((entry) => entry.provider);
+      const from = ids.indexOf(source);
+      const to = ids.indexOf(target);
+      if (from < 0 || to < 0) return;
+      ids.splice(to, 0, ...ids.splice(from, 1));
+      await api.orderTeacherKeys(ids);
+    });
+
+  return (
+    <Card className="flex flex-col gap-4 p-5">
+      <div className="flex flex-col gap-1">
+        <h2 className="font-serif text-[17px] text-ink">{t("settings_keys_title")}</h2>
+        <p className="text-[13px] leading-relaxed text-ink-soft">{t("settings_keys_desc")}</p>
+        <p className="text-[13px] leading-relaxed text-ink-soft">{t("settings_keys_responsibility")}</p>
+      </div>
+
+      <form onSubmit={save} className="flex flex-wrap items-end gap-3">
+        <label className="flex min-w-44 flex-1 flex-col gap-1">
+          <span className="text-[12px] font-medium text-ink-soft">{t("settings_keys_provider")}</span>
+          <select
+            value={addProvider}
+            onChange={(event) => setAddProvider(event.target.value)}
+            aria-label={t("settings_keys_provider")}
+            className="rounded-lg border border-line-strong bg-paper px-3 py-2 text-[14px] text-ink"
+          >
+            <option value="">{t("settings_keys_pick_provider")}</option>
+            {kindOrder.map((kind) =>
+              byKind.get(kind)?.length ? (
+                <optgroup key={kind} label={t(`settings_keys_kind_${kind}` as const)}>
+                  {(byKind.get(kind) ?? []).map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null,
+            )}
+          </select>
+        </label>
+        <label className="flex min-w-44 flex-1 flex-col gap-1">
+          <span className="text-[12px] font-medium text-ink-soft">{t("settings_keys_key")}</span>
+          <input
+            type="password"
+            value={addKey}
+            onChange={(event) => setAddKey(event.target.value)}
+            autoComplete="off"
+            placeholder="sk-…"
+            aria-label={t("settings_keys_key")}
+            className="rounded-lg border border-line-strong bg-paper px-3 py-2 text-[14px] text-ink"
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={busy || !addProvider || !addKey}
+          className="rounded-full bg-ember px-5 py-2 text-[14px] font-semibold text-on-ember transition-opacity disabled:opacity-40"
+        >
+          {busy ? t("settings_keys_saving") : t("settings_keys_save")}
+        </button>
+      </form>
+
+      {error ? (
+        <p role="alert" className="text-[13px] text-flag">
+          {error}
+        </p>
+      ) : null}
+
+      <ul className="flex flex-col gap-2">
+        {list.map((entry) => (
+          <ProviderRow
+            key={entry.provider}
+            entry={entry}
+            name={nameOf(entry.provider)}
+            expanded={expanded === entry.provider}
+            armed={armed === entry.provider}
+            dragging={dragId === entry.provider}
+            dragActive={dragId !== null}
+            onToggle={() => setExpanded(expanded === entry.provider ? null : entry.provider)}
+            onArm={(on) => setArmed(on ? entry.provider : null)}
+            onDragStart={() => setDragId(entry.provider)}
+            onDragEnd={() => {
+              setDragId(null);
+              setArmed(null);
+            }}
+            onDrop={() => dropOn(entry.provider)}
+            onStep={(delta) => move(entry.provider, delta)}
+            onError={setError}
+          />
+        ))}
+      </ul>
+
+      {list.length === 0 && !keys.isLoading ? (
+        <p className="text-[13px] text-ink-faint">{t("settings_keys_empty")}</p>
+      ) : null}
+    </Card>
+  );
+}
+
+function ProviderRow({
+  entry,
+  name,
+  expanded,
+  armed,
+  dragging,
+  dragActive,
+  onToggle,
+  onArm,
+  onDragStart,
+  onDragEnd,
+  onDrop,
+  onStep,
+  onError,
+}: {
+  entry: TeacherKeyStatus;
+  name: string;
+  expanded: boolean;
+  armed: boolean;
+  dragging: boolean;
+  dragActive: boolean;
+  onToggle: () => void;
+  onArm: (on: boolean) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onDrop: () => void;
+  onStep: (delta: -1 | 1) => void;
+  onError: (message: string) => void;
+}) {
+  const t = useT();
+
+  return (
+    <li
+      className={cn("flex flex-col overflow-hidden rounded-xl border border-line bg-paper", dragging && "opacity-50")}
+      onDragOver={(event) => {
+        if (dragActive) event.preventDefault();
+      }}
+      onDrop={onDrop}
+    >
+      <div className="flex items-center gap-3 px-3 py-2">
+        <button
+          type="button"
+          draggable={armed}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onPointerDown={() => onArm(true)}
+          onPointerUp={() => onArm(false)}
+          onKeyDown={(event) => {
+            if (event.altKey && event.key === "ArrowUp") {
+              event.preventDefault();
+              onStep(-1);
+            }
+            if (event.altKey && event.key === "ArrowDown") {
+              event.preventDefault();
+              onStep(1);
+            }
+          }}
+          aria-label={`${t("settings_keys_drag")} ${name}`}
+          title={t("settings_keys_drag")}
+          className="cursor-grab rounded-md p-1 text-ink-faint hover:text-ink active:cursor-grabbing"
+        >
+          <ProviderIcon id={entry.provider} className="h-6 w-6" />
+        </button>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 cursor-pointer flex-col items-start gap-0.5 rounded-md text-left"
+        >
+          <span className="flex items-center gap-2">
+            <span className="text-[14.5px] font-medium text-ink">{name}</span>
+            <span className="rounded-full border border-line bg-paper-deep px-2 py-0.5 text-[11.5px] text-ink-soft">
+              {entry.models.length === 1
+                ? t("settings_keys_one_model")
+                : t("settings_keys_models", { n: entry.models.length })}
+            </span>
+          </span>
+          <span className="font-mono text-[12px] text-ink-faint">{entry.provider}</span>
+        </button>
+        <span className="rounded-full border border-line bg-paper-deep px-2.5 py-1 font-mono text-[12px] text-ink-soft">
+          •••• {entry.last4}
+        </span>
+        <span aria-hidden className={cn("pr-1 text-ink-faint transition-transform", expanded && "rotate-90")}>
+          ▸
+        </span>
+      </div>
+      {expanded ? <ProviderEditor entry={entry} onError={onError} /> : null}
+    </li>
+  );
+}
+
+function ProviderEditor({ entry, onError }: { entry: TeacherKeyStatus; onError: (message: string) => void }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const models = useQuery({
+    queryKey: ["keyProviderModels", entry.provider],
+    queryFn: () => api.listKeyProviderModels(entry.provider),
+    staleTime: Infinity,
+  });
+  const [search, setSearch] = useState("");
+  const [editingLimit, setEditingLimit] = useState<string | null>(null);
+  const [limitDraft, setLimitDraft] = useState("");
+  const [keyDraft, setKeyDraft] = useState("");
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["teacherKeys"] });
+
+  const catalog = models.data ?? [];
+  const owned = new Set(entry.models.map((leg) => leg.model));
+  const results =
+    search === ""
+      ? []
+      : catalog
+          .filter(
+            (model) =>
+              !owned.has(model.id) &&
+              (model.id.toLowerCase().includes(search.toLowerCase()) ||
+                model.name.toLowerCase().includes(search.toLowerCase())),
+          )
+          .slice(0, 24);
+
+  const run = async (action: () => Promise<void>) => {
+    try {
+      await action();
+      await refresh();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const addModel = (model: string) =>
+    run(async () => {
+      await api.putTeacherKeyModel(entry.provider, model);
+      setSearch("");
+    });
+
+  const saveLimit = (model: string) =>
+    run(async () => {
+      const trimmed = limitDraft.trim();
+      const maxConcurrency = trimmed === "" ? null : Number(trimmed);
+      if (trimmed !== "" && (!Number.isInteger(maxConcurrency) || maxConcurrency! < 1 || maxConcurrency! > 100)) return;
+      await api.putTeacherKeyModel(entry.provider, model, maxConcurrency);
+      setEditingLimit(null);
+      setLimitDraft("");
+    });
+
+  const reorder = (index: number, delta: -1 | 1) =>
+    run(async () => {
+      const ids = entry.models.map((leg) => leg.model);
+      const to = index + delta;
+      if (to < 0 || to >= ids.length) return;
+      ids.splice(to, 0, ...ids.splice(index, 1));
+      await api.orderTeacherKeyModels(entry.provider, ids);
+    });
+
+  const replaceKey = () =>
+    run(async () => {
+      if (!keyDraft) return;
+      await api.putTeacherKey(entry.provider, keyDraft);
+      setKeyDraft("");
+    });
+
+  const removeModel = (model: string) =>
+    run(async () => {
+      await api.deleteTeacherKeyModel(entry.provider, model);
+    });
+
+  const removeProvider = () =>
+    run(async () => {
+      await api.deleteTeacherKey(entry.provider);
+    });
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-line bg-card px-3 py-3">
+      <ul className="flex flex-col gap-1">
+        {entry.models.map((leg, index) => (
+          <li
+            key={leg.model}
+            className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-paper px-2.5 py-1.5"
+          >
+            <span className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => reorder(index, -1)}
+                disabled={index === 0}
+                aria-label={t("settings_keys_up")}
+                className="cursor-pointer rounded-md px-1 text-ink-faint hover:text-ink disabled:opacity-30"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                onClick={() => reorder(index, 1)}
+                disabled={index === entry.models.length - 1}
+                aria-label={t("settings_keys_down")}
+                className="cursor-pointer rounded-md px-1 text-ink-faint hover:text-ink disabled:opacity-30"
+              >
+                ↓
+              </button>
+            </span>
+            <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink">{leg.model}</span>
+            {editingLimit === leg.model ? (
+              <span className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={limitDraft}
+                  onChange={(event) => setLimitDraft(event.target.value)}
+                  placeholder={t("settings_keys_concurrency_default")}
+                  aria-label={t("settings_keys_edit_concurrency")}
+                  className="w-20 rounded-md border border-line-strong bg-paper px-2 py-1 text-[13px] text-ink"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveLimit(leg.model)}
+                  aria-label={t("settings_keys_concurrency_save")}
+                  className="cursor-pointer rounded-full bg-ember px-2.5 py-1 text-[12px] font-semibold text-on-ember"
+                >
+                  ✓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingLimit(null);
+                    setLimitDraft("");
+                  }}
+                  aria-label={t("settings_keys_cancel")}
+                  className="cursor-pointer rounded-md px-1.5 py-1 text-[12px] text-ink-faint hover:text-ink"
+                >
+                  ✕
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingLimit(leg.model);
+                  setLimitDraft(leg.maxConcurrency === null ? "" : String(leg.maxConcurrency));
+                }}
+                aria-label={`${t("settings_keys_edit_concurrency")} ${leg.model}`}
+                title={t("settings_keys_edit_concurrency")}
+                className="cursor-pointer rounded-full border border-line bg-paper-deep px-2.5 py-0.5 text-[12px] text-ink-soft hover:text-ink"
+              >
+                {leg.maxConcurrency === null
+                  ? t("settings_keys_concurrency_default")
+                  : t("settings_keys_concurrency", { n: leg.maxConcurrency })}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => removeModel(leg.model)}
+              aria-label={`${t("settings_keys_remove_model")} ${leg.model}`}
+              className="cursor-pointer rounded-md px-1.5 py-1 text-ink-faint hover:text-flag"
+            >
+              ✕
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[12px] font-medium text-ink-soft">{t("settings_keys_add_model")}</span>
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={t("settings_keys_search_model")}
+          aria-label={t("settings_keys_search_model")}
+          className="rounded-lg border border-line-strong bg-paper px-3 py-1.5 text-[13px] text-ink"
+        />
+        {search !== "" && results.length === 0 ? (
+          <p className="text-[12.5px] text-ink-faint">{t("settings_keys_no_model")}</p>
+        ) : null}
+        {results.length > 0 ? (
+          <ul className="max-h-56 overflow-y-auto rounded-lg border border-line bg-paper">
+            {results.map((model) => (
+              <li key={model.id}>
+                <button
+                  type="button"
+                  onClick={() => addModel(model.id)}
+                  className="flex w-full cursor-pointer flex-col items-start gap-0.5 border-b border-line px-3 py-1.5 text-left last:border-b-0 hover:bg-paper-deep"
+                >
+                  <span className="font-mono text-[13px] text-ink">{model.id}</span>
+                  <span className="text-[11.5px] text-ink-faint">{model.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex min-w-44 flex-1 flex-col gap-1">
+          <span className="text-[12px] font-medium text-ink-soft">{t("settings_keys_replace_key")}</span>
+          <input
+            type="password"
+            value={keyDraft}
+            onChange={(event) => setKeyDraft(event.target.value)}
+            autoComplete="off"
+            placeholder="sk-…"
+            aria-label={t("settings_keys_replace_key")}
+            className="rounded-lg border border-line-strong bg-paper px-3 py-1.5 text-[13px] text-ink"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={replaceKey}
+          disabled={!keyDraft}
+          className="rounded-full border border-line-strong px-4 py-1.5 text-[13px] font-medium text-ink transition-opacity disabled:opacity-40"
+        >
+          {t("settings_keys_save")}
+        </button>
+        <button
+          type="button"
+          onClick={removeProvider}
+          aria-label={t("settings_keys_delete")}
+          className="ml-auto cursor-pointer rounded-md px-2 py-1.5 text-[13px] text-ink-faint hover:text-flag"
+        >
+          {t("settings_keys_delete")}
+        </button>
+      </div>
+    </div>
+  );
+}
