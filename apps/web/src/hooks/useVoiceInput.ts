@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useOnUnmount } from "@/hooks/useSubscription";
 import { api } from "@/api";
 
@@ -39,6 +39,25 @@ interface VoiceSession {
   stopTimer?: ReturnType<typeof setTimeout>;
 }
 
+function startMeter(
+  analyser: AnalyserNode,
+  session: { current: VoiceSession | null },
+  onAmplitude: { current: (value: number) => void },
+) {
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  const tick = () => {
+    analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    for (const v of data) {
+      const dev = (v - 128) / 128;
+      sum += dev * dev;
+    }
+    onAmplitude.current(Math.min(1, Math.sqrt(sum / data.length) * 4));
+    if (session.current) session.current.raf = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
 export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (value: number) => void) {
   const [state, setState] = useState<VoiceState>("idle");
   const [interim, setInterim] = useState("");
@@ -48,10 +67,12 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
 
   const onFinalRef = useRef(onFinal);
   const onAmplitudeRef = useRef(onAmplitude);
-  onFinalRef.current = onFinal;
-  onAmplitudeRef.current = onAmplitude;
+  useLayoutEffect(() => {
+    onFinalRef.current = onFinal;
+    onAmplitudeRef.current = onAmplitude;
+  });
 
-  const stopEverything = useCallback((target: typeof session.current = session.current) => {
+  function stopEverything(target: typeof session.current = session.current) {
     const s = target;
     if (!s) return;
     cancelAnimationFrame(s.raf);
@@ -66,7 +87,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     void s.ctx.close().catch(() => {});
     session.current = null;
     onAmplitudeRef.current(0);
-  }, []);
+  }
 
   const stopRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const stopRequestedRef = useRef(false);
@@ -76,7 +97,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     stopEverything();
   });
 
-  const beginSession = useCallback(async () => {
+  async function beginSession() {
     setInterim("");
     setError(null);
     setState("listening");
@@ -119,17 +140,6 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
       source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      const tick = () => {
-        analyser.getByteTimeDomainData(data);
-        let sum = 0;
-        for (const v of data) {
-          const dev = (v - 128) / 128;
-          sum += dev * dev;
-        }
-        onAmplitudeRef.current(Math.min(1, Math.sqrt(sum / data.length) * 4));
-        if (session.current) session.current.raf = requestAnimationFrame(tick);
-      };
 
       const Ctor = recognitionCtor();
       if (Ctor) {
@@ -191,7 +201,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
         return;
       }
       session.current = session0;
-      tick();
+      startMeter(analyser, session, onAmplitudeRef);
       session0.stopTimer = setTimeout(() => {
         if (session.current === session0) void stopRef.current?.();
       }, 60_000);
@@ -203,9 +213,9 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
       setState("idle");
       setError("failed");
     }
-  }, [stopEverything]);
+  }
 
-  const start = useCallback(async () => {
+  async function start() {
     if (session.current || startingRef.current) return;
     startingRef.current = true;
     try {
@@ -213,9 +223,9 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     } finally {
       startingRef.current = false;
     }
-  }, [beginSession]);
+  }
 
-  const stop = useCallback(async () => {
+  async function stop() {
     stopRequestedRef.current = true;
     const s = session.current;
     if (!s) return;
@@ -261,8 +271,10 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
       setState("idle");
       setInterim("");
     }
-  }, [stopEverything]);
-  stopRef.current = stop;
+  }
+  useLayoutEffect(() => {
+    stopRef.current = stop;
+  });
 
   return { state, interim, error, start, stop };
 }

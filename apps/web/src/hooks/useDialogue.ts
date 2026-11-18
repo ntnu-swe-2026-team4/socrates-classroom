@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore, useLayoutEffect } from "react";
 import { useAgent } from "agents/react";
 import { markIntent, speak, stopSpeech } from "@/lib/speech";
 import { applyImmutable } from "@earendil-works/chord/delta";
@@ -123,18 +123,14 @@ export function useDialogue(activityId: string, participantId: string, options?:
   const socketRef = useRef<{ send: (data: string) => void; readyState: number; OPEN: number } | null>(null);
   const pendingRef = useRef<string | null>(null);
   const [pendingView, setPendingView] = useState(false);
-  const baselineRef = useRef<number | null>(null);
+  const [baseline, setBaseline] = useState<number | null>(null);
   const failedInputRef = useRef<string | null>(null);
   const speechToken = useRef(0);
   const phaseRef = useRef<DialoguePhase>("idle");
   const sentOnceRef = useRef(false);
   const playedEmotionRef = useRef<unknown>(null);
-  const optionsRef = useRef(options);
-  optionsRef.current = options;
-  const autoSentRef = useRef<string | null>(null);
-  if (!options?.autoSend) autoSentRef.current = null;
-  const sendRef = useRef<(text: string) => boolean>(() => false);
-  const tryAutoSendRef = useRef<() => void>(() => {});
+  const [sentAutoSend, setSentAutoSend] = useState<string | null>(null);
+  if (sentAutoSend !== null && !options?.autoSend) setSentAutoSend(null);
   const entriesWaiters = useRef(
     new Map<string, { resolve: (page: Page<EntryRecord, Cursor>) => void; reject: (reason: Error) => void }>(),
   );
@@ -152,17 +148,23 @@ export function useDialogue(activityId: string, participantId: string, options?:
     },
     [],
   );
-  const transcriptRef = useRef(new ConversationTranscript(loader));
+  const transcriptRef = useRef<ConversationTranscript | null>(null);
   const [transcriptView, setTranscriptView] = useState<TranscriptView | null>(null);
+  useLayoutEffect(() => {
+    transcriptRef.current = new ConversationTranscript(loader);
+    return () => {
+      transcriptRef.current = null;
+    };
+  }, [loader]);
 
   useOnUnmount(() => {
     speechToken.current += 1;
     stopSpeech("dialogue");
     pendingRef.current = null;
-    baselineRef.current = null;
+    setBaseline(null);
   });
 
-  const syncEmotion = useCallback(() => {
+  function syncEmotion() {
     const emotion = latestEmotionOf(viewRef.current);
     if (!emotion || emotion === playedEmotionRef.current) return;
     if (!sentOnceRef.current) {
@@ -173,48 +175,43 @@ export function useDialogue(activityId: string, participantId: string, options?:
     playedEmotionRef.current = emotion;
     const name = EXPRESSIONS[emotion.emotion];
     if (name) companion.playExpression(name);
-  }, []);
+  }
 
-  const adopt = useCallback(
-    (next: ConversationView) => {
-      viewRef.current = next;
-      setView(next);
-      setTranscriptView(transcriptRef.current.merge(next));
-      syncEmotion();
-    },
-    [syncEmotion],
-  );
+  function adopt(next: ConversationView) {
+    viewRef.current = next;
+    setView(next);
+    const transcript = transcriptRef.current;
+    if (transcript) setTranscriptView(transcript.merge(next));
+    syncEmotion();
+  }
 
-  const speakAnswer = useCallback(
-    (text: string, userInitiated = false) => {
-      speechToken.current += 1;
-      const token = speechToken.current;
-      phaseRef.current = "speaking";
-      setPhase("speaking");
-      setTtsFailed(false);
-      setTtsSkipped(false);
-      speak("dialogue", text, { userInitiated })
-        .then((outcome) => {
-          if (token === speechToken.current && outcome === "skipped") setTtsSkipped(true);
-        })
-        .catch(() => {
-          if (token === speechToken.current) setTtsFailed(true);
-        })
-        .finally(() => {
-          if (token === speechToken.current) {
-            phaseRef.current = "idle";
-            setPhase("idle");
-            syncEmotion();
-          }
-        });
-    },
-    [syncEmotion],
-  );
+  function speakAnswer(text: string, userInitiated = false) {
+    speechToken.current += 1;
+    const token = speechToken.current;
+    phaseRef.current = "speaking";
+    setPhase("speaking");
+    setTtsFailed(false);
+    setTtsSkipped(false);
+    speak("dialogue", text, { userInitiated })
+      .then((outcome) => {
+        if (token === speechToken.current && outcome === "skipped") setTtsSkipped(true);
+      })
+      .catch(() => {
+        if (token === speechToken.current) setTtsFailed(true);
+      })
+      .finally(() => {
+        if (token === speechToken.current) {
+          phaseRef.current = "idle";
+          setPhase("idle");
+          syncEmotion();
+        }
+      });
+  }
 
-  const completePending = useCallback(() => {
+  function completePending() {
     pendingRef.current = null;
     setPendingView(false);
-    baselineRef.current = null;
+    setBaseline(null);
     failedInputRef.current = null;
     const text = lastAssistantText(viewRef.current);
     if (text) {
@@ -224,126 +221,116 @@ export function useDialogue(activityId: string, participantId: string, options?:
       setPhase("idle");
       syncEmotion();
     }
-  }, [speakAnswer, syncEmotion]);
+  }
 
-  const failPending = useCallback(
-    (code: string) => {
-      pendingRef.current = null;
-      setPendingView(false);
-      baselineRef.current = null;
-      phaseRef.current = "idle";
-      setPhase("idle");
-      if (code === "ActivityFinished") optionsRef.current?.onActivityFinished?.();
-      setError({ code });
-      syncEmotion();
-    },
-    [syncEmotion],
-  );
+  function failPending(code: string) {
+    pendingRef.current = null;
+    setPendingView(false);
+    setBaseline(null);
+    phaseRef.current = "idle";
+    setPhase("idle");
+    if (code === "ActivityFinished") options?.onActivityFinished?.();
+    setError({ code });
+    syncEmotion();
+  }
 
-  const arbitrate = useCallback(
-    (entries: readonly WindowedEntry[], full: boolean, windowBefore?: number) => {
-      if (pendingRef.current === null) return;
-      const baseline = baselineRef.current;
-      if (baseline !== null && !entries.some((entry) => entry.id === baseline)) {
-        const ours = entries.find((entry) => entry.kind === "pi.user" && entry.id > baseline);
-        if (ours) {
-          baselineRef.current = ours.id;
-          if (answered(entries.slice(entries.indexOf(ours) + 1))) completePending();
-          return;
-        }
-        if (full) {
-          if (windowBefore !== undefined && windowBefore > baseline) {
-            if (answered(entries)) completePending();
-            return;
-          }
-          if (runFailureOf(viewRef.current)) failPending("llm_unavailable");
-        }
+  function arbitrate(entries: readonly WindowedEntry[], full: boolean, windowBefore?: number) {
+    if (pendingRef.current === null) return;
+    if (baseline !== null && !entries.some((entry) => entry.id === baseline)) {
+      const ours = entries.find((entry) => entry.kind === "pi.user" && entry.id > baseline);
+      if (ours) {
+        setBaseline(ours.id);
+        if (answered(entries.slice(entries.indexOf(ours) + 1))) completePending();
         return;
       }
-      const index = baseline === null ? -1 : entries.findIndex((entry) => entry.id === baseline);
-      const tail = index === -1 ? entries : entries.slice(index + 1);
-      if (answered(tail)) {
+      if (full) {
+        if (windowBefore !== undefined && windowBefore > baseline) {
+          if (answered(entries)) completePending();
+          return;
+        }
+        if (runFailureOf(viewRef.current)) failPending("llm_unavailable");
+      }
+      return;
+    }
+    const index = baseline === null ? -1 : entries.findIndex((entry) => entry.id === baseline);
+    const tail = index === -1 ? entries : entries.slice(index + 1);
+    if (answered(tail)) {
+      completePending();
+    } else if (full) {
+      if (tail.some((entry) => entry.kind === "pi.assistant" && !intermediateAssistant(entry))) {
         completePending();
-      } else if (full) {
-        if (tail.some((entry) => entry.kind === "pi.assistant" && !intermediateAssistant(entry))) {
-          completePending();
-        } else {
-          if (runFailureOf(viewRef.current)) failPending("llm_unavailable");
-        }
+      } else {
+        if (runFailureOf(viewRef.current)) failPending("llm_unavailable");
       }
-    },
-    [completePending, failPending],
-  );
+    }
+  }
 
-  const onFrame = useCallback(
-    (raw: unknown) => {
-      if (typeof raw !== "string") return;
-      let frame: ServerMessage;
-      try {
-        frame = JSON.parse(raw) as ServerMessage;
-      } catch {
+  function onFrame(raw: unknown) {
+    if (typeof raw !== "string") return;
+    let frame: ServerMessage;
+    try {
+      frame = JSON.parse(raw) as ServerMessage;
+    } catch {
+      return;
+    }
+    switch (frame.type) {
+      case "view": {
+        adopt(frame.view);
+        arbitrate(frame.view.entries, true, frame.view.before);
+        tryAutoSend();
         return;
       }
-      switch (frame.type) {
-        case "view": {
-          adopt(frame.view);
-          arbitrate(frame.view.entries, true, frame.view.before);
-          tryAutoSendRef.current();
+      case "ops": {
+        const base = viewRef.current;
+        if (!base) return;
+        let next: ConversationView;
+        try {
+          next = applyImmutable(base, frame.ops);
+        } catch {
+          socket.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
           return;
         }
-        case "ops": {
-          const base = viewRef.current;
-          if (!base) return;
-          let next: ConversationView;
-          try {
-            next = applyImmutable(base, frame.ops);
-          } catch {
-            socketRef.current?.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
-            return;
-          }
-          adopt(next);
-          arbitrate(next.entries, false);
-          if (frame.ops.length > 0 && pendingRef.current && liveTextOf(next)) {
-            phaseRef.current = "streaming";
-            setPhase((current) => (current === "thinking" ? "streaming" : current));
-          }
-          tryAutoSendRef.current();
-          return;
+        adopt(next);
+        arbitrate(next.entries, false);
+        if (frame.ops.length > 0 && pendingRef.current && liveTextOf(next)) {
+          phaseRef.current = "streaming";
+          setPhase((current) => (current === "thinking" ? "streaming" : current));
         }
-        case "result": {
-          const waiter = entriesWaiters.current.get(frame.id);
-          if (waiter === undefined) return;
-          entriesWaiters.current.delete(frame.id);
-          if (frame.result && typeof frame.result === "object" && "items" in frame.result) {
-            waiter.resolve(frame.result as Page<EntryRecord, Cursor>);
-          } else {
-            waiter.reject(new Error("entries_result_invalid"));
-          }
-          return;
-        }
-        case "error": {
-          const waiter = frame.id !== undefined ? entriesWaiters.current.get(frame.id) : undefined;
-          if (waiter !== undefined) {
-            entriesWaiters.current.delete(frame.id!);
-            waiter.reject(new Error("entries_failed"));
-            return;
-          }
-          if (frame.id !== undefined && frame.id !== pendingRef.current) return;
-          if (frame.id === undefined && pendingRef.current === null) return;
-          failPending(frame.code ?? "llm_unavailable");
-          return;
-        }
+        tryAutoSend();
+        return;
       }
-    },
-    [adopt, arbitrate, failPending],
-  );
+      case "result": {
+        const waiter = entriesWaiters.current.get(frame.id);
+        if (waiter === undefined) return;
+        entriesWaiters.current.delete(frame.id);
+        if (frame.result && typeof frame.result === "object" && "items" in frame.result) {
+          waiter.resolve(frame.result as Page<EntryRecord, Cursor>);
+        } else {
+          waiter.reject(new Error("entries_result_invalid"));
+        }
+        return;
+      }
+      case "error": {
+        const waiter = frame.id !== undefined ? entriesWaiters.current.get(frame.id) : undefined;
+        if (waiter !== undefined) {
+          entriesWaiters.current.delete(frame.id!);
+          waiter.reject(new Error("entries_failed"));
+          return;
+        }
+        if (frame.id !== undefined && frame.id !== pendingRef.current) return;
+        if (frame.id === undefined && pendingRef.current === null) return;
+        failPending(frame.code ?? "llm_unavailable");
+        return;
+      }
+    }
+  }
 
   const socket = useAgent({
     agent: "chat",
     name: `${activityId}:${participantId}`,
     onOpen: (event) => {
       (event.target as WebSocket).send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
-      tryAutoSendRef.current();
+      tryAutoSend();
     },
     onMessage: (event) => onFrame(event.data),
     onConnectionError: () => {
@@ -353,22 +340,24 @@ export function useDialogue(activityId: string, participantId: string, options?:
     onClose: () => {
       for (const waiter of entriesWaiters.current.values()) waiter.reject(new Error("socket_closed"));
       entriesWaiters.current.clear();
-      optionsRef.current?.onDisconnect?.();
+      options?.onDisconnect?.();
     },
   });
-  socketRef.current = socket;
+  useLayoutEffect(() => {
+    socketRef.current = socket;
+    return () => {
+      socketRef.current = null;
+    };
+  }, [socket]);
 
-  const subscribe = useCallback(
-    (notify: () => void) => {
-      socket.addEventListener("open", notify);
-      socket.addEventListener("close", notify);
-      return () => {
-        socket.removeEventListener("open", notify);
-        socket.removeEventListener("close", notify);
-      };
-    },
-    [socket],
-  );
+  const subscribe = (notify: () => void) => {
+    socket.addEventListener("open", notify);
+    socket.addEventListener("close", notify);
+    return () => {
+      socket.removeEventListener("open", notify);
+      socket.removeEventListener("close", notify);
+    };
+  };
 
   const socketReady = useSyncExternalStore(
     subscribe,
@@ -376,87 +365,85 @@ export function useDialogue(activityId: string, participantId: string, options?:
     () => false,
   );
 
-  const send = useCallback(
-    (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || pendingRef.current || !viewRef.current) return false;
-      if (socket.readyState !== WebSocket.OPEN) return false;
-      markIntent("dialogue");
-      speechToken.current += 1;
-      stopSpeech("dialogue");
-      const id = crypto.randomUUID();
-      pendingRef.current = id;
-      sentOnceRef.current = true;
-      setPendingView(true);
-      baselineRef.current = viewRef.current.entries.at(-1)?.id ?? null;
-      failedInputRef.current = trimmed;
-      setError(null);
-      setTtsFailed(false);
-      setTtsSkipped(false);
-      phaseRef.current = "thinking";
-      setPhase("thinking");
-      socket.send(JSON.stringify({ type: "submit", id, input: trimmed } satisfies ClientMessage));
-      return true;
-    },
-    [socket],
-  );
-  sendRef.current = send;
+  function send(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || pendingRef.current || !viewRef.current) return false;
+    if (socket.readyState !== WebSocket.OPEN) return false;
+    markIntent("dialogue");
+    speechToken.current += 1;
+    stopSpeech("dialogue");
+    const id = crypto.randomUUID();
+    pendingRef.current = id;
+    sentOnceRef.current = true;
+    setPendingView(true);
+    setBaseline(viewRef.current.entries.at(-1)?.id ?? null);
+    failedInputRef.current = trimmed;
+    setError(null);
+    setTtsFailed(false);
+    setTtsSkipped(false);
+    phaseRef.current = "thinking";
+    setPhase("thinking");
+    socket.send(JSON.stringify({ type: "submit", id, input: trimmed } satisfies ClientMessage));
+    return true;
+  }
 
-  const tryAutoSend = useCallback(() => {
-    const options = optionsRef.current;
-    if (!options?.autoSend) return;
-    if (autoSentRef.current === options.autoSend) return;
-    if (sendRef.current(options.autoSend.slice(0, 2000))) {
-      autoSentRef.current = options.autoSend;
+  function tryAutoSend() {
+    const autoSend = options?.autoSend;
+    if (!autoSend || sentAutoSend === autoSend) return;
+    if (send(autoSend.slice(0, 2000))) {
+      setSentAutoSend(autoSend);
       options.onAutoSent?.();
     }
-  }, []);
-  tryAutoSendRef.current = tryAutoSend;
+  }
 
-  const retryLast = useCallback(() => {
+  function retryLast() {
     if (pendingRef.current) return;
     const text = failedInputRef.current;
     if (!text) return;
     send(text);
-  }, [send]);
+  }
 
-  const replay = useCallback(() => {
+  function replay() {
     if (pendingRef.current) return;
     const last = lastAssistantText(viewRef.current);
     if (!last) return;
     speakAnswer(last, true);
-  }, [speakAnswer]);
+  }
 
-  const interrupt = useCallback(() => {
+  function interrupt() {
     if (pendingRef.current) {
       socket.send(JSON.stringify({ type: "abort", id: pendingRef.current } satisfies ClientMessage));
       pendingRef.current = null;
       setPendingView(false);
-      baselineRef.current = null;
+      setBaseline(null);
     }
     speechToken.current += 1;
     stopSpeech("dialogue");
     phaseRef.current = "idle";
     setPhase("idle");
     syncEmotion();
-  }, [socket, syncEmotion]);
+  }
 
-  const loadEarlier = useCallback(async () => {
-    if (!socketRef.current) return;
+  async function loadEarlier() {
+    if (socket.readyState !== WebSocket.OPEN) return;
+    const transcript = transcriptRef.current;
+    if (!transcript) return;
     try {
-      setTranscriptView(await transcriptRef.current.loadEarlier(BACKGROUND_CONTEXT));
+      setTranscriptView(await transcript.loadEarlier(BACKGROUND_CONTEXT));
     } catch {
       /* retryable — the transcript clears its in-flight load when the loader settles */
     }
-  }, []);
+  }
 
-  const fillGap = useCallback(async (gap: Extract<TranscriptItem, { kind: "gap" }>) => {
+  async function fillGap(gap: Extract<TranscriptItem, { kind: "gap" }>) {
+    const transcript = transcriptRef.current;
+    if (!transcript) return;
     try {
-      setTranscriptView(await transcriptRef.current.fillGap(gap, BACKGROUND_CONTEXT));
+      setTranscriptView(await transcript.fillGap(gap, BACKGROUND_CONTEXT));
     } catch {
       /* retryable */
     }
-  }, []);
+  }
 
   const messages = useMemo(() => {
     const out: DialogueMessage[] = [];
@@ -477,7 +464,6 @@ export function useDialogue(activityId: string, participantId: string, options?:
     if (!view || phase === "speaking" || phase === "idle") return liveTextOf(view) || "";
     const live = liveTextOf(view);
     if (live) return live;
-    const baseline = baselineRef.current;
     const tail = view.entries.at(-1);
     if (
       tail &&
@@ -488,7 +474,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
       return textOf((tail.model?.[0] ?? undefined) as Message | undefined);
     }
     return "";
-  }, [view, phase]);
+  }, [view, phase, baseline]);
 
   const emotion = useMemo(() => {
     for (const item of [...(transcriptView?.items ?? [])].reverse()) {
