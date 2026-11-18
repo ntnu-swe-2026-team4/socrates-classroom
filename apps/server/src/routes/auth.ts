@@ -37,7 +37,7 @@ import {
   type AppEnv,
   type Ctx,
 } from "../http";
-import { ensureParticipant } from "../services/members";
+import { ensureParticipant, assertSeats } from "../services/members";
 import {
   OAuthError,
   googleAuthorizeUrl,
@@ -160,6 +160,7 @@ export function authRoutes() {
         { cid: classroom.id, name: input.name },
       );
       if (clash) fail(409, "name_taken");
+      await assertSeats(c.env.DB, classroom.id, 1);
       const emailTaken = await one<{ id: string }>(c.env.DB, "SELECT id FROM users WHERE email = $email", {
         email: input.email,
       });
