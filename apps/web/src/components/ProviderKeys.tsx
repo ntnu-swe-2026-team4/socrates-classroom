@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TeacherKeyStatus } from "@socrates/shared";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/api";
 import { Card, cn } from "@/components/ui";
 import { useT } from "@/i18n";
@@ -37,20 +37,10 @@ export function ProviderKeys() {
   });
 
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [addProvider, setAddProvider] = useState("");
-  const [addKey, setAddKey] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
-  const byKind = useMemo(() => {
-    const map = new Map<ProviderKind, { id: string; name: string }[]>();
-    for (const entry of providers.data ?? []) {
-      const kind = providerKind(entry.id);
-      map.set(kind, [...(map.get(kind) ?? []), entry]);
-    }
-    return map;
-  }, [providers.data]);
 
   const nameOf = useMemo(() => {
     const map = new Map((providers.data ?? []).map((entry) => [entry.id, entry.name]));
@@ -66,24 +56,6 @@ export function ProviderKeys() {
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const save = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!addProvider || !addKey) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.putTeacherKey(addProvider, addKey);
-      setAddKey("");
-      setExpanded(addProvider);
-      setAddProvider("");
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -116,54 +88,19 @@ export function ProviderKeys() {
   return (
     <Card className="flex flex-col gap-4 p-5">
       <div className="flex flex-col gap-1">
-        <h2 className="font-serif text-[17px] text-ink">{t("settings_keys_title")}</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="font-serif text-[17px] text-ink">{t("settings_keys_title")}</h2>
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            className="ml-auto cursor-pointer rounded-full border border-line-strong px-4 py-1.5 text-[13px] font-semibold text-ink transition-colors hover:bg-paper-deep"
+          >
+            {t("settings_keys_add_provider")}
+          </button>
+        </div>
         <p className="text-[13px] leading-relaxed text-ink-soft">{t("settings_keys_desc")}</p>
         <p className="text-[13px] leading-relaxed text-ink-soft">{t("settings_keys_responsibility")}</p>
       </div>
-
-      <form onSubmit={save} className="flex flex-wrap items-end gap-3">
-        <label className="flex min-w-44 flex-1 flex-col gap-1">
-          <span className="text-[12px] font-medium text-ink-soft">{t("settings_keys_provider")}</span>
-          <select
-            value={addProvider}
-            onChange={(event) => setAddProvider(event.target.value)}
-            aria-label={t("settings_keys_provider")}
-            className="rounded-lg border border-line-strong bg-paper px-3 py-2 text-[14px] text-ink"
-          >
-            <option value="">{t("settings_keys_pick_provider")}</option>
-            {kindOrder.map((kind) =>
-              byKind.get(kind)?.length ? (
-                <optgroup key={kind} label={t(`settings_keys_kind_${kind}` as const)}>
-                  {(byKind.get(kind) ?? []).map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {entry.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null,
-            )}
-          </select>
-        </label>
-        <label className="flex min-w-44 flex-1 flex-col gap-1">
-          <span className="text-[12px] font-medium text-ink-soft">{t("settings_keys_key")}</span>
-          <input
-            type="password"
-            value={addKey}
-            onChange={(event) => setAddKey(event.target.value)}
-            autoComplete="off"
-            placeholder="sk-…"
-            aria-label={t("settings_keys_key")}
-            className="rounded-lg border border-line-strong bg-paper px-3 py-2 text-[14px] text-ink"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={busy || !addProvider || !addKey}
-          className="rounded-full bg-ember px-5 py-2 text-[14px] font-semibold text-on-ember transition-opacity disabled:opacity-40"
-        >
-          {busy ? t("settings_keys_saving") : t("settings_keys_save")}
-        </button>
-      </form>
 
       {error ? (
         <p role="alert" className="text-[13px] text-flag">
@@ -198,7 +135,235 @@ export function ProviderKeys() {
       {list.length === 0 && !keys.isLoading ? (
         <p className="text-[13px] text-ink-faint">{t("settings_keys_empty")}</p>
       ) : null}
+
+      {sheetOpen ? (
+        <ProviderSheet
+          providers={providers.data ?? []}
+          owned={new Set(list.map((entry) => entry.provider))}
+          onClose={() => setSheetOpen(false)}
+          onOpenExisting={(id) => {
+            setSheetOpen(false);
+            setExpanded(id);
+          }}
+          onSaved={(id) => {
+            void refresh();
+            setSheetOpen(false);
+            setExpanded(id);
+          }}
+        />
+      ) : null}
     </Card>
+  );
+}
+
+const kindHint = {
+  vendor: "settings_keys_kind_vendor_hint",
+  relay: "settings_keys_kind_relay_hint",
+  platform: null,
+} as const;
+
+function ProviderSheet({
+  providers,
+  owned,
+  onClose,
+  onOpenExisting,
+  onSaved,
+}: {
+  providers: { id: string; name: string }[];
+  owned: Set<string>;
+  onClose: () => void;
+  onOpenExisting: (id: string) => void;
+  onSaved: (id: string) => void;
+}) {
+  const t = useT();
+  const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<string | null>(null);
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const keyRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (picked) keyRef.current?.focus();
+    else searchRef.current?.focus();
+  }, [picked]);
+
+  const f = query.trim().toLowerCase();
+  const matches = (entry: { id: string; name: string }) =>
+    f === "" || entry.name.toLowerCase().includes(f) || entry.id.includes(f);
+  const sections = kindOrder.map((kind) => ({
+    kind,
+    entries: providers.filter((entry) => providerKind(entry.id) === kind && matches(entry)),
+  }));
+  const anyTile = sections.some((section) => section.entries.length > 0);
+
+  const back = () => {
+    setPicked(null);
+    setKey("");
+    setError(null);
+  };
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!picked || !key) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.putTeacherKey(picked, key);
+      onSaved(picked);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/50 p-4 sm:items-center sm:p-8"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("settings_keys_add_title")}
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.stopPropagation();
+          if (picked) back();
+          else if (query) setQuery("");
+          else onClose();
+        }}
+        className="flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-card shadow-lg"
+      >
+        <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+          {picked ? (
+            <>
+              <button
+                type="button"
+                onClick={back}
+                aria-label={t("settings_keys_cancel")}
+                className="cursor-pointer rounded-md px-1 text-[15px] text-ink-faint hover:text-ink"
+              >
+                ←
+              </button>
+              <ProviderIcon id={picked} className="h-6 w-6" />
+              <h3 className="min-w-0 truncate font-serif text-[15px] text-ink">
+                {providers.find((entry) => entry.id === picked)?.name ?? picked}
+              </h3>
+            </>
+          ) : (
+            <h3 className="min-w-0 font-serif text-[15px] text-ink">{t("settings_keys_add_title")}</h3>
+          )}
+          {!picked ? (
+            <input
+              type="search"
+              ref={searchRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t("settings_keys_find")}
+              aria-label={t("settings_keys_find")}
+              className="ml-auto w-44 rounded-lg border border-line-strong bg-paper px-3 py-1.5 text-[13px] text-ink"
+            />
+          ) : null}
+          <button
+            type="button"
+            onClick={onClose}
+            className={cn(
+              "cursor-pointer rounded-md px-1.5 py-1 text-[13px] text-ink-faint hover:text-ink",
+              !picked && "ml-auto",
+            )}
+          >
+            {t("settings_keys_close")}
+          </button>
+        </div>
+
+        {picked ? (
+          <form onSubmit={save} className="flex flex-col gap-2 px-4 py-4">
+            <label className="flex flex-col gap-1">
+              <span className="text-[12px] font-medium text-ink-soft">{t("settings_keys_key")}</span>
+              <input
+                type="password"
+                ref={keyRef}
+                value={key}
+                onChange={(event) => setKey(event.target.value)}
+                autoComplete="off"
+                placeholder="sk-…"
+                aria-label={t("settings_keys_key")}
+                className="rounded-lg border border-line-strong bg-paper px-3 py-2 text-[14px] text-ink"
+              />
+            </label>
+            {error ? (
+              <p role="alert" className="text-[13px] text-flag">
+                {error}
+              </p>
+            ) : null}
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={busy || !key}
+                className="rounded-full bg-ember px-5 py-2 text-[14px] font-semibold text-on-ember transition-opacity disabled:opacity-40"
+              >
+                {busy ? t("settings_keys_saving") : t("settings_keys_save")}
+              </button>
+              <button
+                type="button"
+                onClick={back}
+                className="cursor-pointer rounded-full border border-line-strong px-4 py-2 text-[13px] font-medium text-ink"
+              >
+                {t("settings_keys_cancel")}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="flex flex-col gap-4 overflow-y-auto px-4 py-3">
+            {sections.map((section) => {
+              if (section.entries.length === 0) return null;
+              const hint = kindHint[section.kind];
+              return (
+                <section key={section.kind} className="flex flex-col gap-2">
+                  <div className="flex items-baseline gap-2">
+                    <b className="text-[12.5px] font-semibold text-ink-soft">
+                      {t(`settings_keys_kind_${section.kind}` as const)}
+                    </b>
+                    {hint ? <span className="text-[12px] text-ink-faint">{t(hint)}</span> : null}
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {section.entries.map((entry) => {
+                      const added = owned.has(entry.id);
+                      return (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          onClick={() => (added ? onOpenExisting(entry.id) : setPicked(entry.id))}
+                          title={added ? t("settings_keys_added_open", { name: entry.name }) : entry.id}
+                          className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-line bg-paper px-3 py-2.5 text-left transition-colors hover:border-line-strong"
+                        >
+                          <ProviderIcon id={entry.id} className="h-6 w-6 shrink-0" />
+                          <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink">
+                            {entry.name}
+                          </span>
+                          {added ? (
+                            <span title={t("settings_keys_added")} className="text-[14px] text-moss" aria-hidden>
+                              ✓
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+            {anyTile ? null : (
+              <p className="text-[13px] text-ink-faint">{t("settings_keys_no_provider", { q: query.trim() })}</p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
