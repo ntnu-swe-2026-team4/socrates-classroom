@@ -1,9 +1,16 @@
-import { type KeyboardEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { ChevronLeft, ChevronRight, GripHorizontal, Square, UserRound } from "lucide-react";
 import { cn } from "@/components/ui";
 import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useT } from "@/i18n";
-import { getCompanion, onExpression, useCompanion } from "@/lib/companion";
+import { attachScene, useCompanion } from "@/lib/companion";
 import { createSocratesScene } from "@/lib/socrates/scene";
 import { stopSpeech } from "@/lib/speech";
 
@@ -144,20 +151,34 @@ export function SocratesWindow({ bottomInset = 0 }: { bottomInset?: number }) {
   );
 }
 
+function measureDock(): DockRect | null {
+  const box = document.querySelector(`[${COMPANION_DOCK_ATTR}]`)?.getBoundingClientRect();
+  return box && box.width > 0 ? { x: Math.round(box.left), y: Math.round(box.top), size: Math.round(box.width) } : null;
+}
+
 function useDockRect(): DockRect | null {
-  const [rect, setRect] = useState<DockRect | null>(null);
-  useEffect(() => {
-    let frame = 0;
-    const measure = () => {
-      frame = 0;
-      const box = document.querySelector(`[${COMPANION_DOCK_ATTR}]`)?.getBoundingClientRect();
-      const next =
-        box && box.width > 0 ? { x: Math.round(box.left), y: Math.round(box.top), size: Math.round(box.width) } : null;
-      setRect((prev) => (prev?.x === next?.x && prev?.y === next?.y && prev?.size === next?.size ? prev : next));
-      if (box) frame = requestAnimationFrame(measure);
+  const cacheRef = useRef<DockRect | null | undefined>(undefined);
+  const read = () => {
+    if (cacheRef.current === undefined) cacheRef.current = measureDock();
+    return cacheRef.current;
+  };
+  const subscribe = useCallback((notify: () => void) => {
+    let raf = 0;
+    const sync = () => {
+      const prev = cacheRef.current ?? null;
+      const next = measureDock();
+      if (prev?.x !== next?.x || prev?.y !== next?.y || prev?.size !== next?.size) {
+        cacheRef.current = next;
+        notify();
+      }
+    };
+    const step = () => {
+      raf = 0;
+      sync();
+      if (cacheRef.current) raf = requestAnimationFrame(step);
     };
     const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(measure);
+      if (!raf) raf = requestAnimationFrame(step);
     };
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, {
@@ -167,14 +188,14 @@ function useDockRect(): DockRect | null {
       attributeFilter: ["class", "style"],
     });
     window.addEventListener("resize", schedule);
-    measure();
+    sync();
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", schedule);
-      cancelAnimationFrame(frame);
+      cancelAnimationFrame(raf);
     };
   }, []);
-  return rect;
+  return useSyncExternalStore(subscribe, read, () => null);
 }
 
 export function SocratesCompanion() {
@@ -188,11 +209,9 @@ function CompanionBody({ dock }: { dock: DockRect }) {
   const t = useT();
   const state = useCompanion();
   const [modelState, setModelState] = useState<"loading" | "ready" | "error">("loading");
-  const stageRef = useRef<HTMLSpanElement>(null);
   const sceneRef = useRef<ReturnType<typeof createSocratesScene> | null>(null);
 
-  useEffect(() => {
-    const stage = stageRef.current;
+  const attachStage = useCallback((stage: HTMLSpanElement | null) => {
     if (!stage) return;
     const canvas = document.createElement("canvas");
     canvas.className = "block size-full";
@@ -210,19 +229,14 @@ function CompanionBody({ dock }: { dock: DockRect }) {
       return;
     }
     sceneRef.current = scene;
-    scene.setSpeaking(getCompanion().speaking);
+    const detach = attachScene(scene);
     return () => {
+      detach();
       scene.dispose();
       sceneRef.current = null;
       canvas.remove();
     };
   }, []);
-
-  useEffect(() => onExpression((name) => sceneRef.current?.setExpression(name, { loop: false })), []);
-
-  useEffect(() => {
-    sceneRef.current?.setSpeaking(state.speaking);
-  }, [state.speaking]);
 
   return (
     <div
@@ -236,7 +250,7 @@ function CompanionBody({ dock }: { dock: DockRect }) {
         className="relative size-full select-none"
       >
         <span
-          ref={stageRef}
+          ref={attachStage}
           title={t("companion_rotate")}
           className="pointer-events-auto absolute inset-0 block cursor-grab touch-none active:cursor-grabbing"
         />

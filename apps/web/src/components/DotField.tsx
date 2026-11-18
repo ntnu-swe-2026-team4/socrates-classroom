@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback } from "react";
 import { cn } from "@/components/ui";
 
 const PITCH = 12;
@@ -15,12 +15,10 @@ interface Dot {
 }
 
 export function DotField({ className }: { className?: string }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = ref.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
+  const attach = useCallback((canvas: HTMLCanvasElement | null) => {
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     let dots: Dot[] = [];
     let width = 0;
@@ -110,7 +108,7 @@ export function DotField({ className }: { className?: string }) {
 
   return (
     <canvas
-      ref={ref}
+      ref={attach}
       aria-hidden
       className={cn("pointer-events-none absolute inset-0 block size-full text-ht-dot", className)}
     />

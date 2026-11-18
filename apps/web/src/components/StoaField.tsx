@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback } from "react";
 import { cn } from "@/components/ui";
 
 const clamp = (v: number, a: number, b: number) => Math.min(Math.max(v, a), b);
@@ -342,70 +342,70 @@ function drawField(f: Field, t: number, ink: number, pointer: Pointer, dt: numbe
 }
 
 export function StoaField({ reserve, className }: { reserve: number; className?: string }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const cv = ref.current;
-    if (!cv) return;
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const ink = inkFromColor(getComputedStyle(cv).color);
-    const t0 = performance.now();
-    const pointer: Pointer = { x: 0, y: 0, active: false };
-    const client = { x: 0, y: 0, active: false };
-    const track = (event: PointerEvent) => {
-      client.x = event.clientX;
-      client.y = event.clientY;
-      client.active = true;
-    };
-    const release = () => {
-      client.active = false;
-    };
-    let field: Field | null = null;
-    let frame = 0;
-    const rebuild = () => {
-      const W = Math.round(cv.clientWidth / 2);
-      const H = Math.round(cv.clientHeight / 2);
-      if (W < 2 || H < 2 || (field && field.W === W && field.H === H)) return;
-      field = createField(cv, reserve);
-      if (field && still) drawField(field, 0, ink, pointer, 0);
-    };
-    const observer = new ResizeObserver(rebuild);
-    observer.observe(cv);
-    rebuild();
-    if (!still) {
-      window.addEventListener("pointermove", track, { passive: true });
-      window.addEventListener("pointerdown", track, { passive: true });
-      document.documentElement.addEventListener("pointerleave", release);
-      window.addEventListener("blur", release);
-      let last = t0;
-      const loop = (now: number) => {
-        if (field) {
-          const rect = cv.getBoundingClientRect();
-          const x = ((client.x - rect.left) * field.W) / (rect.width || 1);
-          const y = ((client.y - rect.top) * field.H) / (rect.height || 1);
-          pointer.active = client.active && rect.width > 0 && Math.hypot(x - pointer.x, y - pointer.y) > 0.25;
-          pointer.x = x;
-          pointer.y = y;
-          drawField(field, (now - t0) / 1000, ink, pointer, Math.min(0.05, (now - last) / 1000));
-        }
-        last = now;
-        frame = requestAnimationFrame(loop);
+  const attach = useCallback(
+    (cv: HTMLCanvasElement | null) => {
+      if (!cv) return;
+      const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const ink = inkFromColor(getComputedStyle(cv).color);
+      const t0 = performance.now();
+      const pointer: Pointer = { x: 0, y: 0, active: false };
+      const client = { x: 0, y: 0, active: false };
+      const track = (event: PointerEvent) => {
+        client.x = event.clientX;
+        client.y = event.clientY;
+        client.active = true;
       };
-      frame = requestAnimationFrame(loop);
-    }
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(frame);
-      window.removeEventListener("pointermove", track);
-      window.removeEventListener("pointerdown", track);
-      document.documentElement.removeEventListener("pointerleave", release);
-      window.removeEventListener("blur", release);
-    };
-  }, [reserve]);
+      const release = () => {
+        client.active = false;
+      };
+      let field: Field | null = null;
+      let frame = 0;
+      const rebuild = () => {
+        const W = Math.round(cv.clientWidth / 2);
+        const H = Math.round(cv.clientHeight / 2);
+        if (W < 2 || H < 2 || (field && field.W === W && field.H === H)) return;
+        field = createField(cv, reserve);
+        if (field && still) drawField(field, 0, ink, pointer, 0);
+      };
+      const observer = new ResizeObserver(rebuild);
+      observer.observe(cv);
+      rebuild();
+      if (!still) {
+        window.addEventListener("pointermove", track, { passive: true });
+        window.addEventListener("pointerdown", track, { passive: true });
+        document.documentElement.addEventListener("pointerleave", release);
+        window.addEventListener("blur", release);
+        let last = t0;
+        const loop = (now: number) => {
+          if (field) {
+            const rect = cv.getBoundingClientRect();
+            const x = ((client.x - rect.left) * field.W) / (rect.width || 1);
+            const y = ((client.y - rect.top) * field.H) / (rect.height || 1);
+            pointer.active = client.active && rect.width > 0 && Math.hypot(x - pointer.x, y - pointer.y) > 0.25;
+            pointer.x = x;
+            pointer.y = y;
+            drawField(field, (now - t0) / 1000, ink, pointer, Math.min(0.05, (now - last) / 1000));
+          }
+          last = now;
+          frame = requestAnimationFrame(loop);
+        };
+        frame = requestAnimationFrame(loop);
+      }
+      return () => {
+        observer.disconnect();
+        cancelAnimationFrame(frame);
+        window.removeEventListener("pointermove", track);
+        window.removeEventListener("pointerdown", track);
+        document.documentElement.removeEventListener("pointerleave", release);
+        window.removeEventListener("blur", release);
+      };
+    },
+    [reserve],
+  );
 
   return (
     <canvas
-      ref={ref}
+      ref={attach}
       aria-hidden
       className={cn(
         "pointer-events-none absolute inset-0 block size-full text-comic-graphite [image-rendering:pixelated]",
