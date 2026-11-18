@@ -193,8 +193,8 @@ export class Chat extends DurableObject<Env> {
         if (message?.role === "assistant") tokens += message.usage?.totalTokens ?? 0;
       }
       const newest = (items.at(-1) as { id?: number } | undefined)?.id ?? meteredUpTo;
-      this.#meteredUpTo.set(handle.id, Math.max(meteredUpTo, newest));
       if (tokens > 0) await recordUsage(this.env, ownerId, tokens);
+      this.#meteredUpTo.set(handle.id, Math.max(meteredUpTo, newest));
     } catch (error) {
       console.warn("[usage] metering failed", error instanceof Error ? error.message : "unknown error");
     }
