@@ -120,7 +120,7 @@ cf deploy --prebuilt --mode production --secrets-file .env.production.local
 
 ### OAuth 登入（Google，選用）
 
-> **目前狀態：選用，預設停用。** server 端為 `src/oauth.ts`＋`routes/auth.ts` 的 `GET /auth/oauth/:provider/start|callback`，身分表為 `user_identities`（017）。要啟用，需在部署環境提供 `GOOGLE_CLIENT_ID`（public）與 `GOOGLE_CLIENT_SECRET`（`PROD_SECRETS_FILE`）。
+> **目前狀態：選用，預設停用。** server 端為 `src/oauth.ts`＋`routes/auth.ts` 的 `GET /auth/oauth/:provider/start|callback`，身分表為 `user_identities`（007，隨 #140 已在 production 套用）。要啟用，需在部署環境提供 `GOOGLE_CLIENT_ID`（public）與 `GOOGLE_CLIENT_SECRET`（`PROD_SECRETS_FILE`）。
 
 選用：兩個值**都**設齊才會在 `GET /api/auth/providers` 回 `true`、登入頁按鈕才可按；未設則 `/api/auth/oauth/<provider>/start` 直接 302 回 `/login?error=oauth_unavailable`。
 

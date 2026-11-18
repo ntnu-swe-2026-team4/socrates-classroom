@@ -60,7 +60,7 @@ interface User {
 }
 ```
 
-- 能力真相是 `users.can_manage_classes`／`is_admin`／`student_classroom_id`／`preview_classroom_id`；legacy `role` 欄已在 009 移除（002 曾以它 backfill `can_manage_classes`）。`POST /auth/login` 的 identifier 含 `@` 時不分大小寫比對 email，另加每帳號 10 次/分鐘的失敗限流（與每 IP 30 次/分鐘並行）
+- 能力真相是 `users.can_manage_classes`／`is_admin`／`student_classroom_id`／`preview_classroom_id`；legacy `role` 欄已在 008_web_next 移除（002 曾以它 backfill `can_manage_classes`）。`POST /auth/login` 的 identifier 含 `@` 時不分大小寫比對 email，另加每帳號 10 次/分鐘的失敗限流（與每 IP 30 次/分鐘並行）
 - 未登入者**不再建立 `users` 列**：班級碼（`POST /join`）與活動邀請（`POST /invites/:token/join`）的匿名加入都取得 `socrates_participant` cookie 與 `kind = 'guest'` participant（#133）；帳號登入後訪客紀錄認領合併（#60，P1）
 - `GET /me` → `User | null`；停用或 `session_version` 過期的 cookie 回 `null`（視同未登入），其他端點則分別回 403 `account_disabled`／401 `unauthorized`
 
