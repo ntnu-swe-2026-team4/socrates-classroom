@@ -24,7 +24,6 @@ import {
   type Ctx,
 } from "../http";
 import { assertSeats, type ClassroomRow } from "../services/members";
-
 const PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const PASSWORD_MAX = 256 - (256 % PASSWORD_ALPHABET.length);
 
@@ -87,39 +86,46 @@ export function accountRoutes() {
       if (new Set(names).size !== names.length) fail(409, "name_taken");
       await assertSeats(c.env.DB, classroom.id, names.length);
       const prefix = `${classroom.join_code}-`;
-      const start = await nextStudentNumber(c.env.DB, classroom.id, prefix);
       const at = nowIso();
       const lang = langOf(c);
-      const created: StudentCredential[] = [];
-      const statements = [];
-      for (const [index, name] of names.entries()) {
-        const id = newId("u_");
-        const username = `${prefix}${String(start + index).padStart(2, "0")}`;
-        const password = newPassword(8);
-        created.push({ id, name, username, password });
-        statements.push(
-          {
-            sql: "INSERT INTO users (id, name, username, password_hash, student_classroom_id, lang, created_at) VALUES ($id, $name, $username, $hash, $cid, $lang, $at)",
-            params: { id, name, username, hash: await hashPassword(password), cid: classroom.id, lang, at },
-          },
-          {
-            sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $id, $name, $at, $at)",
-            params: { cid: classroom.id, id, name, at },
-          },
-        );
-      }
-      try {
-        await batch(c.env.DB, statements);
-      } catch (error) {
-        const columns = uniqueViolationColumns(error);
-        if (columns.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
-        if (columns.length > 0) fail(409, "conflict");
-        throw error;
+      let created: StudentCredential[] = [];
+      for (let attempt = 0; ; attempt++) {
+        const start = await nextStudentNumber(c.env.DB, classroom.id, prefix);
+        created = [];
+        const statements = [];
+        for (const [index, name] of names.entries()) {
+          const id = newId("u_");
+          const username = `${prefix}${String(start + index).padStart(2, "0")}`;
+          const password = newPassword(8);
+          created.push({ id, name, username, password });
+          statements.push(
+            {
+              sql: "INSERT INTO users (id, name, username, password_hash, student_classroom_id, lang, created_at) VALUES ($id, $name, $username, $hash, $cid, $lang, $at)",
+              params: { id, name, username, hash: await hashPassword(password), cid: classroom.id, lang, at },
+            },
+            {
+              sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $id, $name, $at, $at)",
+              params: { cid: classroom.id, id, name, at },
+            },
+          );
+        }
+        try {
+          await batch(c.env.DB, statements);
+        } catch (error) {
+          const columns = uniqueViolationColumns(error);
+          const usernameClash = columns.some(([table, column]) => table === "users" && column === "username");
+          if (attempt < 2 && usernameClash) continue;
+          if (columns.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
+          if (columns.length > 0) fail(409, "conflict");
+          throw error;
+        }
+        break;
       }
       return c.json(created, 201);
     })
     .post("/classrooms/:id/students/:userId/password", async (c) => {
       const classroom = await ownedClassroom(c, c.req.param("id"));
+      const teacher = requireUser(c);
       const student = await one<{ id: string; name: string; username: string }>(
         c.env.DB,
         "SELECT id, name, username FROM users WHERE id = $uid AND student_classroom_id = $cid",
@@ -127,10 +133,22 @@ export function accountRoutes() {
       );
       if (!student) fail(404, "not_found");
       const password = newPassword(8);
-      await run(c.env.DB, "UPDATE users SET password_hash = $hash WHERE id = $id", {
-        id: student.id,
-        hash: await hashPassword(password),
-      });
+      await batch(c.env.DB, [
+        {
+          sql: "UPDATE users SET password_hash = $hash, session_version = session_version + 1 WHERE id = $id",
+          params: { id: student.id, hash: await hashPassword(password) },
+        },
+        {
+          sql: "INSERT INTO audit_log (id, created_at, actor_id, action, target_id) VALUES ($id, $at, $actor, $action, $target)",
+          params: {
+            id: newId("al_"),
+            at: nowIso(),
+            actor: teacher.id,
+            action: "student_password_reset",
+            target: student.id,
+          },
+        },
+      ]);
       const body: StudentCredential = { ...student, password };
       return c.json(body);
     })
