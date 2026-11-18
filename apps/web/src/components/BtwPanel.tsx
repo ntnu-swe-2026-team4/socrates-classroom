@@ -30,11 +30,7 @@ export const BtwPanel = forwardRef<BtwPanelHandle, BtwPanelProps>(function BtwPa
   const inputRef = useRef<HTMLInputElement>(null);
   const busy = phase !== "idle";
 
-  useImperativeHandle(ref, () => ({
-    ask(question: string) {
-      ask(question);
-    },
-  }));
+  useImperativeHandle(ref, () => ({ ask }));
 
   useLayoutEffect(() => {
     if (open) inputRef.current?.focus();
