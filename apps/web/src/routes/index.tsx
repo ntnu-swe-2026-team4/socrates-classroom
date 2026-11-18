@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { cn } from "@/components/ui";
 import { LANGS, setLocale, useI18n, type Locale, type MessageKey } from "@/i18n";
@@ -237,67 +237,68 @@ function LoopCanvas({
   fps: number;
   className?: string;
 }) {
-  const ref = useRef<HTMLCanvasElement>(null);
+  const attach = useCallback(
+    (view: HTMLCanvasElement | null) => {
+      if (!view) return;
+      const context = view.getContext("2d");
+      if (!context) return;
+      const sheet = pickSheet(sheets);
+      view.width = sheet.width;
+      view.height = sheet.height;
+      const image = new Image();
+      const still = prefersStill();
+      let ready = false;
+      let visible = false;
+      let raf = 0;
+      let started = 0;
+      let drawn = -1;
 
-  useEffect(() => {
-    const view = ref.current;
-    const context = view?.getContext("2d");
-    if (!view || !context) return;
-    const sheet = pickSheet(sheets);
-    view.width = sheet.width;
-    view.height = sheet.height;
-    const image = new Image();
-    const still = prefersStill();
-    let ready = false;
-    let visible = false;
-    let raf = 0;
-    let started = 0;
-    let drawn = -1;
+      const draw = (index: number) => {
+        if (index === drawn) return;
+        drawn = index;
+        context.drawImage(
+          image,
+          (index % columns) * sheet.width,
+          Math.floor(index / columns) * sheet.height,
+          sheet.width,
+          sheet.height,
+          0,
+          0,
+          sheet.width,
+          sheet.height,
+        );
+      };
+      const tick = (now: number) => {
+        if (!started) started = now;
+        draw(Math.floor(((now - started) / 1000) * fps) % frames);
+        raf = visible ? requestAnimationFrame(tick) : 0;
+      };
+      const sync = () => {
+        if (!ready) return;
+        if (drawn < 0) draw(0);
+        if (!still && visible && !raf) raf = requestAnimationFrame(tick);
+      };
+      let asked = false;
+      const unwatch = whileVisible(view, "50% 0px", (next) => {
+        visible = next;
+        if (visible && !asked) {
+          asked = true;
+          loadSheet(image, sheet.src, () => {
+            ready = true;
+            sync();
+          });
+        }
+        sync();
+      });
+      return () => {
+        unwatch();
+        cancelAnimationFrame(raf);
+      };
+    },
+    [sheets, frames, columns, fps],
+  );
 
-    const draw = (index: number) => {
-      if (index === drawn) return;
-      drawn = index;
-      context.drawImage(
-        image,
-        (index % columns) * sheet.width,
-        Math.floor(index / columns) * sheet.height,
-        sheet.width,
-        sheet.height,
-        0,
-        0,
-        sheet.width,
-        sheet.height,
-      );
-    };
-    const tick = (now: number) => {
-      if (!started) started = now;
-      draw(Math.floor(((now - started) / 1000) * fps) % frames);
-      raf = visible ? requestAnimationFrame(tick) : 0;
-    };
-    const sync = () => {
-      if (!ready) return;
-      if (drawn < 0) draw(0);
-      if (!still && visible && !raf) raf = requestAnimationFrame(tick);
-    };
-    let asked = false;
-    const unwatch = whileVisible(view, "50% 0px", (next) => {
-      visible = next;
-      if (visible && !asked) {
-        asked = true;
-        loadSheet(image, sheet.src, () => {
-          ready = true;
-          sync();
-        });
-      }
-      sync();
-    });
-    return () => {
-      unwatch();
-      cancelAnimationFrame(raf);
-    };
-  }, [sheets, frames, columns, fps]);
-
-  return <canvas ref={ref} className={className} />;
+  return <canvas ref={attach} className={className} />;
 }
 
 function Inset({
@@ -324,11 +325,9 @@ function Inset({
 }
 
 function EyesInset({ label }: { label: string }) {
-  const box = useRef<HTMLButtonElement>(null);
   const [colour, setColour] = useState(0);
 
-  useEffect(() => {
-    const view = box.current;
+  const attach = useCallback((view: HTMLButtonElement | null) => {
     if (!view) return;
     const irises = Array.from(view.querySelectorAll<HTMLElement>("[data-iris]"));
     const still = prefersStill();
@@ -378,7 +377,7 @@ function EyesInset({ label }: { label: string }) {
   const mask = `url(${asset("eyes-mask")})`;
   return (
     <button
-      ref={box}
+      ref={attach}
       type="button"
       aria-label={label}
       title={label}
@@ -461,102 +460,103 @@ function CursorTag({
 }
 
 function WindCanvas({ seed, className }: { seed: number; className?: string }) {
-  const ref = useRef<HTMLCanvasElement>(null);
+  const attach = useCallback(
+    (view: HTMLCanvasElement | null) => {
+      if (!view) return;
+      const context = view.getContext("2d");
+      if (!context) return;
+      const ink = getComputedStyle(view).color;
+      const still = prefersStill();
+      const random = seeded(seed);
+      const gusts = Array.from({ length: 5 }, (_, index) => ({
+        start: index * 0.9 + random() * 1.2,
+        span: 1.5 + random() * 1.3,
+        rest: 0.9 + random() * 2.6,
+        lane: random(),
+        bow: (random() - 0.5) * 0.03,
+        lines: Array.from({ length: 3 + Math.floor(random() * 3) }, (_, row) => ({
+          row: row - 2 + (random() - 0.5) * 0.5,
+          lead: random() * 0.5,
+          length: 0.18 + random() * 0.3,
+          weight: 0.5 + random() * 0.8,
+        })),
+      }));
+      const STEPS = 8;
+      let visible = false;
+      let raf = 0;
 
-  useEffect(() => {
-    const view = ref.current;
-    const context = view?.getContext("2d");
-    if (!view || !context) return;
-    const ink = getComputedStyle(view).color;
-    const still = prefersStill();
-    const random = seeded(seed);
-    const gusts = Array.from({ length: 5 }, (_, index) => ({
-      start: index * 0.9 + random() * 1.2,
-      span: 1.5 + random() * 1.3,
-      rest: 0.9 + random() * 2.6,
-      lane: random(),
-      bow: (random() - 0.5) * 0.03,
-      lines: Array.from({ length: 3 + Math.floor(random() * 3) }, (_, row) => ({
-        row: row - 2 + (random() - 0.5) * 0.5,
-        lead: random() * 0.5,
-        length: 0.18 + random() * 0.3,
-        weight: 0.5 + random() * 0.8,
-      })),
-    }));
-    const STEPS = 8;
-    let visible = false;
-    let raf = 0;
-
-    const draw = (time: number) => {
-      const width = view.width;
-      const height = view.height;
-      const density = width / Math.max(1, view.clientWidth);
-      context.clearRect(0, 0, width, height);
-      context.fillStyle = ink;
-      for (const gust of gusts) {
-        const cycle = gust.span + gust.rest;
-        const since = time - gust.start;
-        const local = ((since % cycle) + cycle) % cycle;
-        if (local > gust.span) continue;
-        const lane = (gust.lane + Math.abs(Math.floor(since / cycle)) * 0.381) % 1;
-        const progress = local / gust.span;
-        for (const line of gust.lines) {
-          const length = line.length * width;
-          const head = -length + (width + length) * (progress * (1 + line.lead) - line.lead / 2);
-          if (head > width || head + length < 0) continue;
-          const base = (0.06 + lane * 0.88) * height + line.row * Math.max(0.016 * height, 7 * density);
-          const edge: Array<[number, number, number]> = [];
-          for (let step = 0; step <= STEPS; step += 1) {
-            const s = step / STEPS;
-            const swell = Math.sin(Math.PI * s);
-            edge.push([head + length * s, base + gust.bow * height * swell, line.weight * density * swell ** 0.7]);
+      const draw = (time: number) => {
+        const width = view.width;
+        const height = view.height;
+        const density = width / Math.max(1, view.clientWidth);
+        context.clearRect(0, 0, width, height);
+        context.fillStyle = ink;
+        for (const gust of gusts) {
+          const cycle = gust.span + gust.rest;
+          const since = time - gust.start;
+          const local = ((since % cycle) + cycle) % cycle;
+          if (local > gust.span) continue;
+          const lane = (gust.lane + Math.abs(Math.floor(since / cycle)) * 0.381) % 1;
+          const progress = local / gust.span;
+          for (const line of gust.lines) {
+            const length = line.length * width;
+            const head = -length + (width + length) * (progress * (1 + line.lead) - line.lead / 2);
+            if (head > width || head + length < 0) continue;
+            const base = (0.06 + lane * 0.88) * height + line.row * Math.max(0.016 * height, 7 * density);
+            const edge: Array<[number, number, number]> = [];
+            for (let step = 0; step <= STEPS; step += 1) {
+              const s = step / STEPS;
+              const swell = Math.sin(Math.PI * s);
+              edge.push([head + length * s, base + gust.bow * height * swell, line.weight * density * swell ** 0.7]);
+            }
+            context.beginPath();
+            for (const [x, y, half] of edge) context.lineTo(x, y - half);
+            for (let step = STEPS; step >= 0; step -= 1) {
+              const [x, y, half] = edge[step]!;
+              context.lineTo(x, y + half);
+            }
+            context.closePath();
+            context.fill();
           }
-          context.beginPath();
-          for (const [x, y, half] of edge) context.lineTo(x, y - half);
-          for (let step = STEPS; step >= 0; step -= 1) {
-            const [x, y, half] = edge[step]!;
-            context.lineTo(x, y + half);
-          }
-          context.closePath();
-          context.fill();
         }
-      }
-    };
-    let painted = 0;
-    const tick = (now: number) => {
-      if (now - painted >= PAINT_MS) {
-        painted = now;
-        draw(now / 1000);
-      }
-      raf = visible && !still ? requestAnimationFrame(tick) : 0;
-    };
-    const wake = () => {
-      if (!raf && visible && !still) raf = requestAnimationFrame(tick);
-    };
-    const resize = () => {
-      const ratio = Math.min(window.devicePixelRatio || 1, 2);
-      const width = Math.min(1100, Math.round(view.clientWidth * ratio));
-      view.width = width;
-      view.height = Math.round((width * view.clientHeight) / Math.max(1, view.clientWidth));
-      draw(still ? 2.4 : performance.now() / 1000);
-    };
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
-    observer?.observe(view);
-    resize();
-    const unwatch = whileVisible(view, "20% 0px", (next) => {
-      visible = next;
-      wake();
-    });
-    return () => {
-      observer?.disconnect();
-      unwatch();
-      cancelAnimationFrame(raf);
-    };
-  }, [seed]);
+      };
+      let painted = 0;
+      const tick = (now: number) => {
+        if (now - painted >= PAINT_MS) {
+          painted = now;
+          draw(now / 1000);
+        }
+        raf = visible && !still ? requestAnimationFrame(tick) : 0;
+      };
+      const wake = () => {
+        if (!raf && visible && !still) raf = requestAnimationFrame(tick);
+      };
+      const resize = () => {
+        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        const width = Math.min(1100, Math.round(view.clientWidth * ratio));
+        view.width = width;
+        view.height = Math.round((width * view.clientHeight) / Math.max(1, view.clientWidth));
+        draw(still ? 2.4 : performance.now() / 1000);
+      };
+      const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
+      observer?.observe(view);
+      resize();
+      const unwatch = whileVisible(view, "20% 0px", (next) => {
+        visible = next;
+        wake();
+      });
+      return () => {
+        observer?.disconnect();
+        unwatch();
+        cancelAnimationFrame(raf);
+      };
+    },
+    [seed],
+  );
 
   return (
     <canvas
-      ref={ref}
+      ref={attach}
       aria-hidden
       data-wind
       className={cn("pointer-events-none absolute inset-0 size-full text-comic-ink", className)}
@@ -565,10 +565,7 @@ function WindCanvas({ seed, className }: { seed: number; className?: string }) {
 }
 
 function AgoraStage({ children }: { children?: ReactNode }) {
-  const stage = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const board = stage.current;
+  const attach = useCallback((board: HTMLDivElement | null) => {
     if (!board) return;
     const actors = Array.from(board.querySelectorAll<HTMLElement>("[data-actor]"));
     const releases = actors.map((node) => {
@@ -626,7 +623,7 @@ function AgoraStage({ children }: { children?: ReactNode }) {
         className="relative bg-comic-paper [clip-path:polygon(12%_0,88%_0,100%_100%,0_100%)]"
         style={{ aspectRatio: "1100 / 1320" }}
       >
-        <div ref={stage} data-scene className="absolute inset-0">
+        <div ref={attach} data-scene className="absolute inset-0">
           <img
             src={asset("agora-plate")}
             alt=""
@@ -680,10 +677,7 @@ function AgoraStage({ children }: { children?: ReactNode }) {
 }
 
 function DesertStage({ children }: { children?: ReactNode }) {
-  const stage = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const board = stage.current;
+  const attach = useCallback((board: HTMLDivElement | null) => {
     if (!board) return;
     const unwatch = whileVisible(board, "10% 0px", (visible) => {
       board.dataset.live = String(visible);
@@ -753,7 +747,7 @@ function DesertStage({ children }: { children?: ReactNode }) {
           className="relative overflow-hidden bg-comic-paper [clip-path:polygon(calc(50%_-_var(--joint)/2_+_3px)_0,calc(50%_+_var(--joint)/2_-_3px)_0,calc(100%_-_1px)_100%,1px_100%)]"
           style={{ aspectRatio: "8 / 5" }}
         >
-          <div ref={stage} data-scene className="absolute inset-0">
+          <div ref={attach} data-scene className="absolute inset-0">
             <img
               src={asset("desert-poster")}
               alt=""
@@ -892,121 +886,122 @@ function CrowdStage({ children }: { children?: ReactNode }) {
 }
 
 function InkFlames({ flip = false }: { flip?: boolean }) {
-  const ref = useRef<HTMLCanvasElement>(null);
+  const attach = useCallback(
+    (view: HTMLCanvasElement | null) => {
+      if (!view) return;
+      const context = view.getContext("2d");
+      if (!context) return;
+      const ink = getComputedStyle(view).color;
+      const still = prefersStill();
+      const random = seeded(flip ? 29 : 17);
+      const lines: Array<{ phase: number; jitter: number; rate: number; nudge: number; ticks: number[] }> = [];
+      const STEPS = 16;
+      const TIERS = 4;
+      let pitch = 8;
+      let density = 1;
+      let visible = false;
+      let raf = 0;
 
-  useEffect(() => {
-    const view = ref.current;
-    const context = view?.getContext("2d");
-    if (!view || !context) return;
-    const ink = getComputedStyle(view).color;
-    const still = prefersStill();
-    const random = seeded(flip ? 29 : 17);
-    const lines: Array<{ phase: number; jitter: number; rate: number; nudge: number; ticks: number[] }> = [];
-    const STEPS = 16;
-    const TIERS = 4;
-    let pitch = 8;
-    let density = 1;
-    let visible = false;
-    let raf = 0;
-
-    const draw = (time: number) => {
-      const width = view.width;
-      const height = view.height;
-      const count = Math.ceil(width / pitch) + 1;
-      while (lines.length < count) {
-        lines.push({
-          phase: random() * 6.28,
-          jitter: random(),
-          rate: 0.7 + random() * 0.9,
-          nudge: random() - 0.5,
-          ticks: Array.from({ length: TIERS + 1 }, () => random()),
-        });
-      }
-      context.clearRect(0, 0, width, height);
-      context.fillStyle = ink;
-      const lead = height * 0.1;
-      const row = height * 0.055;
-      for (let index = 0; index < count; index += 1) {
-        const line = lines[index]!;
-        const x = (index + 0.5 + line.nudge * 0.28) * pitch;
-        const u = x / width;
-        const roll = 0.5 + 0.5 * Math.sin(u * 7.3 + time * 0.5 + 1.7 * Math.sin(u * 2.9 - time * 0.23));
-        const ripple = 0.5 + 0.5 * Math.sin(u * 31 - time * 1.1 + line.phase * 0.4);
-        const lick = 0.5 + 0.5 * Math.sin(time * 2.4 * line.rate + line.phase);
-        const start = lead + height * (0.24 * roll + 0.1 * ripple + 0.2 * line.jitter ** 2.2 + 0.035 * lick);
-        const drift = u * 11 + line.phase * 0.16;
-        const girth = 0.15 + 0.13 * line.ticks[TIERS]!;
-        const edge: Array<[number, number, number]> = [];
-        for (let step = 0; step <= STEPS; step += 1) {
-          const s = step / STEPS;
-          const y = start + (height - start) * s;
-          const sway = pitch * (0.34 - 0.2 * s) * Math.sin((y / density) * 0.036 - time * 2.7 + drift);
-          const swell = 0.045 * Math.sin((y / density) * 0.021 + line.phase + time * 0.9);
-          edge.push([
-            x + sway,
-            y,
-            pitch * (girth * Math.min(1, s * 9) + 0.2 * s + 0.24 * smooth((s - 0.45) / 0.55) + swell),
-          ]);
+      const draw = (time: number) => {
+        const width = view.width;
+        const height = view.height;
+        const count = Math.ceil(width / pitch) + 1;
+        while (lines.length < count) {
+          lines.push({
+            phase: random() * 6.28,
+            jitter: random(),
+            rate: 0.7 + random() * 0.9,
+            nudge: random() - 0.5,
+            ticks: Array.from({ length: TIERS + 1 }, () => random()),
+          });
         }
-        context.beginPath();
-        for (const [cx, y, half] of edge) context.lineTo(cx - half, y);
-        for (let step = STEPS; step >= 0; step -= 1) {
-          const [cx, y, half] = edge[step]!;
-          context.lineTo(cx + half, y);
+        context.clearRect(0, 0, width, height);
+        context.fillStyle = ink;
+        const lead = height * 0.1;
+        const row = height * 0.055;
+        for (let index = 0; index < count; index += 1) {
+          const line = lines[index]!;
+          const x = (index + 0.5 + line.nudge * 0.28) * pitch;
+          const u = x / width;
+          const roll = 0.5 + 0.5 * Math.sin(u * 7.3 + time * 0.5 + 1.7 * Math.sin(u * 2.9 - time * 0.23));
+          const ripple = 0.5 + 0.5 * Math.sin(u * 31 - time * 1.1 + line.phase * 0.4);
+          const lick = 0.5 + 0.5 * Math.sin(time * 2.4 * line.rate + line.phase);
+          const start = lead + height * (0.24 * roll + 0.1 * ripple + 0.2 * line.jitter ** 2.2 + 0.035 * lick);
+          const drift = u * 11 + line.phase * 0.16;
+          const girth = 0.15 + 0.13 * line.ticks[TIERS]!;
+          const edge: Array<[number, number, number]> = [];
+          for (let step = 0; step <= STEPS; step += 1) {
+            const s = step / STEPS;
+            const y = start + (height - start) * s;
+            const sway = pitch * (0.34 - 0.2 * s) * Math.sin((y / density) * 0.036 - time * 2.7 + drift);
+            const swell = 0.045 * Math.sin((y / density) * 0.021 + line.phase + time * 0.9);
+            edge.push([
+              x + sway,
+              y,
+              pitch * (girth * Math.min(1, s * 9) + 0.2 * s + 0.24 * smooth((s - 0.45) / 0.55) + swell),
+            ]);
+          }
+          context.beginPath();
+          for (const [cx, y, half] of edge) context.lineTo(cx - half, y);
+          for (let step = STEPS; step >= 0; step -= 1) {
+            const [cx, y, half] = edge[step]!;
+            context.lineTo(cx + half, y);
+          }
+          context.closePath();
+          context.fill();
+          let cursor = start;
+          for (let tier = 0; tier < TIERS; tier += 1) {
+            const chance = line.ticks[tier]!;
+            const reach = row * (0.95 - tier * 0.17) * (0.45 + 0.75 * line.ticks[tier + 1]!) * (0.75 + 0.25 * lick);
+            cursor -= row * (0.3 + 0.55 * chance) + reach;
+            if (cursor < 0) break;
+            if (chance < 0.1 + tier * 0.17) continue;
+            const half = pitch * girth * (0.95 - tier * 0.17);
+            const lean = pitch * 0.3 * Math.sin((cursor / density) * 0.036 - time * 2.7 + drift);
+            context.fillRect(x + lean - half, cursor, half * 2, reach);
+          }
         }
-        context.closePath();
-        context.fill();
-        let cursor = start;
-        for (let tier = 0; tier < TIERS; tier += 1) {
-          const chance = line.ticks[tier]!;
-          const reach = row * (0.95 - tier * 0.17) * (0.45 + 0.75 * line.ticks[tier + 1]!) * (0.75 + 0.25 * lick);
-          cursor -= row * (0.3 + 0.55 * chance) + reach;
-          if (cursor < 0) break;
-          if (chance < 0.1 + tier * 0.17) continue;
-          const half = pitch * girth * (0.95 - tier * 0.17);
-          const lean = pitch * 0.3 * Math.sin((cursor / density) * 0.036 - time * 2.7 + drift);
-          context.fillRect(x + lean - half, cursor, half * 2, reach);
+        context.fillRect(0, height - 3 * density, width, 3 * density + 1);
+      };
+      let painted = 0;
+      const tick = (now: number) => {
+        if (now - painted >= PAINT_MS) {
+          painted = now;
+          draw(now / 1000);
         }
-      }
-      context.fillRect(0, height - 3 * density, width, 3 * density + 1);
-    };
-    let painted = 0;
-    const tick = (now: number) => {
-      if (now - painted >= PAINT_MS) {
-        painted = now;
-        draw(now / 1000);
-      }
-      raf = visible && !still ? requestAnimationFrame(tick) : 0;
-    };
-    const wake = () => {
-      if (!raf && visible && !still) raf = requestAnimationFrame(tick);
-    };
-    const resize = () => {
-      const ratio = Math.min(window.devicePixelRatio || 1, 2);
-      const width = Math.min(1600, Math.round(view.clientWidth * ratio));
-      view.width = width;
-      view.height = Math.round((width * view.clientHeight) / Math.max(1, view.clientWidth));
-      density = width / Math.max(1, view.clientWidth);
-      pitch = (view.clientWidth < 720 ? 6 : 7.5) * density;
-      draw(performance.now() / 1000);
-    };
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
-    observer?.observe(view);
-    resize();
-    const unwatch = whileVisible(view, "20% 0px", (next) => {
-      visible = next;
-      wake();
-    });
-    return () => {
-      observer?.disconnect();
-      unwatch();
-      cancelAnimationFrame(raf);
-    };
-  }, [flip]);
+        raf = visible && !still ? requestAnimationFrame(tick) : 0;
+      };
+      const wake = () => {
+        if (!raf && visible && !still) raf = requestAnimationFrame(tick);
+      };
+      const resize = () => {
+        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        const width = Math.min(1600, Math.round(view.clientWidth * ratio));
+        view.width = width;
+        view.height = Math.round((width * view.clientHeight) / Math.max(1, view.clientWidth));
+        density = width / Math.max(1, view.clientWidth);
+        pitch = (view.clientWidth < 720 ? 6 : 7.5) * density;
+        draw(performance.now() / 1000);
+      };
+      const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
+      observer?.observe(view);
+      resize();
+      const unwatch = whileVisible(view, "20% 0px", (next) => {
+        visible = next;
+        wake();
+      });
+      return () => {
+        observer?.disconnect();
+        unwatch();
+        cancelAnimationFrame(raf);
+      };
+    },
+    [flip],
+  );
 
   return (
     <canvas
-      ref={ref}
+      ref={attach}
       aria-hidden
       className={cn(
         "pointer-events-none absolute inset-x-0 w-full text-comic-ink",
@@ -1018,7 +1013,6 @@ function InkFlames({ flip = false }: { flip?: boolean }) {
 }
 
 function Tornado({ label, ariaLabel, onAwake }: { label: string; ariaLabel: string; onAwake: () => void }) {
-  const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const probe = useRef<HTMLSpanElement>(null);
   const layer = useRef<HTMLSpanElement>(null);
@@ -1027,14 +1021,14 @@ function Tornado({ label, ariaLabel, onAwake }: { label: string; ariaLabel: stri
   const awake = useRef(onAwake);
   awake.current = onAwake;
 
-  useEffect(() => {
-    const frame = box.current;
+  const attach = useCallback((frame: HTMLDivElement | null) => {
+    if (!frame) return;
     const view = canvas.current;
     const swatch = probe.current;
     const follower = layer.current;
     const button = tag.current;
     const context = view?.getContext("2d");
-    if (!frame || !view || !swatch || !follower || !button || !context) return;
+    if (!view || !swatch || !follower || !button || !context) return;
     const colours = getComputedStyle(swatch);
     const ink = colours.backgroundColor;
     const paper = colours.color;
@@ -1296,7 +1290,7 @@ function Tornado({ label, ariaLabel, onAwake }: { label: string; ariaLabel: stri
   }, []);
 
   return (
-    <div ref={box} className="relative aspect-[3/5] cursor-pointer overflow-hidden select-none md:aspect-[16/10]">
+    <div ref={attach} className="relative aspect-[3/5] cursor-pointer overflow-hidden select-none md:aspect-[16/10]">
       <canvas ref={canvas} className="absolute inset-0 size-full" />
       <span
         ref={probe}
@@ -1319,20 +1313,19 @@ function HoldTurn({
   intro: ReactNode;
   caption: ReactNode;
 }) {
-  const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const layer = useRef<HTMLSpanElement>(null);
   const tag = useRef<HTMLButtonElement>(null);
   const [pressed, setPressed] = useState(false);
   const [done, setDone] = useState(false);
 
-  useEffect(() => {
-    const frame = box.current;
+  const attach = useCallback((frame: HTMLDivElement | null) => {
+    if (!frame) return;
     const view = canvas.current;
     const follower = layer.current;
     const button = tag.current;
     const context = view?.getContext("2d");
-    if (!frame || !view || !follower || !button || !context) return;
+    if (!view || !follower || !button || !context) return;
     const sheet = pickSheet(TURN);
     view.width = sheet.width;
     view.height = sheet.height;
@@ -1489,7 +1482,7 @@ function HoldTurn({
       ))}
       <div className="relative rounded-full border-[3px] border-comic-ink bg-comic-paper p-[3.5%]">
         <div
-          ref={box}
+          ref={attach}
           className="relative aspect-square cursor-pointer overflow-hidden rounded-full border-[3px] border-comic-ink bg-comic-ochre select-none"
         >
           <div data-scene className="absolute inset-0">
@@ -1530,12 +1523,12 @@ function HoldTurn({
 function ComicLanding() {
   const { t, locale } = useI18n();
   const navigate = useNavigate();
-  const scroller = useRef<HTMLDivElement>(null);
   const [code, setCode] = useState("");
   const [awake, setAwake] = useState(false);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    const root = scroller.current;
+  const attach = useCallback((root: HTMLDivElement | null) => {
+    scrollerRef.current = root;
     if (!root) return;
     const scenes = Array.from(root.querySelectorAll<HTMLElement>("[data-scene]")).map((node) => ({
       node,
@@ -1605,7 +1598,7 @@ function ComicLanding() {
   }, []);
 
   const skipToEnd = () => {
-    const root = scroller.current;
+    const root = scrollerRef.current;
     root?.scrollTo({ top: root.scrollHeight, behavior: prefersStill() ? "auto" : "smooth" });
   };
   const join = () => {
@@ -1614,7 +1607,7 @@ function ComicLanding() {
   };
 
   return (
-    <div ref={scroller} className="h-dvh overflow-x-hidden overflow-y-auto bg-comic-paper text-comic-ink">
+    <div ref={attach} className="h-dvh overflow-x-hidden overflow-y-auto bg-comic-paper text-comic-ink">
       <header className="fixed inset-x-0 top-0 z-30 flex h-16 items-center px-4 md:px-6">
         <div className={PLATE}>
           <span className="flex w-9 items-center justify-center bg-comic-ink font-serif text-[19px] leading-none text-comic-paper">
