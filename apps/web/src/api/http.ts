@@ -96,11 +96,14 @@ export interface Api {
   listTeacherKeys(): Promise<TeacherKeyStatus[]>;
   listKeyProviders(): Promise<KeyProviderInfo[]>;
   listKeyProviderModels(provider: string): Promise<KeyModelInfo[]>;
-  putTeacherKey(
+  putTeacherKey(provider: string, key: string): Promise<{ provider: string; last4: string }>;
+  putTeacherKeyModel(
     provider: string,
     model: string,
-    key: string,
-  ): Promise<{ provider: string; model: string; last4: string }>;
+    maxConcurrency?: number | null,
+  ): Promise<{ provider: string; model: string; maxConcurrency: number | null }>;
+  deleteTeacherKeyModel(provider: string, model: string): Promise<void>;
+  orderTeacherKeyModels(provider: string, models: string[]): Promise<void>;
   deleteTeacherKey(provider: string): Promise<void>;
   orderTeacherKeys(providers: string[]): Promise<void>;
   devAccounts(): Promise<DevAccounts>;
@@ -344,10 +347,27 @@ export const httpApi: Api = {
   async listKeyProviderModels(provider) {
     return unwrap(await client.settings.keys.providers[":provider"].models.$get({ param: { provider } }));
   },
-  async putTeacherKey(provider, model, key) {
-    return raw<{ provider: string; model: string; last4: string }>(`/settings/keys/${encodeURIComponent(provider)}`, {
+  async putTeacherKey(provider, key) {
+    return raw<{ provider: string; last4: string }>(`/settings/keys/${encodeURIComponent(provider)}`, {
       method: "PUT",
-      json: { provider, model, key },
+      json: { key },
+    });
+  },
+  async putTeacherKeyModel(provider, model, maxConcurrency) {
+    return raw<{ provider: string; model: string; maxConcurrency: number | null }>(
+      `/settings/keys/${encodeURIComponent(provider)}/models`,
+      { method: "PUT", json: maxConcurrency === undefined ? { model } : { model, maxConcurrency } },
+    );
+  },
+  async deleteTeacherKeyModel(provider, model) {
+    await raw<void>(`/settings/keys/${encodeURIComponent(provider)}/models/${encodeURIComponent(model)}`, {
+      method: "DELETE",
+    });
+  },
+  async orderTeacherKeyModels(provider, models) {
+    await raw<void>(`/settings/keys/${encodeURIComponent(provider)}/models/order`, {
+      method: "PUT",
+      json: { models },
     });
   },
   async deleteTeacherKey(provider) {
