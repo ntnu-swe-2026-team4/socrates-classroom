@@ -14,7 +14,18 @@ import {
 import { getCookie } from "hono/cookie";
 import { all, batch, one, run, type Db, type SqlEntry } from "../db/d1";
 import { SESSION_COOKIE, enterPreviewSession, leavePreviewSession, startSession } from "../auth";
-import { fail, langOf, newId, nowIso, parseBody, requireCapability, requireUser, type AppEnv, type Ctx } from "../http";
+import {
+  fail,
+  langOf,
+  newId,
+  nowIso,
+  parseBody,
+  requireCapability,
+  requireUser,
+  uniqueViolationColumns,
+  type AppEnv,
+  type Ctx,
+} from "../http";
 import {
   TRIAL_LIMIT_VARS,
   classroomAccess,
@@ -206,7 +217,12 @@ export function classroomsRoutes() {
             "INSERT INTO classrooms (id, name, teacher_id, join_code, current_activity_id, created_at) VALUES ($id, $name, $tid, $code, NULL, $at)",
             { id, name: input.name ?? UNTITLED_COURSE[langOf(c)], tid: user.id, code, at },
           );
-        } catch {
+        } catch (error) {
+          if (
+            !uniqueViolationColumns(error).some(([table, column]) => table === "classrooms" && column === "join_code")
+          ) {
+            throw error;
+          }
           continue;
         }
         return c.json({ classroomId: id, code, url: `${baseUrl(c.env)}/join/${code}` }, 201);
