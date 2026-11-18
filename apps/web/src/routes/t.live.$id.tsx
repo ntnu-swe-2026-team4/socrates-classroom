@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BellRing, MessageSquare, Minus, Plus, X } from "lucide-react";
@@ -43,15 +43,7 @@ function LivePage() {
   const known = useRef<Set<string> | null>(null);
 
   const students = board.data?.students;
-  const sorted = useMemo(() => {
-    const now = Date.now();
-    return [...(students ?? [])].sort(
-      (a, b) => attention(a, now) - attention(b, now) || a.rounds - b.rounds || a.name.localeCompare(b.name),
-    );
-  }, [students]);
-
-  useEffect(() => {
-    if (!students) return;
+  if (students) {
     const now = Date.now();
     const current: Alert[] = [];
     for (const student of students) {
@@ -76,12 +68,20 @@ function LivePage() {
     }
     if (known.current === null) {
       known.current = new Set(current.map((alert) => alert.key));
-      return;
+    } else {
+      const fresh = current.filter((alert) => !known.current?.has(alert.key));
+      if (fresh.length > 0) {
+        for (const alert of fresh) known.current.add(alert.key);
+        setAlerts((list) => [...fresh, ...list].slice(0, 6));
+      }
     }
-    const fresh = current.filter((alert) => !known.current?.has(alert.key));
-    if (fresh.length === 0) return;
-    for (const alert of fresh) known.current.add(alert.key);
-    setAlerts((list) => [...fresh, ...list].slice(0, 6));
+  }
+
+  const sorted = useMemo(() => {
+    const now = Date.now();
+    return [...(students ?? [])].sort(
+      (a, b) => attention(a, now) - attention(b, now) || a.rounds - b.rounds || a.name.localeCompare(b.name),
+    );
   }, [students]);
 
   const backToRoom = () =>

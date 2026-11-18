@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight, Ghost, UserRound } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,6 +12,9 @@ export const Route = createFileRoute("/join/$code")({
   validateSearch: (search: Record<string, unknown>): { draft?: string } => ({
     draft: typeof search.draft === "string" ? search.draft : undefined,
   }),
+  loader: () => {
+    fetch("/socrates.glb").catch(() => {});
+  },
   component: JoinPage,
 });
 
@@ -42,10 +45,6 @@ function JoinPage() {
       await navigate({ to: "/login", search: { next: loginHref } });
     }
   }
-
-  useEffect(() => {
-    fetch("/socrates.glb").catch(() => {});
-  }, []);
 
   const topic = info.data?.topic;
   const ready = (signedIn || name.trim().length > 0) && tos && !submitting;
