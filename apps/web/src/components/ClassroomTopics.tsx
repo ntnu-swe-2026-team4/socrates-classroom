@@ -121,7 +121,10 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
             <Input
               value={direction}
               placeholder={t("setup_topic_direction")}
-              onChange={(event) => setDirection(event.target.value)}
+              onChange={(event) => {
+                setDirection(event.target.value);
+                generated.reset();
+              }}
             />
             <Button
               variant="outline"

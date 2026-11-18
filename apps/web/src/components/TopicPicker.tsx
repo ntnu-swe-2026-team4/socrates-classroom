@@ -28,19 +28,28 @@ export function TopicPicker({
     mutationFn: async () => {
       let topicId: string;
       if (source === "custom") {
-        topicId = (await api.createTopic({ title: customTitle.trim(), statement: customStatement.trim(), prompts: [] }))
-          .id;
+        const title = customTitle.trim();
+        const statement = customStatement.trim();
+        const existing = (topics.data ?? []).find((topic) => topic.title === title && topic.statement === statement);
+        topicId = existing ? existing.id : (await api.createTopic({ title, statement, prompts: [] })).id;
       } else {
         const generatedTopic = (generated.data ?? []).find((topic) => topic.id === picked);
-        topicId = generatedTopic
-          ? (
-              await api.createTopic({
-                title: generatedTopic.title,
-                statement: generatedTopic.statement,
-                prompts: generatedTopic.prompts,
-              })
-            ).id
-          : picked!;
+        const existing = generatedTopic
+          ? (topics.data ?? []).find(
+              (topic) => topic.title === generatedTopic.title && topic.statement === generatedTopic.statement,
+            )
+          : undefined;
+        topicId = existing
+          ? existing.id
+          : generatedTopic
+            ? (
+                await api.createTopic({
+                  title: generatedTopic.title,
+                  statement: generatedTopic.statement,
+                  prompts: generatedTopic.prompts,
+                })
+              ).id
+            : picked!;
       }
       await onPicked(topicId);
     },

@@ -346,7 +346,7 @@ export function StoaField({ reserve, className }: { reserve: number; className?:
     (cv: HTMLCanvasElement | null) => {
       if (!cv) return;
       const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const ink = inkFromColor(getComputedStyle(cv).color);
+      let ink = inkFromColor(getComputedStyle(cv).color);
       const t0 = performance.now();
       const pointer: Pointer = { x: 0, y: 0, active: false };
       const client = { x: 0, y: 0, active: false };
@@ -369,6 +369,11 @@ export function StoaField({ reserve, className }: { reserve: number; className?:
       };
       const observer = new ResizeObserver(rebuild);
       observer.observe(cv);
+      const themeObserver = new MutationObserver(() => {
+        ink = inkFromColor(getComputedStyle(cv).color);
+        if (field && still) drawField(field, 0, ink, pointer, 0);
+      });
+      themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
       rebuild();
       if (!still) {
         window.addEventListener("pointermove", track, { passive: true });
@@ -393,6 +398,7 @@ export function StoaField({ reserve, className }: { reserve: number; className?:
       }
       return () => {
         observer.disconnect();
+        themeObserver.disconnect();
         cancelAnimationFrame(frame);
         window.removeEventListener("pointermove", track);
         window.removeEventListener("pointerdown", track);
