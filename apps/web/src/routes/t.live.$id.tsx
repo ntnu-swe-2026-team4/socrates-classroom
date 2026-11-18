@@ -1,3 +1,4 @@
+import { meOf } from "@/api/me";
 import { useMemo, useState } from "react";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,9 +11,7 @@ import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/t/live/$id")({
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient
-      .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
-      .catch(() => null);
+    const me = await meOf(context.queryClient);
     if (!me || me.guest) throw redirect({ to: "/classrooms" });
   },
   component: LivePage,

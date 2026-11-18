@@ -1,3 +1,4 @@
+import { meOf } from "@/api/me";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TeacherKeyStatus } from "@socrates/shared";
@@ -40,9 +41,7 @@ export const Route = createFileRoute("/settings")({
     section: SECTIONS.find((item) => item.id === search.section && item.id !== "general")?.id,
   }),
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient
-      .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
-      .catch(() => null);
+    const me = await meOf(context.queryClient);
     if (me?.preview && me.previewClassroomId) {
       throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: me.previewClassroomId } });
     }

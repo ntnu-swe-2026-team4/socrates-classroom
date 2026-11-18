@@ -1,3 +1,4 @@
+import { meOf } from "@/api/me";
 import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChartNoAxesColumn } from "lucide-react";
@@ -18,9 +19,7 @@ export const Route = createFileRoute("/dialogue")({
     term: typeof search.term === "string" ? search.term : undefined,
   }),
   beforeLoad: async ({ search, context, location }) => {
-    const me = await context.queryClient
-      .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
-      .catch(() => null);
+    const me = await meOf(context.queryClient);
     const activityId = search.activityId ?? readActivityId();
     if (!activityId) {
       if (!me) throw redirect({ to: "/login", search: { next: location.href } });

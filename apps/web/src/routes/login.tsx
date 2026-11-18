@@ -1,3 +1,4 @@
+import { meOf } from "@/api/me";
 import { useState } from "react";
 import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,9 +29,7 @@ export const Route = createFileRoute("/login")({
     error: typeof search.error === "string" ? search.error : undefined,
   }),
   beforeLoad: async ({ context, search }) => {
-    const me = await context.queryClient
-      .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
-      .catch(() => null);
+    const me = await meOf(context.queryClient);
     if (me && !me.guest && !me.preview) {
       throw redirect({ href: me.isAdmin && !search.next ? "/admin" : safeNext(search.next) });
     }

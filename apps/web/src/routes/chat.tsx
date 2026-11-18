@@ -1,3 +1,4 @@
+import { meOf } from "@/api/me";
 import { useMemo, useState } from "react";
 import { Link, Outlet, createFileRoute, redirect, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,9 +11,7 @@ import { useT, type MessageKey } from "@/i18n";
 
 export const Route = createFileRoute("/chat")({
   beforeLoad: async ({ context, location }) => {
-    const me = await context.queryClient
-      .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
-      .catch(() => null);
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login", search: { next: location.href } });
     if (me?.preview && me.previewClassroomId) {
       throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: me.previewClassroomId } });

@@ -1,3 +1,4 @@
+import { meOf } from "@/api/me";
 import { useState } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -7,9 +8,7 @@ import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/report/$id")({
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient
-      .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
-      .catch(() => null);
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
   },
   component: ReportPage,

@@ -1,3 +1,4 @@
+import { meOf } from "@/api/me";
 import { useDeferredValue, useState } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,9 +32,7 @@ export const Route = createFileRoute("/admin")({
     school: search.tab === "schools" && typeof search.school === "string" ? search.school : undefined,
   }),
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient
-      .fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity })
-      .catch(() => null);
+    const me = await meOf(context.queryClient);
     if (!me || me.guest) throw redirect({ to: "/login", search: { next: "/admin" } });
     if (!me.isAdmin) throw redirect({ to: "/home" });
   },
