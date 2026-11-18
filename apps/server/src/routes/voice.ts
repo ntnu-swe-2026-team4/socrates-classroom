@@ -77,7 +77,8 @@ function bindingTtsInput(model: string, text: string, lang: "zh" | "en" | "es"):
 export function voiceRoutes() {
   return new Hono<AppEnv>()
     .post("/stt", async (c) => {
-      requireUser(c);
+      const caller = requireUser(c);
+      if (caller.preview) fail(403, "forbidden");
       await enforceIpLimit(c, "stt", 20);
       const form = await c.req.formData().catch(() => null);
       const audio = form?.get("audio");
@@ -104,7 +105,8 @@ export function voiceRoutes() {
       }
     })
     .post("/tts", async (c) => {
-      requireUser(c);
+      const caller = requireUser(c);
+      if (caller.preview) fail(403, "forbidden");
       await enforceIpLimit(c, "tts", 30);
       const parsed = await parseBody(c, TtsInputSchema);
       const speech = cleanSpeechText(parsed.text);

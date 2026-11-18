@@ -113,7 +113,7 @@ export async function flushUsageAlerts(env: Env, sender = emailSenderOf(env), no
   );
   let sent = 0;
   for (const alert of pending) {
-    const to = [...new Set([alert.email, ...admins.map((admin) => admin.email)].filter((value) => value !== null))];
+    const to = alert.email ? [alert.email] : admins.map((admin) => admin.email);
     if (to.length === 0) continue;
     const lang: Lang = alert.lang === "en" || alert.lang === "es" ? alert.lang : "zh";
     const email = EMAIL_TEXT[lang]({

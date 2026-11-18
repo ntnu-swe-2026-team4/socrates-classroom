@@ -55,7 +55,7 @@ describe("usage quota and alerts", () => {
     expect(((await cleared.json()) as Usage).quota).toBeNull();
   });
 
-  it("counts usage against the quota and emails each threshold once, to the owner and the admins", async () => {
+  it("counts usage against the quota and emails each threshold once, to the owner only", async () => {
     const account = await registerAccount("用量乙");
     await send("/api/settings/usage/quota", account.cookie, "PUT", { tokens: 10_000 });
     const mail = outbox();
@@ -67,8 +67,8 @@ describe("usage quota and alerts", () => {
     await recordUsage(env, account.id, 1_500, { sender: mail.sender });
     expect(mail.sent).toHaveLength(1);
     expect(mail.sent[0]?.subject).toContain("60%");
-    expect(mail.sent[0]?.to).toContain("admin@socrates.tw");
-    expect(mail.sent[0]?.to.some((address) => address !== "admin@socrates.tw")).toBe(true);
+    expect(mail.sent[0]?.to).not.toContain("admin@socrates.tw");
+    expect(mail.sent[0]?.to.length).toBeGreaterThanOrEqual(1);
 
     await recordUsage(env, account.id, 500, { sender: mail.sender });
     expect(mail.sent).toHaveLength(1);
