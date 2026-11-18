@@ -1,7 +1,8 @@
-import { useCallback, useRef, useSyncExternalStore } from "react";
+import { useCallback, useRef, useLayoutEffect, useSyncExternalStore } from "react";
 
 const returnZero = () => 0;
 const returnFalse = () => false;
+const mountedNow = Date.now();
 
 export function useDomEvent<E extends Event>(
   target: EventTarget | null | undefined,
@@ -10,7 +11,9 @@ export function useDomEvent<E extends Event>(
   capture = false,
 ): void {
   const latest = useRef(handler);
-  latest.current = handler;
+  useLayoutEffect(() => {
+    latest.current = handler;
+  });
   const subscribe = useCallback(
     (_notify: () => void) => {
       if (!target) return () => {};
@@ -25,7 +28,9 @@ export function useDomEvent<E extends Event>(
 
 export function useOnUnmount(cleanup: () => void): void {
   const latest = useRef(cleanup);
-  latest.current = cleanup;
+  useLayoutEffect(() => {
+    latest.current = cleanup;
+  });
   const subscribe = useCallback(() => () => latest.current(), []);
   useSyncExternalStore(subscribe, returnZero, returnZero);
 }
@@ -44,13 +49,35 @@ export function useMediaQuery(query: string): boolean {
 }
 
 export function useElapsed(ms: number): boolean {
-  const deadlineRef = useRef(0);
-  if (deadlineRef.current === 0) deadlineRef.current = Date.now() + ms;
-  const subscribe = useCallback((notify: () => void) => {
-    const remaining = deadlineRef.current - Date.now();
-    if (remaining <= 0) return () => {};
-    const id = setTimeout(notify, remaining);
-    return () => clearTimeout(id);
-  }, []);
-  return useSyncExternalStore(subscribe, () => Date.now() >= deadlineRef.current, returnFalse);
+  const doneRef = useRef(false);
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      const id = setTimeout(() => {
+        doneRef.current = true;
+        notify();
+      }, ms);
+      return () => clearTimeout(id);
+    },
+    [ms],
+  );
+  return useSyncExternalStore(subscribe, () => doneRef.current, returnFalse);
+}
+
+export function useNow(intervalMs: number): number {
+  const nowRef = useRef(mountedNow);
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      const id = setInterval(() => {
+        nowRef.current = Date.now();
+        notify();
+      }, intervalMs);
+      return () => clearInterval(id);
+    },
+    [intervalMs],
+  );
+  return useSyncExternalStore(
+    subscribe,
+    () => nowRef.current,
+    () => mountedNow,
+  );
 }
