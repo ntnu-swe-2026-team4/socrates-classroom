@@ -6,20 +6,29 @@ import { fail, nowIso, parseBody, requireCapability, type AppEnv } from "../http
 import { encryptKey } from "../auth-crypto";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 
-const KeyInputSchema = z.object({
-  provider: z.string(),
+const KeyInputSchema = z.object({ key: z.string().min(8).max(256) });
+
+const ModelInputSchema = z.object({
   model: z.string().min(1).max(200),
-  key: z.string().min(8).max(256),
+  maxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
 });
+
+const ModelOrderInputSchema = z.object({ models: z.array(z.string().min(1).max(200)).max(200) });
 
 const OrderInputSchema = z.object({ providers: z.array(z.string()).max(50) });
 
-interface TeacherKeyRow {
+interface ProviderKeyRow {
   provider_id: string;
-  model: string;
   last4: string;
   sort_order: number;
   updated_at: string;
+}
+
+interface ModelRow {
+  provider_id: string;
+  model: string;
+  max_concurrency: number | null;
+  sort_order: number;
 }
 
 const keyableProviders = builtinProviders().filter((provider) => provider.auth.apiKey !== undefined);
@@ -32,19 +41,34 @@ export function teacherKeyRoutes() {
   return new Hono<AppEnv>()
     .get("/settings/keys", async (c) => {
       const user = requireCapability(c, "manage_classes");
-      const rows = await all<TeacherKeyRow>(
+      const keys = await all<ProviderKeyRow>(
         c.env.DB,
-        "SELECT provider_id, model, last4, sort_order, updated_at FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
+        "SELECT provider_id, last4, sort_order, updated_at FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
         { uid: user.id },
       );
-      const keys: TeacherKeyStatus[] = rows.map((row) => ({
+      const legs = await all<ModelRow>(
+        c.env.DB,
+        "SELECT provider_id, model, max_concurrency, sort_order FROM teacher_key_models WHERE user_id = $uid ORDER BY sort_order",
+        { uid: user.id },
+      );
+      const byProvider = new Map<string, ModelRow[]>();
+      for (const leg of legs) {
+        const list = byProvider.get(leg.provider_id) ?? [];
+        list.push(leg);
+        byProvider.set(leg.provider_id, list);
+      }
+      const statuses: TeacherKeyStatus[] = keys.map((row) => ({
         provider: row.provider_id,
-        model: row.model,
         last4: row.last4,
         sortOrder: row.sort_order,
         updatedAt: row.updated_at,
+        models: (byProvider.get(row.provider_id) ?? []).map((leg) => ({
+          model: leg.model,
+          maxConcurrency: leg.max_concurrency,
+          sortOrder: leg.sort_order,
+        })),
       }));
-      return c.json(keys);
+      return c.json(statuses);
     })
     .get("/settings/keys/providers", async (c) => {
       requireCapability(c, "manage_classes");
@@ -82,13 +106,90 @@ export function teacherKeyRoutes() {
       );
       return c.json({ providers: input.providers });
     })
+    .put("/settings/keys/:provider/models/order", async (c) => {
+      const user = requireCapability(c, "manage_classes");
+      const provider = c.req.param("provider");
+      const input = await parseBody(c, ModelOrderInputSchema);
+      const owned = await all<{ model: string }>(
+        c.env.DB,
+        "SELECT model FROM teacher_key_models WHERE user_id = $uid AND provider_id = $pid",
+        { uid: user.id, pid: provider },
+      );
+      const ownedModels = new Set(owned.map((row) => row.model));
+      if (input.models.some((model) => !ownedModels.has(model))) fail(422, "validation");
+      const ordered = new Set(input.models);
+      let unlisted = 0;
+      await batch(
+        c.env.DB,
+        owned.map((row) => {
+          const order = ordered.has(row.model) ? input.models.indexOf(row.model) : input.models.length + unlisted++;
+          return {
+            sql: "UPDATE teacher_key_models SET sort_order = $order WHERE user_id = $uid AND provider_id = $pid AND model = $model",
+            params: { order, uid: user.id, pid: provider, model: row.model },
+          };
+        }),
+      );
+      return c.json({ models: input.models });
+    })
+    .put("/settings/keys/:provider/models", async (c) => {
+      const user = requireCapability(c, "manage_classes");
+      const provider = c.req.param("provider");
+      const input = await parseBody(c, ModelInputSchema);
+      const def = keyableProvider(provider);
+      if (!def) fail(422, "byok_provider_invalid");
+      if (!def.getModels().some((model) => model.id === input.model)) fail(422, "byok_provider_invalid");
+      const key = await one<{ n: number }>(
+        c.env.DB,
+        "SELECT COALESCE(MAX(sort_order), -1) AS n FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
+        { uid: user.id, pid: provider },
+      );
+      if (!key) fail(422, "validation");
+      const existing = await one<{ max_concurrency: number | null }>(
+        c.env.DB,
+        "SELECT max_concurrency FROM teacher_key_models WHERE user_id = $uid AND provider_id = $pid AND model = $model",
+        { uid: user.id, pid: provider, model: input.model },
+      );
+      const maxConcurrency = existing
+        ? "maxConcurrency" in input
+          ? input.maxConcurrency
+          : existing.max_concurrency
+        : (input.maxConcurrency ?? null);
+      if (existing) {
+        await run(
+          c.env.DB,
+          "UPDATE teacher_key_models SET max_concurrency = $maxConcurrency, updated_at = $at WHERE user_id = $uid AND provider_id = $pid AND model = $model",
+          { uid: user.id, pid: provider, model: input.model, maxConcurrency, at: nowIso() },
+        );
+      } else {
+        const next = await one<{ n: number }>(
+          c.env.DB,
+          "SELECT COALESCE(MAX(sort_order), -1) AS n FROM teacher_key_models WHERE user_id = $uid AND provider_id = $pid",
+          { uid: user.id, pid: provider },
+        );
+        await run(
+          c.env.DB,
+          `INSERT INTO teacher_key_models (user_id, provider_id, model, max_concurrency, sort_order, updated_at)
+           VALUES ($uid, $pid, $model, $maxConcurrency, $order, $at)`,
+          { uid: user.id, pid: provider, model: input.model, maxConcurrency, order: (next?.n ?? -1) + 1, at: nowIso() },
+        );
+      }
+      return c.json({ provider, model: input.model, maxConcurrency });
+    })
+    .delete("/settings/keys/:provider/models/:model", async (c) => {
+      const user = requireCapability(c, "manage_classes");
+      const result = await run(
+        c.env.DB,
+        "DELETE FROM teacher_key_models WHERE user_id = $uid AND provider_id = $pid AND model = $model",
+        { uid: user.id, pid: c.req.param("provider"), model: c.req.param("model") },
+      );
+      if ((result.meta?.changes ?? 0) === 0) fail(404, "not_found");
+      return c.body(null, 204);
+    })
     .put("/settings/keys/:provider", async (c) => {
       const user = requireCapability(c, "manage_classes");
       const provider = c.req.param("provider");
       const input = await parseBody(c, KeyInputSchema);
-      const def = provider !== input.provider ? undefined : keyableProvider(provider);
-      if (!def) fail(422, "byok_provider_invalid");
-      if (!def.getModels().some((model) => model.id === input.model)) fail(422, "byok_provider_invalid");
+      if (!keyableProvider(provider)) fail(422, "byok_provider_invalid");
       const enc = await encryptKey(c.env, input.key);
       const existing = await one<{ n: number }>(
         c.env.DB,
@@ -98,20 +199,19 @@ export function teacherKeyRoutes() {
       const order = (existing?.n ?? -1) + 1;
       await run(
         c.env.DB,
-        `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, model, sort_order, updated_at)
-         VALUES ($uid, $pid, $enc, $last4, $model, $order, $at)
-         ON CONFLICT(user_id, provider_id) DO UPDATE SET key_enc = $enc, last4 = $last4, model = $model, updated_at = $at`,
+        `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
+         VALUES ($uid, $pid, $enc, $last4, $order, $at)
+         ON CONFLICT(user_id, provider_id) DO UPDATE SET key_enc = $enc, last4 = $last4, updated_at = $at`,
         {
           uid: user.id,
           pid: provider,
           enc,
           last4: input.key.slice(-4),
-          model: input.model,
           order,
           at: nowIso(),
         },
       );
-      return c.json({ provider, model: input.model, last4: input.key.slice(-4) });
+      return c.json({ provider, last4: input.key.slice(-4) });
     })
     .delete("/settings/keys/:provider", async (c) => {
       const user = requireCapability(c, "manage_classes");
