@@ -3,7 +3,9 @@ import { useState } from "react";
 import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { api, ApiError, guestSession, type User } from "@/api";
+import { api, ApiError, useGuestSessionExpired, type User } from "@/api";
+import { SESSION_SIGNAL_KEY } from "@/api/http";
+import { useDomEvent } from "@/hooks/useSubscription";
 import { StoaField } from "@/components/StoaField";
 import { cn, Spinner } from "@/components/ui";
 import { locales, setLocale, useI18n, useT, type Locale, type MessageKey } from "@/i18n";
@@ -105,6 +107,10 @@ function LoginPage() {
   const queryClient = useQueryClient();
   const search = Route.useSearch();
   const next = safeNext(search.next);
+  const guestExpired = useGuestSessionExpired();
+  useDomEvent<StorageEvent>(window, "storage", (event) => {
+    if (event.key === SESSION_SIGNAL_KEY) void api.me();
+  });
   const [mode, setMode] = useState<Mode>(search.mode ?? "login");
   const [busy, setBusy] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -222,7 +228,7 @@ function LoginPage() {
       </section>
 
       <section className="relative mx-auto flex w-full max-w-[560px] flex-col justify-center gap-5 px-4 py-8 sm:px-8 lg:mx-0 lg:max-w-none lg:px-12 lg:py-12 lg:*:mx-auto lg:*:w-full lg:*:max-w-[460px]">
-        {guestSession.expired && (
+        {guestExpired && (
           <p role="status" className={cn(BOX, "bg-ht-accent/30 px-5 py-3 text-[12.5px] leading-relaxed")}>
             {t("guest_expired_notice")}
           </p>

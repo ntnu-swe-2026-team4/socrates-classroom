@@ -1,7 +1,7 @@
 import { httpApi, type Api } from "./http";
 
 export const api: Api = httpApi;
-export { ApiError, guestSession } from "./http";
+export { ApiError, guestSession, useGuestSessionExpired } from "./http";
 export type { Api } from "./http";
 export type {
   ActivityInfo,

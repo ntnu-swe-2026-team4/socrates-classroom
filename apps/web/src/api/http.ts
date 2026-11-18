@@ -1,4 +1,5 @@
 import { hc } from "hono/client";
+import { useSyncExternalStore } from "react";
 import type {
   ActivityInfo,
   ActivityInvite,
@@ -56,7 +57,27 @@ import type { RpcApi } from "@server/app";
 import { clearLocalUserState, persistActivityId, recordTerm } from "./local";
 import { getCompanion } from "@/lib/companion";
 
-export const guestSession = { expired: false };
+const guestListeners = new Set<() => void>();
+export const guestSession = {
+  expired: false,
+  setExpired(value: boolean) {
+    if (this.expired === value) return;
+    this.expired = value;
+    for (const listener of guestListeners) listener();
+  },
+  subscribe(listener: () => void): () => void {
+    guestListeners.add(listener);
+    return () => guestListeners.delete(listener);
+  },
+};
+
+export function useGuestSessionExpired(): boolean {
+  return useSyncExternalStore(
+    guestSession.subscribe,
+    () => guestSession.expired,
+    () => false,
+  );
+}
 
 export class ApiError extends Error {
   constructor(
@@ -373,7 +394,11 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
     if (stopped) return;
     stopped = true;
     cancelAnimationFrame(raf);
-    void source.stop();
+    try {
+      source.stop();
+    } catch {
+      /* aborted between decode and start: nothing to stop yet */
+    }
     voice?.stop();
     void context.close();
     signal?.removeEventListener("abort", stop);
@@ -392,6 +417,10 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
       stop();
       resolve();
     };
+    if (stopped) {
+      resolve();
+      return;
+    }
     source.start();
     raf = requestAnimationFrame(tick);
   });
@@ -411,11 +440,11 @@ export const httpApi: Api = {
   async me() {
     try {
       const user = await raw<User | null>("/me");
-      if (user) guestSession.expired = false;
+      if (user) guestSession.setExpired(false);
       return user;
     } catch (error) {
       if (error instanceof ApiError && error.code === "guest_session_expired") {
-        guestSession.expired = true;
+        guestSession.setExpired(true);
         return null;
       }
       throw error;
@@ -592,6 +621,7 @@ export const httpApi: Api = {
       await client.join.$post({ json: JoinInputSchema.parse({ code, name, tosAccepted: true }) }),
     );
     persistActivityId(payload.activityId);
+    announceSession();
     return payload as JoinResult;
   },
   async listTopics() {
@@ -708,6 +738,7 @@ export const httpApi: Api = {
       json: payload,
     });
     persistActivityId(joined.activityId);
+    announceSession();
     return joined;
   },
   async listActivitySlots(activityId) {
