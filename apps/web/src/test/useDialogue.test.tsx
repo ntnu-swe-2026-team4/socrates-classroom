@@ -463,9 +463,9 @@ describe("useDialogue (autoSend: queued first question)", () => {
     expect(onAutoSent).toHaveBeenCalledTimes(1);
   });
 
-  it("resends the same question after the autoSend prop clears and returns", () => {
+  it("resends the same question after the autoSend prop clears and returns", async () => {
     let autoSend: string | undefined = "什麼是正義？";
-    const { rerender } = renderHook(() => useDialogue("a_1", "u_1", { autoSend }));
+    const { result, rerender } = renderHook(() => useDialogue("a_1", "u_1", { autoSend }));
 
     emit(viewFrame([]));
     const submits = () =>
@@ -473,6 +473,7 @@ describe("useDialogue (autoSend: queued first question)", () => {
     expect(submits()).toHaveLength(1);
 
     emit(opsFrame([userEntry(1, "什麼是正義？"), assistantEntry(2, "先想想看")]));
+    await waitFor(() => expect(result.current.phase).toBe("idle"));
 
     autoSend = undefined;
     rerender();
@@ -483,5 +484,39 @@ describe("useDialogue (autoSend: queued first question)", () => {
     rerender();
     emit(viewFrame([]));
     expect(submits()).toHaveLength(2);
+  });
+
+  it("defers autoSend while TTS is speaking and sends once the round ends", async () => {
+    let releaseTts: (() => void) | null = null;
+    tts.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseTts = resolve;
+        }),
+    );
+    let autoSend: string | undefined;
+    const { result, rerender } = renderHook(() => useDialogue("a_1", "u_1", { autoSend }));
+
+    emit(viewFrame([]));
+    act(() => {
+      result.current.send("第一題");
+    });
+    emit(opsFrame([userEntry(1, "第一題"), assistantEntry(2, "第一答")]));
+    await waitFor(() => expect(result.current.phase).toBe("speaking"));
+
+    autoSend = "第二題";
+    rerender();
+    emit(viewFrame([userEntry(1, "第一題"), assistantEntry(2, "第一答")]));
+    const submits = () =>
+      agent.sent
+        .map((raw) => JSON.parse(raw) as { type: string; input?: string })
+        .filter((frame) => frame.type === "submit");
+    expect(submits()).toHaveLength(1);
+
+    act(() => {
+      releaseTts?.();
+    });
+    await waitFor(() => expect(submits()).toHaveLength(2));
+    expect(submits()[1]!.input).toBe("第二題");
   });
 });

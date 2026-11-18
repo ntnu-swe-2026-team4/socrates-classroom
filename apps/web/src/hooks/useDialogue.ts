@@ -204,6 +204,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
           phaseRef.current = "idle";
           setPhase("idle");
           syncEmotion();
+          tryAutoSend();
         }
       });
   }
@@ -390,6 +391,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
   function tryAutoSend() {
     const autoSend = options?.autoSend;
     if (!autoSend || sentAutoSend === autoSend) return;
+    if (phaseRef.current === "speaking") return;
     if (send(autoSend.slice(0, 2000))) {
       setSentAutoSend(autoSend);
       options.onAutoSent?.();
