@@ -39,10 +39,6 @@ function writeStored(key: string, value: StoredSession | null): void {
   }
 }
 
-/**
- * The side window opens its own socket to the same thread and sends `btw`, which binds that socket to a fork of the
- * root (docs/api-contract.md §5.4). Entries up to the fork point are the main dialogue; only later ones belong here.
- */
 export function useBtw(activityId: string, participantId: string, enabled: boolean) {
   const key = storageKey(activityId, participantId);
   const [view, setView] = useState<ConversationView | null>(null);
