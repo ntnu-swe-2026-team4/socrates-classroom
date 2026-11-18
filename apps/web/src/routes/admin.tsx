@@ -396,8 +396,8 @@ function Users() {
         </Field>
         <Field label={t("admin_create_password")}>
           <Input
-            type="text"
-            autoComplete="off"
+            type="password"
+            autoComplete="new-password"
             minLength={8}
             value={draft.password}
             onChange={(event) => setDraft({ ...draft, password: event.target.value })}
