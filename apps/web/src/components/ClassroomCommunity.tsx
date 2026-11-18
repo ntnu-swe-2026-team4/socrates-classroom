@@ -431,6 +431,7 @@ export function MembersPanel({ room }: { room: ClassroomSummary }) {
   const queryClient = useQueryClient();
   const list = useQuery({ queryKey: ["classroom", room.id, "members"], queryFn: () => api.listMembers(room.id) });
   const [kick, setKick] = useState<{ id: string; name: string; kind?: string } | null>(null);
+  const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [credentials, setCredentials] = useState<StudentCredential[] | null>(null);
   const owner = room.role === "teacher";
@@ -505,7 +506,7 @@ export function MembersPanel({ room }: { room: ClassroomSummary }) {
                     variant="ghost"
                     size="sm"
                     disabled={resetPassword.isPending && resetPassword.variables === member.id}
-                    onClick={() => resetPassword.mutate(member.id)}
+                    onClick={() => setResetTarget({ id: member.id, name: member.name })}
                   >
                     <KeyRound className="size-3.5" />
                     {t("students_reset")}
@@ -566,6 +567,18 @@ export function MembersPanel({ room }: { room: ClassroomSummary }) {
         }}
       />
       {credentials && <CredentialsDialog credentials={credentials} onClose={() => setCredentials(null)} />}
+      <ConfirmDialog
+        open={resetTarget !== null}
+        title={t("students_reset_title", { name: resetTarget?.name ?? "" })}
+        body={t("students_reset_body")}
+        confirmLabel={t("students_reset")}
+        cancelLabel={t("common_cancel")}
+        onCancel={() => setResetTarget(null)}
+        onConfirm={() => {
+          if (resetTarget) resetPassword.mutate(resetTarget.id);
+          setResetTarget(null);
+        }}
+      />
       <ConfirmDialog
         open={leaving}
         danger

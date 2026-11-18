@@ -511,6 +511,8 @@ const messages = {
     students_names: "學生姓名",
     students_names_placeholder: "王小明\n李小華",
     students_reset: "重設密碼",
+    students_reset_title: "要重設「{name}」的密碼嗎？",
+    students_reset_body: "現行密碼立即作廢，學生在其他裝置上的登入也會失效。新密碼只會顯示這一次。",
     students_remove_body: "學生帳號會一併刪除，學生將無法再登入。",
     students_credentials_title: "學生登入資訊",
     students_credentials_desc: "密碼只會顯示這一次，請複製或抄下來發給學生。之後忘記可以再重設。",
@@ -1213,6 +1215,9 @@ const messages = {
     students_names: "Student names",
     students_names_placeholder: "Alex Chen\nSam Lee",
     students_reset: "Reset password",
+    students_reset_title: "Reset {name}'s password?",
+    students_reset_body:
+      "The current password stops working immediately and the student is signed out everywhere. The new password is shown only once.",
     students_remove_body: "The student account will be deleted and can no longer sign in.",
     students_credentials_title: "Student sign-in details",
     students_credentials_desc: "Passwords are shown only once — copy them and hand them out. You can reset them later.",
@@ -1924,6 +1929,9 @@ const messages = {
     students_names: "Nombres de estudiantes",
     students_names_placeholder: "Ana García\nLuis Pérez",
     students_reset: "Restablecer contraseña",
+    students_reset_title: "¿Restablecer la contraseña de {name}?",
+    students_reset_body:
+      "La contraseña actual deja de funcionar de inmediato y el estudiante se desconecta de todas partes. La nueva solo se muestra una vez.",
     students_remove_body: "La cuenta del estudiante se eliminará y ya no podrá iniciar sesión.",
     students_credentials_title: "Datos de acceso",
     students_credentials_desc:

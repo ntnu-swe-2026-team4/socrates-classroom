@@ -53,7 +53,7 @@ import {
   type ErrorCode,
 } from "@socrates/shared";
 import type { RpcApi } from "@server/app";
-import { persistActivityId, recordTerm } from "./local";
+import { clearLocalUserState, persistActivityId, recordTerm } from "./local";
 import { getCompanion } from "@/lib/companion";
 
 export const guestSession = { expired: false };
@@ -428,6 +428,7 @@ export const httpApi: Api = {
   },
   async logout() {
     await unwrap(await client.auth.logout.$post());
+    clearLocalUserState();
     announceSession();
   },
   async register(input) {
