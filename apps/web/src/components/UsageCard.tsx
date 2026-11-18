@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api";
 import { Button, Card, Initial, Input, Spinner, cn } from "@/components/ui";
@@ -14,9 +14,11 @@ export function UsageCard() {
   const usage = useQuery({ queryKey: ["usage"], queryFn: () => api.usage() });
   const [draft, setDraft] = useState("");
   const quota = usage.data?.quota ?? null;
-  useEffect(() => {
+  const [prevQuota, setPrevQuota] = useState(quota);
+  if (quota !== prevQuota) {
+    setPrevQuota(quota);
     setDraft(quota === null ? "" : String(quota));
-  }, [quota]);
+  }
   const save = useMutation({
     mutationFn: (tokens: number | null) => api.setUsageQuota(tokens),
     onSuccess: (next) => queryClient.setQueryData(["usage"], next),

@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/components/ui";
 import { usePersistentFlag } from "@/hooks/usePersistentFlag";
+import { useMediaQuery } from "@/hooks/useSubscription";
 import { useT } from "@/i18n";
 
 const MOBILE_QUERY = "(max-width: 767px)";
@@ -12,22 +13,8 @@ const SidebarContext = createContext<{
   overlay: boolean;
 } | null>(null);
 
-function mediaQuery(): MediaQueryList | null {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function"
-    ? window.matchMedia(MOBILE_QUERY)
-    : null;
-}
-
 function useIsMobile(): boolean {
-  const [mobile, setMobile] = useState(() => mediaQuery()?.matches ?? false);
-  useEffect(() => {
-    const query = mediaQuery();
-    if (!query) return;
-    const sync = () => setMobile(query.matches);
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
-  return mobile;
+  return useMediaQuery(MOBILE_QUERY);
 }
 
 export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; children: ReactNode }) {
@@ -35,12 +22,13 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
   const mobile = useIsMobile();
   const [desktopOpen, setDesktopOpen] = usePersistentFlag("chat_sidebar_open", true);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [prevMobile, setPrevMobile] = useState(mobile);
+  if (mobile !== prevMobile) {
+    setPrevMobile(mobile);
+    setMobileOpen(false);
+  }
   const open = mobile ? mobileOpen : desktopOpen;
   const toggle = () => (mobile ? setMobileOpen((value) => !value) : setDesktopOpen(!desktopOpen));
-
-  useEffect(() => {
-    if (!mobile) setMobileOpen(false);
-  }, [mobile]);
 
   if (!sidebar) return <div className="flex h-full min-h-0 flex-col">{children}</div>;
 

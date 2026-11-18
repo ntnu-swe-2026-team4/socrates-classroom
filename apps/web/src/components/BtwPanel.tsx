@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { MessageCircleQuestionMark, PanelRight, RotateCcw, Send } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
 import { cn } from "@/components/ui";
@@ -22,9 +22,11 @@ export const BtwPanel = forwardRef<BtwPanelHandle, BtwPanelProps>(function BtwPa
 ) {
   const t = useT();
   const [connected, setConnected] = useState(false);
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) setConnected(true);
-  }, [open]);
+  }
   const { messages, draft, phase, error, ready, ask, retryLast, interrupt, newTopic } = useBtw(
     activityId,
     participantId,
@@ -42,11 +44,11 @@ export const BtwPanel = forwardRef<BtwPanelHandle, BtwPanelProps>(function BtwPa
     },
   }));
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = scrollRef.current;
     if (element) element.scrollTop = element.scrollHeight;
   });
