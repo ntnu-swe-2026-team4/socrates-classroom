@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useAgent } from "agents/react";
 import { markIntent, speak, stopSpeech } from "@/lib/speech";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
+import { companion } from "@/lib/companion";
+import { useOnUnmount } from "@/hooks/useSubscription";
 import {
   ConversationTranscript,
   type ConversationView,
@@ -82,6 +84,28 @@ export function runFailureOf(view: ConversationView | null): unknown {
   return live?.runFailure;
 }
 
+function latestEmotionOf(view: ConversationView | null): DialogueEmotion {
+  if (!view) return null;
+  for (const entry of [...view.entries].reverse()) {
+    if (entry.kind !== "app.emotion") continue;
+    return (entry.data ?? null) as DialogueEmotion;
+  }
+  return null;
+}
+
+export interface DialogueOptions {
+  autoSend?: string;
+  onAutoSent?: () => void;
+  onActivityFinished?: () => void;
+  onDisconnect?: () => void;
+}
+
+const EXPRESSIONS: Record<string, "Happy" | "Angry" | "Confused"> = {
+  happy: "Happy",
+  angry: "Angry",
+  confused: "Confused",
+};
+
 export function liveTextOf(view: ConversationView | null): string {
   if (!view) return "";
   const live = view.docs["pi.live"] as { generation?: { message?: { content?: readonly unknown[] } } } | undefined;
@@ -89,7 +113,7 @@ export function liveTextOf(view: ConversationView | null): string {
   return content === undefined ? "" : textOf({ role: "assistant", content } as Message);
 }
 
-export function useDialogue(activityId: string, participantId: string) {
+export function useDialogue(activityId: string, participantId: string, options?: DialogueOptions) {
   const [view, setView] = useState<ConversationView | null>(null);
   const [phase, setPhase] = useState<DialoguePhase>("idle");
   const [error, setError] = useState<DialogueError>(null);
@@ -102,6 +126,15 @@ export function useDialogue(activityId: string, participantId: string) {
   const baselineRef = useRef<number | null>(null);
   const failedInputRef = useRef<string | null>(null);
   const speechToken = useRef(0);
+  const phaseRef = useRef<DialoguePhase>("idle");
+  const sentOnceRef = useRef(false);
+  const playedEmotionRef = useRef<unknown>(null);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const autoSentRef = useRef<string | null>(null);
+  if (!options?.autoSend) autoSentRef.current = null;
+  const sendRef = useRef<(text: string) => boolean>(() => false);
+  const tryAutoSendRef = useRef<() => void>(() => {});
   const entriesWaiters = useRef(
     new Map<string, { resolve: (page: Page<EntryRecord, Cursor>) => void; reject: (reason: Error) => void }>(),
   );
@@ -122,39 +155,61 @@ export function useDialogue(activityId: string, participantId: string) {
   const transcriptRef = useRef(new ConversationTranscript(loader));
   const [transcriptView, setTranscriptView] = useState<TranscriptView | null>(null);
 
-  useEffect(
-    () => () => {
-      speechToken.current += 1;
-      stopSpeech("dialogue");
-      pendingRef.current = null;
-      baselineRef.current = null;
+  useOnUnmount(() => {
+    speechToken.current += 1;
+    stopSpeech("dialogue");
+    pendingRef.current = null;
+    baselineRef.current = null;
+  });
+
+  const syncEmotion = useCallback(() => {
+    const emotion = latestEmotionOf(viewRef.current);
+    if (!emotion || emotion === playedEmotionRef.current) return;
+    if (!sentOnceRef.current) {
+      playedEmotionRef.current = emotion;
+      return;
+    }
+    if (phaseRef.current === "thinking" || phaseRef.current === "streaming") return;
+    playedEmotionRef.current = emotion;
+    const name = EXPRESSIONS[emotion.emotion];
+    if (name) companion.playExpression(name);
+  }, []);
+
+  const adopt = useCallback(
+    (next: ConversationView) => {
+      viewRef.current = next;
+      setView(next);
+      setTranscriptView(transcriptRef.current.merge(next));
+      syncEmotion();
     },
-    [],
+    [syncEmotion],
   );
 
-  const adopt = useCallback((next: ConversationView) => {
-    viewRef.current = next;
-    setView(next);
-    setTranscriptView(transcriptRef.current.merge(next));
-  }, []);
-
-  const speakAnswer = useCallback((text: string, userInitiated = false) => {
-    speechToken.current += 1;
-    const token = speechToken.current;
-    setPhase("speaking");
-    setTtsFailed(false);
-    setTtsSkipped(false);
-    speak("dialogue", text, { userInitiated })
-      .then((outcome) => {
-        if (token === speechToken.current && outcome === "skipped") setTtsSkipped(true);
-      })
-      .catch(() => {
-        if (token === speechToken.current) setTtsFailed(true);
-      })
-      .finally(() => {
-        if (token === speechToken.current) setPhase("idle");
-      });
-  }, []);
+  const speakAnswer = useCallback(
+    (text: string, userInitiated = false) => {
+      speechToken.current += 1;
+      const token = speechToken.current;
+      phaseRef.current = "speaking";
+      setPhase("speaking");
+      setTtsFailed(false);
+      setTtsSkipped(false);
+      speak("dialogue", text, { userInitiated })
+        .then((outcome) => {
+          if (token === speechToken.current && outcome === "skipped") setTtsSkipped(true);
+        })
+        .catch(() => {
+          if (token === speechToken.current) setTtsFailed(true);
+        })
+        .finally(() => {
+          if (token === speechToken.current) {
+            phaseRef.current = "idle";
+            setPhase("idle");
+            syncEmotion();
+          }
+        });
+    },
+    [syncEmotion],
+  );
 
   const completePending = useCallback(() => {
     pendingRef.current = null;
@@ -165,17 +220,25 @@ export function useDialogue(activityId: string, participantId: string) {
     if (text) {
       speakAnswer(text);
     } else {
+      phaseRef.current = "idle";
       setPhase("idle");
+      syncEmotion();
     }
-  }, [speakAnswer]);
+  }, [speakAnswer, syncEmotion]);
 
-  const failPending = useCallback((code: string) => {
-    pendingRef.current = null;
-    setPendingView(false);
-    baselineRef.current = null;
-    setPhase("idle");
-    setError({ code });
-  }, []);
+  const failPending = useCallback(
+    (code: string) => {
+      pendingRef.current = null;
+      setPendingView(false);
+      baselineRef.current = null;
+      phaseRef.current = "idle";
+      setPhase("idle");
+      if (code === "ActivityFinished") optionsRef.current?.onActivityFinished?.();
+      setError({ code });
+      syncEmotion();
+    },
+    [syncEmotion],
+  );
 
   const arbitrate = useCallback(
     (entries: readonly WindowedEntry[], full: boolean, windowBefore?: number) => {
@@ -225,6 +288,7 @@ export function useDialogue(activityId: string, participantId: string) {
         case "view": {
           adopt(frame.view);
           arbitrate(frame.view.entries, true, frame.view.before);
+          tryAutoSendRef.current();
           return;
         }
         case "ops": {
@@ -240,8 +304,10 @@ export function useDialogue(activityId: string, participantId: string) {
           adopt(next);
           arbitrate(next.entries, false);
           if (frame.ops.length > 0 && pendingRef.current && liveTextOf(next)) {
+            phaseRef.current = "streaming";
             setPhase((current) => (current === "thinking" ? "streaming" : current));
           }
+          tryAutoSendRef.current();
           return;
         }
         case "result": {
@@ -277,11 +343,17 @@ export function useDialogue(activityId: string, participantId: string) {
     name: `${activityId}:${participantId}`,
     onOpen: (event) => {
       (event.target as WebSocket).send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
+      tryAutoSendRef.current();
     },
     onMessage: (event) => onFrame(event.data),
     onConnectionError: () => {
       speechToken.current += 1;
       stopSpeech("dialogue");
+    },
+    onClose: () => {
+      for (const waiter of entriesWaiters.current.values()) waiter.reject(new Error("socket_closed"));
+      entriesWaiters.current.clear();
+      optionsRef.current?.onDisconnect?.();
     },
   });
   socketRef.current = socket;
@@ -304,15 +376,6 @@ export function useDialogue(activityId: string, participantId: string) {
     () => false,
   );
 
-  useEffect(() => {
-    const flush = () => {
-      for (const waiter of entriesWaiters.current.values()) waiter.reject(new Error("socket_closed"));
-      entriesWaiters.current.clear();
-    };
-    socket.addEventListener("close", flush);
-    return () => socket.removeEventListener("close", flush);
-  }, [socket]);
-
   const send = useCallback(
     (text: string) => {
       const trimmed = text.trim();
@@ -323,18 +386,32 @@ export function useDialogue(activityId: string, participantId: string) {
       stopSpeech("dialogue");
       const id = crypto.randomUUID();
       pendingRef.current = id;
+      sentOnceRef.current = true;
       setPendingView(true);
       baselineRef.current = viewRef.current.entries.at(-1)?.id ?? null;
       failedInputRef.current = trimmed;
       setError(null);
       setTtsFailed(false);
       setTtsSkipped(false);
+      phaseRef.current = "thinking";
       setPhase("thinking");
       socket.send(JSON.stringify({ type: "submit", id, input: trimmed } satisfies ClientMessage));
       return true;
     },
     [socket],
   );
+  sendRef.current = send;
+
+  const tryAutoSend = useCallback(() => {
+    const options = optionsRef.current;
+    if (!options?.autoSend) return;
+    if (autoSentRef.current === options.autoSend) return;
+    if (sendRef.current(options.autoSend.slice(0, 2000))) {
+      autoSentRef.current = options.autoSend;
+      options.onAutoSent?.();
+    }
+  }, []);
+  tryAutoSendRef.current = tryAutoSend;
 
   const retryLast = useCallback(() => {
     if (pendingRef.current) return;
@@ -359,8 +436,10 @@ export function useDialogue(activityId: string, participantId: string) {
     }
     speechToken.current += 1;
     stopSpeech("dialogue");
+    phaseRef.current = "idle";
     setPhase("idle");
-  }, [socket]);
+    syncEmotion();
+  }, [socket, syncEmotion]);
 
   const loadEarlier = useCallback(async () => {
     if (!socketRef.current) return;

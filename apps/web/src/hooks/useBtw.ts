@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useAgent } from "agents/react";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import type { Message } from "@earendil-works/pi-ai";
@@ -189,17 +189,12 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
     enabled,
     onOpen: (event) => open(event.target as WebSocket, false),
     onMessage: (event) => onFrame(event.data),
-  });
-  socketRef.current = socket;
-
-  useEffect(() => {
-    const lost = () => {
+    onClose: () => {
       setBound(false);
       if (pendingRef.current) finishPending("llm_unavailable");
-    };
-    socket.addEventListener("close", lost);
-    return () => socket.removeEventListener("close", lost);
-  }, [socket, finishPending]);
+    },
+  });
+  socketRef.current = socket;
 
   const submit = useCallback(
     (text: string) => {
