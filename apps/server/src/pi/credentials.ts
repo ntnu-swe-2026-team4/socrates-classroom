@@ -90,23 +90,26 @@ export interface TeacherLeg {
 export interface TeacherLegRow {
   provider_id: string;
   model: string;
+  max_concurrency: number | null;
 }
 
 export async function teacherLegsOf(env: Env, teacherId: string | null): Promise<TeacherLeg[]> {
-  const maxConcurrency = gatewayConfig.teacherChain.maxConcurrency;
+  const fallbackConcurrency = gatewayConfig.teacherChain.maxConcurrency;
   if (!teacherId) return [];
   const rows = await all<TeacherLegRow>(
     env.DB,
-    "SELECT provider_id, model FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
+    `SELECT m.provider_id, m.model, m.max_concurrency
+     FROM teacher_key_models m
+     JOIN teacher_keys k ON k.user_id = m.user_id AND k.provider_id = m.provider_id
+     WHERE m.user_id = $uid
+     ORDER BY k.sort_order, m.sort_order`,
     { uid: teacherId },
   );
-  return rows
-    .filter((row) => row.model)
-    .map((row) => ({
-      provider: row.provider_id,
-      model: row.model,
-      credential: `teacher:${teacherId}`,
-      maxConcurrency,
-      priority: 0,
-    }));
+  return rows.map((row) => ({
+    provider: row.provider_id,
+    model: row.model,
+    credential: `teacher:${teacherId}`,
+    maxConcurrency: row.max_concurrency ?? fallbackConcurrency,
+    priority: 0,
+  }));
 }

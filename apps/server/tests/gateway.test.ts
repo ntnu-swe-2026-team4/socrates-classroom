@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, inject } from "vitest";
 import { GatewayLedger } from "../src/gateway/ledger";
+import { run } from "../src/db/d1";
+import type { Env } from "../src/env";
 
 describe("gateway ledger (pi has no structured error state → records ok/error only; consecutive errors trigger cooldown)", () => {
   const key = { provider: "dgx-spark", model: "GLM-5.3-Flash", credential: "platform" };
@@ -79,6 +81,82 @@ describe("router chain walk (config-driven, cooldown-filtered)", () => {
     expect(router.ledger.status(flash).requests).toBe(2);
     expect(router.ledger.status(free).requests).toBe(0);
   });
+});
+
+describe("teacherLegsOf (#152: one leg per (provider, model), each its own max_concurrency)", () => {
+  it("joins keys and model legs: order = provider sort_order then model sort_order; NULL limit falls back to the config default", async () => {
+    const { env } = await import("cloudflare:workers");
+    const { applyD1Migrations } = await import("cloudflare:test");
+    const { teacherLegsOf } = await import("../src/pi/credentials");
+    const { gatewayConfig } = await import("../src/gateway/config.gen");
+    await applyD1Migrations(env.DB, inject("d1Migrations"));
+
+    const at = "2026-11-18T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
+       VALUES ('u_legs', '腿老師', 'teacher', 'legs@example.com', 'x', 'zh', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
+       VALUES ('u_legs', 'openrouter', 'enc', 'zzzz', 0, $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
+       VALUES ('u_legs', 'deepseek', 'enc', 'aaaa', 1, $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO teacher_key_models (user_id, provider_id, model, max_concurrency, sort_order, updated_at)
+       VALUES ('u_legs', 'openrouter', 'z-ai/glm-5.3-flash', NULL, 1, $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO teacher_key_models (user_id, provider_id, model, max_concurrency, sort_order, updated_at)
+       VALUES ('u_legs', 'openrouter', 'z-ai/glm-4.7-flash', 2, 0, $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO teacher_key_models (user_id, provider_id, model, max_concurrency, sort_order, updated_at)
+       VALUES ('u_legs', 'deepseek', 'glm-4.6', NULL, 0, $at)`,
+      { at },
+    );
+
+    const legs = await teacherLegsOf(env as unknown as Env, "u_legs");
+    const fallback = gatewayConfig.teacherChain.maxConcurrency;
+    expect(legs).toEqual([
+      {
+        provider: "openrouter",
+        model: "z-ai/glm-4.7-flash",
+        credential: "teacher:u_legs",
+        maxConcurrency: 2,
+        priority: 0,
+      },
+      {
+        provider: "openrouter",
+        model: "z-ai/glm-5.3-flash",
+        credential: "teacher:u_legs",
+        maxConcurrency: fallback,
+        priority: 0,
+      },
+      { provider: "deepseek", model: "glm-4.6", credential: "teacher:u_legs", maxConcurrency: fallback, priority: 0 },
+    ]);
+  }, 60_000);
+
+  it("a teacher with no keys yields no legs", async () => {
+    const { env } = await import("cloudflare:workers");
+    const { applyD1Migrations } = await import("cloudflare:test");
+    const { teacherLegsOf } = await import("../src/pi/credentials");
+    await applyD1Migrations(env.DB, inject("d1Migrations"));
+    expect(await teacherLegsOf(env as unknown as Env, "u_nobody")).toEqual([]);
+  }, 60_000);
 });
 
 describe("teacher legs (#82: teacher keys first, platform chain as fallback)", () => {
