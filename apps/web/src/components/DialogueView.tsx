@@ -60,7 +60,6 @@ export function DialogueView({
   closedNotice,
 }: DialogueViewProps) {
   const t = useT();
-  const stopVoiceRef = useRef<() => void>(() => {});
   const {
     items,
     draft,
@@ -81,12 +80,12 @@ export function DialogueView({
     autoSend,
     onAutoSent,
     onActivityFinished,
-    onDisconnect: () => stopVoiceRef.current(),
+    onDisconnect: () => void voice.stop(),
   });
 
   const [sidePanel, setSidePanel] = useState<SidePanel>(null);
   const panelOpen = sidePanel === "term";
-  const setPanelOpen = useCallback((open: boolean) => setSidePanel(open ? "term" : null), []);
+  const setPanelOpen = (open: boolean) => setSidePanel(open ? "term" : null);
   const togglePanel = (panel: Exclude<SidePanel, null>) =>
     setSidePanel((current) => (current === panel ? null : panel));
   const btwRef = useRef<BtwPanelHandle>(null);
@@ -95,13 +94,16 @@ export function DialogueView({
 
   const lastTerm = useRef<string | null>(null);
   useLayoutEffect(() => {
-    if (openTerm && openTerm !== lastTerm.current) {
-      lastTerm.current = openTerm;
-      setPanelOpen(true);
-      panelRef.current?.openTerm(openTerm);
-      onTermOpened?.();
+    if (openTerm === null || openTerm === undefined) {
+      lastTerm.current = null;
+      return;
     }
-  }, [openTerm, onTermOpened, setPanelOpen]);
+    if (openTerm === lastTerm.current) return;
+    lastTerm.current = openTerm;
+    setSidePanel("term");
+    panelRef.current?.openTerm(openTerm);
+    onTermOpened?.();
+  }, [openTerm, onTermOpened]);
 
   const hasEntries = items.some((item) => item.kind === "entry");
   const submit = useCallback(
@@ -115,7 +117,6 @@ export function DialogueView({
 
   const onVoiceFinal = useCallback((text: string) => void submit(text), [submit]);
   const voice = useVoiceInput(onVoiceFinal, onAmplitudeNoop);
-  stopVoiceRef.current = () => void voice.stop();
 
   const [voiceMode, setVoiceMode] = useState(false);
   const sidebarOverlay = useSidebarOverlay();
