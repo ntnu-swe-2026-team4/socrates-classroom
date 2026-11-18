@@ -60,12 +60,13 @@ export function adminRoutes() {
     .get("/admin/users", async (c) => {
       requireAdmin(c);
       const q = (c.req.query("q") ?? "").trim().slice(0, 80);
+      const like = `%${q.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
       const rows = await all<AdminUserRow>(
         c.env.DB,
         `SELECT ${ADMIN_USER_COLUMNS} FROM users u LEFT JOIN schools s ON s.id = u.school_id
-         WHERE ($q = '' OR u.name LIKE $like OR u.email LIKE $like)
+         WHERE ($q = '' OR u.name LIKE $like ESCAPE '\\' OR u.email LIKE $like ESCAPE '\\')
          ORDER BY u.is_admin DESC, u.can_manage_classes DESC, u.created_at, u.name`,
-        { q, like: `%${q.replaceAll("%", "").replaceAll("_", "")}%` },
+        { q, like },
       );
       return c.json(rows.map(toAdminUser));
     })
