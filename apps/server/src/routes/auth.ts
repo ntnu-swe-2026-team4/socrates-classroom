@@ -23,12 +23,15 @@ import {
 } from "../auth";
 import { enabledProviders } from "./oauth-config";
 import {
+  clearKeyHits,
   enforceIpLimit,
   fail,
+  keyLimitBlocked,
   langOf,
   newId,
   nowIso,
   parseBody,
+  recordKeyHit,
   requireUser,
   uniqueViolationColumns,
   type AppEnv,
@@ -96,6 +99,7 @@ export function authRoutes() {
     .post("/me/teacher-request", async (c) => {
       const current = requireUser(c);
       if (current.kind === "student") fail(403, "student_restricted");
+      if (current.preview) fail(403, "forbidden");
       await parseBody(c, TeacherRequestInputSchema);
       if (!current.teacherPlan) {
         const at = nowIso();
@@ -111,15 +115,23 @@ export function authRoutes() {
     .post("/auth/login", async (c) => {
       await enforceIpLimit(c, "login", 30);
       const input = await parseBody(c, LoginInputSchema);
+      const identifier = input.identifier.trim();
+      const emailLike = identifier.includes("@");
+      const lookup = emailLike ? identifier.toLowerCase() : identifier;
+      if (keyLimitBlocked("login-fail", lookup.toLowerCase(), 10)) fail(429, "rate_limited");
       const row = await one<UserRow>(
         c.env.DB,
-        input.identifier.includes("@")
+        emailLike
           ? "SELECT * FROM users WHERE email = $identifier"
           : "SELECT * FROM users WHERE username = $identifier",
-        { identifier: input.identifier },
+        { identifier: lookup },
       );
       const ok = await verifyPassword(input.password, row?.password_hash ?? DUMMY_HASH);
-      if (!row || !ok) fail(401, "unauthorized");
+      if (!row || !ok) {
+        recordKeyHit("login-fail", lookup.toLowerCase());
+        fail(401, "unauthorized");
+      }
+      clearKeyHits("login-fail", lookup.toLowerCase());
       if (row.disabled_at !== null) fail(403, "account_disabled");
       const user = await accountFor(c, row.id);
       await startSession(c, user);
@@ -276,19 +288,30 @@ async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthPr
   if (existing) return toUser(existing);
   const id = newId("u_");
   const at = nowIso();
-  try {
-    await batch(c.env.DB, [
+  const insertIdentity = (email: string | null) =>
+    batch(c.env.DB, [
       {
-        sql: "INSERT INTO users (id, name, lang, created_at) VALUES ($id, $name, $lang, $at)",
-        params: { id, name: profile.name, lang: langOf(c), at },
+        sql: "INSERT INTO users (id, name, email, lang, created_at) VALUES ($id, $name, $email, $lang, $at)",
+        params: { id, name: profile.name, email, lang: langOf(c), at },
       },
       {
         sql: "INSERT INTO user_identities (provider, provider_user_id, user_id, email, created_at) VALUES ($provider, $subject, $id, $email, $at)",
         params: { ...key, id, email: profile.email, at },
       },
     ]);
+  try {
+    await insertIdentity(profile.email);
   } catch (error) {
-    if (!uniqueViolationColumns(error).some(([table]) => table === "user_identities")) throw error;
+    const pairs = uniqueViolationColumns(error);
+    if (pairs.some(([table, column]) => table === "users" && column === "email")) {
+      try {
+        await insertIdentity(null);
+      } catch {
+        /* fall through to the raced-identity lookup */
+      }
+    } else if (!pairs.some(([table]) => table === "user_identities")) {
+      throw error;
+    }
     const raced = await one<{ id: string; name: string; can_manage_classes: number; is_admin: number }>(
       c.env.DB,
       findSql,

@@ -113,24 +113,48 @@ export function requireTeacher(c: Ctx): User {
   return user;
 }
 
-export async function enforceIpLimit(c: Ctx, scope: string, limit = 30): Promise<void> {
+export function enforceIpLimit(c: Ctx, scope: string, limit = 30): void {
   const ip = c.req.header("CF-Connecting-IP");
   if (!ip) return;
-  if (!(await allowIp(ip, scope, limit))) fail(429, "rate_limited");
+  if (windowHits(`${scope}:${ip}`).length >= limit) fail(429, "rate_limited");
+  recordHit(`${scope}:${ip}`);
+}
+
+export function keyLimitBlocked(scope: string, key: string, limit: number): boolean {
+  return windowHits(`${scope}:${key}`).length >= limit;
+}
+
+export function recordKeyHit(scope: string, key: string): void {
+  recordHit(`${scope}:${key}`);
+}
+
+export function clearKeyHits(scope: string, key: string): void {
+  ipHits.delete(`${scope}:${key}`);
 }
 
 const ipHits = new Map<string, number[]>();
 const IP_TRACK_MAX = 10_000;
+const HIT_WINDOW_MS = 60_000;
 
-async function allowIp(ip: string, scope: string, limit: number): Promise<boolean> {
-  const key = `${scope}:${ip}`;
+function windowHits(key: string): number[] {
   const now = Date.now();
-  const window = 60_000;
-  const hits = (ipHits.get(key) ?? []).filter((t) => now - t < window);
+  const hits = (ipHits.get(key) ?? []).filter((t) => now - t < HIT_WINDOW_MS);
+  ipHits.set(key, hits);
+  return hits;
+}
+
+function recordHit(key: string): void {
+  const hits = windowHits(key);
+  hits.push(Date.now());
+  trimTrack();
+}
+
+function trimTrack(): void {
+  const now = Date.now();
   while (ipHits.size >= IP_TRACK_MAX) {
     let reclaimed = false;
     for (const [k, v] of ipHits) {
-      if (v.every((t) => now - t >= window)) {
+      if (v.every((t) => now - t >= HIT_WINDOW_MS)) {
         ipHits.delete(k);
         reclaimed = true;
         if (ipHits.size < IP_TRACK_MAX) break;
@@ -150,11 +174,4 @@ async function allowIp(ip: string, scope: string, limit: number): Promise<boolea
       ipHits.delete(oldestKey);
     }
   }
-  if (hits.length >= limit) {
-    ipHits.set(key, hits);
-    return false;
-  }
-  hits.push(now);
-  ipHits.set(key, hits);
-  return true;
 }

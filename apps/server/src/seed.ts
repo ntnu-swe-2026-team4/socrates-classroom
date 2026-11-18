@@ -1,6 +1,6 @@
 import type { Db } from "./db/d1";
 import { batch, one, run } from "./db/d1";
-import { hashPassword } from "./auth";
+import { hashPassword, verifyPassword } from "./auth";
 import { nowIso } from "./http";
 
 export const FIXTURE_PASSWORD = "demo-demo";
@@ -200,10 +200,14 @@ export const FIXTURE_CLASSROOMS: readonly FixtureClassroom[] = [
 ];
 
 async function ensureUser(db: Db, account: FixtureAccount, hash: string, at: string): Promise<string> {
-  const existing = await one<{ id: string }>(db, "SELECT id FROM users WHERE id = $id OR email = $email", {
-    id: account.id,
-    email: account.email,
-  });
+  const existing = await one<{ id: string; password_hash: string | null }>(
+    db,
+    "SELECT id, password_hash FROM users WHERE id = $id OR email = $email",
+    {
+      id: account.id,
+      email: account.email,
+    },
+  );
   const params = {
     name: account.name,
     email: account.email,
@@ -212,12 +216,15 @@ async function ensureUser(db: Db, account: FixtureAccount, hash: string, at: str
     admin: account.isAdmin ? 1 : 0,
   };
   if (existing) {
+    const unchanged =
+      existing.password_hash !== null && (await verifyPassword(FIXTURE_PASSWORD, existing.password_hash));
     await run(
       db,
       `UPDATE users SET name = $name, email = $email, password_hash = $hash,
-         can_manage_classes = $can, teacher_mode = $can, is_admin = $admin, disabled_at = NULL
+         can_manage_classes = $can, teacher_mode = $can, is_admin = $admin, disabled_at = NULL,
+         session_version = session_version + $bump
        WHERE id = $id`,
-      { ...params, id: existing.id },
+      { ...params, id: existing.id, bump: unchanged ? 0 : 1 },
     );
     return existing.id;
   }
