@@ -76,7 +76,8 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
   const [title, setTitle] = useState("");
   const [statement, setStatement] = useState("");
   const [direction, setDirection] = useState("");
-  const generated = useMutation({ mutationFn: () => api.generateTopics(direction) });
+  const generated = useMutation({ mutationFn: (used: string) => api.generateTopics(used) });
+  const staleGeneration = (generated.data !== undefined || generated.isError) && generated.variables !== direction;
   const create = useMutation({
     mutationFn: (input: { title: string; statement: string; prompts: string[] }) =>
       api.createClassroomTopic(classroomId, input),
@@ -121,21 +122,18 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
             <Input
               value={direction}
               placeholder={t("setup_topic_direction")}
-              onChange={(event) => {
-                setDirection(event.target.value);
-                generated.reset();
-              }}
+              onChange={(event) => setDirection(event.target.value)}
             />
             <Button
               variant="outline"
               disabled={!direction.trim() || generated.isPending}
-              onClick={() => generated.mutate()}
+              onClick={() => generated.mutate(direction)}
             >
               {generated.isPending ? <Spinner /> : t("setup_topic_generate")}
             </Button>
           </div>
-          {generated.isError && <p className="text-[13px] text-flag">{t("common_error")}</p>}
-          {(generated.data ?? []).map((candidate) => (
+          {generated.isError && !staleGeneration && <p className="text-[13px] text-flag">{t("common_error")}</p>}
+          {(staleGeneration ? [] : (generated.data ?? [])).map((candidate) => (
             <div key={candidate.id} className="flex items-start gap-3 rounded-xl bg-paper-deep p-3">
               <span className="min-w-0 flex-1">
                 <b className="block font-serif text-[15px] font-medium text-ink">{candidate.title}</b>

@@ -23,7 +23,8 @@ export function TopicPicker({
   const [customStatement, setCustomStatement] = useState("");
   const [direction, setDirection] = useState("");
   const topics = useQuery({ queryKey: ["topics"], queryFn: () => api.listTopics(), staleTime: Infinity });
-  const generated = useMutation({ mutationFn: () => api.generateTopics(direction) });
+  const generated = useMutation({ mutationFn: (used: string) => api.generateTopics(used) });
+  const staleGeneration = (generated.data !== undefined || generated.isError) && generated.variables !== direction;
   const submit = useMutation({
     mutationFn: async () => {
       let topicId: string;
@@ -64,7 +65,7 @@ export function TopicPicker({
   const locked = submit.isPending;
   const ready =
     source === "custom" ? customTitle.trim().length > 0 && customStatement.trim().length > 0 : Boolean(picked);
-  const list = (source === "ai" ? (generated.data ?? []) : (topics.data ?? [])).filter(
+  const list = (source === "ai" ? (staleGeneration ? [] : (generated.data ?? [])) : (topics.data ?? [])).filter(
     (topic) => topic.id !== excludeId,
   );
 
@@ -99,7 +100,7 @@ export function TopicPicker({
                 disabled={!direction.trim() || generated.isPending || locked}
                 onClick={() => {
                   setPicked(null);
-                  generated.mutate();
+                  generated.mutate(direction);
                 }}
               >
                 {generated.isPending ? <Spinner /> : t("setup_topic_generate")}
@@ -129,7 +130,7 @@ export function TopicPicker({
                 <span className="text-[12.5px] leading-relaxed text-ink-soft">{item.statement}</span>
               </button>
             ))}
-            {source === "ai" && !generated.data && !generated.isPending && (
+            {source === "ai" && (staleGeneration || !generated.data) && !generated.isPending && (
               <p className="py-5 text-center text-[13px] text-ink-faint">{t("setup_topic_direction")} →</p>
             )}
           </div>
