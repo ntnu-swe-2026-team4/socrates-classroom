@@ -40,43 +40,7 @@ const PREVIEW_NAMES = { zh: "測試學生", en: "Test Student", es: "Estudiante 
 const UNTITLED_COURSE = { zh: "未命名課程", en: "Untitled course", es: "Curso sin título" } as const;
 
 async function ensurePreviewStudent(db: Db, classroomId: string, lang: Lang): Promise<User> {
-  const existing = await one<{ id: string; name: string }>(
-    db,
-    "SELECT id, name FROM users WHERE preview_classroom_id = $cid",
-    { cid: classroomId },
-  );
-  if (existing)
-    return {
-      id: existing.id,
-      name: existing.name,
-      canManageClasses: false,
-      isAdmin: false,
-      guest: false,
-      preview: true,
-      previewClassroomId: classroomId,
-    };
-  const id = newId("u_");
-  const at = nowIso();
-  const taken = await one<{ user_id: string }>(
-    db,
-    "SELECT user_id FROM members WHERE classroom_id = $cid AND name = $name",
-    {
-      cid: classroomId,
-      name: PREVIEW_NAMES[lang],
-    },
-  );
-  const name = taken ? `${PREVIEW_NAMES[lang]} ${id.slice(2, 6)}` : PREVIEW_NAMES[lang];
-  await batch(db, [
-    {
-      sql: "INSERT INTO users (id, name, lang, preview_classroom_id, created_at) VALUES ($id, $name, $lang, $cid, $at)",
-      params: { id, name, lang, cid: classroomId, at },
-    },
-    {
-      sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
-      params: { cid: classroomId, uid: id, name, at },
-    },
-  ]);
-  return {
+  const previewOf = (id: string, name: string): User => ({
     id,
     name,
     canManageClasses: false,
@@ -84,7 +48,47 @@ async function ensurePreviewStudent(db: Db, classroomId: string, lang: Lang): Pr
     guest: false,
     preview: true,
     previewClassroomId: classroomId,
-  };
+  });
+  const findExisting = () =>
+    one<{ id: string; name: string }>(db, "SELECT id, name FROM users WHERE preview_classroom_id = $cid", {
+      cid: classroomId,
+    });
+  const existing = await findExisting();
+  if (existing) return previewOf(existing.id, existing.name);
+  for (let attempt = 0; ; attempt += 1) {
+    const id = newId("u_");
+    const at = nowIso();
+    const taken = await one<{ user_id: string }>(
+      db,
+      "SELECT user_id FROM members WHERE classroom_id = $cid AND name = $name",
+      {
+        cid: classroomId,
+        name: PREVIEW_NAMES[lang],
+      },
+    );
+    const name = taken ? `${PREVIEW_NAMES[lang]} ${id.slice(2, 6)}` : PREVIEW_NAMES[lang];
+    try {
+      await batch(db, [
+        {
+          sql: "INSERT INTO users (id, name, lang, preview_classroom_id, created_at) VALUES ($id, $name, $lang, $cid, $at)",
+          params: { id, name, lang, cid: classroomId, at },
+        },
+        {
+          sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
+          params: { cid: classroomId, uid: id, name, at },
+        },
+      ]);
+    } catch (error) {
+      const columns = uniqueViolationColumns(error);
+      if (columns.some(([table, column]) => table === "users" && column === "preview_classroom_id")) {
+        const raced = await findExisting();
+        if (raced) return previewOf(raced.id, raced.name);
+      }
+      if (attempt < 2 && columns.length > 0) continue;
+      throw error;
+    }
+    return previewOf(id, name);
+  }
 }
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
