@@ -625,15 +625,19 @@ export const httpApi: Api = {
       method: "POST",
     });
     persistActivityId(data.activityId);
+    announceSession();
     return data;
   },
   async resetPreview() {
     const data = await raw<{ user: User; activityId: string }>("/preview/reset", { method: "POST" });
     persistActivityId(data.activityId);
+    announceSession();
     return data;
   },
   async exitPreview() {
-    return raw<User>("/preview/exit", { method: "POST" });
+    const user = await raw<User>("/preview/exit", { method: "POST" });
+    announceSession();
+    return user;
   },
   async stt(audio) {
     const file = audio instanceof File ? audio : new File([audio], "speech.webm", { type: audio.type });
@@ -719,7 +723,9 @@ export const httpApi: Api = {
     return raw<DevAccounts>("/dev/accounts");
   },
   async devLogin(email) {
-    return raw<User>("/dev/login", { method: "POST", json: { email } });
+    const user = await raw<User>("/dev/login", { method: "POST", json: { email } });
+    announceSession();
+    return user;
   },
   async listAdminUsers() {
     return raw<AdminUser[]>("/admin/users");
