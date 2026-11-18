@@ -11,6 +11,20 @@ interface ActiveSpeech {
 }
 
 const MAX_TTS_CHARS = 2000;
+const SENTENCE_END = "。．！？!?\n";
+
+function boundedSpeech(text: string): string {
+  const capped = text.slice(0, MAX_TTS_CHARS);
+  if (capped.length === text.length) return capped;
+  let cut = -1;
+  for (let index = 0; index < capped.length; index += 1) {
+    const at = SENTENCE_END.indexOf(capped[index]!);
+    if (at >= 0 && (SENTENCE_END[at] === "\n" || capped[index + 1] === undefined || capped[index + 1] === " ")) {
+      cut = index;
+    }
+  }
+  return cut > MAX_TTS_CHARS * 0.5 ? capped.slice(0, cut + 1) : capped;
+}
 const intentAt: Record<SpeechSource, number> = { dialogue: 0, assistant: 0 };
 const tabId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Math.random());
 const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel("socrates-speech");
@@ -48,7 +62,7 @@ export function speak(
   companion.setSpeakingSource(source);
   channel?.postMessage({ type: "start", tab: tabId });
   return api
-    .tts(text.slice(0, MAX_TTS_CHARS), () => {}, current.controller.signal)
+    .tts(boundedSpeech(text), () => {}, current.controller.signal)
     .then((): SpeechOutcome => (current.controller.signal.aborted ? "interrupted" : "ended"))
     .catch((error: unknown): SpeechOutcome => {
       if (current.controller.signal.aborted) return "interrupted";
