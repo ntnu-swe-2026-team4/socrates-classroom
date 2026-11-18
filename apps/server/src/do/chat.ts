@@ -95,7 +95,7 @@ export class Chat extends DurableObject<Env> {
     (handle, input, options) => this.routeSubmit(handle, input, options),
     (identity) => this.canSubmit(identity),
     () => forkBtw(this.harness, this.btw),
-    (identity) => this.revalidate(identity),
+    (identity) => this.reverify(identity),
   );
   readonly webSockets = new WebSockets(this.sockets.options());
   readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.harness);
@@ -313,28 +313,6 @@ export class Chat extends DurableObject<Env> {
       return access.isTeacher ? "member" : "revoked";
     } catch (error) {
       return error instanceof ApiError ? "revoked" : "error";
-    }
-  }
-
-  private async revalidate(identity: SocketIdentity): Promise<ReverifyOutcome> {
-    try {
-      const [soloId] = this.ctx.id.name?.split(":") ?? [];
-      if (soloId?.startsWith(SOLO_PREFIX)) {
-        const state = identity.userId === null ? null : await accountState(this.env.DB, identity.userId);
-        if (!state || state.disabled || state.version !== identity.version) return "revoked";
-        return (await ownedSoloChat(this.env.DB, soloId, identity.userId!)) ? "member" : "revoked";
-      }
-      if (identity.userId === null) {
-        const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
-        if (!activityId || !participantId || identity.participantId !== participantId) return "revoked";
-        const participant = await participantOf(this.env.DB, activityId, participantId);
-        return participant && participant.user_id === null ? "member" : "revoked";
-      }
-      const state = await accountState(this.env.DB, identity.userId);
-      if (!state || state.disabled || state.version !== identity.version) return "revoked";
-      return "member";
-    } catch {
-      return "error";
     }
   }
 }
