@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { cn } from "@/components/ui";
 import { createFrameLoop } from "@/lib/frameLoop";
+import { onReducedMotionChange } from "@/lib/motion";
 
 const PITCH = 12;
 const RADIUS = 1.45;
@@ -20,7 +21,7 @@ export function DotField({ className }: { className?: string }) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    let still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     let dots: Dot[] = [];
     let width = 0;
     let height = 0;
@@ -98,8 +99,18 @@ export function DotField({ className }: { className?: string }) {
     });
     if (still) draw(0);
     else loop.wake();
+    const unwatchMotion = onReducedMotionChange((next) => {
+      still = next;
+      if (next) {
+        loop.stop();
+        draw(0);
+      } else {
+        loop.wake();
+      }
+    });
 
     return () => {
+      unwatchMotion();
       loop.stop();
       observer.disconnect();
       themeObserver.disconnect();

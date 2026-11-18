@@ -4,6 +4,7 @@ import { cn } from "@/components/ui";
 import { LANGS, setLocale, useI18n, type Locale, type MessageKey } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
 import { createFrameLoop } from "@/lib/frameLoop";
+import { onReducedMotionChange } from "@/lib/motion";
 
 export const Route = createFileRoute("/")({
   component: ComicLanding,
@@ -247,7 +248,7 @@ function LoopCanvas({
       view.width = sheet.width;
       view.height = sheet.height;
       const image = new Image();
-      const still = prefersStill();
+      let still = prefersStill();
       let ready = false;
       let visible = false;
       let started = 0;
@@ -290,8 +291,18 @@ function LoopCanvas({
         }
         sync();
       });
+      const unwatchMotion = onReducedMotionChange((next) => {
+        still = next;
+        if (next) {
+          tick.stop();
+          draw(0);
+        } else {
+          sync();
+        }
+      });
       return () => {
         unwatch();
+        unwatchMotion();
         tick.stop();
       };
     },
@@ -330,7 +341,7 @@ function EyesInset({ label }: { label: string }) {
   const attach = useCallback((view: HTMLButtonElement | null) => {
     if (!view) return;
     const irises = Array.from(view.querySelectorAll<HTMLElement>("[data-iris]"));
-    const still = prefersStill();
+    let still = prefersStill();
     const gaze = { x: 0, y: 0 };
     const want = { x: 0, y: 0 };
     let visible = false;
@@ -363,10 +374,15 @@ function EyesInset({ label }: { label: string }) {
       visible = next;
       wake();
     });
+    const unwatchMotion = onReducedMotionChange((next) => {
+      still = next;
+      if (!next) wake();
+    });
     window.addEventListener("pointermove", onPointer, { passive: true });
     window.addEventListener("pointerdown", onPointer, { passive: true });
     return () => {
       unwatch();
+      unwatchMotion();
       tick.stop();
       window.removeEventListener("pointermove", onPointer);
       window.removeEventListener("pointerdown", onPointer);
@@ -465,7 +481,7 @@ function WindCanvas({ seed, className }: { seed: number; className?: string }) {
       const context = view.getContext("2d");
       if (!context) return;
       const ink = getComputedStyle(view).color;
-      const still = prefersStill();
+      let still = prefersStill();
       const random = seeded(seed);
       const gusts = Array.from({ length: 5 }, (_, index) => ({
         start: index * 0.9 + random() * 1.2,
@@ -543,9 +559,19 @@ function WindCanvas({ seed, className }: { seed: number; className?: string }) {
         visible = next;
         wake();
       });
+      const unwatchMotion = onReducedMotionChange((next) => {
+        still = next;
+        if (next) {
+          tick.stop();
+          draw(2.4);
+        } else {
+          wake();
+        }
+      });
       return () => {
         observer?.disconnect();
         unwatch();
+        unwatchMotion();
         tick.stop();
       };
     },
@@ -890,7 +916,7 @@ function InkFlames({ flip = false }: { flip?: boolean }) {
       const context = view.getContext("2d");
       if (!context) return;
       const ink = getComputedStyle(view).color;
-      const still = prefersStill();
+      let still = prefersStill();
       const random = seeded(flip ? 29 : 17);
       const lines: Array<{ phase: number; jitter: number; rate: number; nudge: number; ticks: number[] }> = [];
       const STEPS = 16;
@@ -987,9 +1013,15 @@ function InkFlames({ flip = false }: { flip?: boolean }) {
         visible = next;
         wake();
       });
+      const unwatchMotion = onReducedMotionChange((next) => {
+        still = next;
+        if (next) tick.stop();
+        else wake();
+      });
       return () => {
         observer?.disconnect();
         unwatch();
+        unwatchMotion();
         tick.stop();
       };
     },
@@ -1035,7 +1067,7 @@ function Tornado({ label, ariaLabel, onAwake }: { label: string; ariaLabel: stri
     const red = colours.outlineColor;
     const sheet = pickSheet(HEAD);
     const image = new Image();
-    const still = prefersStill();
+    let still = prefersStill();
     const random = seeded(11);
     const spike = () => {
       const kind = random();
@@ -1269,9 +1301,14 @@ function Tornado({ label, ariaLabel, onAwake }: { label: string; ariaLabel: stri
     button.addEventListener("keyup", stop);
     button.addEventListener("blur", stop);
     button.addEventListener("contextmenu", noMenu);
+    const unwatchMotion = onReducedMotionChange((next) => {
+      still = next;
+      if (!next) wake();
+    });
     return () => {
       observer?.disconnect();
       unwatch();
+      unwatchMotion();
       tick.stop();
       frame.removeEventListener("pointermove", onMove);
       frame.removeEventListener("pointerleave", onLeave);
@@ -1540,8 +1577,8 @@ function ComicLanding() {
     }));
     const bar = root.querySelector<HTMLElement>("[data-bar]");
     const title = root.querySelector<HTMLElement>("[data-title]");
-    const still = prefersStill();
-    const shifts = !still && hasFinePointer();
+    let still = prefersStill();
+    let shifts = !still && hasFinePointer();
     if (shifts) for (const scene of scenes) scene.node.style.willChange = "transform";
     const pointer = { x: 0, y: 0 };
     const eased = { x: 0, y: 0 };
@@ -1579,11 +1616,17 @@ function ComicLanding() {
           title.dataset.live = String(visible);
         })
       : () => {};
+    const unwatchMotion = onReducedMotionChange((next) => {
+      still = next;
+      shifts = !next && hasFinePointer();
+      schedule();
+    });
     root.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("pointermove", onPointer, { passive: true });
     schedule();
     return () => {
       unwatch();
+      unwatchMotion();
       root.removeEventListener("scroll", schedule);
       window.removeEventListener("pointermove", onPointer);
       render.stop();

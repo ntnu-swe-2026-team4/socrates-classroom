@@ -1,5 +1,7 @@
 import { useCallback } from "react";
 import { cn } from "@/components/ui";
+import { createFrameLoop } from "@/lib/frameLoop";
+import { onReducedMotionChange } from "@/lib/motion";
 
 const clamp = (v: number, a: number, b: number) => Math.min(Math.max(v, a), b);
 
@@ -345,7 +347,7 @@ export function StoaField({ reserve, className }: { reserve: number; className?:
   const attach = useCallback(
     (cv: HTMLCanvasElement | null) => {
       if (!cv) return;
-      const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      let still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       let ink = inkFromColor(getComputedStyle(cv).color);
       const t0 = performance.now();
       const pointer: Pointer = { x: 0, y: 0, active: false };
@@ -359,7 +361,6 @@ export function StoaField({ reserve, className }: { reserve: number; className?:
         client.active = false;
       };
       let field: Field | null = null;
-      let frame = 0;
       const rebuild = () => {
         const W = Math.round(cv.clientWidth / 2);
         const H = Math.round(cv.clientHeight / 2);
@@ -375,31 +376,34 @@ export function StoaField({ reserve, className }: { reserve: number; className?:
       });
       themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
       rebuild();
-      if (!still) {
-        window.addEventListener("pointermove", track, { passive: true });
-        window.addEventListener("pointerdown", track, { passive: true });
-        document.documentElement.addEventListener("pointerleave", release);
-        window.addEventListener("blur", release);
-        let last = t0;
-        const loop = (now: number) => {
-          if (field) {
-            const rect = cv.getBoundingClientRect();
-            const x = ((client.x - rect.left) * field.W) / (rect.width || 1);
-            const y = ((client.y - rect.top) * field.H) / (rect.height || 1);
-            pointer.active = client.active && rect.width > 0 && Math.hypot(x - pointer.x, y - pointer.y) > 0.25;
-            pointer.x = x;
-            pointer.y = y;
-            drawField(field, (now - t0) / 1000, ink, pointer, Math.min(0.05, (now - last) / 1000));
-          }
-          last = now;
-          frame = requestAnimationFrame(loop);
-        };
-        frame = requestAnimationFrame(loop);
-      }
+      window.addEventListener("pointermove", track, { passive: true });
+      window.addEventListener("pointerdown", track, { passive: true });
+      document.documentElement.addEventListener("pointerleave", release);
+      window.addEventListener("blur", release);
+      let last = t0;
+      const loop = createFrameLoop((now: number) => {
+        if (field) {
+          const rect = cv.getBoundingClientRect();
+          const x = ((client.x - rect.left) * field.W) / (rect.width || 1);
+          const y = ((client.y - rect.top) * field.H) / (rect.height || 1);
+          pointer.active = client.active && rect.width > 0 && Math.hypot(x - pointer.x, y - pointer.y) > 0.25;
+          pointer.x = x;
+          pointer.y = y;
+          drawField(field, (now - t0) / 1000, ink, pointer, Math.min(0.05, (now - last) / 1000));
+        }
+        last = now;
+        return !still;
+      });
+      loop.wake();
+      const unwatchMotion = onReducedMotionChange((next) => {
+        still = next;
+        if (!next) loop.wake();
+      });
       return () => {
+        unwatchMotion();
         observer.disconnect();
         themeObserver.disconnect();
-        cancelAnimationFrame(frame);
+        loop.stop();
         window.removeEventListener("pointermove", track);
         window.removeEventListener("pointerdown", track);
         document.documentElement.removeEventListener("pointerleave", release);
