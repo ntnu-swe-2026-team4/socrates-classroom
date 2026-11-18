@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BellRing, MessageSquare, Minus, Plus, X } from "lucide-react";
 import { ACTIVITY_SLOT_MAX, type StudentLive } from "@socrates/shared";
 import { api, ApiError } from "@/api";
-import { BackLink, Button, Card, PageHeader, Spinner, buttonStyles, cn } from "@/components/ui";
+import { BackLink, Button, Card, ConfirmDialog, PageHeader, Spinner, buttonStyles, cn } from "@/components/ui";
 import { useNow } from "@/hooks/useSubscription";
 import { useT } from "@/i18n";
 
@@ -86,6 +86,7 @@ function LivePage() {
     );
   }, [students, now]);
 
+  const [finishing, setFinishing] = useState(false);
   const backToRoom = () =>
     info.data?.classroomId
       ? void navigate({ to: "/classrooms/$classroomId", params: { classroomId: info.data.classroomId } })
@@ -124,7 +125,7 @@ function LivePage() {
         title={t("live_title")}
         description={info.data?.topic.title}
         actions={
-          <Button onClick={() => void finishAndReport()} disabled={finish.isPending}>
+          <Button onClick={() => setFinishing(true)} disabled={finish.isPending}>
             {finish.isPending ? <Spinner /> : null}
             {t("live_finish")}
           </Button>
@@ -252,6 +253,19 @@ function LivePage() {
         </Card>
         {!testMode && <p className="text-[12px] text-ink-faint">{t("live_note")}</p>}
       </div>
+      <ConfirmDialog
+        open={finishing}
+        danger
+        title={t("live_finish_title")}
+        body={t("live_finish_body")}
+        confirmLabel={t("live_finish")}
+        cancelLabel={t("common_cancel")}
+        onCancel={() => setFinishing(false)}
+        onConfirm={() => {
+          setFinishing(false);
+          void finishAndReport();
+        }}
+      />
     </div>
   );
 }

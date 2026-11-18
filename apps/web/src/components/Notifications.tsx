@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Trash2 } from "lucide-react";
-import type { NotificationFeed } from "@socrates/shared";
+import type { Notification, NotificationFeed } from "@socrates/shared";
 import { api } from "@/api";
-import { Button, Card, Field, Input, Spinner, cn } from "@/components/ui";
+import { Button, Card, ConfirmDialog, Field, Input, Spinner, cn } from "@/components/ui";
 import { useDomEvent } from "@/hooks/useSubscription";
 import { useFormatDate, useT } from "@/i18n";
 
@@ -110,6 +110,7 @@ export function NotificationComposer() {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [removing, setRemoving] = useState<Notification | null>(null);
   const feed = useQuery({ queryKey: FEED_KEY, queryFn: () => api.notifications() });
   const refresh = () => queryClient.invalidateQueries({ queryKey: FEED_KEY });
   const send = useMutation({
@@ -166,7 +167,7 @@ export function NotificationComposer() {
               type="button"
               aria-label={t("notify_delete", { title: item.title })}
               disabled={remove.isPending}
-              onClick={() => remove.mutate(item.id)}
+              onClick={() => setRemoving(item)}
               className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-soft hover:bg-flag-wash hover:text-flag disabled:opacity-50"
             >
               <Trash2 className="size-4" aria-hidden />
@@ -174,6 +175,19 @@ export function NotificationComposer() {
           </li>
         ))}
       </ul>
+      <ConfirmDialog
+        open={removing !== null}
+        danger
+        title={t("notify_delete_title", { title: removing?.title ?? "" })}
+        body={t("notify_delete_body")}
+        confirmLabel={t("notify_delete_confirm")}
+        cancelLabel={t("common_cancel")}
+        onCancel={() => setRemoving(null)}
+        onConfirm={() => {
+          if (removing) remove.mutate(removing.id);
+          setRemoving(null);
+        }}
+      />
     </Card>
   );
 }
