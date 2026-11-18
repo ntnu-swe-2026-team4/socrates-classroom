@@ -241,7 +241,13 @@ async function ensureTopic(db: Db, topic: (typeof FIXTURE_TOPICS)[number], at: s
   const existing = await one<{ id: string }>(db, "SELECT id FROM topics WHERE title = $title AND owner_id IS NULL", {
     title: topic.title,
   });
-  if (existing) return existing.id;
+  if (existing) {
+    await run(db, "UPDATE topics SET i18n = $i18n WHERE id = $id AND i18n IS NOT $i18n", {
+      id: existing.id,
+      i18n: JSON.stringify(topic.i18n),
+    });
+    return existing.id;
+  }
   await run(
     db,
     "INSERT INTO topics (id, owner_id, title, statement, prompts, i18n, created_at) VALUES ($id, NULL, $title, $statement, $prompts, $i18n, $at)",
