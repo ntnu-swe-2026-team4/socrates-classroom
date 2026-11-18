@@ -181,10 +181,9 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 
 ## 6. 資料層
 
-- **D1 schema**：users／classrooms／topics／activities／members／reports／pseudonyms／teacher_key_entries（`migrations/`）。pi transcript 是對話與違規的唯一真相，無第二份儲存
-- **teacher_key_entries**（`007`）：一位老師多筆 entry（`provider_id`＋`model`＋`key_enc`，AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 teacher legs 鏈序（#82）。同一個 provider 可有多把 key：路由決策選中的 entry 由 `withPinnedCredential`（AsyncLocalStorage）釘住，pi 讀 credential 時取得該 entry 的 key
-- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities（`migrations/`：001 init、002 capabilities、003 activity_participants、004 activity_invites、005 activity_mode、006 topic_classroom、007 user_identities（#124））。pi transcript 是對話與違規的唯一真相，無第二份儲存
-- **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 provider 鏈序（#82）
+- **D1 schema**：users／classrooms／schools／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／posts／announcements／notifications／solo_chats／teacher_key_entries／user_identities／usage_months／usage_alerts／audit_log（`migrations/` 001–017）。pi transcript 是對話與違規的唯一真相，無第二份儲存
+- **teacher_key_entries**（012）：一位老師多筆 entry（`provider_id`＋`model`＋`key_enc`，AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 teacher legs 鏈序（#82）。同一個 provider 可有多把 key：路由決策選中的 entry 由 `withPinnedCredential`（AsyncLocalStorage）釘住，pi 讀 credential 時取得該 entry 的 key
+- **audit_log**（017）：敏感操作的審計軌跡（如教師重設學生密碼），`actor_id`＋`action`＋`target_id`，供日後稽查
 - **DO SQLite**：只有 pi 自己的 `pi_*` 表，應用程式不讀寫——agent 狀態與產品資料分離（D2）
 - **保留政策**：AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容（judgment sink 只記 type/source）
 
