@@ -31,11 +31,11 @@
   - 活動結束 **24 小時後**失效，留時間看報告；Kahoot 等產品同樣在活動結束時呈現結果。
   - 失效後 `GET /me` 回 401 `guest_session_expired`，前端導回登入頁並提示輸入新邀請碼。
   - 不能註冊升級：註冊一律建立新帳號，訪客紀錄留在該場報告，不轉移。
-- **帳號狀態每個請求都從 D1 讀取**（`resolveSession`）。admin 變更、刪除學生等效果立即生效，不必等 session 過期。session token 只用來識別 `uid`。
+- **帳號狀態每個請求都從 D1 讀取**（`resolveSession`）。admin 變更、刪除學生等效果立即生效，不必等 session 過期。session token 識別 `uid` 並攜帶 `ver`（`session_version`）：`lookupSession` 比對不一致即失效——**教師重設學生密碼**（`POST /classrooms/:id/students/:userId/password`，同時寫入 `audit_log`）與 **admin 停用／啟用帳號**都會 bump `session_version`，舊 session 全數撤銷。
 
-## 3. 資料（`008_account_roles.sql`）
+## 3. 資料（`008_web_next.sql`，web-next 遷移 squash）
 
-- 新表 `schools(id, name, created_at)`
+- 新表 `schools(id, name, created_at)`、`audit_log`（`actor_id`／`action`／`target_id`，密碼重設等敏感操作的審計紀錄）
 - `users` 新欄位：`is_admin`、`teacher_plan`（`trial`／`school`／NULL）、`school_id`、`teacher_mode`、`teacher_terms_at`、`username`（unique）、`student_classroom_id`、`guest_activity_id`
 - 搬移：
   - 既有正式帳號中已開過班級者 → `trial`＋教師模式開啟。
