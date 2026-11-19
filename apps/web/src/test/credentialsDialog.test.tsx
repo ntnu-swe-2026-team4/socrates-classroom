@@ -3,13 +3,9 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { StudentCredential } from "@socrates/shared";
 import { CredentialsDialog } from "@/components/ClassroomCommunity";
 import { setLocale } from "@/i18n";
+import { stubElementLayout } from "./layout";
 
-Object.defineProperty(HTMLElement.prototype, "offsetParent", {
-  get() {
-    return document.body;
-  },
-  configurable: true,
-});
+stubElementLayout();
 
 const credentials: StudentCredential[] = [
   { id: "u_1", name: "Ada", username: "ethics-01", password: "demo-one" },

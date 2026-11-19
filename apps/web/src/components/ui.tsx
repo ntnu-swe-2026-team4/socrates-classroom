@@ -264,7 +264,7 @@ export function trapDialogFocus(node: HTMLElement | null): (() => void) | undefi
   const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const focusables = () =>
     Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-      (element) => element.offsetParent !== null || element === document.activeElement,
+      (element) => element.getClientRects().length > 0 || element === document.activeElement,
     );
   focusables()[0]?.focus();
   const inerted: Element[] = [];
