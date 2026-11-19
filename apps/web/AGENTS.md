@@ -16,7 +16,7 @@ pnpm typecheck
 
 ## Deltas & boundaries
 
-- **No `useEffect`** anywhere in `src/` (Biome-enforced: `style/noRestrictedImports`); effect-free helpers live in `src/hooks/useSubscription.ts`
+- **No `useEffect`** anywhere in `src/` (Biome-enforced: `style/noRestrictedImports`); effect-free helpers live in `src/hooks/useSubscription.ts`; animation rAF shares the module-scope loop in `src/lib/frameLoop.ts` (`createFrameLoop`) — except `useVoiceInput`'s meter, which runs its own rAF per recording session
 - The API layer is only `src/api/` (`httpApi` — the real backend; the v3 mock mode is retired, server-side `LLM_PROVIDER=mock` covers offline dev)
 - The dialogue transport is **WebSocket** (`/agents/chat/:name`): message types in `apps/server/src/ws/protocol.ts`, mechanics in `docs/pi.md`; client applies chord ops with `applyImmutable` — never hand-roll a delta applier; REST shapes come from `hc<RpcApi>` (R6; server declarations via `pnpm --filter @socrates/server run build:types` → `dist/types`, consumed through the `@server/*` tsconfig path) — any contract change lands in `docs/api-contract.md` + `packages/shared`
 - Styling is Tailwind v4 utilities; theme colors are CSS variables (`@theme` in `src/index.css`) — never hardcode color values
@@ -26,7 +26,7 @@ pnpm typecheck
 
 ## Quality gates (run before merging — each has caught real bugs in this branch)
 
-1. **Critical user paths**: student `/ → /join/:code (name+ToS) → /dialogue?activityId=…`; teacher `/login → /t/setup → /t/live/:id → /report/:id`; guards redirect on direct URL hits. Mock identity dies on reload — navigate in-app
+1. **Critical user paths**: student `/ → /join/:code` or `/join/a/:token` `(name+ToS) → /dialogue?activityId=…`; teacher `/login → /classrooms (create empty classroom) → /classrooms/:id (topic + activity) → /t/live/:id → /report/:id`; guards redirect on direct URL hits. Identity is cookie-based (`socrates_session` 30d accounts, `socrates_participant` 7d guests) and survives reload; guests have no `/me`, so `/settings` and other account pages bounce them to `/home`
 2. **RWD**: 2560/1280/768/390 × every route, zero horizontal overflow; visual check at 2560 and 390 (page titles vs the global ☰)
 3. **i18n**: `tsc` enforces en/es completeness; every string incl. aria-labels via `t()`; no hardcoded strings; `<html lang>` synced
 4. **A11y + dark mode**: keyboard pass, focus, `aria-busy`/`aria-live`, `prefers-reduced-motion`, dark contrast — audit with the `a11y` skill
