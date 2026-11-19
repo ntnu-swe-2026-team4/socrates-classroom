@@ -27,6 +27,7 @@ const HEIGHT_KEY = "socrates_window_y";
 const EDGE_GAP = 8;
 const DRAG_SLOP = 4;
 const KEY_STEP = 0.05;
+const DOCK_SETTLE_FRAMES = 3;
 const OPEN_HEIGHT = "calc(2.25rem + 3px + min(196px, 26dvh))";
 
 const unit = (value: number) => Math.min(1, Math.max(0, value));
@@ -52,9 +53,8 @@ export function SocratesWindow({ bottomInset = 0 }: { bottomInset?: number }) {
 
   if (!visible) return null;
 
-  const place = (next: number) => {
-    const value = unit(next);
-    setHeight(value);
+  const place = (next: number) => setHeight(unit(next));
+  const persistHeight = (value: number) => {
     try {
       localStorage.setItem(HEIGHT_KEY, String(value));
     } catch {}
@@ -69,15 +69,18 @@ export function SocratesWindow({ bottomInset = 0 }: { bottomInset?: number }) {
     const full = 39 + Math.min(196, window.innerHeight * 0.26);
     const span = frame.height - bottomInset - EDGE_GAP * 2 - full;
     dragged.current = false;
+    let committed = 0;
     const move = (moveEvent: PointerEvent) => {
       if (!dragged.current && Math.abs(moveEvent.clientY - startY) < DRAG_SLOP) return;
       dragged.current = true;
-      place(span > 0 ? (moveEvent.clientY - grab - frame.top - EDGE_GAP) / span : 0);
+      committed = span > 0 ? (moveEvent.clientY - grab - frame.top - EDGE_GAP) / span : 0;
+      place(committed);
     };
     const stop = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", stop);
       window.removeEventListener("pointercancel", stop);
+      if (dragged.current) persistHeight(committed);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
@@ -85,9 +88,12 @@ export function SocratesWindow({ bottomInset = 0 }: { bottomInset?: number }) {
   };
 
   const nudge = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-    event.preventDefault();
-    place(height + (event.key === "ArrowUp" ? -KEY_STEP : KEY_STEP));
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      const next = unit(height + (event.key === "ArrowUp" ? -KEY_STEP : KEY_STEP));
+      place(next);
+      persistHeight(next);
+    }
   };
 
   const toggle = () => {
@@ -172,9 +178,13 @@ function useDockRect(): DockRect | null {
         notify();
       }
     };
+    let settledFrames = 0;
     const loop = createFrameLoop(() => {
+      const before = cacheRef.current;
       sync();
-      return cacheRef.current !== null;
+      if (cacheRef.current === null) return false;
+      settledFrames = cacheRef.current === before ? settledFrames + 1 : 0;
+      return settledFrames < DOCK_SETTLE_FRAMES;
     });
     const schedule = loop.wake;
     const observer = new MutationObserver(schedule);
