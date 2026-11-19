@@ -19,6 +19,7 @@ This directory is the project's **documentation SSOT**. Each document owns one d
 | Local development (zero-account, DB, dialogue)                        | `development.md`  | when the dev flow or local simulation behavior changes          |
 | Handoff: differences from the downloaded baseline + go-live checklist | `handoff.md`      | when a migration, cloud-config decision or go-live step changes |
 | Account & identity model (admin/user/teacher/student/guest)           | `accounts.md`     | when roles, plans, limits or session rules change               |
+| Google OAuth 設定與維運（client/secret、Console、輪替、除錯）         | `google-oauth.md` | when the OAuth flow, bindings or setup steps change             |
 
 ## Rules
 
