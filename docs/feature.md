@@ -93,3 +93,9 @@
 | 登入前故事  | 捲動式漫畫故事頁（`routes/index.tsx`）：sprite sheet＋canvas 分格動畫、滑鼠視差、可拖曳人物、按住互動；取代原 Lottie 故事頁                  |
 | CI/CD       | GitHub Actions：PR lint/test（server＋web）/build/dry-run；main 自動 migrations + deploy（見 [`cf.md`](./cf.md)）                            |
 | 觀測        | Worker observability 開啟；AI Gateway log/cache 關閉（ZDR）；log 不含學生對話內容                                                            |
+
+## 已知限制
+
+- 公告與討論區尚無分頁（資料多時一次載入全部）
+- Email 註冊不驗證信箱；為避免帳號被搶註接管，第三方登入不會自動連結到「有密碼的帳號」
+- 刪除教室或重設預覽後，舊對話的 Durable Object transcript 不會清除（已無法連線）

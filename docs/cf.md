@@ -180,3 +180,8 @@ secrets 管理一律走 `cf deploy --secrets-file`（見上方 Secrets）——w
 - cf 在 CI：https://developers.cloudflare.com/cf/ci/
 - `cloudflare.config.ts` 參考：https://developers.cloudflare.com/cf/projects/cloudflare-config/
 - cf for Wrangler users（遷移對照）：https://developers.cloudflare.com/cf/wrangler/
+
+## 上線前檢查（新環境）
+
+- [ ] GitHub repo secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`、`PROD_SECRETS_FILE`（內容為 `AUTH_SECRET`、`BYOK_ENC_KEY`、`SEED_TOKEN` 的 dotenv）。**未設定前 push 到 `main` 會讓 Deploy workflow 失敗**（屬預期，不會部署任何東西）
+- [ ] 網域：config 綁定 `socrates.g36maid.dev`；若部署到不同的 Cloudflare 帳號，需擁有該網域或另議

@@ -4,22 +4,21 @@ This directory is the project's **documentation SSOT**. Each document owns one d
 
 ## SSOT map
 
-| Domain                                                                | Single source     | Update when                                                     |
-| --------------------------------------------------------------------- | ----------------- | --------------------------------------------------------------- |
-| Feature inventory (current state: feature ↔ route ↔ page)             | `feature.md`      | when a feature merges to main (existing & testable only)        |
-| Vision & planning (not yet built)                                     | `roadmap.md`      | when a plan is decided; remove the entry once shipped           |
-| Changelog (done)                                                      | `changelog.md`    | after a feature merges to main                                  |
-| API request/response formats                                          | `api-contract.md` | when any route's input/output changes                           |
-| System architecture & decisions                                       | `architecture.md` | when bindings/DOs/services are added or decisions change        |
-| LLM providers (endpoints/quotas/concurrency/ZDR)                      | `providers.md`    | on provider/quota/terms changes or new verifications            |
-| Cloudflare CLI usage                                                  | `cf.md`           | when the cf workflow changes                                    |
-| Pi Durable / PiHarness usage                                          | `pi.md`           | on pi/agents version bumps and pi-related pitfalls              |
-| 前端架構與頁面（route map／stack／契約層）                            | `frontend.md`     | 頁面集合、stack 或契約層決策變更時                              |
-| Quickstart (for humans)                                               | `../README.md`    | when commands or prerequisites change                           |
-| Local development (zero-account, DB, dialogue)                        | `development.md`  | when the dev flow or local simulation behavior changes          |
-| Handoff: differences from the downloaded baseline + go-live checklist | `handoff.md`      | when a migration, cloud-config decision or go-live step changes |
-| Account & identity model (admin/user/teacher/student/guest)           | `accounts.md`     | when roles, plans, limits or session rules change               |
-| Google OAuth 設定與維運（client/secret、Console、輪替、除錯）         | `google-oauth.md` | when the OAuth flow, bindings or setup steps change             |
+| Domain                                                        | Single source     | Update when                                              |
+| ------------------------------------------------------------- | ----------------- | -------------------------------------------------------- |
+| Feature inventory (current state: feature ↔ route ↔ page)     | `feature.md`      | when a feature merges to main (existing & testable only) |
+| Vision & planning (not yet built)                             | `roadmap.md`      | when a plan is decided; remove the entry once shipped    |
+| Changelog (done)                                              | `changelog.md`    | after a feature merges to main                           |
+| API request/response formats                                  | `api-contract.md` | when any route's input/output changes                    |
+| System architecture & decisions                               | `architecture.md` | when bindings/DOs/services are added or decisions change |
+| LLM providers (endpoints/quotas/concurrency/ZDR)              | `providers.md`    | on provider/quota/terms changes or new verifications     |
+| Cloudflare CLI usage                                          | `cf.md`           | when the cf workflow changes                             |
+| Pi Durable / PiHarness usage                                  | `pi.md`           | on pi/agents version bumps and pi-related pitfalls       |
+| 前端架構與頁面（route map／stack／契約層）                    | `frontend.md`     | 頁面集合、stack 或契約層決策變更時                       |
+| Quickstart (for humans)                                       | `../README.md`    | when commands or prerequisites change                    |
+| Local development (zero-account, DB, dialogue)                | `development.md`  | when the dev flow or local simulation behavior changes   |
+| Account & identity model (admin/user/teacher/student/guest)   | `accounts.md`     | when roles, plans, limits or session rules change        |
+| Google OAuth 設定與維運（client/secret、Console、輪替、除錯） | `google-oauth.md` | when the OAuth flow, bindings or setup steps change      |
 
 ## Rules
 
