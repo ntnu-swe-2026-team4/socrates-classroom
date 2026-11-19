@@ -1,5 +1,6 @@
 import { api } from "@/api";
 import { companion, getCompanion, type SpeechSource } from "@/lib/companion";
+import { TTS_MAX_CHARS } from "@socrates/shared";
 
 export type { SpeechSource } from "@/lib/companion";
 export type SpeechOutcome = "ended" | "interrupted" | "skipped" | "muted";
@@ -10,11 +11,10 @@ interface ActiveSpeech {
   controller: AbortController;
 }
 
-const MAX_TTS_CHARS = 2000;
 const SENTENCE_END = "。．！？!?\n";
 
 function boundedSpeech(text: string): string {
-  const capped = text.slice(0, MAX_TTS_CHARS);
+  const capped = text.slice(0, TTS_MAX_CHARS);
   if (capped.length === text.length) return capped;
   let cut = -1;
   for (let index = 0; index < capped.length; index += 1) {
@@ -23,7 +23,7 @@ function boundedSpeech(text: string): string {
       cut = index;
     }
   }
-  return cut > MAX_TTS_CHARS * 0.5 ? capped.slice(0, cut + 1) : capped;
+  return cut > TTS_MAX_CHARS * 0.5 ? capped.slice(0, cut + 1) : capped;
 }
 const intentAt: Record<SpeechSource, number> = { dialogue: 0, assistant: 0 };
 const tabId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Math.random());
