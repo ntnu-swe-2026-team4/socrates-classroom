@@ -11,11 +11,19 @@ Reviewer 要如何快速驗證？請提供環境設定與操作步驟。
 
 ## 關聯 Issue
 
+新功能與重大變更：請附上與團隊討論過的 issue 連結（流程見 [CONTRIBUTING.md](CONTRIBUTING.md) § issue-first）。
+純 docs／chore PR 可寫 N/A。
+
+## 文件更新（Docs）
+
+依 [docs/AGENTS.md](docs/AGENTS.md) 的 SSOT map，列出本次更新了哪些文件；沒有就寫「無」。
+
 ## 自我審查（Self-review）
 
 - [ ] 我已檢視自己的 diff，確認品質、安全（security）、可靠度與效能。
 - [ ] UI 變更已遵循 checklist。
 - [ ] 測試已涵蓋新增或變更的行為。
+- [ ] 文件無偏移：該更新的文件都已更新，並列在「文件更新」。
 
 ## Release Notes：
 

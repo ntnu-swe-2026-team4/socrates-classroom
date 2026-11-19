@@ -2,6 +2,7 @@
 
 name: Bug report
 about: 回報預期外的行為
+title: "[bug] "
 labels:
 - bug
 
