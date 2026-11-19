@@ -346,6 +346,14 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     const del = await call("/api/settings/keys/openrouter", { method: "DELETE", headers: { Cookie: teacher } });
     expect(del.status).toBe(204);
     expect(await listKeys()).toEqual([]);
+
+    const noKeyLeg = await call("/api/settings/keys/openrouter/models", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ model: "z-ai/glm-4.7-flash" }),
+    });
+    expect(noKeyLeg.status).toBe(422);
+    expect(((await noKeyLeg.json()) as { code: string }).code).toBe("validation");
   });
 
   test("register → login student track: registering creates a member, same email and password can log in", async () => {

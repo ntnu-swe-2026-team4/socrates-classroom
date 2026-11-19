@@ -140,7 +140,7 @@ export function teacherKeyRoutes() {
       if (!def.getModels().some((model) => model.id === input.model)) fail(422, "byok_provider_invalid");
       const key = await one<{ n: number }>(
         c.env.DB,
-        "SELECT COALESCE(MAX(sort_order), -1) AS n FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
+        "SELECT 1 AS n FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
         { uid: user.id, pid: provider },
       );
       if (!key) fail(422, "validation");
