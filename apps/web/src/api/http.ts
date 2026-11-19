@@ -96,7 +96,15 @@ export interface Api {
   listTeacherKeys(): Promise<TeacherKeyStatus[]>;
   listKeyProviders(): Promise<KeyProviderInfo[]>;
   listKeyProviderModels(provider: string): Promise<KeyModelInfo[]>;
-  putTeacherKey(provider: string, key: string): Promise<{ provider: string; last4: string }>;
+  putTeacherKey(
+    provider: string,
+    key: string,
+    maxConcurrency?: number | null,
+  ): Promise<{ provider: string; last4: string; maxConcurrency: number | null }>;
+  putTeacherKeyProviderLimit(
+    provider: string,
+    maxConcurrency: number | null,
+  ): Promise<{ provider: string; maxConcurrency: number | null }>;
   putTeacherKeyModel(
     provider: string,
     model: string,
@@ -347,10 +355,16 @@ export const httpApi: Api = {
   async listKeyProviderModels(provider) {
     return unwrap(await client.settings.keys.providers[":provider"].models.$get({ param: { provider } }));
   },
-  async putTeacherKey(provider, key) {
-    return raw<{ provider: string; last4: string }>(`/settings/keys/${encodeURIComponent(provider)}`, {
+  async putTeacherKey(provider, key, maxConcurrency) {
+    return raw<{ provider: string; last4: string; maxConcurrency: number | null }>(
+      `/settings/keys/${encodeURIComponent(provider)}`,
+      { method: "PUT", json: maxConcurrency === undefined ? { key } : { key, maxConcurrency } },
+    );
+  },
+  async putTeacherKeyProviderLimit(provider, maxConcurrency) {
+    return raw<{ provider: string; maxConcurrency: number | null }>(`/settings/keys/${encodeURIComponent(provider)}`, {
       method: "PUT",
-      json: { key },
+      json: { maxConcurrency },
     });
   },
   async putTeacherKeyModel(provider, model, maxConcurrency) {

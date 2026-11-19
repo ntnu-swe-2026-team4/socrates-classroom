@@ -486,6 +486,9 @@ function ProviderEditor({
   const [editingLimit, setEditingLimit] = useState<string | null>(null);
   const [limitDraft, setLimitDraft] = useState("");
   const [limitError, setLimitError] = useState(false);
+  const [editingProviderLimit, setEditingProviderLimit] = useState(false);
+  const [providerLimitDraft, setProviderLimitDraft] = useState("");
+  const [providerLimitError, setProviderLimitError] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null);
 
@@ -536,6 +539,24 @@ function ProviderEditor({
       setLimitError(false);
       setEditingLimit(null);
       setLimitDraft("");
+    });
+
+  const saveProviderLimit = () =>
+    run(async () => {
+      const trimmed = providerLimitDraft.trim();
+      if (trimmed !== "") {
+        const maxConcurrency = Number(trimmed);
+        if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 100) {
+          setProviderLimitError(true);
+          return;
+        }
+        await api.putTeacherKeyProviderLimit(entry.provider, maxConcurrency);
+      } else {
+        await api.putTeacherKeyProviderLimit(entry.provider, null);
+      }
+      setProviderLimitError(false);
+      setEditingProviderLimit(false);
+      setProviderLimitDraft("");
     });
 
   const reorder = (index: number, delta: -1 | 1) =>
@@ -714,6 +735,61 @@ function ProviderEditor({
         >
           {t("settings_keys_save")}
         </button>
+        {editingProviderLimit ? (
+          <span className="flex items-center gap-1">
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={providerLimitDraft}
+              onChange={(event) => setProviderLimitDraft(event.target.value)}
+              placeholder={t("settings_keys_provider_limit_none")}
+              aria-label={t("settings_keys_provider_limit_edit")}
+              className="w-24 rounded-md border border-line-strong bg-paper px-2 py-1 text-[13px] text-ink"
+            />
+            <button
+              type="button"
+              onClick={saveProviderLimit}
+              aria-label={t("settings_keys_provider_limit_save")}
+              className="cursor-pointer rounded-full bg-ember px-2.5 py-1 text-[12px] font-semibold text-on-ember"
+            >
+              ✓
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingProviderLimit(false);
+                setProviderLimitDraft("");
+                setProviderLimitError(false);
+              }}
+              aria-label={t("settings_keys_cancel")}
+              className="cursor-pointer rounded-md px-1.5 py-1 text-[12px] text-ink-faint hover:text-ink"
+            >
+              ✕
+            </button>
+            {providerLimitError ? (
+              <span role="alert" className="text-[11px] text-flag">
+                {t("settings_keys_limit_invalid")}
+              </span>
+            ) : null}
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setEditingProviderLimit(true);
+              setProviderLimitDraft(entry.maxConcurrency === null ? "" : String(entry.maxConcurrency));
+              setProviderLimitError(false);
+            }}
+            aria-label={t("settings_keys_provider_limit_edit")}
+            title={t("settings_keys_provider_limit_edit")}
+            className="cursor-pointer rounded-full border border-line bg-paper-deep px-2.5 py-1.5 text-[12px] text-ink-soft hover:text-ink"
+          >
+            {entry.maxConcurrency === null
+              ? t("settings_keys_provider_limit_none")
+              : t("settings_keys_provider_limit", { n: entry.maxConcurrency })}
+          </button>
+        )}
         <button
           type="button"
           onClick={removeProvider}

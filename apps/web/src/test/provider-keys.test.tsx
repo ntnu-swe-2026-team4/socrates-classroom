@@ -8,6 +8,10 @@ import type { TeacherKeyStatus } from "@socrates/shared";
 const calls = vi.hoisted(() => ({
   deleteTeacherKey: vi.fn().mockResolvedValue(undefined),
   deleteTeacherKeyModel: vi.fn().mockResolvedValue(undefined),
+  putTeacherKeyProviderLimit: vi.fn().mockResolvedValue({
+    provider: "openrouter",
+    maxConcurrency: null,
+  }),
   listTeacherKeys: vi.fn(),
 }));
 
@@ -17,6 +21,7 @@ vi.mock("@/api", () => ({
     listKeyProviders: vi.fn().mockResolvedValue([]),
     deleteTeacherKey: calls.deleteTeacherKey,
     deleteTeacherKeyModel: calls.deleteTeacherKeyModel,
+    putTeacherKeyProviderLimit: calls.putTeacherKeyProviderLimit,
   },
 }));
 
@@ -43,6 +48,7 @@ beforeEach(() => {
   calls.listTeacherKeys.mockResolvedValue([fixture]);
   calls.deleteTeacherKey.mockClear();
   calls.deleteTeacherKeyModel.mockClear();
+  calls.putTeacherKeyProviderLimit.mockClear();
 });
 
 afterEach(() => {
@@ -93,4 +99,15 @@ test("saving an invalid concurrency limit shows an inline error and keeps the ed
   fireEvent.click(screen.getByRole("button", { name: "Save concurrency limit" }));
   expect(await screen.findByRole("alert")).toBeTruthy();
   expect(screen.getByRole("spinbutton", { name: /Edit concurrency limit/i })).toBeTruthy();
+});
+
+test("editing the provider total cap calls the keyless limit endpoint", async () => {
+  renderKeys();
+  await expandRow();
+  expect(screen.getByRole("button", { name: /total concurrency cap/i })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /total concurrency cap/i }));
+  const input = screen.getByRole("spinbutton", { name: /total concurrency cap/i });
+  fireEvent.change(input, { target: { value: "3" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save the total concurrency cap" }));
+  await waitFor(() => expect(calls.putTeacherKeyProviderLimit).toHaveBeenCalledWith("openrouter", 3));
 });
