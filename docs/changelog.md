@@ -2,6 +2,21 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-19 — 對話視圖重構：companion 小窗、ChatLayout、btw panel 接線（`split/180-dialogue`，#180）
+
+### Added
+
+- companion 場景層：`SocratesCompanion`（對話頁角落小窗，可拖曳、可關閉、主題切換墨色）、`StoaField`／`DotField` canvas、`lib/companion.ts`、`test/companion.test.tsx`
+- 模組級 TTS 單通道 `lib/speech.ts`（跨 tab 仲裁；自 #183 語音單提前，`api.tts` 簽名相容）；`TTS_MAX_CHARS = 2000` 常數入 `packages/shared`（4000 統一待 #183 與後端）
+
+### Changed
+
+- 對話視圖改用 `ChatLayout`（sidebar overlay）；btw panel 接線進對話視圖，走既有 `/agents` WS、零協議變動；`useDialogue`／`useBtw`／`useSelectionPopover` 重構；`routes/dialogue.tsx` 橋接新 props（`threadId`／`userId`／`subtitle`）
+
+### Removed
+
+- `SocratesStage.tsx`（HEAD 終態，由 companion 小窗取代）
+
 ## 2026-11-19 — Landing 捲動故事頁（sprite sheet，取代 Lottie）（`split/177-landing`，#177）
 
 ### Changed

@@ -36,7 +36,7 @@
 | 功能     | 說明                                                                                                                                                            | 路由 / 頁面                                                 |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | 自由對話 | 學生提問 → 蘇格拉底追問（≤3 句、以問句結尾）；WebSocket 串流（view＋chord ops）                                                                                 | `/agents/chat/:name`・`/dialogue`                           |
-| 3D 頭像  | three.js 蘇格拉底半身像（`socrates.glb`）＋viseme/expression morph targets                                                                                      | `SocratesStage`・`public/socrates.glb`                      |
+| 3D 頭像  | three.js 蘇格拉底半身像（`socrates.glb`）＋viseme/expression morph targets，對話頁角落小窗 `SocratesCompanion` 呈現（可拖曳、可關閉、主題切換墨色）             | `SocratesCompanion`・`public/socrates.glb`                  |
 | 情緒表現 | avatar extension 產生 `app.emotion` entry（機率本體）→ 頭像表情映射                                                                                             | `dialogue.tsx`（thinking 暫態 Confused；回合後按 entry）    |
 | 語音輸入 | MediaRecorder 錄音 → whisper STT → 文字                                                                                                                         | `POST /api/stt`・`useVoiceInput`                            |
 | 語音朗讀 | AI 回覆 melotts TTS 朗讀＋說話中振幅                                                                                                                            | `POST /api/tts`                                             |
