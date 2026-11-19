@@ -259,7 +259,7 @@ export function Initial({ name, className }: { name?: string | null; className?:
 const FOCUSABLE_SELECTOR =
   "a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
-function trapDialogFocus(node: HTMLElement | null): (() => void) | undefined {
+export function trapDialogFocus(node: HTMLElement | null): (() => void) | undefined {
   if (!node) return;
   const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const focusables = () =>

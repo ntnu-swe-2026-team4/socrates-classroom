@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, KeyRound, LogOut, MessageSquare, Send, Trash2, UserMinus, UserPlus } from "lucide-react";
 import type { Announcement, ClassroomSummary, Post, PostReply, StudentCredential } from "@socrates/shared";
 import { api, ApiError } from "@/api";
-import { Button, ConfirmDialog, FormDialog, Initial, Input, Spinner, cn } from "@/components/ui";
+import { Button, ConfirmDialog, FormDialog, Initial, Input, Spinner, cn, trapDialogFocus } from "@/components/ui";
 import { useFormatDate, useT, type MessageKey } from "@/i18n";
 
 export const ROOM_TABS = ["topics", "announcements", "board", "members"] as const;
@@ -605,19 +606,23 @@ function YouBadge() {
   );
 }
 
-function CredentialsDialog({ credentials, onClose }: { credentials: StudentCredential[]; onClose: () => void }) {
+export function CredentialsDialog({ credentials, onClose }: { credentials: StudentCredential[]; onClose: () => void }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const text = credentials.map((entry) => [entry.name, entry.username, entry.password].join("\t")).join("\n");
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="anim-fade absolute inset-0 bg-black/40" onClick={onClose} />
       <div
+        ref={trapDialogFocus}
         role="dialog"
         aria-modal="true"
         aria-labelledby="credentials-title"
         onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            onClose();
+          }
         }}
         className="anim-rise relative flex max-h-[85dvh] w-full max-w-lg flex-col gap-3 rounded-xl border border-line bg-paper p-5 shadow-xl"
       >
@@ -660,7 +665,8 @@ function CredentialsDialog({ credentials, onClose }: { credentials: StudentCrede
           <Button onClick={onClose}>{t("students_done")}</Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
