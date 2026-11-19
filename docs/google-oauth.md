@@ -1,5 +1,7 @@
 # Google 登入金鑰設定
 
+> 專案接線核對：2026-11-19，`integration/web-next-142`（PR #155，尚未合併）。Console 操作與專案設定分開敘述；目前 production 接線與 CD 修復由 [#167](https://github.com/ntnu-swe-2026-team4/socrates-classroom/issues/167) 追蹤，尚未完成。
+
 Google 登入（#124）需要兩個值：
 
 | 名稱                   | 類型         | 是否機密                 | 說明                                                  |
@@ -7,7 +9,7 @@ Google 登入（#124）需要兩個值：
 | `GOOGLE_CLIENT_ID`     | text binding | 否（會出現在登入網址上） | OAuth 用戶端 ID，結尾是 `.apps.googleusercontent.com` |
 | `GOOGLE_CLIENT_SECRET` | secret       | **是**                   | OAuth 用戶端密鑰，開頭是 `GOCSPX-`                    |
 
-任一值留空時，Google 登入會停用：按下 Google 登入會導回 `/login?error=oauth_unavailable`，其他功能不受影響。
+**Runtime 行為**：任一值留空時，`GET /api/auth/providers` 回 `{google: false}`，登入頁 Google 按鈕停用；直接存取 OAuth start 會導回 `/login?error=oauth_unavailable`。**部署限制**：目前 production config 無條件要求 `GOOGLE_CLIENT_SECRET`，即使 client ID 為空也會阻擋缺 secret 的 deploy；「Google 選用且不影響其他功能」尚未在部署設定落實（#167）。
 
 另外會用到 `PUBLIC_BASE_URL`，它決定 Google 登入完成後要導回哪個網址：`<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`。這個網址必須和 Google Console 裡登錄的 redirect URI **一字不差**。
 
@@ -40,9 +42,20 @@ GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxx
 
 ## 3. 正式環境
 
-- **`GOOGLE_CLIENT_SECRET`**：和其他 secrets 一樣，寫進 `apps/web/.env.production.local`，部署時用 `--secrets-file` 上傳（見 [`cf.md`](./cf.md#secrets)）。
-- **`GOOGLE_CLIENT_ID`**：這是 text binding。正式環境不會讀 `.env*`，會直接用 `apps/web/cloudflare.config.ts` 裡的預設值，目前是空字串。上線時要把預設值改成正式的 Client ID 再 commit。Client ID 本來就是公開的，可以放進版控。
-- **`PUBLIC_BASE_URL`**：預設是正式網域，要確認和 Google Console 登錄的 redirect URI 一致。
+### 目前接線
+
+- **`GOOGLE_CLIENT_SECRET`**：production 為無條件 `bindings.secret()`。CI 從 repo secret `PROD_SECRETS_FILE` 產生暫存 dotenv，再以 `--secrets-file` 傳入；本機 development 才讀 `.env.local` 的 optional text。
+- **`GOOGLE_CLIENT_ID`**：text binding。production 的 config 不讀 `.env*`，`text()` helper 也未讀 `process.env`，所以目前取 code 裡的空字串預設。單獨新增 GitHub Actions variable **尚不會生效**；`deploy.yml` 的 build step 亦未注入該 variable。
+- **`PUBLIC_BASE_URL`**：config 預設為 `https://socrates.g36maid.dev`，callback 為 `https://socrates.g36maid.dev/api/auth/oauth/google/callback`。
+
+### #167 待完成的接線與驗收
+
+- 將 public client ID 的來源接通 config 與 CI build；issue 提議由 GitHub Actions variable 提供，但現在不能當作已實作。
+- 對齊選用設計：client ID 為空時不要求 Google secret；非空時驗證 secret。不要只填假 secret 讓 deploy 通過。
+- 由 maintainer 建立 OAuth client、登記 callback，將真實 secret 放入 `PROD_SECRETS_FILE`；只經 CI 部署。
+- 驗證未啟用 Google 時仍能部署；啟用後 `{google: true}` 且可完成一次登入。
+
+Deploy workflow 與 migration 風險只記於 [`cf.md` §CI/CD](./cf.md#cicd)。本文件更新沒有修改 bindings，也沒有代表 #167 已解凍。
 
 ## 4. 更換（輪替）Client secret
 
@@ -51,7 +64,7 @@ secret 外洩（例如出現在截圖或訊息裡），或定期更換時，照�
 1. Google Auth Platform → Clients → 點進該用戶端 → **Add secret（新增密鑰）**，複製新的 secret。這時新舊兩組同時有效，服務不會中斷。
 2. 更新所有用到的地方：
    - 本機：`apps/web/.env.local` 的 `GOOGLE_CLIENT_SECRET`，改完重開 `pnpm dev`
-   - 正式：`.env.production.local` 的 `GOOGLE_CLIENT_SECRET`，再用 `--secrets-file` 重新部署
+   - 正式：repo secret `PROD_SECRETS_FILE` 內的 `GOOGLE_CLIENT_SECRET`，再走 CI 部署；不要手動 deploy
 3. 用新 secret 實際登入一次，確認成功。
 4. 回到 Console，把舊 secret **停用（Disable）**，確認登入仍正常後再**刪除**。
 
@@ -62,7 +75,7 @@ secret 外洩（例如出現在截圖或訊息裡），或定期更換時，照�
 例如從個人測試用的 Google 帳號，移交到團隊共用的專案時：
 
 1. 在新專案依照第 1 節建立用戶端，redirect URI 要相同。
-2. 同時更新 `GOOGLE_CLIENT_ID` 和 `GOOGLE_CLIENT_SECRET`（本機的 `.env.local`，正式環境的 config 預設值和 secrets 檔）。
+2. 同時更新 `GOOGLE_CLIENT_ID` 和 `GOOGLE_CLIENT_SECRET`（本機的 `.env.local`；正式環境依 [§3](#3-正式環境) 完成的 config／CI 接線與 repo secret），由 CI 上線。
 3. 已經用 Google 登入過的帳號不受影響：同一個 Google 帳號在不同 Client 拿到的使用者 ID（`sub`）相同。
 4. 確認新用戶端可以登入後，刪除舊用戶端。
 
