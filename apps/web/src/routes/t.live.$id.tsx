@@ -20,7 +20,7 @@ export const Route = createFileRoute("/t/live/$id")({
 const POLL_MS = 5000;
 const QUIET_MS = 3 * 60 * 1000;
 
-type Alert = { key: string; studentId: string; name: string; kind: "flag" | "quiet"; detail: string };
+type Alert = { key: string; studentId: string; name: string; detail: string };
 
 function attention(student: StudentLive, now: number): number {
   if (student.flags.length > 0) return 0;
@@ -54,22 +54,12 @@ function LivePage() {
           key: `flag:${student.id}:${flag.turn}:${flag.type}`,
           studentId: student.id,
           name: student.name,
-          kind: "flag",
           detail: flag.excerpt,
-        });
-      }
-      if (student.rounds > 0 && student.lastActiveAt && now - Date.parse(student.lastActiveAt) > QUIET_MS) {
-        list.push({
-          key: `quiet:${student.id}:${student.rounds}`,
-          studentId: student.id,
-          name: student.name,
-          kind: "quiet",
-          detail: "",
         });
       }
     }
     return list;
-  }, [students, now]);
+  }, [students]);
 
   if (students && knownKeys === null) setKnownKeys(new Set(current.map((alert) => alert.key)));
   const fresh = knownKeys === null ? [] : current.filter((alert) => !knownKeys.has(alert.key));
@@ -160,18 +150,11 @@ function LivePage() {
           {alerts.map((alert) => (
             <div
               key={alert.key}
-              className={cn(
-                "flex items-start gap-3 rounded-xl border px-4 py-3 text-[13.5px]",
-                alert.kind === "flag"
-                  ? "border-flag/40 bg-flag-wash text-flag"
-                  : "border-line-strong bg-paper text-ink",
-              )}
+              className="flex items-start gap-3 rounded-xl border border-flag/40 bg-flag-wash px-4 py-3 text-[13.5px] text-flag"
             >
               <BellRing className="mt-0.5 size-4 shrink-0" aria-hidden />
               <p className="min-w-0 flex-1">
-                <span className="font-semibold">
-                  {t(alert.kind === "flag" ? "live_alert_flag" : "live_alert_quiet", { name: alert.name })}
-                </span>
+                <span className="font-semibold">{t("live_alert_flag", { name: alert.name })}</span>
                 {alert.detail && <span className="mt-0.5 block truncate opacity-80">{alert.detail}</span>}
               </p>
               <button

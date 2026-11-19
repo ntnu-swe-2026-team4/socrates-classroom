@@ -427,7 +427,6 @@ const messages = {
     live_status_silent: "還沒開口",
     live_flag_count: "{n} 則違規",
     live_alert_flag: "{name} 出現違規標記",
-    live_alert_quiet: "{name} 已經超過 3 分鐘沒有回應",
     live_alert_dismiss: "關閉提醒",
     live_empty: "還沒有學生加入這個主題。",
     live_note: "每 5 秒更新一次；最需要注意的學生排在最上面。完整的投入度與違規整理在活動結束後的報告裡。",
@@ -1122,7 +1121,6 @@ const messages = {
     live_status_silent: "Not started",
     live_flag_count: "{n} flagged",
     live_alert_flag: "{name} was flagged",
-    live_alert_quiet: "{name} has been quiet for over 3 minutes",
     live_alert_dismiss: "Dismiss",
     live_empty: "No students have joined this topic yet.",
     live_note:
@@ -1842,7 +1840,6 @@ const messages = {
     live_status_silent: "Sin empezar",
     live_flag_count: "{n} marcas",
     live_alert_flag: "{name} fue marcado",
-    live_alert_quiet: "{name} lleva más de 3 minutos sin responder",
     live_alert_dismiss: "Cerrar aviso",
     live_empty: "Aún no se ha unido ningún estudiante.",
     live_note:
