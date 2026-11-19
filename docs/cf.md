@@ -102,14 +102,14 @@ Schema 的 SSOT 是 `apps/server/migrations/*.sql`（`001_init.sql` 起依序前
 
 本專案 secrets（`cloudflare.config.ts` 宣告為 `bindings.secret()`）：
 
-| Secret                 | 用途                                                                        | 產生方式                            |
-| ---------------------- | --------------------------------------------------------------------------- | ----------------------------------- |
-| `AUTH_SECRET`          | HMAC session cookie 簽章（必填，缺了 fail-fast）                            | `openssl rand -base64 32`           |
-| `BYOK_ENC_KEY`         | teacher keys 的 AES-GCM 金鑰（必填，缺了 fail-fast）                        | `openssl rand -base64 32`           |
-| `SEED_TOKEN`           | `POST /api/dev/seed` 閘門（production 留空即可禁用）                        | 任意亂數                            |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret（留空＝Google 登入停用，回 `oauth_unavailable`） | Google Cloud Console → OAuth 用戶端 |
+| Secret                 | 用途                                                                                                              | 產生方式                            |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `AUTH_SECRET`          | HMAC session cookie 簽章（必填，缺了 fail-fast）                                                                  | `openssl rand -base64 32`           |
+| `BYOK_ENC_KEY`         | teacher keys 的 AES-GCM 金鑰（必填，缺了 fail-fast）                                                              | `openssl rand -base64 32`           |
+| `SEED_TOKEN`           | `POST /api/dev/seed` 閘門（production 留空即可禁用）                                                              | 任意亂數                            |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret（只在 `GOOGLE_CLIENT_ID` 非空時宣告；未宣告＝Google 登入停用，回 `oauth_unavailable`） | Google Cloud Console → OAuth 用戶端 |
 
-Google 登入另需 text binding `GOOGLE_CLIENT_ID`（`cloudflare.config.ts`，dev 由 `.env.local` override），並在 Google Cloud Console 登錄 redirect URI `<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`；本地開發需在 `.env.local` 設 `PUBLIC_BASE_URL=http://localhost:5173`。建立用戶端、正式環境設定與 secret 輪替步驟見 [`google-oauth.md`](./google-oauth.md)。
+Google 登入另需 text binding `GOOGLE_CLIENT_ID`（`cloudflare.config.ts`：dev 由 `.env.local`，production 由 repo variable 於 build 時帶入），並在 Google Cloud Console 登錄 redirect URI `<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`；本地開發需在 `.env.local` 設 `PUBLIC_BASE_URL=http://localhost:5173`。建立用戶端、正式環境設定與 secret 輪替步驟見 [`google-oauth.md`](./google-oauth.md)。
 
 ```bash
 # 一次上傳（dotenv 格式；.env.production.local 不會進 dev/git）
@@ -137,7 +137,7 @@ secrets 管理一律走 `cf deploy --secrets-file`（見上方 Secrets）——w
 
 ## CI/CD
 
-見 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)（PR：lint → yamllint → config-drift → typecheck → test → build → dry-run，免憑證）與 [`deploy.yml`](../.github/workflows/deploy.yml)（push main：全閘門 → build once → D1 migrations → deploy；只有 migrations/deploy 兩步拿 `CLOUDFLARE_API_TOKEN`/`ACCOUNT_ID`/`D1_DATABASE_ID`）。Secrets 注入走 deploy 指令的 `--secrets-file`——CI 端即上表三個 secrets，由 repo secrets 或環境管理。
+見 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)（PR：lint → yamllint → config-drift → typecheck → test → build → dry-run，免憑證）與 [`deploy.yml`](../.github/workflows/deploy.yml)（push main：全閘門 → build once → D1 migrations → deploy；只有 migrations/deploy 兩步拿 `CLOUDFLARE_API_TOKEN`/`ACCOUNT_ID`/`D1_DATABASE_ID`）。Secrets 注入走 deploy 指令的 `--secrets-file`——CI 端即 `PROD_SECRETS_FILE` repo secret 的內容；`GOOGLE_CLIENT_ID` 走 repo variable 於 build 帶入（見 [`google-oauth.md`](./google-oauth.md) §3）。
 
 ## 疑難排解
 

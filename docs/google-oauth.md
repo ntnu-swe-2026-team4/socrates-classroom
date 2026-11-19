@@ -40,8 +40,8 @@ GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxx
 
 ## 3. 正式環境
 
-- **`GOOGLE_CLIENT_SECRET`**：和其他 secrets 一樣，寫進 `apps/web/.env.production.local`，部署時用 `--secrets-file` 上傳（見 [`cf.md`](./cf.md#secrets)）。
-- **`GOOGLE_CLIENT_ID`**：這是 text binding。正式環境不會讀 `.env*`，會直接用 `apps/web/cloudflare.config.ts` 裡的預設值，目前是空字串。上線時要把預設值改成正式的 Client ID 再 commit。Client ID 本來就是公開的，可以放進版控。
+- **`GOOGLE_CLIENT_SECRET`**：寫進 GitHub Actions 的 repo secret `PROD_SECRETS_FILE`（Deploy workflow 部署時以 `--secrets-file` 上傳，格式見 [`cf.md`](./cf.md#secrets)）。
+- **`GOOGLE_CLIENT_ID`**：這是 text binding。正式環境不會讀 `.env*`，值來自 GitHub Actions 的 repo variable `GOOGLE_CLIENT_ID`，由 Deploy workflow 於 build 時帶入。未設定＝空字串＝Google 登入停用，部署照常進行（`GOOGLE_CLIENT_SECRET` 也不會被要求）。Client ID 本來就是公開的。
 - **`PUBLIC_BASE_URL`**：預設是正式網域，要確認和 Google Console 登錄的 redirect URI 一致。
 
 ## 4. 更換（輪替）Client secret
@@ -51,7 +51,7 @@ secret 外洩（例如出現在截圖或訊息裡），或定期更換時，照�
 1. Google Auth Platform → Clients → 點進該用戶端 → **Add secret（新增密鑰）**，複製新的 secret。這時新舊兩組同時有效，服務不會中斷。
 2. 更新所有用到的地方：
    - 本機：`apps/web/.env.local` 的 `GOOGLE_CLIENT_SECRET`，改完重開 `pnpm dev`
-   - 正式：`.env.production.local` 的 `GOOGLE_CLIENT_SECRET`，再用 `--secrets-file` 重新部署
+   - 正式：GitHub Actions 的 `PROD_SECRETS_FILE` repo secret（見第 3 節），更新後 rerun Deploy workflow
 3. 用新 secret 實際登入一次，確認成功。
 4. 回到 Console，把舊 secret **停用（Disable）**，確認登入仍正常後再**刪除**。
 
@@ -62,7 +62,7 @@ secret 外洩（例如出現在截圖或訊息裡），或定期更換時，照�
 例如從個人測試用的 Google 帳號，移交到團隊共用的專案時：
 
 1. 在新專案依照第 1 節建立用戶端，redirect URI 要相同。
-2. 同時更新 `GOOGLE_CLIENT_ID` 和 `GOOGLE_CLIENT_SECRET`（本機的 `.env.local`，正式環境的 config 預設值和 secrets 檔）。
+2. 同時更新 `GOOGLE_CLIENT_ID` 和 `GOOGLE_CLIENT_SECRET`（本機的 `.env.local`，正式環境的 repo variable 和 `PROD_SECRETS_FILE`）。
 3. 已經用 Google 登入過的帳號不受影響：同一個 Google 帳號在不同 Client 拿到的使用者 ID（`sub`）相同。
 4. 確認新用戶端可以登入後，刪除舊用戶端。
 
