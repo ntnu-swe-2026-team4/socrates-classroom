@@ -86,6 +86,24 @@ describe("useSubscription helpers", () => {
       });
       expect(result.current).toBeGreaterThan(firstTick);
     });
+
+    it("starts every consumer on the shared mount timestamp", () => {
+      const fast = renderHook(() => useNow(1000));
+      const slow = renderHook(() => useNow(60_000));
+      expect(fast.result.current).toBe(slow.result.current);
+    });
+
+    it("ticks to the exact interval boundary time", async () => {
+      const { result } = renderHook(() => useNow(1000));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(result.current).toBe(Date.now());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(result.current).toBe(Date.now());
+    });
   });
 
   describe("useDomEvent", () => {
@@ -113,6 +131,21 @@ describe("useSubscription helpers", () => {
       unmount();
       target.dispatchEvent(new CustomEvent("ping"));
       expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("honours the capture flag: the parent capture listener fires before the child bubble listener", () => {
+      const parent = document.createElement("div");
+      const child = document.createElement("span");
+      parent.appendChild(child);
+      const order: string[] = [];
+      renderHook(() => {
+        useDomEvent<CustomEvent>(parent, "ping", () => order.push("parent"), true);
+        useDomEvent<CustomEvent>(child, "ping", () => order.push("child"), false);
+      });
+      act(() => {
+        child.dispatchEvent(new CustomEvent("ping", { bubbles: true }));
+      });
+      expect(order).toEqual(["parent", "child"]);
     });
   });
 });
