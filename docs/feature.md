@@ -26,7 +26,7 @@
 | 教室內頁     | 目前主題＋所有討論主題列表（學生進入對話／看報告；owner 即時面板／報告／開新主題／邀請碼與 QR）                                                                                         | `GET /api/classrooms/:id`・`GET /api/classrooms/:id/activities`・`POST /api/classrooms/:id/activities`・`/classrooms/:id` |
 | 教室社群     | 教室頁分頁（主題／公告／討論區／成員，`?tab=`）：owner 發布與刪除公告；成員與 owner 發討論串、單層回覆，作者或 owner 可刪除；成員列表（不含測試學生），owner 可移除學生、學生可退出教室 | `/api/classrooms/:id/announcements`・`/api/classrooms/:id/posts`・`/api/classrooms/:id/members`・`/classrooms/:id?tab=`   |
 | 學生視角預覽 | 老師以每間教室一個的測試學生進入對話（Student View）；不計入 `memberCount`、報告與 pseudonyms；可重設、可回到老師 session                                                               | `POST /api/classrooms/:id/preview`・`/api/preview/reset`・`/api/preview/exit`・教室頁按鈕＋AppShell banner                |
-| 議題         | 內建議題列表；AI 生成（方向 → 三題）                                                                                                                                                    | `GET/POST /api/topics`・`POST /api/topics/generate`                                                                       |
+| 議題         | 自訂建立＋AI 生成（方向 → 三題）；內建三題僅 dev/demo seed（`FIXTURE_TOPICS`，dev-gated），production 無系統主題（2026-11-19 拍板，見 roadmap「維持現狀即正確」）                       | `GET/POST /api/topics`・`POST /api/topics/generate`                                                                       |
 
 ## 單人：與蘇格拉底對話
 

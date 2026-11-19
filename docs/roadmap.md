@@ -56,7 +56,7 @@
 
 查證後決：偵測模型 Clef／Jev＋ZDR（#55）、STT 服務 retention（#56）、search provider retention（#65）、Go 窗口 API 有無（#80 前置）
 
-維持現狀即正確：容量（閘門已覆蓋 100–1000）、Firefox 語音（等穩定版，期間走伺服器端 STT）
+維持現狀即正確：容量（閘門已覆蓋 100–1000）、Firefox 語音（等穩定版，期間走伺服器端 STT）、系統主題來源（內建辯題為 dev/demo seed；production 老師自建＋AI 生成——2026-11-19 拍板）
 
 ## 第一週查證清單（11 月第一週完成，否則下游卡住）
 
