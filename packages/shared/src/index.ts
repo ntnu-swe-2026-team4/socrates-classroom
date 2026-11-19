@@ -269,19 +269,25 @@ export const AdminUserUpdateInputSchema = z
   .refine((value) => value.canManageClasses !== undefined || value.disabled !== undefined, {
     message: "at least one field is required",
   });
-/** Who sets the class report's value axes (server config `report.axes`, #159): the teacher per topic, or the model. */
+/** Who sets an activity's class-report value axes (#159): the teacher on the topic, or the model for the class. */
 export const ReportAxesSchema = z.enum(["teacher", "ai"]);
 export type ReportAxes = z.infer<typeof ReportAxesSchema>;
+/**
+ * Who decides that, the backend's call (#159): lock one ("teacher" | "ai"), or let the teacher choose for each activity
+ * ("both"; the start screen picks "teacher" first).
+ */
+export const ReportAxesPolicySchema = z.enum(["teacher", "ai", "both"]);
+export type ReportAxesPolicy = z.infer<typeof ReportAxesPolicySchema>;
 /** Server settings the web app needs to know (GET /api/config). */
-export const ClientConfigSchema = z.object({ reportAxes: ReportAxesSchema });
+export const ClientConfigSchema = z.object({ reportAxes: ReportAxesPolicySchema });
 export type ClientConfig = z.infer<typeof ClientConfigSchema>;
 /** What an admin can change after deploy (GET/PUT /api/admin/settings). */
-export const AdminSettingsSchema = z.object({ reportAxes: ReportAxesSchema });
+export const AdminSettingsSchema = z.object({ reportAxes: ReportAxesPolicySchema });
 export type AdminSettings = z.infer<typeof AdminSettingsSchema>;
 
 /**
- * A topic's axes as the teacher sets them: at most 3, with different names. Whether any are required is the server's
- * report-axes setting: 1-3 when the teacher sets them, none needed when the model does.
+ * A topic's axes as the teacher sets them: at most 3, with different names; optional on the topic. An activity started
+ * with the teacher setting the axes needs 1-3 of them.
  */
 export const TopicAxesInputSchema = z
   .array(AxisSchema)
@@ -308,6 +314,8 @@ export const TopicCopyInputSchema = z.object({
 export const ActivityStartInputSchema = z.object({
   topicId: z.string().min(1),
   mode: ActivityModeSchema.default("live"),
+  /** Who sets this activity's report axes; only the backend's allowed choice is accepted (omitted: its default). */
+  reportAxes: ReportAxesSchema.optional(),
 });
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
 export const LookupInputSchema = z.object({ term: z.string().trim().min(1).max(30) });
@@ -396,6 +404,7 @@ export const ERROR_CODES = [
   "llm_unavailable",
   "llm_rate_limited",
   "topic_axes_required",
+  "report_axes_not_allowed",
   "llm_timeout",
   "report_pending",
   "report_failed",

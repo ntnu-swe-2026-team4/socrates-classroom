@@ -20,6 +20,7 @@ import type {
   TopicDraft,
   Axis,
   ClientConfig,
+  ReportAxes,
   User,
 } from "@socrates/shared";
 import {
@@ -88,7 +89,12 @@ export interface Api {
   ): Promise<Topic>;
   /** Copies a topic into the classroom; axes, when given, replace the source's axes in the copy. */
   copyTopic(topicId: string, classroomId: string, axes?: Axis[]): Promise<Topic>;
-  startActivity(classroomId: string, topicId: string, mode?: ActivityMode): Promise<ActivityStarted>;
+  startActivity(
+    classroomId: string,
+    topicId: string,
+    mode?: ActivityMode,
+    reportAxes?: ReportAxes,
+  ): Promise<ActivityStarted>;
   listActivitySlots(activityId: string): Promise<ActivitySlots>;
   createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
   stt(audio: Blob): Promise<string>;
@@ -310,8 +316,8 @@ export const httpApi: Api = {
       json: TopicCopyInputSchema.parse(axes ? { classroomId, axes } : { classroomId }),
     });
   },
-  async startActivity(classroomId, topicId, mode = "live") {
-    const input = ActivityStartInputSchema.parse({ topicId, mode });
+  async startActivity(classroomId, topicId, mode = "live", reportAxes) {
+    const input = ActivityStartInputSchema.parse(reportAxes ? { topicId, mode, reportAxes } : { topicId, mode });
     return await raw<ActivityStarted>(`/classrooms/${classroomId}/activities`, { method: "POST", json: input });
   },
   async listActivitySlots(activityId) {

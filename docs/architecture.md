@@ -154,7 +154,7 @@ no queue：busy 時第二發被拒（`ConversationBusy` → error frame），不
 startReport → pending 標記 → alarm → generate：
   transcriptOf（AI：…/學生（n）：… 編號＋假名冪等）
   → Promise.all 平行 per-student studentReport（重試 2；語言＝老師；turns 須是學生說過的行號）
-  → classReport：讀各生 studentReport（不再讀全班原始對話）；誰設軸看活動開始時的設定（`activities.report_axes`；設定由管理員 `PUT /api/admin/settings` 切換，預設 `report.axes`，#159）：teacher＝題目上老師的軸，模型只寫各軸落點＋overview（class-report.md）；ai＝模型為這班定軸、寫落點、why＋overview（class-report-ai.md）；
+  → classReport：讀各生 studentReport（不再讀全班原始對話）；誰設軸看活動開始時記下的 `activities.report_axes`（#159；後端設定 `teacher`／`ai` 鎖定一種、`both` 由老師開活動時選，管理員 `PUT /api/admin/settings` 切換，預設 `report.axes`）：teacher＝題目上老師的軸，模型只寫各軸落點＋overview（class-report.md）；ai＝模型為這班定軸、寫落點、why＋overview（class-report-ai.md）；
     students/unstated 由程式從 studentReport 複製（兩份報告的表態判定一致）；全班無人表態 → 不呼叫模型
     （有學生分析失敗、又沒有任何表態者 → 群體報告失敗、partial）；class-report thinkingLevel=low
   → persist（D1 reports：teacher_report=classReport、student_reports=analysis+violations-from-transcript）

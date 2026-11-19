@@ -14,9 +14,9 @@ export function draftOf(axis: Axis = { name: "", left: "", right: "" }): AxisDra
   return { ...axis, key: nextDraftKey };
 }
 
-/** A topic's axes as editable rows; a topic without any starts with one empty row. */
-export function draftsOf(axes: Axis[]): AxisDraft[] {
-  return axes.length > 0 ? axes.map((axis) => draftOf(axis)) : [draftOf()];
+/** A topic's axes as editable rows; a topic without any starts with one empty row unless the axes are optional. */
+export function draftsOf(axes: Axis[], optional = false): AxisDraft[] {
+  return axes.length > 0 || optional ? axes.map((axis) => draftOf(axis)) : [draftOf()];
 }
 
 export function axesOf(drafts: AxisDraft[]): Axis[] {
@@ -30,10 +30,10 @@ function duplicateNames(drafts: AxisDraft[]): boolean {
   return new Set(names).size !== names.length;
 }
 
-/** 1-3 complete axes with different names, as the server requires. */
-export function axesValid(drafts: AxisDraft[]): boolean {
+/** Complete axes with different names, as the server requires: 1-3, or 0-3 when they are optional. */
+export function axesValid(drafts: AxisDraft[], optional = false): boolean {
   return (
-    drafts.length >= 1 &&
+    drafts.length >= (optional ? 0 : 1) &&
     drafts.length <= AXES_MAX &&
     axesOf(drafts).every((axis) => AxisSchema.safeParse(axis).success) &&
     !duplicateNames(drafts)
@@ -63,22 +63,29 @@ export function useTopicWithAxes(classroomId: string): (topic: Topic, axes: Axis
   };
 }
 
-/** The teacher's value axes for a topic (1-3, as in the main project): what each asks and its two ends. */
+/**
+ * The teacher's value axes for a topic (1-3, as in the main project): what each asks and its two ends. Optional, the
+ * teacher may leave none (a topic used when the model sets the axes).
+ */
 export function AxesEditor({
   axes,
   onChange,
   disabled = false,
+  optional = false,
 }: {
   axes: AxisDraft[];
   onChange: (axes: AxisDraft[]) => void;
   disabled?: boolean;
+  optional?: boolean;
 }) {
   const t = useT();
   const edit = (index: number, key: keyof Axis, value: string) =>
     onChange(axes.map((axis, i) => (i === index ? { ...axis, [key]: value } : axis)));
   return (
     <fieldset className="flex flex-col gap-2 border-t border-line pt-4">
-      <legend className="text-[13px] font-medium text-ink">{t("setup_axes_label")}</legend>
+      <legend className="text-[13px] font-medium text-ink">
+        {t(optional ? "setup_axes_label_optional" : "setup_axes_label")}
+      </legend>
       <p className="text-[12.5px] leading-relaxed text-ink-faint">{t("setup_axes_hint")}</p>
       {axes.map((axis, index) => (
         <div key={axis.key} className="flex flex-col gap-2 rounded-xl border border-line p-3">
@@ -109,7 +116,7 @@ export function AxesEditor({
               onChange={(event) => edit(index, "right", event.target.value)}
             />
           </div>
-          {axes.length > 1 && (
+          {axes.length > (optional ? 0 : 1) && (
             <Button
               variant="ghost"
               size="sm"
@@ -137,10 +144,10 @@ export function AxesEditor({
 }
 
 /**
- * Who sets the class report's value axes, as the server is set now (an admin can switch it): "teacher" shows the axes
- * editor and requires 1-3 axes; "ai" hides it. Undefined until the server has answered; read again after a minute or
- * when the page comes back into view.
+ * Who decides the class report's value axes, as the backend is set now (an admin can switch it): "teacher" or "ai" only,
+ * or "both" (the teacher chooses when starting an activity). Undefined until the server has answered; read again after
+ * a minute or when the page comes back into view.
  */
-export function useReportAxes(): "teacher" | "ai" | undefined {
+export function useReportAxes(): "teacher" | "ai" | "both" | undefined {
   return useQuery({ queryKey: ["config"], queryFn: () => api.config(), staleTime: 60_000 }).data?.reportAxes;
 }

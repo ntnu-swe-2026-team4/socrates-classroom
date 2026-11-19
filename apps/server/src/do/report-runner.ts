@@ -24,7 +24,7 @@ import {
 import { all, one, run } from "../db/d1";
 import { nowIso } from "../http";
 import { classReportInput, studentReportInput } from "../prompts/assemble";
-import { reportAxesOf } from "../services/settings";
+import { reportAxesFor } from "../services/settings";
 import {
   AxisSchema,
   ClassAxesPlacementSchema,
@@ -370,7 +370,7 @@ export class ReportRunner extends DurableObject<Env> {
       // Who sets the axes (#159): the setting the activity started with (the current one for activities started before
       // it was kept): the teacher on the topic, or the model.
       const reportAxes = ReportAxesSchema.safeParse(row.report_axes);
-      const teacherAxes = (reportAxes.success ? reportAxes.data : await reportAxesOf(db)) === "teacher";
+      const teacherAxes = (reportAxes.success ? reportAxes.data : await reportAxesFor(db)) === "teacher";
       const classTool = teacherAxes ? SUBMIT_CLASS_REPORT : SUBMIT_CLASS_AXES_REPORT;
       const noneStated = { axes: [], overview: [NO_STATED_OVERVIEW[teacherLang]] };
       let placed = teacherAxes ? placeOnAxes(activity.axes, noneStated, [], "") : noneStated;

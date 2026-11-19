@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import {
   ActivityStartInputSchema,
+  type ReportAxes,
   ClassroomCreateInputSchema,
   TopicCreateInputSchema,
   type ActivityMode,
@@ -9,8 +10,8 @@ import {
 } from "@socrates/shared";
 import { all, batch, one, run, type SqlEntry } from "../db/d1";
 import { fail, newId, nowIso, parseBody, requireCapability, requireUser, type AppEnv } from "../http";
-import { reportAxesOf } from "../services/settings";
-import { classroomAccess, parsePrompts, requireTopicAxes, topicForActivity, type TopicRow } from "../services/members";
+import { reportAxesFor } from "../services/settings";
+import { classroomAccess, parsePrompts, topicForActivity, type TopicRow } from "../services/members";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const CODE_MAX = 256 - (256 % CODE_ALPHABET.length);
@@ -34,13 +35,14 @@ async function createActivity(
   classroomId: string,
   topicId: string,
   mode: ActivityMode,
+  reportAxes: ReportAxes,
 ): Promise<string> {
   const id = newId("a_");
   const queries: SqlEntry[] = [
     {
       sql: "INSERT INTO activities (id, classroom_id, topic_id, mode, report_axes, created_at) VALUES ($id, $cid, $tid, $mode, $axes, $at)",
-      // the report follows the axes setting the activity started with, even if an admin changes it later
-      params: { id, cid: classroomId, tid: topicId, mode, axes: await reportAxesOf(db), at: nowIso() },
+      // the report follows who set the axes when the activity started, even if the backend's setting changes later
+      params: { id, cid: classroomId, tid: topicId, mode, axes: reportAxes, at: nowIso() },
     },
   ];
   if (mode === "live") {
@@ -153,7 +155,6 @@ export function classroomsRoutes() {
       const input = await parseBody(c, TopicCreateInputSchema);
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");
-      await requireTopicAxes(c.env.DB, input.axes.length);
       const id = newId("t_");
       await run(
         c.env.DB,
@@ -179,8 +180,9 @@ export function classroomsRoutes() {
       const input = await parseBody(c, ActivityStartInputSchema);
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");
-      await topicForActivity(c.env.DB, input.topicId, classroom.id, user.id);
-      const activityId = await createActivity(c.env.DB, classroom.id, input.topicId, input.mode);
+      const reportAxes = await reportAxesFor(c.env.DB, input.reportAxes);
+      await topicForActivity(c.env.DB, input.topicId, classroom.id, user.id, reportAxes);
+      const activityId = await createActivity(c.env.DB, classroom.id, input.topicId, input.mode, reportAxes);
       return c.json(
         {
           classroomId: classroom.id,

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActivityMode, ActivityStarted, ClassroomSummary, Topic, TopicDraft } from "@socrates/shared";
+import type { ActivityMode, ActivityStarted, ClassroomSummary, ReportAxes, Topic, TopicDraft } from "@socrates/shared";
 import { api } from "@/api";
 import {
   AxesEditor,
@@ -39,7 +39,8 @@ export function TopicPicker({
   disabled?: boolean;
 }) {
   const t = useT();
-  const teacherAxes = useReportAxes() === "teacher";
+  const policy = useReportAxes();
+  const showAxes = policy !== undefined && policy !== "ai";
   return (
     <div className="flex max-h-80 flex-col gap-1 overflow-y-auto pr-0.5">
       {topics.map((topic) => (
@@ -56,13 +57,13 @@ export function TopicPicker({
         >
           <b className="font-serif text-[15px] font-medium text-ink">{topic.title}</b>
           <span className="mt-0.5 text-[13px] leading-relaxed text-ink-soft">{topic.statement}</span>
-          {teacherAxes &&
+          {showAxes &&
             topic.axes.map((axis) => (
               <span key={axis.name} className="mt-0.5 text-[12px] text-ink-faint">
                 {axis.name}：{axis.left} ↔ {axis.right}
               </span>
             ))}
-          {teacherAxes && topic.axes.length === 0 && (
+          {policy === "teacher" && topic.axes.length === 0 && (
             <span className="mt-0.5 text-[12px] text-flag">{t("topic_no_axes")}</span>
           )}
         </button>
@@ -98,22 +99,24 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
   const [statement, setStatement] = useState("");
   const [direction, setDirection] = useState("");
   const [candidate, setCandidate] = useState<TopicDraft | null>(null);
+  const policy = useReportAxes();
+  const axesOptional = policy === "both";
+  const withAxes = policy === "teacher" || axesOptional;
   const [axes, setAxes] = useState<AxisDraft[]>(() => [draftOf()]);
-  const reportAxes = useReportAxes();
-  const teacherAxes = reportAxes === "teacher";
+  const freshAxes = () => (axesOptional ? [] : [draftOf()]);
   const generated = useMutation({ mutationFn: () => api.generateTopics(direction) });
   const create = useMutation({
     mutationFn: (input: { title: string; statement: string; prompts: string[] }) =>
-      api.createClassroomTopic(classroomId, { ...input, axes: teacherAxes ? axesOf(axes) : [] }),
+      api.createClassroomTopic(classroomId, { ...input, axes: withAxes ? axesOf(axes) : [] }),
     onSuccess: async () => {
       setTitle("");
       setStatement("");
       setCandidate(null);
-      setAxes([draftOf()]);
+      setAxes(freshAxes());
       await invalidateTopics(queryClient, classroomId);
     },
   });
-  const ready = reportAxes !== undefined && (!teacherAxes || axesValid(axes)) && !create.isPending;
+  const ready = policy !== undefined && (!withAxes || axesValid(axes, axesOptional)) && !create.isPending;
 
   return (
     <div className="flex flex-col gap-4">
@@ -135,7 +138,9 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
           <Field label={t("setup_topic_statement")}>
             <Input value={statement} maxLength={2000} onChange={(event) => setStatement(event.target.value)} />
           </Field>
-          {teacherAxes && <AxesEditor axes={axes} onChange={setAxes} disabled={create.isPending} />}
+          {withAxes && (
+            <AxesEditor axes={axes} onChange={setAxes} disabled={create.isPending} optional={axesOptional} />
+          )}
           <Button
             className="self-start"
             disabled={!title.trim() || !statement.trim() || !ready}
@@ -170,12 +175,14 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
             onPick={(id) => {
               if (candidate?.id === id) return; // keep the teacher's edits
               setCandidate(generated.data?.find((draft) => draft.id === id) ?? null);
-              setAxes([draftOf()]);
+              setAxes(freshAxes());
             }}
           />
           {candidate && (
             <>
-              {teacherAxes && <AxesEditor axes={axes} onChange={setAxes} disabled={create.isPending} />}
+              {withAxes && (
+                <AxesEditor axes={axes} onChange={setAxes} disabled={create.isPending} optional={axesOptional} />
+              )}
               <Button
                 className="self-start"
                 disabled={!ready}
@@ -291,7 +298,9 @@ export function StartActivity({
   const [axes, setAxes] = useState<AxisDraft[]>(() => [draftOf()]);
   const [testMode, setTestMode] = useState(false);
   const topicWithAxes = useTopicWithAxes(classroomId);
-  const reportAxes = useReportAxes();
+  const policy = useReportAxes();
+  const [chosen, setChosen] = useState<ReportAxes>("teacher");
+  const reportAxes: ReportAxes | undefined = policy === "both" ? chosen : policy;
   const teacherAxes = reportAxes === "teacher";
   const own = classroomTopics.data ?? [];
   const shared = (systemTopics.data ?? []).filter((topic) => topic.classroomId === null);
@@ -299,7 +308,12 @@ export function StartActivity({
   const start = useMutation({
     mutationFn: async ({ topic, mode }: { topic: Topic; mode: ActivityMode }) =>
       // axes set by the model: the topic starts as it is
-      api.startActivity(classroomId, teacherAxes ? await topicWithAxes(topic, axesOf(axes)) : topic.id, mode),
+      api.startActivity(
+        classroomId,
+        teacherAxes ? await topicWithAxes(topic, axesOf(axes)) : topic.id,
+        mode,
+        reportAxes,
+      ),
     onSuccess: async (started) => {
       setPicked(null);
       await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
@@ -330,6 +344,17 @@ export function StartActivity({
         <TopicPicker topics={own} picked={picked} onPick={pick} />
       )}
       <SystemTopicList topics={shared.slice(0, 6)} picked={picked} onPick={pick} />
+      {policy === "both" && (
+        <Segmented
+          label={t("setup_axes_mode")}
+          value={chosen}
+          onChange={(value) => setChosen(value)}
+          items={[
+            { value: "teacher", label: t("setup_axes_mode_teacher") },
+            { value: "ai", label: t("setup_axes_mode_ai") },
+          ]}
+        />
+      )}
       {pickedTopic && teacherAxes && <AxesEditor axes={axes} onChange={setAxes} disabled={start.isPending} />}
       {allowTest && (
         <div>

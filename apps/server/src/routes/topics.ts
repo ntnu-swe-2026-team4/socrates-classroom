@@ -10,7 +10,7 @@ import {
 } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
 import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, requireCapability, type AppEnv } from "../http";
-import { classroomAccess, parsePrompts, requireTopicAxes, type TopicRow } from "../services/members";
+import { classroomAccess, parsePrompts, type TopicRow } from "../services/members";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
 function mockTopics(direction: string) {
@@ -74,7 +74,6 @@ export function topicsRoutes() {
     .post("/topics", async (c) => {
       const user = requireCapability(c, "manage_classes");
       const input = await parseBody(c, TopicCreateInputSchema);
-      await requireTopicAxes(c.env.DB, input.axes.length);
       const id = newId("t_");
       await run(
         c.env.DB,

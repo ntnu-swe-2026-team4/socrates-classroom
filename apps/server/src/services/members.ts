@@ -1,6 +1,5 @@
 import { getCookie } from "hono/cookie";
-import { ApiError, AxisSchema, type ActivityMode, type User } from "@socrates/shared";
-import { reportAxesOf } from "./settings";
+import { ApiError, AxisSchema, type ActivityMode, type ReportAxes, type User } from "@socrates/shared";
 import type { Db } from "../db/d1";
 import { one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, type ParticipantIdentity } from "../auth";
@@ -103,24 +102,20 @@ export async function classroomAccess(db: Db, classroomId: string, user: Pick<Us
   return { classroom, isTeacher: false };
 }
 
-/** With report axes set by the teacher (the current setting), a topic needs 1-3 of them. */
-export async function requireTopicAxes(db: Db, count: number): Promise<void> {
-  if (count === 0 && (await reportAxesOf(db)) === "teacher") fail(422, "topic_axes_required");
-}
-
 export async function topicForActivity(
   db: Db,
   topicId: string,
   classroomId: string,
   userId: string,
+  reportAxes: ReportAxes,
 ): Promise<TopicRow> {
   const topic = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id", { id: topicId });
   if (!topic) fail(404, "not_found");
   const systemOrOwn = topic.classroom_id === null && (topic.owner_id === null || topic.owner_id === userId);
   if (topic.classroom_id !== classroomId && !systemOrOwn) fail(404, "not_found");
   // With the teacher setting the axes, the class report places students on the topic's axes, so a topic without any
-  // (saved before axes existed) cannot start.
-  await requireTopicAxes(db, parsePrompts(topic).axes.length);
+  // cannot start that way.
+  if (reportAxes === "teacher" && parsePrompts(topic).axes.length === 0) fail(422, "topic_axes_required");
   return topic;
 }
 

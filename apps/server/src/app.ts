@@ -1,5 +1,5 @@
 import type { ClientConfig } from "@socrates/shared";
-import { reportAxesOf } from "./services/settings";
+import { reportAxesPolicyOf } from "./services/settings";
 import { Hono } from "hono";
 import { ApiError } from "@socrates/shared";
 import { localize } from "./messages";
@@ -24,7 +24,7 @@ export function createApi() {
   return (
     new Hono<AppEnv>()
       // server settings the web app needs: who sets the class report's value axes (report.axes, #159)
-      .get("/config", async (c) => c.json({ reportAxes: await reportAxesOf(c.env.DB) } satisfies ClientConfig))
+      .get("/config", async (c) => c.json({ reportAxes: await reportAxesPolicyOf(c.env.DB) } satisfies ClientConfig))
       .route("/", authRoutes())
       .route("/", joinRoutes())
       .route("/", inviteRoutes())

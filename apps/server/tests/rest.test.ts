@@ -347,17 +347,18 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     expect(((await me.json()) as { canManageClasses: boolean }).canManageClasses).toBe(false);
   });
 
-  test("GET /api/config tells the web app who sets the class report's axes (report.axes)", async () => {
+  test("GET /api/config tells the web app who decides the class report's axes (default: both)", async () => {
     const res = await call("/api/config");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ reportAxes: "teacher" });
+    expect(await res.json()).toEqual({ reportAxes: "both" });
   });
 
-  test("topics carry the teacher's axes: required on create, a topic without any cannot start, a copy with axes can", async () => {
+  test("topics carry the teacher's axes: optional on create, a topic without any cannot start with teacher-set axes, a copy with axes can", async () => {
     const json = { "Content-Type": "application/json", Cookie: teacher };
     const base = { title: "有軸的題目", statement: "契約應該被遵守嗎？", prompts: [] };
+    // axes are optional on a topic: only an activity the teacher sets the axes for needs them
     const missing = await call("/api/topics", { method: "POST", headers: json, body: JSON.stringify(base) });
-    expect(missing.status).toBe(422);
+    expect(missing.status).toBe(201);
     const tooMany = await call("/api/topics", {
       method: "POST",
       headers: json,
@@ -382,7 +383,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     }>;
     expect(listed.find((item) => item.id === topic.id)?.axes).toEqual(axes);
     // the seeded topics come with axes
-    expect(listed.filter((item) => item.axes.length === 0)).toHaveLength(0);
+    expect(listed.filter((item) => item.id.startsWith("t_fx_") && item.axes.length === 0)).toHaveLength(0);
 
     // a classroom topic needs axes too
     const classroomMissing = await call(`/api/classrooms/${classroomId}/topics`, {
@@ -390,7 +391,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       headers: json,
       body: JSON.stringify(base),
     });
-    expect(classroomMissing.status).toBe(422);
+    expect(classroomMissing.status).toBe(201);
 
     // a topic saved before axes existed (the column default) cannot start an activity
     await env.DB.prepare(

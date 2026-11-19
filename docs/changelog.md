@@ -6,12 +6,12 @@
 
 ### Added
 
-- **誰設群體報告的軸改成後端開關**（#159，PM 決定）：部署後由管理員 `PUT /api/admin/settings` `{reportAxes}` 切換、立即生效（存在新的 `settings` 表，migration `009_settings.sql`；沒設過時用 `providers.config.yaml` 的 `report.axes`）。活動開始時記下當下的設定（`activities.report_axes`），它的報告照那個設定產生，之後切換不影響；兩種群體報告各有自己的工具（`submit_class_report`／`submit_class_axes_report`）。`teacher`＝老師在題目設（同主專案、架構草案），`ai`＝群體報告模型為每班自己定（原本 main 的做法，落點同樣改成左右端＋堅定程度、prompt 明定不生評分式的軸）。預設 `teacher`。前端以新的 `GET /api/config` 得知設定：`ai` 時不顯示填軸、開活動不需要軸；報告頁顯示模型定的軸的 why
-- **題目的價值軸由老師設定**（`report.axes = teacher`；同主專案）：題目多了 `axes`（1–3 條 `{name, left, right}`，名稱不可重複；migration `008_topic_axes.sql`，系統題補上軸）
+- **誰設群體報告的軸，由後端決定**（#159，PM 決定）：`teacher`（只能老師設）、`ai`（只能模型為每班定，原本 main 的做法）、`both`（老師開活動時自己選，同一個班可兩種並存）。部署後由管理員 `PUT /api/admin/settings` `{reportAxes}` 切換、立即生效（新的 `settings` 表，migration `009_settings.sql`；沒設過時用 `providers.config.yaml` 的 `report.axes`，預設 `both`）。開活動帶 `reportAxes`，鎖定時帶另一種回 422 `report_axes_not_allowed`；活動記下用哪種（`activities.report_axes`），報告照它產生，之後改設定不影響。兩種群體報告各有自己的 prompt 與工具（`class-report.md`＋`submit_class_report`／`class-report-ai.md`＋`submit_class_axes_report`）。前端以 `GET /api/config` 得知設定：`both` 時開活動多一個「價值軸由誰設定」的選項，`ai` 時不顯示填軸；報告頁顯示模型定的軸的 why
+- **題目可帶老師設的價值軸**（同主專案）：題目多了 `axes`（選填，最多 3 條 `{name, left, right}`，名稱不可重複；migration `008_topic_axes.sql`，系統題補上軸）
   - 班級議題集加題（自訂、AI 生成）要填軸：AI 生成的候選題不帶軸，選了之後由老師填
   - 開始活動時顯示所選題目的軸、可修改；改了軸、或題目沒有軸（加軸以前存的舊題目），就以 `POST /topics/:id/copy` 帶著新軸複製一份到班級再開始。存好的題目不再變動，進行中的活動與報告用的軸不會被改；重試時沿用已複製的那份
   - 複製題目（`POST /topics/:id/copy`）可帶 `axes`，不帶就沿用來源的軸
-  - 沒有軸的題目開活動回 422 `topic_axes_required`；軸名稱重複時編輯器提示
+  - 用老師設軸開活動、題目卻沒有軸時回 422 `topic_axes_required`；軸名稱重複時編輯器提示
 
 ### Fixed
 
@@ -26,7 +26,7 @@
 
 ### Changed
 
-- **群體報告在 `report.axes = teacher` 時不自己生軸**：模型只把表態學生放到老師的軸上（以軸的編號回傳，新 `ClassPlacementSchema`），軸的名稱與兩端由程式從題目複製；編號不存在的軸、同一軸同一人的第二筆一律丟棄。模型只給靠老師的哪一端（`side`：left／middle／right，用老師的左右說法）和多堅定（`strength` 1–5），存下來的 `end`（low／high）與落點數字 `at`（0＝完全左端、100＝完全右端）由程式算：要模型直接給 low／high＋數字時，glm-5.3-flash 在 39 人班把 27/38 個學生的數字當成「多堅定」來寫（堅定靠左寫成 75），改成只給 low／high＋堅定程度後，又把整班的 high 讀成「比較支持拉桿」而左右放反。老師設的軸沒有 `why`（`ClassReport.axes[].why` 改為選填，只有模型定的軸有），沒有報告談到的軸保留、`positions` 為空陣列（報告頁顯示「沒有學生的報告談到這條軸」）。原本「開幾條軸、合併軸、丟掉分不開學生的軸」的規則全部拿掉
+- **老師設軸的活動，群體報告不自己生軸**：模型只把表態學生放到老師的軸上（以軸的編號回傳，新 `ClassPlacementSchema`），軸的名稱與兩端由程式從題目複製；編號不存在的軸、同一軸同一人的第二筆一律丟棄。模型只給靠老師的哪一端（`side`：left／middle／right，用老師的左右說法）和多堅定（`strength` 1–5），存下來的 `end`（low／high）與落點數字 `at`（0＝完全左端、100＝完全右端）由程式算：要模型直接給 low／high＋數字時，glm-5.3-flash 在 39 人班把 27/38 個學生的數字當成「多堅定」來寫（堅定靠左寫成 75），改成只給 low／high＋堅定程度後，又把整班的 high 讀成「比較支持拉桿」而左右放反。老師設的軸沒有 `why`（`ClassReport.axes[].why` 改為選填，只有模型定的軸有），沒有報告談到的軸保留、`positions` 為空陣列（報告頁顯示「沒有學生的報告談到這條軸」）。原本「開幾條軸、合併軸、丟掉分不開學生的軸」的規則全部拿掉
 - **群體報告變快**：class-report 改讀各生單人報告（claim/reasons/tension＋行號），不再讀全班原始對話；全班無人表態時不呼叫模型
 - **群體報告失敗先在程式內重試**：新設定 `report.classAttempts`（預設 2）；模型沒交、輸出被截斷、或格式不對時再跑一次，全部失敗才存成 partial（glm-4.7-flash 同一份輸入時好時壞）
 - **class-report `thinkingLevel` high → low**（#122 調整時維持 high，這裡改掉）：glm-5.3-flash 實測（GLM API，5 班 6–39 人），開推理時 39 人班推理超過 3 萬 token 被截斷、10 人班要 12 分鐘；low 時全部 7–136 秒完成，評分持平或較好。Workers AI 上 low 的實際效果尚未量測

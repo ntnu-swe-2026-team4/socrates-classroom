@@ -6,7 +6,7 @@ import {
   type AdminSettings,
   type AdminUser,
 } from "@socrates/shared";
-import { reportAxesOf, setReportAxes } from "../services/settings";
+import { reportAxesPolicyOf, setReportAxesPolicy } from "../services/settings";
 import { all, one, run } from "../db/d1";
 import { hashPassword } from "../auth";
 import {
@@ -53,16 +53,17 @@ async function loadAdminUser(db: D1Database, id: string): Promise<AdminUser | nu
 export function adminRoutes() {
   return (
     new Hono<AppEnv>()
-      // who sets the class report's axes (#159); a change applies to activities started after it
+      // who decides the class report's axes (#159): teacher / ai only, or both (the teacher chooses per activity); a
+      // change applies to activities started after it
       .get("/admin/settings", async (c) => {
         requireAdmin(c);
-        return c.json({ reportAxes: await reportAxesOf(c.env.DB) } satisfies AdminSettings);
+        return c.json({ reportAxes: await reportAxesPolicyOf(c.env.DB) } satisfies AdminSettings);
       })
       .put("/admin/settings", async (c) => {
         requireAdmin(c);
         const input = await parseBody(c, AdminSettingsSchema);
-        await setReportAxes(c.env.DB, input.reportAxes);
-        return c.json({ reportAxes: await reportAxesOf(c.env.DB) } satisfies AdminSettings);
+        await setReportAxesPolicy(c.env.DB, input.reportAxes);
+        return c.json({ reportAxes: await reportAxesPolicyOf(c.env.DB) } satisfies AdminSettings);
       })
       .get("/admin/users", async (c) => {
         requireAdmin(c);

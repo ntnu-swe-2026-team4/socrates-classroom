@@ -62,7 +62,7 @@ describe("StartActivity: the picked topic's axes", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
     await waitFor(() => expect(onStarted).toHaveBeenCalled());
     expect(copyTopic).not.toHaveBeenCalled();
-    expect(startActivity).toHaveBeenCalledWith("c1", "t_axes", "live");
+    expect(startActivity).toHaveBeenCalledWith("c1", "t_axes", "live", "teacher");
   });
 
   it("a topic without axes needs them; it starts on a copy with those axes, saved once across a retry", async () => {
@@ -83,7 +83,7 @@ describe("StartActivity: the picked topic's axes", () => {
     await waitFor(() => expect(onStarted).toHaveBeenCalled());
     expect(copyTopic).toHaveBeenCalledTimes(1);
     expect(copyTopic).toHaveBeenCalledWith("t_legacy", "c1", [{ name: "Q", left: "L", right: "R" }]);
-    expect(startActivity).toHaveBeenLastCalledWith("c1", "t_copy", "live");
+    expect(startActivity).toHaveBeenLastCalledWith("c1", "t_copy", "live", "teacher");
   });
 
   it("re-clicking the picked topic keeps the teacher's edits", async () => {
@@ -108,6 +108,35 @@ describe("StartActivity when the model sets the axes (report.axes = ai)", () => 
     fireEvent.click(start);
     await waitFor(() => expect(onStarted).toHaveBeenCalled());
     expect(copyTopic).not.toHaveBeenCalled();
-    expect(startActivity).toHaveBeenCalledWith("c1", "t_legacy", "live");
+    expect(startActivity).toHaveBeenCalledWith("c1", "t_legacy", "live", "ai");
+  });
+});
+
+describe("StartActivity when the backend lets the teacher choose (report axes = both)", () => {
+  it("offers the choice, set by the teacher first; choosing AI hides the axes and starts the topic as it is", async () => {
+    config.mockResolvedValue({ reportAxes: "both" });
+    startActivity.mockResolvedValue(started);
+    const onStarted = renderStart();
+    fireEvent.click(await screen.findByRole("button", { name: /Old topic/ }));
+    expect(await screen.findByRole("tab", { name: "Set by me" })).toHaveProperty("ariaSelected", "true");
+    // set by the teacher: this topic has no axes, so it cannot start yet
+    expect(screen.getByRole("textbox", { name: "What this axis asks 1" })).toBeTruthy();
+    const start = screen.getByRole("button", { name: "Start activity" });
+    expect(start).toHaveProperty("disabled", true);
+
+    fireEvent.click(screen.getByRole("tab", { name: "AI, from the class's dialogues" }));
+    await waitFor(() => expect(start).toHaveProperty("disabled", false));
+    expect(screen.queryByRole("textbox", { name: "What this axis asks 1" })).toBeNull();
+    fireEvent.click(start);
+    await waitFor(() => expect(onStarted).toHaveBeenCalled());
+    expect(copyTopic).not.toHaveBeenCalled();
+    expect(startActivity).toHaveBeenCalledWith("c1", "t_legacy", "live", "ai");
+  });
+
+  it("does not offer the choice when the backend locks one", async () => {
+    config.mockResolvedValue({ reportAxes: "teacher" });
+    renderStart();
+    fireEvent.click(await screen.findByRole("button", { name: /Topic with axes/ }));
+    expect(screen.queryByRole("tab", { name: "Set by me" })).toBeNull();
   });
 });
