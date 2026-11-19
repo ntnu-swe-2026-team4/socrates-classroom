@@ -6,7 +6,14 @@ import { fail, nowIso, parseBody, requireCapability, type AppEnv } from "../http
 import { encryptKey } from "../auth-crypto";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 
-const KeyInputSchema = z.object({ key: z.string().min(8).max(256) });
+const KeyInputSchema = z
+  .object({
+    key: z.string().min(8).max(256).optional(),
+    maxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
+  })
+  .refine((input) => input.key !== undefined || input.maxConcurrency !== undefined, {
+    message: "key or maxConcurrency required",
+  });
 
 const ModelInputSchema = z.object({
   model: z.string().min(1).max(200),
@@ -22,6 +29,7 @@ interface ProviderKeyRow {
   last4: string;
   sort_order: number;
   updated_at: string;
+  max_concurrency: number | null;
 }
 
 interface ModelRow {
@@ -43,7 +51,7 @@ export function teacherKeyRoutes() {
       const user = requireCapability(c, "manage_classes");
       const keys = await all<ProviderKeyRow>(
         c.env.DB,
-        "SELECT provider_id, last4, sort_order, updated_at FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
+        "SELECT provider_id, last4, sort_order, updated_at, max_concurrency FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
         { uid: user.id },
       );
       const legs = await all<ModelRow>(
@@ -60,6 +68,7 @@ export function teacherKeyRoutes() {
       const statuses: TeacherKeyStatus[] = keys.map((row) => ({
         provider: row.provider_id,
         last4: row.last4,
+        maxConcurrency: row.max_concurrency,
         sortOrder: row.sort_order,
         updatedAt: row.updated_at,
         models: (byProvider.get(row.provider_id) ?? []).map((leg) => ({
@@ -99,8 +108,8 @@ export function teacherKeyRoutes() {
             ? input.providers.indexOf(row.provider_id)
             : input.providers.length + unlisted++;
           return {
-            sql: "UPDATE teacher_keys SET sort_order = $order WHERE user_id = $uid AND provider_id = $pid",
-            params: { order, uid: user.id, pid: row.provider_id },
+            sql: "UPDATE teacher_keys SET sort_order = $order, updated_at = $at WHERE user_id = $uid AND provider_id = $pid",
+            params: { order, at: nowIso(), uid: user.id, pid: row.provider_id },
           };
         }),
       );
@@ -124,8 +133,8 @@ export function teacherKeyRoutes() {
         owned.map((row) => {
           const order = ordered.has(row.model) ? input.models.indexOf(row.model) : input.models.length + unlisted++;
           return {
-            sql: "UPDATE teacher_key_models SET sort_order = $order WHERE user_id = $uid AND provider_id = $pid AND model = $model",
-            params: { order, uid: user.id, pid: provider, model: row.model },
+            sql: "UPDATE teacher_key_models SET sort_order = $order, updated_at = $at WHERE user_id = $uid AND provider_id = $pid AND model = $model",
+            params: { order, at: nowIso(), uid: user.id, pid: provider, model: row.model },
           };
         }),
       );
@@ -161,16 +170,13 @@ export function teacherKeyRoutes() {
           { uid: user.id, pid: provider, model: input.model, maxConcurrency, at: nowIso() },
         );
       } else {
-        const next = await one<{ n: number }>(
-          c.env.DB,
-          "SELECT COALESCE(MAX(sort_order), -1) AS n FROM teacher_key_models WHERE user_id = $uid AND provider_id = $pid",
-          { uid: user.id, pid: provider },
-        );
         await run(
           c.env.DB,
           `INSERT INTO teacher_key_models (user_id, provider_id, model, max_concurrency, sort_order, updated_at)
-           VALUES ($uid, $pid, $model, $maxConcurrency, $order, $at)`,
-          { uid: user.id, pid: provider, model: input.model, maxConcurrency, order: (next?.n ?? -1) + 1, at: nowIso() },
+           SELECT $uid, $pid, $model, $maxConcurrency, COALESCE((
+             SELECT MAX(sort_order) FROM teacher_key_models WHERE user_id = $uid AND provider_id = $pid
+           ), -1) + 1, $at`,
+          { uid: user.id, pid: provider, model: input.model, maxConcurrency, at: nowIso() },
         );
       }
       return c.json({ provider, model: input.model, maxConcurrency });
@@ -190,28 +196,44 @@ export function teacherKeyRoutes() {
       const provider = c.req.param("provider");
       const input = await parseBody(c, KeyInputSchema);
       if (!keyableProvider(provider)) fail(422, "byok_provider_invalid");
+      if (input.key === undefined) {
+        const result = await run(
+          c.env.DB,
+          "UPDATE teacher_keys SET max_concurrency = $maxConcurrency, updated_at = $at WHERE user_id = $uid AND provider_id = $pid",
+          { uid: user.id, pid: provider, maxConcurrency: input.maxConcurrency ?? null, at: nowIso() },
+        );
+        if ((result.meta?.changes ?? 0) === 0) fail(404, "not_found");
+        return c.json({ provider, maxConcurrency: input.maxConcurrency ?? null });
+      }
       const enc = await encryptKey(c.env, input.key);
-      const existing = await one<{ n: number }>(
+      const existing = await one<{ sort_order: number; max_concurrency: number | null }>(
+        c.env.DB,
+        "SELECT sort_order, max_concurrency FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
+        { uid: user.id, pid: provider },
+      );
+      const last = await one<{ n: number }>(
         c.env.DB,
         "SELECT COALESCE(MAX(sort_order), -1) AS n FROM teacher_keys WHERE user_id = $uid AND provider_id != $pid",
         { uid: user.id, pid: provider },
       );
-      const order = (existing?.n ?? -1) + 1;
+      const order = existing?.sort_order ?? (last?.n ?? -1) + 1;
+      const maxConcurrency = "maxConcurrency" in input ? input.maxConcurrency : (existing?.max_concurrency ?? null);
       await run(
         c.env.DB,
-        `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
-         VALUES ($uid, $pid, $enc, $last4, $order, $at)
-         ON CONFLICT(user_id, provider_id) DO UPDATE SET key_enc = $enc, last4 = $last4, updated_at = $at`,
+        `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at, max_concurrency)
+         VALUES ($uid, $pid, $enc, $last4, $order, $at, $maxConcurrency)
+         ON CONFLICT(user_id, provider_id) DO UPDATE SET key_enc = $enc, last4 = $last4, updated_at = $at, max_concurrency = $maxConcurrency`,
         {
           uid: user.id,
           pid: provider,
           enc,
           last4: input.key.slice(-4),
           order,
+          maxConcurrency,
           at: nowIso(),
         },
       );
-      return c.json({ provider, last4: input.key.slice(-4) });
+      return c.json({ provider, last4: input.key.slice(-4), maxConcurrency });
     })
     .delete("/settings/keys/:provider", async (c) => {
       const user = requireCapability(c, "manage_classes");

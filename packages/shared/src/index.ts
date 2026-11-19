@@ -333,6 +333,7 @@ export type TeacherKeyModel = z.infer<typeof TeacherKeyModelSchema>;
 export const TeacherKeyStatusSchema = z.object({
   provider: z.string(),
   last4: z.string(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
   sortOrder: z.number(),
   updatedAt: z.string(),
   models: z.array(TeacherKeyModelSchema),

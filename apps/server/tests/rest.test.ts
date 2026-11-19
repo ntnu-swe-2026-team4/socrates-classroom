@@ -235,10 +235,68 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     const again = await call("/api/settings/keys/openrouter", {
       method: "PUT",
       headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ key: "sk-or-v1-zzzzzzzz" }),
+      body: JSON.stringify({ key: "sk-or-v1-zzzzzzzz", maxConcurrency: 6 }),
     });
     expect(again.status).toBe(200);
-    expect(((await again.json()) as { last4: string }).last4).toBe("zzzz");
+    expect((await again.json()) as { last4: string; maxConcurrency: number | null }).toEqual({
+      provider: "openrouter",
+      last4: "zzzz",
+      maxConcurrency: 6,
+    });
+
+    const keep = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ key: "sk-or-v1-zzzzzzzz" }),
+    });
+    expect(((await keep.json()) as { maxConcurrency: number | null }).maxConcurrency).toBe(6);
+
+    const badProviderLimit = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ key: "sk-or-v1-zzzzzzzz", maxConcurrency: 0 }),
+    });
+    expect(badProviderLimit.status).toBe(422);
+
+    const clear = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ key: "sk-or-v1-zzzzzzzz", maxConcurrency: null }),
+    });
+    expect(((await clear.json()) as { maxConcurrency: number | null }).maxConcurrency).toBeNull();
+
+    const keyless = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ maxConcurrency: 3 }),
+    });
+    expect(keyless.status).toBe(200);
+    expect((await keyless.json()) as { provider: string; maxConcurrency: number | null }).toEqual({
+      provider: "openrouter",
+      maxConcurrency: 3,
+    });
+    const keylessClear = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ maxConcurrency: null }),
+    });
+    expect(((await keylessClear.json()) as { maxConcurrency: number | null }).maxConcurrency).toBeNull();
+
+    const second = await call("/api/settings/keys/deepseek", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ key: "sk-ds-abcdefgh" }),
+    });
+    expect(second.status).toBe(200);
+    const ordered = await (await call("/api/settings/keys", { headers: { Cookie: teacher } })).json();
+    expect(
+      (ordered as Array<{ provider: string; sortOrder: number }>).map((entry) => [entry.provider, entry.sortOrder]),
+    ).toEqual([
+      ["openrouter", 0],
+      ["deepseek", 1],
+    ]);
+    const removeSecond = await call("/api/settings/keys/deepseek", { method: "DELETE", headers: { Cookie: teacher } });
+    expect(removeSecond.status).toBe(204);
 
     const legA = await call("/api/settings/keys/openrouter/models", {
       method: "PUT",
@@ -274,12 +332,14 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       (await (await call("/api/settings/keys", { headers: { Cookie: teacher } })).json()) as Array<{
         provider: string;
         last4: string;
+        maxConcurrency: number | null;
         models: Array<{ model: string; maxConcurrency: number | null; sortOrder: number }>;
       }>;
     expect(await listKeys()).toEqual([
       {
         provider: "openrouter",
         last4: "zzzz",
+        maxConcurrency: null,
         sortOrder: 0,
         updatedAt: expect.any(String),
         models: [
@@ -354,6 +414,13 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     });
     expect(noKeyLeg.status).toBe(422);
     expect(((await noKeyLeg.json()) as { code: string }).code).toBe("validation");
+
+    const orphanCap = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ maxConcurrency: 3 }),
+    });
+    expect(orphanCap.status).toBe(404);
   });
 
   test("register → login student track: registering creates a member, same email and password can log in", async () => {
