@@ -1,6 +1,6 @@
 # LLM Providers 紀錄
 
-> 查證日期：2026-11-03（providers.md 首版；後續查證見各節標注）｜ 更新日期：2026-11-17｜ 狀態：供 LLM 組與後端共用的 provider 參考
+> 查證日期：2026-11-03（providers.md 首版；後續查證見各節標注）｜ 更新日期：2026-11-19｜ 狀態：供 LLM 組與後端共用的 provider 參考
 > 配套文件：[`cf.md`](./cf.md)（Cloudflare CLI）、[`pi.md`](./pi.md)（Pi Durable）
 
 ## Pool 定位
@@ -15,6 +15,8 @@
 
 > 2026-11-10：自架 DGX Spark 腿**暫時移除**（等 Cloudflare Tunnel 上線＋key 管控後回歸，回歸 = 把 provider block 加回 `providers.config.yaml`，零程式碼變更）。移除期間平台鏈單一 provider（全 Cloudflare），排查單純。
 > fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），不能只鎖 provider。
+
+> 2026-11-19 現況（`providers.config.yaml`）：availability 平台鏈＝workers-ai 兩腿（`@cf/zai-org/glm-5.3-flash` priority 1、`@cf/zai-org/glm-4.7-flash` priority 2，credential `platform`）；catalog 另宣告 `openrouter`（`z-ai/glm-5.3-flash`）與 `glm`（Coding Plan 端點，glm-4.6／4.7／5.3／4.5-air）兩 provider（cost paid）——皆未入 availability 鏈。teacher legs 不讀 YAML 的 providers/availability：provider／model 來自 D1 `teacher_key_entries`（pi builtin catalog 驗證），credential＝`teacher:{userId}:{entryId}`（每 entry 獨立 ledger，`maxConcurrency` 取 `teacherChain`）。
 
 ---
 
@@ -61,7 +63,7 @@
 - **AI Gateway credits（2026-11-05 官方 Unified Billing）**：**純預付、無免費月度額度**，購買收 5% 手續費（僅信用卡）；推論價格 pass-through。Web Search API（ceramic $0.25/1k）與付費清單模型都吃這個——**402 web_search_payment_required＝credits 為零**，載入後即通
 - **語音模型（#56/#69，2026-11-05 官方目錄查證）**：
   - STT：`@cf/openai/whisper-large-v3-turbo`（ZDR yes、$0.000513/audio-min）；binding 輸入＝base64 字串（schema `audio: string｜{body,contentType}`）
-  - TTS：`@cf/myshell-ai/melotts`（ZDR yes、$0.000205/audio-min、zh 支援）；binding 參數 `prompt`＋`lang`，回 base64 WAV 文字流——**已實測**（216KB WAV→whisper 閉環轉錄）
+  - TTS：`@cf/myshell-ai/melotts`（ZDR yes、$0.000205/audio-min、zh 支援）；binding 參數 `prompt`＋`lang`，回 base64 WAV 文字流——**已實測**（216KB WAV→whisper 閉環轉錄）。⚠️ **查證紀錄，非現行設定**：2026-11-10 起 production 改用 `xai/grok-tts`（melotts deprecation 前切換，#119；`TTS_MODEL` 綁定預設值，經 `AI` binding，grok 形制參數 `text`＋`language`＋`voice_id`、回 mp3/audio）——grok-tts 本身的 ZDR／定價查證未做（見待辦）
 - **ZDR**：官方明文「Zero data retention」+「No training」；⚠️ 例外：**AI Gateway 開 logging/caching 會存內容**——學生流量不要開
 
 ## 5. OpenRouter（聚合器／BYOK 路由）
@@ -74,11 +76,11 @@
 
 ## 6. BYOK 模式（三種層次；定案見 #82）
 
-| 層次                                | 機制                                                                                               | 適用                                                     |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| AI Gateway BYOK                     | key 存 CF gateway，Worker 完全不碰 key；僅限 provider-native 清單（**無智譜**）                    | 想統一觀測/計費且只用清單內 provider 時                  |
-| OpenRouter BYOK                     | 60+ providers、統一 API 與分析；$25k/月內免費、之後 5%                                             | 用自己的 Z.AI/其他 key 但要 OpenRouter 的路由與 failover |
-| **產品級 teacher keys（#82 定案）** | 老師一 provider 一把 key（加密存 D1，`sort_order`＝provider 鏈序）；學生無 BYOK 入口，一律走平台鏈 | 學生流量合規責任單一（平台鏈全 ZDR）；byok 端點已退役    |
+| 層次                                | 機制                                                                                                | 適用                                                     |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| AI Gateway BYOK                     | key 存 CF gateway，Worker 完全不碰 key；僅限 provider-native 清單（**無智譜**）                     | 想統一觀測/計費且只用清單內 provider 時                  |
+| OpenRouter BYOK                     | 60+ providers、統一 API 與分析；$25k/月內免費、之後 5%                                              | 用自己的 Z.AI/其他 key 但要 OpenRouter 的路由與 failover |
+| **產品級 teacher keys（#82 定案）** | 老師多把 key × 多個 model（加密存 D1，拖曳排序＝teacher legs 鏈序）；學生無 BYOK 入口，一律走平台鏈 | 學生流量合規責任單一（平台鏈全 ZDR）；byok 端點已退役    |
 
 ## 7. Judgment 模型（逐輪違規判斷）
 
@@ -248,17 +250,17 @@ JSON 可解析且通過 schema：`glm-5.3` low 100%、`glm-5.3` high 100%、`glm
 
 ---
 
-1. **學生流量（平台鏈）**：`providers.config.yaml` 的 availability 鏈（workers-ai ×2，2026-11-10 起 dgx-spark 暫時移除）；平台 credential 的段落全部 ZDR（Workers AI＝官方 ZDR），這是平台能保證的部分。
+1. **學生流量（平台鏈）**：`providers.config.yaml` 的 availability 鏈（dgx-spark → workers-ai ×2）；平台 credential 的段落全部 ZDR（自架＝團隊機房、Workers AI＝官方 ZDR），這是平台能保證的部分。
 2. **Teacher keys**（2026-11-09 定案）：老師可存**任意 pi builtin provider** 的 key＋自選 model；其教室流量**老師鏈在前、平台鏈墊後**。provider×model 是無窮空間，平台不逐一審查——資料責任由 **ToS 移轉**給教師（設定頁有責任條款文案）；平台僅保證 fallback 到的平台鏈 ZDR。
 3. **平台鏈模型白名單**（可進 fallback 的）：GLM-5.3-Flash、GLM-5.3、GLM-5.2、Kimi／Qwen／MiniMax／MiMo 等 0-day retention 模型。禁入：Muse Spark、Iceman（會訓練）、Grok／GPT Luna／Claude Haiku（30 天）。
 4. **開發流量**：Coding Plan 優先（額度大、離峰五折），任何 provider 皆可。
-5. **應用層記帳**：ledger 以 (provider, model, credential) 記帳——teacher leg 用 `teacher:<userId>` credential 獨立記；連續 5 次 error 開 60s cooldown（pi 不提供結構化錯誤狀態，無法分類 429/401，誠實只記 ok/error）。settle 由 run 完成回呼驅動（fire-and-forget）：DO 在 run 中途被 evict 時該次不結帳，inFlight 計數洩漏至 isolate 結束為止——cooldown 因此「保守慢」而非即時；ledger 生命週期＝isolate 生命週期，後果有界。
+5. **應用層記帳**：ledger 以 (provider, model, credential) 記帳——teacher leg 用 `teacher:{userId}:{entryId}` credential 每筆 entry 獨立記（路由選中的 entry 由 `withPinnedCredential` 釘住，pi 讀 credential 時取得該 entry 的 key）；連續 5 次 error 開 60s cooldown（pi 不提供結構化錯誤狀態，無法分類 429/401，誠實只記 ok/error）。settle 由 run 完成回呼驅動（fire-and-forget）：DO 在 run 中途被 evict 時該次不結帳，inFlight 計數洩漏至 isolate 結束為止——cooldown 因此「保守慢」而非即時；ledger 生命週期＝isolate 生命週期，後果有界。
 
-## 8. Search providers（搜尋供應商）
+## 9. Search providers（搜尋供應商）
 
 狀態：retention 查證與中英文初步測試已記錄；正式選型仍有待確認事項。
 
-### 8.1 Retention 查證
+### 9.1 Retention 查證
 
 | 候選／使用路徑                      | 官方證據與適用範圍                                                                  | 本專案判定                          |
 | ----------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------- |
@@ -268,7 +270,7 @@ JSON 可解析且通過 schema：`glm-5.3` low 100%、`glm-5.3` high 100%、`glm
 | Ceramic                             | 一般條款未建立本專案所需的 API 零保留承諾，詳見下文                                 | ZDR 未證實；不能沿用 CF 路徑的標示  |
 | Serper                              | 已檢查公開 Privacy Policy，未找到明確的 API 查詢／回應零保留承諾及保存期限          | ZDR 未證實；需取得供應商書面確認    |
 
-### 8.2 中英文測試方法
+### 9.2 中英文測試方法
 
 每個語言／provider 組合各查詢 10 個詞組。
 
@@ -298,7 +300,7 @@ JSON 可解析且通過 schema：`glm-5.3` low 100%、`glm-5.3` high 100%、`glm
 - 中文：`zh.wikipedia.org`、`terms.naer.edu.tw`。
 - 英文：`en.wikipedia.org`、`plato.stanford.edu`。
 
-### 8.3 測試結果
+### 9.3 測試結果
 
 | 指標                           | 中文 Serper | 英文 Serper | 英文 Ceramic |
 | ------------------------------ | ----------: | ----------: | -----------: |
@@ -332,13 +334,13 @@ JSON 可解析且通過 schema：`glm-5.3` low 100%、`glm-5.3` high 100%、`glm
 
 白名單也排除了部分相關的 IEP、Britannica、Routledge Encyclopedia 結果；這屬白名單範圍與來源審核問題，不能全部視為搜尋無效。
 
-### 8.4 其他測試觀察與限制
+### 9.4 其他測試觀察與限制
 
 - **Ceramic 繁中：** 「存在主義」重複回傳 HTTP 500 `internal_error`；英文 `existentialism` 成功。
 - **西班牙文：** 僅完成 `existencialismo` 單詞初測，API 成功，但前五筆沒有西文維基，且內容有跨語言及主題偏移。尚未完成多詞品質驗證。
 - Serper 指定地區／語言，Ceramic 未指定，參數條件不同。
 
-### 8.5 選型建議
+### 9.5 選型建議
 
 **品質面：建議 Serper 作為中英文搜尋的優先候選；合規面：其 ZDR 尚未證實。**
 
@@ -352,12 +354,12 @@ JSON 可解析且通過 schema：`glm-5.3` low 100%、`glm-5.3` high 100%、`glm
 
 - 接受合法的中文維基 `/wiki/` 與 `/zh-tw/` 等語言變體路徑。
 
-### 8.6 待確認事項
+### 9.6 待確認事項
 
 - [ ] 取得 Serper 的 retention 查證 (去信確認)。
 - [ ] 西班牙語的多詞測試。
 
-### 8.7 官方來源
+### 9.7 官方來源
 
 - [Cloudflare Web Search Providers](https://developers.cloudflare.com/web-search/providers/)：各 CF 路徑的 ZDR 標示與價格。
 - [Cloudflare Web Search 使用方式](https://developers.cloudflare.com/web-search/how-to-use/)：binding、Gateway、認證及 BYOK。
@@ -381,7 +383,7 @@ pnpm --filter @socrates/server run gen-config
 #    （CI 有 drift check：gen-config 沒跑會直接紅）
 ```
 
-改動生效範圍：對話 legs（interactive/batch traffic class）、classifiers（emotion/violation）、voice stt/tts、report 參數——程式碼零模型 id，改 YAML 即全部生效。
+改動生效範圍：對話 legs（interactive/batch traffic class）、classifiers（emotion/violation）、voice stt／tts（tts 實際讀 `TTS_MODEL` 綁定——`cloudflare.config.ts` 預設同值；YAML `voice.tts` 是未設綁定時的 fallback）、report 參數——程式碼零模型 id，改 YAML 即全部生效。
 
 ### 平台憑證（platform credentials）
 
@@ -395,7 +397,7 @@ pnpm --filter @socrates/server run gen-config
 
 ### Teacher keys（老師自帶 key）
 
-- **設定入口**：老師登入 → `/settings` → Teacher keys 卡片——選 provider（pi builtin catalog）→ 選 model（該 provider 的 model 清單）→ 貼 key；一 provider 一把 key，上下拖曳排序（`sort_order`＝teacher legs 鏈序，老師鏈在前、平台鏈墕後）
+- **設定入口**：老師登入 → `/settings` → Teacher keys 卡片——選 provider（pi builtin catalog）→ 選 model（該 provider 的 model 清單）→ 貼新 key 或沿用已存 entry 的 key（`fromEntry`）；可加入多把 key、多個 model（entry 制，上限 20 筆），拖曳把手（或上移／下移）調整順序（`sort_order`＝teacher legs 鏈序，老師鏈在前、平台鏈墊後）
 - **儲存**：D1 AES-GCM（金鑰 `BYOK_ENC_KEY`）；明文永不回傳（只回 last4）
 - **責任**：老師鏈流量 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；學生無 BYOK 入口（#82）
 - API 形狀見 [`api-contract.md`](./api-contract.md) §9
@@ -406,12 +408,13 @@ pnpm --filter @socrates/server run gen-config
 - [ ] 上線前 email OpenCode 確認 Go 用於非 coding-agent 產品後端的立場
 - [ ] Cloudflare Tunnel 設定（團隊自建）——記得套 Access policy 限制僅自家 Worker 可呼叫
 - [ ] opencode-go 的實際併發實測（官方無數字）
-- [x] BYOK 定案（2026-11-06，#82）：teacher keys（一 provider 一把 key，D1 AES-GCM）；**學生無 BYOK 入口**
+- [x] BYOK 定案（2026-11-06，#82）：teacher keys（初版一 provider 一把 key，D1 AES-GCM）；**學生無 BYOK 入口**（2026-11-16 起 #152 擴為 entry 制：多 key×多 model、每 entry 一 ledger）
 - [x] teacher keys 服務定案（2026-11-09）：任意 pi builtin provider、ToS 責任移轉、老師鏈前平台鏈後（`docs/api-contract.md` §9）
 - [x] runtime 設定層：已定案 `providers.config.yaml`（build-time 編譯，provider×credential×priority×traffic class；2026-11-06）——whitelist/pool.ts 退役，准入由 YAML providers 節把關
-- [x] server-side TTS 選型查證：**已定案 `@cf/myshell-ai/melotts`**（ZDR yes、$0.000205/audio-min、zh 支援；2026-11-05 官方目錄查證＋實測閉環，見 §4 語音模型；自架 DGX 已出局）
+- [x] server-side TTS 選型查證：**已定案 `@cf/myshell-ai/melotts`**（ZDR yes、$0.000205/audio-min、zh 支援；2026-11-05 官方目錄查證＋實測閉環，見 §4 語音模型；自架 DGX 已出局）——2026-11-10 起 production 設定改 `xai/grok-tts`（melotts deprecation 前切換，#119；melotts 查證紀錄保留於 §4）
 - [x] #55 Clef／Clef-flash ZDR 查證：**已完成**（官方明文零保留／不訓練；例外、約束與資料位置見 §7.1；2026-11-08）
 - [ ] judgment 流量的資料位置（region）確認（官方未說明）
+- [ ] `xai/grok-tts` 的 ZDR／定價查證（2026-11-10 切換，#119；查證未做）
 - [x] #55 Jev ZDR 查證：**已完成**（直連 ✗；經 OpenCode、經 Workers AI 未證實；見 §7.2；2026-11-08）
 - [ ] 確認 `typesafe/jev` 是否真的由 Workers AI 提供（pi-ai catalog 列出，Cloudflare 官方目錄與定價頁查無）
 

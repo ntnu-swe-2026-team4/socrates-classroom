@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActivityMode, ActivityStarted, ClassroomSummary, Topic } from "@socrates/shared";
+import type { ClassroomSummary, Topic } from "@socrates/shared";
 import { api } from "@/api";
-import { Button, Card, Checkbox, Field, Input, Segmented, Spinner, cn } from "@/components/ui";
+import { Button, Field, Input, Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export function useClassroomTopics(classroomId: string | null) {
@@ -17,7 +17,7 @@ function invalidateTopics(queryClient: ReturnType<typeof useQueryClient>, classr
   return queryClient.invalidateQueries({ queryKey: ["classroomTopics", classroomId] });
 }
 
-export function TopicPicker({
+function TopicChoiceList({
   topics,
   picked,
   onPick,
@@ -64,7 +64,7 @@ export function SystemTopicList({
   return (
     <div className="flex flex-col gap-1.5">
       <p className="px-1 text-xs text-ink-soft">{t("setup_topic_system")}</p>
-      <TopicPicker topics={topics} picked={picked} onPick={onPick} />
+      <TopicChoiceList topics={topics} picked={picked} onPick={onPick} />
     </div>
   );
 }
@@ -76,7 +76,8 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
   const [title, setTitle] = useState("");
   const [statement, setStatement] = useState("");
   const [direction, setDirection] = useState("");
-  const generated = useMutation({ mutationFn: () => api.generateTopics(direction) });
+  const generated = useMutation({ mutationFn: (used: string) => api.generateTopics(used) });
+  const staleGeneration = (generated.data !== undefined || generated.isError) && generated.variables !== direction;
   const create = useMutation({
     mutationFn: (input: { title: string; statement: string; prompts: string[] }) =>
       api.createClassroomTopic(classroomId, input),
@@ -92,7 +93,7 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
       <Segmented
         label={t("classroom_add_topic")}
         value={source}
-        onChange={(value) => setSource(value)}
+        onChange={(value: "custom" | "ai") => setSource(value)}
         items={[
           { value: "custom", label: t("setup_topic_custom") },
           { value: "ai", label: t("setup_topic_ai") },
@@ -126,13 +127,13 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
             <Button
               variant="outline"
               disabled={!direction.trim() || generated.isPending}
-              onClick={() => generated.mutate()}
+              onClick={() => generated.mutate(direction)}
             >
               {generated.isPending ? <Spinner /> : t("setup_topic_generate")}
             </Button>
           </div>
-          {generated.isError && <p className="text-[13px] text-flag">{t("common_error")}</p>}
-          {(generated.data ?? []).map((candidate) => (
+          {generated.isError && !staleGeneration && <p className="text-[13px] text-flag">{t("common_error")}</p>}
+          {(staleGeneration ? [] : (generated.data ?? [])).map((candidate) => (
             <div key={candidate.id} className="flex items-start gap-3 rounded-xl bg-paper-deep p-3">
               <span className="min-w-0 flex-1">
                 <b className="block font-serif text-[15px] font-medium text-ink">{candidate.title}</b>
@@ -234,70 +235,5 @@ export function CopyTopic({ classroomId }: { classroomId: string }) {
         {copy.isError && <p className="text-[13px] text-flag">{t("common_error")}</p>}
       </div>
     </details>
-  );
-}
-
-export function StartActivity({
-  classroomId,
-  onStarted,
-  allowTest,
-}: {
-  classroomId: string;
-  onStarted: (started: ActivityStarted) => void;
-  allowTest: boolean;
-}) {
-  const t = useT();
-  const queryClient = useQueryClient();
-  const classroomTopics = useClassroomTopics(classroomId);
-  const systemTopics = useQuery({ queryKey: ["topics"], queryFn: () => api.listTopics(), staleTime: Infinity });
-  const [picked, setPicked] = useState<string | null>(null);
-  const [testMode, setTestMode] = useState(false);
-  const start = useMutation({
-    mutationFn: ({ topicId, mode }: { topicId: string; mode: ActivityMode }) =>
-      api.startActivity(classroomId, topicId, mode),
-    onSuccess: async (started) => {
-      setPicked(null);
-      await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
-      onStarted(started);
-    },
-  });
-  const own = classroomTopics.data ?? [];
-  const shared = (systemTopics.data ?? []).filter((topic) => topic.classroomId === null);
-
-  if (classroomTopics.isPending || systemTopics.isPending) {
-    return (
-      <div className="flex justify-center py-6">
-        <Spinner />
-      </div>
-    );
-  }
-
-  return (
-    <Card className="flex flex-col gap-4 p-5">
-      <p className="text-[13px] leading-relaxed text-ink-soft">{t("setup_activity_hint")}</p>
-      {own.length === 0 ? (
-        <p className="text-[13px] text-ink-faint">{t("setup_topics_empty")}</p>
-      ) : (
-        <TopicPicker topics={own} picked={picked} onPick={setPicked} />
-      )}
-      <SystemTopicList topics={shared.slice(0, 6)} picked={picked} onPick={setPicked} />
-      {allowTest && (
-        <div>
-          <Checkbox label={t("classroom_mode_test")} checked={testMode} onCheckedChange={setTestMode} />
-          {testMode && (
-            <p className="mt-1.5 pl-8 text-[12px] leading-relaxed text-ink-faint">{t("classroom_mode_test_hint")}</p>
-          )}
-        </div>
-      )}
-      <div className="flex items-center justify-between gap-3">
-        {start.isError ? <p className="text-[12.5px] text-flag">{t("common_error")}</p> : <span />}
-        <Button
-          disabled={!picked || start.isPending}
-          onClick={() => picked && start.mutate({ topicId: picked, mode: testMode ? "test" : "live" })}
-        >
-          {start.isPending ? <Spinner /> : testMode ? t("classroom_start_test") : t("setup_activity_start")}
-        </Button>
-      </div>
-    </Card>
   );
 }

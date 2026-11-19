@@ -1,5 +1,5 @@
 import { getCookie } from "hono/cookie";
-import { ApiError, type ActivityMode, type User } from "@socrates/shared";
+import { ApiError, TRIAL_LIMITS, type ActivityMode, type Lang, type User } from "@socrates/shared";
 import type { Db } from "../db/d1";
 import { one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, type ParticipantIdentity } from "../auth";
@@ -31,6 +31,7 @@ export interface TopicRow {
   statement: string;
   summary: string | null;
   prompts: string;
+  i18n: string | null;
 }
 
 export interface MemberRow {
@@ -51,14 +52,33 @@ export interface ParticipantRow {
   joined_at: string;
 }
 
-export function parsePrompts(row: TopicRow) {
+interface TopicTranslation {
+  title?: string;
+  statement?: string;
+  summary?: string;
+  prompts?: string[];
+}
+
+export function translationOf(i18n: string | null, lang: Lang): TopicTranslation {
+  if (!i18n || lang === "zh") return {};
+  try {
+    const parsed = JSON.parse(i18n) as Partial<Record<Lang, TopicTranslation>>;
+    return parsed[lang] ?? {};
+  } catch {
+    return {};
+  }
+}
+
+export function parsePrompts(row: TopicRow, lang: Lang = "zh") {
+  const local = translationOf(row.i18n, lang);
+  const summary = local.summary ?? row.summary;
   return {
     id: row.id,
     classroomId: row.classroom_id,
-    title: row.title,
-    statement: row.statement,
-    ...(row.summary ? { summary: row.summary } : {}),
-    prompts: JSON.parse(row.prompts) as string[],
+    title: local.title ?? row.title,
+    statement: local.statement ?? row.statement,
+    ...(summary ? { summary } : {}),
+    prompts: local.prompts ?? (JSON.parse(row.prompts) as string[]),
   };
 }
 
@@ -75,10 +95,10 @@ export async function activityOf(
   return { activity, classroom };
 }
 
-export async function topicOf(db: Db, topicId: string): Promise<ReturnType<typeof parsePrompts>> {
+export async function topicOf(db: Db, topicId: string, lang: Lang = "zh"): Promise<ReturnType<typeof parsePrompts>> {
   const row = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id", { id: topicId });
   if (!row) fail(404, "not_found");
-  return parsePrompts(row);
+  return parsePrompts(row, lang);
 }
 
 export interface ClassroomAccess {
@@ -187,15 +207,18 @@ export async function createGuestParticipant(
   displayName: string,
   tosAcceptedAt: string,
 ): Promise<ParticipantRow> {
-  const created = await one<ParticipantRow>(
-    db,
-    `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
-     VALUES ($aid, $pid, NULL, 'guest', $name, $tos, $at)
-     ON CONFLICT DO NOTHING RETURNING *`,
-    { aid: activityId, pid: newId("p_"), name: displayName, tos: tosAcceptedAt, at: nowIso() },
-  );
-  if (!created) fail(409, "name_taken");
-  return created;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const name = attempt === 0 ? displayName : `${displayName} (${attempt + 1})`;
+    const created = await one<ParticipantRow>(
+      db,
+      `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
+       VALUES ($aid, $pid, NULL, 'guest', $name, $tos, $at)
+       ON CONFLICT DO NOTHING RETURNING *`,
+      { aid: activityId, pid: newId("p_"), name, tos: tosAcceptedAt, at: nowIso() },
+    );
+    if (created) return created;
+  }
+  fail(409, "name_taken");
 }
 
 export interface ActivityAccess {
@@ -273,4 +296,19 @@ export async function resolveInvite(
   if (invite.expires_at && invite.expires_at <= nowIso()) fail(410, "invite_expired");
   const { activity, classroom } = await activityOf(db, invite.activity_id);
   return { invite, activity, classroom };
+}
+
+export const TRIAL_LIMIT_VARS = { classrooms: TRIAL_LIMITS.classrooms, members: TRIAL_LIMITS.membersPerClassroom };
+
+export async function assertSeats(db: Db, classroomId: string, adding: number): Promise<void> {
+  const row = await one<{ plan: string | null; seats: number }>(
+    db,
+    `SELECT u.teacher_plan AS plan,
+       (SELECT COUNT(*) FROM members m JOIN users mu ON mu.id = m.user_id
+        WHERE m.classroom_id = c.id AND mu.preview_classroom_id IS NULL) AS seats
+     FROM classrooms c JOIN users u ON u.id = c.teacher_id WHERE c.id = $cid`,
+    { cid: classroomId },
+  );
+  if (!row || row.plan === "school") return;
+  if (Number(row.seats) + adding > TRIAL_LIMITS.membersPerClassroom) fail(403, "trial_limit", TRIAL_LIMIT_VARS);
 }

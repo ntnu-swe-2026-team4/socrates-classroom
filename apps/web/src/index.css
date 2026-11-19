@@ -9,42 +9,110 @@
   --spacing-topbar: 6rem;
 
   --color-paper: #ffffff;
-  --color-card: #f7f7f5;
-  --color-paper-deep: #efeeea;
-  --color-paper-shade: #e2e0d9;
-  --color-ink: #17181c;
-  --color-ink-soft: #55575e;
-  --color-ink-faint: #8d8f96;
-  --color-line: rgb(20 20 20 / 0.09);
-  --color-line-strong: rgb(20 20 20 / 0.18);
-  --color-ember: #b3813a;
-  --color-ember-deep: #8a6329;
-  --color-ember-wash: rgb(179 129 58 / 0.13);
-  --color-on-ember: #221a0c;
-  --color-moss: #66794f;
-  --color-moss-wash: rgb(102 121 79 / 0.13);
-  --color-flag: #9c4a3c;
-  --color-flag-wash: rgb(156 74 60 / 0.13);
+  --color-card: #faf9f6;
+  --color-paper-deep: #f1efe9;
+  --color-paper-shade: #dcd8cd;
+  --color-ink: #161514;
+  --color-ink-soft: #55514a;
+  --color-ink-faint: #8b867c;
+  --color-line: rgb(22 21 20 / 0.13);
+  --color-line-strong: rgb(22 21 20 / 0.28);
+  --color-ember: #c1302a;
+  --color-ember-deep: #9c2420;
+  --color-ember-wash: rgb(206 174 98 / 0.22);
+  --color-on-ember: #ffffff;
+  --color-moss: #5c6b2f;
+  --color-moss-wash: rgb(92 107 47 / 0.14);
+  --color-flag: #a3241f;
+  --color-flag-wash: rgb(163 36 31 / 0.1);
+  --color-vermilion: #c1302a;
+  --color-comic-ink: #0b0b0b;
+  --color-comic-paper: #ffffff;
+  --color-comic-night: #202022;
+  --color-comic-ochre: #ceae62;
+  --color-comic-ground: #f3f3f1;
+  --color-comic-dot: #cfcfcb;
+  --color-comic-graphite: #5e5d58;
+  --color-comic-soft: #4a4a4a;
+
+  --font-dot: "DotGothic16", "Noto Sans TC Variable", ui-monospace, monospace;
+  --font-comic-sans: "Noto Sans TC Variable", "Noto Sans TC", -apple-system, "PingFang TC", sans-serif;
+  --font-comic-serif: "Noto Serif TC Variable", "Noto Serif TC", "Songti TC", serif;
+
+  --color-ht-ground: #f3f3f1;
+  --color-ht-surface: #ffffff;
+  --color-ht-field: #ffffff;
+  --color-ht-hover: #ebebe7;
+  --color-ht-ink: #111111;
+  --color-ht-soft: #4a4a4a;
+  --color-ht-placeholder: rgb(94 93 88 / 0.6);
+  --color-ht-line: #111111;
+  --color-ht-dotted: #111111;
+  --color-ht-halo: #111111;
+  --color-ht-solid: #111111;
+  --color-ht-on-solid: #ffffff;
+  --color-ht-accent: #c4ae7d;
+  --color-ht-on-accent: #111111;
+  --color-ht-chip-dot: #111111;
+  --color-ht-dot: #5e5d58;
+  --color-ht-shade: #111111;
+  --color-ht-field-line: #111111;
+  --color-ht-accent-line: #111111;
+  --color-ht-chip-line: #111111;
+  --color-ht-chip-bg: #ffffff;
+  --color-ht-greeting: #111111;
+  --color-ht-live: #111111;
+  --color-ht-on-live: #ffffff;
+  --color-ht-live-line: #111111;
+  --color-ht-badge-bg: transparent;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --color-paper: #1f2228;
-  --color-card: #262a31;
-  --color-paper-deep: #2d3139;
-  --color-paper-shade: #383d47;
-  --color-ink: #edeae2;
-  --color-ink-soft: #aeb1ba;
-  --color-ink-faint: #7d818d;
-  --color-line: rgb(237 234 226 / 0.1);
-  --color-line-strong: rgb(237 234 226 / 0.19);
-  --color-ember: #c9a15a;
-  --color-ember-deep: #8f7442;
-  --color-ember-wash: rgb(201 161 90 / 0.14);
-  --color-moss: #8ca07a;
-  --color-moss-wash: rgb(140 160 122 / 0.14);
-  --color-flag: #b2604f;
-  --color-flag-wash: rgb(178 96 79 / 0.14);
+  --color-ht-ground: #232326;
+  --color-ht-surface: #2c2c30;
+  --color-ht-field: #232326;
+  --color-ht-hover: #38383d;
+  --color-ht-ink: #f2efe8;
+  --color-ht-soft: #b9b4a8;
+  --color-ht-placeholder: #7d796f;
+  --color-ht-line: #63625f;
+  --color-ht-dotted: rgb(242 239 232 / 0.38);
+  --color-ht-halo: rgb(242 239 232 / 0.2);
+  --color-ht-solid: #f2efe8;
+  --color-ht-on-solid: #232326;
+  --color-ht-accent: #ceae62;
+  --color-ht-on-accent: #1c1c1f;
+  --color-ht-chip-dot: #ceae62;
+  --color-ht-dot: #f2efe8;
+  --color-ht-shade: #0d0d0f;
+  --color-ht-field-line: #f2efe8;
+  --color-ht-accent-line: #ceae62;
+  --color-ht-chip-line: #63625f;
+  --color-ht-chip-bg: transparent;
+  --color-ht-greeting: #ceae62;
+  --color-ht-live: #1a1a1c;
+  --color-ht-on-live: #f2efe8;
+  --color-ht-live-line: #f2efe8;
+  --color-ht-badge-bg: #1a1a1c;
+  --ht-dot-gain: 0.7;
+  --color-paper: #2c2c30;
+  --color-card: #323236;
+  --color-paper-deep: #232326;
+  --color-paper-shade: #4a4a4f;
+  --color-ink: #f2efe8;
+  --color-ink-soft: #b9b4a8;
+  --color-ink-faint: #86827a;
+  --color-line: rgb(242 239 232 / 0.16);
+  --color-line-strong: rgb(242 239 232 / 0.34);
+  --color-ember: #e5645a;
+  --color-ember-deep: #c1302a;
+  --color-ember-wash: rgb(206 174 98 / 0.2);
+  --color-on-ember: #ffffff;
+  --color-moss: #9aab6e;
+  --color-moss-wash: rgb(154 171 110 / 0.14);
+  --color-flag: #e07a70;
+  --color-flag-wash: rgb(224 122 112 / 0.14);
 }
 
 :root {
@@ -62,8 +130,15 @@ body {
   line-height: 1.7;
 }
 
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-line);
+  }
+}
+
 * {
-  border-color: var(--color-line);
   scrollbar-width: thin;
   scrollbar-color: var(--color-paper-shade) transparent;
 }
@@ -104,12 +179,13 @@ body {
   }
 }
 
-@keyframes shimmer-sweep {
-  from {
-    background-position: 200% 0;
+@keyframes state-pulse {
+  0%,
+  100% {
+    opacity: 1;
   }
-  to {
-    background-position: -200% 0;
+  50% {
+    opacity: 0.45;
   }
 }
 
@@ -132,11 +208,7 @@ body {
 }
 
 .state-shimmer {
-  background: linear-gradient(100deg, var(--color-ink-faint) 40%, var(--color-ink) 50%, var(--color-ink-faint) 60%);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--color-ink-soft);
 }
 
 .caret::after {
@@ -151,7 +223,7 @@ body {
 
 @media (prefers-reduced-motion: no-preference) {
   .state-shimmer {
-    animation: shimmer-sweep 2.4s linear infinite;
+    animation: state-pulse 1.6s ease-in-out infinite;
   }
   .caret::after {
     animation: caret-blink 1.1s steps(2) infinite;
@@ -177,4 +249,215 @@ body {
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+@keyframes wind-drift {
+  from {
+    transform: translate3d(-3%, 0, 0);
+  }
+  to {
+    transform: translate3d(3%, 0, 0);
+  }
+}
+
+.anim-wind {
+  animation: wind-drift 13s ease-in-out infinite alternate;
+}
+
+.anim-wind-slow {
+  animation: wind-drift 21s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes stride {
+  to {
+    transform: translate3d(-100%, 0, 0);
+  }
+}
+
+@keyframes struggle {
+  from {
+    rotate: -9deg;
+  }
+  to {
+    rotate: 9deg;
+  }
+}
+
+.anim-stride {
+  animation: stride 1.2s steps(12) infinite;
+}
+
+.anim-struggle {
+  transform-origin: 50% 12%;
+}
+
+[data-held="true"] .anim-stride {
+  animation-duration: 0.4s;
+}
+
+[data-held="true"] .anim-struggle {
+  animation: struggle 0.17s ease-in-out infinite alternate;
+}
+
+@keyframes title-in {
+  from {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+    transform: translate3d(-3%, 0, 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes skyline-in {
+  from {
+    transform: translate3d(0, 45%, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .anim-title {
+    animation: title-in 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s both;
+  }
+  .anim-skyline {
+    animation: skyline-in 1.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+}
+
+[data-live="false"] .anim-wind,
+[data-live="false"] .anim-wind-slow,
+[data-live="false"] .anim-stride {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-wind,
+  .anim-wind-slow,
+  .anim-stride,
+  [data-held="true"] .anim-struggle {
+    animation: none;
+  }
+}
+
+@utility comic-sink {
+  transition:
+    translate 120ms ease-out,
+    box-shadow 120ms ease-out;
+  &:hover:not(:disabled) {
+    translate: 2px 2px;
+    box-shadow: inset 3px 3px 0 color-mix(in srgb, var(--color-ht-shade) 18%, transparent);
+  }
+  &:active:not(:disabled) {
+    translate: 3px 3px;
+    box-shadow: inset 4px 4px 0 color-mix(in srgb, var(--color-ht-shade) 26%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .comic-sink {
+    transition: none;
+  }
+}
+
+.ht-theme {
+  --color-paper: var(--color-ht-surface);
+  --color-card: var(--color-ht-surface);
+  --color-paper-deep: var(--color-ht-ground);
+  --color-paper-shade: var(--color-ht-hover);
+  --color-ink: var(--color-ht-ink);
+  --color-ink-soft: var(--color-ht-soft);
+  --color-ink-faint: color-mix(in srgb, var(--color-ht-soft) 72%, var(--color-ht-surface));
+  --color-line: var(--color-ht-line);
+  --color-line-strong: var(--color-ht-line);
+  --color-ember: var(--color-ht-ink);
+  --color-ember-deep: var(--color-ht-ink);
+  --color-ember-wash: color-mix(in srgb, var(--color-ht-accent) 40%, transparent);
+  --color-on-ember: var(--color-ht-on-solid);
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+  --font-sans: var(--font-comic-sans);
+  --font-serif: var(--font-comic-serif);
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+.ht-theme :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--font-comic-serif);
+}
+.ht-theme h1 {
+  font-weight: 700;
+}
+.ht-theme h2 {
+  font-weight: 600;
+}
+.ht-theme h3 {
+  font-weight: 500;
+}
+.ht-theme :is(h4, h5, h6) {
+  font-weight: 400;
+}
+
+.ht-theme .border {
+  border-width: 1.5px;
+}
+.ht-theme .border-t {
+  border-top-width: 1.5px;
+}
+.ht-theme .border-b {
+  border-bottom-width: 1.5px;
+}
+.ht-theme .border-l {
+  border-left-width: 1.5px;
+}
+.ht-theme .border-r {
+  border-right-width: 1.5px;
+}
+
+.ht-theme .rounded-full:not(.animate-spin, .size-1, .size-1\.5, .size-2, .size-2\.5),
+.ht-theme [class*="rounded-["] {
+  border-radius: 0;
+}
+
+.ht-theme .shadow-sm {
+  --tw-shadow: 0 0 #0000;
+}
+
+.ht-theme .btn-primary {
+  border: 1.5px solid var(--color-ht-accent-line);
+  background-color: var(--color-ht-accent);
+  color: var(--color-ht-on-accent);
+  font-weight: 700;
+}
+
+.ht-theme :is(.btn-primary, .btn-outline) {
+  transition:
+    translate 120ms ease-out,
+    box-shadow 120ms ease-out;
+}
+.ht-theme :is(.btn-primary, .btn-outline):hover:not(:disabled) {
+  translate: 2px 2px;
+  box-shadow: inset 3px 3px 0 color-mix(in srgb, var(--color-ht-shade) 18%, transparent);
+}
+.ht-theme .btn-primary:hover:not(:disabled) {
+  background-color: var(--color-ht-accent);
+  color: var(--color-ht-on-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ht-theme :is(.btn-primary, .btn-outline) {
+    transition: none;
+  }
 }

@@ -92,6 +92,7 @@ export function devRoutes() {
       const user: User = {
         id: row.id,
         name: row.name,
+        guest: false,
         canManageClasses: row.can_manage_classes === 1,
         isAdmin: row.is_admin === 1,
       };

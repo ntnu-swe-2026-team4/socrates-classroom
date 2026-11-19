@@ -84,13 +84,17 @@ watch 沒有 event cursor；重連以 `watch({ from: newestEntryId + 1 })` 讓 w
 
 行為的唯一載體。官方支援三種形狀（pi.dev/docs/latest/extensions）：單檔 `extensions/<name>.ts`（小）、目錄 `extensions/<name>/index.ts`（多檔）、`package.json` 的 `pi.extensions` manifest（帶 npm 依賴）。
 
-本專案已裝：
+本專案的 extensions（`apps/server/src/pi/extensions/`）：
 
 - `socrates`（單檔）：preamble section，內容為 `apps/server/src/prompts/socrates.md`
 - `avatar`（目錄，#111）：afterRun hook → Clef choice 題 → 寫 `app.emotion` entry（`{emotion, probabilities, confidence}`）
 - `judgment`（目錄，#71）：afterRun 分類 task＋`report_violation` tool → 寫 `app.violation` entry
 - `websearch`（目錄，#112）：`web_search` / `fetch_content` / `get_search_content` 三 tool（形制參考 pi-web-access，裁剪至 Workers 環境）
+- `report-submit`（單檔）：`submit_student_analysis` / `submit_class_report` 兩 tool，參數 schema 綁 `@socrates/shared` 的報告 zod schema；`constrainedSampling` json_schema strict `prefer`、`replay: "safe"`，呼叫即 terminate turn——報告以 tool call 交付，不寫文字。`student-report`／`class-report` 兩 profile 與 ReportRunner DO 的 registry 用
+- `faux-replay`（單檔，mock 限定）：task hook（`pi.generation` 的 beforeRequest）把 DO 自備的 faux 腳本 append 進 responses；Chat DO／ReportRunner 只在 `models.faux` 存在時安裝
 - `btw`（單檔，#121）：side session 的 prompt section（`apps/server/src/prompts/btw.md`）＋`forkBtw`。**不在 host 預設 selection**：Chat DO 的 `settings.extensions` 是 getter，回傳「已安裝且非 btw」的 extensions（pi 每次 resolution 都重讀 settings），所以 root 照舊、新裝的 extension（如 faux-replay）自動納入；btw 只在 `root.fork(at, { agent: { extensions: [btw] } })` 的 fork 上生效。fork 繼承 fork 點之前的 entries，之後的 entries 只屬於 fork——這是 side session 不污染 root context 的機制
+
+registry 接線：Chat DO 的 registry 裝 socrates／avatar／judgment／websearch／btw（mock 模式再加 faux-replay）；非 socrates 的 profile 由 `profileRegistry` 依 `extensions` 清單安裝對應 extension；ReportRunner 的 registry 裝 report-submit（mock 再加 faux-replay）。
 
 寫 extension 的要點：
 
@@ -102,16 +106,17 @@ watch 沒有 event cursor；重連以 `watch({ from: newestEntryId + 1 })` 讓 w
 
 每個 conversation 自帶 `AgentState`：`model` / `extensions` / `tools` / `instructions` / `maxTurns`。`createConversation` / `fork` / `root` 都接受 `agent: AgentChange`。
 
-本專案的四個 profile（`pi/agents/profiles.ts`）：
+本專案的五個 profile（`pi/agents/profiles.ts`）：
 
-- `socrates`：學生對話（root），extensions 全開
+- `socrates`：學生對話（root），extensions 全開（socrates／avatar／judgment／websearch），thinkingLevel `low`
 - `lookup`（#76）：查詢，websearch tools，maxTurns 3
 - `topic-gen`（#77）：出題，websearch tools，maxTurns 6
-- `report-analyst`（#74）：報告，無 tool，maxTurns 4
+- `student-report`（#74 單人報告）：`report-submit` 的 `submit_student_analysis`，maxTurns 4
+- `class-report`（#79 班級報告／立場星圖）：`report-submit` 的 `submit_class_report`，maxTurns 4
 
-準則：功能升格為 agent（有工具迴圈或長任務）；單發的分類（violation / 情緒）用 oneshot。profile 不寫 model——model 由 gateway 依 traffic class 解析（`apps/server/providers.config.yaml`，#98）。
+四個非 root profile 皆經 `runProfile`（一次性 Harness＋MemoryStorage）驅動。準則：功能升格為 agent（有工具迴圈或長任務）；單發的分類（violation / 情緒）用 oneshot。profile 只宣告角色、extensions、maxTurns、thinkingLevel、traffic class——不寫 model，model 由 gateway 依 traffic class 解析（`apps/server/providers.config.yaml`，#98）。辯題（activity topic／statement）目前未注入 model context（#162 追蹤）。
 
-驅動（`runProfile`）：`router.pick(trafficClass)` → `conversation.configure({ model })` → `submit` → `wait` → 從 answer entry 取文。models 與 registry 由呼叫端傳入，必須與 harness 同一實例——registry 訂閱與 faux 狀態都是 per-instance，另建一份拿不到（踩過）。
+驅動（`runProfile`）：`router.pick(trafficClass)` → `conversation.configure({ model })` → `submit` → `wait` → 從 answer entry 取文；帶 `options.submitTool` 時（report 兩 profile）改從 answer entries 抽出 submit tool call 的 arguments 作為結構化輸出。models 與 registry 由呼叫端傳入，必須與 harness 同一實例——registry 訂閱與 faux 狀態都是 per-instance，另建一份拿不到（踩過）。
 
 ## Fallback legs
 
@@ -154,20 +159,21 @@ faux.setResponses([fauxAssistantMessage([fauxText("…")])]);
 - 斷言只驗形狀（entry kind / 角色 / 非空文字），不驗內容
 - faux 的 response factory 裡不能 `require()`——workerd 模組解析失敗，要用頂層 import（踩過）
 - responses 耗盡後 faux 回 error（`No more faux responses queued`），測試要設足夠的 responses
+- Chat／ReportRunner 在 mock 模式自帶腳本：constructor 安裝 `fauxReplayExtension(faux, script)`，每次 generation 前把腳本 append 進 responses，DO 內部的 run 不會耗盡；要自訂回應時直接對 `models.faux` 操作
 - WebSocket 測試用真 DO＋真升級（`routeAgentRequest`）；首幀是 SDK 的 `cf_agent_identity`，斷言用 `frames.some(...)` 而非 `frames[0]`
 - eviction 測試：`evictDurableObject(stub)`，傳 stub 而非 `(namespace, id)`
 
 ## 已知限制
 
-| 項目                                      | 影響                                                                                                                                                                                                                                                                                                       |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| watch 無 event cursor                     | 重連靠 `from`（window 起點），官方設計                                                                                                                                                                                                                                                                     |
-| 自訂 doc 不 mount `view.docs`             | view 只 mount 內建 doc（`MOUNTED` 列表寫死）；自訂狀態走 custom entry，或 `harness.watchDoc`（per-address watch）                                                                                                                                                                                          |
-| doc / commit 不跨 DO                      | `Session` 綁 storage，`observeCommits` 只見本 DO 的 conversation——跨 DO 聚合（例如老師面板）不能靠 pi doc（#73 調查）                                                                                                                                                                                      |
-| 儲存格式跨 minor 不相容                   | 升級單向門                                                                                                                                                                                                                                                                                                 |
-| DNS rebinding 殘餘                        | websearch 的 SSRF 防護在 URL 層（WHATWG 正規化＋私網/協定/NAT64 檢查）；Workers 無 DNS pre-resolution hook，故依賴：per-hop `validateUrl`＋redirect 目的地須同站（sameSite）＋Workers egress 隔離。2026-11-10 起搜尋與抓取對全網開放（allowlist 與 search-hit 閘門移除），DNS rebinding 殘餘為已接受的邊界 |
-| 同一學生多分頁                            | 兩分頁共用同一 Chat DO：另一分頁 run 失敗的 id-less 廣播會清掉本分頁 pending（單分頁是主流情境，接受）                                                                                                                                                                                                     |
-| report transcript 走 `session.messages()` | `messages()` 回傳「最新 head 之後」的 active context——context 壓力觸發 auto-compaction 後，compaction 點之前的 `app.violation`（合規紀錄）不會進報告。課堂對話規模遠低於 context window（~200 entries vs 1M），觸發需極端長度；未來若成為議題，改由 `entries()` cursor 分頁採收 violations                 |
+| 項目                                      | 影響                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| watch 無 event cursor                     | 重連靠 `from`（window 起點），官方設計                                                                                                                                                                                                                                                     |
+| 自訂 doc 不 mount `view.docs`             | view 只 mount 內建 doc（`MOUNTED` 列表寫死）；自訂狀態走 custom entry，或 `harness.watchDoc`（per-address watch）                                                                                                                                                                          |
+| doc / commit 不跨 DO                      | `Session` 綁 storage，`observeCommits` 只見本 DO 的 conversation——跨 DO 聚合（例如老師面板）不能靠 pi doc（#73 調查）                                                                                                                                                                      |
+| 儲存格式跨 minor 不相容                   | 升級單向門                                                                                                                                                                                                                                                                                 |
+| DNS rebinding 殘餘                        | websearch 的 SSRF 防護在 URL 層（WHATWG 正規化＋私網/協定/NAT64 檢查）；Workers 無 DNS pre-resolution hook，故依賴：search-hit 閘門（只能 fetch 本對話搜過的 URL）＋redirect 目的地須同站或也是 search hit＋Workers egress 隔離。開放任意 URL 抓取前必須重新評估                           |
+| 同一學生多分頁                            | 兩分頁共用同一 Chat DO：另一分頁 run 失敗的 id-less 廣播會清掉本分頁 pending（單分頁是主流情境，接受）                                                                                                                                                                                     |
+| report transcript 走 `session.messages()` | `messages()` 回傳「最新 head 之後」的 active context——context 壓力觸發 auto-compaction 後，compaction 點之前的 `app.violation`（合規紀錄）不會進報告。課堂對話規模遠低於 context window（~200 entries vs 1M），觸發需極端長度；未來若成為議題，改由 `entries()` cursor 分頁採收 violations |
 
 ## 來源
 

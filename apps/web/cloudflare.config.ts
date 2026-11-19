@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => {
         AUTH_SECRET: bindings.secret(),
         BYOK_ENC_KEY: bindings.secret(),
         GOOGLE_CLIENT_ID: text("GOOGLE_CLIENT_ID", ""),
-        GOOGLE_CLIENT_SECRET: bindings.secret(),
+        GOOGLE_CLIENT_SECRET: mode === "development" ? text("GOOGLE_CLIENT_SECRET", "") : bindings.secret(),
       },
       assets: { notFoundHandling: "single-page-application", runWorkerFirst: ["/api/*", "/health"] },
       domains: ["socrates.g36maid.dev"],

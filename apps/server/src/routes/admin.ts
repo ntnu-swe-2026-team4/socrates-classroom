@@ -22,9 +22,14 @@ interface AdminUserRow {
   is_admin: number;
   disabled_at: string | null;
   created_at: string;
+  teacher_plan: "trial" | "school" | null;
+  school_name: string | null;
+  classrooms: number;
 }
 
-const ADMIN_USER_COLUMNS = "id, name, email, can_manage_classes, is_admin, disabled_at, created_at";
+const ADMIN_USER_COLUMNS = `u.id, u.name, u.email, u.can_manage_classes, u.is_admin, u.disabled_at, u.created_at,
+  u.teacher_plan, s.name AS school_name,
+  (SELECT COUNT(*) FROM classrooms c WHERE c.teacher_id = u.id) AS classrooms`;
 
 function toAdminUser(row: AdminUserRow): AdminUser {
   return {
@@ -34,12 +39,19 @@ function toAdminUser(row: AdminUserRow): AdminUser {
     canManageClasses: row.can_manage_classes === 1,
     isAdmin: row.is_admin === 1,
     disabled: row.disabled_at !== null,
+    teacherPlan: row.teacher_plan,
+    schoolName: row.school_name,
+    classrooms: Number(row.classrooms ?? 0),
     createdAt: row.created_at,
   };
 }
 
 async function loadAdminUser(db: D1Database, id: string): Promise<AdminUser | null> {
-  const row = await one<AdminUserRow>(db, `SELECT ${ADMIN_USER_COLUMNS} FROM users WHERE id = $id`, { id });
+  const row = await one<AdminUserRow>(
+    db,
+    `SELECT ${ADMIN_USER_COLUMNS} FROM users u LEFT JOIN schools s ON s.id = u.school_id WHERE u.id = $id`,
+    { id },
+  );
   return row ? toAdminUser(row) : null;
 }
 
@@ -47,9 +59,14 @@ export function adminRoutes() {
   return new Hono<AppEnv>()
     .get("/admin/users", async (c) => {
       requireAdmin(c);
+      const q = (c.req.query("q") ?? "").trim().slice(0, 80);
+      const like = `%${q.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
       const rows = await all<AdminUserRow>(
         c.env.DB,
-        `SELECT ${ADMIN_USER_COLUMNS} FROM users ORDER BY is_admin DESC, can_manage_classes DESC, created_at, name`,
+        `SELECT ${ADMIN_USER_COLUMNS} FROM users u LEFT JOIN schools s ON s.id = u.school_id
+         WHERE ($q = '' OR u.name LIKE $like ESCAPE '\\' OR u.email LIKE $like ESCAPE '\\')
+         ORDER BY u.is_admin DESC, u.can_manage_classes DESC, u.created_at, u.name`,
+        { q, like },
       );
       return c.json(rows.map(toAdminUser));
     })
@@ -62,12 +79,11 @@ export function adminRoutes() {
       try {
         await run(
           c.env.DB,
-          `INSERT INTO users (id, name, role, email, password_hash, lang, created_at, can_manage_classes)
-           VALUES ($id, $name, $role, $email, $hash, $lang, $at, $can)`,
+          `INSERT INTO users (id, name, email, password_hash, lang, created_at, can_manage_classes, teacher_mode)
+           VALUES ($id, $name, $email, $hash, $lang, $at, $can, $can)`,
           {
             id,
             name: input.name,
-            role: input.canManageClasses ? "teacher" : "student",
             email: input.email,
             hash,
             lang: langOf(c),
@@ -88,22 +104,23 @@ export function adminRoutes() {
     .patch("/admin/users/:id", async (c) => {
       const actor = requireAdmin(c);
       const input = await parseBody(c, AdminUserUpdateInputSchema);
-      const target = await one<AdminUserRow>(c.env.DB, `SELECT ${ADMIN_USER_COLUMNS} FROM users WHERE id = $id`, {
-        id: c.req.param("id"),
-      });
+      const target = await one<AdminUserRow>(
+        c.env.DB,
+        `SELECT ${ADMIN_USER_COLUMNS} FROM users u LEFT JOIN schools s ON s.id = u.school_id WHERE u.id = $id`,
+        { id: c.req.param("id") },
+      );
       if (!target) fail(404, "not_found");
       const disabled = input.disabled ?? target.disabled_at !== null;
       if (disabled && target.id === actor.id) fail(409, "conflict");
       const canManage = input.canManageClasses ?? target.can_manage_classes === 1;
       await run(
         c.env.DB,
-        `UPDATE users SET can_manage_classes = $can, role = $role, disabled_at = $disabled,
-           session_version = session_version + $bump
+        `UPDATE users SET can_manage_classes = $can, teacher_mode = CASE WHEN $can = 1 THEN teacher_mode ELSE 0 END,
+           disabled_at = $disabled, session_version = session_version + $bump
          WHERE id = $id`,
         {
           id: target.id,
           can: canManage ? 1 : 0,
-          role: canManage ? "teacher" : "student",
           disabled: disabled ? (target.disabled_at ?? nowIso()) : null,
           bump: input.disabled === undefined ? 0 : 1,
         },

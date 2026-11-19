@@ -1,27 +1,26 @@
 import { httpApi, type Api } from "./http";
 
 export const api: Api = httpApi;
-export { ApiError } from "./http";
+export { ApiError, guestSession, useGuestSessionExpired } from "./http";
 export type { Api } from "./http";
 export type {
   ActivityInfo,
   ActivityInvite,
-  ActivityMode,
   ActivitySlot,
   ActivitySlots,
-  ActivityStarted,
   AdminUser,
+  AuthProviders,
+  ClassroomActivity,
   ClassroomCreated,
   ClassroomSummary,
   DevAccount,
-  DevAccountClassroom,
   DevAccounts,
   InviteInfo,
   InviteJoined,
   JoinInfo,
-  JoinResult,
   Report,
   ReportPosition,
+  SoloChat,
   StudentAnalysis,
   StudentLive,
   TeacherReport,

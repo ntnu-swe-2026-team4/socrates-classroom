@@ -189,3 +189,36 @@ export async function speak(thread: string, cookie: string, question: string): P
   await rx.until((f) => latestAssistantText(f).includes("直覺判斷"));
   socket.close();
 }
+
+let accountSeq = 0;
+
+export async function registerAccount(name?: string): Promise<{ cookie: string; id: string }> {
+  accountSeq += 1;
+  const res = await call("/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: `acct-${Date.now()}-${accountSeq}@socrates.tw`,
+      password: "account-pass-1",
+      tosAccepted: true,
+      ...(name ? { name } : {}),
+    }),
+  });
+  expect(res.status).toBe(200);
+  const user = (await res.json()) as { id: string };
+  return { cookie: cookieOf(res), id: user.id };
+}
+
+export async function enableTeacher(cookie: string): Promise<string> {
+  const me = (await (await call("/api/me", { headers: { Cookie: cookie } })).json()) as { id: string };
+  await env.DB.prepare("UPDATE users SET teacher_plan = COALESCE(teacher_plan, 'trial') WHERE id = ?")
+    .bind(me.id)
+    .run();
+  const res = await call("/api/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({ teacherMode: true }),
+  });
+  expect(res.status).toBe(200);
+  return cookie;
+}

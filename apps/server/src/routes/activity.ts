@@ -1,6 +1,14 @@
 import { Hono } from "hono";
 import type { ZodType } from "zod";
-import type { ActivitySlot, StudentReport, TeacherReport, ViolationType } from "@socrates/shared";
+import type {
+  ActivitySlot,
+  LiveBoard,
+  StudentLive,
+  StudentReport,
+  TeacherReport,
+  ViolationType,
+} from "@socrates/shared";
+import { LIVE_ACTIVE_WINDOW_MS } from "@socrates/shared";
 import {
   ACTIVITY_SLOT_MAX,
   ActivitySlotCreateInputSchema,
@@ -95,6 +103,29 @@ export function activityRoutes() {
         topic,
         finishedAt: activity.finished_at,
       });
+    })
+    .get("/activities/:id/live", async (c) => {
+      c.header("Cache-Control", "no-store");
+      const user = requireUser(c);
+      const access = await activityAccess(c.env.DB, c.req.param("id"), { user, participant: null });
+      if (!access.isTeacher || user.preview) fail(403, "forbidden");
+      const participants = await all<{ id: string; display_name: string }>(
+        c.env.DB,
+        "SELECT id, display_name FROM activity_participants WHERE activity_id = $aid AND kind != 'teacher' ORDER BY joined_at, id",
+        { aid: access.activity.id },
+      );
+      const now = Date.now();
+      const students = await Promise.all(
+        participants.map(async (participant): Promise<StudentLive> => {
+          const state = await c.env.Chat.get(c.env.Chat.idFromName(`${access.activity.id}:${participant.id}`))
+            .live()
+            .catch(() => ({ rounds: 0, lastUtterance: "", lastActiveAt: null, flags: [] }));
+          const recent = state.lastActiveAt !== null && now - Date.parse(state.lastActiveAt) < LIVE_ACTIVE_WINDOW_MS;
+          return { id: participant.id, name: participant.display_name, status: recent ? "active" : "idle", ...state };
+        }),
+      );
+      const board: LiveBoard = { students, finished: Boolean(access.activity.finished_at) };
+      return c.json(board);
     })
     .get("/activities/:id/slots", async (c) => {
       const user = requireUser(c);

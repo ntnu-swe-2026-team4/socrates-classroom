@@ -14,6 +14,11 @@ import { activityRoutes } from "./routes/activity";
 import { voiceRoutes } from "./routes/voice";
 import { lookupRoutes } from "./routes/lookup";
 import { teacherKeyRoutes } from "./routes/teacher-keys";
+import { soloRoutes } from "./routes/solo";
+import { communityRoutes } from "./routes/community";
+import { accountRoutes } from "./routes/accounts";
+import { notificationRoutes } from "./routes/notifications";
+import { usageRoutes } from "./routes/usage";
 import { adminRoutes } from "./routes/admin";
 import { devRoutes, isDev } from "./routes/dev";
 import { timingSafeEqual } from "./auth-crypto";
@@ -29,6 +34,11 @@ export function createApi() {
     .route("/", voiceRoutes())
     .route("/", lookupRoutes())
     .route("/", teacherKeyRoutes())
+    .route("/", soloRoutes())
+    .route("/", communityRoutes())
+    .route("/", accountRoutes())
+    .route("/", notificationRoutes())
+    .route("/", usageRoutes())
     .route("/", adminRoutes())
     .route("/", devRoutes());
 }

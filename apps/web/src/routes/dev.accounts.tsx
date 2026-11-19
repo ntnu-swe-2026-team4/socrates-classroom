@@ -29,7 +29,7 @@ function DevAccountsPage() {
       queryClient.clear();
       queryClient.setQueryData(["me"], user);
       if (account.fixtureRole === "student") await navigate({ to: "/home" });
-      else if (account.fixtureRole === "admin") await navigate({ to: "/admin/users" });
+      else if (account.fixtureRole === "admin") await navigate({ to: "/admin", search: { tab: "users" } });
       else await navigate({ to: "/classrooms" });
     },
   });

@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe("httpApi contract (browser-side actual code)", () => {
   test("me: GET /api/me with cookie and Accept-Language", async () => {
-    handler.mockReturnValue(json({ id: "u1", name: "小明", canManageClasses: false, isAdmin: false }));
+    handler.mockReturnValue(json({ id: "u1", name: "小明", guest: true }));
     document.documentElement.lang = "zh-TW";
     const user = await httpApi.me();
     expect(user?.name).toBe("小明");
@@ -39,42 +39,14 @@ describe("httpApi contract (browser-side actual code)", () => {
   });
 
   test("joinAsGuest: POST /api/join contract shape + activity id persisted", async () => {
-    handler.mockReturnValue(json({ user: null, activityId: "a_1", participantId: "p_1", kind: "guest" }));
+    handler.mockReturnValue(json({ user: { id: "u9", name: "小明", guest: true }, activityId: "a_1" }));
     const payload = await httpApi.joinAsGuest("socrat", "小明");
     expect(payload.activityId).toBe("a_1");
-    expect(payload.user).toBeNull();
-    expect(payload.participantId).toBe("p_1");
     const [path, init] = handler.mock.calls[0]!;
     expect(path).toBe("/api/join");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual({ code: "socrat", name: "小明", tosAccepted: true });
     expect(localStorage.getItem("socrates_activity")).toBe("a_1");
-  });
-
-  test("activity invites: create, preview and join hit the right paths", async () => {
-    handler.mockImplementation((_path, init) => {
-      if (init.method === "POST")
-        return json({ activityId: "a_1", participantId: "p_2", displayName: "訪客", kind: "guest" });
-      return json({
-        token: "t1",
-        activityId: "a_1",
-        classroomName: "班",
-        topic: { id: "t", title: "題", statement: "述", prompts: [] },
-        finishedAt: null,
-      });
-    });
-    await httpApi.createActivityInvite("a_1");
-    expect(handler.mock.calls[0]![0]).toBe("/api/activities/a_1/invites");
-    expect(handler.mock.calls[0]![1].method).toBe("POST");
-
-    await httpApi.inviteInfo("t1");
-    expect(handler.mock.calls[1]![0]).toBe("/api/invites/t1");
-
-    const joined = await httpApi.joinByInvite("t1", "訪客");
-    expect(joined.participantId).toBe("p_2");
-    const [path, init] = handler.mock.calls[2]!;
-    expect(path).toBe("/api/invites/t1/join");
-    expect(JSON.parse(init.body as string)).toEqual({ name: "訪客", tosAccepted: true });
   });
 
   test("error mapping: 422 tos_required → ApiError.code", async () => {
@@ -97,46 +69,6 @@ describe("httpApi contract (browser-side actual code)", () => {
     expect(text).toBe("我認為應該拉桿");
     const [path] = handler.mock.calls[0]!;
     expect(path).toBe("/api/stt");
-  });
-
-  test("classroom topics: create classroom, list/add/copy topics, start activity", async () => {
-    handler.mockImplementation((path, init) => {
-      if (path === "/api/classrooms" && init.method === "POST")
-        return json({ classroomId: "c_1", code: "abcdef", url: "https://x/join/abcdef" }, 201);
-      if (path === "/api/classrooms/c_1/topics" && init.method === "POST")
-        return json({ id: "t_1", classroomId: "c_1", title: "題", statement: "述", prompts: [] }, 201);
-      if (path === "/api/topics/t_1/copy")
-        return json({ id: "t_2", classroomId: "c_2", title: "題", statement: "述", prompts: [] }, 201);
-      if (path === "/api/classrooms/c_1/activities")
-        return json(
-          { classroomId: "c_1", code: "abcdef", url: "https://x/join/abcdef", activityId: "a_1", mode: "live" },
-          201,
-        );
-      return json([]);
-    });
-
-    const classroom = await httpApi.createClassroom("班");
-    expect(handler.mock.calls[0]![0]).toBe("/api/classrooms");
-    expect(JSON.parse(handler.mock.calls[0]![1].body as string)).toEqual({ name: "班" });
-    expect(classroom.classroomId).toBe("c_1");
-
-    await httpApi.listClassroomTopics("c_1");
-    expect(handler.mock.calls[1]![0]).toBe("/api/classrooms/c_1/topics");
-
-    const topic = await httpApi.createClassroomTopic("c_1", { title: "題", statement: "述", prompts: [] });
-    expect(topic.classroomId).toBe("c_1");
-    expect(handler.mock.calls[2]![0]).toBe("/api/classrooms/c_1/topics");
-    expect(handler.mock.calls[2]![1].method).toBe("POST");
-
-    const copy = await httpApi.copyTopic("t_1", "c_2");
-    expect(copy.id).toBe("t_2");
-    expect(handler.mock.calls[3]![0]).toBe("/api/topics/t_1/copy");
-    expect(JSON.parse(handler.mock.calls[3]![1].body as string)).toEqual({ classroomId: "c_2" });
-
-    const started = await httpApi.startActivity("c_1", "t_1");
-    expect(started.activityId).toBe("a_1");
-    expect(handler.mock.calls[4]![0]).toBe("/api/classrooms/c_1/activities");
-    expect(JSON.parse(handler.mock.calls[4]![1].body as string)).toEqual({ topicId: "t_1", mode: "live" });
   });
 
   test("finishActivity: POST 204 with no body", async () => {

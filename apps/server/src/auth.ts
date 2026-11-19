@@ -1,10 +1,11 @@
-import { deleteCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { User } from "@socrates/shared";
 import type { Ctx } from "./http";
 import { timingSafeEqual } from "./auth-crypto";
 import { one, type Db } from "./db/d1";
 
 export const SESSION_COOKIE = "socrates_session";
+export const PREVIEW_RETURN_COOKIE = "socrates_preview_return";
 export const PARTICIPANT_COOKIE = "socrates_participant";
 const SESSION_DAYS = 30;
 const PARTICIPANT_DAYS = 7;
@@ -38,14 +39,39 @@ interface UserRow {
   is_admin: number;
   disabled_at: string | null;
   session_version: number;
+  teacher_plan: "trial" | "school" | null;
+  teacher_mode: number;
+  teacher_request_at: string | null;
+  school_name: string | null;
+  username: string | null;
+  student_classroom_id: string | null;
+  preview_classroom_id: string | null;
 }
 
-export function toUser(row: { id: string; name: string; can_manage_classes: number; is_admin: number }): User {
+const USER_COLUMNS = `u.id, u.name, u.can_manage_classes, u.is_admin, u.disabled_at, u.session_version,
+  u.teacher_plan, u.teacher_mode, u.teacher_request_at, s.name AS school_name, u.username,
+  u.student_classroom_id, u.preview_classroom_id`;
+
+const USER_JOIN = "FROM users u LEFT JOIN schools s ON s.id = u.school_id";
+
+export type AccountRow = Pick<UserRow, "id" | "name" | "can_manage_classes" | "is_admin"> & Partial<UserRow>;
+
+export function toUser(row: AccountRow): User {
+  const kind = row.student_classroom_id ? "student" : "member";
   return {
     id: row.id,
     name: row.name,
     canManageClasses: row.can_manage_classes === 1,
     isAdmin: row.is_admin === 1,
+    guest: false,
+    kind,
+    teacherPlan: row.teacher_plan,
+    teacherMode: row.can_manage_classes === 1 && row.teacher_mode === 1,
+    teacherRequested: row.teacher_plan === null && row.teacher_request_at !== null,
+    schoolName: row.school_name,
+    username: row.username,
+    classroomId: row.student_classroom_id,
+    ...(row.preview_classroom_id ? { preview: true, previewClassroomId: row.preview_classroom_id } : {}),
   };
 }
 
@@ -150,15 +176,16 @@ async function tokenClaims(
 export async function lookupSession(env: SessionEnv, token: string | undefined): Promise<SessionLookup> {
   const claims = await tokenClaims({ env }, token);
   if (!claims) return { kind: "missing" };
-  const row = await one<UserRow>(
-    env.DB,
-    "SELECT id, name, can_manage_classes, is_admin, disabled_at, session_version FROM users WHERE id = $id",
-    { id: claims.uid },
-  );
+  const row = await one<UserRow>(env.DB, `SELECT ${USER_COLUMNS} ${USER_JOIN} WHERE u.id = $id`, { id: claims.uid });
   if (!row) return { kind: "missing" };
   if (row.disabled_at !== null) return { kind: "disabled" };
   if (row.session_version !== claims.ver) return { kind: "stale" };
   return { kind: "ok", session: { user: toUser(row), version: row.session_version } };
+}
+
+export async function loadAccount(db: Db, id: string): Promise<User | null> {
+  const row = await one<UserRow>(db, `SELECT ${USER_COLUMNS} ${USER_JOIN} WHERE u.id = $id`, { id });
+  return row ? toUser(row) : null;
 }
 
 export interface AccountState {
@@ -189,6 +216,38 @@ export async function startSession(c: Ctx, user: User): Promise<void> {
 
 export function endSession(c: Ctx): void {
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
+  deleteCookie(c, PREVIEW_RETURN_COOKIE, { path: "/" });
+}
+
+function setTokenCookie(c: Ctx, name: string, token: string): void {
+  setCookie(c, name, token, {
+    httpOnly: true,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: SESSION_DAYS * 86400,
+    secure: true,
+  });
+}
+
+export async function enterPreviewSession(c: Ctx, teacherToken: string | undefined, student: User): Promise<void> {
+  if (teacherToken) setTokenCookie(c, PREVIEW_RETURN_COOKIE, teacherToken);
+  await startSession(c, student);
+}
+
+export async function leavePreviewSession(c: Ctx): Promise<User | null> {
+  const token = getCookie(c, PREVIEW_RETURN_COOKIE);
+  deleteCookie(c, PREVIEW_RETURN_COOKIE, { path: "/" });
+  if (!token) {
+    deleteCookie(c, SESSION_COOKIE, { path: "/" });
+    return null;
+  }
+  const lookup = await lookupSession(c.env, token);
+  if (lookup.kind !== "ok") {
+    deleteCookie(c, SESSION_COOKIE, { path: "/" });
+    return null;
+  }
+  setTokenCookie(c, SESSION_COOKIE, token);
+  return lookup.session.user;
 }
 
 interface ParticipantClaims {

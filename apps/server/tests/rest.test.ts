@@ -223,30 +223,33 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     expect(crossClass.status).toBe(403);
   });
 
-  test("teacher keys CRUD: PUT idempotent, ordering, last4 only, teacher-only", async () => {
-    const put = await call("/api/settings/keys/openrouter", {
-      method: "PUT",
+  test("teacher keys CRUD: create, patch, ordering, last4 only, teacher-only", async () => {
+    const created = await call("/api/settings/keys", {
+      method: "POST",
       headers: { "Content-Type": "application/json", Cookie: teacher },
       body: JSON.stringify({ provider: "openrouter", model: "z-ai/glm-5.3-flash", key: "sk-or-v1-abcdefgh" }),
     });
-    expect(put.status).toBe(200);
-    expect(((await put.json()) as { last4: string }).last4).toBe("efgh");
+    expect(created.status).toBe(201);
+    const entry = (await created.json()) as { id: string; last4: string };
+    expect(entry.last4).toBe("efgh");
 
-    const again = await call("/api/settings/keys/openrouter", {
-      method: "PUT",
+    const patched = await call(`/api/settings/keys/${entry.id}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ provider: "openrouter", model: "z-ai/glm-5.3-flash", key: "sk-or-v1-zzzzzzzz" }),
+      body: JSON.stringify({ key: "sk-or-v1-zzzzzzzz" }),
     });
-    expect(again.status).toBe(200);
-    expect(((await again.json()) as { last4: string }).last4).toBe("zzzz");
+    expect(patched.status).toBe(200);
+    expect(((await patched.json()) as { last4: string }).last4).toBe("zzzz");
 
     const list = (await (await call("/api/settings/keys", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
       provider: string;
       model: string;
       last4: string;
     }>;
     expect(list).toEqual([
       {
+        id: entry.id,
         provider: "openrouter",
         model: "z-ai/glm-5.3-flash",
         last4: "zzzz",
@@ -255,15 +258,15 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       },
     ]);
 
-    const badProvider = await call("/api/settings/keys/evil", {
-      method: "PUT",
+    const badProvider = await call("/api/settings/keys", {
+      method: "POST",
       headers: { "Content-Type": "application/json", Cookie: teacher },
       body: JSON.stringify({ provider: "evil", model: "any", key: "sk-or-v1-abcdefgh" }),
     });
     expect(badProvider.status).toBe(422);
 
-    const badModel = await call("/api/settings/keys/openrouter", {
-      method: "PUT",
+    const badModel = await call("/api/settings/keys", {
+      method: "POST",
       headers: { "Content-Type": "application/json", Cookie: teacher },
       body: JSON.stringify({ provider: "openrouter", model: "not-a-model", key: "sk-or-v1-abcdefgh" }),
     });
@@ -274,28 +277,28 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     ).json()) as Array<{
       id: string;
     }>;
-    expect(providers.some((entry) => entry.id === "openrouter")).toBe(true);
+    expect(providers.some((row) => row.id === "openrouter")).toBe(true);
     const models = (await (
       await call("/api/settings/keys/providers/openrouter/models", { headers: { Cookie: teacher } })
     ).json()) as Array<{ id: string }>;
-    expect(models.some((entry) => entry.id === "z-ai/glm-5.3-flash")).toBe(true);
+    expect(models.some((row) => row.id === "z-ai/glm-5.3-flash")).toBe(true);
 
     const studentCookie = (await registerStudent(code, "R6生F")).cookie;
-    const studentPut = await call("/api/settings/keys/openrouter", {
-      method: "PUT",
+    const studentPut = await call("/api/settings/keys", {
+      method: "POST",
       headers: { "Content-Type": "application/json", Cookie: studentCookie },
-      body: JSON.stringify({ provider: "openrouter", key: "sk-or-v1-abcdefgh" }),
+      body: JSON.stringify({ provider: "openrouter", model: "z-ai/glm-5.3-flash", key: "sk-or-v1-abcdefgh" }),
     });
     expect(studentPut.status).toBe(403);
 
     const order = await call("/api/settings/keys/order", {
       method: "PUT",
       headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ providers: ["openrouter"] }),
+      body: JSON.stringify({ ids: [entry.id] }),
     });
     expect(order.status).toBe(200);
 
-    const del = await call("/api/settings/keys/openrouter", { method: "DELETE", headers: { Cookie: teacher } });
+    const del = await call(`/api/settings/keys/${entry.id}`, { method: "DELETE", headers: { Cookie: teacher } });
     expect(del.status).toBe(204);
   });
 

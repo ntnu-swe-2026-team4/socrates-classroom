@@ -1,29 +1,43 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { LoginInputSchema, RegisterInputSchema, SignupInputSchema, type ErrorCode, type User } from "@socrates/shared";
-import { batch, one } from "../db/d1";
+import {
+  LoginInputSchema,
+  ProfileInputSchema,
+  RegisterInputSchema,
+  SignupInputSchema,
+  TeacherRequestInputSchema,
+  type ErrorCode,
+  type User,
+} from "@socrates/shared";
+import { batch, one, run } from "../db/d1";
 import {
   DUMMY_HASH,
   endSession,
   hashPassword,
+  loadAccount,
   openPayload,
   sealPayload,
   startSession,
   toUser,
   verifyPassword,
 } from "../auth";
+import { enabledProviders } from "./oauth-config";
 import {
+  clearKeyHits,
   enforceIpLimit,
   fail,
+  keyLimitBlocked,
   langOf,
   newId,
   nowIso,
   parseBody,
+  recordKeyHit,
+  requireUser,
   uniqueViolationColumns,
   type AppEnv,
   type Ctx,
 } from "../http";
-import { ensureParticipant } from "../services/members";
+import { ensureParticipant, assertSeats } from "../services/members";
 import {
   OAuthError,
   googleAuthorizeUrl,
@@ -44,7 +58,6 @@ const OAUTH_SUCCESS_PATH = "/home";
 interface UserRow {
   id: string;
   name: string;
-  role: "student" | "teacher";
   email: string | null;
   password_hash: string | null;
   can_manage_classes: number;
@@ -54,17 +67,73 @@ interface UserRow {
 
 export function authRoutes() {
   return new Hono<AppEnv>()
-    .get("/me", (c) => c.json(c.get("user")))
+    .get("/me", (c) => {
+      const issue = c.get("sessionIssue");
+      if (issue === "disabled") fail(403, "account_disabled");
+      if (issue === "stale") fail(401, "unauthorized");
+      return c.json(c.get("user"));
+    })
+    .patch("/me", async (c) => {
+      const current = requireUser(c);
+      if (current.preview) fail(403, "forbidden");
+      const input = await parseBody(c, ProfileInputSchema);
+      if (input.name !== undefined) {
+        if (current.kind === "student") fail(403, "student_restricted");
+        await run(c.env.DB, "UPDATE users SET name = $name WHERE id = $id", { id: current.id, name: input.name });
+      }
+      if (input.teacherMode !== undefined) {
+        if (current.kind === "student") fail(403, "student_restricted");
+        if (input.teacherMode && !current.teacherPlan && !current.canManageClasses) {
+          fail(403, "teacher_approval_required");
+        }
+        await run(
+          c.env.DB,
+          `UPDATE users SET teacher_mode = $mode,
+             can_manage_classes = CASE WHEN teacher_plan IS NULL THEN can_manage_classes ELSE $mode END
+           WHERE id = $id`,
+          { id: current.id, mode: input.teacherMode ? 1 : 0 },
+        );
+      }
+      return c.json(await accountFor(c, current.id));
+    })
+    .post("/me/teacher-request", async (c) => {
+      const current = requireUser(c);
+      if (current.kind === "student") fail(403, "student_restricted");
+      if (current.preview) fail(403, "forbidden");
+      await parseBody(c, TeacherRequestInputSchema);
+      if (!current.teacherPlan) {
+        const at = nowIso();
+        await run(
+          c.env.DB,
+          "UPDATE users SET teacher_request_at = COALESCE(teacher_request_at, $at), teacher_terms_at = $at WHERE id = $id",
+          { id: current.id, at },
+        );
+      }
+      return c.json(await accountFor(c, current.id));
+    })
+    .get("/auth/providers", (c) => c.json(enabledProviders(c.env)))
     .post("/auth/login", async (c) => {
       await enforceIpLimit(c, "login", 30);
       const input = await parseBody(c, LoginInputSchema);
-      const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE email = $email", {
-        email: input.email,
-      });
+      const identifier = input.identifier.trim();
+      const emailLike = identifier.includes("@");
+      const lookup = emailLike ? identifier.toLowerCase() : identifier;
+      if (keyLimitBlocked("login-fail", lookup.toLowerCase(), 10)) fail(429, "rate_limited");
+      const row = await one<UserRow>(
+        c.env.DB,
+        emailLike
+          ? "SELECT * FROM users WHERE email = $identifier"
+          : "SELECT * FROM users WHERE username = $identifier",
+        { identifier: lookup },
+      );
       const ok = await verifyPassword(input.password, row?.password_hash ?? DUMMY_HASH);
-      if (!row || !ok) fail(401, "unauthorized");
+      if (!row || !ok) {
+        recordKeyHit("login-fail", lookup.toLowerCase());
+        fail(401, "unauthorized");
+      }
+      clearKeyHits("login-fail", lookup.toLowerCase());
       if (row.disabled_at !== null) fail(403, "account_disabled");
-      const user = toUser(row);
+      const user = await accountFor(c, row.id);
       await startSession(c, user);
       return c.json(user);
     })
@@ -91,6 +160,7 @@ export function authRoutes() {
         { cid: classroom.id, name: input.name },
       );
       if (clash) fail(409, "name_taken");
+      await assertSeats(c.env.DB, classroom.id, 1);
       const emailTaken = await one<{ id: string }>(c.env.DB, "SELECT id FROM users WHERE email = $email", {
         email: input.email,
       });
@@ -100,7 +170,7 @@ export function authRoutes() {
       try {
         await batch(c.env.DB, [
           {
-            sql: "INSERT INTO users (id, name, role, email, password_hash, lang, created_at) VALUES ($id, $name, 'student', $email, $hash, $lang, $at)",
+            sql: "INSERT INTO users (id, name, email, password_hash, lang, created_at) VALUES ($id, $name, $email, $hash, $lang, $at)",
             params: { id, name: input.name, email: input.email, hash, at, lang: langOf(c) },
           },
           {
@@ -114,7 +184,7 @@ export function authRoutes() {
         if (pairs.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
         fail(409, "conflict");
       }
-      const user = { id, name: input.name, canManageClasses: false, isAdmin: false };
+      const user = await accountFor(c, id);
       await ensureParticipant(c.env.DB, classroom.current_activity_id, user, at);
       await startSession(c, user);
       return c.json(user);
@@ -123,13 +193,14 @@ export function authRoutes() {
       await enforceIpLimit(c, "register", 30);
       const input = await parseBody(c, SignupInputSchema);
       if (!input.tosAccepted) fail(422, "tos_required");
+      const name = input.name ?? input.email.split("@")[0]!.slice(0, 80);
       const hash = await hashPassword(input.password);
       const id = newId("u_");
       try {
         await batch(c.env.DB, [
           {
-            sql: "INSERT INTO users (id, name, role, email, password_hash, lang, created_at) VALUES ($id, $name, 'student', $email, $hash, $lang, $at)",
-            params: { id, name: input.name, email: input.email, hash, lang: langOf(c), at: nowIso() },
+            sql: "INSERT INTO users (id, name, email, password_hash, lang, created_at) VALUES ($id, $name, $email, $hash, $lang, $at)",
+            params: { id, name, email: input.email, hash, lang: langOf(c), at: nowIso() },
           },
         ]);
       } catch (error) {
@@ -137,7 +208,7 @@ export function authRoutes() {
         if (pairs.some(([table, column]) => table === "users" && column === "email")) fail(409, "email_taken");
         throw error;
       }
-      const user: User = { id, name: input.name, canManageClasses: false, isAdmin: false };
+      const user = await accountFor(c, id);
       await startSession(c, user);
       return c.json(user);
     })
@@ -218,19 +289,30 @@ async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthPr
   if (existing) return toUser(existing);
   const id = newId("u_");
   const at = nowIso();
-  try {
-    await batch(c.env.DB, [
+  const insertIdentity = (email: string | null) =>
+    batch(c.env.DB, [
       {
-        sql: "INSERT INTO users (id, name, role, lang, created_at) VALUES ($id, $name, 'student', $lang, $at)",
-        params: { id, name: profile.name, lang: langOf(c), at },
+        sql: "INSERT INTO users (id, name, email, lang, created_at) VALUES ($id, $name, $email, $lang, $at)",
+        params: { id, name: profile.name, email, lang: langOf(c), at },
       },
       {
         sql: "INSERT INTO user_identities (provider, provider_user_id, user_id, email, created_at) VALUES ($provider, $subject, $id, $email, $at)",
         params: { ...key, id, email: profile.email, at },
       },
     ]);
+  try {
+    await insertIdentity(profile.email);
   } catch (error) {
-    if (!uniqueViolationColumns(error).some(([table]) => table === "user_identities")) throw error;
+    const pairs = uniqueViolationColumns(error);
+    if (pairs.some(([table, column]) => table === "users" && column === "email")) {
+      try {
+        await insertIdentity(null);
+      } catch {
+        /* fall through to the raced-identity lookup */
+      }
+    } else if (!pairs.some(([table]) => table === "user_identities")) {
+      throw error;
+    }
     const raced = await one<{ id: string; name: string; can_manage_classes: number; is_admin: number }>(
       c.env.DB,
       findSql,
@@ -239,5 +321,11 @@ async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthPr
     if (!raced) throw error;
     return toUser(raced);
   }
-  return { id, name: profile.name, canManageClasses: false, isAdmin: false };
+  return await accountFor(c, id);
+}
+
+async function accountFor(c: Ctx, id: string): Promise<User> {
+  const user = await loadAccount(c.env.DB, id);
+  if (!user) fail(401, "unauthorized");
+  return user;
 }

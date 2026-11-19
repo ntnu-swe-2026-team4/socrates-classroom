@@ -101,7 +101,7 @@ describe("admin capability model (#131)", () => {
     const afterDisable = await call("/api/classrooms", { headers: { Cookie: student } });
     expect(afterDisable.status).toBe(403);
     expect(((await afterDisable.json()) as { code: string }).code).toBe("account_disabled");
-    expect(await (await call("/api/me", { headers: { Cookie: student } })).json()).toBeNull();
+    expect((await call("/api/me", { headers: { Cookie: student } })).status).toBe(403);
 
     const relogin = await call(
       "/api/auth/login",

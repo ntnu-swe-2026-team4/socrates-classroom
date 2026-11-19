@@ -33,7 +33,7 @@ function InvitePage() {
     setSubmitting(true);
     setFailed(null);
     try {
-      const joined = await api.joinByInvite(token, name.trim());
+      const joined = await api.joinByInvite(token, { name: name.trim() || undefined, tosAccepted: tos });
       await navigate({
         to: "/dialogue",
         search: { activityId: joined.activityId, ...(draft ? { q: draft } : {}) },

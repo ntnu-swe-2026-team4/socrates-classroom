@@ -1,16 +1,30 @@
+import { meOf } from "@/api/me";
 import { useState } from "react";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Users } from "lucide-react";
-import { api, type ClassroomSummary } from "@/api";
-import { Button, Input, PageHeader, cn } from "@/components/ui";
+import { api, ApiError, type ClassroomSummary } from "@/api";
+import { Button, ConfirmDialog, HalftoneFade, Initial, Input, PageHeader, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
 
+type View = "student" | "teacher";
+
 export const Route = createFileRoute("/classrooms/")({
+  validateSearch: (search: Record<string, unknown>): { view?: View } => ({
+    view: search.view === "teacher" ? "teacher" : search.view === "student" ? "student" : undefined,
+  }),
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
+    if (me?.preview && me.previewClassroomId) {
+      throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: me.previewClassroomId } });
+    }
+    if (me.guest && !me.preview && me.activityId)
+      throw redirect({ to: "/dialogue", search: { activityId: me.activityId } });
+    if (me.kind === "student" && me.classroomId) {
+      throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: me.classroomId } });
+    }
   },
   component: ClassroomsPage,
 });
@@ -19,10 +33,25 @@ function ClassroomsPage() {
   const t = useT();
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const teacherMode = me.data?.teacherMode === true;
+  const { view } = Route.useSearch();
   const classrooms = useQuery({ queryKey: ["classrooms"], queryFn: () => api.listClassrooms() });
   const [code, setCode] = useState("");
-  const canManage = me.data?.canManageClasses ?? false;
-  const list = classrooms.data ?? [];
+  const [needAccount, setNeedAccount] = useState(false);
+  const queryClient = useQueryClient();
+  const create = useMutation({
+    mutationFn: () => api.createClassroom(),
+    onSuccess: async (created) => {
+      await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+      await navigate({ to: "/classrooms/$classroomId", params: { classroomId: created.classroomId } });
+    },
+  });
+  const owned = (classrooms.data ?? []).filter((room) => room.role === "teacher");
+  const joined = (classrooms.data ?? []).filter((room) => room.role !== "teacher");
+  const guest = me.data?.guest ?? true;
+  const canTeach = me.data?.kind === "member" && !guest;
+  const teaching = view === "teacher" && canTeach && teacherMode;
+  const startCreate = () => (guest ? setNeedAccount(true) : create.mutate());
 
   function join() {
     const normalized = normalizeJoinCode(code);
@@ -30,16 +59,32 @@ function ClassroomsPage() {
   }
 
   return (
-    <div className="min-h-full pb-16">
+    <div className="min-h-full bg-paper-deep pb-10">
+      <ConfirmDialog
+        open={needAccount}
+        title={t("account_required_title")}
+        body={t("account_required_body")}
+        confirmLabel={t("account_required_register")}
+        cancelLabel={t("account_required_later")}
+        onCancel={() => setNeedAccount(false)}
+        onConfirm={() => {
+          setNeedAccount(false);
+          void navigate({ to: "/login", search: { mode: "register", next: "/classrooms?view=teacher" } });
+        }}
+      />
       <PageHeader
-        width="max-w-5xl"
-        eyebrow={canManage ? t("eyebrow_teacher") : t("classrooms_eyebrow_student")}
-        title={t("nav_classrooms")}
-        description={canManage ? t("classrooms_intro_teacher") : t("classrooms_intro_student")}
+        width="max-w-none"
+        title={teaching ? t("nav_classrooms") : t("nav_learning")}
+        description={teaching ? t("classrooms_teaching_intro") : t("classrooms_learning_intro")}
         actions={
-          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+          teaching ? (
+            <Button disabled={create.isPending} onClick={startCreate}>
+              {create.isPending ? <Spinner /> : <Plus className="size-4" />}
+              {t("nav_setup")}
+            </Button>
+          ) : (
             <form
-              className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none"
+              className="flex w-full min-w-0 items-center gap-2 sm:w-auto"
               onSubmit={(event) => {
                 event.preventDefault();
                 join();
@@ -53,75 +98,116 @@ function ClassroomsPage() {
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
-                className="min-w-0 flex-1 font-mono tracking-[0.2em] sm:w-44 sm:flex-none"
+                className="min-w-0 flex-1 font-mono tracking-[0.2em] sm:w-40 sm:flex-none"
               />
               <Button type="submit" disabled={!code.trim()}>
                 {t("join_code_go")}
               </Button>
             </form>
-            {canManage && (
-              <Button onClick={() => void navigate({ to: "/t/setup" })}>
-                <Plus className="size-4" />
-                {t("nav_setup")}
-              </Button>
-            )}
-          </div>
+          )
         }
       />
-      <div className="mx-auto w-full max-w-5xl px-6 pt-8">
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {list.map((room) => (
-            <ClassroomCard key={room.id} room={room} />
-          ))}
-        </div>
+      <div className="w-full px-4 pt-5 md:px-6">
+        {create.isError && (
+          <p
+            role="alert"
+            className="mb-4 rounded-xl border border-flag/40 bg-flag-wash px-4 py-3 text-[13px] text-flag"
+          >
+            {create.error instanceof ApiError && create.error.code === "trial_limit"
+              ? create.error.message
+              : t("common_error")}
+          </p>
+        )}
         {classrooms.isError && (
-          <div role="alert" className="rounded-3xl border border-line-strong px-6 py-14 text-center text-sm text-flag">
+          <div role="alert" className="rounded-xl border border-line-strong px-4 py-8 text-center text-sm text-flag">
             {t("common_error")}
           </div>
         )}
-        {!classrooms.isPending && !classrooms.isError && !list.length && (
-          <div className="rounded-3xl border border-dashed border-line-strong px-6 py-14 text-center text-sm text-ink-faint">
-            {canManage ? t("classrooms_empty_teacher") : t("classrooms_empty_student")}
-          </div>
+        {teaching ? (
+          <RoomGroup title={null} rooms={owned} empty={t("classrooms_teaching_empty")} />
+        ) : (
+          <RoomGroup title={null} rooms={joined} empty={t("classrooms_learning_empty")} />
         )}
       </div>
     </div>
   );
 }
 
+function RoomGroup({ title, rooms, empty }: { title: string | null; rooms: ClassroomSummary[]; empty: string }) {
+  return (
+    <section className="mb-7">
+      {title && <h2 className="mb-3 font-serif text-[16px] text-ink">{title}</h2>}
+      {rooms.length > 0 ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {rooms.map((room) => (
+            <ClassroomCard key={room.id} room={room} />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-faint">
+          {empty}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ClassroomCard({ room }: { room: ClassroomSummary }) {
   const t = useT();
+  const teacher = room.role === "teacher";
+  const running = room.current && !room.current.finished;
   return (
     <Link
       to="/classrooms/$classroomId"
       params={{ classroomId: room.id }}
-      className="group flex flex-col overflow-hidden rounded-3xl border border-line bg-card transition-all hover:-translate-y-0.5 hover:border-ember-deep hover:shadow-md"
+      className="group flex flex-col rounded-xl border border-line bg-card transition-shadow hover:shadow-md"
     >
-      <div className="bg-gradient-to-br from-ember-wash via-ember-wash/60 to-transparent px-5 pt-5 pb-4">
-        <h3 className="truncate font-serif text-[19px] leading-snug text-ink">{room.name}</h3>
-        <p className="mt-0.5 truncate text-[12.5px] text-ink-soft">
-          {room.role === "teacher" ? t("classroom_you_teach") : room.teacherName}
-        </p>
+      <div className="relative aspect-[21/9] rounded-t-2xl border-b border-line bg-paper">
+        <div className="absolute inset-0 overflow-hidden rounded-t-2xl">
+          <HalftoneFade className="[mask-image:linear-gradient(to_top_left,black,transparent_70%)]" />
+          <span aria-hidden className="absolute top-3 left-4 font-serif text-[56px] leading-none text-ink select-none">
+            {room.name.slice(0, 1)}
+          </span>
+        </div>
+        {room.current && (
+          <span
+            className={cn(
+              "absolute top-3 right-3 rounded-lg px-2 py-0.5 text-[11px] font-medium",
+              running ? "bg-moss text-paper" : "border border-line bg-paper text-ink-soft",
+            )}
+          >
+            {running ? t("classroom_running") : t("classroom_finished")}
+          </span>
+        )}
+        <div className="absolute right-3 bottom-0 z-10 flex translate-y-1/2 items-center">
+          <Initial name={room.teacherName} className="size-10 border-2 border-card text-[15px]" />
+          {room.memberCount > 0 && (
+            <span className="-ml-2 flex size-10 items-center justify-center rounded-full border-2 border-card bg-paper-deep text-[11.5px] text-ink-soft">
+              +{room.memberCount}
+            </span>
+          )}
+        </div>
       </div>
-      <div className="flex flex-1 flex-col px-5 pt-3 pb-4">
-        <p className="line-clamp-2 min-h-10 text-[13.5px] leading-relaxed text-ink">
-          {room.current ? room.current.topicTitle : <span className="text-ink-faint">{t("classroom_no_topic")}</span>}
-        </p>
-        <div className="mt-4 flex items-center justify-between gap-2 border-t border-line pt-3 text-xs text-ink-faint">
+      <div className="flex flex-1 flex-col gap-1.5 px-4 pt-4 pb-4">
+        <h3 className="line-clamp-2 pr-20 font-serif text-[18px] leading-snug text-ember group-hover:underline">
+          {room.name}
+        </h3>
+        {!teacher && (
+          <p className="text-[12px] text-ink-faint">{t("classroom_teacher_is", { name: room.teacherName })}</p>
+        )}
+        {room.current ? (
+          <>
+            <p className="mt-1 text-[13.5px] font-medium text-ink">{room.current.topicTitle}</p>
+            <p className="line-clamp-4 text-[13px] leading-relaxed text-ink-soft">{room.current.topicStatement}</p>
+          </>
+        ) : (
+          <p className="mt-1 text-[13px] text-ink-faint">{t("classroom_no_topic")}</p>
+        )}
+        <div className="mt-auto flex items-center gap-2 pt-3 text-[12px] text-ink-faint">
           <span className="flex items-center gap-1">
             <Users className="size-3.5" />
             {t("classroom_members", { n: room.memberCount })}
           </span>
-          {room.current && (
-            <span
-              className={cn(
-                "rounded-full px-2.5 py-0.5 text-[11.5px]",
-                room.current.finished ? "bg-paper-deep text-ink-faint" : "bg-moss-wash text-moss",
-              )}
-            >
-              {room.current.finished ? t("classroom_finished") : t("classroom_running")}
-            </span>
-          )}
         </div>
       </div>
     </Link>

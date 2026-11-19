@@ -1,45 +1,83 @@
 import { hc } from "hono/client";
+import { useSyncExternalStore } from "react";
 import type {
   ActivityInfo,
   ActivityInvite,
   ActivityMode,
   ActivitySlots,
   ActivityStarted,
-  AdminUser,
+  Announcement,
+  AuthProviders,
+  ClassroomActivity,
   ClassroomCreated,
+  ClassroomMembers,
   ClassroomSummary,
   DevAccounts,
   InviteInfo,
   InviteJoined,
+  Post,
+  SoloChat,
   JoinInfo,
   JoinResult,
   Report,
   TeacherKeyStatus,
+  AdminOverview,
+  AdminUsageAlert,
+  AdminUser,
+  Usage,
+  LiveBoard,
+  Notification,
+  NotificationFeed,
+  School,
+  SchoolTeacher,
+  StudentCredential,
+  TeacherRequest,
   TermExplanation,
   Topic,
   TopicDraft,
   User,
 } from "@socrates/shared";
 import {
+  ActivitySlotCreateInputSchema,
   ActivityStartInputSchema,
-  ACTIVITY_SLOT_MAX,
-  AdminUserCreateInputSchema,
-  AdminUserUpdateInputSchema,
+  AnnouncementInputSchema,
+  InviteJoinInputSchema,
   ClassroomCreateInputSchema,
-  DevLoginInputSchema,
   ERROR_CODES,
   GenerateTopicsInputSchema,
   JoinInputSchema,
-  LoginInputSchema,
   LookupInputSchema,
+  PostInputSchema,
   SttResultSchema,
-  TopicCopyInputSchema,
   TopicCreateInputSchema,
   TtsInputSchema,
   type ErrorCode,
 } from "@socrates/shared";
 import type { RpcApi } from "@server/app";
-import { persistActivityId, recordTerm } from "./local";
+import { clearLocalUserState, persistActivityId, recordTerm } from "./local";
+import { getCompanion } from "@/lib/companion";
+
+const guestListeners = new Set<() => void>();
+export const guestSession = {
+  expired: false,
+  setExpired(value: boolean) {
+    if (this.expired === value) return;
+    this.expired = value;
+    for (const listener of guestListeners) listener();
+  },
+  subscribe(listener: () => void): () => void {
+    guestListeners.add(listener);
+    return () => guestListeners.delete(listener);
+  },
+};
+
+export function useGuestSessionExpired(): boolean {
+  return useSyncExternalStore(
+    guestSession.subscribe,
+    () => guestSession.expired,
+    () => false,
+  );
+}
 
 export class ApiError extends Error {
   constructor(
@@ -66,26 +104,61 @@ export interface KeyModelInfo {
 
 export interface Api {
   me(): Promise<User | null>;
-  login(email: string, password: string): Promise<User>;
+  login(identifier: string, password: string): Promise<User>;
   logout(): Promise<void>;
+  register(input: { email: string; password: string; name?: string; code?: string }): Promise<User>;
+  updateProfile(input: { name?: string; teacherMode?: boolean }): Promise<User>;
+  requestTeacher(): Promise<User>;
+  adminOverview(): Promise<AdminOverview>;
+  adminUsers(q: string): Promise<AdminUser[]>;
+  usage(): Promise<Usage>;
+  setUsageQuota(tokens: number | null): Promise<Usage>;
+  adminUsageAlerts(): Promise<AdminUsageAlert[]>;
+  grantTeacher(userId: string): Promise<void>;
+  revokeTeacher(userId: string): Promise<void>;
+  listTeacherRequests(): Promise<TeacherRequest[]>;
+  approveTeacherRequest(userId: string): Promise<void>;
+  rejectTeacherRequest(userId: string): Promise<void>;
+  createStudents(classroomId: string, names: string[]): Promise<StudentCredential[]>;
+  resetStudentPassword(classroomId: string, userId: string): Promise<StudentCredential>;
+  liveBoard(activityId: string): Promise<LiveBoard>;
+  notifications(): Promise<NotificationFeed>;
+  markNotificationsSeen(): Promise<void>;
+  sendNotification(input: { title: string; body: string }): Promise<Notification>;
+  deleteNotification(id: string): Promise<void>;
+  listSchools(): Promise<School[]>;
+  createSchool(name: string): Promise<School>;
+  listSchoolTeachers(): Promise<SchoolTeacher[]>;
+  createSchoolTeacher(input: { name?: string; email: string; schoolId: string }): Promise<SchoolTeacher>;
+  removeSchoolTeacher(id: string): Promise<void>;
+  authProviders(): Promise<AuthProviders>;
+  getClassroom(classroomId: string): Promise<ClassroomSummary>;
+  deleteClassroom(classroomId: string): Promise<void>;
+  classroomActivities(classroomId: string): Promise<ClassroomActivity[]>;
+  listAnnouncements(classroomId: string): Promise<Announcement[]>;
+  createAnnouncement(classroomId: string, body: string): Promise<Announcement>;
+  deleteAnnouncement(classroomId: string, announcementId: string): Promise<void>;
+  listMembers(classroomId: string): Promise<ClassroomMembers>;
+  removeMember(classroomId: string, userId: string): Promise<void>;
+  listPosts(classroomId: string): Promise<Post[]>;
+  createPost(classroomId: string, body: string, parentId?: string): Promise<Post>;
+  deletePost(classroomId: string, postId: string): Promise<void>;
+  listChats(): Promise<SoloChat[]>;
+  getChat(chatId: string): Promise<SoloChat>;
+  createChat(title: string): Promise<SoloChat>;
+  renameChat(chatId: string, title: string): Promise<SoloChat>;
+  deleteChat(chatId: string): Promise<void>;
   joinByCode(code: string): Promise<JoinInfo>;
-  joinAsGuest(code: string, name: string): Promise<JoinResult>;
-  createActivityInvite(activityId: string): Promise<ActivityInvite>;
-  inviteInfo(token: string): Promise<InviteInfo>;
-  joinByInvite(token: string, name: string): Promise<InviteJoined>;
+  joinAsGuest(code: string, name?: string): Promise<JoinResult>;
   listTopics(): Promise<Topic[]>;
   generateTopics(direction: string): Promise<TopicDraft[]>;
-  createClassroom(name: string): Promise<ClassroomCreated>;
+  createClassroom(input?: { name?: string; topicId?: string }): Promise<ClassroomCreated>;
+  renameClassroom(classroomId: string, name: string): Promise<{ id: string; name: string }>;
   listClassrooms(): Promise<ClassroomSummary[]>;
-  listClassroomTopics(classroomId: string): Promise<Topic[]>;
-  createClassroomTopic(
-    classroomId: string,
-    input: { title: string; statement: string; summary?: string; prompts: string[] },
-  ): Promise<Topic>;
-  copyTopic(topicId: string, classroomId: string): Promise<Topic>;
   startActivity(classroomId: string, topicId: string, mode?: ActivityMode): Promise<ActivityStarted>;
-  listActivitySlots(activityId: string): Promise<ActivitySlots>;
-  createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
+  previewAsStudent(classroomId: string): Promise<{ user: User; activityId: string }>;
+  resetPreview(): Promise<{ user: User; activityId: string }>;
+  exitPreview(): Promise<User>;
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
   createTopic(input: { title: string; statement: string; summary?: string; prompts: string[] }): Promise<Topic>;
@@ -96,13 +169,26 @@ export interface Api {
   listTeacherKeys(): Promise<TeacherKeyStatus[]>;
   listKeyProviders(): Promise<KeyProviderInfo[]>;
   listKeyProviderModels(provider: string): Promise<KeyModelInfo[]>;
-  putTeacherKey(
-    provider: string,
-    model: string,
-    key: string,
-  ): Promise<{ provider: string; model: string; last4: string }>;
-  deleteTeacherKey(provider: string): Promise<void>;
-  orderTeacherKeys(providers: string[]): Promise<void>;
+  addTeacherKey(input: {
+    provider: string;
+    model: string;
+    key?: string;
+    fromEntry?: string;
+  }): Promise<TeacherKeyStatus>;
+  updateTeacherKey(id: string, input: { model?: string; key?: string }): Promise<TeacherKeyStatus>;
+  deleteTeacherKey(id: string): Promise<void>;
+  orderTeacherKeys(ids: string[]): Promise<void>;
+  listClassroomTopics(classroomId: string): Promise<Topic[]>;
+  createClassroomTopic(
+    classroomId: string,
+    input: { title: string; statement: string; summary?: string; prompts: string[] },
+  ): Promise<Topic>;
+  copyTopic(topicId: string, classroomId: string): Promise<Topic>;
+  activityInvite(activityId: string): Promise<ActivityInvite>;
+  inviteInfo(token: string): Promise<InviteInfo>;
+  joinByInvite(token: string, input: { name?: string; tosAccepted: boolean }): Promise<InviteJoined>;
+  listActivitySlots(activityId: string): Promise<ActivitySlots>;
+  createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
   devAccounts(): Promise<DevAccounts>;
   devLogin(email: string): Promise<User>;
   listAdminUsers(): Promise<AdminUser[]>;
@@ -110,7 +196,7 @@ export interface Api {
     name: string;
     email: string;
     password: string;
-    canManageClasses: boolean;
+    canManageClasses?: boolean;
   }): Promise<AdminUser>;
   updateAdminUser(id: string, input: { canManageClasses?: boolean; disabled?: boolean }): Promise<AdminUser>;
 }
@@ -145,13 +231,13 @@ async function unwrap<R extends JsonLike>(res: R): Promise<Awaited<ReturnType<R[
 async function raw<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, ...rest } = init;
   const res = await fetch(`/api${path}`, {
+    ...rest,
     credentials: "include",
     headers: {
       ...langHeaders(),
       ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
       ...(rest.headers ?? {}),
     },
-    ...rest,
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
   if (!res.ok) {
@@ -161,12 +247,114 @@ async function raw<T>(path: string, init: RequestInit & { json?: unknown } = {})
   return (await res.json()) as T;
 }
 
+async function rawVoid(path: string, init: RequestInit = {}): Promise<void> {
+  const res = await fetch(`/api${path}`, {
+    ...init,
+    credentials: "include",
+    headers: { ...langHeaders(), ...(init.headers ?? {}) },
+  });
+  if (!res.ok) {
+    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+    throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
+  }
+}
+
+const ELDER_RATE = 0.92;
+const ELDER_TREMOLO_HZ = 5.2;
+const ELDER_TREMOLO_DEPTH = 0.03;
+
+function elderVoice(context: AudioContext, source: AudioBufferSourceNode): { output: AudioNode; stop: () => void } {
+  source.playbackRate.value = ELDER_RATE;
+  const warmth = context.createBiquadFilter();
+  warmth.type = "lowshelf";
+  warmth.frequency.value = 220;
+  warmth.gain.value = 3;
+  const soften = context.createBiquadFilter();
+  soften.type = "lowpass";
+  soften.frequency.value = 5000;
+  soften.Q.value = 0.6;
+  const tremolo = context.createGain();
+  tremolo.gain.value = 1 - ELDER_TREMOLO_DEPTH;
+  const lfo = context.createOscillator();
+  lfo.frequency.value = ELDER_TREMOLO_HZ;
+  const depth = context.createGain();
+  depth.gain.value = ELDER_TREMOLO_DEPTH;
+  lfo.connect(depth);
+  depth.connect(tremolo.gain);
+  source.connect(warmth);
+  warmth.connect(soften);
+  soften.connect(tremolo);
+  lfo.start();
+  return {
+    output: tremolo,
+    stop: () => {
+      try {
+        lfo.stop();
+      } catch {}
+    },
+  };
+}
+
+const MALE_VOICE = /zhiwei|yunjhe|kangkang|yunyang|yunxi|danny|david|mark|guy|george|pablo|raul|jorge|alvaro|male/i;
+
+function waitForVoices(): Promise<SpeechSynthesisVoice[]> {
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length) return Promise.resolve(voices);
+  return new Promise((resolve) => {
+    const done = () => resolve(window.speechSynthesis.getVoices());
+    window.speechSynthesis.addEventListener("voiceschanged", done, { once: true });
+    setTimeout(done, 1000);
+  });
+}
+
+function pickLocalVoice(voices: SpeechSynthesisVoice[], lang: string): SpeechSynthesisVoice | null {
+  const local = voices.filter((voice) => voice.localService && voice.lang.toLowerCase().startsWith(lang));
+  const preferred = lang === "zh" ? local.filter((voice) => /tw|hant|hk/i.test(voice.lang)) : local;
+  const pool = preferred.length ? preferred : local;
+  return pool.find((voice) => MALE_VOICE.test(voice.name)) ?? pool[0] ?? null;
+}
+
+async function speakLocally(text: string, lang: string, signal?: AbortSignal): Promise<void> {
+  if (typeof window === "undefined" || !("speechSynthesis" in window) || signal?.aborted) return;
+  const voice = pickLocalVoice(await waitForVoices(), lang);
+  if (!voice || signal?.aborted) return;
+  const { voiceStyle, volume } = getCompanion();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.voice = voice;
+  utterance.lang = voice.lang;
+  utterance.pitch = voiceStyle === "elder" ? 0.55 : 1;
+  utterance.rate = voiceStyle === "elder" ? 0.86 : 1;
+  utterance.volume = volume;
+  await new Promise<void>((resolve, reject) => {
+    const cancel = () => {
+      window.speechSynthesis.cancel();
+      resolve();
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    utterance.onend = () => {
+      signal?.removeEventListener("abort", cancel);
+      resolve();
+    };
+    utterance.onerror = (event) => {
+      signal?.removeEventListener("abort", cancel);
+      if (event.error === "canceled" || event.error === "interrupted") resolve();
+      else reject(new Error(event.error));
+    };
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
 async function playTts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void> {
   const input = TtsInputSchema.parse({ text, lang: langHeaders()["Accept-Language"] });
   const res = await client.tts.$post({ json: input }, { init: { signal } });
   if (!res.ok) {
     const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
     throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
+  }
+  if (res.headers.get("X-Socrates-Fallback") === "mock") {
+    await speakLocally(text, input.lang, signal);
+    return;
   }
   const bytes = await res.arrayBuffer();
   const AudioContextCtor =
@@ -197,8 +385,12 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
   }
   const analyser = context.createAnalyser();
   analyser.fftSize = 256;
-  source.connect(analyser);
-  analyser.connect(context.destination);
+  const gain = context.createGain();
+  gain.gain.value = getCompanion().volume;
+  const voice = getCompanion().voiceStyle === "elder" ? elderVoice(context, source) : null;
+  (voice?.output ?? source).connect(analyser);
+  analyser.connect(gain);
+  gain.connect(context.destination);
   const data = new Uint8Array(analyser.frequencyBinCount);
   let raf = 0;
   let stopped = false;
@@ -206,7 +398,12 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
     if (stopped) return;
     stopped = true;
     cancelAnimationFrame(raf);
-    void source.stop();
+    try {
+      source.stop();
+    } catch {
+      /* aborted between decode and start: nothing to stop yet */
+    }
+    voice?.stop();
     void context.close();
     signal?.removeEventListener("abort", stop);
   };
@@ -224,90 +421,257 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
       stop();
       resolve();
     };
+    if (stopped) {
+      resolve();
+      return;
+    }
     source.start();
     raf = requestAnimationFrame(tick);
   });
 }
 
+export const SESSION_SIGNAL_KEY = "socrates_session_changed";
+
+function announceSession() {
+  try {
+    localStorage.setItem(SESSION_SIGNAL_KEY, String(Date.now()));
+  } catch {
+    return;
+  }
+}
+
 export const httpApi: Api = {
   async me() {
-    return unwrap(await client.me.$get());
+    try {
+      const user = await raw<User | null>("/me");
+      if (user) guestSession.setExpired(false);
+      return user;
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "guest_session_expired") {
+        guestSession.setExpired(true);
+        return null;
+      }
+      throw error;
+    }
   },
-  async login(email, password) {
-    return unwrap(await client.auth.login.$post({ json: LoginInputSchema.parse({ email, password }) }));
+  async login(identifier, password) {
+    const user = await raw<User>("/auth/login", { method: "POST", json: { identifier: identifier.trim(), password } });
+    announceSession();
+    return user;
   },
   async logout() {
     await unwrap(await client.auth.logout.$post());
+    clearLocalUserState();
+    announceSession();
+  },
+  async register(input) {
+    const user = await raw<User>(input.code ? "/auth/register" : "/auth/signup", {
+      method: "POST",
+      json: { ...input, tosAccepted: true },
+    });
+    announceSession();
+    return user;
+  },
+  async updateProfile(input) {
+    return raw<User>("/me", { method: "PATCH", json: input });
+  },
+  async createStudents(classroomId, names) {
+    return raw<StudentCredential[]>(`/classrooms/${encodeURIComponent(classroomId)}/students`, {
+      method: "POST",
+      json: { names },
+    });
+  },
+  async resetStudentPassword(classroomId, userId) {
+    return raw<StudentCredential>(
+      `/classrooms/${encodeURIComponent(classroomId)}/students/${encodeURIComponent(userId)}/password`,
+      { method: "POST" },
+    );
+  },
+  async requestTeacher() {
+    return raw<User>("/me/teacher-request", { method: "POST", json: { acceptTeacherTerms: true } });
+  },
+  async adminOverview() {
+    return raw<AdminOverview>("/admin/overview");
+  },
+  async adminUsers(q) {
+    return raw<AdminUser[]>(`/admin/users?q=${encodeURIComponent(q)}`);
+  },
+  async usage() {
+    return raw<Usage>("/settings/usage");
+  },
+  async setUsageQuota(tokens) {
+    return raw<Usage>("/settings/usage/quota", { method: "PUT", json: { tokens } });
+  },
+  async adminUsageAlerts() {
+    return raw<AdminUsageAlert[]>("/admin/usage-alerts");
+  },
+  async grantTeacher(userId) {
+    await rawVoid(`/admin/users/${encodeURIComponent(userId)}/teacher`, { method: "PUT" });
+  },
+  async revokeTeacher(userId) {
+    await rawVoid(`/admin/users/${encodeURIComponent(userId)}/teacher`, { method: "DELETE" });
+  },
+  async listTeacherRequests() {
+    return raw<TeacherRequest[]>("/admin/teacher-requests");
+  },
+  async approveTeacherRequest(userId) {
+    await rawVoid(`/admin/teacher-requests/${encodeURIComponent(userId)}/approve`, { method: "POST" });
+  },
+  async rejectTeacherRequest(userId) {
+    await rawVoid(`/admin/teacher-requests/${encodeURIComponent(userId)}`, { method: "DELETE" });
+  },
+  async liveBoard(activityId) {
+    return raw<LiveBoard>(`/activities/${encodeURIComponent(activityId)}/live`);
+  },
+  async notifications() {
+    return raw<NotificationFeed>("/notifications");
+  },
+  async markNotificationsSeen() {
+    await rawVoid("/notifications/seen", { method: "POST" });
+  },
+  async sendNotification(input) {
+    return raw<Notification>("/admin/notifications", { method: "POST", json: input });
+  },
+  async deleteNotification(id) {
+    await rawVoid(`/admin/notifications/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+  async listSchools() {
+    return raw<School[]>("/admin/schools");
+  },
+  async createSchool(name) {
+    return raw<School>("/admin/schools", { method: "POST", json: { name } });
+  },
+  async listSchoolTeachers() {
+    return raw<SchoolTeacher[]>("/admin/teachers");
+  },
+  async createSchoolTeacher(input) {
+    return raw<SchoolTeacher>("/admin/teachers", { method: "POST", json: input });
+  },
+  async removeSchoolTeacher(id) {
+    await rawVoid(`/admin/teachers/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+  async authProviders() {
+    return raw<AuthProviders>("/auth/providers");
+  },
+  async getClassroom(classroomId) {
+    return raw<ClassroomSummary>(`/classrooms/${encodeURIComponent(classroomId)}`);
+  },
+  async deleteClassroom(classroomId) {
+    await rawVoid(`/classrooms/${encodeURIComponent(classroomId)}`, { method: "DELETE" });
+  },
+  async classroomActivities(classroomId) {
+    return raw<ClassroomActivity[]>(`/classrooms/${encodeURIComponent(classroomId)}/activities`);
+  },
+  async listAnnouncements(classroomId) {
+    return raw<Announcement[]>(`/classrooms/${encodeURIComponent(classroomId)}/announcements`);
+  },
+  async createAnnouncement(classroomId, body) {
+    return raw<Announcement>(`/classrooms/${encodeURIComponent(classroomId)}/announcements`, {
+      method: "POST",
+      json: AnnouncementInputSchema.parse({ body }),
+    });
+  },
+  async deleteAnnouncement(classroomId, announcementId) {
+    await rawVoid(
+      `/classrooms/${encodeURIComponent(classroomId)}/announcements/${encodeURIComponent(announcementId)}`,
+      { method: "DELETE" },
+    );
+  },
+  async listMembers(classroomId) {
+    return raw<ClassroomMembers>(`/classrooms/${encodeURIComponent(classroomId)}/members`);
+  },
+  async removeMember(classroomId, userId) {
+    await rawVoid(`/classrooms/${encodeURIComponent(classroomId)}/members/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+    });
+  },
+  async listPosts(classroomId) {
+    return raw<Post[]>(`/classrooms/${encodeURIComponent(classroomId)}/posts`);
+  },
+  async createPost(classroomId, body, parentId) {
+    return raw<Post>(`/classrooms/${encodeURIComponent(classroomId)}/posts`, {
+      method: "POST",
+      json: PostInputSchema.parse({ body, parentId }),
+    });
+  },
+  async deletePost(classroomId, postId) {
+    await rawVoid(`/classrooms/${encodeURIComponent(classroomId)}/posts/${encodeURIComponent(postId)}`, {
+      method: "DELETE",
+    });
+  },
+  async listChats() {
+    return raw<SoloChat[]>("/solo/chats");
+  },
+  async getChat(chatId) {
+    return raw<SoloChat>(`/solo/chats/${encodeURIComponent(chatId)}`);
+  },
+  async createChat(title) {
+    return raw<SoloChat>("/solo/chats", { method: "POST", json: { title: title.slice(0, 120) } });
+  },
+  async renameChat(chatId, title) {
+    return raw<SoloChat>(`/solo/chats/${encodeURIComponent(chatId)}`, {
+      method: "PATCH",
+      json: { title: title.slice(0, 120) },
+    });
+  },
+  async deleteChat(chatId) {
+    await rawVoid(`/solo/chats/${encodeURIComponent(chatId)}`, { method: "DELETE" });
   },
   async joinByCode(code) {
     return unwrap(await client.join[":code"].$get({ param: { code } }));
   },
   async joinAsGuest(code, name) {
-    const data = await raw<JoinResult>("/join", {
-      method: "POST",
-      json: JoinInputSchema.parse({ code, name, tosAccepted: true }),
-    });
-    persistActivityId(data.activityId);
-    return data;
-  },
-  async createActivityInvite(activityId) {
-    return await raw<ActivityInvite>(`/activities/${encodeURIComponent(activityId)}/invites`, { method: "POST" });
-  },
-  async inviteInfo(token) {
-    return await raw<InviteInfo>(`/invites/${encodeURIComponent(token)}`);
-  },
-  async joinByInvite(token, name) {
-    const data = await raw<InviteJoined>(`/invites/${encodeURIComponent(token)}/join`, {
-      method: "POST",
-      json: { name, tosAccepted: true },
-    });
-    persistActivityId(data.activityId);
-    return data;
+    const payload = await unwrap(
+      await client.join.$post({ json: JoinInputSchema.parse({ code, name, tosAccepted: true }) }),
+    );
+    persistActivityId(payload.activityId);
+    announceSession();
+    return payload as JoinResult;
   },
   async listTopics() {
     return unwrap(await client.topics.$get());
   },
   async generateTopics(direction) {
     const input = GenerateTopicsInputSchema.parse({ direction });
-    return unwrap(await client.topics.generate.$post({ json: input }));
+    return await unwrap(await client.topics.generate.$post({ json: input }));
   },
   async createTopic(input) {
     return unwrap(await client.topics.$post({ json: TopicCreateInputSchema.parse(input) }));
   },
-  async createClassroom(name) {
-    const input = ClassroomCreateInputSchema.parse({ name });
-    return unwrap(await client.classrooms.$post({ json: input }));
+  async createClassroom(input = {}) {
+    return raw<ClassroomCreated>("/classrooms", { method: "POST", json: ClassroomCreateInputSchema.parse(input) });
+  },
+  async renameClassroom(classroomId, name) {
+    return raw<{ id: string; name: string }>(`/classrooms/${encodeURIComponent(classroomId)}`, {
+      method: "PATCH",
+      json: { name },
+    });
   },
   async listClassrooms() {
     return unwrap(await client.classrooms.$get());
   },
-  async listClassroomTopics(classroomId) {
-    return await raw<Topic[]>(`/classrooms/${encodeURIComponent(classroomId)}/topics`);
+  async startActivity(classroomId, topicId, mode) {
+    const input = ActivityStartInputSchema.parse({ topicId, ...(mode ? { mode } : {}) });
+    return raw<ActivityStarted>(`/classrooms/${classroomId}/activities`, { method: "POST", json: input });
   },
-  async createClassroomTopic(classroomId, input) {
-    return await raw<Topic>(`/classrooms/${encodeURIComponent(classroomId)}/topics`, {
+  async previewAsStudent(classroomId) {
+    const data = await raw<{ user: User; activityId: string }>(`/classrooms/${classroomId}/preview`, {
       method: "POST",
-      json: TopicCreateInputSchema.parse(input),
     });
+    persistActivityId(data.activityId);
+    announceSession();
+    return data;
   },
-  async copyTopic(topicId, classroomId) {
-    return await raw<Topic>(`/topics/${encodeURIComponent(topicId)}/copy`, {
-      method: "POST",
-      json: TopicCopyInputSchema.parse({ classroomId }),
-    });
+  async resetPreview() {
+    const data = await raw<{ user: User; activityId: string }>("/preview/reset", { method: "POST" });
+    persistActivityId(data.activityId);
+    announceSession();
+    return data;
   },
-  async startActivity(classroomId, topicId, mode = "live") {
-    const input = ActivityStartInputSchema.parse({ topicId, mode });
-    return await raw<ActivityStarted>(`/classrooms/${classroomId}/activities`, { method: "POST", json: input });
-  },
-  async listActivitySlots(activityId) {
-    return raw<ActivitySlots>(`/activities/${encodeURIComponent(activityId)}/slots`);
-  },
-  async createActivitySlots(activityId, count) {
-    return raw<ActivitySlots>(`/activities/${encodeURIComponent(activityId)}/slots`, {
-      method: "POST",
-      json: { count: Math.min(Math.max(count, 1), ACTIVITY_SLOT_MAX) },
-    });
+  async exitPreview() {
+    const user = await raw<User>("/preview/exit", { method: "POST" });
+    announceSession();
+    return user;
   },
   async stt(audio) {
     const file = audio instanceof File ? audio : new File([audio], "speech.webm", { type: audio.type });
@@ -320,7 +684,7 @@ export const httpApi: Api = {
   },
   tts: playTts,
   async activityInfo(activityId, participantId) {
-    const query = participantId === undefined ? "" : `?participantId=${encodeURIComponent(participantId)}`;
+    const query = participantId ? `?participantId=${encodeURIComponent(participantId)}` : "";
     return raw<ActivityInfo>(`/activities/${encodeURIComponent(activityId)}${query}`);
   },
   async finishActivity(activityId) {
@@ -336,7 +700,7 @@ export const httpApi: Api = {
     return data;
   },
   async listTeacherKeys() {
-    return unwrap(await client.settings.keys.$get());
+    return raw<TeacherKeyStatus[]>("/settings/keys");
   },
   async listKeyProviders() {
     return unwrap(await client.settings.keys.providers.$get());
@@ -344,34 +708,70 @@ export const httpApi: Api = {
   async listKeyProviderModels(provider) {
     return unwrap(await client.settings.keys.providers[":provider"].models.$get({ param: { provider } }));
   },
-  async putTeacherKey(provider, model, key) {
-    return raw<{ provider: string; model: string; last4: string }>(`/settings/keys/${encodeURIComponent(provider)}`, {
-      method: "PUT",
-      json: { provider, model, key },
+  async addTeacherKey(input) {
+    return raw<TeacherKeyStatus>("/settings/keys", { method: "POST", json: input });
+  },
+  async updateTeacherKey(id, input) {
+    return raw<TeacherKeyStatus>(`/settings/keys/${encodeURIComponent(id)}`, { method: "PATCH", json: input });
+  },
+  async deleteTeacherKey(id) {
+    await rawVoid(`/settings/keys/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+  async listClassroomTopics(classroomId) {
+    return raw<Topic[]>(`/classrooms/${encodeURIComponent(classroomId)}/topics`);
+  },
+  async createClassroomTopic(classroomId, input) {
+    return raw<Topic>(`/classrooms/${encodeURIComponent(classroomId)}/topics`, {
+      method: "POST",
+      json: TopicCreateInputSchema.parse(input),
     });
   },
-  async deleteTeacherKey(provider) {
-    await unwrap(await client.settings.keys[":provider"].$delete({ param: { provider } }));
+  async copyTopic(topicId, classroomId) {
+    return raw<Topic>(`/topics/${encodeURIComponent(topicId)}/copy`, { method: "POST", json: { classroomId } });
   },
-  async orderTeacherKeys(providers) {
-    await unwrap(await client.settings.keys.order.$put({ json: { providers } }));
+  async activityInvite(activityId) {
+    return raw<ActivityInvite>(`/activities/${encodeURIComponent(activityId)}/invites`, { method: "POST" });
+  },
+  async inviteInfo(token) {
+    return raw<InviteInfo>(`/invites/${encodeURIComponent(token)}`);
+  },
+  async joinByInvite(token, input) {
+    const payload = InviteJoinInputSchema.parse(input);
+    const joined = await raw<InviteJoined>(`/invites/${encodeURIComponent(token)}/join`, {
+      method: "POST",
+      json: payload,
+    });
+    persistActivityId(joined.activityId);
+    announceSession();
+    return joined;
+  },
+  async listActivitySlots(activityId) {
+    return raw<ActivitySlots>(`/activities/${encodeURIComponent(activityId)}/slots`);
+  },
+  async createActivitySlots(activityId, count) {
+    return raw<ActivitySlots>(`/activities/${encodeURIComponent(activityId)}/slots`, {
+      method: "POST",
+      json: ActivitySlotCreateInputSchema.parse({ count }),
+    });
   },
   async devAccounts() {
     return raw<DevAccounts>("/dev/accounts");
   },
   async devLogin(email) {
-    return raw<User>("/dev/login", { method: "POST", json: DevLoginInputSchema.parse({ email }) });
+    const user = await raw<User>("/dev/login", { method: "POST", json: { email } });
+    announceSession();
+    return user;
   },
   async listAdminUsers() {
-    return unwrap(await client.admin.users.$get());
+    return raw<AdminUser[]>("/admin/users");
   },
   async createAdminUser(input) {
-    return raw<AdminUser>("/admin/users", { method: "POST", json: AdminUserCreateInputSchema.parse(input) });
+    return raw<AdminUser>("/admin/users", { method: "POST", json: input });
   },
   async updateAdminUser(id, input) {
-    return raw<AdminUser>(`/admin/users/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      json: AdminUserUpdateInputSchema.parse(input),
-    });
+    return raw<AdminUser>(`/admin/users/${encodeURIComponent(id)}`, { method: "PATCH", json: input });
+  },
+  async orderTeacherKeys(ids) {
+    await raw<{ ids: string[] }>("/settings/keys/order", { method: "PUT", json: { ids } });
   },
 };

@@ -25,10 +25,14 @@ import { btwExtension, forkBtw } from "../pi/extensions/btw";
 import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
 import { buildModels } from "../pi/models";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
-import { one } from "../db/d1";
-import { getRouter } from "../gateway/router";
+import { one, run } from "../db/d1";
+import { getRouter, isTeacherCredential } from "../gateway/router";
+import { SOLO_PREFIX, ownedSoloChat } from "../routes/solo";
+import { recordUsage } from "../routes/usage";
 import { ApiError } from "@socrates/shared";
 import { ChatSockets, type ReverifyOutcome, type SocketIdentity } from "../ws/sockets";
+
+const LAST_ACTIVE_KEY = "lastActiveAt";
 
 class ActivityFinishedError extends Error {
   constructor() {
@@ -42,6 +46,7 @@ export class Chat extends DurableObject<Env> {
   readonly models = buildModels(this.env, { teacherOf: () => this.teacherId() });
   #teacherId: string | null | undefined;
   readonly #sessionModels = new Map<string, { provider: string; id: string }>();
+  readonly #meteredUpTo = new Map<string, number>();
 
   readonly btw = btwExtension();
 
@@ -91,7 +96,7 @@ export class Chat extends DurableObject<Env> {
     (handle, input, options) => this.routeSubmit(handle, input, options),
     (identity) => this.canSubmit(identity),
     () => forkBtw(this.harness, this.btw),
-    (identity) => this.revalidate(identity),
+    (identity) => this.reverify(identity),
   );
   readonly webSockets = new WebSockets(this.sockets.options());
   readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.harness);
@@ -110,8 +115,12 @@ export class Chat extends DurableObject<Env> {
 
   private async teacherId(): Promise<string | null> {
     if (this.#teacherId === undefined) {
-      const activityId = this.ctx.id.name?.split(":")[0] ?? "";
-      this.#teacherId = activityId ? await teacherOfActivity(this.env, activityId) : null;
+      const [threadId = "", ownerId = ""] = this.ctx.id.name?.split(":") ?? [];
+      if (threadId.startsWith(SOLO_PREFIX)) {
+        this.#teacherId = (await ownedSoloChat(this.env.DB, threadId, ownerId)) ? ownerId : null;
+      } else {
+        this.#teacherId = threadId ? await teacherOfActivity(this.env, threadId) : null;
+      }
     }
     return this.#teacherId;
   }
@@ -121,13 +130,21 @@ export class Chat extends DurableObject<Env> {
   }
 
   private async routeSubmit(handle: PiSession, input: UserInput, options: PiSubmitOptions): Promise<PiReceipt> {
-    const activityId = this.ctx.id.name?.split(":")[0] ?? "";
-    const activity = await one<{ finished_at: string | null }>(
-      this.env.DB,
-      "SELECT finished_at FROM activities WHERE id = $id",
-      { id: activityId },
-    );
-    if (activity?.finished_at) throw new ActivityFinishedError();
+    const threadId = this.ctx.id.name?.split(":")[0] ?? "";
+    if (threadId.startsWith(SOLO_PREFIX)) {
+      await run(this.env.DB, "UPDATE solo_chats SET updated_at = $at WHERE id = $id", {
+        id: threadId,
+        at: new Date().toISOString(),
+      });
+    } else {
+      const activity = await one<{ finished_at: string | null }>(
+        this.env.DB,
+        "SELECT finished_at FROM activities WHERE id = $id",
+        { id: threadId },
+      );
+      if (activity?.finished_at) throw new ActivityFinishedError();
+      await this.ctx.storage.put(LAST_ACTIVE_KEY, new Date().toISOString());
+    }
     const router = getRouter(this.env);
     const canServe = (entry: { provider: string; model: string }): boolean =>
       this.models.models.getModel(entry.provider, entry.model) !== undefined;
@@ -149,12 +166,54 @@ export class Chat extends DurableObject<Env> {
         const ok = result.status === "done" || (result.status === "unanswered" && result.reason === "aborted");
         router.settle(decision, ok ? "ok" : "error");
         if (!ok) this.sockets.notifyRunFailure(handle.id);
+        if (ok && isTeacherCredential(decision.entry.credential)) {
+          this.ctx.waitUntil(this.meterTurn(handle));
+        }
       })
       .catch(() => {
         if (router.ledger.inFlight(decision.key) > 0) router.settle(decision, "error");
         this.sockets.notifyRunFailure(handle.id);
       });
     return receipt;
+  }
+
+  private async meterTurn(handle: PiSession): Promise<void> {
+    try {
+      const ownerId = await this.teacherId();
+      if (!ownerId) return;
+      const items = await handle.messages();
+      const meteredUpTo = this.#meteredUpTo.get(handle.id) ?? 0;
+      let tokens = 0;
+      for (let index = items.length - 1; index >= 0; index -= 1) {
+        const entry = items[index] as { id?: number; kind: string; model?: readonly Message[] };
+        if (entry.id !== undefined && entry.id <= meteredUpTo) break;
+        if (entry.kind === "pi.user") break;
+        if (entry.kind !== "pi.assistant") continue;
+        const message = entry.model?.[0];
+        if (message?.role === "assistant") tokens += message.usage?.totalTokens ?? 0;
+      }
+      const newest = (items.at(-1) as { id?: number } | undefined)?.id ?? meteredUpTo;
+      if (tokens > 0) await recordUsage(this.env, ownerId, tokens);
+      this.#meteredUpTo.set(handle.id, Math.max(meteredUpTo, newest));
+    } catch (error) {
+      console.warn("[usage] metering failed", error instanceof Error ? error.message : "unknown error");
+    }
+  }
+
+  async live(): Promise<{
+    rounds: number;
+    lastUtterance: string;
+    lastActiveAt: string | null;
+    flags: Array<{ turn: number; type: string; excerpt: string }>;
+  }> {
+    const { messages, violations } = await this.transcript();
+    const said = messages.filter((message) => message.role === "user");
+    return {
+      rounds: said.length,
+      lastUtterance: said.at(-1)?.text ?? "",
+      lastActiveAt: (await this.ctx.storage.get<string>(LAST_ACTIVE_KEY)) ?? null,
+      flags: violations,
+    };
   }
 
   async transcript(): Promise<{
@@ -189,6 +248,9 @@ export class Chat extends DurableObject<Env> {
   private async canSubmit(identity: SocketIdentity): Promise<boolean> {
     const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
     if (!activityId || !participantId || identity.participantId !== participantId) return false;
+    if (activityId.startsWith(SOLO_PREFIX)) {
+      return identity.userId !== null && identity.userId === participantId;
+    }
     const participant = await participantOf(this.env.DB, activityId, participantId);
     if (!participant) return false;
     return participant.user_id === identity.userId;
@@ -200,6 +262,12 @@ export class Chat extends DurableObject<Env> {
     if (!activityId || !participantId) return null;
     const cookie = request.headers.get("Cookie") ?? "";
     const lookup = await lookupSession(this.env, cookieValue(cookie, SESSION_COOKIE));
+    if (activityId.startsWith(SOLO_PREFIX)) {
+      if (lookup.kind !== "ok") return null;
+      const owner = lookup.session.user.id;
+      if (owner !== participantId || !(await ownedSoloChat(this.env.DB, activityId, owner))) return null;
+      return { userId: owner, participantId, version: lookup.session.version };
+    }
     if (lookup.kind === "ok") {
       const identity: SocketIdentity = {
         userId: lookup.session.user.id,
@@ -225,6 +293,15 @@ export class Chat extends DurableObject<Env> {
   private async reverify(identity: SocketIdentity): Promise<ReverifyOutcome> {
     const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
     if (!activityId || !participantId || identity.participantId !== participantId) return "revoked";
+    if (activityId.startsWith(SOLO_PREFIX)) {
+      try {
+        const state = identity.userId === null ? null : await accountState(this.env.DB, identity.userId);
+        if (!state || state.disabled || state.version !== identity.version) return "revoked";
+        return (await ownedSoloChat(this.env.DB, activityId, identity.userId!)) ? "member" : "revoked";
+      } catch {
+        return "error";
+      }
+    }
     try {
       if (identity.userId === null) {
         const participant = await participantOf(this.env.DB, activityId, participantId);
@@ -241,22 +318,6 @@ export class Chat extends DurableObject<Env> {
       return access.isTeacher ? "member" : "revoked";
     } catch (error) {
       return error instanceof ApiError ? "revoked" : "error";
-    }
-  }
-
-  private async revalidate(identity: SocketIdentity): Promise<ReverifyOutcome> {
-    try {
-      if (identity.userId === null) {
-        const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
-        if (!activityId || !participantId || identity.participantId !== participantId) return "revoked";
-        const participant = await participantOf(this.env.DB, activityId, participantId);
-        return participant && participant.user_id === null ? "member" : "revoked";
-      }
-      const state = await accountState(this.env.DB, identity.userId);
-      if (!state || state.disabled || state.version !== identity.version) return "revoked";
-      return "member";
-    } catch {
-      return "error";
     }
   }
 }

@@ -16,14 +16,14 @@ describe("migration 003: activity participant backfill", () => {
     const at = "2026-11-15T00:00:00.000Z";
     await run(
       env.DB,
-      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-       VALUES ('u_t', '林老師', 'teacher', 't@example.com', 'x', 'zh', $at)`,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_t', '林老師', 't@example.com', 'x', 'zh', $at)`,
       { at },
     );
     await run(
       env.DB,
-      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-       VALUES ('u_s', '王小明', 'student', 's@example.com', 'x', 'zh', $at)`,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_s', '王小明', 's@example.com', 'x', 'zh', $at)`,
       { at },
     );
     await run(
@@ -80,8 +80,8 @@ describe("migration 003: activity participant backfill", () => {
   it("deleting the user keeps the participant (report link) and drops only its user_id", async () => {
     await run(
       env.DB,
-      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-       VALUES ('u_gone', '離場者', 'student', 'gone@example.com', 'x', 'zh', '2026-11-15T00:00:00.000Z')`,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_gone', '離場者', 'gone@example.com', 'x', 'zh', '2026-11-15T00:00:00.000Z')`,
     );
     await run(
       env.DB,
@@ -115,8 +115,8 @@ describe("migration 007: user identities", () => {
     const at = "2026-11-15T00:00:00.000Z";
     await run(
       env.DB,
-      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-       VALUES ('u_oid', 'OAuth生', 'student', 'oid@example.com', 'x', 'zh', $at)`,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_oid', 'OAuth生', 'oid@example.com', 'x', 'zh', $at)`,
       { at },
     );
     await run(

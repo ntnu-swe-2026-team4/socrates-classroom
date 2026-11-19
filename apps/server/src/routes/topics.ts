@@ -31,7 +31,7 @@ export function topicsRoutes() {
         "SELECT * FROM topics WHERE classroom_id IS NULL AND (owner_id IS NULL OR owner_id = $uid) ORDER BY created_at, id",
         { uid: user.id },
       );
-      return c.json(rows.map(parsePrompts));
+      return c.json(rows.map((row) => parsePrompts(row, langOf(c))));
     })
     .post("/topics/:id/copy", async (c) => {
       const user = requireCapability(c, "manage_classes");
@@ -91,8 +91,8 @@ export function topicsRoutes() {
     })
     .post("/topics/generate", async (c) => {
       await enforceIpLimit(c, "topics-generate", 10);
+      const user = requireCapability(c, "manage_classes");
       const input = await parseBody(c, GenerateTopicsInputSchema);
-      requireCapability(c, "manage_classes");
       if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {
         return c.json(
           mockTopics(input.direction).topics.map((topic, index) => ({
@@ -104,7 +104,6 @@ export function topicsRoutes() {
         );
       }
       try {
-        const user = requireCapability(c, "manage_classes");
         const { harness, runtime, teacherLegs } = await openProfileHarness(c.env, "topic-gen", async () => user.id);
         const { text } = await runProfile(
           harness,

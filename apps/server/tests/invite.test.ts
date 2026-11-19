@@ -140,8 +140,15 @@ describe("activity invites", () => {
     expect(repeated.status).toBe(200);
 
     const clash = await joinInvite(token, "無痕訪客");
-    expect(clash.status).toBe(409);
-    expect(((await clash.json()) as { code: string }).code).toBe("name_taken");
+    expect(clash.status).toBe(200);
+    const clashBody = (await clash.json()) as { participantId: string };
+    expect(clashBody.participantId).not.toBe(joined.participantId);
+    const clashRow = await one<{ display_name: string }>(
+      env.DB,
+      "SELECT display_name FROM activity_participants WHERE activity_id = $aid AND id = $pid",
+      { aid: activityId, pid: clashBody.participantId },
+    );
+    expect(clashRow?.display_name).toBe("無痕訪客 (2)");
   });
 
   it("reopening the link with the same participant cookie resumes the same participant", async () => {

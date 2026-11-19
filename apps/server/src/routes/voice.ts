@@ -77,7 +77,8 @@ function bindingTtsInput(model: string, text: string, lang: "zh" | "en" | "es"):
 export function voiceRoutes() {
   return new Hono<AppEnv>()
     .post("/stt", async (c) => {
-      requireUser(c);
+      const caller = requireUser(c);
+      if (caller.preview) fail(403, "forbidden");
       await enforceIpLimit(c, "stt", 20);
       const form = await c.req.formData().catch(() => null);
       const audio = form?.get("audio");
@@ -104,7 +105,8 @@ export function voiceRoutes() {
       }
     })
     .post("/tts", async (c) => {
-      requireUser(c);
+      const caller = requireUser(c);
+      if (caller.preview) fail(403, "forbidden");
       await enforceIpLimit(c, "tts", 30);
       const parsed = await parseBody(c, TtsInputSchema);
       const speech = cleanSpeechText(parsed.text);
@@ -168,7 +170,7 @@ export function voiceRoutes() {
       if (c.env.LLM_PROVIDER !== "mock") fail(502, "llm_unavailable");
       const wav = synthWav(input.text, input.lang);
       return new Response(wav as unknown as BodyInit, {
-        headers: { "Content-Type": "audio/wav", "Cache-Control": "no-store" },
+        headers: { "Content-Type": "audio/wav", "Cache-Control": "no-store", "X-Socrates-Fallback": "mock" },
       });
     });
 }

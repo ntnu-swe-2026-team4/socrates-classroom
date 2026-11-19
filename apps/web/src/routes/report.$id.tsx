@@ -1,13 +1,14 @@
+import { meOf } from "@/api/me";
 import { useState } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, type ReportPosition, type StudentAnalysis, type ViolationSlice } from "@/api";
-import { Segmented, Spinner, cn } from "@/components/ui";
+import { BackLink, Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/report/$id")({
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
   },
   component: ReportPage,
@@ -17,8 +18,25 @@ function ReportPage() {
   const t = useT();
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity, enabled: false });
-  const isTeacher = me.data?.canManageClasses ?? false;
+  const info = useQuery({ queryKey: ["activity", id], queryFn: () => api.activityInfo(id), staleTime: 0 });
+  const room = useQuery({
+    queryKey: ["classroom", info.data?.classroomId],
+    queryFn: () => api.getClassroom(info.data?.classroomId ?? ""),
+    enabled: Boolean(info.data?.classroomId),
+  });
+  const isTeacher = room.data?.role === "teacher";
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const railUser = me.data?.kind === "member" && !me.data.guest;
+  const back = railUser && (
+    <BackLink
+      label={t("classroom_back_to_room")}
+      onClick={() =>
+        info.data?.classroomId
+          ? void navigate({ to: "/classrooms/$classroomId", params: { classroomId: info.data.classroomId } })
+          : void navigate({ to: "/classrooms" })
+      }
+    />
+  );
   const [view, setView] = useState<"group" | "individual">("group");
   const [studentIdx, setStudentIdx] = useState(0);
   const report = useQuery({
@@ -26,12 +44,33 @@ function ReportPage() {
     queryFn: () => api.report(id),
     retry: (failureCount, error) => error instanceof ApiError && error.code === "report_pending" && failureCount < 30,
     retryDelay: 4000,
+    enabled: info.isError || Boolean(info.data?.finishedAt),
   });
+
+  if (info.data && !info.data.finishedAt) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-4 text-center text-[15px] text-ink-soft">
+        {back}
+        <p>{t("report_not_finished")}</p>
+        {isTeacher && (
+          <button
+            type="button"
+            onClick={() => void navigate({ to: "/t/live/$id", params: { id } })}
+            className="cursor-pointer rounded-lg border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
+          >
+            {t("live_title")}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   if (report.isPending) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
+        {back}
         <Spinner className="h-6 w-6" />
+        {report.failureCount > 0 && <p className="text-[14px] text-ink-soft">{t("report_generating")}</p>}
       </div>
     );
   }
@@ -41,13 +80,14 @@ function ReportPage() {
     const failed = err?.code === "report_failed";
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-[15px] text-ink-soft">
+        {back}
         <p>{pending ? t("report_generating") : (err?.message ?? t("common_error"))}</p>
         {failed ? (
           isTeacher ? (
             <button
               type="button"
               onClick={() => void navigate({ to: "/t/live/$id", params: { id } })}
-              className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
+              className="cursor-pointer rounded-lg border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
             >
               {t("report_refinish")}
             </button>
@@ -58,7 +98,7 @@ function ReportPage() {
           <button
             type="button"
             onClick={() => report.refetch()}
-            className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
+            className="cursor-pointer rounded-lg border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
           >
             {t("report_retry")}
           </button>
@@ -75,6 +115,7 @@ function ReportPage() {
     <div className="mx-auto w-full max-w-4xl px-5 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3 pl-12 md:pl-0">
         <div>
+          {back}
           <h1 className="font-serif text-2xl font-semibold text-ink">{t("report_title")}</h1>
           <p className="mt-1 text-[13px] text-ink-faint">{data.topicTitle}</p>
         </div>
@@ -93,7 +134,7 @@ function ReportPage() {
 
       {!isTeacherView && (
         <section className="mt-6 flex flex-col gap-6">
-          <p className="text-[14px] text-ink-soft">{person.participantName}</p>
+          <p className="text-[14px] text-ink-soft">{person.pseudonym}</p>
           <Positions positions={person.positions} />
           <Analysis analysis={person.analysis} violations={person.violations} />
         </section>
@@ -115,10 +156,11 @@ function ReportPage() {
               <div className="flex flex-col gap-4">
                 <h2 className="font-serif text-lg font-semibold text-ink">{t("report_axes")}</h2>
                 {data.classReport.axes.map((axis) => (
-                  <div key={axis.name} className="rounded-2xl border border-line bg-card p-5">
+                  <div key={axis.name} className="border border-line bg-card p-5">
                     <p className="text-[15px] font-medium text-ink">
                       {axis.name}：{axis.low} ↔ {axis.high}
                     </p>
+                    <StanceAxis low={axis.low} high={axis.high} points={axis.positions} />
                     <ul className="mt-3 flex flex-col gap-1.5">
                       {axis.positions.map((position) => (
                         <li key={`${axis.name}-${position.id}`} className="text-[13.5px] text-ink-soft">
@@ -141,7 +183,7 @@ function ReportPage() {
               )}
             </>
           ) : (
-            <div className="rounded-2xl border border-line bg-card p-5">
+            <div className="border border-line bg-card p-5">
               <p className="text-[14px] text-ink-soft">{t("report_partial")}</p>
             </div>
           )}
@@ -157,16 +199,13 @@ function ReportPage() {
                 key={student.participantId}
                 onClick={() => setStudentIdx(index)}
                 className={cn(
-                  "rounded-full border px-3.5 py-1.5 text-[13px] transition-colors",
+                  "rounded-lg border px-3.5 py-1.5 text-[13px] transition-colors",
                   index === studentIdx
                     ? "border-ember bg-ember-wash font-medium text-ember"
                     : "border-line bg-card text-ink-soft",
                 )}
               >
-                {student.participantName}
-                {student.participantName === student.pseudonym ? null : (
-                  <span className="ml-1.5 text-ink-faint">· {student.pseudonym}</span>
-                )}
+                {student.pseudonym}
               </button>
             ))}
           </div>
@@ -174,6 +213,42 @@ function ReportPage() {
           <Analysis analysis={person.analysis} violations={person.violations} />
         </section>
       )}
+    </div>
+  );
+}
+
+function StanceAxis({ low, high, points }: { low: string; high: string; points: Array<{ id: string; at: number }> }) {
+  const lanes: number[] = [];
+  const placed = [...points]
+    .sort((a, b) => a.at - b.at)
+    .map((point) => {
+      let lane = lanes.findIndex((last) => point.at - last >= 9);
+      if (lane < 0) lane = lanes.length;
+      lanes[lane] = point.at;
+      return { ...point, lane };
+    });
+  const rows = Math.max(1, lanes.length);
+  return (
+    <div data-stance-axis className="mt-4">
+      <div className="relative mx-3" style={{ height: `${rows * 30 + 14}px` }}>
+        <span aria-hidden className="absolute inset-x-0 bottom-[6px] h-px bg-line-strong" />
+        <span aria-hidden className="absolute bottom-0 left-1/2 h-[13px] w-px bg-line-strong" />
+        {placed.map((point) => (
+          <span
+            key={point.id}
+            title={`${point.id} · ${point.at}`}
+            className="absolute flex -translate-x-1/2 flex-col items-center"
+            style={{ left: `${point.at}%`, bottom: `${point.lane * 30}px` }}
+          >
+            <span className="mb-0.5 max-w-[72px] truncate text-[11px] leading-none text-ink-soft">{point.id}</span>
+            <span className="size-3 rounded-full border-2 border-paper bg-ember" />
+          </span>
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between gap-4 text-[12px] text-ink-faint">
+        <span>{low}</span>
+        <span className="text-right">{high}</span>
+      </div>
     </div>
   );
 }
@@ -186,7 +261,7 @@ function Positions({ positions }: { positions: ReportPosition[] }) {
       <h2 className="font-serif text-lg font-semibold text-ink">{t("report_positions")}</h2>
       <ul className="flex max-w-2xl flex-col gap-2">
         {positions.map((position) => (
-          <li key={position.axis} className="rounded-2xl border border-line bg-card px-4 py-3 text-[14px] text-ink">
+          <li key={position.axis} className="border border-line bg-card px-4 py-3 text-[14px] text-ink">
             <span className="font-medium">{position.axis}</span>
             <span className="text-ink-faint"> · {t("report_position", { at: position.at })}</span>
             <p className="mt-1 text-[13.5px] text-ink-soft">{position.view}</p>
@@ -208,18 +283,18 @@ function Analysis({ analysis, violations }: { analysis: StudentAnalysis | null; 
       <h2 className="font-serif text-lg font-semibold text-ink">{t("report_summary")}</h2>
       {analysis.stated ? (
         <div className="flex flex-col gap-3">
-          <div className="rounded-2xl border border-line bg-card p-4">
+          <div className="border border-line bg-card p-4">
             <p className="text-[13px] font-medium text-moss">{t("report_claim")}</p>
             <p className="mt-1 text-[14.5px] text-ink">{analysis.claim.text}</p>
             <p className="mt-0.5 text-[12.5px] text-ink-faint">{turns(analysis.claim.turns)}</p>
           </div>
-          <div className="rounded-2xl border border-line bg-card p-4">
+          <div className="border border-line bg-card p-4">
             <p className="text-[13px] font-medium text-moss">{t("report_reason")}</p>
             <p className="mt-1 text-[14.5px] text-ink">{analysis.reasons.text}</p>
             <p className="mt-0.5 text-[12.5px] text-ink-faint">{turns(analysis.reasons.turns)}</p>
           </div>
           {analysis.tension && (
-            <div className="rounded-2xl border border-line bg-card p-4">
+            <div className="border border-line bg-card p-4">
               <p className="text-[13px] font-medium text-ember">{t("report_tension")}</p>
               <p className="mt-1 text-[14.5px] text-ink">{analysis.tension.text}</p>
               <p className="mt-0.5 text-[12.5px] text-ink-faint">{turns(analysis.tension.turns)}</p>
@@ -227,7 +302,7 @@ function Analysis({ analysis, violations }: { analysis: StudentAnalysis | null; 
           )}
         </div>
       ) : (
-        <div className="rounded-2xl border border-line bg-card p-4">
+        <div className="border border-line bg-card p-4">
           <p className="text-[13px] font-medium text-moss">{t("report_doing")}</p>
           <p className="mt-1 text-[14.5px] text-ink">{analysis.doing.text}</p>
           <p className="mt-0.5 text-[12.5px] text-ink-faint">{turns(analysis.doing.turns)}</p>

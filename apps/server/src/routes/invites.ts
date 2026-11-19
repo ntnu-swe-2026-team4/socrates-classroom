@@ -94,6 +94,7 @@ export function inviteRoutes() {
 
       const at = nowIso();
       if (user) {
+        if (user.kind === "student" && user.classroomId !== activity.classroom_id) fail(403, "student_restricted");
         const member = await one<MemberRow>(
           c.env.DB,
           "SELECT * FROM members WHERE classroom_id = $cid AND user_id = $uid",

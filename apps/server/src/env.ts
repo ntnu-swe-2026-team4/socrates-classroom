@@ -16,4 +16,6 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   FAUX_TOKENS_PER_SECOND?: string;
+  ALERT_EMAIL?: unknown;
+  ALERT_EMAIL_FROM?: string;
 }

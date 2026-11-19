@@ -85,7 +85,7 @@ describe("websearch extension (web_search + get_search_content)", () => {
     expect(found).not.toContain("no match");
   });
 
-  it("fetch_content fetches any URL directly (no search-first gate; web is fully open)", async () => {
+  it("fetch_content only fetches URLs that came from this conversation's searches", async () => {
     const { createWebSearchExtension } = await import("../src/pi/extensions/websearch");
     const fakeAi = {
       websearch: async () =>
@@ -100,14 +100,17 @@ describe("websearch extension (web_search + get_search_content)", () => {
     const fetchTool = tools.find((tool) => tool.name === "fetch_content")!;
 
     const origFetch = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      new Response("<html><title>Justice</title><body>justice body</body></html>", {
+    let fetched = false;
+    globalThis.fetch = (async () => {
+      fetched = true;
+      return new Response("<html><title>Justice</title><body>justice body</body></html>", {
         headers: { "content-type": "text/html" },
-      })) as typeof fetch;
+      });
+    }) as typeof fetch;
     try {
-      const fetched = await fetchTool.execute({ url: "https://example.org/wiki/Anything", mode: "raw" });
-      expect(fetched.output[0]!.text).toContain("justice body");
-      expect(fetched.output[0]!.text).not.toContain("web_search results");
+      const gated = await fetchTool.execute({ url: "https://example.org/wiki/Anything", mode: "raw" });
+      expect(gated.output[0]!.text).toContain("only URLs from this conversation's web_search results");
+      expect(fetched).toBe(false);
     } finally {
       globalThis.fetch = origFetch;
     }
