@@ -2,6 +2,16 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-19 — Landing 捲動故事頁（sprite sheet，取代 Lottie）（`split/177-landing`，#177）
+
+### Changed
+
+- `/` 改為捲動驅動漫畫故事頁：47 張 WebP sprite sheet 於 `<canvas>` 播放（視差、人群氣球、眼睛虹彩切換），rAF 走 `createFrameLoop`，尊重 `prefers-reduced-motion`；資產由 repo 外產出（Blender＋Pillow），更換時 bump `ASSET_VERSION`
+
+### Removed
+
+- `lottie-web` 依賴、`src/landing/` 故事實作（`LandAnimation`／`StorySection`／`story`／`useStoryTour`／`lottie.d.ts`）與 `public/landing/*.json`；`LandingChrome` 與 `landing.css` 保留至登入頁單（#178）退場
+
 ## 2026-11-19 — 內頁基礎層：視覺系統與 effect-free 架構（`split/176-base`，#176）
 
 ### Added

@@ -88,6 +88,6 @@
 | 單一 Worker | Hono API + SPA 靜態資產 + 兩個 DO，同一部署單位                                                                                                              |
 | D1          | 應用資料（users／classrooms／topics／activities／members／activity_participants／reports／pseudonyms／teacher_keys）；migrations 走 `cf d1 migrations apply` |
 | i18n        | 介面三語（zh-TW/en/es，typed dictionary 由 tsc 強制完備）；後端訊息 (`src/messages.ts`) 同步三語                                                             |
-| 登入前故事  | StorySection 互動故事頁（#83 拆分互動化）＋ Lottie 動畫（捲動載入）                                                                                          |
+| 登入前故事  | 捲動驅動漫畫故事頁：47 張 WebP sprite sheet 於 `<canvas>` 播放（視差、人群氣球、眼睛虹彩切換）；資產 repo 外產出，更換時 bump `ASSET_VERSION`                |
 | CI/CD       | GitHub Actions：PR lint/test（server＋web）/build/dry-run；main 自動 migrations + deploy（見 [`cf.md`](./cf.md)）                                            |
 | 觀測        | Worker observability 開啟；AI Gateway log/cache 關閉（ZDR）；log 不含學生對話內容                                                                            |

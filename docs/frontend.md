@@ -57,17 +57,17 @@ Journey：學生 `1→2→5→7`；老師 `1→3→4→6→7`；回訪 `9/10→5
 
 ## 3. Stack（版本 2026-11-04 查證）
 
-| 層           | 選擇                                                           | 查證版本                                                     | 備註                                                                  |
-| ------------ | -------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------- |
-| UI framework | React + **React Compiler**                                     | 19.3（19.3.0 2026-09-09）／Compiler 1.0（2025-10-07 stable） | Compiler 自動 memoization；鎖精確版本                                 |
-| Build        | **Vite 8**（Rolldown）                                         | 8.0（2026-03-12；Rolldown 1.0 2026-05-07）                   | 單一 Rust bundler；與 `@cloudflare/vite-plugin` 相容                  |
-| Router       | **TanStack Router**（file-based）                              | 1.170.46（2026-10-22）                                       | 型別安全 search params（入場碼、報告視角）                            |
-| Server state | **TanStack Query**                                             | 5.104.5（2026-10-19）                                        | route loader + `ensureQueryData` 沿用現有模式                         |
-| Components   | 手寫 primitives（`components/ui.tsx`，cva＋tailwind-merge）    | —                                                            | 無第三方元件庫依賴；shadcn 目錄已隨 v3 退役                           |
-| Styling      | Tailwind CSS 4                                                 | 既有                                                         | `@tailwindcss/vite` 已在用                                            |
-| API client   | **Hono RPC `hc<RpcApp>`**                                      | hono 4.13.16                                                 | client ~2KB＝typed fetch；見 §4                                       |
-| i18n         | 手寫 typed dictionary（`Record<MessageKey,string>`＋`useT()`） | —                                                            | in-place 語言切換（不換頁、保留 React state）已實測；三語編譯期完整性 |
-| 動畫         | lottie-web（故事頁既有素材）、three.js（頭像）                 | 既有                                                         | #83 明訂不從頭重做動畫                                                |
+| 層           | 選擇                                                                           | 查證版本                                                     | 備註                                                                  |
+| ------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------ | --------------------------------------------------------------------- |
+| UI framework | React + **React Compiler**                                                     | 19.3（19.3.0 2026-09-09）／Compiler 1.0（2025-10-07 stable） | Compiler 自動 memoization；鎖精確版本                                 |
+| Build        | **Vite 8**（Rolldown）                                                         | 8.0（2026-03-12；Rolldown 1.0 2026-05-07）                   | 單一 Rust bundler；與 `@cloudflare/vite-plugin` 相容                  |
+| Router       | **TanStack Router**（file-based）                                              | 1.170.46（2026-10-22）                                       | 型別安全 search params（入場碼、報告視角）                            |
+| Server state | **TanStack Query**                                                             | 5.104.5（2026-10-19）                                        | route loader + `ensureQueryData` 沿用現有模式                         |
+| Components   | 手寫 primitives（`components/ui.tsx`，cva＋tailwind-merge）                    | —                                                            | 無第三方元件庫依賴；shadcn 目錄已隨 v3 退役                           |
+| Styling      | Tailwind CSS 4                                                                 | 既有                                                         | `@tailwindcss/vite` 已在用                                            |
+| API client   | **Hono RPC `hc<RpcApp>`**                                                      | hono 4.13.16                                                 | client ~2KB＝typed fetch；見 §4                                       |
+| i18n         | 手寫 typed dictionary（`Record<MessageKey,string>`＋`useT()`）                 | —                                                            | in-place 語言切換（不換頁、保留 React state）已實測；三語編譯期完整性 |
+| 動畫         | three.js（頭像）、sprite sheet `<canvas>` 播放器（rAF 共用 `createFrameLoop`） | 既有                                                         | #83 明訂不從頭重做動畫；lottie-web 已隨故事頁 sprite 化移除           |
 
 資產管線：頭像模型以 gltfpack 壓縮——`npx gltfpack -i public/socrates.glb -o out.glb -cc -kn -vp 16 -vn 16 -vt 16 -vc 16`（7.9MB → 1.8MB，2026-11-05）；`scene.ts` 掛 `MeshoptDecoder` 解壓。每次更新模型後重跑，並驗證 `targetNames`（41 個 viseme／blink／brow morphs）與嘴型動畫存活。
 
