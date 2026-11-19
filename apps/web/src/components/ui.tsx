@@ -259,6 +259,8 @@ export function Initial({ name, className }: { name?: string | null; className?:
 const FOCUSABLE_SELECTOR =
   "a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
+const inertCounts = new Map<Element, number>();
+
 export function trapDialogFocus(node: HTMLElement | null): (() => void) | undefined {
   if (!node) return;
   const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -270,6 +272,8 @@ export function trapDialogFocus(node: HTMLElement | null): (() => void) | undefi
   const inerted: Element[] = [];
   for (const child of document.body.children) {
     if (child.contains(node)) continue;
+    const held = inertCounts.get(child) ?? 0;
+    inertCounts.set(child, held + 1);
     child.setAttribute("inert", "");
     inerted.push(child);
   }
@@ -285,7 +289,14 @@ export function trapDialogFocus(node: HTMLElement | null): (() => void) | undefi
   node.addEventListener("keydown", onKeyDown);
   return () => {
     node.removeEventListener("keydown", onKeyDown);
-    for (const child of inerted) child.removeAttribute("inert");
+    for (const child of inerted) {
+      const held = (inertCounts.get(child) ?? 0) - 1;
+      if (held > 0) inertCounts.set(child, held);
+      else {
+        inertCounts.delete(child);
+        child.removeAttribute("inert");
+      }
+    }
     previous?.focus();
   };
 }
@@ -415,5 +426,41 @@ export function FormDialog({
       </form>
     </div>,
     document.body,
+  );
+}
+
+export function TrapDialog({
+  className,
+  onClose,
+  ariaLabelledBy,
+  plain,
+  children,
+}: {
+  className: string;
+  onClose: () => void;
+  ariaLabelledBy?: string;
+  plain?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className={cn("absolute inset-0", !plain && "anim-fade bg-black/40")} onClick={onClose} />
+      <div
+        ref={trapDialogFocus}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        {...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {})}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            onClose();
+          }
+        }}
+        className={className}
+      >
+        {children}
+      </div>
+    </div>
   );
 }

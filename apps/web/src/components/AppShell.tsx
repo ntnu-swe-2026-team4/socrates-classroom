@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type Ref } from "react";
+import { useRef, useState } from "react";
 import { useAccountSheetRequest } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,7 +24,7 @@ import { readActivityId } from "@/api/local";
 import { ADMIN_SECTIONS, type AdminTab } from "@/lib/adminSections";
 import { NotificationBell } from "@/components/Notifications";
 import { SocratesCompanion } from "@/components/SocratesCompanion";
-import { Button, ConfirmDialog, Initial, cn } from "@/components/ui";
+import { Button, ConfirmDialog, Initial, TrapDialog, cn } from "@/components/ui";
 import { useDomEvent } from "@/hooks/useSubscription";
 import { useI18n } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
@@ -104,8 +104,6 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [guestLogout, setGuestLogout] = useState(false);
-  const drawerDialogRef = useDialogFocus();
-  const accountDialogRef = useDialogFocus();
 
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
   const logout = useMutation({
@@ -361,7 +359,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       </button>
 
       {drawerOpen && (
-        <TrapDialog ref={drawerDialogRef} className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
+        <TrapDialog className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
           {rail}
         </TrapDialog>
       )}
@@ -400,7 +398,6 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
 
       {accountOpen && (
         <TrapDialog
-          ref={accountDialogRef}
           ariaLabelledBy="account-title"
           plain
           className="anim-rise absolute bottom-3 left-3 flex w-64 flex-col rounded-xl border border-line bg-paper p-1.5 shadow-xl md:left-[92px]"
@@ -506,72 +503,6 @@ function PreviewBanner({ classroomId, pathname }: { classroomId?: string; pathna
       >
         {t("preview_leave")}
       </button>
-    </div>
-  );
-}
-
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-function useDialogFocus() {
-  return useCallback((node: HTMLDivElement | null) => {
-    if (!node) return;
-    const restore = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    node.focus();
-    return () => {
-      restore?.focus();
-    };
-  }, []);
-}
-
-function TrapDialog({
-  ref,
-  className,
-  onClose,
-  ariaLabelledBy,
-  plain,
-  children,
-}: {
-  ref?: Ref<HTMLDivElement>;
-  className: string;
-  onClose: () => void;
-  ariaLabelledBy?: string;
-  plain?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="fixed inset-0 z-50">
-      <div className={cn("absolute inset-0", !plain && "anim-fade bg-black/40")} onClick={onClose} />
-      <div
-        ref={ref}
-        role="dialog"
-        aria-modal="true"
-        tabIndex={-1}
-        {...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {})}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.stopPropagation();
-            onClose();
-            return;
-          }
-          if (event.key !== "Tab") return;
-          const container = event.currentTarget;
-          const focusables = [...container.querySelectorAll(FOCUSABLE)] as HTMLElement[];
-          if (focusables.length === 0) return;
-          const first = focusables[0]!;
-          const last = focusables.at(-1)!;
-          if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-          } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-          }
-        }}
-        className={className}
-      >
-        {children}
-      </div>
     </div>
   );
 }
