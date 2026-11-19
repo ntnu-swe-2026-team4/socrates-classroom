@@ -1,6 +1,6 @@
 # LLM Providers 紀錄
 
-> 查證日期：2026-11-03（providers.md 首版；後續查證見各節標注）｜ 更新日期：2026-11-08｜ 狀態：供 LLM 組與後端共用的 provider 參考
+> 查證日期：2026-11-03（providers.md 首版；後續查證見各節標注）｜ 更新日期：2026-11-19｜ 狀態：供 LLM 組與後端共用的 provider 參考
 > 配套文件：[`cf.md`](./cf.md)（Cloudflare CLI）、[`pi.md`](./pi.md)（Pi Durable）
 
 ## Pool 定位
@@ -15,6 +15,8 @@
 
 > 2026-11-10：自架 DGX Spark 腿**暫時移除**（等 Cloudflare Tunnel 上線＋key 管控後回歸，回歸 = 把 provider block 加回 `providers.config.yaml`，零程式碼變更）。移除期間平台鏈單一 provider（全 Cloudflare），排查單純。
 > fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），不能只鎖 provider。
+
+> 2026-11-19 現況（`providers.config.yaml`）：availability 平台鏈＝workers-ai 兩腿（`@cf/zai-org/glm-5.3-flash` priority 1、`@cf/zai-org/glm-4.7-flash` priority 2，credential `platform`）；catalog 另宣告 `openrouter`（`z-ai/glm-5.3-flash`）與 `glm`（Coding Plan 端點，glm-4.6／4.7／5.3／4.5-air）兩 provider（cost paid）——皆未入 availability 鏈。teacher legs 不讀 YAML 的 providers/availability：provider／model 來自 D1 `teacher_key_entries`（pi builtin catalog 驗證），credential＝`teacher:{userId}:{entryId}`（每 entry 獨立 ledger，`maxConcurrency` 取 `teacherChain`）。
 
 ---
 
@@ -61,7 +63,7 @@
 - **AI Gateway credits（2026-11-05 官方 Unified Billing）**：**純預付、無免費月度額度**，購買收 5% 手續費（僅信用卡）；推論價格 pass-through。Web Search API（ceramic $0.25/1k）與付費清單模型都吃這個——**402 web_search_payment_required＝credits 為零**，載入後即通
 - **語音模型（#56/#69，2026-11-05 官方目錄查證）**：
   - STT：`@cf/openai/whisper-large-v3-turbo`（ZDR yes、$0.000513/audio-min）；binding 輸入＝base64 字串（schema `audio: string｜{body,contentType}`）
-  - TTS：`@cf/myshell-ai/melotts`（ZDR yes、$0.000205/audio-min、zh 支援）；binding 參數 `prompt`＋`lang`，回 base64 WAV 文字流——**已實測**（216KB WAV→whisper 閉環轉錄）
+  - TTS：`@cf/myshell-ai/melotts`（ZDR yes、$0.000205/audio-min、zh 支援）；binding 參數 `prompt`＋`lang`，回 base64 WAV 文字流——**已實測**（216KB WAV→whisper 閉環轉錄）。⚠️ **查證紀錄，非現行設定**：2026-11-10 起 production 改用 `xai/grok-tts`（melotts deprecation 前切換，#119；`TTS_MODEL` 綁定預設值，經 `AI` binding，grok 形制參數 `text`＋`language`＋`voice_id`、回 mp3/audio）——grok-tts 本身的 ZDR／定價查證未做（見待辦）
 - **ZDR**：官方明文「Zero data retention」+「No training」；⚠️ 例外：**AI Gateway 開 logging/caching 會存內容**——學生流量不要開
 
 ## 5. OpenRouter（聚合器／BYOK 路由）
@@ -150,7 +152,7 @@
 2. **Teacher keys**（2026-11-09 定案）：老師可存**任意 pi builtin provider** 的 key＋自選 model；其教室流量**老師鏈在前、平台鏈墊後**。provider×model 是無窮空間，平台不逐一審查——資料責任由 **ToS 移轉**給教師（設定頁有責任條款文案）；平台僅保證 fallback 到的平台鏈 ZDR。
 3. **平台鏈模型白名單**（可進 fallback 的）：GLM-5.3-Flash、GLM-5.3、GLM-5.2、Kimi／Qwen／MiniMax／MiMo 等 0-day retention 模型。禁入：Muse Spark、Iceman（會訓練）、Grok／GPT Luna／Claude Haiku（30 天）。
 4. **開發流量**：Coding Plan 優先（額度大、離峰五折），任何 provider 皆可。
-5. **應用層記帳**：ledger 以 (provider, model, credential) 記帳——teacher leg 用 `teacher:<userId>` credential 獨立記；連續 5 次 error 開 60s cooldown（pi 不提供結構化錯誤狀態，無法分類 429/401，誠實只記 ok/error）。settle 由 run 完成回呼驅動（fire-and-forget）：DO 在 run 中途被 evict 時該次不結帳，inFlight 計數洩漏至 isolate 結束為止——cooldown 因此「保守慢」而非即時；ledger 生命週期＝isolate 生命週期，後果有界。
+5. **應用層記帳**：ledger 以 (provider, model, credential) 記帳——teacher leg 用 `teacher:{userId}:{entryId}` credential 每筆 entry 獨立記（路由選中的 entry 由 `withPinnedCredential` 釘住，pi 讀 credential 時取得該 entry 的 key）；連續 5 次 error 開 60s cooldown（pi 不提供結構化錯誤狀態，無法分類 429/401，誠實只記 ok/error）。settle 由 run 完成回呼驅動（fire-and-forget）：DO 在 run 中途被 evict 時該次不結帳，inFlight 計數洩漏至 isolate 結束為止——cooldown 因此「保守慢」而非即時；ledger 生命週期＝isolate 生命週期，後果有界。
 
 ## 設定與運維
 
@@ -166,7 +168,7 @@ pnpm --filter @socrates/server run gen-config
 #    （CI 有 drift check：gen-config 沒跑會直接紅）
 ```
 
-改動生效範圍：對話 legs（interactive/batch traffic class）、classifiers（emotion/violation）、voice stt/tts、report 參數——程式碼零模型 id，改 YAML 即全部生效。
+改動生效範圍：對話 legs（interactive/batch traffic class）、classifiers（emotion/violation）、voice stt／tts（tts 實際讀 `TTS_MODEL` 綁定——`cloudflare.config.ts` 預設同值；YAML `voice.tts` 是未設綁定時的 fallback）、report 參數——程式碼零模型 id，改 YAML 即全部生效。
 
 ### 平台憑證（platform credentials）
 
@@ -180,7 +182,7 @@ pnpm --filter @socrates/server run gen-config
 
 ### Teacher keys（老師自帶 key）
 
-- **設定入口**：老師登入 → `/settings` → Teacher keys 卡片——選 provider（pi builtin catalog）→ 選 model（該 provider 的 model 清單）→ 貼新 key 或沿用已存的 key；可加入多把 key、多個 model，拖曳把手（或上移／下移）調整順序（`sort_order`＝teacher legs 鏈序，老師鏈在前、平台鏈墊後）
+- **設定入口**：老師登入 → `/settings` → Teacher keys 卡片——選 provider（pi builtin catalog）→ 選 model（該 provider 的 model 清單）→ 貼新 key 或沿用已存 entry 的 key（`fromEntry`）；可加入多把 key、多個 model（entry 制，上限 20 筆），拖曳把手（或上移／下移）調整順序（`sort_order`＝teacher legs 鏈序，老師鏈在前、平台鏈墊後）
 - **儲存**：D1 AES-GCM（金鑰 `BYOK_ENC_KEY`）；明文永不回傳（只回 last4）
 - **責任**：老師鏈流量 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；學生無 BYOK 入口（#82）
 - API 形狀見 [`api-contract.md`](./api-contract.md) §9
@@ -190,12 +192,13 @@ pnpm --filter @socrates/server run gen-config
 - [ ] 上線前 email OpenCode 確認 Go 用於非 coding-agent 產品後端的立場
 - [ ] Cloudflare Tunnel 設定（團隊自建）——記得套 Access policy 限制僅自家 Worker 可呼叫
 - [ ] opencode-go 的實際併發實測（官方無數字）
-- [x] BYOK 定案（2026-11-06，#82）：teacher keys（一 provider 一把 key，D1 AES-GCM）；**學生無 BYOK 入口**
+- [x] BYOK 定案（2026-11-06，#82）：teacher keys（初版一 provider 一把 key，D1 AES-GCM）；**學生無 BYOK 入口**（2026-11-16 起 #152 擴為 entry 制：多 key×多 model、每 entry 一 ledger）
 - [x] teacher keys 服務定案（2026-11-09）：任意 pi builtin provider、ToS 責任移轉、老師鏈前平台鏈後（`docs/api-contract.md` §9）
 - [x] runtime 設定層：已定案 `providers.config.yaml`（build-time 編譯，provider×credential×priority×traffic class；2026-11-06）——whitelist/pool.ts 退役，准入由 YAML providers 節把關
-- [x] server-side TTS 選型查證：**已定案 `@cf/myshell-ai/melotts`**（ZDR yes、$0.000205/audio-min、zh 支援；2026-11-05 官方目錄查證＋實測閉環，見 §4 語音模型；自架 DGX 已出局）
+- [x] server-side TTS 選型查證：**已定案 `@cf/myshell-ai/melotts`**（ZDR yes、$0.000205/audio-min、zh 支援；2026-11-05 官方目錄查證＋實測閉環，見 §4 語音模型；自架 DGX 已出局）——2026-11-10 起 production 設定改 `xai/grok-tts`（melotts deprecation 前切換，#119；melotts 查證紀錄保留於 §4）
 - [x] #55 Clef／Clef-flash ZDR 查證：**已完成**（官方明文零保留／不訓練；例外、約束與資料位置見 §7.1；2026-11-08）
 - [ ] judgment 流量的資料位置（region）確認（官方未說明）
+- [ ] `xai/grok-tts` 的 ZDR／定價查證（2026-11-10 切換，#119；查證未做）
 - [x] #55 Jev ZDR 查證：**已完成**（直連 ✗；經 OpenCode、經 Workers AI 未證實；見 §7.2；2026-11-08）
 - [ ] 確認 `typesafe/jev` 是否真的由 Workers AI 提供（pi-ai catalog 列出，Cloudflare 官方目錄與定價頁查無）
 
