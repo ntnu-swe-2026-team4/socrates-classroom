@@ -37,6 +37,7 @@ export const AvailabilityEntrySchema = z
     credential: z.enum(["platform"]).or(z.string().regex(/^teacher:/)),
     maxConcurrency: z.number().int().min(0),
     priority: z.number().int(),
+    providerMaxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
   })
   .strict();
 

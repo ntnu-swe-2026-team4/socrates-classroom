@@ -20,9 +20,14 @@ export class GatewayLedger {
   readonly #ledger = new Map<string, LedgerEntry>();
   readonly #cooldown = new Map<string, number>();
   readonly #inFlight = new Map<string, number>();
+  readonly #providerInFlight = new Map<string, number>();
 
   #key(key: LedgerKey): string {
     return `${key.provider}|${key.model}|${key.credential}`;
+  }
+
+  #providerKey(key: LedgerKey): string {
+    return `${key.provider}|${key.credential}`;
   }
 
   cooldownUntil(key: LedgerKey): number {
@@ -37,6 +42,10 @@ export class GatewayLedger {
     return this.#inFlight.get(this.#key(key)) ?? 0;
   }
 
+  inFlightProvider(key: LedgerKey): number {
+    return this.#providerInFlight.get(this.#providerKey(key)) ?? 0;
+  }
+
   record(key: LedgerKey): void {
     const entry = this.#ledger.get(this.#key(key)) ?? { requests: 0, failures: 0, lastKind: null, lastAt: 0 };
     entry.requests += 1;
@@ -47,6 +56,8 @@ export class GatewayLedger {
   begin(key: LedgerKey): void {
     const id = this.#key(key);
     this.#inFlight.set(id, (this.#inFlight.get(id) ?? 0) + 1);
+    const pid = this.#providerKey(key);
+    this.#providerInFlight.set(pid, (this.#providerInFlight.get(pid) ?? 0) + 1);
   }
 
   end(key: LedgerKey): void {
@@ -54,6 +65,10 @@ export class GatewayLedger {
     const next = Math.max(0, (this.#inFlight.get(id) ?? 0) - 1);
     if (next === 0) this.#inFlight.delete(id);
     else this.#inFlight.set(id, next);
+    const pid = this.#providerKey(key);
+    const pNext = Math.max(0, (this.#providerInFlight.get(pid) ?? 0) - 1);
+    if (pNext === 0) this.#providerInFlight.delete(pid);
+    else this.#providerInFlight.set(pid, pNext);
   }
 
   settle(key: LedgerKey, kind: SettleKind): void {
@@ -70,6 +85,15 @@ export class GatewayLedger {
       if (entry.failures >= MAX_FAILURES_FOR_COOLDOWN) this.#cooldown.set(id, Date.now() + COOLDOWN_MS);
     }
     this.#ledger.set(id, entry);
+  }
+
+  hasRoom(entry: { maxConcurrency: number; providerMaxConcurrency?: number | null }, key: LedgerKey): boolean {
+    if (this.inCooldown(key)) return false;
+    if (this.inFlight(key) >= entry.maxConcurrency) return false;
+    if (entry.providerMaxConcurrency != null && this.inFlightProvider(key) >= entry.providerMaxConcurrency) {
+      return false;
+    }
+    return true;
   }
 
   status(key: LedgerKey): {

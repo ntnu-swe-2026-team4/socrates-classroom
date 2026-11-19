@@ -106,8 +106,8 @@ describe("teacherLegsOf (#152: one leg per (provider, model), each its own max_c
     );
     await run(
       env.DB,
-      `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
-       VALUES ('u_legs', 'deepseek', 'enc', 'aaaa', 1, $at)`,
+      `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at, max_concurrency)
+       VALUES ('u_legs', 'deepseek', 'enc', 'aaaa', 1, $at, 6)`,
       { at },
     );
     await run(
@@ -138,6 +138,7 @@ describe("teacherLegsOf (#152: one leg per (provider, model), each its own max_c
         credential: "teacher:u_legs",
         maxConcurrency: 2,
         priority: 0,
+        providerMaxConcurrency: null,
       },
       {
         provider: "openrouter",
@@ -145,8 +146,16 @@ describe("teacherLegsOf (#152: one leg per (provider, model), each its own max_c
         credential: "teacher:u_legs",
         maxConcurrency: fallback,
         priority: 0,
+        providerMaxConcurrency: null,
       },
-      { provider: "deepseek", model: "glm-4.6", credential: "teacher:u_legs", maxConcurrency: fallback, priority: 0 },
+      {
+        provider: "deepseek",
+        model: "glm-4.6",
+        credential: "teacher:u_legs",
+        maxConcurrency: fallback,
+        priority: 0,
+        providerMaxConcurrency: 6,
+      },
     ]);
   }, 60_000);
 
@@ -157,6 +166,56 @@ describe("teacherLegsOf (#152: one leg per (provider, model), each its own max_c
     await applyD1Migrations(env.DB, inject("d1Migrations"));
     expect(await teacherLegsOf(env as unknown as Env, "u_nobody")).toEqual([]);
   }, 60_000);
+});
+
+describe("provider aggregate cap (#152 follow-up: teacher_keys.max_concurrency bounds all of a provider's legs together)", () => {
+  const legs = (providerMaxConcurrency: number | null) => [
+    {
+      provider: "openrouter",
+      model: "z-ai/glm-4.7-flash",
+      credential: "teacher:t_cap",
+      maxConcurrency: 4,
+      priority: 0,
+      providerMaxConcurrency,
+    },
+    {
+      provider: "openrouter",
+      model: "z-ai/glm-5.3-flash",
+      credential: "teacher:t_cap",
+      maxConcurrency: 4,
+      priority: 1,
+      providerMaxConcurrency,
+    },
+  ];
+
+  const own = (leg: { provider: string }) => leg.provider === "openrouter" || leg.provider === "deepseek";
+
+  it("chain skips a provider's legs once their combined in-flight hits the provider cap; null cap never binds", async () => {
+    const { Router } = await import("../src/gateway/router");
+    const router = new Router({ AI: {} } as never);
+
+    const capped = legs(2);
+    expect(router.pick("interactive", own, capped)).not.toBeNull();
+    expect(router.pick("interactive", own, capped)).not.toBeNull();
+    expect(router.pick("interactive", own, capped)).toBeNull();
+
+    const uncapped = legs(null);
+    expect(router.pick("interactive", own, uncapped)).not.toBeNull();
+    expect(router.pick("interactive", own, uncapped)).not.toBeNull();
+    expect(router.pick("interactive", own, uncapped)).not.toBeNull();
+    expect(router.pick("interactive", own, uncapped)).not.toBeNull();
+  });
+
+  it("budget = sum over providers of min(sum of legs, provider cap)", async () => {
+    const { Router } = await import("../src/gateway/router");
+    const router = new Router({ AI: {} } as never);
+    const capped = legs(2);
+    const other = [
+      { provider: "deepseek", model: "glm-4.6", credential: "teacher:t_cap", maxConcurrency: 2, priority: 2 },
+    ];
+    expect(router.budget("interactive", [...capped, ...other], own)).toBe(4);
+    expect(router.budget("interactive", [...legs(null), ...other], own)).toBe(10);
+  });
 });
 
 describe("teacher legs (#82: teacher keys first, platform chain as fallback)", () => {

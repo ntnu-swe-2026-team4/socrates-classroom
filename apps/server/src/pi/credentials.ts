@@ -84,6 +84,7 @@ export interface TeacherLeg {
   model: string;
   credential: string;
   maxConcurrency: number;
+  providerMaxConcurrency: number | null;
   priority: number;
 }
 
@@ -91,6 +92,7 @@ export interface TeacherLegRow {
   provider_id: string;
   model: string;
   max_concurrency: number | null;
+  provider_max_concurrency: number | null;
 }
 
 export async function teacherLegsOf(env: Env, teacherId: string | null): Promise<TeacherLeg[]> {
@@ -98,7 +100,7 @@ export async function teacherLegsOf(env: Env, teacherId: string | null): Promise
   if (!teacherId) return [];
   const rows = await all<TeacherLegRow>(
     env.DB,
-    `SELECT m.provider_id, m.model, m.max_concurrency
+    `SELECT m.provider_id, m.model, m.max_concurrency, k.max_concurrency AS provider_max_concurrency
      FROM teacher_key_models m
      JOIN teacher_keys k ON k.user_id = m.user_id AND k.provider_id = m.provider_id
      WHERE m.user_id = $uid
@@ -110,6 +112,7 @@ export async function teacherLegsOf(env: Env, teacherId: string | null): Promise
     model: row.model,
     credential: `teacher:${teacherId}`,
     maxConcurrency: row.max_concurrency ?? fallbackConcurrency,
+    providerMaxConcurrency: row.provider_max_concurrency,
     priority: 0,
   }));
 }

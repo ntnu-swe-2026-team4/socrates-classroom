@@ -61,9 +61,9 @@ export class Router {
       })
       .filter((leg) => {
         if (canServe && !canServe({ provider: leg.entry.provider, model: leg.model })) return false;
+        const key = { provider: leg.entry.provider, model: leg.model, credential: leg.entry.credential };
         if (isTeacherCredential(leg.entry.credential)) {
-          const key = { provider: leg.entry.provider, model: leg.model, credential: leg.entry.credential };
-          return !this.#ledger.inCooldown(key) && this.#ledger.inFlight(key) < leg.entry.maxConcurrency;
+          return this.#ledger.hasRoom(leg.entry, key);
         }
         if (!leg.def.kind) return false;
         if (leg.def.kind === "binding" && !this.#env.AI) return false;
@@ -71,8 +71,7 @@ export class Router {
           if (!leg.model) return false;
           if (leg.def.baseUrlEnv && !this.#env[leg.def.baseUrlEnv as keyof Env]) return false;
         }
-        const key = { provider: leg.entry.provider, model: leg.model, credential: leg.entry.credential };
-        return !this.#ledger.inCooldown(key) && this.#ledger.inFlight(key) < leg.entry.maxConcurrency;
+        return this.#ledger.hasRoom(leg.entry, key);
       })
       .map((leg) => leg.entry);
   }
@@ -91,8 +90,22 @@ export class Router {
     return { entry, model: key.model, key };
   }
 
-  budget(trafficClass: TrafficClass, teacherLegs?: AvailabilityEntry[]): number {
-    return this.chain(trafficClass, undefined, teacherLegs).reduce((sum, entry) => sum + entry.maxConcurrency, 0);
+  budget(
+    trafficClass: TrafficClass,
+    teacherLegs?: AvailabilityEntry[],
+    canServe?: (entry: ResolvedLeg) => boolean,
+  ): number {
+    const entries = this.chain(trafficClass, canServe, teacherLegs);
+    const sums = new Map<string, number>();
+    const caps = new Map<string, number>();
+    for (const entry of entries) {
+      const id = `${entry.provider}|${entry.credential}`;
+      sums.set(id, (sums.get(id) ?? 0) + entry.maxConcurrency);
+      caps.set(id, entry.providerMaxConcurrency ?? caps.get(id) ?? Number.POSITIVE_INFINITY);
+    }
+    let total = 0;
+    for (const [id, sum] of sums) total += Math.min(sum, caps.get(id) ?? Number.POSITIVE_INFINITY);
+    return total;
   }
 
   settle(decision: RouteDecision, kind: SettleKind): void {
