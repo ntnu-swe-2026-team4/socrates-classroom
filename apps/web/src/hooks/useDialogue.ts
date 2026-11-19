@@ -84,11 +84,11 @@ export function runFailureOf(view: ConversationView | null): unknown {
   return live?.runFailure;
 }
 
-function latestEmotionOf(view: ConversationView | null): DialogueEmotion {
+function latestEmotionOf(view: ConversationView | null): { id: EntryId; data: DialogueEmotion } | null {
   if (!view) return null;
   for (const entry of [...view.entries].reverse()) {
     if (entry.kind !== "app.emotion") continue;
-    return (entry.data ?? null) as DialogueEmotion;
+    return { id: entry.id, data: (entry.data ?? null) as DialogueEmotion };
   }
   return null;
 }
@@ -128,7 +128,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
   const speechToken = useRef(0);
   const phaseRef = useRef<DialoguePhase>("idle");
   const sentOnceRef = useRef(false);
-  const playedEmotionRef = useRef<unknown>(null);
+  const playedEmotionRef = useRef<EntryId | null>(null);
   const [sentAutoSend, setSentAutoSend] = useState<string | null>(null);
   if (sentAutoSend !== null && !options?.autoSend) setSentAutoSend(null);
   const entriesWaiters = useRef(
@@ -165,15 +165,15 @@ export function useDialogue(activityId: string, participantId: string, options?:
   });
 
   function syncEmotion() {
-    const emotion = latestEmotionOf(viewRef.current);
-    if (!emotion || emotion === playedEmotionRef.current) return;
+    const latest = latestEmotionOf(viewRef.current);
+    if (!latest?.data || latest.id === playedEmotionRef.current) return;
     if (!sentOnceRef.current) {
-      playedEmotionRef.current = emotion;
+      playedEmotionRef.current = latest.id;
       return;
     }
     if (phaseRef.current === "thinking" || phaseRef.current === "streaming") return;
-    playedEmotionRef.current = emotion;
-    const name = EXPRESSIONS[emotion.emotion];
+    playedEmotionRef.current = latest.id;
+    const name = EXPRESSIONS[latest.data.emotion];
     if (name) companion.playExpression(name);
   }
 

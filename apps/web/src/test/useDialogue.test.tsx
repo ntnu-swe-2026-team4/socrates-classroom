@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDialogue } from "@/hooks/useDialogue";
+import { companion } from "@/lib/companion";
 import type { EntryRecord } from "@earendil-works/pi-durable";
 import type { ServerMessage } from "@server/ws/protocol";
 
@@ -68,6 +69,15 @@ function emotionEntry(id: number): EntryRecord {
     conversationId: "c1",
     kind: "app.emotion",
     data: { emotion: "curious", confidence: 0.9, probabilities: { curious: 0.9 } },
+  });
+}
+
+function happyEntry(id: number): EntryRecord {
+  return asEntry({
+    id,
+    conversationId: "c1",
+    kind: "app.emotion",
+    data: { emotion: "happy", confidence: 0.9, probabilities: { happy: 0.9 } },
   });
 }
 
@@ -341,6 +351,21 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([userEntry(1, "問題"), assistantEntry(2, "回答"), emotionEntry(3)]));
     expect(result.current.emotion).toMatchObject({ emotion: "curious", confidence: 0.9 });
+  });
+
+  it("does not replay the emotion expression when a reconnect redelivers the same entry", async () => {
+    const playExpression = vi.spyOn(companion, "playExpression").mockImplementation(() => {});
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([]));
+    act(() => result.current.send("問題"));
+    emit(viewFrame([userEntry(1, "問題"), assistantEntry(2, "回答")]));
+    await waitFor(() => expect(result.current.phase).toBe("idle"));
+    emit(viewFrame([userEntry(1, "問題"), assistantEntry(2, "回答"), happyEntry(3)]));
+    await waitFor(() => expect(playExpression).toHaveBeenCalledTimes(1));
+    emit(viewFrame([userEntry(1, "問題"), assistantEntry(2, "回答"), happyEntry(3)]));
+    emit(viewFrame([userEntry(1, "問題"), assistantEntry(2, "回答"), happyEntry(3)]));
+    expect(playExpression).toHaveBeenCalledTimes(1);
+    playExpression.mockRestore();
   });
 
   it("retryLast: resends the failed input", () => {
