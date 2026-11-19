@@ -5,17 +5,9 @@ import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/rea
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { setLocale } from "@/i18n";
+import { onExpression } from "@/lib/companion";
 
 vi.mock("@/components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
-const stage = vi.hoisted(() => ({ setExpression: vi.fn() }));
-vi.mock("@/components/SocratesStage", () => ({
-  SocratesStage: ({ ref }: { ref?: { current: unknown } }) => {
-    if (ref && typeof ref === "object" && "current" in ref) {
-      ref.current = { setExpression: stage.setExpression };
-    }
-    return null;
-  },
-}));
 
 const agent = vi.hoisted(() => ({ options: null as null | { onMessage?: (event: { data: unknown }) => void } }));
 vi.mock("agents/react", () => ({
@@ -62,7 +54,6 @@ const history = [
 beforeEach(() => {
   localStorage.clear();
   setLocale("en");
-  stage.setExpression.mockReset();
   agent.options = null;
   vi.stubGlobal("scrollTo", vi.fn());
   vi.stubGlobal(
@@ -140,7 +131,9 @@ test("F03: real dialogue route restores the user bubble rather than an assistant
   }
 });
 
-test("#90: emotion entry maps to SocratesStage expression (happy → Happy, neutral → null)", async () => {
+test("#90: an emotion already in the loaded history does not replay an expression", async () => {
+  const heard: Array<string | null> = [];
+  const stop = onExpression((name) => heard.push(name));
   const dispose = await mountRoute("/dialogue?activityId=activity-1");
   try {
     await waitFor(() => expect(agent.options).not.toBeNull());
@@ -154,8 +147,10 @@ test("#90: emotion entry maps to SocratesStage expression (happy → Happy, neut
       },
     ]);
     await screen.findByText("The saved reply");
-    await waitFor(() => expect(stage.setExpression).toHaveBeenCalledWith("Happy", { loop: true }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(heard).toEqual([]);
   } finally {
+    stop();
     dispose();
   }
 });

@@ -49,10 +49,10 @@ function DialoguePage() {
   return (
     <DialogueView
       key={`${activityId}:${participantId}`}
-      activityId={activityId}
-      participantId={participantId}
-      eyebrow={topic?.title ? t("dlg_topic_eyebrow") : t("dlg_title")}
+      threadId={activityId}
+      userId={participantId}
       title={topic?.title ?? t("dlg_title")}
+      subtitle={topic?.title ? t("dlg_topic_eyebrow") : t("dlg_title")}
       statement={topic?.statement}
       prompts={topic?.prompts}
       closedNotice={
