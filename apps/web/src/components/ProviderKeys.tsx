@@ -1,10 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TeacherKeyStatus } from "@socrates/shared";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Card, cn } from "@/components/ui";
 import { useT } from "@/i18n";
+import { focusNextIn, focusRestoreOnUnmount } from "@/lib/focus";
 import { providerIcon, providerKind, type ProviderKind } from "@/lib/providers";
+
+type ConfirmTarget = { kind: "provider" } | { kind: "model"; model: string };
 
 export function ProviderIcon({ id, className }: { id: string; className?: string }) {
   const icon = providerIcon(id);
@@ -186,6 +190,8 @@ function ProviderSheet({
     element?.focus();
   }, []);
 
+  useEffect(() => focusRestoreOnUnmount(), []);
+
   const f = query.trim().toLowerCase();
   const matches = (entry: { id: string; name: string }) =>
     f === "" || entry.name.toLowerCase().includes(f) || entry.id.includes(f);
@@ -227,6 +233,11 @@ function ProviderSheet({
         aria-label={t("settings_keys_add_title")}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
+          if (event.key === "Tab") {
+            event.preventDefault();
+            focusNextIn(event.currentTarget);
+            return;
+          }
           if (event.key !== "Escape") return;
           event.stopPropagation();
           if (picked) back();
@@ -241,7 +252,7 @@ function ProviderSheet({
               <button
                 type="button"
                 onClick={back}
-                aria-label={t("settings_keys_cancel")}
+                aria-label={t("settings_keys_back")}
                 className="cursor-pointer rounded-md px-1 text-[15px] text-ink-faint hover:text-ink"
               >
                 ←
@@ -450,12 +461,20 @@ function ProviderRow({
           ▸
         </span>
       </div>
-      {expanded ? <ProviderEditor entry={entry} onError={onError} /> : null}
+      {expanded ? <ProviderEditor entry={entry} name={name} onError={onError} /> : null}
     </li>
   );
 }
 
-function ProviderEditor({ entry, onError }: { entry: TeacherKeyStatus; onError: (message: string) => void }) {
+function ProviderEditor({
+  entry,
+  name,
+  onError,
+}: {
+  entry: TeacherKeyStatus;
+  name: string;
+  onError: (message: string) => void;
+}) {
   const t = useT();
   const queryClient = useQueryClient();
   const models = useQuery({
@@ -466,7 +485,9 @@ function ProviderEditor({ entry, onError }: { entry: TeacherKeyStatus; onError: 
   const [search, setSearch] = useState("");
   const [editingLimit, setEditingLimit] = useState<string | null>(null);
   const [limitDraft, setLimitDraft] = useState("");
+  const [limitError, setLimitError] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
+  const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["teacherKeys"] });
 
@@ -502,9 +523,17 @@ function ProviderEditor({ entry, onError }: { entry: TeacherKeyStatus; onError: 
   const saveLimit = (model: string) =>
     run(async () => {
       const trimmed = limitDraft.trim();
-      const maxConcurrency = trimmed === "" ? null : Number(trimmed);
-      if (trimmed !== "" && (!Number.isInteger(maxConcurrency) || maxConcurrency! < 1 || maxConcurrency! > 100)) return;
-      await api.putTeacherKeyModel(entry.provider, model, maxConcurrency);
+      if (trimmed !== "") {
+        const maxConcurrency = Number(trimmed);
+        if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 100) {
+          setLimitError(true);
+          return;
+        }
+        await api.putTeacherKeyModel(entry.provider, model, maxConcurrency);
+      } else {
+        await api.putTeacherKeyModel(entry.provider, model, null);
+      }
+      setLimitError(false);
       setEditingLimit(null);
       setLimitDraft("");
     });
@@ -525,14 +554,16 @@ function ProviderEditor({ entry, onError }: { entry: TeacherKeyStatus; onError: 
       setKeyDraft("");
     });
 
-  const removeModel = (model: string) =>
-    run(async () => {
-      await api.deleteTeacherKeyModel(entry.provider, model);
-    });
+  const removeModel = (model: string) => setConfirmTarget({ kind: "model", model });
 
-  const removeProvider = () =>
+  const removeProvider = () => setConfirmTarget({ kind: "provider" });
+
+  const confirmedRemoval = () =>
     run(async () => {
-      await api.deleteTeacherKey(entry.provider);
+      const target = confirmTarget;
+      setConfirmTarget(null);
+      if (target?.kind === "provider") await api.deleteTeacherKey(entry.provider);
+      else if (target?.kind === "model") await api.deleteTeacherKeyModel(entry.provider, target.model);
     });
 
   return (
@@ -589,12 +620,18 @@ function ProviderEditor({ entry, onError }: { entry: TeacherKeyStatus; onError: 
                   onClick={() => {
                     setEditingLimit(null);
                     setLimitDraft("");
+                    setLimitError(false);
                   }}
                   aria-label={t("settings_keys_cancel")}
                   className="cursor-pointer rounded-md px-1.5 py-1 text-[12px] text-ink-faint hover:text-ink"
                 >
                   ✕
                 </button>
+                {limitError ? (
+                  <span role="alert" className="text-[11px] text-flag">
+                    {t("settings_keys_limit_invalid")}
+                  </span>
+                ) : null}
               </span>
             ) : (
               <button
@@ -602,6 +639,7 @@ function ProviderEditor({ entry, onError }: { entry: TeacherKeyStatus; onError: 
                 onClick={() => {
                   setEditingLimit(leg.model);
                   setLimitDraft(leg.maxConcurrency === null ? "" : String(leg.maxConcurrency));
+                  setLimitError(false);
                 }}
                 aria-label={`${t("settings_keys_edit_concurrency")} ${leg.model}`}
                 title={t("settings_keys_edit_concurrency")}
@@ -685,6 +723,24 @@ function ProviderEditor({ entry, onError }: { entry: TeacherKeyStatus; onError: 
           {t("settings_keys_delete")}
         </button>
       </div>
+      {confirmTarget ? (
+        <ConfirmDialog
+          title={
+            confirmTarget.kind === "provider"
+              ? t("settings_keys_confirm_delete_provider_title", { name })
+              : t("settings_keys_confirm_remove_model_title", { model: confirmTarget.model })
+          }
+          message={
+            confirmTarget.kind === "provider"
+              ? t("settings_keys_confirm_delete_provider_message")
+              : t("settings_keys_confirm_remove_model_message")
+          }
+          confirmLabel={t("settings_keys_confirm_remove")}
+          cancelLabel={t("settings_keys_cancel")}
+          onConfirm={confirmedRemoval}
+          onCancel={() => setConfirmTarget(null)}
+        />
+      ) : null}
     </div>
   );
 }
