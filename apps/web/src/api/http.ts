@@ -231,13 +231,13 @@ async function unwrap<R extends JsonLike>(res: R): Promise<Awaited<ReturnType<R[
 async function raw<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, ...rest } = init;
   const res = await fetch(`/api${path}`, {
+    ...rest,
     credentials: "include",
     headers: {
       ...langHeaders(),
       ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
       ...(rest.headers ?? {}),
     },
-    ...rest,
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
   if (!res.ok) {
@@ -248,7 +248,11 @@ async function raw<T>(path: string, init: RequestInit & { json?: unknown } = {})
 }
 
 async function rawVoid(path: string, init: RequestInit = {}): Promise<void> {
-  const res = await fetch(`/api${path}`, { credentials: "include", headers: langHeaders(), ...init });
+  const res = await fetch(`/api${path}`, {
+    ...init,
+    credentials: "include",
+    headers: { ...langHeaders(), ...(init.headers ?? {}) },
+  });
   if (!res.ok) {
     const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
     throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
