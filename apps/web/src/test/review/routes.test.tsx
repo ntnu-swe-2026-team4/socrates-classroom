@@ -7,7 +7,6 @@ import { routeTree } from "@/routeTree.gen";
 import { setLocale } from "@/i18n";
 
 vi.mock("@/components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
-vi.mock("@/landing/LandAnimation", () => ({ LandAnimation: () => null }));
 const stage = vi.hoisted(() => ({ setExpression: vi.fn() }));
 vi.mock("@/components/SocratesStage", () => ({
   SocratesStage: ({ ref }: { ref?: { current: unknown } }) => {
