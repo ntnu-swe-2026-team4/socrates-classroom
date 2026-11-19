@@ -9,7 +9,7 @@ import {
 } from "@socrates/shared";
 import { all, batch, one, run, type SqlEntry } from "../db/d1";
 import { fail, newId, nowIso, parseBody, requireCapability, requireUser, type AppEnv } from "../http";
-import { classroomAccess, parsePrompts, topicForActivity, type TopicRow } from "../services/members";
+import { classroomAccess, parsePrompts, requireTopicAxes, topicForActivity, type TopicRow } from "../services/members";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const CODE_MAX = 256 - (256 % CODE_ALPHABET.length);
@@ -151,10 +151,11 @@ export function classroomsRoutes() {
       const input = await parseBody(c, TopicCreateInputSchema);
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");
+      requireTopicAxes(input.axes.length);
       const id = newId("t_");
       await run(
         c.env.DB,
-        "INSERT INTO topics (id, owner_id, classroom_id, title, statement, summary, prompts, created_at) VALUES ($id, $uid, $cid, $title, $statement, $summary, $prompts, $at)",
+        "INSERT INTO topics (id, owner_id, classroom_id, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $title, $statement, $summary, $prompts, $axes, $at)",
         {
           id,
           uid: user.id,
@@ -163,6 +164,7 @@ export function classroomsRoutes() {
           statement: input.statement,
           summary: input.summary ?? null,
           prompts: JSON.stringify(input.prompts),
+          axes: JSON.stringify(input.axes),
           at: nowIso(),
         },
       );

@@ -14,12 +14,24 @@ import { secretOf } from "../auth";
 import { buildModels } from "../pi/models";
 import { runProfile } from "../pi/agents/profiles";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
-import { reportSubmitExtension, SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../pi/extensions/report-submit";
+import {
+  submittedArguments,
+  REPORT_AXES,
+  reportSubmitExtension,
+  SUBMIT_CLASS_REPORT,
+  SUBMIT_STUDENT_ANALYSIS,
+} from "../pi/extensions/report-submit";
 import { all, one, run } from "../db/d1";
 import { nowIso } from "../http";
+import { classReportInput, studentReportInput } from "../prompts/assemble";
 import {
-  ClassReportSchema,
+  AxisSchema,
+  ClassAxesPlacementSchema,
+  ClassPlacementSchema,
   StudentAnalysisSchema,
+  type Axis,
+  type ClassAxesPlacement,
+  type ClassPlacement,
   type ClassReport,
   type Lang,
   type ReportPosition,
@@ -40,6 +52,11 @@ interface RawTranscript {
   messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
   turns: number;
   violations: ViolationSlice[];
+}
+
+/** The line numbers the student actually said; a report may only cite these. */
+function spokenTurns(transcript: RawTranscript | undefined): number[] {
+  return (transcript?.messages ?? []).filter((message) => message.role === "user").map((message) => message.turn);
 }
 
 function renderTranscript(
@@ -204,21 +221,22 @@ export class ReportRunner extends DurableObject<Env> {
   async generate(activityId: string): Promise<void> {
     const { report } = gatewayConfig;
     const db = this.env.DB;
-    const activity = await one<{ title: string; statement: string }>(
+    const row = await one<{ title: string; statement: string; axes: string }>(
       db,
-      `SELECT t.title, t.statement
+      `SELECT t.title, t.statement, t.axes
        FROM activities a JOIN topics t ON t.id = a.topic_id WHERE a.id = $id`,
       { id: activityId },
     );
-    if (!activity) throw new Error("activity_missing");
+    if (!row) throw new Error("activity_missing");
+    // The teacher's axes; a topic saved before axes existed has none, and its class report is the overview alone.
+    const activity = { ...row, axes: AxisSchema.array().parse(JSON.parse(row.axes || "[]")) };
     if (this.models.faux && activity.statement.includes(FAUX_GENERATE_FAILURE_MARKER)) {
       throw new Error("faux_report_generate_failure");
     }
-    const participants = await all<{ id: string; display_name: string; lang: Lang }>(
+    const participants = await all<{ id: string; display_name: string }>(
       db,
-      `SELECT p.id, p.display_name, COALESCE(u.lang, 'zh') AS lang
+      `SELECT p.id, p.display_name
        FROM activity_participants p
-       LEFT JOIN users u ON u.id = p.user_id
        WHERE p.activity_id = $aid
        ORDER BY p.joined_at, p.id`,
       { aid: activityId },
@@ -294,15 +312,21 @@ export class ReportRunner extends DurableObject<Env> {
           }
           try {
             for (let attempt = 0; attempt < report.studentAttempts; attempt += 1) {
+              // Student reports follow the teacher's language, like the class report (product decision): the teacher is
+              // their main reader, though the student also sees their own.
               const { text, payload } = await this.runAgent(
                 harness,
                 "student-report",
-                this.studentReportPrompt(activity, transcript),
+                studentReportInput(activity, transcript),
                 legs,
-                { lang: participant.lang, submitTool: SUBMIT_STUDENT_ANALYSIS },
+                { lang: teacherLang, submitTool: SUBMIT_STUDENT_ANALYSIS },
               );
               try {
-                studentAnalyses.set(participant.id, StudentAnalysisSchema.parse(payloadOf(text, payload, "report")));
+                const analysis = StudentAnalysisSchema.parse(
+                  payloadOf(text, payload, SUBMIT_STUDENT_ANALYSIS, "report"),
+                );
+                assertTurnsSpoken(analysisTurns(analysis), spokenTurns(transcripts.get(participant.id)));
+                studentAnalyses.set(participant.id, analysis);
                 break;
               } catch (error) {
                 console.error(
@@ -320,16 +344,57 @@ export class ReportRunner extends DurableObject<Env> {
       );
     }
 
-    const classInput = this.classReportPrompt(activity, roster, rendered, pseudonyms);
+    // Who stated a position comes from the student reports only; the class model never decides it again, so the two
+    // reports cannot disagree. The class model reads the student reports instead of every raw conversation and only
+    // places the students on the teacher's axes and writes the overview, which is what keeps it fast for a large class.
+    const stated: Array<{ id: string; analysis: Extract<StudentAnalysis, { stated: true }> }> = [];
+    const unstated: string[] = [];
+    // Students we cannot place: their transcript could not be fetched, or they spoke but no analysis survived. They are
+    // neither stated nor unstated; the teacher sees their missing analysis in the individual view.
+    const unaccounted: string[] = [];
+    for (const participant of roster) {
+      const id = pseudonyms.get(participant.id) ?? participant.id;
+      const analysis = studentAnalyses.get(participant.id) ?? null;
+      const fetched = transcripts.has(participant.id);
+      if (analysis?.stated) stated.push({ id, analysis });
+      else if (analysis || (fetched && !rendered.get(participant.id)?.text.trim())) unstated.push(id);
+      else unaccounted.push(id);
+    }
+    if (unaccounted.length > 0) console.warn("[report] students without an analysis", unaccounted.length);
     try {
-      const { text: classText, payload: classPayload } = await this.runAgent(
-        harness,
-        "class-report",
-        classInput,
-        legs,
-        { lang: teacherLang, submitTool: SUBMIT_CLASS_REPORT },
-      );
-      const classReport = ClassReportSchema.parse(payloadOf(classText, classPayload));
+      // "Nobody stated a position" is only true when every student is accounted for; otherwise the class report fails
+      // instead of claiming it: stored as partial, like any class-report failure (finishing again regenerates).
+      if (stated.length === 0 && unaccounted.length > 0) throw new Error("report_student_analyses_missing");
+      // Who sets the axes is the deployment's setting (report.axes, #159): the teacher on the topic, or the model.
+      const teacherAxes = REPORT_AXES === "teacher";
+      const noneStated = { axes: [], overview: [NO_STATED_OVERVIEW[teacherLang]] };
+      let placed = teacherAxes ? placeOnAxes(activity.axes, noneStated, [], "") : noneStated;
+      // A class report the model did not submit, cut off, or sent in the wrong shape is tried again before the whole
+      // class report is given up (glm-4.7-flash fails this way now and then on the same input it passes on another run).
+      for (let attempt = 0; stated.length > 0; attempt += 1) {
+        try {
+          const { text: classText, payload: classPayload } = await this.runAgent(
+            harness,
+            teacherAxes ? "class-report" : "class-report-ai",
+            classReportInput(teacherAxes ? activity : { title: activity.title, statement: activity.statement }, stated),
+            legs,
+            { lang: teacherLang, submitTool: SUBMIT_CLASS_REPORT },
+          );
+          const submitted = payloadOf(classText, classPayload, SUBMIT_CLASS_REPORT);
+          placed = teacherAxes
+            ? placeOnAxes(activity.axes, ClassPlacementSchema.parse(submitted), stated, report.pseudonymPrefix)
+            : placeOnModelAxes(ClassAxesPlacementSchema.parse(submitted), stated, report.pseudonymPrefix);
+          break;
+        } catch (error) {
+          if (attempt >= report.classAttempts - 1) throw error;
+          console.error("[report] class report attempt failed", error instanceof Error ? error.name : typeof error);
+        }
+      }
+      const classReport: ClassReport = {
+        students: stated.map(({ id, analysis }) => ({ id, summary: summaryOf(analysis) })),
+        unstated,
+        ...placed,
+      };
       await this.persist(activityId, activity.title, classReport, roster, studentAnalyses, pseudonyms, rendered);
     } catch (error) {
       console.error("[report] class report failed", error instanceof Error ? error.name : typeof error);
@@ -348,7 +413,7 @@ export class ReportRunner extends DurableObject<Env> {
 
   private async runAgent(
     harness: Harness,
-    profile: "student-report" | "class-report",
+    profile: "student-report" | "class-report" | "class-report-ai",
     input: string,
     legs: TeacherLeg[],
     options: { lang: Lang; submitTool: string },
@@ -393,23 +458,6 @@ export class ReportRunner extends DurableObject<Env> {
         excerpt: violation.excerpt,
       })),
     };
-  }
-
-  private studentReportPrompt(activity: { title: string; statement: string }, transcript: string): string {
-    return `## Topic: ${activity.title}\n${activity.statement}\n\n## Conversation\n${transcript}`;
-  }
-
-  private classReportPrompt(
-    activity: { title: string; statement: string },
-    roster: Array<{ id: string }>,
-    transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
-    pseudonyms: Map<string, string>,
-  ): string {
-    const names = roster.map((p) => pseudonyms.get(p.id) ?? "").filter(Boolean);
-    const conversations = roster
-      .map((p) => `### ${pseudonyms.get(p.id) ?? p.id}\n${transcripts.get(p.id)?.text ?? ""}`)
-      .join("\n\n");
-    return `## Topic: ${activity.title}\n${activity.statement}\n\n## Roster: ${names.length} students in the class\n${names.join(", ")}\n\n## The whole class's conversations\n${conversations}`;
   }
 
   private async persist(
@@ -488,9 +536,140 @@ function positionsOf(classReport: ClassReport | null, pseudonym: string): Report
   return positions;
 }
 
-function payloadOf(text: string, payload: JsonObject | null, key?: string): unknown {
+/** The class overview when nobody stated a position: there is nothing for the class model to compare. */
+const NO_STATED_OVERVIEW: Record<Lang, string> = {
+  zh: "全班沒有人表態，沒有可比較的立場。",
+  en: "No student stated a position, so there are no positions to compare.",
+  es: "Ningún estudiante expresó una postura, así que no hay posturas que comparar.",
+};
+
+function analysisTurns(analysis: StudentAnalysis): number[] {
+  if (!analysis.stated) return analysis.doing.turns;
+  return [...analysis.claim.turns, ...analysis.reasons.turns, ...(analysis.tension?.turns ?? [])];
+}
+
+/** A report citing a line the student never said is not grounded in the conversation; it is retried like a bad shape. */
+function assertTurnsSpoken(cited: number[], spoken: number[]): void {
+  const said = new Set(spoken);
+  if (cited.some((turn) => !said.has(turn))) throw new Error("report_turn_not_spoken");
+}
+
+function summaryOf(analysis: Extract<StudentAnalysis, { stated: true }>): ClassReport["students"][number]["summary"] {
+  return [analysis.claim, analysis.reasons, ...(analysis.tension ? [analysis.tension] : [])].map((part) => ({
+    step: part.text,
+    turns: part.turns,
+  }));
+}
+
+/**
+ * The class report's axes are the teacher's, in the topic's order; the model only supplies positions, by axis number.
+ * Positions may only place students whose own report says they stated a position, citing only lines from that report.
+ * Turns outside the report are removed; a position left with none, for a student not on the roster, for an axis number
+ * the topic does not have, or a second one for the same student on the same axis, is dropped rather than shown to the
+ * teacher.
+ */
+type ReportAxisPosition = ClassReport["axes"][number]["positions"][number];
+
+/** The stored end and point on the axis (0 = fully left, 100 = fully right) from the side and how firmly it is held. */
+export function pointOnAxis(
+  side: "left" | "middle" | "right",
+  strength: number,
+): { end: "low" | "middle" | "high"; at: number } {
+  if (side === "middle") return { end: "middle", at: 50 };
+  return side === "left" ? { end: "low", at: 50 - strength * 10 } : { end: "high", at: 50 + strength * 10 };
+}
+
+type Stated = Array<{ id: string; analysis: Extract<StudentAnalysis, { stated: true }> }>;
+
+/**
+ * Adds the model's positions on one axis to `positions`, keeping only students whose own report stated a position and
+ * only lines cited in that report; one position per student per axis.
+ */
+function keepPositions(
+  raw: ClassPlacement["axes"][number]["positions"],
+  stated: Stated,
+  pseudonymPrefix: string,
+  positions: ReportAxisPosition[],
+): void {
+  const cited = new Map(stated.map(({ id, analysis }) => [id, new Set(analysisTurns(analysis))]));
+  // Roster IDs are the prefix plus a serial. Some models rewrite the prefix ("1", or "学生1" in simplified characters
+  // for "學生1"); an ID not on the roster is read by its trailing serial, which is still the same student.
+  const rosterId = (value: string): string => {
+    const id = value.trim();
+    if (cited.has(id)) return id;
+    const serial = /(\d+)$/.exec(id)?.[1];
+    return serial ? `${pseudonymPrefix}${Number(serial)}` : id;
+  };
+  for (const position of raw) {
+    const id = rosterId(position.id);
+    const allowed = cited.get(id);
+    const turns = allowed ? position.turns.filter((turn) => allowed.has(turn)) : [];
+    if (turns.length === 0) {
+      console.warn("[report] dropped a position outside the student reports");
+      continue;
+    }
+    // one position per student per axis; a second one for the same student is dropped like any other
+    if (positions.some((other) => other.id === id)) continue;
+    positions.push({ id, turns, view: position.view, ...pointOnAxis(position.side, position.strength) });
+  }
+}
+
+/** Axes set by the teacher: the topic's axes in order; the model only places students on them, by axis number. */
+export function placeOnAxes(
+  teacherAxes: Axis[],
+  report: ClassPlacement,
+  stated: Stated,
+  pseudonymPrefix: string,
+): Pick<ClassReport, "axes" | "overview"> {
+  const placed: ReportAxisPosition[][] = teacherAxes.map(() => []);
+  for (const entry of report.axes) {
+    const positions = placed[entry.axis - 1];
+    if (!positions) {
+      if (entry.positions.length > 0) console.warn("[report] dropped positions on an axis the topic does not have");
+      continue;
+    }
+    keepPositions(entry.positions, stated, pseudonymPrefix, positions);
+  }
+  return {
+    axes: teacherAxes.map((axis, index) => ({
+      name: axis.name,
+      low: axis.left,
+      high: axis.right,
+      positions: placed[index]!,
+    })),
+    overview: report.overview,
+  };
+}
+
+/**
+ * Axes set by the model (report.axes = ai): its axes for this class, in its order. An axis left with no positions, or
+ * with the name of an earlier one, places no one and is dropped.
+ */
+export function placeOnModelAxes(
+  report: ClassAxesPlacement,
+  stated: Stated,
+  pseudonymPrefix: string,
+): Pick<ClassReport, "axes" | "overview"> {
+  const axes: ClassReport["axes"] = [];
+  for (const entry of report.axes) {
+    const name = entry.name.trim();
+    if (!name || axes.some((axis) => axis.name === name)) continue;
+    const positions: ReportAxisPosition[] = [];
+    keepPositions(entry.positions, stated, pseudonymPrefix, positions);
+    if (positions.length === 0) {
+      console.warn("[report] dropped an axis with no positions left");
+      continue;
+    }
+    axes.push({ name, low: entry.left, high: entry.right, positions, why: entry.why });
+  }
+  return { axes, overview: report.overview };
+}
+
+/** The payload is read from the assistant's tool call; submittedArguments turns it back into what the tool accepted. */
+function payloadOf(text: string, payload: JsonObject | null, tool: string, key?: string): unknown {
   if (payload !== null) {
-    const value = key === undefined ? payload : payload[key];
+    const repaired = submittedArguments(tool, payload) as JsonObject;
+    const value = key === undefined ? repaired : repaired[key];
     if (value === undefined) throw new Error("tool_payload_missing_key");
     return value;
   }
@@ -514,13 +693,20 @@ function textOf(content: string | readonly unknown[]): string {
 
 const FAUX_CLASS_FAILURE_MARKER = "FORCE-CLASS-REPORT-FAILURE";
 const FAUX_GENERATE_FAILURE_MARKER = "FORCE-REPORT-GENERATE-FAILURE";
+const FAUX_OFF_TOPIC_MARKER = "python";
+const FAUX_UNSPOKEN_TURN_MARKER = "FORCE-UNSPOKEN-TURN";
+/** The class report fails on its first attempt only (each class prompt is failed once). */
+const FAUX_CLASS_FLAKY_MARKER = "FORCE-CLASS-REPORT-FLAKY";
+const fauxFlakyFailed = new Set<string>();
 
 function fauxReportScript(context: TranscriptContext): AssistantMessage {
   const last = context.messages.filter((message) => message.role !== "system").at(-1);
   const prompt = last?.role === "user" ? textOf(last.content) : "";
   if (prompt.includes("## Roster:")) {
-    if (prompt.includes(FAUX_CLASS_FAILURE_MARKER)) {
-      return fauxAssistantMessage([fauxToolCall(SUBMIT_CLASS_REPORT, { students: "schema-mismatch-on-purpose" })], {
+    const flakyFirst = prompt.includes(FAUX_CLASS_FLAKY_MARKER) && !fauxFlakyFailed.has(prompt);
+    if (flakyFirst) fauxFlakyFailed.add(prompt);
+    if (prompt.includes(FAUX_CLASS_FAILURE_MARKER) || flakyFirst) {
+      return fauxAssistantMessage([fauxToolCall(SUBMIT_CLASS_REPORT, { axes: "schema-mismatch-on-purpose" })], {
         stopReason: "toolUse",
       });
     }
@@ -534,19 +720,25 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
     return fauxAssistantMessage(
       [
         fauxToolCall(SUBMIT_CLASS_REPORT, {
-          students: [{ id: first, summary: [{ step: "提出直覺判斷並被追問理由", turns: [1] }] }],
-          unstated: [],
           axes: [
             {
-              name: "契約與承諾",
-              low: "契約至上",
-              high: "人情優先",
+              ...(REPORT_AXES === "teacher" ? { axis: 1 } : { name: "契約", left: "守約", right: "人情", why: "分歧" }),
               positions: [
-                { id: first, turns: [1], view: "先守約再談情", end: "middle", at: 50 },
-                { id: second, turns: [1], view: "契約就是契約", end: "low", at: 10 },
+                { id: first, turns: [1], view: "先守約再談情", side: "middle", strength: 1 },
+                // written without the pseudonym prefix, as some models do; the runner maps it back to the roster ID
+                {
+                  id: second.replace(gatewayConfig.report.pseudonymPrefix, ""),
+                  turns: [1],
+                  view: "契約就是契約",
+                  side: "left",
+                  strength: 4,
+                },
               ],
-              why: "全班多數先守約，但接受例外",
             },
+            // an axis number the topic does not have: dropped by the runner (teacher-set axes only)
+            ...(REPORT_AXES === "teacher"
+              ? [{ axis: 9, positions: [{ id: first, turns: [1], view: "不存在的軸", side: "right", strength: 3 }] }]
+              : []),
           ],
           overview: ["全班集中在契約與人情的取捨"],
         }),
@@ -554,13 +746,26 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
       { stopReason: "toolUse" },
     );
   }
+  // The class report reads the student reports, not the conversations, so the class-failure marker a student typed is
+  // carried into the claim for the class step to see.
+  const claim =
+    [FAUX_CLASS_FAILURE_MARKER, FAUX_CLASS_FLAKY_MARKER].find((marker) => prompt.includes(marker)) ?? "契約應該被遵守";
+  // A student who only asked for other work took no position.
+  if (prompt.includes(FAUX_OFF_TOPIC_MARKER)) {
+    return fauxAssistantMessage(
+      [fauxToolCall(SUBMIT_STUDENT_ANALYSIS, { report: { stated: false, doing: { text: "要求寫程式", turns: [1] } } })],
+      { stopReason: "toolUse" },
+    );
+  }
+  // A report citing a line the student never said: rejected on every attempt, so the student ends with no analysis.
+  const turns = prompt.includes(FAUX_UNSPOKEN_TURN_MARKER) ? [99] : [1];
   return fauxAssistantMessage(
     [
       fauxToolCall(SUBMIT_STUDENT_ANALYSIS, {
         report: {
           stated: true,
-          claim: { text: "契約應該被遵守", turns: [1] },
-          reasons: { text: "因為雙方事先同意", turns: [1] },
+          claim: { text: claim, turns },
+          reasons: { text: "因為雙方事先同意", turns },
           tension: null,
         },
       }),

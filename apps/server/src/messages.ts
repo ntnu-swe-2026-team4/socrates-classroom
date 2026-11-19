@@ -86,6 +86,11 @@ const M: Record<ErrorCode, Entry> = {
     en: "Socrates cannot respond right now. Try again.",
     es: "Sócrates no puede responder ahora. Inténtalo de nuevo.",
   },
+  topic_axes_required: {
+    zh: "這個題目還沒有價值軸，請先設定 1 到 3 條。",
+    en: "This topic has no value axes yet. Set 1 to 3 first.",
+    es: "Este tema aún no tiene ejes de valor. Define de 1 a 3 primero.",
+  },
   llm_rate_limited: {
     zh: "目前太忙碌了，請稍等一下再問。",
     en: "It is too busy right now. Please wait a moment.",

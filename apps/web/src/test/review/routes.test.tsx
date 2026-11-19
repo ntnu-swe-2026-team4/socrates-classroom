@@ -44,6 +44,8 @@ const topic = {
   statement: "Discuss justice",
   summary: "A dilemma",
   prompts: [],
+  axes: [{ name: "Justice", left: "Rules", right: "Outcomes" }],
+  classroomId: null,
 };
 const history = [
   {
@@ -167,8 +169,10 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
     title: "Generated topic",
     statement: "A generated dilemma",
     prompts: ["Why?"],
+    axes: [],
   };
-  const persisted = { ...generatedTopic, id: "topic-persisted", classroomId: "class-9" };
+  const teacherAxes = [{ name: "Who decides", left: "The many", right: "The one" }];
+  const persisted = { ...generatedTopic, id: "topic-persisted", classroomId: "class-9", axes: teacherAxes };
   const activity = {
     classroomId: "class-9",
     code: "code999",
@@ -187,6 +191,7 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
       const topicAdded = calls.some((call) => call.path === "/api/classrooms/class-9/topics");
       const responses: Record<string, unknown> = {
         "/api/me": { id: "teacher-1", name: "Teacher", canManageClasses: true, isAdmin: false },
+        "/api/config": { reportAxes: "teacher" },
         "/api/topics": [topic],
         "/api/topics/generate": [generatedTopic],
         "/api/classrooms": { classroomId: "class-9", code: "code999", url: "http://localhost/join/code999" },
@@ -212,9 +217,21 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
     const direction = await screen.findByPlaceholderText("Topic direction");
     fireEvent.change(direction, { target: { value: "justice" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Add to topics" }));
-
+    // a generated topic has no axes: it is added only once the teacher sets one
     fireEvent.click(await screen.findByRole("button", { name: /Generated topic/ }));
+    const add = screen.getByRole("button", { name: "Add to topics" });
+    expect(add).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByRole("textbox", { name: "What this axis asks 1" }), {
+      target: { value: "Who decides" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Left end 1" }), { target: { value: "The many" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Right end 1" }), { target: { value: "The one" } });
+    await waitFor(() => expect(add).toHaveProperty("disabled", false));
+    fireEvent.click(add);
+
+    // the added topic, in the classroom's list (the generated candidates stay listed above it)
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /Generated topic/ })).toHaveLength(2));
+    fireEvent.click(screen.getAllByRole("button", { name: /Generated topic/ }).at(-1)!);
     fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
     await screen.findByText("Activity ready");
 
@@ -224,7 +241,12 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
       "/api/classrooms/class-9/activities",
     ]);
     expect(calls[0]!.body).toEqual({ name: "My class" });
-    expect(calls[1]!.body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
+    expect(calls[1]!.body).toMatchObject({
+      title: "Generated topic",
+      statement: "A generated dilemma",
+      axes: teacherAxes,
+    });
+    // unchanged axes: the activity starts on the classroom topic itself, no copy
     expect(calls[2]!.body).toMatchObject({ topicId: "topic-persisted", mode: "live" });
   } finally {
     dispose();

@@ -36,6 +36,10 @@ voice:
 
 report:
   studentAttempts: 2
+  classAttempts: 2
+  # Who sets the class report's value axes: teacher = the teacher on each topic (topics need 1-3 axes to start an
+  # activity); ai = the class-report model, for each class (topics carry no axes). #159; the product decision is PM's.
+  axes: teacher
   alarmAttempts: 3
   alarmBackoffMs: 4000
   alarmTimeoutMs: 300000

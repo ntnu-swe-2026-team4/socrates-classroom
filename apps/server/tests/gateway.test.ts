@@ -168,6 +168,8 @@ describe("gateway schema (availability reference validation — typos fail fast 
     voice: { stt: "@cf/openai/whisper-large-v3-turbo", tts: "@cf/myshell-ai/melotts" },
     report: {
       studentAttempts: 2,
+      classAttempts: 2,
+      axes: "teacher",
       alarmAttempts: 3,
       alarmBackoffMs: 4000,
       alarmTimeoutMs: 300000,

@@ -6,10 +6,11 @@ import {
   LANG_NAMES,
   TopicGenSchema,
   ApiError,
+  type TopicDraft,
 } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
 import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, requireCapability, type AppEnv } from "../http";
-import { classroomAccess, parsePrompts, type TopicRow } from "../services/members";
+import { classroomAccess, parsePrompts, requireTopicAxes, type TopicRow } from "../services/members";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
 function mockTopics(direction: string) {
@@ -51,7 +52,7 @@ export function topicsRoutes() {
       const id = newId("t_");
       await run(
         c.env.DB,
-        "INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, created_at) VALUES ($id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $at)",
+        "INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $axes, $at)",
         {
           id,
           uid: user.id,
@@ -61,6 +62,8 @@ export function topicsRoutes() {
           statement: source.statement,
           summary: source.summary,
           prompts: source.prompts,
+          // the teacher's axes for the copy, or the source's (a saved topic never changes, so changed axes mean a copy)
+          axes: input.axes ? JSON.stringify(input.axes) : source.axes,
           at: nowIso(),
         },
       );
@@ -71,10 +74,11 @@ export function topicsRoutes() {
     .post("/topics", async (c) => {
       const user = requireCapability(c, "manage_classes");
       const input = await parseBody(c, TopicCreateInputSchema);
+      requireTopicAxes(input.axes.length);
       const id = newId("t_");
       await run(
         c.env.DB,
-        "INSERT INTO topics (id, owner_id, title, statement, summary, prompts, created_at) VALUES ($id, $uid, $title, $statement, $summary, $prompts, $at)",
+        "INSERT INTO topics (id, owner_id, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $title, $statement, $summary, $prompts, $axes, $at)",
         {
           id,
           uid: user.id,
@@ -82,6 +86,7 @@ export function topicsRoutes() {
           statement: input.statement,
           summary: input.summary ?? null,
           prompts: JSON.stringify(input.prompts),
+          axes: JSON.stringify(input.axes),
           at: nowIso(),
         },
       );
@@ -92,19 +97,14 @@ export function topicsRoutes() {
     .post("/topics/generate", async (c) => {
       await enforceIpLimit(c, "topics-generate", 10);
       const input = await parseBody(c, GenerateTopicsInputSchema);
-      requireCapability(c, "manage_classes");
-      if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {
-        return c.json(
-          mockTopics(input.direction).topics.map((topic, index) => ({
-            id: `gen_${Date.now()}_${index}`,
-            ...topic,
-          })),
-          200,
-          { "X-Socrates-Fallback": "mock" },
-        );
-      }
+      const user = requireCapability(c, "manage_classes");
+      // Generated topics carry no axes: the teacher sets them before the topic is saved.
+      const withIds = (topics: Array<{ title: string; statement: string; prompts: string[] }>): TopicDraft[] =>
+        topics.map((topic, index) => ({ id: `gen_${Date.now()}_${index}`, ...topic, axes: [] }));
+      // Canned topics only in the explicit mock mode (tests, local demo); a real deployment never shows them as real.
+      if (c.env.LLM_PROVIDER === "mock") return c.json(withIds(mockTopics(input.direction).topics));
+      if (!c.env.AI) fail(502, "llm_unavailable");
       try {
-        const user = requireCapability(c, "manage_classes");
         const { harness, runtime, teacherLegs } = await openProfileHarness(c.env, "topic-gen", async () => user.id);
         const { text } = await runProfile(
           harness,
@@ -115,23 +115,11 @@ export function topicsRoutes() {
         );
         const parsed = TopicGenSchema.safeParse(JSON.parse(text));
         if (!parsed.success) throw new Error("schema_mismatch");
-        return c.json(
-          parsed.data.topics.map((topic, index) => ({
-            id: `gen_${Date.now()}_${index}`,
-            ...topic,
-          })),
-        );
+        return c.json(withIds(parsed.data.topics));
       } catch (error) {
         if (error instanceof ApiError) throw error;
         console.error("[topics/generate] failed", error instanceof Error ? error.name : typeof error);
-        return c.json(
-          mockTopics(input.direction).topics.map((topic, index) => ({
-            id: `gen_${Date.now()}_${index}`,
-            ...topic,
-          })),
-          200,
-          { "X-Socrates-Fallback": "mock" },
-        );
+        fail(502, "llm_unavailable");
       }
     });
 }

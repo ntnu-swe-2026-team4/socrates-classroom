@@ -18,6 +18,8 @@ import type {
   TermExplanation,
   Topic,
   TopicDraft,
+  Axis,
+  ClientConfig,
   User,
 } from "@socrates/shared";
 import {
@@ -66,6 +68,8 @@ export interface KeyModelInfo {
 
 export interface Api {
   me(): Promise<User | null>;
+  /** Server settings: who sets the class report's value axes. */
+  config(): Promise<ClientConfig>;
   login(email: string, password: string): Promise<User>;
   logout(): Promise<void>;
   joinByCode(code: string): Promise<JoinInfo>;
@@ -80,15 +84,22 @@ export interface Api {
   listClassroomTopics(classroomId: string): Promise<Topic[]>;
   createClassroomTopic(
     classroomId: string,
-    input: { title: string; statement: string; summary?: string; prompts: string[] },
+    input: { title: string; statement: string; summary?: string; prompts: string[]; axes: Axis[] },
   ): Promise<Topic>;
-  copyTopic(topicId: string, classroomId: string): Promise<Topic>;
+  /** Copies a topic into the classroom; axes, when given, replace the source's axes in the copy. */
+  copyTopic(topicId: string, classroomId: string, axes?: Axis[]): Promise<Topic>;
   startActivity(classroomId: string, topicId: string, mode?: ActivityMode): Promise<ActivityStarted>;
   listActivitySlots(activityId: string): Promise<ActivitySlots>;
   createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
-  createTopic(input: { title: string; statement: string; summary?: string; prompts: string[] }): Promise<Topic>;
+  createTopic(input: {
+    title: string;
+    statement: string;
+    summary?: string;
+    prompts: string[];
+    axes: Axis[];
+  }): Promise<Topic>;
   activityInfo(activityId: string, participantId?: string): Promise<ActivityInfo>;
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
@@ -230,6 +241,9 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
 }
 
 export const httpApi: Api = {
+  async config() {
+    return await raw<ClientConfig>("/config");
+  },
   async me() {
     return unwrap(await client.me.$get());
   },
@@ -290,10 +304,10 @@ export const httpApi: Api = {
       json: TopicCreateInputSchema.parse(input),
     });
   },
-  async copyTopic(topicId, classroomId) {
+  async copyTopic(topicId, classroomId, axes) {
     return await raw<Topic>(`/topics/${encodeURIComponent(topicId)}/copy`, {
       method: "POST",
-      json: TopicCopyInputSchema.parse({ classroomId }),
+      json: TopicCopyInputSchema.parse(axes ? { classroomId, axes } : { classroomId }),
     });
   },
   async startActivity(classroomId, topicId, mode = "live") {

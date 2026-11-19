@@ -1,3 +1,5 @@
+import type { ClientConfig } from "@socrates/shared";
+import { gatewayConfig } from "./gateway/config.gen";
 import { Hono } from "hono";
 import { ApiError } from "@socrates/shared";
 import { localize } from "./messages";
@@ -19,18 +21,22 @@ import { devRoutes, isDev } from "./routes/dev";
 import { timingSafeEqual } from "./auth-crypto";
 
 export function createApi() {
-  return new Hono<AppEnv>()
-    .route("/", authRoutes())
-    .route("/", joinRoutes())
-    .route("/", inviteRoutes())
-    .route("/", topicsRoutes())
-    .route("/", classroomsRoutes())
-    .route("/", activityRoutes())
-    .route("/", voiceRoutes())
-    .route("/", lookupRoutes())
-    .route("/", teacherKeyRoutes())
-    .route("/", adminRoutes())
-    .route("/", devRoutes());
+  return (
+    new Hono<AppEnv>()
+      // server settings the web app needs: who sets the class report's value axes (report.axes, #159)
+      .get("/config", (c) => c.json({ reportAxes: gatewayConfig.report.axes } satisfies ClientConfig))
+      .route("/", authRoutes())
+      .route("/", joinRoutes())
+      .route("/", inviteRoutes())
+      .route("/", topicsRoutes())
+      .route("/", classroomsRoutes())
+      .route("/", activityRoutes())
+      .route("/", voiceRoutes())
+      .route("/", lookupRoutes())
+      .route("/", teacherKeyRoutes())
+      .route("/", adminRoutes())
+      .route("/", devRoutes())
+  );
 }
 export type RpcApi = ReturnType<typeof createApi>;
 

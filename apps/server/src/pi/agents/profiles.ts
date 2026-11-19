@@ -12,6 +12,7 @@ import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import { LANG_NAMES, type Lang } from "@socrates/shared";
 import STUDENT_REPORT_RAW from "../../prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../../prompts/class-report.md?raw";
+import CLASS_REPORT_AI_RAW from "../../prompts/class-report-ai.md?raw";
 import LOOKUP_RAW from "../../prompts/lookup.md?raw";
 import TOPIC_GEN_RAW from "../../prompts/topic-gen.md?raw";
 import type { Env } from "../../env";
@@ -23,28 +24,19 @@ import { createWebSearchExtension } from "../extensions/websearch";
 import { getRouter, type TrafficClass } from "../../gateway/router";
 import type { SettleKind } from "../../gateway/ledger";
 import { teacherLegsOf, type TeacherLeg } from "../credentials";
-import { reportSubmitExtension, SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../extensions/report-submit";
+import { reportSubmitExtension } from "../extensions/report-submit";
 import type { JsonObject } from "@earendil-works/pi-durable";
 
-export type ProfileName = "socrates" | "topic-gen" | "student-report" | "class-report" | "lookup";
+export type ProfileName = "socrates" | "topic-gen" | "student-report" | "class-report" | "class-report-ai" | "lookup";
 
 const ROLE_USER_MARKER = '{{role "user"}}';
-const LOCALE_BLOCK = "{{#if locale}}{{locale}}{{else}}繁體中文{{/if}}";
+/** The one placeholder a prompt asset may hold (#161): the language the model answers in, filled from LANG_NAMES. */
+const LANG_PLACEHOLDER = "{{lang}}";
 
-const STUDENT_REPORT_SHAPE = `Submit the report by calling ${SUBMIT_STUDENT_ANALYSIS} as your final action; do not also write it as text.
-turns are the student's line numbers in the conversation, each at least 1.
-tension is null when there is none.`;
-
-const CLASS_REPORT_SHAPE = `Submit the report by calling ${SUBMIT_CLASS_REPORT} as your final action; do not also write it as text.
-- students: every student who stated a position, in roster order; summary has 1-3 steps
-- when the class has no disagreement, axes is an empty array and the overview says so plainly
-- end is "low", "middle", or "high"; at is 0-100 (low 0-49, middle 50, high 51-100)
-- overview: 3-5 lines`;
-
-function instructionsOf(asset: string, outputShape?: string): string {
+/** A prompt asset's instructions: everything before its `{{role "user"}}` marker, if it has one. */
+function instructionsOf(asset: string): string {
   const [instructions] = asset.split(ROLE_USER_MARKER);
-  const body = instructions.trim();
-  return outputShape ? `${body}\n\n${outputShape}` : body;
+  return instructions.trim();
 }
 
 export interface AgentProfile {
@@ -75,7 +67,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
   },
   "student-report": {
     name: "student-report",
-    instructions: instructionsOf(STUDENT_REPORT_RAW, STUDENT_REPORT_SHAPE),
+    instructions: instructionsOf(STUDENT_REPORT_RAW),
     extensions: ["report-submit"],
     maxTurns: 4,
     trafficClass: "batch",
@@ -83,11 +75,23 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
   },
   "class-report": {
     name: "class-report",
-    instructions: instructionsOf(CLASS_REPORT_RAW, CLASS_REPORT_SHAPE),
+    instructions: instructionsOf(CLASS_REPORT_RAW),
     extensions: ["report-submit"],
     maxTurns: 4,
     trafficClass: "batch",
-    thinkingLevel: "high",
+    // Measured on glm-5.3-flash (2026-11-18, 5 classes of 6-39 students): with reasoning on, a 39-student class
+    // reasoned past 30k tokens and was cut off, and a 10-student class took 12 minutes; at "low" every class finished
+    // in 7-136 s with the same or better graded quality. The reading of each student is done in the student reports.
+    thinkingLevel: "low",
+  },
+  // The class report when the model sets the axes itself (report.axes = ai, #159); same settings as class-report.
+  "class-report-ai": {
+    name: "class-report-ai",
+    instructions: instructionsOf(CLASS_REPORT_AI_RAW),
+    extensions: ["report-submit"],
+    maxTurns: 4,
+    trafficClass: "batch",
+    thinkingLevel: "low",
   },
   lookup: {
     name: "lookup",
@@ -117,9 +121,14 @@ export function profileRegistry(profile: AgentProfile, env: Env): Registry {
   return registry;
 }
 
+/** A profile's instructions with the target language filled in, as the model receives them. */
+export function instructionsFor(name: ProfileName, lang: Lang): string {
+  return PROFILES[name].instructions.replaceAll(LANG_PLACEHOLDER, LANG_NAMES[lang]);
+}
+
 function agentChangeFor(profile: AgentProfile, lang: Lang): AgentChange {
   return {
-    instructions: (profile.instructions || undefined)?.replaceAll(LOCALE_BLOCK, LANG_NAMES[lang]),
+    instructions: instructionsFor(profile.name, lang) || undefined,
     ...(profile.maxTurns !== undefined ? { maxTurns: profile.maxTurns } : {}),
     thinkingLevel: profile.thinkingLevel,
   };

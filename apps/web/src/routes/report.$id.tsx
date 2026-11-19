@@ -119,16 +119,20 @@ function ReportPage() {
                     <p className="text-[15px] font-medium text-ink">
                       {axis.name}：{axis.low} ↔ {axis.high}
                     </p>
-                    <ul className="mt-3 flex flex-col gap-1.5">
-                      {axis.positions.map((position) => (
-                        <li key={`${axis.name}-${position.id}`} className="text-[13.5px] text-ink-soft">
-                          <span className="font-medium text-ink">{position.id}</span>
-                          <span className="text-ink-faint"> · {t("report_position", { at: position.at })}</span>
-                          <span> — {position.view}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">{axis.why}</p>
+                    {axis.positions.length > 0 ? (
+                      <ul className="mt-3 flex flex-col gap-1.5">
+                        {axis.positions.map((position) => (
+                          <li key={position.id} className="text-[13.5px] text-ink-soft">
+                            <span className="font-medium text-ink">{position.id}</span>
+                            <span className="text-ink-faint"> · {t("report_position", { at: position.at })}</span>
+                            <span> — {position.view}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-3 text-[13px] text-ink-faint">{t("report_axis_empty")}</p>
+                    )}
+                    {axis.why && <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">{axis.why}</p>}
                   </div>
                 ))}
               </div>
