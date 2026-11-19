@@ -51,6 +51,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("companion store", () => {
@@ -126,5 +127,54 @@ describe("SocratesCompanion", () => {
     expect(scene.setSpeaking).toHaveBeenLastCalledWith(true);
     await user.click(screen.getByRole("button", { name: "停止朗讀" }));
     expect(stopSpeech).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles the dock tracker after stable frames and re-wakes on layout change", async () => {
+    let rect = new DOMRect(40, 60, 240, 240);
+    let reads = 0;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (this.hasAttribute(COMPANION_DOCK_ATTR)) {
+        reads += 1;
+        return rect;
+      }
+      return new DOMRect();
+    });
+    const queue: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      queue.push(callback);
+      return queue.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const pump = (frames: number) => {
+      act(() => {
+        for (let i = 0; i < frames; i += 1) {
+          const batch = queue.splice(0, queue.length);
+          for (const callback of batch) callback(performance.now());
+        }
+      });
+    };
+    const mutate = async () => {
+      await act(async () => {
+        document.body.classList.toggle("settle-test");
+      });
+    };
+
+    renderDocked();
+    await act(async () => {});
+    pump(10);
+
+    const asleep = reads;
+    pump(10);
+    expect(reads).toBe(asleep);
+
+    rect = new DOMRect(80, 120, 240, 240);
+    await mutate();
+    pump(4);
+    const box = model().parentElement as HTMLElement;
+    expect(box.style).toMatchObject({ left: "80px", top: "120px" });
+
+    const settled = reads;
+    pump(10);
+    expect(reads).toBe(settled);
   });
 });
