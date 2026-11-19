@@ -9,6 +9,7 @@ import { bindings, defineConfig, exports } from "cf/config";
 export default defineConfig(({ mode }) => {
   const local = mode === "development" ? loadEnv(mode, import.meta.dirname, "") : {};
   const text = (key: string, fallback: string) => bindings.text(local[key] ?? fallback);
+  const googleClientId = local.GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID ?? "";
 
   return {
     worker: {
@@ -32,8 +33,12 @@ export default defineConfig(({ mode }) => {
         TTS_MODEL: text("TTS_MODEL", "xai/grok-tts"),
         AUTH_SECRET: bindings.secret(),
         BYOK_ENC_KEY: bindings.secret(),
-        GOOGLE_CLIENT_ID: text("GOOGLE_CLIENT_ID", ""),
-        GOOGLE_CLIENT_SECRET: bindings.secret(),
+        GOOGLE_CLIENT_ID: bindings.text(googleClientId),
+        ...(googleClientId
+          ? {
+              GOOGLE_CLIENT_SECRET: mode === "development" ? text("GOOGLE_CLIENT_SECRET", "") : bindings.secret(),
+            }
+          : {}),
       },
       assets: { notFoundHandling: "single-page-application", runWorkerFirst: ["/api/*", "/health"] },
       domains: ["socrates.g36maid.dev"],
