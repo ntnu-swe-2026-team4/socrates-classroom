@@ -67,6 +67,8 @@ export const GatewayConfigSchema = z
     }),
     report: z.object({
       studentAttempts: z.number().int().min(1),
+      classAttempts: z.number().int().min(1),
+      axes: z.enum(["teacher", "ai", "both"]),
       alarmAttempts: z.number().int().min(1),
       alarmBackoffMs: z.number().int().min(0),
       alarmTimeoutMs: z.number().int().min(1000),

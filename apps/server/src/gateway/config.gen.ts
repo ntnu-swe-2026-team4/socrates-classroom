@@ -57,6 +57,8 @@ const CONFIG = {
   },
   "report": {
     "studentAttempts": 2,
+    "classAttempts": 2,
+    "axes": "both",
     "alarmAttempts": 3,
     "alarmBackoffMs": 4000,
     "alarmTimeoutMs": 300000,

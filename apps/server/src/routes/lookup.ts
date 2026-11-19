@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { LookupInputSchema, LANG_NAMES, type Lang } from "@socrates/shared";
-import { enforceIpLimit, parseBody, requireUser, type AppEnv } from "../http";
+import { ApiError, LookupInputSchema, LANG_NAMES, type Lang } from "@socrates/shared";
+import { enforceIpLimit, fail, parseBody, requireUser, type AppEnv } from "../http";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
 function mockMarkdown(term: string, lang: string): string {
@@ -14,32 +14,21 @@ export function lookupRoutes() {
     requireUser(c);
     await enforceIpLimit(c, "lookup", 20);
     const input = await parseBody(c, LookupInputSchema);
-    const lang = c.get("lang");
-    if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {
-      return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) }, 200, {
-        "X-Socrates-Fallback": "mock",
-      });
-    }
+    const lang = c.get("lang") as Lang;
+    // A canned explanation only in the explicit mock mode (tests, local demo); otherwise a failure is an error the
+    // panel shows, never a made-up definition.
+    if (c.env.LLM_PROVIDER === "mock") return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) });
+    if (!c.env.AI) fail(502, "llm_unavailable");
+    let markdown = "";
     try {
       const { harness, runtime } = await openProfileHarness(c.env, "lookup");
-      const { text } = await runProfile(
-        harness,
-        runtime,
-        "lookup",
-        `${input.term}\n\nWrite in ${LANG_NAMES[c.get("lang") as Lang]}.`,
-      );
-      const markdown = text.trim();
-      if (!markdown) {
-        return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) }, 200, {
-          "X-Socrates-Fallback": "mock",
-        });
-      }
-      return c.json({ term: input.term, markdown });
+      const { text } = await runProfile(harness, runtime, "lookup", `${input.term}\n\nWrite in ${LANG_NAMES[lang]}.`);
+      markdown = text.trim();
     } catch (error) {
+      if (error instanceof ApiError) throw error;
       console.error("[lookup] pipeline failed", error instanceof Error ? error.name : typeof error);
-      return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) }, 200, {
-        "X-Socrates-Fallback": "mock",
-      });
     }
+    if (!markdown) fail(502, "llm_unavailable");
+    return c.json({ term: input.term, markdown });
   });
 }

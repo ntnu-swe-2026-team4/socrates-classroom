@@ -6,6 +6,8 @@ import { one, run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import { call, cookieOf, createClassroom, startActivity, systemTopicId } from "./helpers";
 
+const TEST_AXES = [{ name: "契約與人情", left: "契約優先", right: "人情優先" }];
+
 let teacher: string;
 let otherTeacher: string;
 let classroomId: string;
@@ -45,7 +47,7 @@ async function topicsOf(classroom: string, cookie: string): Promise<SessionTopic
 async function createTopic(classroom: string, cookie: string, title: string, statement: string) {
   const res = await call(
     `/api/classrooms/${classroom}/topics`,
-    jsonInit({ title, statement, prompts: ["你的判斷是什麼？"] }, cookie),
+    jsonInit({ title, statement, prompts: ["你的判斷是什麼？"], axes: TEST_AXES }, cookie),
   );
   return res;
 }
@@ -160,6 +162,8 @@ describe("classroom / topic decoupling (#135)", () => {
     expect(copy.classroomId).toBe(secondClassroomId);
     expect(copy.title).toBe(source!.title);
     expect(copy.statement).toBe(source!.statement);
+    // the copy keeps the source's axes
+    expect((copy as { axes?: unknown }).axes).toEqual(TEST_AXES);
 
     const provenance = await one<{ copied_from: string | null }>(
       env.DB,
@@ -205,7 +209,10 @@ describe("classroom / topic decoupling (#135)", () => {
   });
 
   it("personal topics from POST /topics stay usable by their owner only", async () => {
-    const created = await call("/api/topics", jsonInit({ title: "個人題", statement: "舊路徑", prompts: [] }, teacher));
+    const created = await call(
+      "/api/topics",
+      jsonInit({ title: "個人題", statement: "舊路徑", prompts: [], axes: TEST_AXES }, teacher),
+    );
     expect(created.status).toBe(201);
     const topic = (await created.json()) as SessionTopic;
     expect(topic.classroomId).toBeNull();

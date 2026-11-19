@@ -170,3 +170,64 @@ describe("admin capability model (#131)", () => {
     expect(((await escalate.json()) as { code: string }).code).toBe("validation");
   });
 });
+
+describe("who decides the report axes (#159): the backend locks one or lets the teacher choose, after deploy", () => {
+  const putSettings = (cookie: string | undefined, body: unknown) =>
+    call("/api/admin/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}) },
+      body: JSON.stringify(body),
+    });
+  const configNow = async () => ((await (await call("/api/config")).json()) as { reportAxes: string }).reportAxes;
+
+  test("only an admin reads or changes it", async () => {
+    expect((await call("/api/admin/settings")).status).toBe(401);
+    const teacher = await login("demo@socrates.tw");
+    expect((await call("/api/admin/settings", { headers: { Cookie: teacher } })).status).toBe(403);
+    expect((await putSettings(teacher, { reportAxes: "ai" })).status).toBe(403);
+    expect((await putSettings(admin, { reportAxes: "nobody" })).status).toBe(422);
+    const read = await call("/api/admin/settings", { headers: { Cookie: admin } });
+    expect(await read.json()).toEqual({ reportAxes: "both" }); // providers.config.yaml until an admin sets it
+  });
+
+  test("both: the teacher chooses per activity; locked: only that one starts; each change applies at once", async () => {
+    const teacher = await login("demo@socrates.tw");
+    const room = await call("/api/classrooms", jsonInit({ name: "決定權班" }, teacher));
+    const { classroomId } = (await room.json()) as { classroomId: string };
+    const bare = await call(
+      `/api/classrooms/${classroomId}/topics`,
+      jsonInit({ title: "沒軸的題", statement: "要不要軸？", prompts: [] }, teacher),
+    );
+    expect(bare.status).toBe(201); // axes are optional on a topic
+    const topicId = ((await bare.json()) as { id: string }).id;
+    const start = (reportAxes?: string) =>
+      call(
+        `/api/classrooms/${classroomId}/activities`,
+        jsonInit({ topicId, mode: "test", ...(reportAxes ? { reportAxes } : {}) }, teacher),
+      );
+    const codeOf = async (res: Response) => ((await res.json()) as { code: string }).code;
+    try {
+      // both (the default): AI-set axes start on a topic without axes; teacher-set (also the default choice) need axes
+      expect(await configNow()).toBe("both");
+      expect((await start("ai")).status).toBe(201);
+      const teacherSet = await start("teacher");
+      expect(teacherSet.status).toBe(422);
+      expect(await codeOf(teacherSet)).toBe("topic_axes_required");
+      expect((await start()).status).toBe(422);
+
+      // locked to ai: no choice; asking for teacher-set axes is refused
+      expect((await putSettings(admin, { reportAxes: "ai" })).status).toBe(200);
+      expect(await configNow()).toBe("ai");
+      expect((await start()).status).toBe(201);
+      const refused = await start("teacher");
+      expect(refused.status).toBe(422);
+      expect(await codeOf(refused)).toBe("report_axes_not_allowed");
+
+      // locked to teacher: asking for AI-set axes is refused
+      expect((await putSettings(admin, { reportAxes: "teacher" })).status).toBe(200);
+      expect(await codeOf(await start("ai"))).toBe("report_axes_not_allowed");
+    } finally {
+      await putSettings(admin, { reportAxes: "both" });
+    }
+  });
+});

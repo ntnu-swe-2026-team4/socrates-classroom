@@ -1,7 +1,17 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActivityMode, ActivityStarted, ClassroomSummary, Topic } from "@socrates/shared";
+import type { ActivityMode, ActivityStarted, ClassroomSummary, ReportAxes, Topic, TopicDraft } from "@socrates/shared";
 import { api } from "@/api";
+import {
+  AxesEditor,
+  axesOf,
+  axesValid,
+  draftOf,
+  draftsOf,
+  useReportAxes,
+  useTopicWithAxes,
+  type AxisDraft,
+} from "@/components/AxesEditor";
 import { Button, Card, Checkbox, Field, Input, Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
@@ -28,6 +38,9 @@ export function TopicPicker({
   onPick: (topicId: string) => void;
   disabled?: boolean;
 }) {
+  const t = useT();
+  const policy = useReportAxes();
+  const showAxes = policy !== undefined && policy !== "ai";
   return (
     <div className="flex max-h-80 flex-col gap-1 overflow-y-auto pr-0.5">
       {topics.map((topic) => (
@@ -44,6 +57,15 @@ export function TopicPicker({
         >
           <b className="font-serif text-[15px] font-medium text-ink">{topic.title}</b>
           <span className="mt-0.5 text-[13px] leading-relaxed text-ink-soft">{topic.statement}</span>
+          {showAxes &&
+            topic.axes.map((axis) => (
+              <span key={axis.name} className="mt-0.5 text-[12px] text-ink-faint">
+                {axis.name}：{axis.left} ↔ {axis.right}
+              </span>
+            ))}
+          {policy === "teacher" && topic.axes.length === 0 && (
+            <span className="mt-0.5 text-[12px] text-flag">{t("topic_no_axes")}</span>
+          )}
         </button>
       ))}
     </div>
@@ -76,16 +98,25 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
   const [title, setTitle] = useState("");
   const [statement, setStatement] = useState("");
   const [direction, setDirection] = useState("");
+  const [candidate, setCandidate] = useState<TopicDraft | null>(null);
+  const policy = useReportAxes();
+  const axesOptional = policy === "both";
+  const withAxes = policy === "teacher" || axesOptional;
+  const [axes, setAxes] = useState<AxisDraft[]>(() => [draftOf()]);
+  const freshAxes = () => (axesOptional ? [] : [draftOf()]);
   const generated = useMutation({ mutationFn: () => api.generateTopics(direction) });
   const create = useMutation({
     mutationFn: (input: { title: string; statement: string; prompts: string[] }) =>
-      api.createClassroomTopic(classroomId, input),
+      api.createClassroomTopic(classroomId, { ...input, axes: withAxes ? axesOf(axes) : [] }),
     onSuccess: async () => {
       setTitle("");
       setStatement("");
+      setCandidate(null);
+      setAxes(freshAxes());
       await invalidateTopics(queryClient, classroomId);
     },
   });
+  const ready = policy !== undefined && (!withAxes || axesValid(axes, axesOptional)) && !create.isPending;
 
   return (
     <div className="flex flex-col gap-4">
@@ -107,9 +138,12 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
           <Field label={t("setup_topic_statement")}>
             <Input value={statement} maxLength={2000} onChange={(event) => setStatement(event.target.value)} />
           </Field>
+          {withAxes && (
+            <AxesEditor axes={axes} onChange={setAxes} disabled={create.isPending} optional={axesOptional} />
+          )}
           <Button
             className="self-start"
-            disabled={!title.trim() || !statement.trim() || create.isPending}
+            disabled={!title.trim() || !statement.trim() || !ready}
             onClick={() => create.mutate({ title: title.trim(), statement: statement.trim(), prompts: [] })}
           >
             {create.isPending ? <Spinner /> : t("setup_topic_add")}
@@ -126,22 +160,32 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
             <Button
               variant="outline"
               disabled={!direction.trim() || generated.isPending}
-              onClick={() => generated.mutate()}
+              onClick={() => {
+                setCandidate(null);
+                generated.mutate();
+              }}
             >
               {generated.isPending ? <Spinner /> : t("setup_topic_generate")}
             </Button>
           </div>
           {generated.isError && <p className="text-[13px] text-flag">{t("common_error")}</p>}
-          {(generated.data ?? []).map((candidate) => (
-            <div key={candidate.id} className="flex items-start gap-3 rounded-xl bg-paper-deep p-3">
-              <span className="min-w-0 flex-1">
-                <b className="block font-serif text-[15px] font-medium text-ink">{candidate.title}</b>
-                <span className="mt-0.5 block text-[13px] leading-relaxed text-ink-soft">{candidate.statement}</span>
-              </span>
+          <TopicPicker
+            topics={(generated.data ?? []).map((draft) => ({ ...draft, classroomId: null }))}
+            picked={candidate?.id ?? null}
+            onPick={(id) => {
+              if (candidate?.id === id) return; // keep the teacher's edits
+              setCandidate(generated.data?.find((draft) => draft.id === id) ?? null);
+              setAxes(freshAxes());
+            }}
+          />
+          {candidate && (
+            <>
+              {withAxes && (
+                <AxesEditor axes={axes} onChange={setAxes} disabled={create.isPending} optional={axesOptional} />
+              )}
               <Button
-                size="sm"
-                variant="outline"
-                disabled={create.isPending}
+                className="self-start"
+                disabled={!ready}
                 onClick={() =>
                   create.mutate({
                     title: candidate.title,
@@ -150,10 +194,10 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
                   })
                 }
               >
-                {t("setup_topic_add")}
+                {create.isPending ? <Spinner /> : t("setup_topic_add")}
               </Button>
-            </div>
-          ))}
+            </>
+          )}
         </div>
       )}
       {create.isError && <p className="text-[13px] text-flag">{t("common_error")}</p>}
@@ -251,18 +295,37 @@ export function StartActivity({
   const classroomTopics = useClassroomTopics(classroomId);
   const systemTopics = useQuery({ queryKey: ["topics"], queryFn: () => api.listTopics(), staleTime: Infinity });
   const [picked, setPicked] = useState<string | null>(null);
+  const [axes, setAxes] = useState<AxisDraft[]>(() => [draftOf()]);
   const [testMode, setTestMode] = useState(false);
+  const topicWithAxes = useTopicWithAxes(classroomId);
+  const policy = useReportAxes();
+  const [chosen, setChosen] = useState<ReportAxes>("teacher");
+  const reportAxes: ReportAxes | undefined = policy === "both" ? chosen : policy;
+  const teacherAxes = reportAxes === "teacher";
+  const own = classroomTopics.data ?? [];
+  const shared = (systemTopics.data ?? []).filter((topic) => topic.classroomId === null);
+  const pickedTopic = [...own, ...shared].find((topic) => topic.id === picked) ?? null;
   const start = useMutation({
-    mutationFn: ({ topicId, mode }: { topicId: string; mode: ActivityMode }) =>
-      api.startActivity(classroomId, topicId, mode),
+    mutationFn: async ({ topic, mode }: { topic: Topic; mode: ActivityMode }) =>
+      // axes set by the model: the topic starts as it is
+      api.startActivity(
+        classroomId,
+        teacherAxes ? await topicWithAxes(topic, axesOf(axes)) : topic.id,
+        mode,
+        reportAxes,
+      ),
     onSuccess: async (started) => {
       setPicked(null);
       await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+      await invalidateTopics(queryClient, classroomId);
       onStarted(started);
     },
   });
-  const own = classroomTopics.data ?? [];
-  const shared = (systemTopics.data ?? []).filter((topic) => topic.classroomId === null);
+  const pick = (topicId: string) => {
+    if (topicId === picked) return; // keep the teacher's edits
+    setPicked(topicId);
+    setAxes(draftsOf([...own, ...shared].find((topic) => topic.id === topicId)?.axes ?? []));
+  };
 
   if (classroomTopics.isPending || systemTopics.isPending) {
     return (
@@ -278,9 +341,21 @@ export function StartActivity({
       {own.length === 0 ? (
         <p className="text-[13px] text-ink-faint">{t("setup_topics_empty")}</p>
       ) : (
-        <TopicPicker topics={own} picked={picked} onPick={setPicked} />
+        <TopicPicker topics={own} picked={picked} onPick={pick} />
       )}
-      <SystemTopicList topics={shared.slice(0, 6)} picked={picked} onPick={setPicked} />
+      <SystemTopicList topics={shared.slice(0, 6)} picked={picked} onPick={pick} />
+      {policy === "both" && (
+        <Segmented
+          label={t("setup_axes_mode")}
+          value={chosen}
+          onChange={(value) => setChosen(value)}
+          items={[
+            { value: "teacher", label: t("setup_axes_mode_teacher") },
+            { value: "ai", label: t("setup_axes_mode_ai") },
+          ]}
+        />
+      )}
+      {pickedTopic && teacherAxes && <AxesEditor axes={axes} onChange={setAxes} disabled={start.isPending} />}
       {allowTest && (
         <div>
           <Checkbox label={t("classroom_mode_test")} checked={testMode} onCheckedChange={setTestMode} />
@@ -292,8 +367,8 @@ export function StartActivity({
       <div className="flex items-center justify-between gap-3">
         {start.isError ? <p className="text-[12.5px] text-flag">{t("common_error")}</p> : <span />}
         <Button
-          disabled={!picked || start.isPending}
-          onClick={() => picked && start.mutate({ topicId: picked, mode: testMode ? "test" : "live" })}
+          disabled={!pickedTopic || reportAxes === undefined || (teacherAxes && !axesValid(axes)) || start.isPending}
+          onClick={() => pickedTopic && start.mutate({ topic: pickedTopic, mode: testMode ? "test" : "live" })}
         >
           {start.isPending ? <Spinner /> : testMode ? t("classroom_start_test") : t("setup_activity_start")}
         </Button>

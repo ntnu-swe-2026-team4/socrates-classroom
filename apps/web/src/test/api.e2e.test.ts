@@ -123,7 +123,8 @@ describe("httpApi contract (browser-side actual code)", () => {
     await httpApi.listClassroomTopics("c_1");
     expect(handler.mock.calls[1]![0]).toBe("/api/classrooms/c_1/topics");
 
-    const topic = await httpApi.createClassroomTopic("c_1", { title: "題", statement: "述", prompts: [] });
+    const axes = [{ name: "軸", left: "左", right: "右" }];
+    const topic = await httpApi.createClassroomTopic("c_1", { title: "題", statement: "述", prompts: [], axes });
     expect(topic.classroomId).toBe("c_1");
     expect(handler.mock.calls[2]![0]).toBe("/api/classrooms/c_1/topics");
     expect(handler.mock.calls[2]![1].method).toBe("POST");
@@ -132,11 +133,13 @@ describe("httpApi contract (browser-side actual code)", () => {
     expect(copy.id).toBe("t_2");
     expect(handler.mock.calls[3]![0]).toBe("/api/topics/t_1/copy");
     expect(JSON.parse(handler.mock.calls[3]![1].body as string)).toEqual({ classroomId: "c_2" });
+    await httpApi.copyTopic("t_1", "c_2", axes);
+    expect(JSON.parse(handler.mock.calls[4]![1].body as string)).toEqual({ classroomId: "c_2", axes });
 
     const started = await httpApi.startActivity("c_1", "t_1");
     expect(started.activityId).toBe("a_1");
-    expect(handler.mock.calls[4]![0]).toBe("/api/classrooms/c_1/activities");
-    expect(JSON.parse(handler.mock.calls[4]![1].body as string)).toEqual({ topicId: "t_1", mode: "live" });
+    expect(handler.mock.calls[5]![0]).toBe("/api/classrooms/c_1/activities");
+    expect(JSON.parse(handler.mock.calls[5]![1].body as string)).toEqual({ topicId: "t_1", mode: "live" });
   });
 
   test("finishActivity: POST 204 with no body", async () => {

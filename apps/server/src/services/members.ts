@@ -1,5 +1,5 @@
 import { getCookie } from "hono/cookie";
-import { ApiError, type ActivityMode, type User } from "@socrates/shared";
+import { ApiError, AxisSchema, type ActivityMode, type ReportAxes, type User } from "@socrates/shared";
 import type { Db } from "../db/d1";
 import { one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, type ParticipantIdentity } from "../auth";
@@ -31,6 +31,7 @@ export interface TopicRow {
   statement: string;
   summary: string | null;
   prompts: string;
+  axes: string;
 }
 
 export interface MemberRow {
@@ -59,6 +60,9 @@ export function parsePrompts(row: TopicRow) {
     statement: row.statement,
     ...(row.summary ? { summary: row.summary } : {}),
     prompts: JSON.parse(row.prompts) as string[],
+    axes: AxisSchema.array()
+      .catch([])
+      .parse(JSON.parse(row.axes ?? "[]")),
   };
 }
 
@@ -103,11 +107,15 @@ export async function topicForActivity(
   topicId: string,
   classroomId: string,
   userId: string,
+  reportAxes: ReportAxes,
 ): Promise<TopicRow> {
   const topic = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id", { id: topicId });
   if (!topic) fail(404, "not_found");
   const systemOrOwn = topic.classroom_id === null && (topic.owner_id === null || topic.owner_id === userId);
   if (topic.classroom_id !== classroomId && !systemOrOwn) fail(404, "not_found");
+  // With the teacher setting the axes, the class report places students on the topic's axes, so a topic without any
+  // cannot start that way.
+  if (reportAxes === "teacher" && parsePrompts(topic).axes.length === 0) fail(422, "topic_axes_required");
   return topic;
 }
 

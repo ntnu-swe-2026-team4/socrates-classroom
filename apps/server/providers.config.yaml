@@ -36,6 +36,10 @@ voice:
 
 report:
   studentAttempts: 2
+  classAttempts: 2
+  # Who decides the class report's value axes, until an admin changes it (PUT /api/admin/settings, takes effect at once):
+  # teacher / ai = only that one; both = the teacher chooses when starting each activity. #159
+  axes: both
   alarmAttempts: 3
   alarmBackoffMs: 4000
   alarmTimeoutMs: 300000

@@ -16,12 +16,26 @@ export const UserSchema = z.object({
 });
 export type User = z.infer<typeof UserSchema>;
 
+/** A value axis the teacher sets on a topic (1-3 per topic, as in the main project): what it asks and its two ends. */
+export const AxisSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  left: z.string().trim().min(1).max(40),
+  right: z.string().trim().min(1).max(40),
+});
+export type Axis = z.infer<typeof AxisSchema>;
+export const AXES_MAX = 3;
+
 export const TopicDraftSchema = z.object({
   id: z.string(),
   title: z.string(),
   statement: z.string(),
   summary: z.string().optional(),
   prompts: z.array(z.string()),
+  /**
+   * The teacher's value axes. With report axes set by the teacher, a topic without any (saved before axes existed)
+   * cannot start an activity; with axes set by the model they are not used.
+   */
+  axes: z.array(AxisSchema),
 });
 export type TopicDraft = z.infer<typeof TopicDraftSchema>;
 
@@ -255,11 +269,36 @@ export const AdminUserUpdateInputSchema = z
   .refine((value) => value.canManageClasses !== undefined || value.disabled !== undefined, {
     message: "at least one field is required",
   });
+/** Who sets an activity's class-report value axes (#159): the teacher on the topic, or the model for the class. */
+export const ReportAxesSchema = z.enum(["teacher", "ai"]);
+export type ReportAxes = z.infer<typeof ReportAxesSchema>;
+/**
+ * Who decides that, the backend's call (#159): lock one ("teacher" | "ai"), or let the teacher choose for each activity
+ * ("both"; the start screen picks "teacher" first).
+ */
+export const ReportAxesPolicySchema = z.enum(["teacher", "ai", "both"]);
+export type ReportAxesPolicy = z.infer<typeof ReportAxesPolicySchema>;
+/** Server settings the web app needs to know (GET /api/config). */
+export const ClientConfigSchema = z.object({ reportAxes: ReportAxesPolicySchema });
+export type ClientConfig = z.infer<typeof ClientConfigSchema>;
+/** What an admin can change after deploy (GET/PUT /api/admin/settings). */
+export const AdminSettingsSchema = z.object({ reportAxes: ReportAxesPolicySchema });
+export type AdminSettings = z.infer<typeof AdminSettingsSchema>;
+
+/**
+ * A topic's axes as the teacher sets them: at most 3, with different names; optional on the topic. An activity started
+ * with the teacher setting the axes needs 1-3 of them.
+ */
+export const TopicAxesInputSchema = z
+  .array(AxisSchema)
+  .max(AXES_MAX)
+  .refine((axes) => new Set(axes.map((axis) => axis.name)).size === axes.length, "axis names must differ");
 export const TopicCreateInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   statement: z.string().trim().min(1).max(2000),
   summary: z.string().trim().max(500).optional(),
   prompts: z.array(z.string().trim().min(1).max(160)).max(6),
+  axes: TopicAxesInputSchema.default([]),
 });
 export const GenerateTopicsInputSchema = z.object({
   direction: z.string().trim().min(1).max(200),
@@ -269,10 +308,14 @@ export const ClassroomCreateInputSchema = z.object({
 });
 export const TopicCopyInputSchema = z.object({
   classroomId: z.string().min(1),
+  /** The teacher's axes for the copy; omitted, the copy keeps the source's axes. */
+  axes: TopicAxesInputSchema.optional(),
 });
 export const ActivityStartInputSchema = z.object({
   topicId: z.string().min(1),
   mode: ActivityModeSchema.default("live"),
+  /** Who sets this activity's report axes; only the backend's allowed choice is accepted (omitted: its default). */
+  reportAxes: ReportAxesSchema.optional(),
 });
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
 export const LookupInputSchema = z.object({ term: z.string().trim().min(1).max(30) });
@@ -360,6 +403,8 @@ export const ERROR_CODES = [
   "activity_finished",
   "llm_unavailable",
   "llm_rate_limited",
+  "topic_axes_required",
+  "report_axes_not_allowed",
   "llm_timeout",
   "report_pending",
   "report_failed",
