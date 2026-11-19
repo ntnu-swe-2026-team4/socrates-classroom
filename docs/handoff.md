@@ -1,6 +1,6 @@
 # 交接：與原版的差異與上線待辦
 
-> **注意（2026-11-17 合併 `216f62f` 後）**：本文件的 migration 編號與「Google 登入停用」段落已過時——`frontend/web-next` 的 002–011 重編為 008–016，main 的 `007_user_identities` 保留，`004_oauth.sql`（`oauth_identities`）已移除，Google 登入改走 `src/oauth.ts`。現況以 [`api-contract.md`](./api-contract.md)、[`accounts.md`](./accounts.md) 與 [`changelog.md`](./changelog.md) 的 2026-11-17 合併條目為準。
+> **注意（2026-11-19 更新）**：web-next 自有 migrations 已全數 squash 進單一 `008_web_next.sql`（皆未進 production，安全合併）；`007_user_identities` 保留（production 已套用）。Google 登入走 `src/oauth.ts`，bindings 已宣告（`GOOGLE_CLIENT_ID` 預設空字串＝停用）。現況以 [`api-contract.md`](./api-contract.md)、[`accounts.md`](./accounts.md) 與 [`changelog.md`](./changelog.md) 為準。
 >
 > 基準：2026-11-10 下載的 `experiment/web-next`（以下稱「原版」）。本文件只列**差異與待辦**；細節以各 SSOT 為準——功能清單見 [`feature.md`](./feature.md)、API 格式見 [`api-contract.md`](./api-contract.md)、逐條變更見 [`changelog.md`](./changelog.md)。
 
@@ -18,26 +18,19 @@
 因此有兩個行為與「開發時曾改過的版本」不同，請留意：
 
 - **本機 dev 需要 Cloudflare 遠端連線**：原版 config 在 dev 也宣告 `AI` binding，cf CLI 會走 remote mode。若出現「You need to register a workers.dev subdomain」，需到 Cloudflare 註冊 workers.dev 子網域，或在 `pnpm dev` 終端機按 `l` 切成 local。
-- **Google 登入停用**：server 已實作，但 config 未宣告對應 bindings。啟用步驟見 [`cf.md` §OAuth 登入](./cf.md#oauth-登入google選用)。登入頁的 Google 按鈕會顯示為「尚未設定」，其他登入方式不受影響。
+- **Google 登入**：config 已宣告 `GOOGLE_CLIENT_ID`（text binding，預設空字串＝停用）與 `GOOGLE_CLIENT_SECRET`（secret）。設定值與 Google Console 步驟見 [`google-oauth.md`](./google-oauth.md)；未設定時登入頁 Google 按鈕停用，其他登入方式不受影響。
 
-## 2. 資料庫 migrations（新增 7 支）
+## 2. 資料庫 migrations（001–008）
 
-原版只有 `001_init.sql`。部署時 `deploy.yml` 的「D1 migrations」步驟會**自動依序套用**，不需手動操作；本機 `pnpm dev` 啟動時也會自動套用（已開著的 dev server 可執行 `pnpm migrate`）。
+部署時 `deploy.yml` 的「D1 migrations」步驟會**自動依序套用**，不需手動操作；本機 `pnpm dev` 啟動時也會自動套用（已開著的 dev server 可執行 `pnpm migrate`）。
 
-| Migration                     | 內容                                                                                                                                                |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `002_preview_student.sql`     | `users.preview_classroom_id`：學生視角預覽的測試學生                                                                                                |
-| `003_accounts_solo.sql`       | 帳號統一：移除 `users.role`、新增 `users.is_guest`；新增 `solo_chats`（單人對話）                                                                   |
-| `004_oauth.sql`               | `oauth_identities`：第三方登入身分（目前停用，表先建好）                                                                                            |
-| `005_topic_i18n.sql`          | `topics.i18n`：系統主題的英文／西班牙文譯文，並回填三個內建主題                                                                                     |
-| `006_community.sql`           | `announcements`、`posts`：教室公告與討論區                                                                                                          |
-| `007_teacher_key_entries.sql` | `teacher_key_entries` 取代 `teacher_keys`：多把 key × 多個 model，舊資料自動搬移                                                                    |
-| `008_account_roles.sql`       | 帳號角色：`schools`、`users.is_admin／teacher_plan／school_id／teacher_mode／username／student_classroom_id／guest_activity_id`（見 `accounts.md`） |
-| `009_notifications.sql`       | 系統通知：`notifications` 資料表、`users.notifications_seen_at`                                                                                     |
-| `010_teacher_requests.sql`    | 教師模式申請：`users.teacher_request_at`                                                                                                            |
-| `011_usage_quota.sql`         | 額度與用量：`users.usage_quota_tokens`、`usage_months`、`usage_alerts`                                                                              |
+| Migration                 | 內容                                                                                                                                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `001`–`006`               | 原版即有（init／capabilities／activity participants／invites／mode／topic classroom），production 已套用                                                                                                                           |
+| `007_user_identities.sql` | 帳號身分表（production 已套用）                                                                                                                                                                                                    |
+| `008_web_next.sql`        | web-next 其餘遷移 squash 為單檔：preview student、帳號統一與角色（`schools` 等）、`solo_chats`、`topics.i18n`、announcements／posts、`teacher_key_entries`、notifications、教師申請、usage quota、`audit_log`（皆未進 production） |
 
-> `003` 會**刪除 `users.role` 欄位**：既有帳號依「有無 email」換算為正式帳號／訪客；舊 session 的 `role` claim 仍可登入（student → 訪客、teacher → 正式帳號）。
+> `008_web_next.sql` 會**刪除 `users.role` 欄位**：既有帳號依「有無 email」換算為正式帳號／訪客；舊 session 的 `role` claim 仍可登入（student → 訪客、teacher → 正式帳號）。
 
 ## 3. 功能差異摘要
 
@@ -49,7 +42,7 @@
 | 教室     | 開課頁先命名＋選題    | 「創建課程」直接建立空課程並進入教室頁編輯；名稱對話框修改；主題可選題庫／自訂／AI 生成；可刪除教室                                                                                     |
 | 教室內頁 | 主題卡片              | 分頁：主題（可選取歷次主題）／公告／討論區／成員（移除成員、退出教室）；學生視角預覽                                                                                                    |
 | 加入教室 | 邀請碼→輸入名字       | 先選「使用我的帳號」或「以訪客加入」；已登入沿用帳號名                                                                                                                                  |
-| 蘇格拉底 | 固定 3D 面板          | 可拖曳的圓形小幫手：雙擊輪盤（問 AI／靜音／表情）、表情一次性播放                                                                                                                       |
+| 蘇格拉底 | 固定 3D 面板          | 邊緣小窗（`SocratesWindow`）：上下拖曳調整位置、可收合；拖曳模型可轉動；朗讀狀態與停止鈕                                                                                                |
 | 語音     | 對話自動朗讀          | 單一語音通道：最後主動者優先、跨分頁互斥、「正在朗讀」標籤；設定頁開關＋音量＋「老爺爺／原聲」聲線                                                                                      |
 | 多語系   | 介面三語              | 另加系統主題譯文、日期依介面語言、蘇格拉底依學生語言回覆                                                                                                                                |
 | 自備金鑰 | 一 provider 一把 key  | 多把 key × 多個 model，拖曳調整優先順序；可沿用已存的 key 加入其他模型                                                                                                                  |
@@ -57,7 +50,7 @@
 
 ## 4. 已補上的後端
 
-以下為前端新功能所需、且**不需變動雲端設定**即可完成的後端部分，皆已實作並有測試（`pnpm test`：server 115、web 63 皆通過）：
+以下為前端新功能所需、且**不需變動雲端設定**即可完成的後端部分，皆已實作並有測試（`pnpm test`：server 186、web 83 皆通過）：
 
 - 帳號：`POST /auth/guest`、`/auth/register`（`name`／`code` 選填、訪客升級）、`PATCH /me`、`GET /auth/providers`
 - 單人對話：`/solo/chats` CRUD；Chat DO 支援 `s_` thread（本人授權、擁有者 teacher keys）
@@ -66,13 +59,13 @@
 - 教室社群：公告、討論區、成員（含移除與退出）
 - 系統主題在地化（依 `Accept-Language`）；離線 mock 回覆依學生語言輪替五種追問
 - Teacher keys 多筆化：`POST /settings/keys`、`PATCH`／`DELETE /settings/keys/:id`、`PUT /settings/keys/order {ids}`（API 形狀變更，PM 需求）
-- 第三方登入的 server 端（`routes/oauth.ts`、`004_oauth.sql`）：程式完成，**待 config 宣告後即可用**
+- Google OAuth（`src/oauth.ts`＋`/auth/oauth/google/*`）：已實作且 config 已宣告 bindings，填值即啟用（見 [`google-oauth.md`](./google-oauth.md)）
 
 ## 5. 無法在不改雲端設定下完成的項目
 
 | 項目                        | 需要什麼                                                                                                                                                 |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 第三方登入                  | `cloudflare.config.ts` 宣告 bindings、各平台申請 client、CI 提供 public id 與 secrets（[`cf.md`](./cf.md)）                                              |
+| Google 登入啟用             | bindings 已宣告——填 `GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET` 值並在 Google Console 登錄 redirect URI（[`google-oauth.md`](./google-oauth.md)）         |
 | 額度警示 email              | `cloudflare.config.ts` 宣告 send email binding `ALERT_EMAIL`、設定 `ALERT_EMAIL_FROM`（寄件網域需在 Cloudflare 完成驗證）；要定時補寄則另需 cron trigger |
 | 真正的老年男聲              | 換成提供聲線選擇的 TTS；新增 provider 需先通過 ZDR 審查（[`providers.md`](./providers.md)）。目前為前端聲音處理                                          |
 | 本機 dev 免 Cloudflare 帳號 | 需在 config 讓 dev 不宣告 `AI` binding（曾試行，已依決定還原）                                                                                           |
