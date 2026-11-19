@@ -2,6 +2,15 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-19 — 內頁基礎層：視覺系統與 effect-free 架構（`split/176-base`，#176）
+
+### Added
+
+- 內頁視覺系統：`index.css` 的 `@theme`/halftone 變數與效果層
+- `components/ui.tsx` primitives 重構：TrapDialog 收斂（ref-counted inert）、focus-trap 基準（`getClientRects` 濾器）、dialog title id 改 `useId()`
+- effect-free 共用層：`hooks/useSubscription.ts`（`useSyncExternalStore`）、`lib/frameLoop.ts`（module-scope 共用 rAF loop）、`lib/motion.ts`
+- i18n 全量字典（三語；併回 main 專用 key 維持拆分期間 t.setup/live 面板可用）
+
 ## 2026-11-17 — 各模式 thinkingLevel 依 #122 實測調整（`feat/122-thinking-levels`）
 
 ### Changed
