@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useAgent } from "agents/react";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import type { Message } from "@earendil-works/pi-ai";
@@ -39,10 +39,6 @@ function writeStored(key: string, value: StoredSession | null): void {
   }
 }
 
-/**
- * The side window opens its own socket to the same thread and sends `btw`, which binds that socket to a fork of the
- * root (docs/api-contract.md §5.4). Entries up to the fork point are the main dialogue; only later ones belong here.
- */
 export function useBtw(activityId: string, participantId: string, enabled: boolean) {
   const key = storageKey(activityId, participantId);
   const [view, setView] = useState<ConversationView | null>(null);
@@ -51,7 +47,6 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
   const [bound, setBound] = useState(false);
   const [forkHead, setForkHead] = useState<number | null>(() => readStored(key)?.forkHead ?? null);
   const viewRef = useRef<ConversationView | null>(null);
-  const socketRef = useRef<{ send: (data: string) => void; readyState: number } | null>(null);
   const sessionRef = useRef<string | null>(readStored(key)?.session ?? null);
   const forkHeadRef = useRef<number | null>(forkHead);
   const openIdRef = useRef<string | null>(null);
@@ -60,9 +55,8 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
   const baselineRef = useRef<number | null>(null);
   const failedInputRef = useRef<string | null>(null);
   const queuedRef = useRef<string | null>(null);
-  const submitRef = useRef<(text: string) => boolean>(() => false);
 
-  const open = useCallback((socket: { send: (data: string) => void }, fresh: boolean) => {
+  function open(socket: { send: (data: string) => void }, fresh: boolean) {
     const id = crypto.randomUUID();
     openIdRef.current = id;
     freshRef.current = fresh || sessionRef.current === null;
@@ -74,9 +68,9 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
         ...(freshRef.current ? {} : { session: sessionRef.current! }),
       } satisfies ClientMessage),
     );
-  }, []);
+  }
 
-  const finishPending = useCallback((failure?: string) => {
+  function finishPending(failure?: string) {
     pendingRef.current = null;
     baselineRef.current = null;
     setPhase("idle");
@@ -85,103 +79,94 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
     } else {
       failedInputRef.current = null;
     }
-  }, []);
+  }
 
-  const arbitrate = useCallback(
-    (next: ConversationView) => {
-      if (pendingRef.current === null) return;
-      const baseline = baselineRef.current ?? -1;
-      if (answered(next.entries.filter((entry) => entry.id > baseline))) {
-        finishPending();
+  function arbitrate(next: ConversationView) {
+    if (pendingRef.current === null) return;
+    const baseline = baselineRef.current ?? -1;
+    if (answered(next.entries.filter((entry) => entry.id > baseline))) {
+      finishPending();
+      return;
+    }
+    const live = next.docs["pi.live"] as { runFailure?: unknown } | undefined;
+    if (live?.runFailure) finishPending("llm_unavailable");
+  }
+
+  function adopt(next: ConversationView) {
+    viewRef.current = next;
+    setView(next);
+    arbitrate(next);
+  }
+
+  function onFrame(raw: unknown) {
+    if (typeof raw !== "string") return;
+    let frame: ServerMessage;
+    try {
+      frame = JSON.parse(raw) as ServerMessage;
+    } catch {
+      return;
+    }
+    switch (frame.type) {
+      case "view": {
+        if (freshRef.current && openIdRef.current !== null) {
+          const head = frame.view.entries.at(-1)?.id ?? frame.view.before ?? 0;
+          forkHeadRef.current = head;
+          setForkHead(head);
+        }
+        adopt(frame.view);
         return;
       }
-      const live = next.docs["pi.live"] as { runFailure?: unknown } | undefined;
-      if (live?.runFailure) finishPending("llm_unavailable");
-    },
-    [finishPending],
-  );
-
-  const adopt = useCallback(
-    (next: ConversationView) => {
-      viewRef.current = next;
-      setView(next);
-      arbitrate(next);
-    },
-    [arbitrate],
-  );
-
-  const onFrame = useCallback(
-    (raw: unknown) => {
-      if (typeof raw !== "string") return;
-      let frame: ServerMessage;
-      try {
-        frame = JSON.parse(raw) as ServerMessage;
-      } catch {
+      case "ops": {
+        const base = viewRef.current;
+        if (!base) return;
+        let next: ConversationView;
+        try {
+          next = applyImmutable(base, frame.ops);
+        } catch {
+          socket.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
+          return;
+        }
+        adopt(next);
+        if (pendingRef.current && liveTextOf(next)) {
+          setPhase((current) => (current === "thinking" ? "streaming" : current));
+        }
         return;
       }
-      switch (frame.type) {
-        case "view": {
-          if (freshRef.current && openIdRef.current !== null) {
-            const head = frame.view.entries.at(-1)?.id ?? frame.view.before ?? 0;
-            forkHeadRef.current = head;
-            setForkHead(head);
-          }
-          adopt(frame.view);
-          return;
-        }
-        case "ops": {
-          const base = viewRef.current;
-          if (!base) return;
-          let next: ConversationView;
-          try {
-            next = applyImmutable(base, frame.ops);
-          } catch {
-            socketRef.current?.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
-            return;
-          }
-          adopt(next);
-          if (pendingRef.current && liveTextOf(next)) {
-            setPhase((current) => (current === "thinking" ? "streaming" : current));
-          }
-          return;
-        }
-        case "result": {
-          if (frame.id !== openIdRef.current) return;
-          const result = frame.result as { session?: unknown } | null;
-          if (!result || typeof result.session !== "string") return;
+      case "result": {
+        if (frame.id !== openIdRef.current) return;
+        const result = frame.result as { session?: unknown } | null;
+        if (!result || typeof result.session !== "string") return;
+        openIdRef.current = null;
+        freshRef.current = false;
+        sessionRef.current = result.session;
+        writeStored(key, { session: result.session, forkHead: forkHeadRef.current ?? 0 });
+        setError(null);
+        setBound(true);
+        const queued = queuedRef.current;
+        queuedRef.current = null;
+        if (queued) submit(queued);
+        return;
+      }
+      case "error": {
+        if (frame.id !== undefined && frame.id === openIdRef.current) {
           openIdRef.current = null;
-          freshRef.current = false;
-          sessionRef.current = result.session;
-          writeStored(key, { session: result.session, forkHead: forkHeadRef.current ?? 0 });
-          setError(null);
-          setBound(true);
-          const queued = queuedRef.current;
-          queuedRef.current = null;
-          if (queued) submitRef.current(queued);
-          return;
-        }
-        case "error": {
-          if (frame.id !== undefined && frame.id === openIdRef.current) {
-            openIdRef.current = null;
-            if (frame.code === "UnknownSession" && socketRef.current) {
-              sessionRef.current = null;
-              writeStored(key, null);
-              open(socketRef.current, true);
-              return;
-            }
-            queuedRef.current = null;
-            setError({ code: frame.code ?? "llm_unavailable" });
+          if (frame.code === "UnknownSession") {
+            sessionRef.current = null;
+            writeStored(key, null);
+            open(socket, true);
             return;
           }
-          if (frame.id !== undefined && frame.id !== pendingRef.current) return;
-          if (frame.id === undefined && pendingRef.current === null) return;
-          finishPending(frame.code ?? "llm_unavailable");
+          queuedRef.current = null;
+          setError({ code: frame.code ?? "llm_unavailable" });
           return;
         }
+        if (frame.id !== undefined && frame.id !== pendingRef.current) return;
+        if (frame.id === undefined && pendingRef.current === null) return;
+        finishPending(frame.code ?? "llm_unavailable");
+        return;
       }
-    },
-    [adopt, finishPending, key, open],
-  );
+    }
+  }
 
   const socket = useAgent({
     agent: "chat",
@@ -189,64 +174,51 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
     enabled,
     onOpen: (event) => open(event.target as WebSocket, false),
     onMessage: (event) => onFrame(event.data),
-  });
-  socketRef.current = socket;
-
-  useEffect(() => {
-    const lost = () => {
+    onClose: () => {
       setBound(false);
       if (pendingRef.current) finishPending("llm_unavailable");
-    };
-    socket.addEventListener("close", lost);
-    return () => socket.removeEventListener("close", lost);
-  }, [socket, finishPending]);
-
-  const submit = useCallback(
-    (text: string) => {
-      const trimmed = text.trim().slice(0, 2000);
-      if (!trimmed || pendingRef.current || !viewRef.current) return false;
-      if (socket.readyState !== WebSocket.OPEN || sessionRef.current === null || openIdRef.current !== null) {
-        return false;
-      }
-      const id = crypto.randomUUID();
-      pendingRef.current = id;
-      baselineRef.current = viewRef.current.entries.at(-1)?.id ?? null;
-      failedInputRef.current = trimmed;
-      setError(null);
-      setPhase("thinking");
-      socket.send(JSON.stringify({ type: "submit", id, input: trimmed } satisfies ClientMessage));
-      return true;
     },
-    [socket],
-  );
-  submitRef.current = submit;
+  });
 
-  const ask = useCallback(
-    (text: string) => {
-      if (submit(text)) return true;
-      if (pendingRef.current || !text.trim()) return false;
-      queuedRef.current = text;
-      return true;
-    },
-    [submit],
-  );
+  function submit(text: string) {
+    const trimmed = text.trim().slice(0, 2000);
+    if (!trimmed || pendingRef.current || !viewRef.current) return false;
+    if (socket.readyState !== WebSocket.OPEN || sessionRef.current === null || openIdRef.current !== null) {
+      return false;
+    }
+    const id = crypto.randomUUID();
+    pendingRef.current = id;
+    baselineRef.current = viewRef.current.entries.at(-1)?.id ?? null;
+    failedInputRef.current = trimmed;
+    setError(null);
+    setPhase("thinking");
+    socket.send(JSON.stringify({ type: "submit", id, input: trimmed } satisfies ClientMessage));
+    return true;
+  }
 
-  const retryLast = useCallback(() => {
+  function ask(text: string) {
+    if (submit(text)) return true;
+    if (pendingRef.current || !text.trim()) return false;
+    queuedRef.current = text;
+    return true;
+  }
+
+  function retryLast() {
     const text = failedInputRef.current;
     if (text) submit(text);
-  }, [submit]);
+  }
 
-  const interrupt = useCallback(() => {
+  function interrupt() {
     if (!pendingRef.current) return;
     socket.send(JSON.stringify({ type: "abort", id: pendingRef.current } satisfies ClientMessage));
     finishPending();
-  }, [socket, finishPending]);
+  }
 
-  const newTopic = useCallback(() => {
+  function newTopic() {
     if (pendingRef.current || socket.readyState !== WebSocket.OPEN) return;
     setError(null);
     open(socket, true);
-  }, [socket, open]);
+  }
 
   const messages = useMemo(() => {
     const out: DialogueMessage[] = [];

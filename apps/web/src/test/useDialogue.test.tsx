@@ -1,12 +1,14 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDialogue } from "@/hooks/useDialogue";
+import { companion } from "@/lib/companion";
 import type { EntryRecord } from "@earendil-works/pi-durable";
 import type { ServerMessage } from "@server/ws/protocol";
 
 type AgentOptions = {
   onOpen?: (event: { target: unknown }) => void;
   onMessage?: (event: { data: unknown }) => void;
+  onClose?: () => void;
 };
 
 const agent = vi.hoisted(() => ({
@@ -67,6 +69,15 @@ function emotionEntry(id: number): EntryRecord {
     conversationId: "c1",
     kind: "app.emotion",
     data: { emotion: "curious", confidence: 0.9, probabilities: { curious: 0.9 } },
+  });
+}
+
+function happyEntry(id: number): EntryRecord {
+  return asEntry({
+    id,
+    conversationId: "c1",
+    kind: "app.emotion",
+    data: { emotion: "happy", confidence: 0.9, probabilities: { happy: 0.9 } },
   });
 }
 
@@ -342,6 +353,21 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     expect(result.current.emotion).toMatchObject({ emotion: "curious", confidence: 0.9 });
   });
 
+  it("does not replay the emotion expression when a reconnect redelivers the same entry", async () => {
+    const playExpression = vi.spyOn(companion, "playExpression").mockImplementation(() => {});
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([]));
+    act(() => result.current.send("問題"));
+    emit(viewFrame([userEntry(1, "問題"), assistantEntry(2, "回答")]));
+    await waitFor(() => expect(result.current.phase).toBe("idle"));
+    emit(viewFrame([userEntry(1, "問題"), assistantEntry(2, "回答"), happyEntry(3)]));
+    await waitFor(() => expect(playExpression).toHaveBeenCalledTimes(1));
+    emit(viewFrame([userEntry(1, "問題"), assistantEntry(2, "回答"), happyEntry(3)]));
+    emit(viewFrame([userEntry(1, "問題"), assistantEntry(2, "回答"), happyEntry(3)]));
+    expect(playExpression).toHaveBeenCalledTimes(1);
+    playExpression.mockRestore();
+  });
+
   it("retryLast: resends the failed input", () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
     emit(viewFrame([]));
@@ -438,5 +464,124 @@ describe("lain round-3: reconnect rollover + empty assistant entries", () => {
     expect(result.current.phase).toBe("idle");
     expect(tts).not.toHaveBeenCalled();
     expect(result.current.error).toBeNull();
+  });
+});
+
+describe("useDialogue (autoSend: queued first question)", () => {
+  it("auto-sends once the first view arrives and never resends on later frames", () => {
+    const onAutoSent = vi.fn();
+    const { result } = renderHook(() => useDialogue("a_1", "u_1", { autoSend: "什麼是正義？", onAutoSent }));
+
+    emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答")]));
+
+    const submits = () =>
+      agent.sent
+        .map((raw) => JSON.parse(raw) as { type: string; input?: string })
+        .filter((frame) => frame.type === "submit");
+    expect(submits()).toHaveLength(1);
+    expect(submits()[0]!.input).toBe("什麼是正義？");
+    expect(result.current.pending).toBe(true);
+    expect(onAutoSent).toHaveBeenCalledTimes(1);
+
+    emit(opsFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答"), userEntry(3, "什麼是正義？")]));
+    emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答"), userEntry(3, "什麼是正義？")]));
+    expect(submits()).toHaveLength(1);
+    expect(onAutoSent).toHaveBeenCalledTimes(1);
+  });
+
+  it("resends the same question after the autoSend prop clears and returns", async () => {
+    let autoSend: string | undefined = "什麼是正義？";
+    const { result, rerender } = renderHook(() => useDialogue("a_1", "u_1", { autoSend }));
+
+    emit(viewFrame([]));
+    const submits = () =>
+      agent.sent.map((raw) => JSON.parse(raw) as { type: string }).filter((frame) => frame.type === "submit");
+    expect(submits()).toHaveLength(1);
+
+    emit(opsFrame([userEntry(1, "什麼是正義？"), assistantEntry(2, "先想想看")]));
+    await waitFor(() => expect(result.current.phase).toBe("idle"));
+
+    autoSend = undefined;
+    rerender();
+    emit(viewFrame([]));
+    expect(submits()).toHaveLength(1);
+
+    autoSend = "什麼是正義？";
+    rerender();
+    emit(viewFrame([]));
+    expect(submits()).toHaveLength(2);
+  });
+
+  it("defers autoSend while TTS is speaking and sends once the round ends", async () => {
+    let releaseTts: (() => void) | null = null;
+    tts.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseTts = resolve;
+        }),
+    );
+    let autoSend: string | undefined;
+    const { result, rerender } = renderHook(() => useDialogue("a_1", "u_1", { autoSend }));
+
+    emit(viewFrame([]));
+    act(() => {
+      result.current.send("第一題");
+    });
+    emit(opsFrame([userEntry(1, "第一題"), assistantEntry(2, "第一答")]));
+    await waitFor(() => expect(result.current.phase).toBe("speaking"));
+
+    autoSend = "第二題";
+    rerender();
+    emit(viewFrame([userEntry(1, "第一題"), assistantEntry(2, "第一答")]));
+    const submits = () =>
+      agent.sent
+        .map((raw) => JSON.parse(raw) as { type: string; input?: string })
+        .filter((frame) => frame.type === "submit");
+    expect(submits()).toHaveLength(1);
+
+    act(() => {
+      releaseTts?.();
+    });
+    await waitFor(() => expect(submits()).toHaveLength(2));
+    expect(submits()[1]!.input).toBe("第二題");
+  });
+});
+
+describe("useDialogue (session callbacks)", () => {
+  it("invokes onDisconnect when the socket closes", () => {
+    const onDisconnect = vi.fn();
+    renderHook(() => useDialogue("a_1", "u_1", { onDisconnect }));
+    act(() => {
+      agent.options?.onClose?.();
+    });
+    expect(onDisconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports onActivityFinished when the run fails with ActivityFinished", async () => {
+    const onActivityFinished = vi.fn();
+    const { result } = renderHook(() => useDialogue("a_1", "u_1", { onActivityFinished }));
+    emit(viewFrame([]));
+    act(() => {
+      expect(result.current.send("問題")).toBe(true);
+    });
+    emit({ type: "error", code: "ActivityFinished" } as ServerMessage);
+    expect(onActivityFinished).toHaveBeenCalledTimes(1);
+    expect(result.current.error?.code).toBe("ActivityFinished");
+  });
+
+  it("marks tts skipped when a higher-priority playback preempts the answer", async () => {
+    const { markIntent, speak } = await import("@/lib/speech");
+    const { result } = renderHook(() => useDialogue("a_1", "u_1"));
+    emit(viewFrame([]));
+    act(() => {
+      result.current.send("問題");
+    });
+    markIntent("assistant");
+    tts.mockImplementationOnce(() => new Promise<void>(() => {}));
+    void speak("assistant", "佔用中的播報");
+
+    emit(opsFrame([userEntry(1, "問題"), assistantEntry(2, "回答")]));
+    await waitFor(() => expect(result.current.ttsSkipped).toBe(true));
+    expect(result.current.ttsFailed).toBe(false);
   });
 });
