@@ -276,7 +276,11 @@ export const ActivityStartInputSchema = z.object({
 });
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
 export const LookupInputSchema = z.object({ term: z.string().trim().min(1).max(30) });
-export const TtsInputSchema = z.object({ text: z.string().min(1).max(2000), lang: z.enum(["zh", "en", "es"]) });
+export const TTS_MAX_CHARS = 2000;
+export const TtsInputSchema = z.object({
+  text: z.string().min(1).max(TTS_MAX_CHARS),
+  lang: z.enum(["zh", "en", "es"]),
+});
 export const ClassroomSummarySchema = z.object({
   id: z.string(),
   name: z.string(),
