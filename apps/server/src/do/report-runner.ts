@@ -16,7 +16,7 @@ import { runProfile } from "../pi/agents/profiles";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import {
   submittedArguments,
-  REPORT_AXES,
+  SUBMIT_CLASS_AXES_REPORT,
   reportSubmitExtension,
   SUBMIT_CLASS_REPORT,
   SUBMIT_STUDENT_ANALYSIS,
@@ -24,9 +24,11 @@ import {
 import { all, one, run } from "../db/d1";
 import { nowIso } from "../http";
 import { classReportInput, studentReportInput } from "../prompts/assemble";
+import { reportAxesOf } from "../services/settings";
 import {
   AxisSchema,
   ClassAxesPlacementSchema,
+  ReportAxesSchema,
   ClassPlacementSchema,
   StudentAnalysisSchema,
   type Axis,
@@ -221,9 +223,9 @@ export class ReportRunner extends DurableObject<Env> {
   async generate(activityId: string): Promise<void> {
     const { report } = gatewayConfig;
     const db = this.env.DB;
-    const row = await one<{ title: string; statement: string; axes: string }>(
+    const row = await one<{ title: string; statement: string; axes: string; report_axes: string | null }>(
       db,
-      `SELECT t.title, t.statement, t.axes
+      `SELECT t.title, t.statement, t.axes, a.report_axes
        FROM activities a JOIN topics t ON t.id = a.topic_id WHERE a.id = $id`,
       { id: activityId },
     );
@@ -365,8 +367,11 @@ export class ReportRunner extends DurableObject<Env> {
       // "Nobody stated a position" is only true when every student is accounted for; otherwise the class report fails
       // instead of claiming it: stored as partial, like any class-report failure (finishing again regenerates).
       if (stated.length === 0 && unaccounted.length > 0) throw new Error("report_student_analyses_missing");
-      // Who sets the axes is the deployment's setting (report.axes, #159): the teacher on the topic, or the model.
-      const teacherAxes = REPORT_AXES === "teacher";
+      // Who sets the axes (#159): the setting the activity started with (the current one for activities started before
+      // it was kept): the teacher on the topic, or the model.
+      const reportAxes = ReportAxesSchema.safeParse(row.report_axes);
+      const teacherAxes = (reportAxes.success ? reportAxes.data : await reportAxesOf(db)) === "teacher";
+      const classTool = teacherAxes ? SUBMIT_CLASS_REPORT : SUBMIT_CLASS_AXES_REPORT;
       const noneStated = { axes: [], overview: [NO_STATED_OVERVIEW[teacherLang]] };
       let placed = teacherAxes ? placeOnAxes(activity.axes, noneStated, [], "") : noneStated;
       // A class report the model did not submit, cut off, or sent in the wrong shape is tried again before the whole
@@ -378,9 +383,9 @@ export class ReportRunner extends DurableObject<Env> {
             teacherAxes ? "class-report" : "class-report-ai",
             classReportInput(teacherAxes ? activity : { title: activity.title, statement: activity.statement }, stated),
             legs,
-            { lang: teacherLang, submitTool: SUBMIT_CLASS_REPORT },
+            { lang: teacherLang, submitTool: classTool },
           );
-          const submitted = payloadOf(classText, classPayload, SUBMIT_CLASS_REPORT);
+          const submitted = payloadOf(classText, classPayload, classTool);
           placed = teacherAxes
             ? placeOnAxes(activity.axes, ClassPlacementSchema.parse(submitted), stated, report.pseudonymPrefix)
             : placeOnModelAxes(ClassAxesPlacementSchema.parse(submitted), stated, report.pseudonymPrefix);
@@ -710,6 +715,7 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
         stopReason: "toolUse",
       });
     }
+    const teacherAxes = prompt.includes("## The teacher's axes");
     const rosterLine = prompt.split("## Roster:")[1]!.split("\n")[1] ?? "";
     const roster = rosterLine
       .split(",")
@@ -719,10 +725,10 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
     const second = roster[1] ?? first;
     return fauxAssistantMessage(
       [
-        fauxToolCall(SUBMIT_CLASS_REPORT, {
+        fauxToolCall(teacherAxes ? SUBMIT_CLASS_REPORT : SUBMIT_CLASS_AXES_REPORT, {
           axes: [
             {
-              ...(REPORT_AXES === "teacher" ? { axis: 1 } : { name: "契約", left: "守約", right: "人情", why: "分歧" }),
+              ...(teacherAxes ? { axis: 1 } : { name: "契約", left: "守約", right: "人情", why: "分歧" }),
               positions: [
                 { id: first, turns: [1], view: "先守約再談情", side: "middle", strength: 1 },
                 // written without the pseudonym prefix, as some models do; the runner maps it back to the roster ID
@@ -736,7 +742,7 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
               ],
             },
             // an axis number the topic does not have: dropped by the runner (teacher-set axes only)
-            ...(REPORT_AXES === "teacher"
+            ...(teacherAxes
               ? [{ axis: 9, positions: [{ id: first, turns: [1], view: "不存在的軸", side: "right", strength: 3 }] }]
               : []),
           ],

@@ -275,6 +275,9 @@ export type ReportAxes = z.infer<typeof ReportAxesSchema>;
 /** Server settings the web app needs to know (GET /api/config). */
 export const ClientConfigSchema = z.object({ reportAxes: ReportAxesSchema });
 export type ClientConfig = z.infer<typeof ClientConfigSchema>;
+/** What an admin can change after deploy (GET/PUT /api/admin/settings). */
+export const AdminSettingsSchema = z.object({ reportAxes: ReportAxesSchema });
+export type AdminSettings = z.infer<typeof AdminSettingsSchema>;
 
 /**
  * A topic's axes as the teacher sets them: at most 3, with different names. Whether any are required is the server's

@@ -6,7 +6,7 @@
 
 ### Added
 
-- **誰設群體報告的軸改成後端開關**（#159，PM 決定）：`providers.config.yaml` 的 `report.axes`，`teacher`＝老師在題目設（同主專案、架構草案），`ai`＝群體報告模型為每班自己定（原本 main 的做法，落點同樣改成左右端＋堅定程度、prompt 明定不生評分式的軸）。預設 `teacher`。前端以新的 `GET /api/config` 得知設定：`ai` 時不顯示填軸、開活動不需要軸；報告頁顯示模型定的軸的 why
+- **誰設群體報告的軸改成後端開關**（#159，PM 決定）：部署後由管理員 `PUT /api/admin/settings` `{reportAxes}` 切換、立即生效（存在新的 `settings` 表，migration `009_settings.sql`；沒設過時用 `providers.config.yaml` 的 `report.axes`）。活動開始時記下當下的設定（`activities.report_axes`），它的報告照那個設定產生，之後切換不影響；兩種群體報告各有自己的工具（`submit_class_report`／`submit_class_axes_report`）。`teacher`＝老師在題目設（同主專案、架構草案），`ai`＝群體報告模型為每班自己定（原本 main 的做法，落點同樣改成左右端＋堅定程度、prompt 明定不生評分式的軸）。預設 `teacher`。前端以新的 `GET /api/config` 得知設定：`ai` 時不顯示填軸、開活動不需要軸；報告頁顯示模型定的軸的 why
 - **題目的價值軸由老師設定**（`report.axes = teacher`；同主專案）：題目多了 `axes`（1–3 條 `{name, left, right}`，名稱不可重複；migration `008_topic_axes.sql`，系統題補上軸）
   - 班級議題集加題（自訂、AI 生成）要填軸：AI 生成的候選題不帶軸，選了之後由老師填
   - 開始活動時顯示所選題目的軸、可修改；改了軸、或題目沒有軸（加軸以前存的舊題目），就以 `POST /topics/:id/copy` 帶著新軸複製一份到班級再開始。存好的題目不再變動，進行中的活動與報告用的軸不會被改；重試時沿用已複製的那份

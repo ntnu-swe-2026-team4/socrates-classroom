@@ -46,7 +46,7 @@ Three to five lines, one point per line: where the class's main disagreement is,
 - why and the class overview never give head counts; only list IDs
 - Write in the default language: {{lang}}. These instructions are in English, but the report's language follows this line. When writing Chinese, always use Traditional characters
 
-Submit the report by calling submit_class_report as your final action; do not also write it as text.
+Submit the report by calling submit_class_axes_report as your final action; do not also write it as text.
 - when the class has no disagreement, axes is an empty array and the overview says so plainly
 - positions only for students on the roster, their turns only from that student's report
 - side is "left", "middle", or "right": the end of this axis as you wrote it; strength is 1-5, how firmly they hold that end (1 for middle)

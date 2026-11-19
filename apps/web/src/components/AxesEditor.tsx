@@ -137,9 +137,10 @@ export function AxesEditor({
 }
 
 /**
- * Who sets the class report's value axes, as the server is configured (report.axes): "teacher" shows the axes editor
- * and requires 1-3 axes; "ai" hides it. Undefined until the server has answered.
+ * Who sets the class report's value axes, as the server is set now (an admin can switch it): "teacher" shows the axes
+ * editor and requires 1-3 axes; "ai" hides it. Undefined until the server has answered; read again after a minute or
+ * when the page comes back into view.
  */
 export function useReportAxes(): "teacher" | "ai" | undefined {
-  return useQuery({ queryKey: ["config"], queryFn: () => api.config(), staleTime: Infinity }).data?.reportAxes;
+  return useQuery({ queryKey: ["config"], queryFn: () => api.config(), staleTime: 60_000 }).data?.reportAxes;
 }

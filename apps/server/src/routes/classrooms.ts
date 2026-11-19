@@ -9,6 +9,7 @@ import {
 } from "@socrates/shared";
 import { all, batch, one, run, type SqlEntry } from "../db/d1";
 import { fail, newId, nowIso, parseBody, requireCapability, requireUser, type AppEnv } from "../http";
+import { reportAxesOf } from "../services/settings";
 import { classroomAccess, parsePrompts, requireTopicAxes, topicForActivity, type TopicRow } from "../services/members";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -37,8 +38,9 @@ async function createActivity(
   const id = newId("a_");
   const queries: SqlEntry[] = [
     {
-      sql: "INSERT INTO activities (id, classroom_id, topic_id, mode, created_at) VALUES ($id, $cid, $tid, $mode, $at)",
-      params: { id, cid: classroomId, tid: topicId, mode, at: nowIso() },
+      sql: "INSERT INTO activities (id, classroom_id, topic_id, mode, report_axes, created_at) VALUES ($id, $cid, $tid, $mode, $axes, $at)",
+      // the report follows the axes setting the activity started with, even if an admin changes it later
+      params: { id, cid: classroomId, tid: topicId, mode, axes: await reportAxesOf(db), at: nowIso() },
     },
   ];
   if (mode === "live") {
@@ -151,7 +153,7 @@ export function classroomsRoutes() {
       const input = await parseBody(c, TopicCreateInputSchema);
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");
-      requireTopicAxes(input.axes.length);
+      await requireTopicAxes(c.env.DB, input.axes.length);
       const id = newId("t_");
       await run(
         c.env.DB,

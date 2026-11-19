@@ -74,7 +74,7 @@ export function topicsRoutes() {
     .post("/topics", async (c) => {
       const user = requireCapability(c, "manage_classes");
       const input = await parseBody(c, TopicCreateInputSchema);
-      requireTopicAxes(input.axes.length);
+      await requireTopicAxes(c.env.DB, input.axes.length);
       const id = newId("t_");
       await run(
         c.env.DB,

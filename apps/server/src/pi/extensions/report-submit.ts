@@ -2,17 +2,16 @@ import { validateToolArguments } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { z } from "zod";
 import { ClassAxesPlacementSchema, ClassPlacementSchema, StudentAnalysisSchema } from "@socrates/shared";
-import { gatewayConfig } from "../../gateway/config.gen";
 
 export const SUBMIT_STUDENT_ANALYSIS = "submit_student_analysis";
 export const SUBMIT_CLASS_REPORT = "submit_class_report";
+/** The class report when the model sets the axes itself (report axes = ai, #159). */
+export const SUBMIT_CLASS_AXES_REPORT = "submit_class_axes_report";
 
 const studentAnalysisParameters = z.toJSONSchema(z.object({ report: StudentAnalysisSchema }));
-/** Who sets the axes is the deployment's setting (report.axes), so the class tool's shape is fixed per deployment. */
-export const REPORT_AXES = gatewayConfig.report.axes;
-const classReportParameters = z.toJSONSchema(
-  REPORT_AXES === "teacher" ? ClassPlacementSchema : ClassAxesPlacementSchema,
-);
+// Both class tools always exist: an admin can switch who sets the axes, and activities of either setting are reported.
+const classReportParameters = z.toJSONSchema(ClassPlacementSchema);
+const classAxesReportParameters = z.toJSONSchema(ClassAxesPlacementSchema);
 
 type JsonSchemaNode = {
   type?: string | string[];
@@ -65,11 +64,13 @@ export function parseStringifiedStructures(value: unknown, schema: JsonSchemaNod
 export const prepareSubmitArguments: Record<string, (args: unknown) => unknown> = {
   [SUBMIT_STUDENT_ANALYSIS]: (args) => parseStringifiedStructures(args, studentAnalysisParameters as JsonSchemaNode),
   [SUBMIT_CLASS_REPORT]: (args) => parseStringifiedStructures(args, classReportParameters as JsonSchemaNode),
+  [SUBMIT_CLASS_AXES_REPORT]: (args) => parseStringifiedStructures(args, classAxesReportParameters as JsonSchemaNode),
 };
 
 const submitParameters: Record<string, unknown> = {
   [SUBMIT_STUDENT_ANALYSIS]: studentAnalysisParameters,
   [SUBMIT_CLASS_REPORT]: classReportParameters,
+  [SUBMIT_CLASS_AXES_REPORT]: classAxesReportParameters,
 };
 
 /**
@@ -103,9 +104,7 @@ const submitStudentAnalysis = defineTool({
 const submitClassReport = defineTool({
   name: SUBMIT_CLASS_REPORT,
   description:
-    REPORT_AXES === "teacher"
-      ? "Submit the class report as your final action. The report's shape is this tool's schema: for each of the teacher's axes (by its number) the positions of the students whose report speaks to it, and the overview. Calling it ends the turn; do not also write the report as text."
-      : "Submit the class report as your final action. The report's shape is this tool's schema: the position axes you set for this class, each with the positions of the students whose report speaks to it and why it is needed, and the overview. Calling it ends the turn; do not also write the report as text.",
+    "Submit the class report as your final action. The report's shape is this tool's schema: for each of the teacher's axes (by its number) the positions of the students whose report speaks to it, and the overview. Calling it ends the turn; do not also write the report as text.",
   parameters: classReportParameters,
   constrainedSampling: { type: "json_schema", strict: "prefer" },
   replay: "safe",
@@ -115,7 +114,20 @@ const submitClassReport = defineTool({
   },
 });
 
+const submitClassAxesReport = defineTool({
+  name: SUBMIT_CLASS_AXES_REPORT,
+  description:
+    "Submit the class report as your final action. The report's shape is this tool's schema: the position axes you set for this class, each with the positions of the students whose report speaks to it and why it is needed, and the overview. Calling it ends the turn; do not also write the report as text.",
+  parameters: classAxesReportParameters,
+  constrainedSampling: { type: "json_schema", strict: "prefer" },
+  replay: "safe",
+  prepareArguments: (args) => prepareSubmitArguments[SUBMIT_CLASS_AXES_REPORT]!(args) as never,
+  async execute() {
+    return { control: { terminate: true } };
+  },
+});
+
 export const reportSubmitExtension = defineExtension({
   name: "report-submit",
-  tools: [submitStudentAnalysis, submitClassReport],
+  tools: [submitStudentAnalysis, submitClassReport, submitClassAxesReport],
 });

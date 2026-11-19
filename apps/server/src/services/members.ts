@@ -1,6 +1,6 @@
 import { getCookie } from "hono/cookie";
 import { ApiError, AxisSchema, type ActivityMode, type User } from "@socrates/shared";
-import { gatewayConfig } from "../gateway/config.gen";
+import { reportAxesOf } from "./settings";
 import type { Db } from "../db/d1";
 import { one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, type ParticipantIdentity } from "../auth";
@@ -103,9 +103,9 @@ export async function classroomAccess(db: Db, classroomId: string, user: Pick<Us
   return { classroom, isTeacher: false };
 }
 
-/** With report axes set by the teacher (report.axes = teacher), a topic needs 1-3 of them. */
-export function requireTopicAxes(count: number): void {
-  if (gatewayConfig.report.axes === "teacher" && count === 0) fail(422, "topic_axes_required");
+/** With report axes set by the teacher (the current setting), a topic needs 1-3 of them. */
+export async function requireTopicAxes(db: Db, count: number): Promise<void> {
+  if (count === 0 && (await reportAxesOf(db)) === "teacher") fail(422, "topic_axes_required");
 }
 
 export async function topicForActivity(
@@ -120,7 +120,7 @@ export async function topicForActivity(
   if (topic.classroom_id !== classroomId && !systemOrOwn) fail(404, "not_found");
   // With the teacher setting the axes, the class report places students on the topic's axes, so a topic without any
   // (saved before axes existed) cannot start.
-  requireTopicAxes(parsePrompts(topic).axes.length);
+  await requireTopicAxes(db, parsePrompts(topic).axes.length);
   return topic;
 }
 

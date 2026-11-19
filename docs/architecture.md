@@ -154,7 +154,7 @@ no queue：busy 時第二發被拒（`ConversationBusy` → error frame），不
 startReport → pending 標記 → alarm → generate：
   transcriptOf（AI：…/學生（n）：… 編號＋假名冪等）
   → Promise.all 平行 per-student studentReport（重試 2；語言＝老師；turns 須是學生說過的行號）
-  → classReport：讀各生 studentReport（不再讀全班原始對話）；誰設軸看 `report.axes`（#159）：teacher＝題目上老師的軸，模型只寫各軸落點＋overview（class-report.md）；ai＝模型為這班定軸、寫落點、why＋overview（class-report-ai.md）；
+  → classReport：讀各生 studentReport（不再讀全班原始對話）；誰設軸看活動開始時的設定（`activities.report_axes`；設定由管理員 `PUT /api/admin/settings` 切換，預設 `report.axes`，#159）：teacher＝題目上老師的軸，模型只寫各軸落點＋overview（class-report.md）；ai＝模型為這班定軸、寫落點、why＋overview（class-report-ai.md）；
     students/unstated 由程式從 studentReport 複製（兩份報告的表態判定一致）；全班無人表態 → 不呼叫模型
     （有學生分析失敗、又沒有任何表態者 → 群體報告失敗、partial）；class-report thinkingLevel=low
   → persist（D1 reports：teacher_report=classReport、student_reports=analysis+violations-from-transcript）
@@ -184,7 +184,7 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 
 ## 6. 資料層
 
-- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities（`migrations/`：001 init、002 capabilities、003 activity_participants、004 activity_invites、005 activity_mode、006 topic_classroom、007 user_identities（#124）、008 topic_axes）。pi transcript 是對話與違規的唯一真相，無第二份儲存
+- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities（`migrations/`：001 init、002 capabilities、003 activity_participants、004 activity_invites、005 activity_mode、006 topic_classroom、007 user_identities（#124）、008 topic_axes、009 settings）。pi transcript 是對話與違規的唯一真相，無第二份儲存
 - **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 provider 鏈序（#82）
 - **DO SQLite**：只有 pi 自己的 `pi_*` 表，應用程式不讀寫——agent 狀態與產品資料分離（D2）
 - **保留政策**：AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容（judgment sink 只記 type/source）

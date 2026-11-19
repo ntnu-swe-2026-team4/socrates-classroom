@@ -170,3 +170,43 @@ describe("admin capability model (#131)", () => {
     expect(((await escalate.json()) as { code: string }).code).toBe("validation");
   });
 });
+
+describe("report-axes switch (#159): an admin changes who sets the class report's axes after deploy", () => {
+  const putSettings = (cookie: string | undefined, body: unknown) =>
+    call("/api/admin/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}) },
+      body: JSON.stringify(body),
+    });
+  const configNow = async () => ((await (await call("/api/config")).json()) as { reportAxes: string }).reportAxes;
+
+  test("only an admin reads or changes it", async () => {
+    expect((await call("/api/admin/settings")).status).toBe(401);
+    const teacher = await login("demo@socrates.tw");
+    expect((await call("/api/admin/settings", { headers: { Cookie: teacher } })).status).toBe(403);
+    expect((await putSettings(teacher, { reportAxes: "ai" })).status).toBe(403);
+    expect((await putSettings(admin, { reportAxes: "nobody" })).status).toBe(422);
+    const read = await call("/api/admin/settings", { headers: { Cookie: admin } });
+    expect(await read.json()).toEqual({ reportAxes: "teacher" }); // providers.config.yaml until an admin sets it
+  });
+
+  test("switching applies at once: the web app's config and whether a topic needs axes follow it", async () => {
+    const teacher = await login("demo@socrates.tw");
+    const topic = { title: "沒軸的題", statement: "要不要軸？", prompts: [] };
+    try {
+      const switched = await putSettings(admin, { reportAxes: "ai" });
+      expect(switched.status).toBe(200);
+      expect(await switched.json()).toEqual({ reportAxes: "ai" });
+      expect(await configNow()).toBe("ai");
+      expect((await call("/api/topics", jsonInit(topic, teacher))).status).toBe(201);
+
+      expect((await putSettings(admin, { reportAxes: "teacher" })).status).toBe(200);
+      expect(await configNow()).toBe("teacher");
+      const refused = await call("/api/topics", jsonInit(topic, teacher));
+      expect(refused.status).toBe(422);
+      expect(((await refused.json()) as { code: string }).code).toBe("topic_axes_required");
+    } finally {
+      await putSettings(admin, { reportAxes: "teacher" });
+    }
+  });
+});

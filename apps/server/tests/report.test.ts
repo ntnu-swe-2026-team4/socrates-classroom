@@ -464,6 +464,41 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(ownReport.positions).toEqual([]);
   }, 120_000);
 
+  it("an activity keeps the axes setting it started with: started with ai, reported with the model's axes after a switch back", async () => {
+    await run(
+      env.DB,
+      "INSERT INTO settings (key, value, updated_at) VALUES ('report_axes', 'ai', '2026-11-19') ON CONFLICT(key) DO UPDATE SET value = 'ai'",
+    );
+    let created: Awaited<ReturnType<typeof classroomWithActivity>>;
+    try {
+      created = await classroomWithActivity(teacherCookie, "AI 軸班");
+    } finally {
+      await run(env.DB, "DELETE FROM settings WHERE key = 'report_axes'"); // back to teacher before the report runs
+    }
+    const account = await registerStudent(created.code, "小艾");
+    const participantId = await participantIdOf(created.activityId, account.cookie);
+    await speak(`${created.activityId}:${participantId}`, account.cookie, "契約應該被遵守");
+
+    const finish = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacherCookie, "CF-Connecting-IP": "198.51.100.25" },
+    });
+    expect(finish.status).toBe(204);
+    let report: Response | null = null;
+    for (let i = 0; i < 180; i += 1) {
+      report = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacherCookie } });
+      if (report.status === 200) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    expect(report?.status).toBe(200);
+    const ready = (await report?.json()) as {
+      classReport: { axes: Array<{ name: string; why?: string; positions: unknown[] }> } | null;
+    };
+    // the faux model's own axis, with why: not the topic's axes
+    expect(ready.classReport!.axes.map(({ name, why }) => ({ name, why }))).toEqual([{ name: "契約", why: "分歧" }]);
+    expect(ready.classReport!.axes[0]!.positions).toHaveLength(1);
+  }, 120_000);
+
   it("class report that fails its first attempt is tried again → ready with a class report", async () => {
     const created = await classroomWithActivity(teacherCookie, "重試一次班");
     const account = await registerStudent(created.code, "小試");
