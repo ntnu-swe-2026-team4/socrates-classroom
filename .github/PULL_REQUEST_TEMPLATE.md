@@ -1,11 +1,16 @@
 ## Summary
-<!-- 解什麼問題、怎麼解、為什麼重要。
-     解掉的 issue 用 Closes #NN；UI 改動附截圖 -->
+What problem does this solve, how, and why does this change matter?
+Use "Closes #123" for each issue resolved.
+Include artifacts produced when testing: before/after screenshots, GIFs, videos, benchmarks.
 
 ## Testing
-<!-- 你驗證了什麼、reviewer 怎麼重現：pnpm test 結果、手動步驟 -->
+Manually test your changes; report results, mention platforms if relevant.
+How can reviewers test this easily? Include setup and steps.
 
 ## Self-review
+- [ ] I've reviewed my diff for quality, security, reliability, and performance.
+- [ ] UI changes follow the checklist.
+- [ ] Tests cover the new or changed behavior.
 
-- [ ] 我自己讀過整份 diff（品質、安全、效能）
-- [ ] 測試有涵蓋新增或修改的行為
+Release Notes:
+- N/A or Added/Fixed/Improved ...
