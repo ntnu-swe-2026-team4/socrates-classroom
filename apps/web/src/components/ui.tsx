@@ -1,4 +1,5 @@
 import type React from "react";
+import { useId } from "react";
 import { createPortal } from "react-dom";
 import { cva } from "class-variance-authority";
 import { clsx } from "clsx";
@@ -322,6 +323,7 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const confirmTitleId = useId();
   if (!open) return null;
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
@@ -330,7 +332,7 @@ export function ConfirmDialog({
         ref={trapDialogFocus}
         role="alertdialog"
         aria-modal="true"
-        aria-labelledby="confirm-title"
+        aria-labelledby={confirmTitleId}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.stopPropagation();
@@ -339,7 +341,7 @@ export function ConfirmDialog({
         }}
         className="anim-rise relative w-full max-w-sm rounded-2xl border border-line bg-paper p-5 shadow-xl"
       >
-        <h2 id="confirm-title" className="font-serif text-[17px] text-ink">
+        <h2 id={confirmTitleId} className="font-serif text-[17px] text-ink">
           {title}
         </h2>
         {body && <div className="mt-1.5 text-[13.5px] leading-relaxed text-ink-soft">{body}</div>}
@@ -387,6 +389,7 @@ export function FormDialog({
   onCancel: () => void;
   children: React.ReactNode;
 }) {
+  const formTitleId = useId();
   if (!open) return null;
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
@@ -395,7 +398,7 @@ export function FormDialog({
         ref={trapDialogFocus}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="form-dialog-title"
+        aria-labelledby={formTitleId}
         onSubmit={(event) => {
           event.preventDefault();
           if (canSubmit && !submitting) onSubmit();
@@ -409,7 +412,7 @@ export function FormDialog({
         className="anim-rise relative flex w-full max-w-md flex-col gap-4 rounded-2xl border border-line bg-paper p-5 shadow-xl"
       >
         <div>
-          <h2 id="form-dialog-title" className="font-serif text-[17px] text-ink">
+          <h2 id={formTitleId} className="font-serif text-[17px] text-ink">
             {title}
           </h2>
           {description && <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">{description}</p>}
