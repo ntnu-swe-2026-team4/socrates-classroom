@@ -284,6 +284,8 @@ export function useDialogue(activityId: string, participantId: string) {
   const socket = useAgent({
     agent: "chat",
     name: `${activityId}:${participantId}`,
+    // Socrates answers in the student's interface language
+    query: { lang: document.documentElement.lang || "zh-TW" },
     onOpen: (event) => {
       (event.target as WebSocket).send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
     },

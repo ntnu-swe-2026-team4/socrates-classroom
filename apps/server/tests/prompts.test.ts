@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { instructionsFor } from "../src/pi/agents/profiles";
+import { SOCRATES_PROMPTS } from "../src/pi/extensions/socrates";
 import { classReportInput, studentReportInput } from "../src/prompts/assemble";
 import STUDENT_REPORT_RAW from "../src/prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../src/prompts/class-report.md?raw";
@@ -62,4 +63,13 @@ describe("prompts (#161)", () => {
       expect(raw.match(/{{[^}]*}}/g)?.filter((p) => p !== "{{lang}}") ?? []).toEqual([]);
     }
   });
+
+  // §2/§3: socrates is a multi-language role: one file per language, each written in it, with no placeholder
+  for (const lang of LANGS) {
+    it(`socrates instructions in ${lang}`, () => {
+      expect(SOCRATES_PROMPTS[lang]).toBeTruthy();
+      expect(SOCRATES_PROMPTS[lang]).not.toMatch(/{{[^}]*}}/);
+      expect(SOCRATES_PROMPTS[lang]).toMatchSnapshot();
+    });
+  }
 });
