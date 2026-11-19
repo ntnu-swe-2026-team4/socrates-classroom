@@ -396,8 +396,10 @@ pnpm --filter @socrates/server run gen-config
 ### Teacher keys（老師自帶 key）
 
 - **設定入口**：老師登入 → `/settings` → Teacher keys 卡片 →「＋ 新增 provider」sheet（Vendors／Relays／Platform 分組磁磚，已加的顯示 ✓）→ 貼 key；一 provider 一把 key，providers 拖曳排序（`teacher_keys.sort_order`＝teacher legs 鏈序，老師鏈在前、平台鏈墊後）
-- **Model legs**：每個 provider row 內新增多個 model leg（每 (provider, model) 一條，`teacher_key_models`），各自的 `max_concurrency`（NULL＝跟隨預設 4）與 leg 內 `sort_order`；API 形狀見 [`api-contract.md`](./api-contract.md) §9
-- **圖示**：設定頁 provider 圖示 vendored 自 yetone/magpie（MIT），一個 pi provider id 一檔（`apps/web/src/assets/providers/`）；UI 互動仿 magpie Providers 頁
+- **Model legs**：每個 provider row 內新增多個 model leg（每 (provider, model) 一條，`teacher_key_models`），各自的 `max_concurrency`（NULL＝跟隨 `teacherChain.maxConcurrency` 預設 4）與 leg 內 `sort_order`；provider 層另有總併發上限 `teacher_keys.max_concurrency`（1–100，NULL＝不限）——同一把 key 的所有腳位 in-flight 合計達上限即整個 provider 讓位給下一腿／平台鏈（magpie 無此層，見下方對照）；API 形狀見 [`api-contract.md`](./api-contract.md) §9
+- **併發限額語意**：ledger 以 `(provider, model, credential)` 記帳，provider 總額以 `(provider, credential)` 合計；`Router` 是 isolate 內共享（module-level `WeakMap<Env, Router>`），故**所有限額與 cooldown 皆為 per-isolate best-effort**——同一老師的流量跨 isolate 時可能各自放行至上限（overshoot ×isolate 數），cooldown 也各 isolate 獨立學習。10k users 規模下為已知缺口，精確化設計見 [roadmap](./roadmap.md) 的 RoutingLedger DO 條目
+- **magpie 對照**（2026-11-20 查證）：magpie 的 concurrency 是 provider／account 層 lane——同 lane 的所有 model 共用一個額度（`provider.LaneLimit`），**沒有 per-model 上限**；它同樣沒有 provider 總量上限，社群已在 [magpie#4582](https://github.com/yetone/magpie/issues/4582)（open）提出 provider-wide cap 請求。本專案的 per-leg＋per-provider 雙層同時涵蓋兩種粒度：per-leg 對應「單 key 多 model、各 model 限額不同」的供應商（轉售商／coding plan 常見），per-provider 對應「看出口 IP／整個訂閱總量」的供應商——之後若有人想「照 magpie 改回 provider 層」，先讀這段
+- **圖示**：設定頁 provider 圖示 vendored 自 yetone/magpie（MIT），一個 pi provider id 一檔（`apps/web/src/assets/providers/`）；UI 互動仿 magpie Providers 頁。`radius` 沒有專屬圖示——它是 NVIDIA 的 relay 服務，刻意共用 `nvidia.svg` 並歸類 relay，非 bug
 - **儲存**：D1 AES-GCM（金鑰 `BYOK_ENC_KEY`）；明文永不回傳（只回 last4）
 - **責任**：老師鏈流量 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；學生無 BYOK 入口（#82）
 
