@@ -116,6 +116,10 @@ apps/web  hc<RpcApp>("/api") ＋ WS client（ws/protocol.ts 的訊息型別在 s
 - 起底：shadcn chat primitives（MessageScroller／Message／Bubble，2026-06）或 assistant-ui primitives；AI Elements 於 2026-11 併入 shadcn，不基於它新建
 - Motion 預算＝單次 message entrance＋caret＋頭像持續動畫，此外不加；全面 `prefers-reduced-motion`；View Transitions（92.9% 支援）不用於 LCP 敏感路由
 
+### 資料流（effect-free）
+
+`useEffect` 全面禁止（Biome `style/noRestrictedImports`＋`apps/web/AGENTS.md`，2026-11-18 清零 38 條 compiler 診斷）：事件／DOM／媒體查詢／時鐘訂閱一律走 `src/hooks/useSubscription.ts`（`useDomEvent`／`useOnUnmount`／`useMediaQuery`／`useElapsed`／`useNow`，`useSyncExternalStore` 實作）；latest callback 於 commit 後同步、render 不讀 impure 值；rAF 排程共用 module-scope frame loop。Biome 2.6.8 `useReactCompiler` 持續把關 render purity。
+
 ### 避免
 
 全屏語音接管、逐 token 動畫、spinner 當思考狀態、強制 pin 底部、pause 按鈕、AI 同質化樣板（紫漸層／灰卡堆疊）、CJK 行高 <1.7、紅色大面積 flag、硬 sidebar、空首屏（logo＋textbox）。
