@@ -78,6 +78,15 @@ describe("layout", () => {
     expect(placeIn(half, { A: 1, B: -1 })).toEqual([0, 0, 0]);
   });
 
+  it("slides a student who only sits in one layout out from their true spot", () => {
+    const from = targetLayout(["B"], students, 1);
+    const to = targetLayout(["A"], students, 1);
+    expect(from.offsets.s1).toEqual([0, -0.5]);
+    expect(to.offsets.s1).toEqual([0, -0.5]);
+    const entering = mixLayout({ ...from, offsets: {} }, to, 0.5);
+    expect(entering.offsets.s1).toEqual([0, -0.25]);
+  });
+
   it("projects flat when not orbiting and adds perspective when orbiting", () => {
     expect(project([1, 1, 1], 1, 1, 0, 100)).toMatchObject({ x: 100, y: -100, scale: 1 });
     const near = project([0, 0, 1], 0, 0, 1, 100);
@@ -152,6 +161,13 @@ describe("clusterStudents", () => {
       { ids: ["s1", "s2"], mean: { A: 5, B: 0 } },
       { ids: ["s3", "s4"], mean: { A: 95, B: 100 } },
     ]);
+    expect(result.short).toBe(false);
+  });
+
+  it("flags a request for more groups than there are students", () => {
+    const result = clusterStudents(students.slice(0, 3), ["A"], "4");
+    expect(result).toMatchObject({ status: "ok", short: true });
+    expect(result.status === "ok" && result.groups.length).toBe(3);
   });
 
   it("reports why it did not group", () => {

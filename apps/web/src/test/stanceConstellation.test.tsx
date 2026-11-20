@@ -91,3 +91,25 @@ test("picking a dot shows that student's thinking on each picked axis", () => {
   expect(screen.getByText(/學生5對後果的想法/)).toBeTruthy();
   expect(screen.getByText(new RegExp(zh.stance_not_on_axis))).toBeTruthy();
 });
+
+test("the dots are reachable by keyboard: one tab stop, arrows move, Enter picks", () => {
+  render(<StanceConstellation axes={axes} />);
+  const stops = points().filter((node) => node.getAttribute("tabindex") === "0");
+  expect(stops).toHaveLength(1);
+  expect(stops[0]).toBe(pointOf("學生1"));
+  pointOf("學生1").focus();
+  fireEvent.keyDown(pointOf("學生1"), { key: "ArrowRight" });
+  expect(document.activeElement).toBe(pointOf("學生2"));
+  expect(pointOf("學生2").getAttribute("tabindex")).toBe("0");
+  fireEvent.keyDown(pointOf("學生2"), { key: "Enter" });
+  expect(pointOf("學生2").getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByText(/學生2對後果的想法/)).toBeTruthy();
+  fireEvent.keyDown(pointOf("學生1"), { key: "ArrowLeft" });
+  expect(document.activeElement).toBe(pointOf("學生5"));
+});
+
+test("says so when asked for more groups than there are students", () => {
+  render(<StanceConstellation axes={[axis("後果", { 學生1: 0, 學生2: 50, 學生3: 100 })]} />);
+  fireEvent.click(screen.getByRole("tab", { name: zh.stance_cluster_count.replace("{n}", "4") }));
+  expect(screen.getByText(zh.stance_cluster_short.replace("{n}", "3"))).toBeTruthy();
+});

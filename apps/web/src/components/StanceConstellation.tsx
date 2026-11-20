@@ -96,6 +96,7 @@ export function StanceConstellation({ axes }: { axes: readonly StanceAxis[] }) {
   const [mode, setMode] = useState<ClusterMode>("auto");
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
   const endAt = useRef(0);
   const drag = useRef<{ x: number; y: number } | null>(null);
   const [loop] = useState(() =>
@@ -192,6 +193,30 @@ export function StanceConstellation({ axes }: { axes: readonly StanceAxis[] }) {
       };
     })
     .sort((a, b) => a.depth - b.depth);
+  const order = students.filter((student) => isVisible(student, picked)).map((student) => student.id);
+  const tabStop = cursor !== null && order.includes(cursor) ? cursor : (order[0] ?? null);
+  const pointKey = (event: KeyboardEvent<SVGGElement>, id: string) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      event.stopPropagation();
+      setSelected(id === selected ? null : id);
+      return;
+    }
+    const move =
+      event.key === "ArrowRight" || event.key === "ArrowDown"
+        ? 1
+        : event.key === "ArrowLeft" || event.key === "ArrowUp"
+          ? -1
+          : 0;
+    if (move === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const next = order[(order.indexOf(id) + move + order.length) % order.length];
+    const nodes = event.currentTarget.ownerSVGElement?.querySelectorAll<SVGGElement>("[data-stance-point]") ?? [];
+    for (const node of nodes) {
+      if (node.dataset.stancePoint === next) node.focus();
+    }
+  };
   const labelled = shown.length <= (narrow ? LABELLED_LIMIT_NARROW : LABELLED_LIMIT);
   const hasPartial = shown.some((entry) => !entry.complete) && picked.length > 1;
   const focus = students.find((student) => student.id === (hovered ?? selected)) ?? null;
@@ -252,9 +277,10 @@ export function StanceConstellation({ axes }: { axes: readonly StanceAxis[] }) {
 
       <div className={cn(DIVIDER, "grid lg:grid-cols-[minmax(0,1fr)_16rem]")}>
         <div className="relative bg-paper">
+          {/* biome-ignore lint/a11y/useSemanticElements: SVG has no fieldset; the chart groups its focusable dots */}
           <svg
             viewBox={`${-size.width / 2} ${-size.height / 2} ${size.width} ${size.height}`}
-            role="img"
+            role="group"
             aria-label={t("stance_stage_label", { n: shown.length, axes: picked.length })}
             tabIndex={spatial ? 0 : -1}
             onPointerDown={startDrag}
@@ -338,16 +364,27 @@ export function StanceConstellation({ axes }: { axes: readonly StanceAxis[] }) {
               const active = entry.student.id === selected || entry.student.id === hovered;
               const shape = entry.cluster ?? 0;
               return (
+                // biome-ignore lint/a11y/useSemanticElements: an SVG group cannot be a button element
                 <g
                   key={entry.student.id}
                   transform={`translate(${entry.x.toFixed(2)} ${entry.y.toFixed(2)})`}
                   data-stance-point={entry.student.id}
                   data-stance-cluster={entry.cluster ?? ""}
+                  role="button"
+                  tabIndex={entry.student.id === tabStop ? 0 : -1}
+                  aria-label={entry.student.id}
+                  aria-pressed={entry.student.id === selected}
                   onPointerDown={(event) => event.stopPropagation()}
                   onPointerEnter={() => setHovered(entry.student.id)}
                   onPointerLeave={() => setHovered(null)}
+                  onFocus={() => {
+                    setHovered(entry.student.id);
+                    setCursor(entry.student.id);
+                  }}
+                  onBlur={() => setHovered(null)}
+                  onKeyDown={(event) => pointKey(event, entry.student.id)}
                   onClick={() => setSelected(entry.student.id === selected ? null : entry.student.id)}
-                  className="cursor-pointer"
+                  className="cursor-pointer outline-none"
                 >
                   <circle r={size.radius * 2.2} className="fill-transparent" />
                   {active && (
@@ -410,6 +447,9 @@ export function StanceConstellation({ axes }: { axes: readonly StanceAxis[] }) {
               <h3 className={LABEL}>{t("stance_clusters")}</h3>
               {clusters.status === "few" && <p className={NOTE}>{t("stance_cluster_few")}</p>}
               {clusters.status === "many" && <p className={NOTE}>{t("stance_cluster_many")}</p>}
+              {clusters.status === "ok" && clusters.short && (
+                <p className={NOTE}>{t("stance_cluster_short", { n: clusters.groups.length })}</p>
+              )}
               {clusters.status === "ok" && (
                 <ul className="mt-2 flex flex-col gap-3">
                   {clusters.groups.map((group, index) => (

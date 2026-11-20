@@ -120,8 +120,8 @@ export function mixLayout(from: StanceLayout, to: StanceLayout, t: number): Stan
   }
   const offsets: Record<string, readonly [number, number]> = {};
   for (const id of new Set([...Object.keys(from.offsets), ...Object.keys(to.offsets)])) {
-    const a = from.offsets[id] ?? to.offsets[id] ?? [0, 0];
-    const b = to.offsets[id] ?? from.offsets[id] ?? [0, 0];
+    const a = from.offsets[id] ?? [0, 0];
+    const b = to.offsets[id] ?? [0, 0];
     offsets[id] = [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
   }
   return { basis, orbit: lerp(from.orbit, to.orbit, t), offsets };
@@ -212,7 +212,12 @@ export function wardClusters(points: readonly (readonly number[])[], target: num
 
 export type ClusterResult =
   | { status: "off" | "few" | "many" }
-  | { status: "ok"; labels: Record<string, number>; groups: { ids: string[]; mean: Record<string, number> }[] };
+  | {
+      status: "ok";
+      labels: Record<string, number>;
+      groups: { ids: string[]; mean: Record<string, number> }[];
+      short: boolean;
+    };
 
 export function clusterStudents(
   students: readonly StanceStudent[],
@@ -243,5 +248,5 @@ export function clusterStudents(
       group.mean[name] = Math.round(sum / group.ids.length);
     }
   }
-  return { status: "ok", labels, groups };
+  return { status: "ok", labels, groups, short: mode !== "auto" && groups.length < Number(mode) };
 }

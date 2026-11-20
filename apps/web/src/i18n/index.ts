@@ -212,6 +212,7 @@ const messages = {
     stance_cluster_axis: "{axis}：平均落點 {at}",
     stance_cluster_few: "在這些軸上都有表態的學生不到 3 位，無法分群。",
     stance_cluster_many: "人數太多，這個畫面不做分群。",
+    stance_cluster_short: "表態的學生不夠分成這麼多群，目前分成 {n} 群。",
     stance_partial_note: "空心點：這位學生沒談到其中某條軸，該軸暫時放在中間，也不納入分群。",
     stance_select_hint: "點一個點，看這位學生在各條軸上的想法。",
     stance_selected: "所選學生",
@@ -938,6 +939,7 @@ const messages = {
     stance_cluster_axis: "{axis}: average position {at}",
     stance_cluster_few: "Fewer than 3 students took a position on all of these axes, so they cannot be grouped.",
     stance_cluster_many: "Too many students to group on this view.",
+    stance_cluster_short: "Not enough students for that many groups; showing {n}.",
     stance_partial_note:
       "Hollow dots: the student did not talk about one of these axes. They sit in the middle of that axis and are left out of the groups.",
     stance_select_hint: "Pick a dot to read that student's thinking on each axis.",
@@ -1727,6 +1729,7 @@ const messages = {
     stance_cluster_axis: "{axis}: posición media {at}",
     stance_cluster_few: "Menos de 3 estudiantes tomaron postura en todos estos ejes, así que no se pueden agrupar.",
     stance_cluster_many: "Demasiados estudiantes para agrupar en esta vista.",
+    stance_cluster_short: "No hay suficientes estudiantes para tantos grupos; se muestran {n}.",
     stance_partial_note:
       "Puntos huecos: el estudiante no habló de uno de estos ejes. Queda en el centro de ese eje y fuera de los grupos.",
     stance_select_hint: "Elige un punto para leer lo que piensa ese estudiante en cada eje.",
