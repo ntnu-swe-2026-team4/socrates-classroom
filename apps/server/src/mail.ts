@@ -37,6 +37,47 @@ const BODY: Record<Lang, (alert: Omit<QuotaAlertEmail, "to" | "lang">) => string
     `Ajusta la cuota en la tarjeta Teacher keys de Ajustes.\n`,
 };
 
+export interface PasswordResetEmail {
+  to: string;
+  lang: Lang;
+  link: string;
+  minutes: number;
+}
+
+const RESET_SUBJECT: Record<Lang, string> = {
+  zh: "【蘇格拉底教室】重設密碼",
+  en: "[Socrates Classroom] Reset your password",
+  es: "[Aula de Sócrates] Restablece tu contraseña",
+};
+
+const RESET_BODY: Record<Lang, (mail: Omit<PasswordResetEmail, "to" | "lang">) => string> = {
+  zh: (mail) =>
+    `您好：\n\n` +
+    `我們收到重設蘇格拉底教室密碼的申請。請在 ${mail.minutes} 分鐘內開啟以下連結設定新密碼：\n` +
+    `${mail.link}\n\n` +
+    `如果不是您本人申請，可以忽略這封信，您的密碼不會改變。\n`,
+  en: (mail) =>
+    `Hello,\n\n` +
+    `We received a request to reset your Socrates Classroom password. Open this link within ${mail.minutes} minutes to choose a new one:\n` +
+    `${mail.link}\n\n` +
+    `If you did not ask for this, you can ignore this email; your password will not change.\n`,
+  es: (mail) =>
+    `Hola:\n\n` +
+    `Recibimos una solicitud para restablecer tu contraseña del Aula de Sócrates. Abre este enlace en los próximos ${mail.minutes} minutos para elegir una nueva:\n` +
+    `${mail.link}\n\n` +
+    `Si no la solicitaste, puedes ignorar este correo; tu contraseña no cambiará.\n`,
+};
+
+export async function sendPasswordResetEmail(env: Env, mail: PasswordResetEmail): Promise<void> {
+  if (!env.SEND_EMAIL || !env.ALERT_FROM_EMAIL) throw new Error("email_path_missing");
+  await env.SEND_EMAIL.send({
+    to: mail.to,
+    from: env.ALERT_FROM_EMAIL,
+    subject: RESET_SUBJECT[mail.lang],
+    text: RESET_BODY[mail.lang](mail),
+  });
+}
+
 export async function sendQuotaAlertEmail(env: Env, alert: QuotaAlertEmail): Promise<void> {
   if (!env.SEND_EMAIL || !env.ALERT_FROM_EMAIL) throw new Error("email_path_missing");
   const message: EmailMessageBuilder = {
