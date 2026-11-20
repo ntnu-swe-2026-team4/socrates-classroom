@@ -8,7 +8,7 @@ import {
   type User,
 } from "@socrates/shared";
 import { all, batch, one, run, type SqlEntry } from "../db/d1";
-import { fail, newId, nowIso, parseBody, requireCapability, requireUser, type AppEnv } from "../http";
+import { fail, newId, nowIso, parseBody, requireUser, type AppEnv } from "../http";
 import { classroomAccess, parsePrompts, topicForActivity, type TopicRow } from "../services/members";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -113,7 +113,7 @@ export function classroomsRoutes() {
       return c.json(rows.map((row) => toSummary(row, user, base)));
     })
     .post("/classrooms", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const input = await parseBody(c, ClassroomCreateInputSchema);
       const id = newId("c_");
       const at = nowIso();
@@ -147,7 +147,7 @@ export function classroomsRoutes() {
       return c.json(rows.map(parsePrompts));
     })
     .post("/classrooms/:id/topics", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const input = await parseBody(c, TopicCreateInputSchema);
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");
@@ -171,7 +171,7 @@ export function classroomsRoutes() {
       return c.json(parsePrompts(row), 201);
     })
     .post("/classrooms/:id/activities", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const input = await parseBody(c, ActivityStartInputSchema);
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");

@@ -121,13 +121,8 @@ export interface Api {
   devAccounts(): Promise<DevAccounts>;
   devLogin(email: string): Promise<User>;
   listAdminUsers(): Promise<AdminUser[]>;
-  createAdminUser(input: {
-    name: string;
-    email: string;
-    password: string;
-    canManageClasses: boolean;
-  }): Promise<AdminUser>;
-  updateAdminUser(id: string, input: { canManageClasses?: boolean; disabled?: boolean }): Promise<AdminUser>;
+  createAdminUser(input: { name: string; email: string; password: string }): Promise<AdminUser>;
+  updateAdminUser(id: string, input: { disabled?: boolean }): Promise<AdminUser>;
 }
 
 const client = hc<RpcApi>("/api", {

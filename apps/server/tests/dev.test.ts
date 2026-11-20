@@ -56,7 +56,7 @@ describe("dev fixtures", () => {
     expect(lin.classrooms.every((room) => room.role === "teacher" && room.code !== null)).toBe(true);
 
     const chen = body.accounts.find((account) => account.email === "chen@socrates.tw")!;
-    expect(chen.canManageClasses).toBe(true);
+    expect("canManageClasses" in chen).toBe(false);
     expect(chen.isAdmin).toBe(false);
     expect(chen.classrooms.map((room) => room.role)).toEqual(["student"]);
     expect(chen.classrooms[0]!.code).toBeNull();
@@ -79,7 +79,7 @@ describe("dev fixtures", () => {
     expect(res.status).toBe(200);
     const user = (await res.json()) as User;
     expect(user.name).toBe("李美玲");
-    expect(user.canManageClasses).toBe(false);
+    expect("canManageClasses" in user).toBe(false);
 
     const me = await call("/api/me", { headers: { Cookie: cookieOf(res) } });
     expect(((await me.json()) as User).id).toBe(user.id);

@@ -29,7 +29,7 @@ function HomePage() {
   const t = useT();
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
   const classrooms = useQuery({ queryKey: ["classrooms"], queryFn: () => api.listClassrooms() });
-  const canManage = me.data?.canManageClasses ?? false;
+  const canManage = Boolean(me.data);
   const roomList = classrooms.data ?? [];
   const running = roomList.filter((room) => room.current && !room.current.finished);
   const students = roomList.reduce((n, room) => n + room.memberCount, 0);

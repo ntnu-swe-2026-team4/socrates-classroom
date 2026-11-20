@@ -83,18 +83,6 @@ export function requireAdmin(c: Ctx): User {
   return user;
 }
 
-const CAPABILITY_FLAGS = {
-  manage_classes: "canManageClasses",
-} as const satisfies Record<string, keyof User>;
-
-export type Capability = keyof typeof CAPABILITY_FLAGS;
-
-export function requireCapability(c: Ctx, capability: Capability): User {
-  const user = requireUser(c);
-  if (!user[CAPABILITY_FLAGS[capability]]) fail(403, "capability_required");
-  return user;
-}
-
 export async function enforceIpLimit(c: Ctx, scope: string, limit = 30): Promise<void> {
   const ip = c.req.header("CF-Connecting-IP");
   if (!ip) return;

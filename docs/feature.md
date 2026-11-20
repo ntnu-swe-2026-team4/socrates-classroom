@@ -38,21 +38,22 @@
 | 自由對話 | 學生提問 → 蘇格拉底追問（≤3 句、以問句結尾）；WebSocket 串流（view＋chord ops）                                                                                 | `/agents/chat/:name`・`/dialogue`                           |
 | 3D 頭像  | three.js 蘇格拉底半身像（`socrates.glb`）＋viseme/expression morph targets，對話頁角落小窗 `SocratesCompanion` 呈現（可拖曳、可關閉、主題切換墨色）             | `SocratesCompanion`・`public/socrates.glb`                  |
 | 情緒表現 | avatar extension 產生 `app.emotion` entry（機率本體）→ 頭像表情映射                                                                                             | `dialogue.tsx`（thinking 暫態 Confused；回合後按 entry）    |
-| 語音輸入 | MediaRecorder 錄音 → whisper STT → 文字                                                                                                                         | `POST /api/stt`・`useVoiceInput`                            |
-| 語音朗讀 | AI 回覆 melotts TTS 朗讀＋說話中振幅                                                                                                                            | `POST /api/tts`                                             |
+| 語音輸入 | 原生 SpeechRecognition 優先；無支援（Firefox）時 MediaRecorder → server STT；effect-free hook（#183）                                                           | `POST /api/stt`・`useVoiceInput`                            |
+| 語音朗讀 | 單通道 TTS（跨 tab 仲裁、句尾截斷 ≤4000 字）＋說話中振幅驅動嘴型（#180/#183）                                                                                   | `POST /api/tts`・`lib/speech.ts`                            |
 | 名詞查詢 | 選取文字 → 查詢面板（prose oneshot，失敗時顯示錯誤）；查詢紀錄持久化                                                                                            | `POST /api/lookup`・`TermPanel`                             |
 | 順帶一問 | 頂欄按鈕或在輸入框打 `/btw 問題` 開側欄，暫離蘇格拉底問定義／背景（例：電車難題）；fork 主對話，內容不回寫主對話與報告；「新話題」以當下主對話重新 fork（#121） | WS `btw` op（`api-contract.md` §5.4）・`BtwPanel`・`useBtw` |
 | 對話歷史 | pi transcript 永久保存於 DO；重連 watch 即恢復完整 view                                                                                                         | `watch`（無獨立歷史端點）                                   |
 
 ## 活動與報告
 
-| 功能     | 說明                                                                                    | 路由 / 頁面                                     |
-| -------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| 活動詳情 | 教室＋議題＋結束時間                                                                    | `GET /api/activities/:id`                       |
-| 即時面板 | `live` 活動的資料源（#73）尚未接線——顯示待上線提示；`test` 活動顯示 slot 列表與開啟對話 | `/t/live/:id`                                   |
-| 結束活動 | 老師觸發報告生成（ReportRunner DO，alarm 驅動）                                         | `POST /api/activities/:id/finish`               |
-| 報告輪詢 | 生成中 404 `report_pending`（前端輪詢）；失敗 500 `report_failed`                       | `GET /api/activities/:id/report`・`/report/:id` |
-| 角色分流 | 老師見全班（classReport＋每人 analysis）；學生只見自己（analysis＋假名）                | 同上；形狀見 `api-contract.md` §7               |
+| 功能     | 說明                                                                                                                                                                             | 路由 / 頁面                                     |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| 活動詳情 | 教室＋議題＋結束時間                                                                                                                                                             | `GET /api/activities/:id`                       |
+| 即時面板 | `live` 活動的資料源（#73）尚未接線——顯示待上線提示；`test` 活動顯示 slot 列表與開啟對話                                                                                          | `/t/live/:id`                                   |
+| 結束活動 | 老師觸發報告生成（ReportRunner DO，alarm 驅動）                                                                                                                                  | `POST /api/activities/:id/finish`               |
+| 報告輪詢 | 生成中 404 `report_pending`（前端輪詢）；失敗 500 `report_failed`                                                                                                                | `GET /api/activities/:id/report`・`/report/:id` |
+| 角色分流 | 老師見全班（classReport＋每人 analysis）；學生只見自己（analysis＋假名）                                                                                                         | 同上；形狀見 `api-contract.md` §7               |
+| 立場星圖 | 老師的群體報告把 `classReport.axes` 的落點畫成星圖：勾 0–3 條軸，從中間點展開成一條線、平面、立體（可拖曳旋轉）；階層式分群（Ward）自動或指定 2–4 群；點一個點看該生在各軸的想法 | `/report/:id`（群體）；`StanceConstellation`    |
 
 ## 對話引擎（Pi Durable）
 
@@ -84,11 +85,12 @@
 
 ## 平台與基礎建設
 
-| 能力        | 說明                                                                                                                                                         |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 單一 Worker | Hono API + SPA 靜態資產 + 兩個 DO，同一部署單位                                                                                                              |
-| D1          | 應用資料（users／classrooms／topics／activities／members／activity_participants／reports／pseudonyms／teacher_keys）；migrations 走 `cf d1 migrations apply` |
-| i18n        | 介面三語（zh-TW/en/es，typed dictionary 由 tsc 強制完備）；後端訊息 (`src/messages.ts`) 同步三語                                                             |
-| 登入前故事  | 捲動驅動漫畫故事頁：47 張 WebP sprite sheet 於 `<canvas>` 播放（視差、人群氣球、眼睛虹彩切換）；資產 repo 外產出，更換時 bump `ASSET_VERSION`                |
-| CI/CD       | GitHub Actions：PR lint/test（server＋web）/build/dry-run；main 自動 migrations + deploy（見 [`cf.md`](./cf.md)）                                            |
-| 觀測        | Worker observability 開啟；AI Gateway log/cache 關閉（ZDR）；log 不含學生對話內容                                                                            |
+| 能力        | 說明                                                                                                                                                                   |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 單一 Worker | Hono API + SPA 靜態資產 + 兩個 DO，同一部署單位                                                                                                                        |
+| D1          | 應用資料（users／classrooms／topics／activities／members／activity_participants／reports／pseudonyms／teacher_keys）；migrations 走 `cf d1 migrations apply`           |
+| i18n        | 介面三語（zh-TW/en/es，typed dictionary 由 tsc 強制完備）；後端訊息 (`src/messages.ts`) 同步三語                                                                       |
+| 登入前故事  | 捲動驅動漫畫故事頁：47 張 WebP sprite sheet 於 `<canvas>` 播放（視差、人群氣球、眼睛虹彩切換）；資產 repo 外產出，更換時 bump `ASSET_VERSION`                          |
+| 設定頁      | 分類導覷（一般／對話體驗／API keys，`?section=` deep link）；對話偏好（3D 模型、朗讀、音量、聲線——companion store 純 client-side）；BYOK 金鑰與月配額管理（#153/#146） |
+| CI/CD       | GitHub Actions：PR lint/test（server＋web）/build/dry-run；main 自動 migrations + deploy（見 [`cf.md`](./cf.md)）                                                      |
+| 觀測        | Worker observability 開啟；AI Gateway log/cache 關閉（ZDR）；log 不含學生對話內容                                                                                      |

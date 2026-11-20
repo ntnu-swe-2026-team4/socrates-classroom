@@ -123,7 +123,7 @@ describe("classroom / topic decoupling (#135)", () => {
     const student = await login("student-a@socrates.tw");
     const asStudent = await createTopic(classroomId, student, "學生題", "不該成功");
     expect(asStudent.status).toBe(403);
-    expect(((await asStudent.json()) as { code: string }).code).toBe("capability_required");
+    expect(((await asStudent.json()) as { code: string }).code).toBe("forbidden");
 
     const outsider = await login("student-b@socrates.tw");
     const outside = await call(`/api/classrooms/${classroomId}/topics`, { headers: { Cookie: outsider } });

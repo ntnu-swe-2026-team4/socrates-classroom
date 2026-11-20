@@ -61,7 +61,7 @@ beforeEach(() => {
     vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), "http://localhost").pathname;
       const responses: Record<string, unknown> = {
-        "/api/me": { id: "student-1", name: "Student", canManageClasses: false, isAdmin: false },
+        "/api/me": { id: "student-1", name: "Student", isAdmin: false },
         "/api/join/abcdef": { code: "abcdef", classroomName: "Class", topic },
         "/api/activities/activity-1": {
           id: "activity-1",
@@ -85,6 +85,54 @@ afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
 });
+
+const liveActivity = {
+  id: "activity-1",
+  classroomId: "class-1",
+  classroomName: "Class",
+  participantId: "p_1",
+  mode: "live",
+  topic,
+  finishedAt: null,
+};
+
+function roomSummary(role: "teacher" | "student") {
+  return {
+    id: "class-1",
+    name: "Class",
+    role,
+    teacherName: "Teacher",
+    memberCount: 3,
+    code: role === "teacher" ? "abcdef" : null,
+    url: role === "teacher" ? "http://localhost/join/abcdef" : null,
+    current: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+async function loadPath(url: string, responses: Record<string, unknown>, statuses: Record<string, number> = {}) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), {
+        status: statuses[path] ?? 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [url] }),
+    context: { queryClient: client },
+  });
+  await router.load();
+  const path = router.state.location.pathname;
+  client.clear();
+  return path;
+}
 
 async function mountRoute(url: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -180,7 +228,7 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
       }
       const topicAdded = calls.some((call) => call.path === "/api/classrooms/class-9/topics");
       const responses: Record<string, unknown> = {
-        "/api/me": { id: "teacher-1", name: "Teacher", canManageClasses: true, isAdmin: false },
+        "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
         "/api/topics": [topic],
         "/api/topics/generate": [generatedTopic],
         "/api/classrooms": { classroomId: "class-9", code: "code999", url: "http://localhost/join/code999" },
@@ -223,6 +271,36 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
   } finally {
     dispose();
   }
+});
+
+test("t.live: a classroom member who is not the owner is redirected to the classroom", async () => {
+  const path = await loadPath("/t/live/activity-1", {
+    "/api/me": { id: "student-1", name: "Student", isAdmin: false },
+    "/api/activities/activity-1": liveActivity,
+    "/api/classrooms": [roomSummary("student")],
+  });
+  expect(path).toBe("/classrooms/class-1");
+});
+
+test("t.live: the classroom owner stays on the live page", async () => {
+  const path = await loadPath("/t/live/activity-1", {
+    "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
+    "/api/activities/activity-1": liveActivity,
+    "/api/classrooms": [roomSummary("teacher")],
+  });
+  expect(path).toBe("/t/live/activity-1");
+});
+
+test("t.live: a non-member is redirected to the classroom list", async () => {
+  const path = await loadPath(
+    "/t/live/activity-1",
+    {
+      "/api/me": { id: "student-1", name: "Student", isAdmin: false },
+      "/api/activities/activity-1": { code: "forbidden" },
+    },
+    { "/api/activities/activity-1": 403 },
+  );
+  expect(path).toBe("/classrooms");
 });
 
 test("join error surfaces the code-specific message (ApiError from @/api, not shared)", async () => {

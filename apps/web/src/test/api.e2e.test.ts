@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe("httpApi contract (browser-side actual code)", () => {
   test("me: GET /api/me with cookie and Accept-Language", async () => {
-    handler.mockReturnValue(json({ id: "u1", name: "小明", canManageClasses: false, isAdmin: false }));
+    handler.mockReturnValue(json({ id: "u1", name: "小明", isAdmin: false }));
     document.documentElement.lang = "zh-TW";
     const user = await httpApi.me();
     expect(user?.name).toBe("小明");

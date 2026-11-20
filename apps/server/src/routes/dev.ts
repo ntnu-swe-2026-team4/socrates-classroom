@@ -16,7 +16,6 @@ function requireDev(c: Ctx): void {
 interface AccountRow {
   id: string;
   name: string;
-  can_manage_classes: number;
   is_admin: number;
   disabled_at: string | null;
   email: string;
@@ -35,11 +34,9 @@ const ROOMS_SQL = `SELECT id, name, teacher_id, join_code, current_activity_id F
   ORDER BY c.created_at`;
 
 async function loadAccount(db: D1Database, email: string): Promise<AccountRow | null> {
-  return one<AccountRow>(
-    db,
-    "SELECT id, name, can_manage_classes, is_admin, disabled_at, email FROM users WHERE email = $email",
-    { email },
-  );
+  return one<AccountRow>(db, "SELECT id, name, is_admin, disabled_at, email FROM users WHERE email = $email", {
+    email,
+  });
 }
 
 export function devRoutes() {
@@ -56,7 +53,6 @@ export function devRoutes() {
           id: row.id,
           name: row.name,
           email: row.email,
-          canManageClasses: row.can_manage_classes === 1,
           isAdmin: row.is_admin === 1,
           fixtureRole: fixture.fixtureRole,
           classrooms: rooms.map((room) => {
@@ -92,7 +88,6 @@ export function devRoutes() {
       const user: User = {
         id: row.id,
         name: row.name,
-        canManageClasses: row.can_manage_classes === 1,
         isAdmin: row.is_admin === 1,
       };
       await startSession(c, user);

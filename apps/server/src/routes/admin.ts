@@ -18,20 +18,18 @@ interface AdminUserRow {
   id: string;
   name: string;
   email: string | null;
-  can_manage_classes: number;
   is_admin: number;
   disabled_at: string | null;
   created_at: string;
 }
 
-const ADMIN_USER_COLUMNS = "id, name, email, can_manage_classes, is_admin, disabled_at, created_at";
+const ADMIN_USER_COLUMNS = "id, name, email, is_admin, disabled_at, created_at";
 
 function toAdminUser(row: AdminUserRow): AdminUser {
   return {
     id: row.id,
     name: row.name,
     email: row.email,
-    canManageClasses: row.can_manage_classes === 1,
     isAdmin: row.is_admin === 1,
     disabled: row.disabled_at !== null,
     createdAt: row.created_at,
@@ -49,7 +47,7 @@ export function adminRoutes() {
       requireAdmin(c);
       const rows = await all<AdminUserRow>(
         c.env.DB,
-        `SELECT ${ADMIN_USER_COLUMNS} FROM users ORDER BY is_admin DESC, can_manage_classes DESC, created_at, name`,
+        `SELECT ${ADMIN_USER_COLUMNS} FROM users ORDER BY is_admin DESC, created_at, name`,
       );
       return c.json(rows.map(toAdminUser));
     })
@@ -62,17 +60,15 @@ export function adminRoutes() {
       try {
         await run(
           c.env.DB,
-          `INSERT INTO users (id, name, role, email, password_hash, lang, created_at, can_manage_classes)
-           VALUES ($id, $name, $role, $email, $hash, $lang, $at, $can)`,
+          `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+           VALUES ($id, $name, $email, $hash, $lang, $at)`,
           {
             id,
             name: input.name,
-            role: input.canManageClasses ? "teacher" : "student",
             email: input.email,
             hash,
             lang: langOf(c),
             at: nowIso(),
-            can: input.canManageClasses ? 1 : 0,
           },
         );
       } catch (error) {
@@ -92,20 +88,14 @@ export function adminRoutes() {
         id: c.req.param("id"),
       });
       if (!target) fail(404, "not_found");
-      const disabled = input.disabled ?? target.disabled_at !== null;
+      const disabled = input.disabled;
       if (disabled && target.id === actor.id) fail(409, "conflict");
-      const canManage = input.canManageClasses ?? target.can_manage_classes === 1;
       await run(
         c.env.DB,
-        `UPDATE users SET can_manage_classes = $can, role = $role, disabled_at = $disabled,
-           session_version = session_version + $bump
-         WHERE id = $id`,
+        `UPDATE users SET disabled_at = $disabled, session_version = session_version + 1 WHERE id = $id`,
         {
           id: target.id,
-          can: canManage ? 1 : 0,
-          role: canManage ? "teacher" : "student",
           disabled: disabled ? (target.disabled_at ?? nowIso()) : null,
-          bump: input.disabled === undefined ? 0 : 1,
         },
       );
       const updated = await loadAdminUser(c.env.DB, target.id);
