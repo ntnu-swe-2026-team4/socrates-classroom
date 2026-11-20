@@ -4,7 +4,7 @@ We use pi. pi **really** handles everything: transcript, admission, runs, retrie
 
 Everything is an extension. All behavior — prompts, tools, hooks, tasks — lives in pi extensions installed on the registry. DOs only host; transport only moves. If logic isn't in an extension, it's in the wrong place. When a change is needed, the first attempt is an extension; only genuinely non-behavioral work (data plumbing, pure SQL/REST) goes in routes, DOs, or transport.
 
-Non-negotiables: no queue feature (`whenBusy: "reject"` — a busy thread refuses, never queues); platform-credential traffic only on the ZDR-reviewed chain, teacher-keyed legs are ToS-shifted to the teacher (`docs/providers.md`); version-pair lock `agents` 0.33 ↔ pi 1.5 (`docs/pi.md`); tests are real DO + real WebSocket + faux model (`tests/chat.test.ts` is the pattern); no hardcoded model ids — everything routes through `providers.config.yaml`; files over ~200 lines mean you are re-implementing pi.
+Non-negotiables: no queue feature (`whenBusy: "reject"` — a busy thread refuses, never queues); platform-credential traffic only on the ZDR-reviewed chain, teacher-keyed legs are ToS-shifted to the teacher (`docs/providers.md`); version-pair lock `agents` 0.33 ↔ pi 1.5 (`docs/pi.md`); tests are real DO + real WebSocket + faux model (`tests/chat.test.ts` is the pattern); no hardcoded model ids — everything routes through `providers.config.yaml`; files over ~200 lines mean you are re-implementing pi; one migration per schema change — never split it across numbered files within a PR just because an earlier file was already pushed, only append a new file when the earlier migration has actually shipped (applied on `main`).
 
 Find all of the implicit state machines in the code.
 
