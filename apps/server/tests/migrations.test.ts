@@ -6,6 +6,48 @@ import { all, run } from "../src/db/d1";
 
 const migrations = inject("d1Migrations");
 
+describe("migration 011: facebook identity (#207)", () => {
+  it("drops the google-only provider CHECK and keeps rows plus cascade", async () => {
+    const base = migrations.filter((migration) => !/^(003|008|010|011)/.test(migration.name));
+    const widen = migrations.filter((migration) => migration.name.startsWith("011"));
+    expect(widen).toHaveLength(1);
+    await applyD1Migrations(env.DB, base);
+
+    const at = "2026-11-21T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
+       VALUES ('u_g11', '原google戶', 'student', 'g11@example.com', 'x', 'zh', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO user_identities (provider, provider_user_id, user_id, email, created_at)
+       VALUES ('google', 'g-11', 'u_g11', 'g11@example.com', $at)`,
+      { at },
+    );
+
+    await applyD1Migrations(env.DB, widen);
+
+    const survivor = await all<{ provider: string; provider_user_id: string }>(
+      env.DB,
+      "SELECT provider, provider_user_id FROM user_identities WHERE user_id = 'u_g11'",
+    );
+    expect(survivor).toEqual([{ provider: "google", provider_user_id: "g-11" }]);
+
+    await run(
+      env.DB,
+      `INSERT INTO user_identities (provider, provider_user_id, user_id, email, created_at)
+       VALUES ('facebook', 'fb-1', 'u_g11', NULL, $at)`,
+      { at },
+    );
+
+    await run(env.DB, "DELETE FROM users WHERE id = 'u_g11'");
+    const after = await all<{ n: number }>(env.DB, "SELECT COUNT(*) AS n FROM user_identities");
+    expect(after).toEqual([{ n: 0 }]);
+  });
+});
+
 describe("migration 010: retire capability (no-mode, #210)", () => {
   it("drops can_manage_classes and the legacy role column from users", async () => {
     const base = migrations.filter((migration) => !/^(003|008|010)/.test(migration.name));
