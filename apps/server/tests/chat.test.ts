@@ -262,6 +262,62 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     }
   }, 20_000);
 
+  it("does not replay the previous failure after eviction when a newer run was admitted", async () => {
+    const student = await joinStudent("重啟後的新一輪");
+    const thread = `${activityId}:${student.participantId}`;
+    const stub = env.Chat.get(env.Chat.idFromName(thread));
+    let socket: WebSocket | undefined;
+
+    try {
+      await runInDurableObject(stub, async (instance, state) => {
+        const chat = instance as Chat;
+        await chat.lifecycle.start();
+        await chat.lifecycle.disableAlarms();
+        const operationId = crypto.randomUUID();
+        state.storage.kv.put(`dialogue-run-failure:${ROOT_SESSION}`, {
+          jobId: "previous-failure",
+          expiresAt: Date.now() + 120_000,
+        });
+        await chat.lifecycle.jobs.push({
+          fn: "dialogue-run-deadline",
+          time: Date.now() + 120_000,
+          payload: { session: ROOT_SESSION, operationId },
+        });
+        const session = chat.harness.session(ROOT_SESSION);
+        const receipt = await session.submit("正義是什麼？".repeat(100), { operationId, whenBusy: "reject" });
+        expect(receipt.accepted).toBe(true);
+        expect(await session.busy()).toBe(true);
+        await chat.harness.dispose();
+      });
+
+      await evictDurableObject(stub);
+      socket = await connect(thread, student.cookie);
+      const rx = frames(socket);
+      socket.send(JSON.stringify({ type: "watch", id: "after-restart" }));
+      await rx.until((f) => f.some((m) => m.type === "result" && m.id === "after-restart"));
+      expect(latestView(rx.list)?.entries.some((entry) => entry.kind === "pi.user")).toBe(true);
+      expect(rx.list.filter((m) => m.type === "error" && m.code === "llm_unavailable")).toHaveLength(0);
+
+      socket.send(JSON.stringify({ type: "abort", id: "abort-new-run" }));
+      await rx.until((f) => f.some((m) => m.type === "result" && m.id === "abort-new-run"));
+      await expect
+        .poll(
+          () =>
+            runInDurableObject(stub, (instance) =>
+              (instance as Chat).lifecycle.jobs.list().some((job) => job.fn === "dialogue-run-deadline"),
+            ),
+          { timeout: 5_000 },
+        )
+        .toBe(false);
+      socket.send(JSON.stringify({ type: "watch", id: "after-abort" }));
+      await rx.until((f) => f.some((m) => m.type === "result" && m.id === "after-abort"));
+      expect(rx.list.filter((m) => m.type === "error" && m.code === "llm_unavailable")).toHaveLength(0);
+    } finally {
+      socket?.close();
+      await runInDurableObject(stub, (instance) => (instance as Chat).harness.session(ROOT_SESSION).abort());
+    }
+  }, 20_000);
+
   it("reports a dialogue run deadline while the original run is still active", async () => {
     const student = await joinStudent("回覆逾時");
     const thread = `${activityId}:${student.participantId}`;

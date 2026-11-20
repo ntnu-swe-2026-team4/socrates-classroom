@@ -136,13 +136,22 @@ export class Chat extends DurableObject<Env> {
     if (job.fn === RUN_DEADLINE_JOB) await this.checkRun(job);
   }
 
+  private runDeadlineJobs(session: string): LifecycleJob[] {
+    return this.lifecycle.jobs
+      .list()
+      .filter((job) => job.fn === RUN_DEADLINE_JOB && (job.payload as DialogueRun).session === session);
+  }
+
   private recentRunFailure(session: string): string | undefined {
     const key = failureKey(session);
     const failure = this.ctx.storage.kv.get<RunFailure>(key);
     if (!failure) return undefined;
-    if (failure.expiresAt > Date.now()) return failure.jobId;
-    this.ctx.storage.kv.delete(key);
-    return undefined;
+    if (failure.expiresAt <= Date.now()) {
+      this.ctx.storage.kv.delete(key);
+      return undefined;
+    }
+    if (this.runDeadlineJobs(session).some((job) => job.id !== failure.jobId)) return undefined;
+    return failure.jobId;
   }
 
   private checkRun(job: LifecycleJob): Promise<void> {
@@ -169,15 +178,15 @@ export class Chat extends DurableObject<Env> {
         expiresAt: Date.now() + FAILURE_REPLAY_MS,
       } satisfies RunFailure);
       this.sockets.notifyRunFailure(session, job.id);
+    } else {
+      this.ctx.storage.kv.delete(failureKey(session));
     }
     await this.lifecycle.jobs.cancel(job.id);
   }
 
   private async submitWithDeadline(handle: PiSession, input: UserInput, options: PiSubmitOptions): Promise<PiReceipt> {
     const operationId = options.operationId ?? crypto.randomUUID();
-    const olderJobs = this.lifecycle.jobs
-      .list()
-      .filter((job) => job.fn === RUN_DEADLINE_JOB && (job.payload as DialogueRun).session === handle.id);
+    const olderJobs = this.runDeadlineJobs(handle.id);
     const job = await this.lifecycle.jobs.push({
       fn: RUN_DEADLINE_JOB,
       time: Date.now() + RUN_TIMEOUT_MS,
