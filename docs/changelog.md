@@ -2,6 +2,7 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+
 ## 2026-11-21 — Capability bit 退役：無 mode 帳號模型落地（`feat/210-capability-retirement`，#210）
 
 ### Changed
@@ -15,6 +16,21 @@
 - Migration `010_retire_capability.sql`：`users.can_manage_classes` 與 legacy `users.role` 欄位一併移除——帳號表不再有任何角色字樣，師生關係只存在於班級關係層；錯誤碼 `capability_required`（`ERROR_CODES`／`messages.ts` 三語）退場
 - 錯誤碼清理（#221）：`already_streaming`（「舊客戶端」不存在——單一消費者原子部署）與未接線的保留碼 `llm_rate_limited`/`llm_timeout` 刪除——pi-durable 將上游失敗統一 settle 為 `model_error`，另設碼需解析 pi 內部訊息且 retry/backoff 本屬 pi 範疇（拍板記錄：`providers.md` §上游失敗碼）
 - i18n 字典清理（#221）：刪除 82 個無消費 keys（三語）——main 與 web-next 皆零引用的舊稿文案（story_scene/hero_/landing_ 等），以及無 mode 定稿取消的段落詞彙（TeacherMode、teacher_plan/account_kind/plan、admin 教師申請 tab、教師建學生帳號的 students_* 舊稿——窗口拍板取代）；拆分單 #178–#188 的預載詞彙（login/admin/settings/community/chat 等）**保留**
+
+## 2026-11-21 — 語音模式收尾：useVoiceInput effect-free、TTS 字數統一（`split/183-voice`，#183）
+
+### Added
+
+- `test/speech.test.ts`：speech 通道仲裁迴歸釘（打斷/跳過/靜音優先序，自 HEAD port）＋ 4000 字預算句尾截斷測試（TDD）
+
+### Changed
+
+- `TTS_MAX_CHARS` 2000→4000（shared 單點：server `TtsInputSchema` 與客戶端 `lib/speech.ts` 同步生效——#193 颐留的「一行 diff」）
+- `useVoiceInput` effect-free 重構：`useEffect`→`useLayoutEffect`／`useOnUnmount`、抽出 `startMeter`、去 `useCallback`（外部簽名不變；既有 `voice.test.tsx` 安全網全綠）——`useVoiceInput` 的 useEffect 退場（#188 前置之一）
+
+### Fixed
+
+- `docs/api-contract.md`：`/tts`「無 char boundary」漂移（實際一直有 `TtsInputSchema.max` 驗證）→ 明載 `text` ≤4000；輸入邊界總表補 TTS 上限
 
 ## 2026-11-21 — 設定頁重構：分類導覽與對話偏好（`split/184-settings`，#184）
 
