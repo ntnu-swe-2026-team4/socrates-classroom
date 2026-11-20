@@ -85,12 +85,13 @@
 
 ## 平台與基礎建設
 
-| 能力        | 說明                                                                                                                                                                   |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 單一 Worker | Hono API + SPA 靜態資產 + 兩個 DO，同一部署單位                                                                                                                        |
-| D1          | 應用資料（users／classrooms／topics／activities／members／activity_participants／reports／pseudonyms／teacher_keys）；migrations 走 `cf d1 migrations apply`           |
-| i18n        | 介面三語（zh-TW/en/es，typed dictionary 由 tsc 強制完備）；後端訊息 (`src/messages.ts`) 同步三語                                                                       |
-| 登入前故事  | 捲動驅動漫畫故事頁：47 張 WebP sprite sheet 於 `<canvas>` 播放（視差、人群氣球、眼睛虹彩切換）；資產 repo 外產出，更換時 bump `ASSET_VERSION`                          |
-| 設定頁      | 分類導覷（一般／對話體驗／API keys，`?section=` deep link）；對話偏好（3D 模型、朗讀、音量、聲線——companion store 純 client-side）；BYOK 金鑰與月配額管理（#153/#146） |
-| CI/CD       | GitHub Actions：PR lint/test（server＋web）/build/dry-run；main 自動 migrations + deploy（見 [`cf.md`](./cf.md)）                                                      |
-| 觀測        | Worker observability 開啟；AI Gateway log/cache 關閉（ZDR）；log 不含學生對話內容                                                                                      |
+| 能力        | 說明                                                                                                                                                                                                                   |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 單一 Worker | Hono API + SPA 靜態資產 + 兩個 DO，同一部署單位                                                                                                                                                                        |
+| D1          | 應用資料（users／classrooms／topics／activities／members／activity_participants／reports／pseudonyms／teacher_keys）；migrations 走 `cf d1 migrations apply`                                                           |
+| i18n        | 介面三語（zh-TW/en/es，typed dictionary 由 tsc 強制完備）；後端訊息 (`src/messages.ts`) 同步三語                                                                                                                       |
+| 登入前故事  | 捲動驅動漫畫故事頁：47 張 WebP sprite sheet 於 `<canvas>` 播放（視差、人群氣球、眼睛虹彩切換）；資產 repo 外產出，更換時 bump `ASSET_VERSION`                                                                          |
+| 殼層        | AppShell side rail（品牌塊、Home/Classrooms、admin 桿、主題方鈕、頭像）；compact 帳號選單（TrapDialog）；focus/visibility 重查 session 與跨 tab 同步（`SESSION_SIGNAL_KEY` announce，#179）；`ht-theme` 內頁效果層接線 |
+| 設定頁      | 分類導覷（一般／對話體驗／API keys，`?section=` deep link）；對話偏好（3D 模型、朗讀、音量、聲線——companion store 純 client-side）；BYOK 金鑰與月配額管理（#153/#146）                                                 |
+| CI/CD       | GitHub Actions：PR lint/test（server＋web）/build/dry-run；main 自動 migrations + deploy（見 [`cf.md`](./cf.md)）                                                                                                      |
+| 觀測        | Worker observability 開啟；AI Gateway log/cache 關閉（ZDR）；log 不含學生對話內容                                                                                                                                      |

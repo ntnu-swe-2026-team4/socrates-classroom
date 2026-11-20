@@ -2,6 +2,18 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — 殼層重構：side rail、compact 帳號選單、跨 tab session 同步（`split/179-appshell`，#179）
+
+### Added
+
+- `useSessionSync`：focus／visibilitychange 重查 `me`、`storage` 事件跨 tab 同步（`SESSION_SIGNAL_KEY`）——identity 變更 reload、`isAdmin` 變更更新快取並失效班級查詢；announce 段自 #181 提前（`http.ts` 於 login/logout/devLogin 後寫入，前例：#193 自 #183 提前 speech.ts）
+- `test/appshell.test.tsx`（9 tests：store、跨 tab 重查、identity reload、admin 權限更新、rail/選單結構、ht-theme、bare route）＋ announce 契約測試（`api.e2e.test.ts`）
+
+### Changed
+
+- AppShell 重構：halftone rail（品牌塊、Home/Classrooms、admin 桿、主題方鈕、頭像）；drawer／帳號 popover 改走共用 `TrapDialog`（W8 收斂，本地 focus-trap 移除）；帳號選單改 compact popover（名稱／設定／登出——語言切換歸設定頁 #184，admin 連結改 rail 桿）；`ht-theme` 內頁效果層接線（`HALFTONE_MATCH` 路由）；`accountSheet` 改 `useSyncExternalStore`；`__root` 返回鈕邊角對齊
+- AppShell 的 `useEffect` 全數退場（render-phase 狀態對照＋`useDomEvent`）——#188 gating 表再退一格
+
 ## 2026-11-21 — useVoiceInput controller 重構：環境注入、零 global stubbing（`split/166-voice-controller`，#166）
 
 ### Added
