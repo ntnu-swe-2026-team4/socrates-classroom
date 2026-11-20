@@ -59,7 +59,7 @@ interface User {
 }
 ```
 
-- `users.role` 欄位仍在但已無語意（無 mode 定稿，#210）：寫入一律 `'student'`，**不進 token、不是授權依據、不同步任何能力**
+- `users.role` 欄位已隨 migration 010 移除（無 mode 定稿，#210）：帳號表不再攜帶任何角色字樣——關係層的 `classroomAccess`／`members` 承載師生關係，帳號層只有 `user`（＋管理用 `isAdmin`）
 - 未登入者**不再建立 `users` 列**：班級碼（`POST /join`）與活動邀請（`POST /invites/:token/join`）的匿名加入都取得 `socrates_participant` cookie 與 `kind = 'guest'` participant（#133）；訪客紀錄認領合併已裁 NOT_PLANNED（#60——帳號設計重新討論；無帳號訪客與任何新帳號之間不做紀錄連結，模型見 [`accounts.md`](./accounts.md)）
 - `GET /me` → `User | null`；停用或 `session_version` 過期的 cookie 回 `null`（視同未登入），其他端點則分別回 403 `account_disabled`／401 `unauthorized`
 
@@ -314,8 +314,7 @@ interface ViolationSlice {
 | 帳號                   | `account_disabled`（停用帳號的請求／登入）                                                                                                                     | 403                         |
 | 對話（WS error frame） | pi 錯誤名作 code（`ConversationBusy`＝忙線拒寫、`ActivityFinished`＝活動已結束拒寫、`SubmitForbidden`＝非本人 thread 代打）；內部錯誤只回 generic 訊息不洩細節 | —                           |
 | 報告                   | `report_pending` / `report_failed`                                                                                                                             | 404 / 500                   |
-| 語音／LLM              | `llm_unavailable`（binding 或上游失敗；mock 降級不丟這個碼）；`llm_rate_limited` / `llm_timeout` 未接線（保留碼，上游限流／逾時目前也回 `llm_unavailable`）    | 502（未接線碼保留）         |
-| 對話入場               | `already_streaming`（歷史碼，保留給舊客戶端 switch 窮舉）                                                                                                      | 409                         |
+| 語音／LLM              | `llm_unavailable`（binding 或上游失敗；mock 降級不丟這個碼）。上游限流／逾時**不另設碼**（拍板理由見 [`providers.md`](./providers.md) §上游失敗碼）            | 502                         |
 | BYOK / teacher keys    | `byok_provider_invalid`                                                                                                                                        | 422                         |
 | 第三方登入（#124）     | `oauth_unavailable` / `oauth_state_invalid` / `oauth_email_unverified` / `oauth_failed`（以 `/login?error=<code>` query 傳回，非 JSON）                        | 302                         |
 | 自行註冊（#124）       | `email_taken`（`POST /auth/signup` 信箱已被使用）                                                                                                              | 409                         |

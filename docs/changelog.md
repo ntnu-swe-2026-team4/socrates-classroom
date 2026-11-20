@@ -12,8 +12,9 @@
 
 ### Removed
 
-- Migration `010_retire_capability.sql`：`users.can_manage_classes` 欄位移除；legacy `users.role` 停止同步（寫入一律 `'student'`，無語意）
-- 錯誤碼 `capability_required`（`ERROR_CODES`／`messages.ts` 三語）與 i18n 的 teacher-request/審批殘留 keys（`admin_grant`/`admin_revoke`/`role_teacher` 等，三語）
+- Migration `010_retire_capability.sql`：`users.can_manage_classes` 與 legacy `users.role` 欄位一併移除——帳號表不再有任何角色字樣，師生關係只存在於班級關係層；錯誤碼 `capability_required`（`ERROR_CODES`／`messages.ts` 三語）退場
+- 錯誤碼清理（#221）：`already_streaming`（「舊客戶端」不存在——單一消費者原子部署）與未接線的保留碼 `llm_rate_limited`/`llm_timeout` 刪除——pi-durable 將上游失敗統一 settle 為 `model_error`，另設碼需解析 pi 內部訊息且 retry/backoff 本屬 pi 範疇（拍板記錄：`providers.md` §上游失敗碼）
+- i18n 字典清理（#221）：刪除 82 個無消費 keys（三語）——main 與 web-next 皆零引用的舊稿文案（story_scene/hero_/landing_ 等），以及無 mode 定稿取消的段落詞彙（TeacherMode、teacher_plan/account_kind/plan、admin 教師申請 tab、教師建學生帳號的 students_* 舊稿——窗口拍板取代）；拆分單 #178–#188 的預載詞彙（login/admin/settings/community/chat 等）**保留**
 
 ## 2026-11-21 — 設定頁重構：分類導覽與對話偏好（`split/184-settings`，#184）
 

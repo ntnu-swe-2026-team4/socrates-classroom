@@ -404,6 +404,10 @@ pnpm --filter @socrates/server run gen-config
 - **儲存**：D1 AES-GCM（金鑰 `BYOK_ENC_KEY`）；明文永不回傳（只回 last4）
 - **責任**：老師鏈流量 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；學生無 BYOK 入口（#82）
 
+### 上游失敗碼（#221 拍板，2026-11-21）
+
+上游限流／逾時**不另設 API 錯誤碼**：pi-durable 將所有上游失敗統一 settle 為 `model_error`＋自由文字 detail（pi generation.js 實測），區分 rate-limit／timeout 需解析 pi 內部訊息；且 upstream 的 leg trial-and-error／retry backoff 本就是 pi 範疇，到達 API 層的失敗一律 `llm_unavailable`（REST 502／WS error frame）。原保留碼 `llm_rate_limited`/`llm_timeout` 與 `already_streaming`（「舊客戶端」不存在——單一消費者原子部署）已自 `ERROR_CODES`／`messages.ts` 刪除；錯誤碼表見 [`api-contract.md`](./api-contract.md) §10。
+
 ## 待辦 / 未定
 
 - [ ] `glm-5.3-flash` 2026-11-20 下架：選定替代模型並更新 `providers.config.yaml`（見 §8）
