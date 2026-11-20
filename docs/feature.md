@@ -54,6 +54,7 @@
 | 報告輪詢 | 生成中 404 `report_pending`（前端輪詢）；失敗 500 `report_failed`                                                                                                                | `GET /api/activities/:id/report`・`/report/:id` |
 | 角色分流 | 老師見全班（classReport＋每人 analysis）；學生只見自己（analysis＋假名）                                                                                                         | 同上；形狀見 `api-contract.md` §7               |
 | 立場星圖 | 老師的群體報告把 `classReport.axes` 的落點畫成星圖：勾 0–3 條軸，從中間點展開成一條線、平面、立體（可拖曳旋轉）；階層式分群（Ward）自動或指定 2–4 群；點一個點看該生在各軸的想法 | `/report/:id`（群體）；`StanceConstellation`    |
+| 六角圖   | 單人報告的思辨表現圖：六條軸對應 spec 的六項思辨力目標，每項三級（未觀察到／部分／達成，不是分數），右側列出各項判準。**目前為示意資料**（畫面有標示），待後端分析接上（#78）    | `/report/:id`（單人）；`ThinkingHexagon`        |
 
 ## 對話引擎（Pi Durable）
 
