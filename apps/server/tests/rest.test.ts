@@ -637,6 +637,21 @@ describe("#205 user↔teacher toggle (self-service teacher mode)", () => {
       body: JSON.stringify({ name: "205再建班" }),
     });
     expect(blocked.status).toBe(403);
+
+    const backOn = await call("/api/me/teacher-mode", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: student },
+      body: JSON.stringify({ teacherMode: true }),
+    });
+    expect(backOn.status).toBe(200);
+    expect(((await backOn.json()) as { canManageClasses: boolean }).canManageClasses).toBe(true);
+
+    const resumed = await call("/api/classrooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: student },
+      body: JSON.stringify({ name: "205復工班" }),
+    });
+    expect(resumed.status).toBe(201);
   });
 
   test("requires an account session: anonymous and guest-participant calls are 401", async () => {
