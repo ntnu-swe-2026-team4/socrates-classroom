@@ -20,8 +20,6 @@ jobs:
       CF_SEND_TELEMETRY: "false"
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -45,15 +43,12 @@ jobs:
       - name: cf build (client + worker into Build Output)
         run: pnpm exec cf build
         working-directory: apps/web
-      - name: Warn about new required secrets without values
-        if: github.event_name == 'pull_request'
+      - name: cf deploy dry-run and required secret warning (no credentials needed, fork-PR safe)
         run: |
-          trap 'rm -f .ci-base.config.ts' EXIT
-          git show "$BASE_SHA:apps/web/cloudflare.config.ts" > .ci-base.config.ts
-          pnpm exec node dev/check-secret-drift.ts .cloudflare/output/v0/workers/default/worker.config.json .ci-base.config.ts
+          pnpm exec node dev/check-secret-drift.ts .cloudflare/output/v0/workers/default/worker.config.json
+          pnpm exec cf deploy --prebuilt --mode production --dry-run
         working-directory: apps/web
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-      - name: cf deploy dry-run (no credentials needed, fork-PR safe)
-        run: pnpm exec cf deploy --prebuilt --mode production --dry-run
-        working-directory: apps/web
+          AUTH_SECRET: ci-only-placeholder
+          BYOK_ENC_KEY: ci-only-placeholder
+          SEED_TOKEN: ci-only-placeholder

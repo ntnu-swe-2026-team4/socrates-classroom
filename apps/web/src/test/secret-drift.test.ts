@@ -9,25 +9,19 @@ const script = resolve(import.meta.dirname, "../../dev/check-secret-drift.ts");
 
 function checkSecretDrift(
   current: Record<string, { type: string }>,
-  baseline: Record<string, { type: string }>,
+  values: Record<string, string> = {},
   secretsFileContent?: string,
 ) {
   const directory = mkdtempSync(join(tmpdir(), "secret-drift-"));
   directories.push(directory);
   const manifest = join(directory, "worker.config.json");
-  const baseConfig = join(directory, "baseline.mjs");
   const secretsFile = join(directory, "secrets.env");
   writeFileSync(manifest, JSON.stringify({ env: current }));
-  writeFileSync(baseConfig, `export default () => ({ worker: { env: ${JSON.stringify(baseline)} } });`);
   if (secretsFileContent !== undefined) writeFileSync(secretsFile, secretsFileContent);
-  return spawnSync(
-    process.execPath,
-    [script, manifest, baseConfig, ...(secretsFileContent === undefined ? [] : [secretsFile])],
-    {
-      encoding: "utf8",
-      env: { PATH: process.env.PATH ?? "", AUTH_SECRET: "", NEW_SECRET: "" },
-    },
-  );
+  return spawnSync(process.execPath, [script, manifest, ...(secretsFileContent === undefined ? [] : [secretsFile])], {
+    encoding: "utf8",
+    env: { PATH: process.env.PATH ?? "", ...values },
+  });
 }
 
 afterEach(() => {
@@ -35,10 +29,17 @@ afterEach(() => {
 });
 
 describe("PR secret drift warning", () => {
-  it("warns about a newly required secret missing from the CI environment", () => {
+  it("warns when an existing required secret has no value", () => {
+    const result = checkSecretDrift({ AUTH_SECRET: { type: "secret" } });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("AUTH_SECRET");
+  });
+
+  it("warns about any missing required secret even when known secrets have CI values", () => {
     const result = checkSecretDrift(
       { AUTH_SECRET: { type: "secret" }, NEW_SECRET: { type: "secret" } },
-      { AUTH_SECRET: { type: "secret" } },
+      { AUTH_SECRET: "ci-only-placeholder" },
     );
 
     expect(result.status).toBe(0);
@@ -47,11 +48,30 @@ describe("PR secret drift warning", () => {
     expect(result.stdout).not.toContain("AUTH_SECRET");
   });
 
-  it("accepts a new secret supplied by a secrets file", () => {
+  it("accepts a required secret supplied by a secrets file", () => {
     const result = checkSecretDrift(
       { AUTH_SECRET: { type: "secret" }, NEW_SECRET: { type: "secret" } },
-      { AUTH_SECRET: { type: "secret" } },
+      { AUTH_SECRET: "ci-only-placeholder" },
       "NEW_SECRET=provided\n",
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("emits no warning when all declared secrets have CI values", () => {
+    const result = checkSecretDrift(
+      {
+        AUTH_SECRET: { type: "secret" },
+        SEED_TOKEN: { type: "secret" },
+        BYOK_ENC_KEY: { type: "secret" },
+        GOOGLE_CLIENT_ID: { type: "text" },
+      },
+      {
+        AUTH_SECRET: "ci-only-placeholder",
+        SEED_TOKEN: "ci-only-placeholder",
+        BYOK_ENC_KEY: "ci-only-placeholder",
+      },
     );
 
     expect(result.status).toBe(0);
