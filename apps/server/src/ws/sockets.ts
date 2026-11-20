@@ -63,7 +63,7 @@ const KNOWN_ERROR_NAMES = new Set([
   "UnknownSession",
 ]);
 
-type SocketState = { auth?: SocketIdentity; session?: string };
+type SocketState = { auth?: SocketIdentity; session?: string; notifiedRunFailure?: string };
 
 function resumeAfter(view: ConversationView): ConversationWindow {
   const newest = view.entries.at(-1)?.id ?? view.before;
@@ -90,34 +90,34 @@ function send(socket: WebSocket, message: ServerMessage): void {
 export class ChatSockets {
   readonly #harness: PiHarness;
   readonly #registry: RegistryReader;
-  readonly #getWebSockets: (tag?: string) => WebSocket[];
   readonly #authorize?: Authorize;
   readonly #submitRoute?: SubmitRoute;
   readonly #canSubmit?: CanSubmit;
   readonly #openBtw?: OpenBtw;
   readonly #revalidate?: Revalidate;
   readonly #watches = new Map<WebSocket, ConversationWatch>();
-  readonly #authorized = new Map<WebSocket, SocketIdentity>();
+  readonly #authorized = new Map<Connection, SocketIdentity>();
   readonly #sessions = new Map<WebSocket, string>();
+  readonly #recentRunFailure?: (session: string) => string | undefined;
 
   constructor(
     harness: PiHarness,
     registry: RegistryReader,
-    getWebSockets: (tag?: string) => WebSocket[],
     authorize?: Authorize,
     submitRoute?: SubmitRoute,
     canSubmit?: CanSubmit,
     openBtw?: OpenBtw,
     revalidate?: Revalidate,
+    recentRunFailure?: (session: string) => string | undefined,
   ) {
     this.#harness = harness;
     this.#registry = registry;
-    this.#getWebSockets = getWebSockets;
     this.#authorize = authorize;
     this.#submitRoute = submitRoute;
     this.#canSubmit = canSubmit;
     this.#openBtw = openBtw;
     this.#revalidate = revalidate;
+    this.#recentRunFailure = recentRunFailure;
   }
 
   options(): WebSocketsOptions {
@@ -154,7 +154,7 @@ export class ChatSockets {
     }
   }
 
-  #unavailable(socket: WebSocket): void {
+  #unavailable(socket: Connection): void {
     this.#authorized.delete(socket);
     this.#unwatch(socket);
     try {
@@ -164,7 +164,7 @@ export class ChatSockets {
     }
   }
 
-  #refuse(socket: WebSocket): void {
+  #refuse(socket: Connection): void {
     this.#authorized.delete(socket);
     try {
       socket.close(1008, "unauthorized");
@@ -173,11 +173,18 @@ export class ChatSockets {
     }
   }
 
-  notifyRunFailure(session: string = ROOT_SESSION): void {
-    for (const socket of this.#getWebSockets()) {
+  notifyRunFailure(session: string, failureId: string): void {
+    for (const socket of this.#authorized.keys()) {
       if (this.#sessionOf(socket) !== session) continue;
-      send(socket, { type: "error", message: "The model run failed", code: "llm_unavailable" });
+      this.#sendRunFailure(socket, failureId);
     }
+  }
+
+  #sendRunFailure(socket: Connection, failureId: string): void {
+    const state = (socket.state as SocketState | null) ?? {};
+    if (socket.readyState !== OPEN || state.notifiedRunFailure === failureId) return;
+    send(socket, { type: "error", message: "The model run failed", code: "llm_unavailable" });
+    socket.setState({ ...state, notifiedRunFailure: failureId } satisfies SocketState);
   }
 
   #sessionOf(socket: WebSocket): string {
@@ -213,7 +220,7 @@ export class ChatSockets {
     });
   }
 
-  async #watch(socket: WebSocket, window: ConversationWindow = {}): Promise<void> {
+  async #watch(socket: Connection, window: ConversationWindow = {}): Promise<void> {
     const watch = await this.#harness.session(this.#sessionOf(socket)).watch(window);
     if (socket.readyState !== OPEN) {
       await watch.stop();
@@ -224,6 +231,8 @@ export class ChatSockets {
     void previous?.stop();
     let last = watch.value;
     send(socket, { type: "view", view: last });
+    const failureId = this.#recentRunFailure?.(this.#sessionOf(socket));
+    if (failureId) this.#sendRunFailure(socket, failureId);
     watch.start(async (call) => {
       if (call.kind !== "value") return;
       if (socket.readyState !== OPEN) {
@@ -236,7 +245,7 @@ export class ChatSockets {
     void watch.closed.then((end) => this.#ended(socket, watch, end, last));
   }
 
-  async #ended(socket: WebSocket, watch: ConversationWatch, end: WatchEnd, last: ConversationView): Promise<void> {
+  async #ended(socket: Connection, watch: ConversationWatch, end: WatchEnd, last: ConversationView): Promise<void> {
     if (end.kind === "stopped" || end.kind === "aborted") return;
     if (this.#watches.get(socket) !== watch) return;
     this.#watches.delete(socket);
@@ -244,7 +253,7 @@ export class ChatSockets {
     await this.#watchOrClose(socket, resumeAfter(last));
   }
 
-  async #watchOrClose(socket: WebSocket, window: ConversationWindow = {}): Promise<void> {
+  async #watchOrClose(socket: Connection, window: ConversationWindow = {}): Promise<void> {
     try {
       await this.#watch(socket, window);
     } catch (error) {
@@ -257,7 +266,7 @@ export class ChatSockets {
     }
   }
 
-  async #unwatch(socket: WebSocket): Promise<void> {
+  async #unwatch(socket: Connection): Promise<void> {
     this.#authorized.delete(socket);
     this.#sessions.delete(socket);
     const watch = this.#watches.get(socket);

@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
-import { evictDurableObject, runInDurableObject } from "cloudflare:test";
+import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
+import { ROOT_SESSION } from "agents/harness/pi";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { ROOT_CONVERSATION_ID, type ConversationId } from "@earendil-works/pi-durable";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -220,6 +221,45 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     await rx.until((f) => f.some((m) => m.type === "result" && m.id === "post-evict"));
     expect(socket.readyState).toBe(WebSocket.OPEN);
     socket.close();
+  }, 20_000);
+
+  it("reports and replays an orphaned dialogue run after eviction without a transcript entry", async () => {
+    const student = await joinStudent("失聯後重試");
+    const thread = `${activityId}:${student.participantId}`;
+    const stub = env.Chat.get(env.Chat.idFromName(thread));
+    const socket = await connect(thread, student.cookie);
+    const isFailure = (frame: ReturnType<typeof frames>["list"][number]) =>
+      frame.type === "error" && frame.code === "llm_unavailable" && frame.id === undefined;
+    try {
+      const rx = frames(socket);
+      socket.send(JSON.stringify({ type: "watch" }));
+      await rx.until((f) => f.some((m) => m.type === "view"));
+      await runInDurableObject(stub, async (instance) => {
+        await (instance as Chat).lifecycle.jobs.push({
+          fn: "dialogue-run-deadline",
+          time: Date.now() + 120_000,
+          payload: { session: ROOT_SESSION, operationId: crypto.randomUUID() },
+        });
+      });
+      await evictDurableObject(stub);
+      expect(await runDurableObjectAlarm(stub)).toBe(true);
+      socket.send(JSON.stringify({ type: "watch", id: "after-alarm" }));
+      await rx.until((f) => f.some((m) => m.type === "result" && m.id === "after-alarm"));
+      expect(rx.list.filter(isFailure)).toHaveLength(1);
+      expect(latestView(rx.list)?.entries).toHaveLength(0);
+    } finally {
+      socket.close();
+    }
+
+    const reconnected = await connect(thread, student.cookie);
+    try {
+      const rx = frames(reconnected);
+      reconnected.send(JSON.stringify({ type: "watch", id: "reconnect" }));
+      await rx.until((f) => f.some((m) => m.type === "result" && m.id === "reconnect"));
+      expect(rx.list.filter(isFailure)).toHaveLength(1);
+    } finally {
+      reconnected.close();
+    }
   }, 20_000);
 
   it("revoked participant is refused after hibernation wake (ownership re-verified, not trusted from connect time)", async () => {
