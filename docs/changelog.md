@@ -2,6 +2,15 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — useVoiceInput controller 重構：環境注入、零 global stubbing（`split/166-voice-controller`，#166）
+
+### Added
+
+- `test/voiceInput.test.ts`（16 tests，依賴全為 ctor fakes、零 global stubbing）：unsupported×2、denied／failed 判別、權限彈窗期間按停、start 重入、`onresult` final／interim 累積、`onerror` 四型別、`onend` 自動收尾、fallback 錄音→stt 恰一次、`onstop` 沉默保險、stt 失敗映射、60 秒自動停、`dispose` 清理
+
+### Changed
+
+- `useVoiceInput` 依賴全面注入：抽 `lib/voiceInput.ts` 的 `VoiceInputController`（`VoiceEnv` 注入 getUserMedia／AudioContext／recognition ctor／MediaRecorder／rAF／lang／stt），hook 退化為薄 state adapter；行為零變更（`voice.test.tsx`／`trace.test.ts` 安全網全綠）；死碼 `startedAt` 欄位移除
 
 ## 2026-11-21 — Capability bit 退役：無 mode 帳號模型落地（`feat/210-capability-retirement`，#210）
 
