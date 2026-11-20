@@ -63,6 +63,67 @@ describe("migration 008: teacher key models", () => {
     expect(fresh).toEqual([{ max_concurrency: 6 }]);
   });
 });
+describe("migration 009: teacher key usage ledger and quota alerts", () => {
+  it("adds a nullable monthly quota to teacher_keys and creates usage/alerts tables keyed to the key row", async () => {
+    const base = migrations.filter((migration) => !/^(003|009)/.test(migration.name));
+    const usage = migrations.filter((migration) => migration.name.startsWith("009"));
+    expect(usage).toHaveLength(1);
+    await applyD1Migrations(env.DB, base);
+
+    const at = "2026-11-21T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
+       VALUES ('u_ta', '額度老師', 'teacher', 'ta@example.com', 'x', 'zh', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
+       VALUES ('u_ta', 'openrouter', 'enc', 'zzzz', 0, $at)`,
+      { at },
+    );
+
+    await applyD1Migrations(env.DB, usage);
+
+    const existing = await all<{ monthly_quota_usd: number | null }>(
+      env.DB,
+      "SELECT monthly_quota_usd FROM teacher_keys WHERE user_id = 'u_ta'",
+    );
+    expect(existing).toEqual([{ monthly_quota_usd: null }]);
+
+    await run(
+      env.DB,
+      `INSERT INTO teacher_key_usage (user_id, provider_id, model, input_tokens, output_tokens, total_tokens, cost_usd, billed)
+       VALUES ('u_ta', 'openrouter', 'z-ai/glm-5.3-flash', 10, 5, 15, 0.003, 0)`,
+    );
+    const usageRow = await all<{ model: string; cost_usd: number }>(
+      env.DB,
+      "SELECT model, cost_usd FROM teacher_key_usage",
+    );
+    expect(usageRow).toEqual([{ model: "z-ai/glm-5.3-flash", cost_usd: 0.003 }]);
+
+    const insertAlert = () =>
+      run(
+        env.DB,
+        `INSERT OR IGNORE INTO teacher_quota_alerts (user_id, provider_id, window, threshold)
+         VALUES ('u_ta', 'openrouter', '2026-11', 60)`,
+      );
+    await insertAlert();
+    await insertAlert();
+    const alerts = await all<{ window: string; threshold: number }>(
+      env.DB,
+      "SELECT window, threshold FROM teacher_quota_alerts",
+    );
+    expect(alerts).toEqual([{ window: "2026-11", threshold: 60 }]);
+
+    await run(env.DB, "DELETE FROM users WHERE id = 'u_ta'");
+    const orphaned = await all<{ n: number }>(env.DB, "SELECT COUNT(*) AS n FROM teacher_key_usage");
+    expect(orphaned).toEqual([{ n: 0 }]);
+    const orphanedAlerts = await all<{ n: number }>(env.DB, "SELECT COUNT(*) AS n FROM teacher_quota_alerts");
+    expect(orphanedAlerts).toEqual([{ n: 0 }]);
+  });
+});
 
 describe("migration 003: activity participant backfill", () => {
   it("existing members become member participants and keep their pseudonyms", async () => {
