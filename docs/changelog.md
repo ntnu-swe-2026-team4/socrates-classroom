@@ -2,6 +2,19 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — Notifications feed、已讀 watermark 與 admin 公告端點（`feat/239-notifications`，#239）
+
+### Added
+
+- `GET /api/notifications`：免登入公告 feed（#158 拍板——登入頁維護公告用途）；`{items, unread}`，最新在前、上限 30；`unread` 僅登入帳號回傳，未登入一律 `null`
+- `POST /api/notifications/seen`：requireUser，per-user watermark（`users.notifications_seen_at`）設為 now；冪等
+- `POST /api/admin/notifications`：requireAdmin 撰寫公告（單語內容；`created_by` FK，帳號刪除時 SET NULL——相容 #233）
+- Migration `012`：`notifications` 表＋`users.notifications_seen_at` 欄位；已讀採 watermark 而非 per-notification join 表（unread＝`created_at > watermark`，O(1)）
+
+### 決策記錄
+
+- #158 三項拍板（2026-11-21）：成員移除 cascade 改變→#237；root post CASCADE 維持（門留著）；feed 免登入維持——本 PR 實作其第三項的端點面
+
 ## 2026-11-21 — SSO 擴充：Facebook 登入與 authProviders 能力探測（`feat/207-sso-providers`，#207）
 
 ### Added
