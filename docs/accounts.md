@@ -75,6 +75,10 @@ flowchart LR
 
 ## 7. 討論與拍板
 
+**拍板（2026-11-21）**
+
+- **Apple 登入退場（#207 範圍收斂）**：Sign in with Apple 的設定面（Services ID、`.p8` private key）僅 **Apple Developer Program** 會員可及（US$99／年；查證 2026-11-21：Apple 官方 enrollment 頁與 Firebase 官方文件「Sign In with Apple can only be configured by members of the Apple Developer Program」），且 web 流程要求一個啟用該 capability 的 **primary iOS/macOS/tvOS/watchOS App ID**——Apple 的設計假設開發者有原生 App，純 web 產品需另建 placeholder App ID。團隊無會籍，#207 收斂為 Facebook＋`GET /auth/providers`。註：fee waiver 限 nonprofit／accredited educational institution／government 法人（不含個人或團隊）——日後由學校法人營運可重開評估。
+
 **已討論（2026-11-17，spec rev 200）**
 
 - 所有 teacher（含 admin 建立的供應帳號）都可與 user 互相切換
@@ -104,4 +108,4 @@ flowchart LR
 
 - **已上 main**：班級邀請註冊（`POST /auth/register`）、訪客與 activity participants（#132/#133）、測試模式（#134）、自行註冊與 Google OAuth（#124）；capability 模型（`can_manage_classes`，#131/#142）——**已退役**（#210，無 mode 定稿 §7）：建立類端點開放給所有登入 user，`users.can_manage_classes` 與 legacy `users.role` 欄位移除，`PATCH /admin/users/:id` 僅剩停用
 - **已結案**：user↔teacher mode toggle（#208——未 merge 即 close，被無 mode 定稿取代）
-- **計畫中**：SSO 擴充 Apple／Facebook 與 authProviders 探測（#207）；teacher 端建立 student（#206——原範圍已被窗口拍板推翻，待重劃或關閉）
+- **計畫中**：SSO 擴充 Facebook 與 authProviders 探測（#207——Apple 拍板退場，見 §7）；teacher 端建立 student（#206——原範圍已被窗口拍板推翻，待重劃或關閉）

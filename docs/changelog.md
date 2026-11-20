@@ -25,6 +25,23 @@
 - `useVoiceInput` 依賴全面注入：抽 `lib/voiceInput.ts` 的 `VoiceInputController`（`VoiceEnv` 注入 getUserMedia／AudioContext／recognition ctor／MediaRecorder／rAF／lang／stt），hook 退化為薄 state adapter；行為零變更（`voice.test.tsx`／`trace.test.ts` 安全網全綠）；死碼 `startedAt` 欄位移除
 - review 建議二項：`stop()` 的 1s 保險計時器改為僅在實際停錄時排程、`onstop` 正常觸發即清除（正常 stop 不再殘留 timer，`vi.getTimerCount` 測試釘住）；hook 移除未使用的 `env` 參數（注入縫在 `VoiceInputController` ctor，`defaultVoiceEnv` 為 hook 唯一環境）
 
+## 2026-11-21 — SSO 擴充：Facebook 登入與 authProviders 能力探測（`feat/207-sso-providers`，#207）
+
+### Added
+
+- `GET /api/auth/providers` → `{providers}`——能力探測端點（#204 母單項目 1 缺口，解鎖 #178 登入頁按鈕渲染）：回傳依環境變數啟用的 SSO provider 清單，免 session、不讀 DB；`OAUTH_PROVIDERS` 契約型別入 `packages/shared`
+- Facebook OAuth（web code flow）：dialog（state＋`scope=email`）→ server-side 換 token → `GET /me?fields=id,name,email`；身分一律 `(facebook, id)`，email 為 informational（Meta 無 `email_verified` 信號，不參與身分判定，缺席照常建帳）；access token 用完即棄不落庫；Graph API pin `v27.0`；資料保留查證入 `google-oauth.md` §6.4
+- Migration `011_facebook_identity.sql`：`user_identities.provider` 的 google-only CHECK 移除（provider 詞彙由 shared `OAUTH_PROVIDERS` 型別擁有，schema 不再複製同一事實）；既有 identity 列存活、cascade 保留
+- `routes/auth.ts` 的 provider dispatch 抽象（`providerRuntime`）：start/callback 由 provider registry 分派，新增 provider＝一個 config reader＋authorize/profile 兩函數
+
+### Changed
+
+- `google-oauth.md` 擴域為「第三方登入（SSO）設定」（§6 Facebook、§7 Apple 退場指向）
+
+### 決策記錄
+
+- **Apple 登入退場**（`accounts.md` §7，2026-11-21）：Sign in with Apple 僅 Apple Developer Program 會員可設定（US$99／年，官方文件查證），且 web 流程要求 primary iOS/macOS App ID；fee waiver 限法人教育機構——日後條件成立可重開
+
 ## 2026-11-21 — Capability bit 退役：無 mode 帳號模型落地（`feat/210-capability-retirement`，#210）
 
 ### Changed
