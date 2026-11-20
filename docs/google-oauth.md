@@ -100,7 +100,7 @@ secret 外洩（例如出現在截圖或訊息裡），或定期更換時，照�
 
 ### 6.3 流程與身分
 
-- 標準 web code flow：dialog（`scope=email`、state）→ server-side 換 access token → `GET /me?fields=id,name,email`。Meta 無 nonce／PKCE，CSRF 靠 state cookie（同 Google 的 HMAC `socrates_oauth`）。
+- 標準 web code flow：dialog（`scope=email`、state）→ server-side 換 access token → `GET /me?fields=id,name,email`（帶 `appsecret_proof`：以 app secret 對 access token 計算的 HMAC-SHA256，防 token 偽造的 Meta 建議強化）。Meta 無 nonce／PKCE，CSRF 靠 state cookie（同 Google 的 HMAC `socrates_oauth`）。
 - **身分一律 `(facebook, id)`**——不以 email 認身分（與 Google 同規則）。Meta 無 `email_verified` 信號：email 為 **informational**（缺 email 照常建帳，`user_identities.email` NULL）。
 - access token **用完即棄，不落庫**（只取 id/name/email 三欄位即丟棄）。
 

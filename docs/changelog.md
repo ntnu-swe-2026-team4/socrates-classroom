@@ -30,7 +30,7 @@
 ### Added
 
 - `GET /api/auth/providers` → `{providers}`——能力探測端點（#204 母單項目 1 缺口，解鎖 #178 登入頁按鈕渲染）：回傳依環境變數啟用的 SSO provider 清單，免 session、不讀 DB；`OAUTH_PROVIDERS` 契約型別入 `packages/shared`
-- Facebook OAuth（web code flow）：dialog（state＋`scope=email`）→ server-side 換 token → `GET /me?fields=id,name,email`；身分一律 `(facebook, id)`，email 為 informational（Meta 無 `email_verified` 信號，不參與身分判定，缺席照常建帳）；access token 用完即棄不落庫；Graph API pin `v27.0`；資料保留查證入 `google-oauth.md` §6.4
+- Facebook OAuth（web code flow）：dialog（state＋`scope=email`）→ server-side 換 token → `GET /me?fields=id,name,email`（帶 `appsecret_proof` hardening）；身分一律 `(facebook, id)`，email 為 informational（Meta 無 `email_verified` 信號，不參與身分判定，缺席照常建帳）；access token 用完即棄不落庫；Graph API pin `v27.0`；資料保留查證入 `google-oauth.md` §6.4
 - Migration `011_facebook_identity.sql`：`user_identities.provider` 的 google-only CHECK 移除（provider 詞彙由 shared `OAUTH_PROVIDERS` 型別擁有，schema 不再複製同一事實）；既有 identity 列存活、cascade 保留
 - `routes/auth.ts` 的 provider dispatch 抽象（`providerRuntime`）：start/callback 由 provider registry 分派，新增 provider＝一個 config reader＋authorize/profile 兩函數
 
