@@ -109,6 +109,8 @@ Schema 的 SSOT 是 `apps/server/migrations/*.sql`（`001_init.sql` 起依序前
 | `SEED_TOKEN`           | `POST /api/dev/seed` 閘門（production 留空即可禁用）                                                              | 任意亂數                            |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret（只在 `GOOGLE_CLIENT_ID` 非空時宣告；未宣告＝Google 登入停用，回 `oauth_unavailable`） | Google Cloud Console → OAuth 用戶端 |
 
+新增無條件 `bindings.secret()` 時，須同步核對 `PROD_SECRETS_FILE`，並在 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) 的 dry-run step 為該 binding 加入 dummy 值；若漏加 dummy，後續 PR CI 會持續發 `::warning`。dummy 值不可用於 production。
+
 Google 登入另需 text binding `GOOGLE_CLIENT_ID`（`cloudflare.config.ts`：dev 由 `.env.local`，production 由 repo variable 於 build 時帶入），並在 Google Cloud Console 登錄 redirect URI `<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`；本地開發需在 `.env.local` 設 `PUBLIC_BASE_URL=http://localhost:5173`。建立用戶端、正式環境設定與 secret 輪替步驟見 [`google-oauth.md`](./google-oauth.md)。
 
 ```bash
@@ -138,6 +140,8 @@ secrets 管理一律走 `cf deploy --secrets-file`（見上方 Secrets）——w
 ## CI/CD
 
 見 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)（PR：lint → yamllint → config-drift → typecheck → test → build → secret-drift check ＋ dry-run，免憑證）與 [`deploy.yml`](../.github/workflows/deploy.yml)（push main：全閘門 → build once → D1 migrations → deploy；只有 migrations/deploy 兩步拿 `CLOUDFLARE_API_TOKEN`/`ACCOUNT_ID`/`D1_DATABASE_ID`）。PR CI 的 dry-run step 為已知的 `AUTH_SECRET`、`BYOK_ENC_KEY`、`SEED_TOKEN` 提供 dummy 值；檢查程式對 build output `worker.config.json` 中每個 `type: "secret"` binding 檢查環境或指定的 secrets file，缺值就發 `::warning`，不阻擋 merge。dummy 值只供 CI 使用，PR CI 不讀 `PROD_SECRETS_FILE`，因此不驗證 production secrets 的實際值。Secrets 注入走 deploy 指令的 `--secrets-file`，由 `deploy.yml` 的 `PROD_SECRETS_FILE` repo secret 提供；`GOOGLE_CLIENT_ID` 走 repo variable 於 build 帶入（見 [`google-oauth.md`](./google-oauth.md) §3）。
+
+PR CI 只檢查當次 build output 實際宣告的 binding。若 conditional secret 在 PR CI 未啟用、production 才啟用，PR CI 不會警告；仍須由 Deploy preflight 確認 `PROD_SECRETS_FILE` 有對應值。
 
 ## 疑難排解
 
