@@ -47,6 +47,17 @@ async function alertedThresholds(id: string): Promise<number[]> {
   return rows.map((row) => row.threshold);
 }
 
+async function pendingThresholds(id: string): Promise<number[]> {
+  const rows = await all<{ threshold: number }>(
+    env.DB,
+    "SELECT threshold FROM teacher_quota_alerts WHERE user_id = $id AND sent_at IS NULL ORDER BY threshold",
+    { id },
+  );
+  return rows.map((row) => row.threshold);
+}
+
+const currentWindow = () => new Date().toISOString().slice(0, 7);
+
 function sample(provider: string, costUsd: number) {
   return {
     provider,
@@ -179,6 +190,64 @@ describe("teacher usage recording and quota alerts", () => {
 
     await recordTeacherUsage(mailEnv(sent), "u_qa6", sample("openrouter", 0.01));
     expect(await alertedThresholds("u_qa6")).toEqual([60]);
+    expect(sent).toHaveLength(2);
+  });
+
+  it("retries an orphaned pending claim once its lease expires", async () => {
+    const sent: SentEmail[] = [];
+    await seedTeacher("u_qa7", 0.1, "qa7@example.com");
+    await run(
+      env.DB,
+      `INSERT INTO teacher_quota_alerts (user_id, provider_id, window, threshold, claimed_at)
+       VALUES ($uid, 'openrouter', $win, 60, $stale)`,
+      { uid: "u_qa7", win: currentWindow(), stale: "2026-11-01T00:00:00.000Z" },
+    );
+
+    await recordTeacherUsage(mailEnv(sent), "u_qa7", sample("openrouter", 0.06));
+    expect(sent).toHaveLength(2);
+    expect(await pendingThresholds("u_qa7")).toEqual([]);
+
+    await recordTeacherUsage(mailEnv(sent), "u_qa7", sample("openrouter", 0.01));
+    expect(sent).toHaveLength(2);
+    expect(await alertedThresholds("u_qa7")).toEqual([60]);
+  });
+
+  it("leaves a pending claim alone while its lease is live", async () => {
+    const sent: SentEmail[] = [];
+    await seedTeacher("u_qa8", 0.1, "qa8@example.com");
+    await run(
+      env.DB,
+      `INSERT INTO teacher_quota_alerts (user_id, provider_id, window, threshold, claimed_at)
+       VALUES ($uid, 'openrouter', $win, 60, $now)`,
+      { uid: "u_qa8", win: currentWindow(), now: new Date().toISOString() },
+    );
+
+    await recordTeacherUsage(mailEnv(sent), "u_qa8", sample("openrouter", 0.06));
+    expect(sent).toHaveLength(0);
+    expect(await pendingThresholds("u_qa8")).toEqual([60]);
+  });
+
+  it("re-arms an orphaned claim when the retry announce fails", async () => {
+    await seedTeacher("u_qa9", 0.1, "qa9@example.com");
+    await run(
+      env.DB,
+      `INSERT INTO teacher_quota_alerts (user_id, provider_id, window, threshold, claimed_at)
+       VALUES ($uid, 'openrouter', $win, 60, $stale)`,
+      { uid: "u_qa9", win: currentWindow(), stale: "2026-11-01T00:00:00.000Z" },
+    );
+    const failing = mailEnv([]);
+    failing.SEND_EMAIL = {
+      send: async () => {
+        throw new Error("E_RATE_LIMIT_EXCEEDED");
+      },
+    } as never;
+
+    await expect(recordTeacherUsage(failing, "u_qa9", sample("openrouter", 0.06))).resolves.toBeUndefined();
+    expect(await alertedThresholds("u_qa9")).toEqual([]);
+
+    const sent: SentEmail[] = [];
+    await recordTeacherUsage(mailEnv(sent), "u_qa9", sample("openrouter", 0.01));
+    expect(await alertedThresholds("u_qa9")).toEqual([60]);
     expect(sent).toHaveLength(2);
   });
 });

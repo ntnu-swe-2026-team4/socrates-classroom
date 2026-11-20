@@ -20,6 +20,7 @@ CREATE TABLE teacher_quota_alerts (
   provider_id TEXT NOT NULL,
   window TEXT NOT NULL,
   threshold INTEGER NOT NULL,
-  notified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  claimed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  sent_at TEXT,
   PRIMARY KEY (user_id, provider_id, window, threshold)
 );

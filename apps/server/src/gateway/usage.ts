@@ -11,6 +11,7 @@ export interface UsageSample {
 }
 
 const THRESHOLDS = [60, 80, 100] as const;
+const CLAIM_TTL_MS = 60_000;
 
 const money = (value: number) => value.toFixed(2);
 
@@ -106,13 +107,32 @@ export async function recordTeacherUsage(env: Env, teacherId: string | null, sam
   const spend = spendRow?.spend ?? 0;
   for (const threshold of THRESHOLDS) {
     if (spend * 100 < quota * threshold - 1e-9) continue;
+    const claimedAt = new Date().toISOString();
     const claim = await run(
       env.DB,
-      `INSERT OR IGNORE INTO teacher_quota_alerts (user_id, provider_id, window, threshold)
-       VALUES ($uid, $pid, $win, $threshold)`,
-      { uid: teacherId, pid: sample.provider, win: label, threshold },
+      `INSERT OR IGNORE INTO teacher_quota_alerts (user_id, provider_id, window, threshold, claimed_at)
+       VALUES ($uid, $pid, $win, $threshold, $claimed)`,
+      { uid: teacherId, pid: sample.provider, win: label, threshold, claimed: claimedAt },
     );
-    if (claim.meta.changes === 0) continue;
+    let owned = claim.meta.changes === 1;
+    if (!owned) {
+      const steal = await run(
+        env.DB,
+        `UPDATE teacher_quota_alerts SET claimed_at = $claimed
+         WHERE user_id = $uid AND provider_id = $pid AND window = $win AND threshold = $threshold
+           AND sent_at IS NULL AND claimed_at <= $stale`,
+        {
+          uid: teacherId,
+          pid: sample.provider,
+          win: label,
+          threshold,
+          claimed: claimedAt,
+          stale: new Date(Date.now() - CLAIM_TTL_MS).toISOString(),
+        },
+      );
+      owned = steal.meta.changes === 1;
+    }
+    if (!owned) continue;
     const delivered = await announce(env, teacherId, sample.provider, label, threshold, spend, quota);
     if (!delivered) {
       await run(
@@ -121,6 +141,13 @@ export async function recordTeacherUsage(env: Env, teacherId: string | null, sam
          WHERE user_id = $uid AND provider_id = $pid AND window = $win AND threshold = $threshold`,
         { uid: teacherId, pid: sample.provider, win: label, threshold },
       );
+      continue;
     }
+    await run(
+      env.DB,
+      `UPDATE teacher_quota_alerts SET sent_at = $at
+       WHERE user_id = $uid AND provider_id = $pid AND window = $win AND threshold = $threshold`,
+      { uid: teacherId, pid: sample.provider, win: label, threshold, at: claimedAt },
+    );
   }
 }
