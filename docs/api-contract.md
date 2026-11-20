@@ -147,7 +147,7 @@ interface User {
 | `GET /classrooms/:id/activities`                                            | 活動列表：`{id, mode, topicTitle, finishedAt, createdAt}` 最新在前；分頁同 posts；非 owner 不見 `test`（#134）                                                                                                                                                |
 
 - FK 語義：`announcements.author_id` SET NULL（作者帳號刪除時公告留存）；`posts.author_id` CASCADE（作者帳號刪除時貼文一併消失）——**暫定**，#233 帳號刪除拍板若改判 anonymize 則此 FK 重議；root 刪除時回覆 CASCADE
-- **列表 bound policy**（本節全部 list 端點）：時間成長型一律分頁（posts／announcements／activities：`?limit=` 預設 50／上限 100＋`?before=<createdAt>` 游標，同 ms 建立可能被游標截掉——已知限制）；**bounded by construction** 不分頁（members＝入班 bounded；topics＝teacher-curated 管理面，UI 需要時再議）；`GET /admin/users` 分頁隨 #185 消費端跟進
+- **列表 bound policy**（#241 類級掃描，跨節生效）：時間成長型一律分頁（posts／announcements／activities：`?limit=` 預設 50／上限 100＋`?before=<createdAt>` 游標，同 ms 建立可能被游標截掉——已知限制）；**bounded by construction** 不分頁（members＝入班 bounded；`GET /classrooms/:id/topics`＝teacher-curated 管理面、`GET /api/topics`＝個人題池同理由——選題 UI 需全量，成長到影響 UX 時再議）；per-user 有界（`GET /classrooms`＝owned∪joined）；fixtured（dev accounts）；`GET /admin/users` 分頁隨 #185 消費端跟進
 - **行事曆**不在本節（#212：全新設計、無參考 code，另立設計單）；**教室公告×鈴鐘整合**（classroom-level unread）另議
 
 ## 5. 對話（WebSocket，核心；R7）
