@@ -194,6 +194,18 @@ export const FACEBOOK_TOKEN_URL = "https://graph.facebook.com/v27.0/oauth/access
 export const FACEBOOK_ME_URL = "https://graph.facebook.com/v27.0/me";
 const FACEBOOK_FIELDS = "id,name,email";
 
+export async function appsecretProof(appSecret: string, accessToken: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(appSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(accessToken));
+  return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export function facebookAuthorizeUrl(config: FacebookConfig, pending: OAuthPending): string {
   const url = new URL(FACEBOOK_DIALOG_URL);
   url.search = new URLSearchParams({
@@ -221,7 +233,11 @@ export async function facebookProfile(config: FacebookConfig, code: string): Pro
     throw new OAuthError("oauth_failed");
   }
   const meUrl = new URL(FACEBOOK_ME_URL);
-  meUrl.search = new URLSearchParams({ fields: FACEBOOK_FIELDS, access_token: tokenBody.access_token }).toString();
+  meUrl.search = new URLSearchParams({
+    fields: FACEBOOK_FIELDS,
+    access_token: tokenBody.access_token,
+    appsecret_proof: await appsecretProof(config.appSecret, tokenBody.access_token),
+  }).toString();
   const meRes = await fetch(meUrl);
   if (!meRes.ok) throw new OAuthError("oauth_failed");
   const me = (await meRes.json()) as { id?: unknown; name?: unknown; email?: unknown };

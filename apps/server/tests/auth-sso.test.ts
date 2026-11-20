@@ -17,6 +17,8 @@ import { one } from "../src/db/d1";
 const migrations = inject("d1Migrations");
 const CLIENT_ID = "test-google-client-id";
 const FB_APP_ID = "test-facebook-app-id";
+const FB_APP_SECRET = "test-facebook-app-secret";
+const FB_ACCESS_TOKEN = "fb-token";
 const json = { "Content-Type": "application/json" };
 
 let teacher: string;
@@ -377,9 +379,21 @@ describe("Facebook OAuth (#207)", () => {
       if (url.origin + url.pathname === FACEBOOK_TOKEN_URL) {
         expect(url.searchParams.get("client_id")).toBe(FB_APP_ID);
         expect(url.searchParams.get("code")).toBe("auth-code");
-        return Response.json({ access_token: "fb-token", token_type: "bearer" });
+        return Response.json({ access_token: FB_ACCESS_TOKEN, token_type: "bearer" });
       }
-      if (url.origin + url.pathname === FACEBOOK_ME_URL) return Response.json(profile);
+      if (url.origin + url.pathname === FACEBOOK_ME_URL) {
+        const key = await crypto.subtle.importKey(
+          "raw",
+          new TextEncoder().encode(FB_APP_SECRET),
+          { name: "HMAC", hash: "SHA-256" },
+          false,
+          ["sign"],
+        );
+        const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(FB_ACCESS_TOKEN));
+        const expected = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
+        expect(url.searchParams.get("appsecret_proof")).toBe(expected);
+        return Response.json(profile);
+      }
       return new Response("unexpected", { status: 500 });
     });
   }
