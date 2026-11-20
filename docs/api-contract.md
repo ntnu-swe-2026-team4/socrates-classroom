@@ -307,13 +307,13 @@ interface ViolationSlice {
 
 ### 9.2 通知與公告（#158 拍板，#239）
 
-公告是平台維護訊息（登入頁顯示）；`unread` 是 per-user watermark（`users.notifications_seen_at`）——不是 per-notification 已讀表，`unread`＝`created_at > watermark` 的條目數，O(1) 讀取。
+公告是平台維護訊息（登入頁顯示）；`unread` 是 per-user watermark（`users.notifications_seen_at`）——不是 per-notification 已讀表，`unread`＝`created_at > watermark` 的條目數，計數以 feed 內（前 30 筆）為準——超過上限的公告不會推高 `unread`（badge 封頂用途足夠；真實總數日後有需要再以獨立 COUNT 查詢提供），O(1) 讀取。
 
-| Operation                                                               | 說明                                                                                                                                      |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/notifications` → `NotificationFeed`                           | **免登入**（#158 拍板：登入頁公告用途）；`{items: Notification[], unread}`，最新在前、上限 30。`unread` 僅登入帳號回傳；未登入一律 `null` |
-| `POST /api/notifications/seen` → 204                                    | requireUser；watermark 設為 now（冪等——重打不變）；未登入 401                                                                             |
-| `POST /api/admin/notifications` `{title, body}` → `Notification`（201） | requireAdmin（限流同 admin-create）；公告為單語內容（admin 撰寫語言，非 UI copy）；`created_by` FK（#233 帳號刪除時 SET NULL）            |
+| Operation                                                               | 說明                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/notifications` → `NotificationFeed`                           | **免登入**（#158 拍板：登入頁公告用途）；`{items: Notification[], unread}`，最新在前、上限 30。`unread` 僅登入帳號回傳；未登入一律 `null`。無限流（read-only 成本低＋CF always-on DDoS 緩解；#187 feed 納入社群內容後再評估 edge rule／per-user limit，ceiling 需按單一 IP 合法尖峰校準避開校園 NAT 誤傷） |
+| `POST /api/notifications/seen` → 204                                    | requireUser；watermark 設為 now（冪等——重打不變）；未登入 401                                                                                                                                                                                                                                              |
+| `POST /api/admin/notifications` `{title, body}` → `Notification`（201） | requireAdmin（限流同 admin-create）；公告為單語內容（admin 撰寫語言，非 UI copy）；`created_by` FK（#233 帳號刪除時 SET NULL）                                                                                                                                                                             |
 
 - `Notification`：`{id, title, body, createdAt}`——`kind` 欄位刻意不設（YAGNI：目前僅公告一種；#212 社群通知若需要再擴充）
 
