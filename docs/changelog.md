@@ -18,7 +18,7 @@
 
 ### Fixed（同 PR hardening）
 
-- activities list 對非 owner 隱藏 test 活動（#134「任何入口」規則——首版遗漏，補測試鎖定）
+- activities list 對非 owner 隱藏 test 活動（#134「任何入口」規則——首版遗漏，補測試鎖定）；**類別級修復**：announcements／activities 同 posts 一律分頁（`?limit=`＋`?before=` 游標）——首輪 hardening 只修實例的對稱性缺口；api-contract §4.1 新增列表 bound policy（時間成長型分頁；bounded-by-construction 不分頁並附理由）
 - posts feed 分頁：`?limit=`（預設 50／上限 100）＋`?before=<createdAt>` 游標（已知限制：同 ms 建立的 threads 可能被游標截掉）
 - `posts.author_id` CASCADE 標為**暫定**——#233 若改判 anonymize 則重議（契約已註記）
 - `GET /notifications` 加限流 120/min；`unread` 改全量 COUNT（不受 feed 視窗 30 封頂）；google-oauth §6.2 補 Facebook 生產合規三件套（App Review email permission／business verification／Data Deletion URL）
