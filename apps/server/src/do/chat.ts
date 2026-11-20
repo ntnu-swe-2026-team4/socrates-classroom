@@ -20,7 +20,7 @@ import { createAvatarExtension } from "../pi/extensions/avatar";
 import { createJudgmentExtension } from "../pi/extensions/judgment";
 import { createWebSearchExtension } from "../pi/extensions/websearch";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
-import { socratesExtension } from "../pi/extensions/socrates";
+import { SOCRATES_PROMPTS, socratesExtension } from "../pi/extensions/socrates";
 import { btwExtension, forkBtw } from "../pi/extensions/btw";
 import { createUsageExtension } from "../pi/extensions/usage";
 import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
@@ -131,7 +131,7 @@ export class Chat extends DurableObject<Env> {
 
   private async rememberStudentLang(request: Request, identity: SocketIdentity): Promise<void> {
     const lang = new URL(request.url).searchParams.get("lang");
-    if (!lang || !(await this.canSubmit(identity))) return;
+    if (!lang || !/^(zh|en|es)\b/i.test(lang) || !(await this.canSubmit(identity))) return;
     await this.ctx.storage.put(STUDENT_LANG_KEY, normalizeLang(lang));
   }
 
@@ -295,6 +295,12 @@ function fauxSocraticScript(context: TranscriptContext): AssistantMessage {
     return fauxAssistantMessage([fauxToolCall("report_violation", { type: "coding", excerpt: said })], {
       stopReason: "toolUse",
     });
+  }
+  const preamble = context.messages
+    .filter((message) => message.role === "system")
+    .map((message) => (message as { sections?: Record<string, string> }).sections?.preamble);
+  if (preamble.includes(SOCRATES_PROMPTS.en)) {
+    return fauxAssistantMessage([fauxText(`You said "${said}". What is your first judgment, and why?`)]);
   }
   return fauxAssistantMessage([fauxText(`你提到「${said}」。先別急著找標準答案——你的直覺判斷是什麼？為什麼？`)]);
 }

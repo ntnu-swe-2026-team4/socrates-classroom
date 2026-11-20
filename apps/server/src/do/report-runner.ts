@@ -542,6 +542,7 @@ function textOf(content: string | readonly unknown[]): string {
 const FAUX_CLASS_FAILURE_MARKER = "FORCE-CLASS-REPORT-FAILURE";
 const FAUX_GENERATE_FAILURE_MARKER = "FORCE-REPORT-GENERATE-FAILURE";
 const FAUX_UNSPOKEN_TURN_MARKER = "FORCE-UNSPOKEN-TURN";
+const fauxUnspokenCited = new Set<string>();
 
 function fauxReportScript(context: TranscriptContext): AssistantMessage {
   const last = context.messages.filter((message) => message.role !== "system").at(-1);
@@ -582,7 +583,9 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
       { stopReason: "toolUse" },
     );
   }
-  const claimTurns = prompt.includes(FAUX_UNSPOKEN_TURN_MARKER) ? [99] : [1];
+  const citesUnspoken = prompt.includes(FAUX_UNSPOKEN_TURN_MARKER) && !fauxUnspokenCited.has(prompt);
+  if (citesUnspoken) fauxUnspokenCited.add(prompt);
+  const claimTurns = citesUnspoken ? [99] : [1];
   return fauxAssistantMessage(
     [
       fauxToolCall(SUBMIT_STUDENT_ANALYSIS, {

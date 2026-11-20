@@ -71,6 +71,21 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     expect(new Set(Object.values(SOCRATES_PROMPTS)).size).toBe(3);
   });
 
+  it("a student connected with ?lang=en is answered through the English prompt", async () => {
+    const student = await joinStudent("英文生");
+    const socket = await connect(`${activityId}:${student.participantId}`, student.cookie, "en");
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.some((m) => m.type === "view"));
+    socket.send(JSON.stringify({ type: "submit", id: "s1", input: "Is it fair?" }));
+    await rx.until((f) => {
+      const view = latestView(f);
+      return view !== undefined && assistantText(view).includes("You said");
+    });
+    socket.close();
+  });
+
   it("the student's connection sets the language; a watching teacher's does not", async () => {
     const student = await joinStudent("語言生");
     const thread = `${activityId}:${student.participantId}`;
@@ -87,6 +102,11 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     const teacher = await connect(thread, teacherCookie, "es");
     await frames(teacher).until((f) => f.some((m) => m.type === "hello"));
     expect(await langNow()).toBe("en");
+
+    const unsupported = await connect(thread, student.cookie, "fr");
+    await frames(unsupported).until((f) => f.some((m) => m.type === "hello"));
+    expect(await langNow()).toBe("en");
+    unsupported.close();
 
     own.close();
     teacher.close();

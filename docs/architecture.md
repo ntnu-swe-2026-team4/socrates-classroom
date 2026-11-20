@@ -91,7 +91,7 @@ socrates-classroom/
 │       │   │   ├── ledger.ts           # (provider, model, credential) 記帳＋cooldown
 │       │   │   └── router.ts           # traffic class 鏈走訪（teacher legs 前置合併）
 │       │   ├── prompts/            # LLM 組的 prompt 資產（build-time ?raw）
-│       │   │   ├── socrates.md / class-report.md / student-report.md
+│       │   │   ├── socrates.md（＋.en／.es）/ class-report.md / student-report.md / assemble.ts
 │       │   ├── ws/                 # transport glue（protocol + sockets）
 │       │   ├── auth.ts / auth-crypto.ts  # session＋AES-GCM（byok.ts 併入）
 │       │   ├── db/d1.ts / http.ts / messages.ts / seed.ts / services/
@@ -154,7 +154,7 @@ no queue：busy 時第二發被拒（`ConversationBusy` → error frame），不
 startReport → pending 標記 → alarm → generate：
   transcriptOf（AI：…/學生（n）：… 編號＋假名冪等）
   → Promise.all 平行 per-student studentReport（重試 2；語言＝老師的 users.lang，與 classReport 相同；引用的 turns 須是學生說過的行號，否則視同格式錯誤重試）
-  → classReport（立場軸/落點/分群；落點由模型給 side＋strength，server 換算 end/at）
+  → classReport（立場軸/落點/分群；落點由模型給 side＋strength，server 換算 end/at：left→low、right→high，at＝50∓10×strength，middle＝50）
   → persist（D1 reports：teacher_report=classReport、student_reports=analysis+violations-from-transcript）
 ```
 

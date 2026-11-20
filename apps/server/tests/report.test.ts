@@ -280,7 +280,7 @@ describe("student reports cite only lines the student said", () => {
     expect(citesSpokenLines({ stated: false, doing: { text: "d", turns: [4] } }, 3)).toBe(false);
   });
 
-  it("a report citing an unspoken line is retried; failing every attempt leaves the student with no analysis", async () => {
+  it("a report citing an unspoken line is refused and retried; the retried report is kept", async () => {
     const created = await classroomWithActivity(teacherCookie, "引用錯行班");
     const account = await registerStudent(created.code, "小錯");
     const participantId = await participantIdOf(created.activityId, account.cookie);
@@ -299,9 +299,8 @@ describe("student reports cite only lines the student said", () => {
     }
     expect(report?.status).toBe(200);
     const body = (await report?.json()) as { students: Array<{ analysis: unknown }> };
-    expect(body.students[0]).toHaveProperty("analysis");
     expect(body.students).toHaveLength(1);
-    expect(body.students[0]!.analysis).toBeNull();
+    expect(body.students[0]!.analysis).not.toBeNull();
   }, 120_000);
 });
 

@@ -29,12 +29,10 @@ import type { JsonObject } from "@earendil-works/pi-durable";
 
 export type ProfileName = "socrates" | "topic-gen" | "student-report" | "class-report" | "lookup";
 
-const ROLE_USER_MARKER = '{{role "user"}}';
 const LANG_PLACEHOLDER = "{{lang}}";
 
 function instructionsOf(asset: string): string {
-  const [instructions] = asset.split(ROLE_USER_MARKER);
-  return instructions.trim();
+  return asset.trim();
 }
 
 export interface AgentProfile {
