@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, type ReportPosition, type StudentAnalysis, type ViolationSlice } from "@/api";
+import { StanceConstellation } from "@/components/StanceConstellation";
 import { Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
@@ -111,6 +112,8 @@ function ReportPage() {
                   </p>
                 ))}
               </div>
+
+              {data.classReport.axes.length > 0 && <StanceConstellation key={id} axes={data.classReport.axes} />}
 
               <div className="flex flex-col gap-4">
                 <h2 className="font-serif text-lg font-semibold text-ink">{t("report_axes")}</h2>

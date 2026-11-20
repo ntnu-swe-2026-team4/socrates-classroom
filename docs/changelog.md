@@ -11,6 +11,22 @@
 - 額度水位 60/80/100% **inline 檢測**（LiteLLM/Portkey 同款，無 cron）：以 `teacher_quota_alerts` PK 原子去重，同月同水位只寄一次，UTC 月曆跨月重置；寄送失敗自動重臂
 - 佔位帶 60s claim lease（`claimed_at`/`sent_at`）：crash 產生的孤兒 pending 佔位會在 TTL 過期後被下一輪水位檢查偷走重寄，不再靜默漏水位
 - email 走 Workers `send_email` binding（`ALERT_FROM_EMAIL`＝zone 位址、`ADMIN_ALERT_EMAIL`）；binding 缺失時 log-only fail-open。老師以其 lang 收信（zh/en/es），管理員收 zh 副本
+## 2026-11-20 — 群體報告立場星圖（`feat/79-stance-constellation`，#79）
+
+### Added
+
+- `StanceConstellation`：老師的群體報告在「立場分佈」文字清單上方多一張立場星圖。每個點是一位學生（顯示假名），座標來自 `classReport.axes[].positions[].at`；勾 0–3 條軸做維度漸展（中間點 → 一條線 → 平面 → 立體），第 4 條會換掉最早勾的那條；立體時可拖曳或用方向鍵旋轉，可重設視角
+- 分群：`lib/stance.ts` 的階層式分群（Ward，依 #58 決議）。「自動」在兩群重心距離超過門檻時停止合併，最多 5 群、且不超過人數的一半；老師可改成指定 2–4 群或不分群。圖下方列出各群成員與各軸平均落點
+- 沒談到某條軸的學生：放在該軸中間、畫成空心點、不納入分群，圖下有說明；在所選軸上都有表態的學生不到 3 位時不分群並說明原因
+- 三語 `stance_*` 字串；分群配色 token `--color-stance-1…5`（淺色／深色各一組），分群同時用形狀區分
+- `test/stance.test.ts`（落點合併、layout 補間、投影、分群）與 `test/stanceConstellation.test.tsx`（維度漸展、分群、選點）
+
+### Notes
+
+- 以 SVG 加自寫投影實作，不走 three.js：點數是班級人數等級，SVG 讓 theme token、深色模式與 jsdom 測試都直接可用，也不需要 `useEffect`；動畫走 `createFrameLoop`，尊重 `prefers-reduced-motion`
+- values-constellation-3d 的軌跡未移植：報告只有最終落點，沒有逐輪資料
+- 後端與 `docs/api-contract.md` §7 的形狀零變動
+
 ## 2026-11-19 — 對話視圖重構：companion 小窗、ChatLayout、btw panel 接線（`split/180-dialogue`，#180）
 
 ### Added

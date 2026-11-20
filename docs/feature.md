@@ -46,13 +46,14 @@
 
 ## 活動與報告
 
-| 功能     | 說明                                                                                    | 路由 / 頁面                                     |
-| -------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| 活動詳情 | 教室＋議題＋結束時間                                                                    | `GET /api/activities/:id`                       |
-| 即時面板 | `live` 活動的資料源（#73）尚未接線——顯示待上線提示；`test` 活動顯示 slot 列表與開啟對話 | `/t/live/:id`                                   |
-| 結束活動 | 老師觸發報告生成（ReportRunner DO，alarm 驅動）                                         | `POST /api/activities/:id/finish`               |
-| 報告輪詢 | 生成中 404 `report_pending`（前端輪詢）；失敗 500 `report_failed`                       | `GET /api/activities/:id/report`・`/report/:id` |
-| 角色分流 | 老師見全班（classReport＋每人 analysis）；學生只見自己（analysis＋假名）                | 同上；形狀見 `api-contract.md` §7               |
+| 功能     | 說明                                                                                                                                                                             | 路由 / 頁面                                     |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| 活動詳情 | 教室＋議題＋結束時間                                                                                                                                                             | `GET /api/activities/:id`                       |
+| 即時面板 | `live` 活動的資料源（#73）尚未接線——顯示待上線提示；`test` 活動顯示 slot 列表與開啟對話                                                                                          | `/t/live/:id`                                   |
+| 結束活動 | 老師觸發報告生成（ReportRunner DO，alarm 驅動）                                                                                                                                  | `POST /api/activities/:id/finish`               |
+| 報告輪詢 | 生成中 404 `report_pending`（前端輪詢）；失敗 500 `report_failed`                                                                                                                | `GET /api/activities/:id/report`・`/report/:id` |
+| 角色分流 | 老師見全班（classReport＋每人 analysis）；學生只見自己（analysis＋假名）                                                                                                         | 同上；形狀見 `api-contract.md` §7               |
+| 立場星圖 | 老師的群體報告把 `classReport.axes` 的落點畫成星圖：勾 0–3 條軸，從中間點展開成一條線、平面、立體（可拖曳旋轉）；階層式分群（Ward）自動或指定 2–4 群；點一個點看該生在各軸的想法 | `/report/:id`（群體）；`StanceConstellation`    |
 
 ## 對話引擎（Pi Durable）
 
