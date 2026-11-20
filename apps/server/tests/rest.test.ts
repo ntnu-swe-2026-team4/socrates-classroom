@@ -31,6 +31,36 @@ beforeAll(async () => {
 });
 
 describe("R6 REST layer (Hono, real Worker entry)", () => {
+  test("API cache policy marks successful, rejected, and unknown API responses private", async () => {
+    const me = await call("/api/me", { headers: { Cookie: teacher } });
+    expect(me.status).toBe(200);
+    expect(me.headers.get("Cache-Control")).toBe("private, no-store");
+
+    const unauthorized = await call("/api/topics");
+    expect(unauthorized.status).toBe(401);
+    expect(unauthorized.headers.get("Cache-Control")).toBe("private, no-store");
+
+    const unknown = await call("/api/not-a-route");
+    expect(unknown.status).toBe(404);
+    expect(unknown.headers.get("Cache-Control")).toBe("private, no-store");
+  });
+
+  test("API cache policy keeps a route's explicit no-store header", async () => {
+    const audio = await call("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ text: "Hello", lang: "en" }),
+    });
+    expect(audio.status).toBe(200);
+    expect(audio.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  test("API cache policy does not change the health response", async () => {
+    const health = await call("/health");
+    expect(health.status).toBe(200);
+    expect(health.headers.has("Cache-Control")).toBe(false);
+  });
+
   test("health / seed guard", async () => {
     expect((await call("/health")).status).toBe(200);
     expect((await call("/api/dev/seed", { method: "POST" })).status).toBe(404);

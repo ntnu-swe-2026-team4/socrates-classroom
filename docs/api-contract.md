@@ -20,6 +20,8 @@
 | 版本     | `/api` 無版本前綴（單一消費者）；外部消費者出現時才評版本化＋OpenAPI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | 型別共享 | `RpcApp = ReturnType<typeof createApp>`＋`RpcApi = ReturnType<typeof createApi>`（`apps/server/src/app.ts`）；web 端消費 declaration 產物 `hc<RpcApi>("/api")`（R6）                                                                                                                                                                                                                                                                                                                                                                                   |
 
+所有 `/api/*` 回應預設 `Cache-Control: private, no-store`，包含錯誤回應；個別 route 可顯式覆寫。`/health` 與 static assets 不套用此預設值。
+
 ### 1.1 授權矩陣
 
 > 「訪客」＝沒有帳號的活動參與者：持 `socrates_participant` cookie，**不建 `users` 列**，只存在於那一個活動（#133）。
