@@ -590,3 +590,74 @@ describe("uniqueViolationColumns (real D1 error envelope)", () => {
     expect(uniqueViolationColumns(new Error("FOREIGN KEY constraint failed"))).toEqual([]);
   });
 });
+
+describe("#205 user↔teacher toggle (self-service teacher mode)", () => {
+  test("on → immediate capability, classroom creation unlocks; off → back to user", async () => {
+    const student = (await registerStudent(code, "205生甲")).cookie;
+
+    const before = await call("/api/classrooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: student },
+      body: JSON.stringify({ name: "205自建班" }),
+    });
+    expect(before.status).toBe(403);
+
+    const on = await call("/api/me/teacher-mode", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: student },
+      body: JSON.stringify({ teacherMode: true }),
+    });
+    expect(on.status).toBe(200);
+    expect(((await on.json()) as { canManageClasses: boolean }).canManageClasses).toBe(true);
+
+    const meOn = await call("/api/me", { headers: { Cookie: student } });
+    expect(((await meOn.json()) as { canManageClasses: boolean }).canManageClasses).toBe(true);
+
+    const created = await call("/api/classrooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: student },
+      body: JSON.stringify({ name: "205自建班" }),
+    });
+    expect(created.status).toBe(201);
+
+    const off = await call("/api/me/teacher-mode", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: student },
+      body: JSON.stringify({ teacherMode: false }),
+    });
+    expect(off.status).toBe(200);
+    expect(((await off.json()) as { canManageClasses: boolean }).canManageClasses).toBe(false);
+
+    const meOff = await call("/api/me", { headers: { Cookie: student } });
+    expect(((await meOff.json()) as { canManageClasses: boolean }).canManageClasses).toBe(false);
+
+    const blocked = await call("/api/classrooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: student },
+      body: JSON.stringify({ name: "205再建班" }),
+    });
+    expect(blocked.status).toBe(403);
+  });
+
+  test("requires an account session: anonymous and guest-participant calls are 401", async () => {
+    const anonymous = await call("/api/me/teacher-mode", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teacherMode: true }),
+    });
+    expect(anonymous.status).toBe(401);
+
+    const joined = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, name: "205訪客", tosAccepted: true }),
+    });
+    expect(joined.status).toBe(200);
+    const guest = await call("/api/me/teacher-mode", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookieOf(joined) },
+      body: JSON.stringify({ teacherMode: true }),
+    });
+    expect(guest.status).toBe(401);
+  });
+});

@@ -207,6 +207,7 @@ export type TermExplanation = z.infer<typeof TermExplanationSchema>;
 
 const emailField = z.email().transform((value) => value.toLowerCase());
 
+export const TeacherModeInputSchema = z.object({ teacherMode: z.boolean() });
 export const LoginInputSchema = z.object({ email: emailField, password: z.string().min(8).max(128) });
 export const DevLoginInputSchema = z.object({ email: emailField });
 export const RegisterInputSchema = z.object({

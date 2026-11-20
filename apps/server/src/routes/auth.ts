@@ -1,7 +1,14 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { LoginInputSchema, RegisterInputSchema, SignupInputSchema, type ErrorCode, type User } from "@socrates/shared";
-import { batch, one } from "../db/d1";
+import {
+  LoginInputSchema,
+  RegisterInputSchema,
+  SignupInputSchema,
+  TeacherModeInputSchema,
+  type ErrorCode,
+  type User,
+} from "@socrates/shared";
+import { batch, one, run } from "../db/d1";
 import {
   DUMMY_HASH,
   endSession,
@@ -19,6 +26,7 @@ import {
   newId,
   nowIso,
   parseBody,
+  requireUser,
   uniqueViolationColumns,
   type AppEnv,
   type Ctx,
@@ -55,6 +63,18 @@ interface UserRow {
 export function authRoutes() {
   return new Hono<AppEnv>()
     .get("/me", (c) => c.json(c.get("user")))
+    .patch("/me/teacher-mode", async (c) => {
+      const user = requireUser(c);
+      const input = await parseBody(c, TeacherModeInputSchema);
+      await run(c.env.DB, "UPDATE users SET can_manage_classes = $can, role = $role WHERE id = $id", {
+        can: input.teacherMode ? 1 : 0,
+        role: input.teacherMode ? "teacher" : "student",
+        id: user.id,
+      });
+      const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE id = $id", { id: user.id });
+      if (!row) fail(500, "internal_error");
+      return c.json(toUser(row));
+    })
     .post("/auth/login", async (c) => {
       await enforceIpLimit(c, "login", 30);
       const input = await parseBody(c, LoginInputSchema);
