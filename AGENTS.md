@@ -57,7 +57,7 @@ pnpm lint && pnpm typecheck         # must be green before any PR
 - **Never** put any API key under `apps/web` (bundled into the browser)
 - **Ask first** before: changing API shapes covered by `docs/api-contract.md`, adding Cloudflare bindings, touching `PiHarness` settings
 - Deploys run through CI (`deploy.yml`) only — do not deploy manually
-- Issues and PRs **must** follow `CONTRIBUTING.md` (title prefixes, issue-first discussion, docs sync) and use the GitHub templates it points to (`.github/`)
+- Issues and PRs **must** follow `CONTRIBUTING.md` (title prefixes, project registration with properties set, issue-first discussion, docs sync) and use the GitHub templates it points to (`.github/`)
 
 ## Deploy & CLI
 

@@ -34,6 +34,16 @@
 - 一個 issue 一件事；多個症狀分開開。
 - 標題要能不點開就懂範圍：寫出頁面或模組名，不寫「壞掉了」「不能動」。
 
+### 加入 Project
+
+issue 開完後必須加入 GitHub Project [`ntnu-swe-team4-kanban`](https://github.com/orgs/ntnu-swe-2026-team4/projects/2)，properties 不留空（在 issue 側欄填寫，或用 gh CLI 設定）：
+
+- `Status`：未排程用 `Backlog`，已排定、可開工用 `Ready`；有對應 branch 就設 `In progress`，開了 PR 就設 `In review`，merge 後設 `Done`。
+- `Team`：負責模組 — `Frontend` / `Backend` / `LLM` / `PM`。
+- `Size`、`Priority`、`Assignees` 目前未強制，可不填；欄位與 option 以 project 上的定義為準。
+
+用 gh CLI 時分兩步：`gh project item-add 2 --owner ntnu-swe-2026-team4 --url <issue-url>` 把 issue 加進板，再用 `gh project item-edit` 設定 `Status` 與 `Team`（欄位與 option id 用 `gh project field-list 2 --owner ntnu-swe-2026-team4` 查詢）。
+
 ## PR 前置討論（issue-first）
 
 借鏡 Next.js（新功能先開 discussion 收 feedback 再實作）與 Django（除 docs／tests 外，PR 需先有 accepted ticket）的慣例：**預計實作的新功能或重大變更，先開 issue 與團隊討論、達成共識後才開始實作**。
