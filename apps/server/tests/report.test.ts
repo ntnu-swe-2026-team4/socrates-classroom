@@ -298,9 +298,9 @@ describe("student reports cite only lines the student said", () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
     expect(report?.status).toBe(200);
-    const body = (await report?.json()) as { students: Array<{ analysis: unknown }> };
+    const body = (await report?.json()) as { students: Array<{ analysis: { claim: { turns: number[] } } | null }> };
     expect(body.students).toHaveLength(1);
-    expect(body.students[0]!.analysis).not.toBeNull();
+    expect(body.students[0]!.analysis?.claim.turns).toEqual([1]);
   }, 120_000);
 });
 
