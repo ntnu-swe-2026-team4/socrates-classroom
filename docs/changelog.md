@@ -9,6 +9,7 @@
 - 每個 teacher key provider 可設**每月額度（USD）**；設定頁 row 顯示本月累計 cost 與 tokens（`GET /api/settings/keys` 新增 `monthlyQuotaUsd`/`monthCostUsd`/`monthTokens`；`PUT` 免重貼 key 可改額度，#146）
 - `usage` extension（pi `afterResponse` hook）記帳每個老師鏈 response 的 tokens 與 cost（pi `Usage.cost.total`：billed 優先、否則 catalog 估計；不存對話內容）；Chat DO、ReportRunner、topic-gen 三個 teacher 流程都已掛上
 - 額度水位 60/80/100% **inline 檢測**（LiteLLM/Portkey 同款，無 cron）：以 `teacher_quota_alerts` PK 原子去重，同月同水位只寄一次，UTC 月曆跨月重置；寄送失敗自動重臂
+- 佔位帶 60s claim lease（`claimed_at`/`sent_at`）：crash 產生的孤兒 pending 佔位會在 TTL 過期後被下一輪水位檢查偷走重寄，不再靜默漏水位
 - email 走 Workers `send_email` binding（`ALERT_FROM_EMAIL`＝zone 位址、`ADMIN_ALERT_EMAIL`）；binding 缺失時 log-only fail-open。老師以其 lang 收信（zh/en/es），管理員收 zh 副本
 ## 2026-11-19 — 對話視圖重構：companion 小窗、ChatLayout、btw panel 接線（`split/180-dialogue`，#180）
 
