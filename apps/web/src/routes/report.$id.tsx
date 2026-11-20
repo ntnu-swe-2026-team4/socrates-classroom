@@ -14,8 +14,10 @@ import {
 } from "@/api";
 import { meOf } from "@/api/me";
 import { StanceConstellation } from "@/components/StanceConstellation";
+import { ThinkingHexagon } from "@/components/ThinkingHexagon";
 import { Checkbox, Segmented, Spinner, cn } from "@/components/ui";
 import { type MessageKey, useT } from "@/i18n";
+import { sampleThinking } from "@/lib/thinking";
 
 export const Route = createFileRoute("/report/$id")({
   beforeLoad: async ({ context, location }) => {
@@ -119,6 +121,7 @@ function ReportPage() {
         <section className="mt-6 flex flex-col gap-6">
           <p className="text-[14px] text-ink-soft">{person.participantName}</p>
           <Positions positions={person.positions} />
+          <ThinkingHexagon goals={sampleThinking(person.pseudonym)} sample />
           <Analysis analysis={person.analysis} violations={person.violations} />
           {person.engagement && <EngagementPanel engagement={person.engagement} />}
         </section>
@@ -203,6 +206,7 @@ function ReportPage() {
             ))}
           </div>
           <Positions positions={person.positions} />
+          <ThinkingHexagon goals={sampleThinking(person.pseudonym)} sample />
           <Analysis analysis={person.analysis} violations={person.violations} />
           <EngagementPanel engagement={person.engagement} />
         </section>

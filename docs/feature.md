@@ -58,7 +58,8 @@
 | 報告輪詢   | 生成中 404 `report_pending`（前端輪詢）；失敗 500 `report_failed`                                                                                                                | `GET /api/activities/:id/report`・`/report/:id`                                                                  |
 | 角色分流   | 老師見全班（classReport＋每人 analysis＋indicators＋engagement）；學生只見自己（analysis＋indicators＋假名，engagement 依老師勾選）                                              | 同上；形狀見 `api-contract.md` §7                                                                                |
 | 立場星圖   | 老師的群體報告把 `classReport.axes` 的落點畫成星圖：勾 0–3 條軸，從中間點展開成一條線、平面、立體（可拖曳旋轉）；階層式分群（Ward）自動或指定 2–4 群；點一個點看該生在各軸的想法 | `/report/:id`（群體）；`StanceConstellation`                                                                     |
-| 思辨力指標 | 單人報告附六項思辨力指標（C1–A2，各 0–3 級＋行號＋一句依據），與論點總結分開判斷（#255）；畫面待 #78                                                                             | `GET /api/activities/:id/report`（`indicators`）                                                                 |
+| 六角圖     | 單人報告的思辨表現圖：六條軸對應 spec 的六項思辨力目標，每項三級（未觀察到／部分／達成，不是分數），右側列出各項判準。**目前為示意資料**（畫面有標示），尚未接上思辨力指標（#78） | `/report/:id`（單人）；`ThinkingHexagon`                                                                         |
+| 思辨力指標 | 單人報告附六項思辨力指標（C1–A2，各 0–3 級＋行號＋一句依據），與論點總結分開判斷（#255）；六角圖尚未接上這份資料（#78）                                                          | `GET /api/activities/:id/report`（`indicators`）                                                                 |
 | 認真度     | 單人報告附認真度三維度（實質發言／回應追問／切題，各 0–3 級＋行號＋一句依據），老師一律看得到；老師可勾選是否也顯示在群體報告（以假名列表）與學生本人的報告，預設皆關（#267）    | `GET /api/activities/:id/report`（`engagement`）・`PUT /api/activities/:id/engagement-visibility`；`/report/:id` |
 
 ## 對話引擎（Pi Durable）
