@@ -489,6 +489,9 @@ function ProviderEditor({
   const [editingProviderLimit, setEditingProviderLimit] = useState(false);
   const [providerLimitDraft, setProviderLimitDraft] = useState("");
   const [providerLimitError, setProviderLimitError] = useState(false);
+  const [editingQuota, setEditingQuota] = useState(false);
+  const [quotaDraft, setQuotaDraft] = useState("");
+  const [quotaError, setQuotaError] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null);
 
@@ -557,6 +560,24 @@ function ProviderEditor({
       setProviderLimitError(false);
       setEditingProviderLimit(false);
       setProviderLimitDraft("");
+    });
+
+  const saveQuota = () =>
+    run(async () => {
+      const trimmed = quotaDraft.trim();
+      if (trimmed !== "") {
+        const monthlyQuotaUsd = Number(trimmed);
+        if (!Number.isFinite(monthlyQuotaUsd) || monthlyQuotaUsd <= 0 || monthlyQuotaUsd > 100000) {
+          setQuotaError(true);
+          return;
+        }
+        await api.putTeacherKeyMonthlyQuota(entry.provider, monthlyQuotaUsd);
+      } else {
+        await api.putTeacherKeyMonthlyQuota(entry.provider, null);
+      }
+      setQuotaError(false);
+      setEditingQuota(false);
+      setQuotaDraft("");
     });
 
   const reorder = (index: number, delta: -1 | 1) =>
@@ -790,6 +811,67 @@ function ProviderEditor({
               : t("settings_keys_provider_limit", { n: entry.maxConcurrency })}
           </button>
         )}
+        {editingQuota ? (
+          <span className="flex items-center gap-1">
+            <input
+              type="number"
+              min={0.01}
+              step="0.5"
+              value={quotaDraft}
+              onChange={(event) => setQuotaDraft(event.target.value)}
+              placeholder={t("settings_keys_quota_none")}
+              aria-label={t("settings_keys_quota_edit")}
+              className="w-24 rounded-md border border-line-strong bg-paper px-2 py-1 text-[13px] text-ink"
+            />
+            <button
+              type="button"
+              onClick={saveQuota}
+              aria-label={t("settings_keys_quota_save")}
+              className="cursor-pointer rounded-full bg-ember px-2.5 py-1 text-[12px] font-semibold text-on-ember"
+            >
+              ✓
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingQuota(false);
+                setQuotaDraft("");
+                setQuotaError(false);
+              }}
+              aria-label={t("settings_keys_cancel")}
+              className="cursor-pointer rounded-md px-1.5 py-1 text-[12px] text-ink-faint hover:text-ink"
+            >
+              ✕
+            </button>
+            {quotaError ? (
+              <span role="alert" className="text-[11px] text-flag">
+                {t("settings_keys_quota_invalid")}
+              </span>
+            ) : null}
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setEditingQuota(true);
+              setQuotaDraft(entry.monthlyQuotaUsd === null ? "" : String(entry.monthlyQuotaUsd));
+              setQuotaError(false);
+            }}
+            aria-label={t("settings_keys_quota_edit")}
+            title={t("settings_keys_quota_edit")}
+            className="cursor-pointer rounded-full border border-line bg-paper-deep px-2.5 py-1.5 text-[12px] text-ink-soft hover:text-ink"
+          >
+            {entry.monthlyQuotaUsd === null
+              ? t("settings_keys_quota_none")
+              : t("settings_keys_quota", { n: entry.monthlyQuotaUsd })}
+          </button>
+        )}
+        <span className="text-[11px] text-ink-faint">
+          {t("settings_keys_month_usage", {
+            cost: entry.monthCostUsd.toFixed(2),
+            tokens: entry.monthTokens,
+          })}
+        </span>
         <button
           type="button"
           onClick={removeProvider}

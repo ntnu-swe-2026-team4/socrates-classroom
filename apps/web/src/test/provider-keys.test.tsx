@@ -12,6 +12,10 @@ const calls = vi.hoisted(() => ({
     provider: "openrouter",
     maxConcurrency: null,
   }),
+  putTeacherKeyMonthlyQuota: vi.fn().mockResolvedValue({
+    provider: "openrouter",
+    monthlyQuotaUsd: null,
+  }),
   listTeacherKeys: vi.fn(),
 }));
 
@@ -22,6 +26,7 @@ vi.mock("@/api", () => ({
     deleteTeacherKey: calls.deleteTeacherKey,
     deleteTeacherKeyModel: calls.deleteTeacherKeyModel,
     putTeacherKeyProviderLimit: calls.putTeacherKeyProviderLimit,
+    putTeacherKeyMonthlyQuota: calls.putTeacherKeyMonthlyQuota,
   },
 }));
 
@@ -29,6 +34,9 @@ const fixture: TeacherKeyStatus = {
   provider: "openrouter",
   last4: "abcd",
   maxConcurrency: null,
+  monthlyQuotaUsd: null,
+  monthCostUsd: 0,
+  monthTokens: 0,
   sortOrder: 0,
   updatedAt: "2026-11-20T00:00:00.000Z",
   models: [{ model: "z-ai/glm-4.7-flash", maxConcurrency: null, sortOrder: 0 }],
@@ -49,6 +57,7 @@ beforeEach(() => {
   calls.deleteTeacherKey.mockClear();
   calls.deleteTeacherKeyModel.mockClear();
   calls.putTeacherKeyProviderLimit.mockClear();
+  calls.putTeacherKeyMonthlyQuota.mockClear();
 });
 
 afterEach(() => {
@@ -110,4 +119,14 @@ test("editing the provider total cap calls the keyless limit endpoint", async ()
   fireEvent.change(input, { target: { value: "3" } });
   fireEvent.click(screen.getByRole("button", { name: "Save the total concurrency cap" }));
   await waitFor(() => expect(calls.putTeacherKeyProviderLimit).toHaveBeenCalledWith("openrouter", 3));
+});
+
+test("editing the monthly quota calls the keyless quota endpoint", async () => {
+  renderKeys();
+  await expandRow();
+  fireEvent.click(screen.getByRole("button", { name: /monthly quota/i }));
+  const input = screen.getByRole("spinbutton", { name: /monthly quota/i });
+  fireEvent.change(input, { target: { value: "5" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save the monthly quota" }));
+  await waitFor(() => expect(calls.putTeacherKeyMonthlyQuota).toHaveBeenCalledWith("openrouter", 5));
 });
