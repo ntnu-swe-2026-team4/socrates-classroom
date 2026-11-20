@@ -25,5 +25,5 @@ export default defineConfig({
   ],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
   build: { target: "es2022" },
-  server: { port: 5173 },
+  server: { port: 5173, strictPort: true },
 });

@@ -54,6 +54,8 @@
 
 ## 常見問題
 
+- **`pnpm dev` 啟動即退出「Port 5173 is already in use」** → port 5173 是固定契約（Google OAuth 的 redirect URI `http://localhost:5173/...` 逐字比對，見 [`google-oauth.md`](./google-oauth.md)），`strictPort` 讓 port 被占時 fail fast 而不是靜默改聽 5174 導致 OAuth mismatch；關掉占用 5173 的舊 process 再啟動即可
+
 - **`pnpm dev` 要求 Cloudflare 授權** → 有人設了 `CF_REMOTE_AI=true` 或 shell 有殘留 env；unset 即可
 - **seed 失敗「找不到 SEED_TOKEN」** → `.env.local` 不存在或沒有 `SEED_TOKEN` 行；**改了 `.env.local` 要重啟 dev**（server 只在啟動時載入）
 - **seed「連不上」** → dev server 沒起來（`pnpm dev` 先跑）；或 seed 跑在 dev 前面
