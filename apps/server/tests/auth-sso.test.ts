@@ -337,6 +337,11 @@ describe("authProviders capability detection (#207)", () => {
     expect(body.providers).not.toContain("apple");
   });
 
+  test("GET /auth/providers is browser-cacheable: constant payload, no session, no DB", async () => {
+    const res = await call("/api/auth/providers");
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=300");
+  });
+
   test("oauthProviders: env presence gates each provider", () => {
     expect(oauthProviders({})).toEqual([]);
     expect(oauthProviders({ GOOGLE_CLIENT_ID: "a", GOOGLE_CLIENT_SECRET: "b" })).toEqual(["google"]);

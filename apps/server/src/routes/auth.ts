@@ -56,7 +56,10 @@ interface UserRow {
 
 export function authRoutes() {
   return new Hono<AppEnv>()
-    .get("/auth/providers", (c) => c.json({ providers: oauthProviders(c.env) }))
+    .get("/auth/providers", (c) => {
+      c.header("Cache-Control", "public, max-age=300");
+      return c.json({ providers: oauthProviders(c.env) });
+    })
     .get("/me", (c) => c.json(c.get("user")))
     .post("/auth/login", async (c) => {
       await enforceIpLimit(c, "login", 30);
