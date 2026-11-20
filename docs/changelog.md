@@ -2,6 +2,12 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-20 — user↔teacher 設定 toggle（`feat/205-teacher-toggle`，#205）
+
+### Added
+
+- `PATCH /api/me/teacher-mode` `{teacherMode: boolean}` → `User`：任何未停用帳號自行翻轉自己的 `can_manage_classes`（立即生效，不需重發 session；同步 legacy `role` 欄）；匿名與訪客 participant session 回 401。spec 待議拍板：試用場景權責由該帳號自負（與 #172 移除數量上限同向）；關閉時既有班級保留
+
 ## 2026-11-17 — 各模式 thinkingLevel 依 #122 實測調整（`feat/122-thinking-levels`）
 
 ### Changed

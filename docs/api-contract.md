@@ -97,6 +97,15 @@ interface User {
 - Google 帳號的 email 存於 `user_identities.email`，`users.email` 為 NULL（`users.email` 只承載 email 密碼登入）
 - callback redirect URI＝`PUBLIC_BASE_URL`（未設則用請求 origin）＋`/api/auth/oauth/google/callback`，需登錄於 Google Cloud Console
 
+### 2.2 user↔teacher 設定 toggle（#205，spec「角色與班級模型」）
+
+| Endpoint                                                       | 說明                                                                                                                                                                                                                                        |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PATCH /api/me/teacher-mode` `{teacherMode: boolean}` → `User` | 自行翻轉自己的 `can_manage_classes`（帳號層能力，非 role）。立即生效：能力每請求自 DB 直讀，不需重發 session（`session_version` 不 bump，與 admin 提權同語意）；同步 legacy `role` 欄。401：無帳號 session（匿名／訪客 participant cookie） |
+
+- 任何未停用帳號皆可自開自關（spec 待議拍板：試用場景權責由該帳號自負，與 #172 移除數量上限同向）
+- 關閉時既有班級保留（spec「目前不處理」的 demo 邊界；關閉後不可再建新班）
+
 ## 3. 入場（唯一閘門，#66/#70）
 
 | Operation                                                                                 | 說明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
