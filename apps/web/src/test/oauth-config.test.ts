@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("vite", () => ({ loadEnv: () => ({}) }));
+
 import config from "../../cloudflare.config";
 
 describe("cloudflare.config google oauth bindings", () => {
