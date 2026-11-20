@@ -61,7 +61,7 @@ beforeEach(() => {
     vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), "http://localhost").pathname;
       const responses: Record<string, unknown> = {
-        "/api/me": { id: "student-1", name: "Student", canManageClasses: false, isAdmin: false },
+        "/api/me": { id: "student-1", name: "Student", isAdmin: false },
         "/api/join/abcdef": { code: "abcdef", classroomName: "Class", topic },
         "/api/activities/activity-1": {
           id: "activity-1",
@@ -180,7 +180,7 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
       }
       const topicAdded = calls.some((call) => call.path === "/api/classrooms/class-9/topics");
       const responses: Record<string, unknown> = {
-        "/api/me": { id: "teacher-1", name: "Teacher", canManageClasses: true, isAdmin: false },
+        "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
         "/api/topics": [topic],
         "/api/topics/generate": [generatedTopic],
         "/api/classrooms": { classroomId: "class-9", code: "code999", url: "http://localhost/join/code999" },

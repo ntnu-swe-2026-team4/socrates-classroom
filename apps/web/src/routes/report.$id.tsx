@@ -18,7 +18,7 @@ function ReportPage() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity, enabled: false });
-  const isTeacher = me.data?.canManageClasses ?? false;
+  const isTeacher = me.data != null;
   const [view, setView] = useState<"group" | "individual">("group");
   const [studentIdx, setStudentIdx] = useState(0);
   const report = useQuery({

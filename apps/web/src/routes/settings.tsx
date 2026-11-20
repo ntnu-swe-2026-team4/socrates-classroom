@@ -19,7 +19,7 @@ export const Route = createFileRoute("/settings")({
   }),
   beforeLoad: async ({ context }) => {
     const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
-    if (!me?.canManageClasses) throw redirect({ to: "/home" });
+    if (!me) throw redirect({ to: "/home" });
   },
   component: SettingsPage,
 });
