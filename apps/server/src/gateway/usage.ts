@@ -32,19 +32,19 @@ async function announce(
     console.warn("[quota]", provider, label, threshold, "crossed without an email path");
     return true;
   }
-  const teacher = await one<{ name: string; email: string | null; lang: Lang }>(
-    env.DB,
-    "SELECT name, email, lang FROM users WHERE id = $id",
-    { id: teacherId },
-  );
-  const recipients: Array<{ to: string; lang: Lang; teacherName: string }> = [];
-  if (teacher?.email) {
-    recipients.push({ to: teacher.email, lang: teacher.lang, teacherName: teacher.name });
-  }
-  if (env.ADMIN_ALERT_EMAIL) {
-    recipients.push({ to: env.ADMIN_ALERT_EMAIL, lang: "zh", teacherName: teacher?.name ?? teacherId });
-  }
   try {
+    const teacher = await one<{ name: string; email: string | null; lang: Lang }>(
+      env.DB,
+      "SELECT name, email, lang FROM users WHERE id = $id",
+      { id: teacherId },
+    );
+    const recipients: Array<{ to: string; lang: Lang; teacherName: string }> = [];
+    if (teacher?.email) {
+      recipients.push({ to: teacher.email, lang: teacher.lang, teacherName: teacher.name });
+    }
+    if (env.ADMIN_ALERT_EMAIL) {
+      recipients.push({ to: env.ADMIN_ALERT_EMAIL, lang: "zh", teacherName: teacher?.name ?? teacherId });
+    }
     for (const recipient of recipients) {
       await sendQuotaAlertEmail(env, {
         to: recipient.to,
@@ -63,7 +63,7 @@ async function announce(
       provider,
       label,
       threshold,
-      "send failed:",
+      "announce failed:",
       error instanceof Error ? error.message : typeof error,
     );
     return false;

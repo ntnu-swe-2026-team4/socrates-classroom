@@ -155,4 +155,30 @@ describe("teacher usage recording and quota alerts", () => {
     expect(await alertedThresholds("u_qa5")).toEqual([60]);
     expect(sent).toHaveLength(2);
   });
+
+  it("re-arms the threshold when the recipient lookup fails", async () => {
+    await seedTeacher("u_qa6", 0.1, "qa6@example.com");
+    const sent: SentEmail[] = [];
+    const brokenUsersDb = new Proxy(env.DB, {
+      get(target, prop) {
+        if (prop === "prepare") {
+          return (sql: string) => {
+            if (sql.includes("FROM users")) throw new Error("D1_ERROR");
+            return target.prepare(sql);
+          };
+        }
+        const value = Reflect.get(target, prop, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const broken = { ...mailEnv(sent), DB: brokenUsersDb } as unknown as Env;
+
+    await expect(recordTeacherUsage(broken, "u_qa6", sample("openrouter", 0.06))).resolves.toBeUndefined();
+    expect(await alertedThresholds("u_qa6")).toEqual([]);
+    expect(sent).toHaveLength(0);
+
+    await recordTeacherUsage(mailEnv(sent), "u_qa6", sample("openrouter", 0.01));
+    expect(await alertedThresholds("u_qa6")).toEqual([60]);
+    expect(sent).toHaveLength(2);
+  });
 });
