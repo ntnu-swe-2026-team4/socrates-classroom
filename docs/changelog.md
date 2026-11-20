@@ -11,6 +11,7 @@
 ### Changed
 
 - `useVoiceInput` 依賴全面注入：抽 `lib/voiceInput.ts` 的 `VoiceInputController`（`VoiceEnv` 注入 getUserMedia／AudioContext／recognition ctor／MediaRecorder／rAF／lang／stt），hook 退化為薄 state adapter；行為零變更（`voice.test.tsx`／`trace.test.ts` 安全網全綠）；死碼 `startedAt` 欄位移除
+- review 建議二項：`stop()` 的 1s 保險計時器改為僅在實際停錄時排程、`onstop` 正常觸發即清除（正常 stop 不再殘留 timer，`vi.getTimerCount` 測試釘住）；hook 移除未使用的 `env` 參數（注入縫在 `VoiceInputController` ctor，`defaultVoiceEnv` 為 hook 唯一環境）
 
 ## 2026-11-21 — Capability bit 退役：無 mode 帳號模型落地（`feat/210-capability-retirement`，#210）
 
