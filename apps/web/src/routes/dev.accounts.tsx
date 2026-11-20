@@ -88,7 +88,7 @@ function DevAccountsPage() {
                           <span
                             className={cn(
                               "rounded-full px-2.5 py-0.5 text-[11.5px]",
-                              account.canManageClasses ? "bg-ember-wash text-ember" : "bg-moss-wash text-moss",
+                              account.fixtureRole === "student" ? "bg-moss-wash text-moss" : "bg-ember-wash text-ember",
                             )}
                           >
                             {t(ROLE_KEY[account.fixtureRole])}

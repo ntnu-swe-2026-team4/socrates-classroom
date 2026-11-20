@@ -102,6 +102,6 @@ flowchart LR
 
 實作分階段進行；功能存在性清單的 SSOT 是 [`feature.md`](./feature.md)，此處只記模型落地：
 
-- **已上 main**：班級邀請註冊（`POST /auth/register`）、訪客與 activity participants（#132/#133）、測試模式（#134）、自行註冊與 Google OAuth（#124）；capability 模型（`can_manage_classes`，#131/#142）——**待退役**（無 mode 定稿，§7）
+- **已上 main**：班級邀請註冊（`POST /auth/register`）、訪客與 activity participants（#132/#133）、測試模式（#134）、自行註冊與 Google OAuth（#124）；capability 模型（`can_manage_classes`，#131/#142）——**已退役**（#210，無 mode 定稿 §7）：建立類端點開放給所有登入 user，`users.can_manage_classes` 與 legacy `users.role` 欄位移除，`PATCH /admin/users/:id` 僅剩停用
 - **已結案**：user↔teacher mode toggle（#208——未 merge 即 close，被無 mode 定稿取代）
-- **計畫中**：capability bit 退役（`can_manage_classes` 欄位與 `requireCapability` 的建立端點 guard 移除、legacy `role` 停同步；`PATCH /admin/users/:id` 一併移除欄位）、SSO 擴充 Apple／Facebook 與 authProviders 探測（#207）；teacher 端建立 student（#206——原範圍已被窗口拍板推翻，待重劃或關閉）
+- **計畫中**：SSO 擴充 Apple／Facebook 與 authProviders 探測（#207）；teacher 端建立 student（#206——原範圍已被窗口拍板推翻，待重劃或關閉）

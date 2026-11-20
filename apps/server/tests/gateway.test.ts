@@ -94,8 +94,8 @@ describe("teacherLegsOf (#152: one leg per (provider, model), each its own max_c
     const at = "2026-11-18T00:00:00.000Z";
     await run(
       env.DB,
-      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-       VALUES ('u_legs', '腿老師', 'teacher', 'legs@example.com', 'x', 'zh', $at)`,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_legs', '腿老師', 'legs@example.com', 'x', 'zh', $at)`,
       { at },
     );
     await run(

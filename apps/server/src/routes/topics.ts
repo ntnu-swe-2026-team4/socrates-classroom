@@ -8,7 +8,7 @@ import {
   ApiError,
 } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
-import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, requireCapability, type AppEnv } from "../http";
+import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, requireUser, type AppEnv } from "../http";
 import { classroomAccess, parsePrompts, type TopicRow } from "../services/members";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
@@ -25,7 +25,7 @@ function mockTopics(direction: string) {
 export function topicsRoutes() {
   return new Hono<AppEnv>()
     .get("/topics", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const rows = await all<TopicRow>(
         c.env.DB,
         "SELECT * FROM topics WHERE classroom_id IS NULL AND (owner_id IS NULL OR owner_id = $uid) ORDER BY created_at, id",
@@ -34,7 +34,7 @@ export function topicsRoutes() {
       return c.json(rows.map(parsePrompts));
     })
     .post("/topics/:id/copy", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const input = await parseBody(c, TopicCopyInputSchema);
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, input.classroomId, user);
       if (!isTeacher) fail(403, "forbidden");
@@ -69,7 +69,7 @@ export function topicsRoutes() {
       return c.json(parsePrompts(row), 201);
     })
     .post("/topics", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const input = await parseBody(c, TopicCreateInputSchema);
       const id = newId("t_");
       await run(
@@ -92,7 +92,7 @@ export function topicsRoutes() {
     .post("/topics/generate", async (c) => {
       await enforceIpLimit(c, "topics-generate", 10);
       const input = await parseBody(c, GenerateTopicsInputSchema);
-      requireCapability(c, "manage_classes");
+      requireUser(c);
       if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {
         return c.json(
           mockTopics(input.direction).topics.map((topic, index) => ({
@@ -104,7 +104,7 @@ export function topicsRoutes() {
         );
       }
       try {
-        const user = requireCapability(c, "manage_classes");
+        const user = requireUser(c);
         const { harness, runtime, teacherLegs } = await openProfileHarness(c.env, "topic-gen", async () => user.id);
         const { text } = await runProfile(
           harness,

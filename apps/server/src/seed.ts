@@ -11,7 +11,6 @@ export interface FixtureAccount {
   id: string;
   name: string;
   email: string;
-  canManageClasses: boolean;
   isAdmin: boolean;
   fixtureRole: FixtureRole;
 }
@@ -21,7 +20,6 @@ export const FIXTURE_ACCOUNTS: readonly FixtureAccount[] = [
     id: "u_fx_admin",
     name: "系統管理員",
     email: "admin@socrates.tw",
-    canManageClasses: true,
     isAdmin: true,
     fixtureRole: "admin",
   },
@@ -29,7 +27,6 @@ export const FIXTURE_ACCOUNTS: readonly FixtureAccount[] = [
     id: "u_fx_lin",
     name: "林老師",
     email: "demo@socrates.tw",
-    canManageClasses: true,
     isAdmin: false,
     fixtureRole: "teacher",
   },
@@ -37,7 +34,6 @@ export const FIXTURE_ACCOUNTS: readonly FixtureAccount[] = [
     id: "u_fx_chen",
     name: "陳老師",
     email: "chen@socrates.tw",
-    canManageClasses: true,
     isAdmin: false,
     fixtureRole: "teacher",
   },
@@ -45,7 +41,6 @@ export const FIXTURE_ACCOUNTS: readonly FixtureAccount[] = [
     id: "u_fx_student_a",
     name: "王小明",
     email: "student-a@socrates.tw",
-    canManageClasses: false,
     isAdmin: false,
     fixtureRole: "student",
   },
@@ -53,7 +48,6 @@ export const FIXTURE_ACCOUNTS: readonly FixtureAccount[] = [
     id: "u_fx_student_b",
     name: "李美玲",
     email: "student-b@socrates.tw",
-    canManageClasses: false,
     isAdmin: false,
     fixtureRole: "student",
   },
@@ -61,7 +55,6 @@ export const FIXTURE_ACCOUNTS: readonly FixtureAccount[] = [
     id: "u_fx_student_c",
     name: "陳志豪",
     email: "student-c@socrates.tw",
-    canManageClasses: false,
     isAdmin: false,
     fixtureRole: "student",
   },
@@ -69,7 +62,6 @@ export const FIXTURE_ACCOUNTS: readonly FixtureAccount[] = [
     id: "u_fx_student_d",
     name: "林怡君",
     email: "student-d@socrates.tw",
-    canManageClasses: false,
     isAdmin: false,
     fixtureRole: "student",
   },
@@ -77,7 +69,6 @@ export const FIXTURE_ACCOUNTS: readonly FixtureAccount[] = [
     id: "u_fx_student_e",
     name: "張家維",
     email: "student-e@socrates.tw",
-    canManageClasses: false,
     isAdmin: false,
     fixtureRole: "student",
   },
@@ -142,17 +133,15 @@ async function ensureUser(db: Db, account: FixtureAccount, hash: string, at: str
   });
   const params = {
     name: account.name,
-    role: account.canManageClasses ? "teacher" : "student",
     email: account.email,
     hash,
-    can: account.canManageClasses ? 1 : 0,
     admin: account.isAdmin ? 1 : 0,
   };
   if (existing) {
     await run(
       db,
-      `UPDATE users SET name = $name, role = $role, email = $email, password_hash = $hash,
-         can_manage_classes = $can, is_admin = $admin, disabled_at = NULL
+      `UPDATE users SET name = $name, email = $email, password_hash = $hash,
+         is_admin = $admin, disabled_at = NULL
        WHERE id = $id`,
       { ...params, id: existing.id },
     );
@@ -160,8 +149,8 @@ async function ensureUser(db: Db, account: FixtureAccount, hash: string, at: str
   }
   await run(
     db,
-    `INSERT INTO users (id, name, role, email, password_hash, can_manage_classes, is_admin, created_at)
-     VALUES ($id, $name, $role, $email, $hash, $can, $admin, $at)`,
+    `INSERT INTO users (id, name, email, password_hash, is_admin, created_at)
+     VALUES ($id, $name, $email, $hash, $admin, $at)`,
     { ...params, id: account.id, at },
   );
   return account.id;

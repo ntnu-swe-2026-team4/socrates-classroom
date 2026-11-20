@@ -13,7 +13,7 @@ import {
   type InviteRow,
   type MemberRow,
 } from "../services/members";
-import { enforceIpLimit, fail, newId, nowIso, parseBody, requireCapability, type AppEnv } from "../http";
+import { enforceIpLimit, fail, newId, nowIso, parseBody, requireUser, type AppEnv } from "../http";
 
 async function activeInvite(db: D1Database, activityId: string): Promise<InviteRow | null> {
   return await one<InviteRow>(
@@ -28,7 +28,7 @@ async function activeInvite(db: D1Database, activityId: string): Promise<InviteR
 export function inviteRoutes() {
   return new Hono<AppEnv>()
     .post("/activities/:id/invites", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const { activity, classroom } = await activityAccess(c.env.DB, c.req.param("id"), {
         user,
         participant: null,

@@ -21,7 +21,7 @@ function ClassroomsPage() {
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
   const classrooms = useQuery({ queryKey: ["classrooms"], queryFn: () => api.listClassrooms() });
   const [code, setCode] = useState("");
-  const canManage = me.data?.canManageClasses ?? false;
+  const canManage = Boolean(me.data);
   const list = classrooms.data ?? [];
 
   function join() {

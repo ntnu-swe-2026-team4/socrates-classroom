@@ -65,8 +65,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       await navigate({ to: "/" });
     },
   });
-  const canManage = me.data?.canManageClasses ?? false;
-  const roleLabel = me.data?.isAdmin ? "role_admin" : canManage ? "role_teacher" : "role_student";
+  const canManage = Boolean(me.data);
   useEffect(() => onOpenAccountSheet(() => setAccountOpen(true)), []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: close overlays on every navigation
@@ -170,9 +169,11 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
               <Initial name={me.data.name} className="size-12 text-lg" />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-serif text-[15px]">{me.data.name}</div>
-                <div className="text-[12.5px] text-ink-faint">
-                  {t("account_role")} · {t(roleLabel)}
-                </div>
+                {me.data.isAdmin && (
+                  <div className="text-[12.5px] text-ink-faint">
+                    {t("account_role")} · {t("role_admin")}
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type AdminUser } from "@/api";
-import { Button, Card, Checkbox, Field, Input, PageHeader, Spinner, cn } from "@/components/ui";
+import { Button, Card, Field, Input, PageHeader, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/admin/users")({
@@ -21,7 +21,6 @@ function AdminUsersPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [canManage, setCanManage] = useState(false);
   const [created, setCreated] = useState<string | null>(null);
 
   const invalidate = async () => {
@@ -29,21 +28,18 @@ function AdminUsersPage() {
   };
 
   const create = useMutation({
-    mutationFn: () =>
-      api.createAdminUser({ name: name.trim(), email: email.trim(), password, canManageClasses: canManage }),
+    mutationFn: () => api.createAdminUser({ name: name.trim(), email: email.trim(), password }),
     onSuccess: async (user) => {
       setCreated(user.name);
       setName("");
       setEmail("");
       setPassword("");
-      setCanManage(false);
       await invalidate();
     },
   });
 
   const update = useMutation({
-    mutationFn: ({ id, input }: { id: string; input: { canManageClasses?: boolean; disabled?: boolean } }) =>
-      api.updateAdminUser(id, input),
+    mutationFn: ({ id, input }: { id: string; input: { disabled?: boolean } }) => api.updateAdminUser(id, input),
     onSuccess: () => invalidate(),
   });
 
@@ -88,8 +84,7 @@ function AdminUsersPage() {
                 maxLength={128}
               />
             </Field>
-            <div className="flex items-end gap-4">
-              <Checkbox checked={canManage} onCheckedChange={setCanManage} label={t("admin_create_can_manage")} />
+            <div className="flex items-end">
               <Button type="submit" disabled={create.isPending || !name.trim() || !email.trim() || password.length < 8}>
                 {create.isPending ? <Spinner /> : null}
                 {t("admin_create_submit")}
@@ -139,7 +134,7 @@ function UserRow({
 }: {
   user: AdminUser;
   busy: boolean;
-  onToggle: (input: { id: string; input: { canManageClasses?: boolean; disabled?: boolean } }) => void;
+  onToggle: (input: { id: string; input: { disabled?: boolean } }) => void;
 }) {
   const t = useT();
   return (
@@ -148,27 +143,13 @@ function UserRow({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <b className="font-serif text-[15.5px]">{user.name}</b>
-            <Badge tone={user.isAdmin ? "ember" : user.canManageClasses ? "moss" : "plain"}>
-              {user.isAdmin
-                ? t("admin_badge_admin")
-                : user.canManageClasses
-                  ? t("admin_badge_manage")
-                  : t("admin_badge_student")}
-            </Badge>
+            {user.isAdmin && <Badge tone="ember">{t("admin_badge_admin")}</Badge>}
             {user.disabled && <Badge tone="flag">{t("admin_badge_disabled")}</Badge>}
           </div>
           <p className="mt-0.5 truncate text-xs text-ink-faint">{user.email ?? "—"}</p>
           <p className="text-[11.5px] text-ink-faint">{t("admin_created_at", { date: user.createdAt.slice(0, 10) })}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy || user.isAdmin}
-            onClick={() => onToggle({ id: user.id, input: { canManageClasses: !user.canManageClasses } })}
-          >
-            {user.canManageClasses ? t("admin_revoke") : t("admin_grant")}
-          </Button>
           <Button
             variant="outline"
             size="sm"

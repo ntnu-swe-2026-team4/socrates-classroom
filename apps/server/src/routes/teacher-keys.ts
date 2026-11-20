@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { TeacherKeyStatus } from "@socrates/shared";
 import { all, batch, one, run } from "../db/d1";
-import { fail, nowIso, parseBody, requireCapability, type AppEnv } from "../http";
+import { fail, nowIso, parseBody, requireUser, type AppEnv } from "../http";
 import { encryptKey } from "../auth-crypto";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 
@@ -53,7 +53,7 @@ function keyableProvider(providerId: string) {
 export function teacherKeyRoutes() {
   return new Hono<AppEnv>()
     .get("/settings/keys", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const keys = await all<ProviderKeyRow>(
         c.env.DB,
         "SELECT provider_id, last4, sort_order, updated_at, max_concurrency, monthly_quota_usd FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
@@ -95,17 +95,17 @@ export function teacherKeyRoutes() {
       return c.json(statuses);
     })
     .get("/settings/keys/providers", async (c) => {
-      requireCapability(c, "manage_classes");
+      requireUser(c);
       return c.json(keyableProviders.map((provider) => ({ id: provider.id, name: provider.name })));
     })
     .get("/settings/keys/providers/:provider/models", async (c) => {
-      requireCapability(c, "manage_classes");
+      requireUser(c);
       const provider = keyableProvider(c.req.param("provider"));
       if (!provider) fail(404, "not_found");
       return c.json(provider.getModels().map((model) => ({ id: model.id, name: model.name })));
     })
     .put("/settings/keys/order", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const input = await parseBody(c, OrderInputSchema);
       const owned = await all<{ provider_id: string }>(
         c.env.DB,
@@ -131,7 +131,7 @@ export function teacherKeyRoutes() {
       return c.json({ providers: input.providers });
     })
     .put("/settings/keys/:provider/models/order", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const provider = c.req.param("provider");
       const input = await parseBody(c, ModelOrderInputSchema);
       const owned = await all<{ model: string }>(
@@ -156,7 +156,7 @@ export function teacherKeyRoutes() {
       return c.json({ models: input.models });
     })
     .put("/settings/keys/:provider/models", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const provider = c.req.param("provider");
       const input = await parseBody(c, ModelInputSchema);
       const def = keyableProvider(provider);
@@ -197,7 +197,7 @@ export function teacherKeyRoutes() {
       return c.json({ provider, model: input.model, maxConcurrency });
     })
     .delete("/settings/keys/:provider/models/:model", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const result = await run(
         c.env.DB,
         "DELETE FROM teacher_key_models WHERE user_id = $uid AND provider_id = $pid AND model = $model",
@@ -207,7 +207,7 @@ export function teacherKeyRoutes() {
       return c.body(null, 204);
     })
     .put("/settings/keys/:provider", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const provider = c.req.param("provider");
       const input = await parseBody(c, KeyInputSchema);
       if (!keyableProvider(provider)) fail(422, "byok_provider_invalid");
@@ -265,7 +265,7 @@ export function teacherKeyRoutes() {
       return c.json({ provider, last4: input.key.slice(-4), maxConcurrency, monthlyQuotaUsd });
     })
     .delete("/settings/keys/:provider", async (c) => {
-      const user = requireCapability(c, "manage_classes");
+      const user = requireUser(c);
       const result = await run(c.env.DB, "DELETE FROM teacher_keys WHERE provider_id = $pid AND user_id = $uid", {
         pid: c.req.param("provider"),
         uid: user.id,

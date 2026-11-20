@@ -13,11 +13,19 @@ pnpm install
 pnpm dev                                      # 自動套 D1 migrations → http://localhost:5173
 ```
 
-`.env.local` 全部 optional——`pnpm dev` 沒有任何設定檔也能起（預設 `LLM_PROVIDER=mock`，離線 faux 模型）。要設 dev secrets／override 時：
+`.env.local` 除兩個 secret 外皆 optional——沒有任何設定檔也能起 UI 與 landing（預設 `LLM_PROVIDER=mock`，離線 faux 模型）。要**登入**（`/login`、`/dev/accounts`、`/admin`）則必須有 `AUTH_SECRET`，缺了的話每個發 session 的端點都回 500 `internal_error`：
 
 ```bash
-cp apps/web/.env.example apps/web/.env.local   # 改完要重啟 dev（server 啟動時載入一次）
+cp apps/web/.env.example apps/web/.env.local
+openssl rand -base64 32     # 貼進 .env.local 的 AUTH_SECRET=
 ```
+
+| Secret         | dev 缺值的後果                                             | 何時必填          |
+| -------------- | ---------------------------------------------------------- | ----------------- |
+| `AUTH_SECRET`  | 登入、註冊、任何發 session 的路徑全部 500 `internal_error` | 要登入就必填      |
+| `BYOK_ENC_KEY` | 只有 `/settings/keys*` 相關端點 500                        | 要測 teacher keys |
+
+其餘 text bindings 與 override（`ENVIRONMENT`、`LLM_PROVIDER`、`SEED_TOKEN`…）見 `.env.example` 註解。改完 `.env.local` 要重啟 dev（server 啟動時載入一次）；缺 secret 時 `pnpm dev` 啟動會直接印出警告。
 
 另開一個終端機灌示範資料：
 

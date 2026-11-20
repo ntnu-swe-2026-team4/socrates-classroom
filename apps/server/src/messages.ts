@@ -66,16 +66,6 @@ const M: Record<ErrorCode, Entry> = {
     en: "This account is disabled. Contact an administrator.",
     es: "Esta cuenta está deshabilitada. Contacta a un administrador.",
   },
-  capability_required: {
-    zh: "你沒有管理班級的權限。",
-    en: "You do not have permission to manage classrooms.",
-    es: "No tienes permiso para administrar clases.",
-  },
-  already_streaming: {
-    zh: "上一則回覆還在產生中。",
-    en: "The previous reply is still streaming.",
-    es: "La respuesta anterior aún se está generando.",
-  },
   activity_finished: {
     zh: "活動已結束，無法繼續對話。",
     en: "This activity has finished.",
@@ -85,16 +75,6 @@ const M: Record<ErrorCode, Entry> = {
     zh: "蘇格拉底暫時無法回應，請再試一次。",
     en: "Socrates cannot respond right now. Try again.",
     es: "Sócrates no puede responder ahora. Inténtalo de nuevo.",
-  },
-  llm_rate_limited: {
-    zh: "目前太忙碌了，請稍等一下再問。",
-    en: "It is too busy right now. Please wait a moment.",
-    es: "Está muy ocupado ahora. Espera un momento.",
-  },
-  llm_timeout: {
-    zh: "回應逾時，請再試一次。",
-    en: "The reply timed out. Try again.",
-    es: "La respuesta expiró. Inténtalo de nuevo.",
   },
   report_pending: {
     zh: "報告還在生成中，請稍後再讀取。",

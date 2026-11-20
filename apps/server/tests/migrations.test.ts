@@ -6,6 +6,36 @@ import { all, run } from "../src/db/d1";
 
 const migrations = inject("d1Migrations");
 
+describe("migration 010: retire capability (no-mode, #210)", () => {
+  it("drops can_manage_classes and the legacy role column from users", async () => {
+    const base = migrations.filter((migration) => !/^(003|008|010)/.test(migration.name));
+    const retire = migrations.filter((migration) => migration.name.startsWith("010"));
+    expect(retire).toHaveLength(1);
+    await applyD1Migrations(env.DB, base);
+
+    const at = "2026-11-21T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at, can_manage_classes, is_admin)
+       VALUES ('u_legacy', '舊老師', 'teacher', 'legacy@example.com', 'x', 'zh', $at, 1, 0)`,
+      { at },
+    );
+
+    await applyD1Migrations(env.DB, retire);
+
+    const columns = await all<{ name: string }>(env.DB, "PRAGMA table_info(users)");
+    const names = columns.map((column) => column.name);
+    expect(names).not.toContain("can_manage_classes");
+    expect(names).not.toContain("role");
+
+    const survivor = await all<{ name: string; is_admin: number }>(
+      env.DB,
+      "SELECT name, is_admin FROM users WHERE id = 'u_legacy'",
+    );
+    expect(survivor).toEqual([{ name: "舊老師", is_admin: 0 }]);
+  });
+});
+
 describe("migration 008: teacher key models", () => {
   it("splits the per-provider model into (provider, model) legs with their own max_concurrency", async () => {
     const legacy = migrations.filter((migration) => !/^(003|008)/.test(migration.name));
@@ -16,8 +46,8 @@ describe("migration 008: teacher key models", () => {
     const at = "2026-11-18T00:00:00.000Z";
     await run(
       env.DB,
-      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-       VALUES ('u_t8', '金鑰老師', 'teacher', 't8@example.com', 'x', 'zh', $at)`,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_t8', '金鑰老師', 't8@example.com', 'x', 'zh', $at)`,
       { at },
     );
     await run(
@@ -73,8 +103,8 @@ describe("migration 009: teacher key usage ledger and quota alerts", () => {
     const at = "2026-11-21T00:00:00.000Z";
     await run(
       env.DB,
-      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-       VALUES ('u_ta', '額度老師', 'teacher', 'ta@example.com', 'x', 'zh', $at)`,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_ta', '額度老師', 'ta@example.com', 'x', 'zh', $at)`,
       { at },
     );
     await run(
@@ -135,14 +165,14 @@ describe("migration 003: activity participant backfill", () => {
     const at = "2026-11-15T00:00:00.000Z";
     await run(
       env.DB,
-      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-       VALUES ('u_t', '林老師', 'teacher', 't@example.com', 'x', 'zh', $at)`,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_t', '林老師', 't@example.com', 'x', 'zh', $at)`,
       { at },
     );
     await run(
       env.DB,
-      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-       VALUES ('u_s', '王小明', 'student', 's@example.com', 'x', 'zh', $at)`,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_s', '王小明', 's@example.com', 'x', 'zh', $at)`,
       { at },
     );
     await run(
@@ -199,8 +229,8 @@ describe("migration 003: activity participant backfill", () => {
   it("deleting the user keeps the participant (report link) and drops only its user_id", async () => {
     await run(
       env.DB,
-      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-       VALUES ('u_gone', '離場者', 'student', 'gone@example.com', 'x', 'zh', '2026-11-15T00:00:00.000Z')`,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_gone', '離場者', 'gone@example.com', 'x', 'zh', '2026-11-15T00:00:00.000Z')`,
     );
     await run(
       env.DB,
@@ -234,8 +264,8 @@ describe("migration 007: user identities", () => {
     const at = "2026-11-15T00:00:00.000Z";
     await run(
       env.DB,
-      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-       VALUES ('u_oid', 'OAuth生', 'student', 'oid@example.com', 'x', 'zh', $at)`,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_oid', 'OAuth生', 'oid@example.com', 'x', 'zh', $at)`,
       { at },
     );
     await run(

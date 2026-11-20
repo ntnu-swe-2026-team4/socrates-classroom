@@ -8,9 +8,22 @@ import { Button, buttonStyles, Card, Field, Input, PageHeader, SectionTitle, Spi
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/t/live/$id")({
-  beforeLoad: async ({ context }) => {
+  beforeLoad: async ({ context, params }) => {
     const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
-    if (!me?.canManageClasses) throw redirect({ to: "/classrooms" });
+    if (!me) throw redirect({ to: "/classrooms" });
+    const activity = await context.queryClient
+      .ensureQueryData({ queryKey: ["activity", params.id, "teacher"], queryFn: () => api.activityInfo(params.id) })
+      .catch(() => {
+        throw redirect({ to: "/classrooms" });
+      });
+    const rooms = await context.queryClient.ensureQueryData({
+      queryKey: ["classrooms"],
+      queryFn: () => api.listClassrooms(),
+    });
+    const room = rooms.find((entry) => entry.id === activity.classroomId);
+    if (room?.role !== "teacher") {
+      throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: activity.classroomId } });
+    }
   },
   component: LivePage,
 });

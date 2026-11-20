@@ -2,6 +2,58 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — useVoiceInput controller 重構：環境注入、零 global stubbing（`split/166-voice-controller`，#166）
+
+### Added
+
+- `test/voiceInput.test.ts`（16 tests，依賴全為 ctor fakes、零 global stubbing）：unsupported×2、denied／failed 判別、權限彈窗期間按停、start 重入、`onresult` final／interim 累積、`onerror` 四型別、`onend` 自動收尾、fallback 錄音→stt 恰一次、`onstop` 沉默保險、stt 失敗映射、60 秒自動停、`dispose` 清理
+
+### Changed
+
+- `useVoiceInput` 依賴全面注入：抽 `lib/voiceInput.ts` 的 `VoiceInputController`（`VoiceEnv` 注入 getUserMedia／AudioContext／recognition ctor／MediaRecorder／rAF／lang／stt），hook 退化為薄 state adapter；行為零變更（`voice.test.tsx`／`trace.test.ts` 安全網全綠）；死碼 `startedAt` 欄位移除
+- review 建議二項：`stop()` 的 1s 保險計時器改為僅在實際停錄時排程、`onstop` 正常觸發即清除（正常 stop 不再殘留 timer，`vi.getTimerCount` 測試釘住）；hook 移除未使用的 `env` 參數（注入縫在 `VoiceInputController` ctor，`defaultVoiceEnv` 為 hook 唯一環境）
+
+## 2026-11-21 — Capability bit 退役：無 mode 帳號模型落地（`feat/210-capability-retirement`，#210）
+
+### Changed
+
+- 帳號模型無 mode 定稿（[`accounts.md`](./accounts.md) §7）實作落地：**任何登入 user 皆可建班與開活動**，`requireCapability("manage_classes")` 全數改為 `requireUser`（`POST /classrooms`、`POST /topics`、`topics/generate`、`POST /classrooms/:id/topics`、`POST /classrooms/:id/activities`、`POST /topics/:id/copy`、`POST /activities/:id/invites`、`/settings/keys/*`）；擁有權檢查（`classroomAccess` 的 isTeacher）照舊，非 owner 對他人班級仍 403 `forbidden`
+- `User`／`AdminUser`／`DevAccount` 形狀移除 `canManageClasses`；`POST /admin/users` 建立帳號不帶能力欄，`PATCH /admin/users/:id` 僅剩 `{disabled}`（停用／復用，一律 bump `session_version`）——admin 的桿子收斂為帳號層：建立＋停用
+- 前端最小接線（同 PR vertical slice）：`t.setup`／`t.live`／`settings` guard 改為登入即入；建班/開活動工具對所有登入 user 顯示；admin 頁「開通/收回權限」UI 退場
+
+### Removed
+
+- Migration `010_retire_capability.sql`：`users.can_manage_classes` 與 legacy `users.role` 欄位一併移除——帳號表不再有任何角色字樣，師生關係只存在於班級關係層；錯誤碼 `capability_required`（`ERROR_CODES`／`messages.ts` 三語）退場
+- 錯誤碼清理（#221）：`already_streaming`（「舊客戶端」不存在——單一消費者原子部署）與未接線的保留碼 `llm_rate_limited`/`llm_timeout` 刪除——pi-durable 將上游失敗統一 settle 為 `model_error`，另設碼需解析 pi 內部訊息且 retry/backoff 本屬 pi 範疇（拍板記錄：`providers.md` §上游失敗碼）
+- i18n 字典清理（#221）：刪除 82 個無消費 keys（三語）——main 與 web-next 皆零引用的舊稿文案（story_scene/hero_/landing_ 等），以及無 mode 定稿取消的段落詞彙（TeacherMode、teacher_plan/account_kind/plan、admin 教師申請 tab、教師建學生帳號的 students_* 舊稿——窗口拍板取代）；拆分單 #178–#188 的預載詞彙（login/admin/settings/community/chat 等）**保留**
+
+## 2026-11-21 — 語音模式收尾：useVoiceInput effect-free、TTS 字數統一（`split/183-voice`，#183）
+
+### Added
+
+- `test/speech.test.ts`：speech 通道仲裁迴歸釘（打斷/跳過/靜音優先序，自 HEAD port）＋ 4000 字預算句尾截斷測試（TDD）
+
+### Changed
+
+- `TTS_MAX_CHARS` 2000→4000（shared 單點：server `TtsInputSchema` 與客戶端 `lib/speech.ts` 同步生效——#193 預留的「一行 diff」）
+- `useVoiceInput` effect-free 重構：`useEffect`→`useLayoutEffect`／`useOnUnmount`、抽出 `startMeter`、去 `useCallback`（外部簽名不變；既有 `voice.test.tsx` 安全網全綠）——`useVoiceInput` 的 useEffect 退場（#188 前置之一）
+
+### Fixed
+
+- `docs/api-contract.md`：`/tts`「無 char boundary」漂移（實際一直有 `TtsInputSchema.max` 驗證）→ 明載 `text` ≤4000；輸入邊界總表補 TTS 上限
+
+## 2026-11-21 — 設定頁重構：分類導覽與對話偏好（`split/184-settings`，#184）
+
+### Added
+
+- 設定頁分類導覽：section list（一般／對話體驗／API keys）＋ content panel，`?section=` deep link、`aria-current` 標示目前區
+- 對話體驗區（純 client-side，接 #193 的 companion store）：蘇格拉底 3D 模型開關、語音朗讀、音量與聲線偏好
+- `test/settings.test.tsx`：section 導覷切換、deep link、companion 接線、keys 區掛載
+
+### Changed
+
+- 設定頁版面由單欄卡片改為 200px 導覷列＋內容 panel；`ProviderKeys`（含 #146 月配額編輯器）原元件移植進 keys 區 re-skin；keys 區標題由元件自帶的 h2 承擔（不重複區標題）、section 導覽按鈕 focus ring 對齊設計系統（`focus-visible` ember）
+
 ## 2026-11-21 — Teacher BYOK 額度與警示 email（`feat/146-teacher-byok-quota`）
 
 ### Added
@@ -11,6 +63,21 @@
 - 額度水位 60/80/100% **inline 檢測**（LiteLLM/Portkey 同款，無 cron）：以 `teacher_quota_alerts` PK 原子去重，同月同水位只寄一次，UTC 月曆跨月重置；寄送失敗自動重臂
 - 佔位帶 60s claim lease（`claimed_at`/`sent_at`）：crash 產生的孤兒 pending 佔位會在 TTL 過期後被下一輪水位檢查偷走重寄，不再靜默漏水位
 - email 走 Workers `send_email` binding（`ALERT_FROM_EMAIL`＝zone 位址、`ADMIN_ALERT_EMAIL`）；binding 缺失時 log-only fail-open。老師以其 lang 收信（zh/en/es），管理員收 zh 副本
+## 2026-11-20 — 群體報告立場星圖（`feat/79-stance-constellation`，#79）
+
+### Added
+
+- `StanceConstellation`：老師的群體報告在「立場分佈」文字清單上方多一張立場星圖。每個點是一位學生（顯示假名），座標來自 `classReport.axes[].positions[].at`；勾 0–3 條軸做維度漸展（中間點 → 一條線 → 平面 → 立體），第 4 條會換掉最早勾的那條；立體時可拖曳或用方向鍵旋轉，可重設視角
+- 分群：`lib/stance.ts` 的階層式分群（Ward，依 #58 決議）。「自動」在兩群重心距離超過門檻時停止合併，最多 5 群、且不超過人數的一半；老師可改成指定 2–4 群或不分群。圖下方列出各群成員與各軸平均落點
+- 沒談到某條軸的學生：放在該軸中間、畫成空心點、不納入分群，圖下有說明；在所選軸上都有表態的學生不到 3 位時不分群並說明原因
+- 三語 `stance_*` 字串；分群配色 token `--color-stance-1…5`（淺色／深色各一組），分群同時用形狀區分
+- `test/stance.test.ts`（落點合併、layout 補間、投影、分群）與 `test/stanceConstellation.test.tsx`（維度漸展、分群、選點）
+
+### Notes
+
+- 以 SVG 加自寫投影實作，不走 three.js：點數是班級人數等級，SVG 讓 theme token、深色模式與 jsdom 測試都直接可用，也不需要 `useEffect`；動畫走 `createFrameLoop`，尊重 `prefers-reduced-motion`
+- values-constellation-3d 的軌跡未移植：報告只有最終落點，沒有逐輪資料
+- 後端與 `docs/api-contract.md` §7 的形狀零變動
 
 ## 2026-11-20 — 報告與蘇格拉底語言修正（`fix/report-and-socrates-language`）
 

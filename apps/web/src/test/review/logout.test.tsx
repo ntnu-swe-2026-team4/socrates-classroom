@@ -11,7 +11,7 @@ const calls = vi.hoisted(() => ({
 }));
 vi.mock("@/api", () => ({
   api: {
-    me: vi.fn().mockResolvedValue({ id: "teacher-1", canManageClasses: true, isAdmin: false, name: "Teacher" }),
+    me: vi.fn().mockResolvedValue({ id: "teacher-1", isAdmin: false, name: "Teacher" }),
     logout: calls.logout,
   },
 }));
@@ -31,7 +31,7 @@ test("S01: successful logout removes private reports from the shared client", as
   setLocale("en");
   calls.navigate.mockClear();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
-  client.setQueryData(["me"], { id: "teacher-1", canManageClasses: true, isAdmin: false, name: "Teacher" });
+  client.setQueryData(["me"], { id: "teacher-1", isAdmin: false, name: "Teacher" });
   client.setQueryData(["report", "activity-1"], {
     topicTitle: "Topic",
     group: { axes: [], points: [], clusters: [] },

@@ -11,7 +11,6 @@ export const LANG_NAMES: Record<Lang, string> = {
 export const UserSchema = z.object({
   id: z.string(),
   name: z.string(),
-  canManageClasses: z.boolean(),
   isAdmin: z.boolean(),
 });
 export type User = z.infer<typeof UserSchema>;
@@ -238,7 +237,6 @@ export const AdminUserSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string().nullable(),
-  canManageClasses: z.boolean(),
   isAdmin: z.boolean(),
   disabled: z.boolean(),
   createdAt: z.string(),
@@ -248,13 +246,8 @@ export const AdminUserCreateInputSchema = z.object({
   name: z.string().trim().min(1).max(80),
   email: emailField,
   password: z.string().min(8).max(128),
-  canManageClasses: z.boolean().default(false),
 });
-export const AdminUserUpdateInputSchema = z
-  .object({ canManageClasses: z.boolean().optional(), disabled: z.boolean().optional() })
-  .refine((value) => value.canManageClasses !== undefined || value.disabled !== undefined, {
-    message: "at least one field is required",
-  });
+export const AdminUserUpdateInputSchema = z.object({ disabled: z.boolean() });
 export const TopicCreateInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   statement: z.string().trim().min(1).max(2000),
@@ -276,7 +269,7 @@ export const ActivityStartInputSchema = z.object({
 });
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
 export const LookupInputSchema = z.object({ term: z.string().trim().min(1).max(30) });
-export const TTS_MAX_CHARS = 2000;
+export const TTS_MAX_CHARS = 4000;
 export const TtsInputSchema = z.object({
   text: z.string().min(1).max(TTS_MAX_CHARS),
   lang: z.enum(["zh", "en", "es"]),
@@ -317,7 +310,6 @@ export const DevAccountSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
-  canManageClasses: z.boolean(),
   isAdmin: z.boolean(),
   fixtureRole: z.enum(DEV_FIXTURE_ROLES),
   classrooms: z.array(DevAccountClassroomSchema),
@@ -370,12 +362,8 @@ export const ERROR_CODES = [
   "tos_required",
   "name_taken",
   "account_disabled",
-  "capability_required",
-  "already_streaming",
   "activity_finished",
   "llm_unavailable",
-  "llm_rate_limited",
-  "llm_timeout",
   "report_pending",
   "report_failed",
   "byok_provider_invalid",
