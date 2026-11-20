@@ -2,6 +2,20 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — 教室社群端點：公告、討論區、名冊與活動列表（`feat/241-community`，#241）
+
+### Added
+
+- `GET/POST/DELETE /classrooms/:id/announcements`：成員可讀、owner 撰寫/刪除（Discord announcement channel 模式）
+- `GET/POST/DELETE /classrooms/:id/posts`：單層回覆 threads；作者或 owner 可刪；**root 刪除 CASCADE 回覆**（#158 拍板維持現況）
+- `GET /classrooms/:id/members`、`DELETE /classrooms/:id/members/:userId`：**#237 落地——移除只刪 `members` 列，帳號留存**；成員可 self-leave
+- `GET /classrooms/:id/activities`：活動列表（最新在前）
+- Migration `013`：`announcements`＋`posts`（parent self-FK CASCADE；author FK SET NULL／CASCADE——相容 #233 帳號刪除）
+
+### 決策記錄
+
+- web-next community.ts 參考輸入的**否決清單**：`user.guest/preview` 分支（main 無此概念）、`kind/username` 欄位（teacher-建帳已死）、刪成員砍 `users` 列（#237）、自製 `access()`（改用 main 的 `classroomAccess`）；**行事曆**（全新設計無參考）不在本 PR
+
 ## 2026-11-21 — Notifications feed、已讀 watermark 與 admin 公告端點（`feat/239-notifications`，#239）
 
 ### Added

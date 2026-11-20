@@ -134,6 +134,21 @@ interface User {
 
 **`current` 語意（#135）**：`classrooms.current_activity_id` 是「最近一次 `mode = 'live'` 的活動」指標——`test` 永不寫入，所以一班最多一個 `current`；開新 `live` 活動即取代指標（舊活動留在 `activities` 歷史）。活動結束**不清除**指標，`current.finished` 區分進行中／已結束（結業報告入口與 `POST /join` 的 `activity_finished` 判定都靠它）。空班級的 `current` 為 `null`，其邀請碼在開活動前一律 404 `join_code_invalid`（§3）。
 
+### 4.1 教室社群（#241；#212 拍板回歸）
+
+教室＝Discord 式容器（accounts.md §4）；以下端點皆需登入且為該班 owner 或成員（`classroomAccess`：未知教室 404、非成員 403）。
+
+| Operation                                                                   | 說明                                                                                                                                                                 |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET/POST/DELETE /classrooms/:id/announcements`                             | 成員可讀（最新在前）；**owner 撰寫/刪除**（announcement channel 模式）；`{body}` 單欄（title-less）；限流 30/min                                                     |
+| `GET /classrooms/:id/posts`、`POST`、`DELETE /classrooms/:id/posts/:postId` | 成員皆可發；**單層回覆**（`parentId` 必須指向 root，否則 404）；回應為 threads（最新在前、回覆 ASC）；作者或 owner 可刪——**root 刪除 CASCADE 回覆**（#158 拍板維持） |
+| `GET /classrooms/:id/members`                                               | 名冊：`{teacher: {id, name}, members: [{id, name, joinedAt}]}`（joined_at 排序）；無 `kind` 欄位（teacher-建帳模型已死）                                             |
+| `DELETE /classrooms/:id/members/:userId`                                    | **#237 拍板：只刪 `members` 列，帳號留存**——owner 可移除任何人；成員可 self-leave（刪自己）；刪 teacher 403；他人 403；冪等缺失 404                                  |
+| `GET /classrooms/:id/activities`                                            | 活動列表：`{id, mode, topicTitle, finishedAt, createdAt}` 最新在前                                                                                                   |
+
+- FK 語義：`announcements.author_id` SET NULL（作者帳號刪除時公告留存）；`posts.author_id` CASCADE（作者帳號刪除時貼文一併消失，#233 相容）；root 刪除時回覆 CASCADE
+- **行事曆**不在本節（#212：全新設計、無參考 code，另立設計單）；**教室公告×鈴鐘整合**（classroom-level unread）另議
+
 ## 5. 對話（WebSocket，核心；R7）
 
 ### 5.1 通道
