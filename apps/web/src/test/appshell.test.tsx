@@ -139,6 +139,31 @@ test("inner routes render inside the halftone theme wrapper", () => {
   }
 });
 
+test("the mobile menu button opens the drawer with the rail inside a dialog", async () => {
+  calls.me.mockResolvedValue({ ...teacher });
+  const client = mountShell();
+  try {
+    fireEvent.click(screen.getByRole("button", { name: "Toggle sidebar" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: "Home" }).length).toBeGreaterThan(0);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  } finally {
+    client.clear();
+  }
+});
+
+test("a logged-out user on an inner route sees the login link instead of the avatar", async () => {
+  calls.me.mockResolvedValue(null);
+  const client = mountShell(null, "/report/activity-1");
+  try {
+    expect(await screen.findByRole("link", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Account" })).toBeNull();
+  } finally {
+    client.clear();
+  }
+});
+
 test("the landing and login routes render bare without the rail", () => {
   calls.me.mockResolvedValue(null);
   const client = mountShell(null, "/login");
