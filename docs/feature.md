@@ -71,13 +71,14 @@
 
 ## LLM Gateway 與 Teacher Keys
 
-| 能力         | 說明                                                                                                                   |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| 配置化路由   | `providers.config.yaml`（build-time 編譯）：provider 實例×credential×priority×traffic class；程式碼零模型 id           |
-| fallback     | pi 原生 legs（鏈首綁 symbol）＋`settings.retry` 指數退避；gateway 只做決策（cooldown/記帳）                            |
-| cooldown     | (provider, model, credential) 記帳；429/timeout 60s、401/403 dead、過期自然回；ledger 生命週期＝isolate（`getRouter`） |
-| Teacher keys | 一 provider 一把 key（D1 AES-GCM，回 last4）；`sort_order`＝provider 鏈序；學生無 BYOK（#82，byok 端點已退役）         |
-| Mock         | `LLM_PROVIDER=mock`：離線 faux 模型（測試預設）                                                                        |
+| 能力          | 說明                                                                                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 配置化路由    | `providers.config.yaml`（build-time 編譯）：provider 實例×credential×priority×traffic class；程式碼零模型 id                                                  |
+| fallback      | pi 原生 legs（鏈首綁 symbol）＋`settings.retry` 指數退避；gateway 只做決策（cooldown/記帳）                                                                   |
+| cooldown      | (provider, model, credential) 記帳；429/timeout 60s、401/403 dead、過期自然回；ledger 生命週期＝isolate（`getRouter`）                                        |
+| Teacher keys  | 一 provider 一把 key（D1 AES-GCM，回 last4）；`sort_order`＝provider 鏈序；學生無 BYOK（#82，byok 端點已退役）                                                |
+| BYOK 額度警示 | 每 provider 每月 USD 額度（`usage` extension 記 tokens+cost，不存對話內容）；60/80/100% inline 檢測寄 email（同月同水位一次，UTC 月曆）；老師＋管理員（#146） |
+| Mock          | `LLM_PROVIDER=mock`：離線 faux 模型（測試預設）                                                                                                               |
 
 詳細規則與查證：[`providers.md`](./providers.md)、[`architecture.md`](./architecture.md) §5
 
