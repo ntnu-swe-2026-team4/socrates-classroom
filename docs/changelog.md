@@ -12,7 +12,7 @@
 
 ### Changed
 
-- 設定頁版面由單欄卡片改為 200px 導覷列＋內容 panel；`ProviderKeys`（含 #146 月配額編輯器）原元件移植進 keys 區 re-skin
+- 設定頁版面由單欄卡片改為 200px 導覷列＋內容 panel；`ProviderKeys`（含 #146 月配額編輯器）原元件移植進 keys 區 re-skin；keys 區標題由元件自帶的 h2 承擔（不重複區標題）、section 導覷按鈕 focus ring 對齊設計系統（`focus-visible` ember）
 
 ## 2026-11-21 — Teacher BYOK 額度與警示 email（`feat/146-teacher-byok-quota`）
 
