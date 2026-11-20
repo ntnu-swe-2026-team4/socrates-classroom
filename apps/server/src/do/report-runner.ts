@@ -304,7 +304,11 @@ export class ReportRunner extends DurableObject<Env> {
                 { lang: teacherLang, submitTool: SUBMIT_STUDENT_ANALYSIS },
               );
               try {
-                studentAnalyses.set(participant.id, StudentAnalysisSchema.parse(payloadOf(text, payload, "report")));
+                const analysis = StudentAnalysisSchema.parse(payloadOf(text, payload, "report"));
+                if (!citesSpokenLines(analysis, transcripts.get(participant.id)?.turns ?? 0)) {
+                  throw new Error("report_turn_not_spoken");
+                }
+                studentAnalyses.set(participant.id, analysis);
                 break;
               } catch (error) {
                 console.error(
@@ -477,6 +481,13 @@ function positionsOf(classReport: ClassReport | null, pseudonym: string): Report
   return positions;
 }
 
+export function citesSpokenLines(analysis: StudentAnalysis, spokenLines: number): boolean {
+  const cited = analysis.stated
+    ? [...analysis.claim.turns, ...analysis.reasons.turns, ...(analysis.tension?.turns ?? [])]
+    : analysis.doing.turns;
+  return cited.every((turn) => turn <= spokenLines);
+}
+
 function payloadOf(text: string, payload: JsonObject | null, key?: string): unknown {
   if (payload !== null) {
     const value = key === undefined ? payload : payload[key];
@@ -503,6 +514,7 @@ function textOf(content: string | readonly unknown[]): string {
 
 const FAUX_CLASS_FAILURE_MARKER = "FORCE-CLASS-REPORT-FAILURE";
 const FAUX_GENERATE_FAILURE_MARKER = "FORCE-REPORT-GENERATE-FAILURE";
+const FAUX_UNSPOKEN_TURN_MARKER = "FORCE-UNSPOKEN-TURN";
 
 function fauxReportScript(context: TranscriptContext): AssistantMessage {
   const last = context.messages.filter((message) => message.role !== "system").at(-1);
@@ -543,12 +555,13 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
       { stopReason: "toolUse" },
     );
   }
+  const claimTurns = prompt.includes(FAUX_UNSPOKEN_TURN_MARKER) ? [99] : [1];
   return fauxAssistantMessage(
     [
       fauxToolCall(SUBMIT_STUDENT_ANALYSIS, {
         report: {
           stated: true,
-          claim: { text: "契約應該被遵守", turns: [1] },
+          claim: { text: "契約應該被遵守", turns: claimTurns },
           reasons: { text: "因為雙方事先同意", turns: [1] },
           tension: null,
         },

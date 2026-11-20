@@ -4,7 +4,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
-import { reportAlarmPlan } from "../src/do/report-runner";
+import type { StudentAnalysis } from "@socrates/shared";
+import { citesSpokenLines, reportAlarmPlan } from "../src/do/report-runner";
 import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
 
 let teacherCookie: string;
@@ -227,6 +228,45 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(ownReport.analysis?.stated).toBe(true);
     expect(ownReport.positions).toEqual([]);
   }, 60_000);
+});
+
+describe("student reports cite only lines the student said", () => {
+  const stated = (turns: number[]): StudentAnalysis => ({
+    stated: true,
+    claim: { text: "c", turns },
+    reasons: { text: "r", turns: [1] },
+    tension: null,
+  });
+
+  it("citesSpokenLines: every cited line must be one the student said", () => {
+    expect(citesSpokenLines(stated([1, 2]), 2)).toBe(true);
+    expect(citesSpokenLines(stated([3]), 2)).toBe(false);
+    expect(citesSpokenLines({ stated: false, doing: { text: "d", turns: [4] } }, 3)).toBe(false);
+  });
+
+  it("a report citing an unspoken line is retried; failing every attempt leaves the student with no analysis", async () => {
+    const created = await classroomWithActivity(teacherCookie, "引用錯行班");
+    const account = await registerStudent(created.code, "小錯");
+    const participantId = await participantIdOf(created.activityId, account.cookie);
+    await speak(`${created.activityId}:${participantId}`, account.cookie, "我會拉 FORCE-UNSPOKEN-TURN");
+
+    const finish = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacherCookie, "CF-Connecting-IP": "198.51.100.23" },
+    });
+    expect(finish.status).toBe(204);
+    let report: Response | null = null;
+    for (let i = 0; i < 180; i += 1) {
+      report = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacherCookie } });
+      if (report.status === 200) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    expect(report?.status).toBe(200);
+    const body = (await report?.json()) as { students: Array<{ analysis: unknown }> };
+    expect(body.students[0]).toHaveProperty("analysis");
+    expect(body.students).toHaveLength(1);
+    expect(body.students[0]!.analysis).toBeNull();
+  }, 120_000);
 });
 
 describe("stored report read-back validation", () => {
