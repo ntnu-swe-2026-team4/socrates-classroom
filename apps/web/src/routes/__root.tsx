@@ -10,7 +10,7 @@ function RouteProblem({ kind }: { kind: "error" | "notFound" }) {
       <p className="font-serif text-lg text-ink">{kind === "error" ? t("common_error") : t("common_not_found")}</p>
       <Link
         to="/"
-        className="rounded-full border border-line-strong px-4 py-1.5 text-[13px] text-ember transition-colors hover:border-ember"
+        className="border border-line-strong px-4 py-1.5 text-[13px] text-ember transition-colors hover:border-ember"
       >
         {t("common_back")}
       </Link>
