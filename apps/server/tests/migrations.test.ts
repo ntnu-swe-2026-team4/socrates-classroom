@@ -42,51 +42,28 @@ describe("migration 008: teacher key models", () => {
 
     const columns = await all<{ name: string }>(env.DB, "PRAGMA table_info(teacher_keys)");
     expect(columns.map((column) => column.name)).not.toContain("model");
-  });
-});
-
-describe("migration 009: teacher provider aggregate concurrency cap", () => {
-  it("adds a nullable provider-level max_concurrency to teacher_keys, existing rows default to NULL", async () => {
-    const base = migrations.filter((migration) => !/^(003|009)/.test(migration.name));
-    const cap = migrations.filter((migration) => migration.name.startsWith("009"));
-    expect(cap).toHaveLength(1);
-    await applyD1Migrations(env.DB, base);
-
-    const at = "2026-11-20T00:00:00.000Z";
-    await run(
-      env.DB,
-      `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-       VALUES ('u_t9', 'cap-teacher', 'teacher', 't9@example.com', 'x', 'zh', $at)`,
-      { at },
-    );
-    await run(
-      env.DB,
-      `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
-       VALUES ('u_t9', 'openrouter', 'enc', 'zzzz', 0, $at)`,
-      { at },
-    );
-
-    await applyD1Migrations(env.DB, cap);
+    expect(columns.map((column) => column.name)).toContain("max_concurrency");
 
     const existing = await all<{ max_concurrency: number | null }>(
       env.DB,
-      "SELECT max_concurrency FROM teacher_keys WHERE user_id = 'u_t9'",
+      "SELECT max_concurrency FROM teacher_keys WHERE user_id = 'u_t8'",
     );
     expect(existing).toEqual([{ max_concurrency: null }]);
 
     await run(
       env.DB,
       `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at, max_concurrency)
-       VALUES ('u_t9', 'deepseek', 'enc', 'aaaa', 1, $at, 6)`,
+       VALUES ('u_t8', 'deepseek', 'enc', 'aaaa', 1, $at, 6)`,
       { at },
     );
     const fresh = await all<{ max_concurrency: number | null }>(
       env.DB,
-      "SELECT max_concurrency FROM teacher_keys WHERE user_id = 'u_t9' AND provider_id = 'deepseek'",
+      "SELECT max_concurrency FROM teacher_keys WHERE user_id = 'u_t8' AND provider_id = 'deepseek'",
     );
     expect(fresh).toEqual([{ max_concurrency: 6 }]);
   });
 });
+
 describe("migration 003: activity participant backfill", () => {
   it("existing members become member participants and keep their pseudonyms", async () => {
     const legacy = migrations.filter((migration) => !migration.name.startsWith("003"));

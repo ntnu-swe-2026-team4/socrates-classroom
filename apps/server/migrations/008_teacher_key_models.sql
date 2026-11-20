@@ -14,3 +14,4 @@ INSERT INTO teacher_key_models (user_id, provider_id, model, max_concurrency, so
 SELECT user_id, provider_id, model, NULL, 0, updated_at FROM teacher_keys WHERE model != '';
 
 ALTER TABLE teacher_keys DROP COLUMN model;
+ALTER TABLE teacher_keys ADD COLUMN max_concurrency INTEGER;
