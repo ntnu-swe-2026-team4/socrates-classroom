@@ -2,7 +2,7 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
-## 2026-11-21 — Teacher BYOK 額度與警示 email（`feat/152-teacher-byok-routing`）
+## 2026-11-21 — Teacher BYOK 額度與警示 email（`feat/146-teacher-byok-quota`）
 
 ### Added
 

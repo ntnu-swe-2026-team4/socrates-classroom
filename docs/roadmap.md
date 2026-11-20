@@ -32,7 +32,7 @@
 | 偵測後動作（標記／封禁；執行者）                                                                                                                             | #97   | #71、#67                      |
 | 運維 dashboard                                                                                                                                               | #80   | #63 停損；Go 窗口 API 有無    |
 | 額度警示（平台自營 pool 停損）                                                                                                                               | #63   | teacher BYOK 額度已上（#146） |
-| RoutingLedger DO：teacher 鏈限額跨 isolate 精確記帳（reserve/release＋lease TTL、cooldown 集中；現況語意見 [`providers.md`](./providers.md) § Teacher keys） | #196  | #152 合併後                   |
+| RoutingLedger DO：teacher 鏈限額跨 isolate 精確記帳（reserve/release＋lease TTL、cooldown 集中；現況語意見 [`providers.md`](./providers.md) § Teacher keys） | #196  | —                             |
 
 ## 暫緩（低優先，條件滿足可恢復）
 
