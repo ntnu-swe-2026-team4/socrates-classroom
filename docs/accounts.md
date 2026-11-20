@@ -84,6 +84,7 @@ flowchart LR
 **拍板（2026-11-20）**
 
 - **無 mode（同日第三輪，最終定稿）**：伺服器不記錄 user 的 teacher/student mode——`can_manage_classes` 概念整體移除；任何登入 user 皆可建班與開活動，teacher＝擁有關係（`classrooms.teacher_id`）；前端「教師／學生視角」為 client-side 導覽偏好（記住上次使用的視角）；每 user 自有班內的平台用量由 #115 容量設計承接。取代 #131 的 capability 模型與同日稍早的 mode-toggle 拍板（#205/#208 未落地即結案）。
+  - **雙軌模式（2026-11-20 查證 Discord 實作）**：續航型導覽狀態（上次瀏覽的頁/視角）＝ per-device localStorage、刻意不同步（裝置獨立導航、開屏即渲染、免後端寫入）；跨裝置語義狀態（已讀 ack、版面偏好）＝ server-side。未來若要跨裝置同步視角偏好，走 `users.lang` 同模式的個「偏好」欄位即可——偏好持久化與無 mode 拍板禁的「授權語意」是兩回事。
 - **admin 提權推翻**：「使用者提權」在 #131 模型中是取得能力的唯一路徑（admin 成本閘門）；無 mode 定稿後能力位本身不存在，推翻更徹底——admin 的桿子只剩帳號層：建立帳號與停用（`session_version` bump，session 立即失效）。
 - **演進記錄（同日較早、已被取代）**：mode-toggle 拍板（「同一帳號的模式切換、capability 自翻、降權不可執行」）——其洞見（擁有權不隨模式消失、`classroomAccess` 以擁有權判斷）被無 mode 定稿吸收。
 
