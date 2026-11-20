@@ -217,11 +217,10 @@ export class ReportRunner extends DurableObject<Env> {
     if (this.models.faux && activity.statement.includes(FAUX_GENERATE_FAILURE_MARKER)) {
       throw new Error("faux_report_generate_failure");
     }
-    const participants = await all<{ id: string; display_name: string; lang: Lang }>(
+    const participants = await all<{ id: string; display_name: string }>(
       db,
-      `SELECT p.id, p.display_name, COALESCE(u.lang, 'zh') AS lang
+      `SELECT p.id, p.display_name
        FROM activity_participants p
-       LEFT JOIN users u ON u.id = p.user_id
        WHERE p.activity_id = $aid
        ORDER BY p.joined_at, p.id`,
       { aid: activityId },
@@ -302,7 +301,7 @@ export class ReportRunner extends DurableObject<Env> {
                 "student-report",
                 studentReportInput(activity, transcript),
                 legs,
-                { lang: participant.lang, submitTool: SUBMIT_STUDENT_ANALYSIS },
+                { lang: teacherLang, submitTool: SUBMIT_STUDENT_ANALYSIS },
               );
               try {
                 studentAnalyses.set(participant.id, StudentAnalysisSchema.parse(payloadOf(text, payload, "report")));

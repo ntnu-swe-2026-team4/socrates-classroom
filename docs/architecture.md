@@ -153,7 +153,7 @@ no queue：busy 時第二發被拒（`ConversationBusy` → error frame），不
 ```
 startReport → pending 標記 → alarm → generate：
   transcriptOf（AI：…/學生（n）：… 編號＋假名冪等）
-  → Promise.all 平行 per-student studentReport（重試 2）
+  → Promise.all 平行 per-student studentReport（重試 2；語言＝老師的 users.lang，與 classReport 相同）
   → classReport（立場軸/落點/分群）
   → persist（D1 reports：teacher_report=classReport、student_reports=analysis+violations-from-transcript）
 ```
