@@ -5,7 +5,7 @@ import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import type { StudentAnalysis } from "@socrates/shared";
-import { citesSpokenLines, reportAlarmPlan } from "../src/do/report-runner";
+import { citesSpokenLines, pointOnAxis, reportAlarmPlan, toClassReport } from "../src/do/report-runner";
 import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
 
 let teacherCookie: string;
@@ -228,6 +228,42 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(ownReport.analysis?.stated).toBe(true);
     expect(ownReport.positions).toEqual([]);
   }, 60_000);
+});
+
+describe("class report positions: the model gives the side and how firmly; the server computes the point", () => {
+  it("pointOnAxis: left is below 50, right above, middle 50; firmer is farther from the middle", () => {
+    expect([1, 3, 5].map((strength) => pointOnAxis("left", strength))).toEqual([
+      { end: "low", at: 40 },
+      { end: "low", at: 20 },
+      { end: "low", at: 0 },
+    ]);
+    expect([1, 3, 5].map((strength) => pointOnAxis("right", strength).at)).toEqual([60, 80, 100]);
+    expect(pointOnAxis("middle", 5)).toEqual({ end: "middle", at: 50 });
+  });
+
+  it("toClassReport: the axis' left and right ends become low and high; positions carry end and at, not side", () => {
+    const report = toClassReport({
+      students: [],
+      unstated: [],
+      axes: [
+        {
+          name: "n",
+          left: "l",
+          right: "r",
+          positions: [{ id: "學生1", turns: [1], view: "v", side: "right", strength: 2 }],
+          why: "w",
+        },
+      ],
+      overview: ["o"],
+    });
+    expect(report.axes[0]).toEqual({
+      name: "n",
+      low: "l",
+      high: "r",
+      positions: [{ id: "學生1", turns: [1], view: "v", end: "high", at: 70 }],
+      why: "w",
+    });
+  });
 });
 
 describe("student reports cite only lines the student said", () => {

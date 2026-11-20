@@ -222,7 +222,7 @@ interface StudentAnalysis {
 interface ClassReport {
   students: {id; summary: {step; turns}[]}[];   // 逐生摘要（cause → result 步驟＋出處行號）；空陣列＝全班未表態
   unstated: string[];                            // 未表態者
-  axes: {name; low; high; positions: {id; turns; view; end: "low"|"middle"|"high"; at: 0-100}[]; why}[];  // 立場軸＋落點；空陣列＝無分歧（overview 照實寫）
+  axes: {name; low; high; positions: {id; turns; view; end: "low"|"middle"|"high"; at: 0-100}[]; why}[];  // 立場軸＋落點；空陣列＝無分歧（overview 照實寫）。模型只給靠哪一端（left／middle／right）與堅定程度 1–5，end 與 at 由 server 換算（left→low、right→high；at＝50∓10×strength，middle＝50）
   overview: string[];                            // 全班整理
 }
 

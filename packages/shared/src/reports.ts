@@ -32,6 +32,30 @@ export const ClassReportSchema = z.object({
 
 export type ClassReport = z.infer<typeof ClassReportSchema>;
 
+export const ClassReportSubmissionSchema = ClassReportSchema.extend({
+  axes: z.array(
+    z.object({
+      name: z.string(),
+      left: z.string(),
+      right: z.string(),
+      positions: z
+        .array(
+          z.object({
+            id: z.string(),
+            turns,
+            view: z.string(),
+            side: z.enum(["left", "middle", "right"]),
+            strength: z.number().int().min(1).max(5),
+          }),
+        )
+        .min(1),
+      why: z.string(),
+    }),
+  ),
+});
+
+export type ClassReportSubmission = z.infer<typeof ClassReportSubmissionSchema>;
+
 export const StudentAnalysisSchema = z.union([
   z.object({
     stated: z.literal(true),

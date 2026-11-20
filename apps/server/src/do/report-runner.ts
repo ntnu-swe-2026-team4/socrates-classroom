@@ -19,9 +19,10 @@ import { all, one, run } from "../db/d1";
 import { nowIso } from "../http";
 import { classReportInput, studentReportInput } from "../prompts/assemble";
 import {
-  ClassReportSchema,
+  ClassReportSubmissionSchema,
   StudentAnalysisSchema,
   type ClassReport,
+  type ClassReportSubmission,
   type Lang,
   type ReportPosition,
   type StudentAnalysis,
@@ -339,7 +340,7 @@ export class ReportRunner extends DurableObject<Env> {
         legs,
         { lang: teacherLang, submitTool: SUBMIT_CLASS_REPORT },
       );
-      const classReport = ClassReportSchema.parse(payloadOf(classText, classPayload));
+      const classReport = toClassReport(ClassReportSubmissionSchema.parse(payloadOf(classText, classPayload)));
       await this.persist(activityId, activity.title, classReport, roster, studentAnalyses, pseudonyms, rendered);
     } catch (error) {
       console.error("[report] class report failed", error instanceof Error ? error.name : typeof error);
@@ -481,6 +482,32 @@ function positionsOf(classReport: ClassReport | null, pseudonym: string): Report
   return positions;
 }
 
+export function pointOnAxis(
+  side: "left" | "middle" | "right",
+  strength: number,
+): { end: "low" | "middle" | "high"; at: number } {
+  if (side === "middle") return { end: "middle", at: 50 };
+  return side === "left" ? { end: "low", at: 50 - strength * 10 } : { end: "high", at: 50 + strength * 10 };
+}
+
+export function toClassReport(submission: ClassReportSubmission): ClassReport {
+  return {
+    ...submission,
+    axes: submission.axes.map(({ name, left, right, positions, why }) => ({
+      name,
+      low: left,
+      high: right,
+      positions: positions.map(({ id, turns, view, side, strength }) => ({
+        id,
+        turns,
+        view,
+        ...pointOnAxis(side, strength),
+      })),
+      why,
+    })),
+  };
+}
+
 export function citesSpokenLines(analysis: StudentAnalysis, spokenLines: number): boolean {
   const cited = analysis.stated
     ? [...analysis.claim.turns, ...analysis.reasons.turns, ...(analysis.tension?.turns ?? [])]
@@ -540,16 +567,16 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
           axes: [
             {
               name: "契約與承諾",
-              low: "契約至上",
-              high: "人情優先",
+              left: "契約至上",
+              right: "人情優先",
               positions: [
-                { id: first, turns: [1], view: "先守約再談情", end: "middle", at: 50 },
-                { id: second, turns: [1], view: "契約就是契約", end: "low", at: 10 },
+                { id: first, turns: [1], view: "先守約再談情", side: "middle", strength: 1 },
+                { id: second, turns: [1], view: "契約就是契約", side: "left", strength: 4 },
               ],
-              why: "全班多數先守約，但接受例外",
+              why: "多數先守約",
             },
           ],
-          overview: ["全班集中在契約與人情的取捨"],
+          overview: ["契約與人情的取捨"],
         }),
       ],
       { stopReason: "toolUse" },

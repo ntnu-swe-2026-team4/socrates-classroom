@@ -1,12 +1,12 @@
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { z } from "zod";
-import { ClassReportSchema, StudentAnalysisSchema } from "@socrates/shared";
+import { ClassReportSubmissionSchema, StudentAnalysisSchema } from "@socrates/shared";
 
 export const SUBMIT_STUDENT_ANALYSIS = "submit_student_analysis";
 export const SUBMIT_CLASS_REPORT = "submit_class_report";
 
 const studentAnalysisParameters = z.toJSONSchema(z.object({ report: StudentAnalysisSchema }));
-const classReportParameters = z.toJSONSchema(ClassReportSchema);
+const classReportParameters = z.toJSONSchema(ClassReportSubmissionSchema);
 
 const submitStudentAnalysis = defineTool({
   name: SUBMIT_STUDENT_ANALYSIS,
