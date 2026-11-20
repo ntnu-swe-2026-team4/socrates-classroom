@@ -14,6 +14,20 @@
 - `lib/speech.ts` 退化為 facade：公開簽名（`markIntent`／`stopSpeech`／`speak`／`speakableText` 與兩個 type）不變，模組級可變狀態（`intentAt`／`sequence`／`active`／`BroadcastChannel`）全數移入 `SpeechArbiter` 實例；`test/speech.test.ts` 既有仲裁迴歸測試在新結構下全綠
 - 行為零變更：跨分頁仲裁、打斷／跳過／靜音優先序、句尾截斷與 `TTS_MAX_CHARS` 預算皆與前一版一致
 
+## 2026-11-21 — 帳號接線：meOf guards、join 雙軌、登出清殘留（`split/181-account-wiring`，#181）
+
+### Added
+
+- `api/me.ts`：`meOf` 統一 guard 輔助——identity 查詢失敗 `.catch(() => null)` 視為未登入（redirect 取代 error boundary）；九個 guard 路由全數收斂（home／dialogue／settings／t.setup／t.live／admin.users／classrooms×2／report）
+- `/join/:code` 帳號／訪客雙軌（#136 帳號模型接線）：登入直入免填名（`POST /join` 不帶 `name`、join 後落地班級頁）；訪客走選擇卡 → 填名＋ToS；`join_as` 帳號卡＋切換帳號；`JoinResult.user` 寫回 `["me"]` 快取並失效班級查詢
+- `routes.test.tsx` F01b／F01c（帳號直入不重填名；POST body 不含 `name`）＋ guard 失敗 redirect 測試
+
+### Changed
+
+- `api.joinAsGuest(code, name?)`／`api.joinByInvite(token, { name?, tosAccepted })` 簽名對齊 server（`JoinInputSchema.name` optional；invite 不再送空字串 name）
+- 登出清 `socrates_terms`／`socrates_activity` localStorage 殘留（`clearLocalUserState`）
+- `/join`（index）改 redirect `/classrooms`（入場改由班級頁的邀請碼欄）
+
 ## 2026-11-21 — 殼層重構：side rail、compact 帳號選單、跨 tab session 同步（`split/179-appshell`，#179）
 
 ### Added
