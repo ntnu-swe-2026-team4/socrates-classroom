@@ -341,6 +341,46 @@ export const NotificationInputSchema = z.object({
   body: z.string().trim().min(1).max(2000),
 });
 
+export const AnnouncementInputSchema = z.object({ body: z.string().trim().min(1).max(2000) });
+export const AnnouncementSchema = z.object({
+  id: z.string(),
+  body: z.string(),
+  authorName: z.string(),
+  createdAt: z.string(),
+});
+export type Announcement = z.infer<typeof AnnouncementSchema>;
+
+export const ClassroomMembersSchema = z.object({
+  teacher: z.object({ id: z.string(), name: z.string() }),
+  members: z.array(z.object({ id: z.string(), name: z.string(), joinedAt: z.string() })),
+});
+export type ClassroomMembers = z.infer<typeof ClassroomMembersSchema>;
+
+export const PostInputSchema = z.object({
+  body: z.string().trim().min(1).max(2000),
+  parentId: z.string().optional(),
+});
+export const PostReplySchema = z.object({
+  id: z.string(),
+  body: z.string(),
+  authorId: z.string(),
+  authorName: z.string(),
+  isTeacher: z.boolean(),
+  createdAt: z.string(),
+});
+export type PostReply = z.infer<typeof PostReplySchema>;
+export const PostSchema = PostReplySchema.extend({ replies: z.array(PostReplySchema) });
+export type Post = z.infer<typeof PostSchema>;
+
+export const ClassroomActivitySchema = z.object({
+  id: z.string(),
+  mode: ActivityModeSchema,
+  topicTitle: z.string(),
+  finishedAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type ClassroomActivity = z.infer<typeof ClassroomActivitySchema>;
+
 export const TeacherKeyModelSchema = z.object({
   model: z.string(),
   maxConcurrency: z.number().int().min(1).max(100).nullable(),
