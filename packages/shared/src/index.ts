@@ -226,6 +226,11 @@ export const SignupInputSchema = z.object({
   name: z.string().trim().min(1).max(80),
   tosAccepted: z.boolean(),
 });
+export const PasswordForgotInputSchema = z.object({ email: emailField });
+export const PasswordResetInputSchema = z.object({
+  token: z.string().max(2048),
+  password: z.string().min(8).max(128),
+});
 export const JoinInputSchema = z.object({
   code: z.string().min(4).max(32),
   name: z.string().trim().max(80).optional(),
@@ -394,6 +399,7 @@ export const ERROR_CODES = [
   "oauth_email_unverified",
   "oauth_failed",
   "email_taken",
+  "reset_token_invalid",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
