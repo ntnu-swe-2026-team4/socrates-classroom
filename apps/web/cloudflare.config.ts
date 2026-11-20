@@ -39,6 +39,9 @@ export default defineConfig(({ mode }) => {
               GOOGLE_CLIENT_SECRET: mode === "development" ? text("GOOGLE_CLIENT_SECRET", "") : bindings.secret(),
             }
           : {}),
+        ALERT_FROM_EMAIL: text("ALERT_FROM_EMAIL", "noreply@socrates.g36maid.dev"),
+        ADMIN_ALERT_EMAIL: text("ADMIN_ALERT_EMAIL", ""),
+        SEND_EMAIL: bindings.sendEmail(),
       },
       assets: { notFoundHandling: "single-page-application", runWorkerFirst: ["/api/*", "/health"] },
       domains: ["socrates.g36maid.dev"],
