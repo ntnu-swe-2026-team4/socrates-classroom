@@ -105,6 +105,10 @@ export interface Api {
     provider: string,
     maxConcurrency: number | null,
   ): Promise<{ provider: string; maxConcurrency: number | null }>;
+  putTeacherKeyMonthlyQuota(
+    provider: string,
+    monthlyQuotaUsd: number | null,
+  ): Promise<{ provider: string; monthlyQuotaUsd: number | null }>;
   putTeacherKeyModel(
     provider: string,
     model: string,
@@ -365,6 +369,12 @@ export const httpApi: Api = {
     return raw<{ provider: string; maxConcurrency: number | null }>(`/settings/keys/${encodeURIComponent(provider)}`, {
       method: "PUT",
       json: { maxConcurrency },
+    });
+  },
+  async putTeacherKeyMonthlyQuota(provider, monthlyQuotaUsd) {
+    return raw<{ provider: string; monthlyQuotaUsd: number | null }>(`/settings/keys/${encodeURIComponent(provider)}`, {
+      method: "PUT",
+      json: { monthlyQuotaUsd },
     });
   },
   async putTeacherKeyModel(provider, model, maxConcurrency) {
