@@ -15,6 +15,11 @@ export const UserSchema = z.object({
 });
 export type User = z.infer<typeof UserSchema>;
 
+export const OAUTH_PROVIDERS = ["google", "facebook"] as const;
+export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
+export const OAuthProvidersSchema = z.object({ providers: z.array(z.enum(OAUTH_PROVIDERS)) });
+export type OAuthProviders = z.infer<typeof OAuthProvidersSchema>;
+
 export const TopicDraftSchema = z.object({
   id: z.string(),
   title: z.string(),
