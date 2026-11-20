@@ -262,6 +262,42 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     }
   }, 20_000);
 
+  it("reports a dialogue run deadline while the original run is still active", async () => {
+    const student = await joinStudent("回覆逾時");
+    const thread = `${activityId}:${student.participantId}`;
+    const stub = env.Chat.get(env.Chat.idFromName(thread));
+    const socket = await connect(thread, student.cookie);
+    try {
+      const rx = frames(socket);
+      socket.send(JSON.stringify({ type: "watch" }));
+      await rx.until((f) => f.some((m) => m.type === "view"));
+
+      const deadline = await runInDurableObject(stub, async (instance) => {
+        const chat = instance as Chat;
+        const session = chat.harness.session(ROOT_SESSION);
+        const receipt = await session.submit("正義是什麼？".repeat(100), { whenBusy: "reject" });
+        expect(receipt.accepted).toBe(true);
+        expect(await session.busy()).toBe(true);
+        const time = Date.now() + 1_000;
+        await chat.lifecycle.jobs.push({
+          fn: "dialogue-run-deadline",
+          time,
+          payload: { session: ROOT_SESSION, operationId: receipt.operationId },
+        });
+        return time;
+      });
+
+      await rx.until((f) => f.some((m) => m.type === "error" && m.code === "llm_unavailable" && m.id === undefined));
+      expect(Date.now()).toBeGreaterThanOrEqual(deadline);
+      expect(
+        await runInDurableObject(stub, (instance) => (instance as Chat).harness.session(ROOT_SESSION).busy()),
+      ).toBe(true);
+    } finally {
+      socket.close();
+      await runInDurableObject(stub, (instance) => (instance as Chat).harness.session(ROOT_SESSION).abort());
+    }
+  }, 20_000);
+
   it("revoked participant is refused after hibernation wake (ownership re-verified, not trusted from connect time)", async () => {
     const student = await joinStudent("被移出的學生");
     const thread = `${activityId}:${student.participantId}`;
