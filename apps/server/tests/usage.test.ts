@@ -17,8 +17,8 @@ const THRESHOLDS = [60, 80, 100];
 async function seedTeacher(id: string, quota: number | null, email: string | null): Promise<void> {
   await run(
     env.DB,
-    `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-     VALUES ($id, $name, 'teacher', $email, 'x', 'zh', '2026-11-21T00:00:00.000Z')`,
+    `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+     VALUES ($id, $name, $email, 'x', 'zh', '2026-11-21T00:00:00.000Z')`,
     { id, name: `額度${id}`, email },
   );
   await run(

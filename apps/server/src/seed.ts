@@ -149,8 +149,8 @@ async function ensureUser(db: Db, account: FixtureAccount, hash: string, at: str
   }
   await run(
     db,
-    `INSERT INTO users (id, name, role, email, password_hash, is_admin, created_at)
-     VALUES ($id, $name, 'student', $email, $hash, $admin, $at)`,
+    `INSERT INTO users (id, name, email, password_hash, is_admin, created_at)
+     VALUES ($id, $name, $email, $hash, $admin, $at)`,
     { ...params, id: account.id, at },
   );
   return account.id;

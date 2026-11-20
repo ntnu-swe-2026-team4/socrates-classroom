@@ -44,7 +44,6 @@ const OAUTH_SUCCESS_PATH = "/home";
 interface UserRow {
   id: string;
   name: string;
-  role: "student" | "teacher";
   email: string | null;
   password_hash: string | null;
   is_admin: number;
@@ -99,7 +98,7 @@ export function authRoutes() {
       try {
         await batch(c.env.DB, [
           {
-            sql: "INSERT INTO users (id, name, role, email, password_hash, lang, created_at) VALUES ($id, $name, 'student', $email, $hash, $lang, $at)",
+            sql: "INSERT INTO users (id, name, email, password_hash, lang, created_at) VALUES ($id, $name, $email, $hash, $lang, $at)",
             params: { id, name: input.name, email: input.email, hash, at, lang: langOf(c) },
           },
           {
@@ -127,7 +126,7 @@ export function authRoutes() {
       try {
         await batch(c.env.DB, [
           {
-            sql: "INSERT INTO users (id, name, role, email, password_hash, lang, created_at) VALUES ($id, $name, 'student', $email, $hash, $lang, $at)",
+            sql: "INSERT INTO users (id, name, email, password_hash, lang, created_at) VALUES ($id, $name, $email, $hash, $lang, $at)",
             params: { id, name: input.name, email: input.email, hash, lang: langOf(c), at: nowIso() },
           },
         ]);
@@ -216,7 +215,7 @@ async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthPr
   try {
     await batch(c.env.DB, [
       {
-        sql: "INSERT INTO users (id, name, role, lang, created_at) VALUES ($id, $name, 'student', $lang, $at)",
+        sql: "INSERT INTO users (id, name, lang, created_at) VALUES ($id, $name, $lang, $at)",
         params: { id, name: profile.name, lang: langOf(c), at },
       },
       {

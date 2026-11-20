@@ -60,8 +60,8 @@ export function adminRoutes() {
       try {
         await run(
           c.env.DB,
-          `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
-           VALUES ($id, $name, 'student', $email, $hash, $lang, $at)`,
+          `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+           VALUES ($id, $name, $email, $hash, $lang, $at)`,
           {
             id,
             name: input.name,
