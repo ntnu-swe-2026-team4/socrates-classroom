@@ -2,6 +2,18 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — speech 仲裁政策抽離：`SpeechArbiter` 與注入式環境（`refactor/165-speech-arbiter`，#165）
+
+### Added
+
+- `lib/speechArbiter.ts`：`SpeechArbiter` 持有 TTS 單通道的全部自家狀態（意圖序、當前播放、跨分頁播報），依賴經 `SpeechEnv` 注入（transport／mute／speakingSource／跨分頁 announce／字數上限）；`defaultSpeechEnv` 為瀏覽器實作，`dispose()` 退訂跨分頁監聽
+- `test/speechArbiter.test.ts`（5 tests，全為 ctor fakes、零 global stubbing）：兩個實例互不干擾、意圖優先序、靜音短路、注入式字數上限的句尾截斷、他分頁播報中斷本頁與 `dispose` 退訂
+
+### Changed
+
+- `lib/speech.ts` 退化為 facade：公開簽名（`markIntent`／`stopSpeech`／`speak`／`speakableText` 與兩個 type）不變，模組級可變狀態（`intentAt`／`sequence`／`active`／`BroadcastChannel`）全數移入 `SpeechArbiter` 實例；`test/speech.test.ts` 既有仲裁迴歸測試在新結構下全綠
+- 行為零變更：跨分頁仲裁、打斷／跳過／靜音優先序、句尾截斷與 `TTS_MAX_CHARS` 預算皆與前一版一致
+
 ## 2026-11-21 — 殼層重構：side rail、compact 帳號選單、跨 tab session 同步（`split/179-appshell`，#179）
 
 ### Added

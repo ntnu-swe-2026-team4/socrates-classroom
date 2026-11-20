@@ -39,7 +39,7 @@
 | 3D 頭像  | three.js 蘇格拉底半身像（`socrates.glb`）＋viseme/expression morph targets，對話頁角落小窗 `SocratesCompanion` 呈現（可拖曳、可關閉、主題切換墨色）             | `SocratesCompanion`・`public/socrates.glb`                  |
 | 情緒表現 | avatar extension 產生 `app.emotion` entry（機率本體）→ 頭像表情映射                                                                                             | `dialogue.tsx`（thinking 暫態 Confused；回合後按 entry）    |
 | 語音輸入 | 原生 SpeechRecognition 優先；無支援（Firefox）時 MediaRecorder → server STT；effect-free hook（#183）                                                           | `POST /api/stt`・`useVoiceInput`                            |
-| 語音朗讀 | 單通道 TTS（跨 tab 仲裁、句尾截斷 ≤4000 字）＋說話中振幅驅動嘴型（#180/#183）                                                                                   | `POST /api/tts`・`lib/speech.ts`                            |
+| 語音朗讀 | 單通道 TTS（跨 tab 仲裁、句尾截斷 ≤4000 字）＋說話中振幅驅動嘴型（#180/#183）                                                                                   | `POST /api/tts`・`lib/speechArbiter.ts`                     |
 | 名詞查詢 | 選取文字 → 查詢面板（prose oneshot，失敗時顯示錯誤）；查詢紀錄持久化                                                                                            | `POST /api/lookup`・`TermPanel`                             |
 | 順帶一問 | 頂欄按鈕或在輸入框打 `/btw 問題` 開側欄，暫離蘇格拉底問定義／背景（例：電車難題）；fork 主對話，內容不回寫主對話與報告；「新話題」以當下主對話重新 fork（#121） | WS `btw` op（`api-contract.md` §5.4）・`BtwPanel`・`useBtw` |
 | 對話歷史 | pi transcript 永久保存於 DO；重連 watch 即恢復完整 view                                                                                                         | `watch`（無獨立歷史端點）                                   |

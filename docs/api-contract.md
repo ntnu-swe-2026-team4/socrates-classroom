@@ -267,10 +267,10 @@ interface ViolationSlice {
 
 ## 8. 語音（#69）
 
-| Operation                                          | 說明                                                                                                                                                                                  |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/stt`（multipart audio ≤15MB）→ `{text}` | 供無 Web Speech API 的瀏覽器（Firefox）；支援者前端自走原生                                                                                                                           |
-| `POST /api/tts` `{text, lang}` → audio stream      | server-side 為保證路徑；`text` ≤ `TTS_MAX_CHARS = 4000`（shared `TtsInputSchema`，客戶端 `lib/speech.ts` 同步在句尾截斷）——嘴型驅動用 amplitude：`Api.tts(text, onAmplitude, signal)` |
+| Operation                                          | 說明                                                                                                                                                                                         |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/stt`（multipart audio ≤15MB）→ `{text}` | 供無 Web Speech API 的瀏覽器（Firefox）；支援者前端自走原生                                                                                                                                  |
+| `POST /api/tts` `{text, lang}` → audio stream      | server-side 為保證路徑；`text` ≤ `TTS_MAX_CHARS = 4000`（shared `TtsInputSchema`，客戶端 `lib/speechArbiter.ts` 同步在句尾截斷）——嘴型驅動用 amplitude：`Api.tts(text, onAmplitude, signal)` |
 
 ## 9. 查詢與 teacher keys
 
