@@ -34,17 +34,15 @@ export interface SessionEnv {
 interface UserRow {
   id: string;
   name: string;
-  can_manage_classes: number;
   is_admin: number;
   disabled_at: string | null;
   session_version: number;
 }
 
-export function toUser(row: { id: string; name: string; can_manage_classes: number; is_admin: number }): User {
+export function toUser(row: { id: string; name: string; is_admin: number }): User {
   return {
     id: row.id,
     name: row.name,
-    canManageClasses: row.can_manage_classes === 1,
     isAdmin: row.is_admin === 1,
   };
 }
@@ -152,7 +150,7 @@ export async function lookupSession(env: SessionEnv, token: string | undefined):
   if (!claims) return { kind: "missing" };
   const row = await one<UserRow>(
     env.DB,
-    "SELECT id, name, can_manage_classes, is_admin, disabled_at, session_version FROM users WHERE id = $id",
+    "SELECT id, name, is_admin, disabled_at, session_version FROM users WHERE id = $id",
     { id: claims.uid },
   );
   if (!row) return { kind: "missing" };

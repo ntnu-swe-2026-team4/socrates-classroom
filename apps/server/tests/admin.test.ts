@@ -48,7 +48,7 @@ beforeAll(async () => {
   admin = await login("admin@socrates.tw");
 });
 
-describe("admin capability model (#131)", () => {
+describe("admin account management (no-mode, #210)", () => {
   test("admin endpoints are denied to anonymous and to non-admin sessions", async () => {
     expect((await call("/api/admin/users")).status).toBe(401);
 
@@ -64,30 +64,31 @@ describe("admin capability model (#131)", () => {
     expect(created.status).toBe(403);
   });
 
-  test("admin lists every account with capability flags and disabled state", async () => {
+  test("admin lists every account with admin flag and disabled state, no capability column", async () => {
     const res = await call("/api/admin/users", { headers: { Cookie: admin } });
     expect(res.status).toBe(200);
     const users = (await res.json()) as AdminUser[];
     const byId = new Map(users.map((user) => [user.id, user]));
-    expect(byId.get("u_fx_admin")).toMatchObject({ isAdmin: true, canManageClasses: true, disabled: false });
-    expect(byId.get("u_fx_lin")).toMatchObject({ isAdmin: false, canManageClasses: true });
-    expect(byId.get("u_fx_student_a")).toMatchObject({ isAdmin: false, canManageClasses: false });
+    expect(byId.get("u_fx_admin")).toMatchObject({ isAdmin: true, disabled: false });
+    expect(byId.get("u_fx_lin")).toMatchObject({ isAdmin: false, disabled: false });
+    expect(byId.get("u_fx_student_a")).toMatchObject({ isAdmin: false, disabled: false });
+    for (const user of users) expect("canManageClasses" in user).toBe(false);
   });
 
-  test("granting manage_classes takes effect on the existing session (no re-login)", async () => {
+  test("any logged-in account can create classrooms without a grant (#210)", async () => {
     const student = await login("student-c@socrates.tw");
-    const before = await call("/api/classrooms", jsonInit({ name: "提權前" }, student));
-    expect(before.status).toBe(403);
-
-    const promoted = await patchUser(admin, "u_fx_student_c", { canManageClasses: true });
-    expect(promoted.status).toBe(200);
-    expect(((await promoted.json()) as AdminUser).canManageClasses).toBe(true);
-
     const me = await call("/api/me", { headers: { Cookie: student } });
-    expect(((await me.json()) as { canManageClasses: boolean }).canManageClasses).toBe(true);
+    expect("canManageClasses" in ((await me.json()) as Record<string, unknown>)).toBe(false);
 
-    const created = await call("/api/classrooms", jsonInit({ name: "提權後班" }, student));
+    const created = await call("/api/classrooms", jsonInit({ name: "學生自建班" }, student));
     expect(created.status).toBe(201);
+
+    const topics = await call("/api/topics", { headers: { Cookie: student } });
+    expect(topics.status).toBe(200);
+
+    const legacyGrant = await patchUser(admin, "u_fx_student_c", { canManageClasses: true });
+    expect(legacyGrant.status).toBe(422);
+    expect(((await legacyGrant.json()) as { code: string }).code).toBe("validation");
   });
 
   test("disable revokes the live session immediately, blocks login, and re-enable needs a fresh login", async () => {
@@ -139,15 +140,15 @@ describe("admin capability model (#131)", () => {
     expect(linRooms.every((room) => room.role === "teacher")).toBe(true);
   });
 
-  test("admin creates an account with a password and capability; duplicate email conflicts", async () => {
+  test("admin creates an account with a password; duplicate email conflicts", async () => {
     const email = `made-${Date.now()}@socrates.tw`;
     const created = await call(
       "/api/admin/users",
-      jsonInit({ name: "新任老師", email, password: "teacher-pass-1", canManageClasses: true }, admin),
+      jsonInit({ name: "供應帳號", email, password: "teacher-pass-1" }, admin),
     );
     expect(created.status).toBe(201);
     const payload = (await created.json()) as AdminUser;
-    expect(payload.canManageClasses).toBe(true);
+    expect("canManageClasses" in payload).toBe(false);
     expect(payload.isAdmin).toBe(false);
 
     const fresh = await login(email, "teacher-pass-1");

@@ -47,7 +47,6 @@ interface UserRow {
   role: "student" | "teacher";
   email: string | null;
   password_hash: string | null;
-  can_manage_classes: number;
   is_admin: number;
   disabled_at: string | null;
 }
@@ -114,7 +113,7 @@ export function authRoutes() {
         if (pairs.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
         fail(409, "conflict");
       }
-      const user = { id, name: input.name, canManageClasses: false, isAdmin: false };
+      const user = { id, name: input.name, isAdmin: false };
       await ensureParticipant(c.env.DB, classroom.current_activity_id, user, at);
       await startSession(c, user);
       return c.json(user);
@@ -137,7 +136,7 @@ export function authRoutes() {
         if (pairs.some(([table, column]) => table === "users" && column === "email")) fail(409, "email_taken");
         throw error;
       }
-      const user: User = { id, name: input.name, canManageClasses: false, isAdmin: false };
+      const user: User = { id, name: input.name, isAdmin: false };
       await startSession(c, user);
       return c.json(user);
     })
@@ -208,13 +207,9 @@ function oauthFailure(c: Ctx, code: ErrorCode): Response {
 
 async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthProfile): Promise<User> {
   const findSql =
-    "SELECT u.id, u.name, u.can_manage_classes, u.is_admin FROM user_identities i JOIN users u ON u.id = i.user_id WHERE i.provider = $provider AND i.provider_user_id = $subject";
+    "SELECT u.id, u.name, u.is_admin FROM user_identities i JOIN users u ON u.id = i.user_id WHERE i.provider = $provider AND i.provider_user_id = $subject";
   const key = { provider, subject: profile.subject };
-  const existing = await one<{ id: string; name: string; can_manage_classes: number; is_admin: number }>(
-    c.env.DB,
-    findSql,
-    key,
-  );
+  const existing = await one<{ id: string; name: string; is_admin: number }>(c.env.DB, findSql, key);
   if (existing) return toUser(existing);
   const id = newId("u_");
   const at = nowIso();
@@ -231,13 +226,9 @@ async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthPr
     ]);
   } catch (error) {
     if (!uniqueViolationColumns(error).some(([table]) => table === "user_identities")) throw error;
-    const raced = await one<{ id: string; name: string; can_manage_classes: number; is_admin: number }>(
-      c.env.DB,
-      findSql,
-      key,
-    );
+    const raced = await one<{ id: string; name: string; is_admin: number }>(c.env.DB, findSql, key);
     if (!raced) throw error;
     return toUser(raced);
   }
-  return { id, name: profile.name, canManageClasses: false, isAdmin: false };
+  return { id, name: profile.name, isAdmin: false };
 }

@@ -66,11 +66,6 @@ const M: Record<ErrorCode, Entry> = {
     en: "This account is disabled. Contact an administrator.",
     es: "Esta cuenta está deshabilitada. Contacta a un administrador.",
   },
-  capability_required: {
-    zh: "你沒有管理班級的權限。",
-    en: "You do not have permission to manage classrooms.",
-    es: "No tienes permiso para administrar clases.",
-  },
   already_streaming: {
     zh: "上一則回覆還在產生中。",
     en: "The previous reply is still streaming.",

@@ -112,13 +112,10 @@ async function googleLogin(sub: string, extra: Record<string, unknown> = {}): Pr
   return res;
 }
 
-async function me(
-  cookie: string,
-): Promise<{ id: string; name: string; canManageClasses: boolean; isAdmin: boolean } | null> {
+async function me(cookie: string): Promise<{ id: string; name: string; isAdmin: boolean } | null> {
   return (await (await call("/api/me", { headers: { Cookie: cookie } })).json()) as {
     id: string;
     name: string;
-    canManageClasses: boolean;
     isAdmin: boolean;
   } | null;
 }
@@ -148,9 +145,9 @@ describe("email signup (standalone account)", () => {
     const body = { email: "New.User@Example.com", password: "password-1", name: "新用戶", tosAccepted: true };
     const res = await call("/api/auth/signup", { method: "POST", headers: json, body: JSON.stringify(body) });
     expect(res.status).toBe(200);
-    const user = (await res.json()) as { id: string; name: string; canManageClasses: boolean; isAdmin: boolean };
+    const user = (await res.json()) as { id: string; name: string; isAdmin: boolean };
     expect(user.name).toBe("新用戶");
-    expect(user.canManageClasses).toBe(false);
+    expect("canManageClasses" in user).toBe(false);
     expect(user.isAdmin).toBe(false);
     const session = cookieOf(res);
     expect((await me(session))?.id).toBe(user.id);
@@ -186,7 +183,7 @@ describe("email signup (standalone account)", () => {
     expect(weak.status).toBe(422);
   });
 
-  test("teacher-only routes stay closed to standalone accounts; joining a classroom still works", async () => {
+  test("no-mode (#210): standalone accounts can create classrooms and manage keys; joining still works", async () => {
     const res = await call("/api/auth/signup", {
       method: "POST",
       headers: json,
@@ -198,8 +195,8 @@ describe("email signup (standalone account)", () => {
       headers: { ...json, Cookie: session },
       body: JSON.stringify({ name: "x" }),
     });
-    expect(create.status).toBe(403);
-    expect((await call("/api/settings/keys", { headers: { Cookie: session } })).status).toBe(403);
+    expect(create.status).toBe(201);
+    expect((await call("/api/settings/keys", { headers: { Cookie: session } })).status).toBe(200);
 
     const joined = await call("/api/join", {
       method: "POST",
@@ -211,9 +208,9 @@ describe("email signup (standalone account)", () => {
       role: string;
       code: string | null;
     }>;
-    expect(list.length).toBe(1);
-    expect(list[0]!.role).toBe("student");
-    expect(list[0]!.code).toBeNull();
+    expect(list.length).toBe(2);
+    expect(list.some((room) => room.role === "teacher" && room.code !== null)).toBe(true);
+    expect(list.some((room) => room.role === "student" && room.code === null)).toBe(true);
   });
 });
 
@@ -241,7 +238,6 @@ describe("Google OAuth", () => {
     expect(first.headers.get("Location")).toBe("/home");
     const session = cookieNamed(first, "socrates_session")!;
     const user = await me(session);
-    expect(user?.canManageClasses).toBe(false);
     expect(user?.isAdmin).toBe(false);
     expect(user?.name).toBe("Google g-100");
 

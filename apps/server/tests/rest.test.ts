@@ -42,8 +42,8 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
 
   test("me / guest join (ToS) → activity resolves", async () => {
     const me = await call("/api/me", { headers: { Cookie: teacher } });
-    const teacherMe = (await me.json()) as { canManageClasses: boolean; isAdmin: boolean };
-    expect(teacherMe.canManageClasses).toBe(true);
+    const teacherMe = (await me.json()) as { isAdmin: boolean };
+    expect("canManageClasses" in teacherMe).toBe(false);
     expect(teacherMe.isAdmin).toBe(false);
 
     const joined = await call("/api/join", {
@@ -190,7 +190,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     expect(typeof mineData.pseudonym).toBe("string");
   }, 60_000);
 
-  test("authorization matrix spot checks: outsider 403 / teacher-only 403 / cross-class report IDOR", async () => {
+  test("authorization matrix spot checks: outsider 403 / owner-only 403 / cross-class report IDOR", async () => {
     const outsiderLogin = await call("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -207,7 +207,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       headers: { "Content-Type": "application/json", Cookie: studentCookie },
       body: JSON.stringify({ direction: "測試" }),
     });
-    expect(genAsStudent.status).toBe(403);
+    expect(genAsStudent.status).toBe(200);
 
     const student = (await registerStudent(code, "R6生D")).cookie;
     const finish = await call(`/api/activities/${activityId}/finish`, {
@@ -224,7 +224,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     expect(crossClass.status).toBe(403);
   });
 
-  test("teacher keys CRUD: key per provider, model legs with own maxConcurrency, ordering, last4 only, teacher-only", async () => {
+  test("teacher keys CRUD: key per provider, model legs with own maxConcurrency, ordering, last4 only, per-user isolation", async () => {
     const put = await call("/api/settings/keys/openrouter", {
       method: "PUT",
       headers: { "Content-Type": "application/json", Cookie: teacher },
@@ -390,13 +390,18 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       headers: { "Content-Type": "application/json", Cookie: studentCookie },
       body: JSON.stringify({ key: "sk-or-v1-abcdefgh" }),
     });
-    expect(studentPut.status).toBe(403);
+    expect(studentPut.status).toBe(200);
     const studentLeg = await call("/api/settings/keys/openrouter/models", {
       method: "PUT",
       headers: { "Content-Type": "application/json", Cookie: studentCookie },
       body: JSON.stringify({ model: "z-ai/glm-5.3-flash" }),
     });
-    expect(studentLeg.status).toBe(403);
+    expect(studentLeg.status).toBe(200);
+
+    const studentList = await call("/api/settings/keys", { headers: { Cookie: studentCookie } });
+    const studentProviders = ((await studentList.json()) as Array<{ provider: string }>).map((row) => row.provider);
+    expect(studentProviders).toEqual(["openrouter"]);
+    expect((await listKeys())[0].models.map((leg) => leg.model)).toEqual(["z-ai/glm-4.7-flash", "z-ai/glm-5.3-flash"]);
 
     const removeLeg = await call("/api/settings/keys/openrouter/models/z-ai%2Fglm-5.3-flash", {
       method: "DELETE",
@@ -476,11 +481,10 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       body: JSON.stringify({ code, email, password: "student-pass-1", name: "註冊生A", tosAccepted: true }),
     });
     expect(registered.status).toBe(200);
-    expect(((await registered.json()) as { canManageClasses: boolean }).canManageClasses).toBe(false);
+    expect("canManageClasses" in ((await registered.json()) as Record<string, unknown>)).toBe(false);
 
     const registeredTopics = await call("/api/topics", { headers: { Cookie: cookieOf(registered) } });
-    expect(registeredTopics.status).toBe(403);
-    expect(((await registeredTopics.json()) as { code: string }).code).toBe("capability_required");
+    expect(registeredTopics.status).toBe(200);
 
     const teacherJoin = await call("/api/join", {
       method: "POST",
@@ -511,7 +515,41 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     });
     expect(login.status).toBe(200);
     const me = await call("/api/me", { headers: { Cookie: cookieOf(login) } });
-    expect(((await me.json()) as { canManageClasses: boolean }).canManageClasses).toBe(false);
+    expect("canManageClasses" in ((await me.json()) as Record<string, unknown>)).toBe(false);
+  });
+
+  test("no-mode (#210): a freshly signed-up account can create a classroom and start an activity", async () => {
+    const email = `nomode-${Date.now()}@socrates.tw`;
+    const signup = await call("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: "nomode-pass-1", name: "無模組帳", tosAccepted: true }),
+    });
+    expect(signup.status).toBe(200);
+    const account = cookieOf(signup);
+
+    const classroom = await call("/api/classrooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: account },
+      body: JSON.stringify({ name: "無模組班" }),
+    });
+    expect(classroom.status).toBe(201);
+    const classroomId = ((await classroom.json()) as { classroomId: string }).classroomId;
+
+    const topic = await call("/api/topics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: account },
+      body: JSON.stringify({ title: "自建題", statement: "自建題描述", prompts: ["你的判斷是什麼？"] }),
+    });
+    expect(topic.status).toBe(201);
+    const topicId = ((await topic.json()) as { id: string }).id;
+
+    const started = await call(`/api/classrooms/${classroomId}/activities`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: account },
+      body: JSON.stringify({ topicId, mode: "live" }),
+    });
+    expect(started.status).toBe(201);
   });
 
   test("lookup mock: websearch without binding → fallback text (prose mock)", async () => {
