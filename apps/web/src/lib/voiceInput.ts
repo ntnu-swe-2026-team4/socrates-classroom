@@ -134,12 +134,17 @@ export class VoiceInputController {
           originalOnData?.call(recorder, event);
           if (event.data.size > 0) collected.push(event.data);
         };
+        let insurance: ReturnType<typeof setTimeout> | undefined;
         recorder.onstop = () => {
+          clearTimeout(insurance);
           resolve(collected);
         };
-        if (recorder.state === "recording") recorder.stop();
-        else resolve(collected);
-        setTimeout(() => resolve(collected), 1000);
+        if (recorder.state === "recording") {
+          recorder.stop();
+          insurance = setTimeout(() => resolve(collected), 1000);
+        } else {
+          resolve(collected);
+        }
       });
     }
 

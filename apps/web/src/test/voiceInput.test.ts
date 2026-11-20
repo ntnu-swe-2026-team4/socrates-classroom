@@ -344,3 +344,17 @@ test("dispose stops the session, releases the mic, and zeroes the amplitude", as
   expect(h.env.cancelRaf).toHaveBeenCalled();
   expect(h.onAmplitude).toHaveBeenLastCalledWith(0);
 });
+
+test("a normal fallback stop leaves no pending timer behind", async () => {
+  vi.useFakeTimers();
+  try {
+    const h = mountController();
+    await h.controller.start();
+    recorderOf(h).ondataavailable?.({ data: new Blob(["A"], { type: "audio/webm" }) });
+    await h.controller.stop();
+    expect(h.onFinal).toHaveBeenCalledWith("Final transcript");
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
