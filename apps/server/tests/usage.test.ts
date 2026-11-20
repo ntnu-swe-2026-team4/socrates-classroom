@@ -1,0 +1,158 @@
+import { env } from "cloudflare:workers";
+import { applyD1Migrations } from "cloudflare:test";
+import { beforeAll, describe, expect, it, inject } from "vitest";
+import { all, run } from "../src/db/d1";
+import type { Env } from "../src/env";
+import { recordTeacherUsage } from "../src/gateway/usage";
+
+interface SentEmail {
+  to: string | { email: string; name: string } | (string | { email: string; name: string })[];
+  from: string | { email: string; name: string };
+  subject: string;
+  text: string;
+}
+
+const THRESHOLDS = [60, 80, 100];
+
+async function seedTeacher(id: string, quota: number | null, email: string | null): Promise<void> {
+  await run(
+    env.DB,
+    `INSERT INTO users (id, name, role, email, password_hash, lang, created_at)
+     VALUES ($id, $name, 'teacher', $email, 'x', 'zh', '2026-11-21T00:00:00.000Z')`,
+    { id, name: `額度${id}`, email },
+  );
+  await run(
+    env.DB,
+    `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at, monthly_quota_usd)
+     VALUES ($id, 'openrouter', 'enc', 'zzzz', 0, '2026-11-21T00:00:00.000Z', $quota)`,
+    { id, quota },
+  );
+}
+
+async function monthSpend(id: string): Promise<number> {
+  const rows = await all<{ spend: number }>(
+    env.DB,
+    `SELECT COALESCE(SUM(cost_usd), 0) AS spend FROM teacher_key_usage WHERE user_id = $id`,
+    { id },
+  );
+  return rows[0]?.spend ?? 0;
+}
+
+async function alertedThresholds(id: string): Promise<number[]> {
+  const rows = await all<{ threshold: number }>(
+    env.DB,
+    "SELECT threshold FROM teacher_quota_alerts WHERE user_id = $id ORDER BY threshold",
+    { id },
+  );
+  return rows.map((row) => row.threshold);
+}
+
+function sample(provider: string, costUsd: number) {
+  return {
+    provider,
+    model: "z-ai/glm-5.3-flash",
+    usage: {
+      input: 10,
+      output: 5,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 15,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: costUsd },
+    },
+  };
+}
+
+beforeAll(async () => {
+  await applyD1Migrations(env.DB, inject("d1Migrations"));
+});
+
+describe("teacher usage recording and quota alerts", () => {
+  function mailEnv(sent: SentEmail[]): Env {
+    return {
+      ...env,
+      SEND_EMAIL: {
+        send: async (message: SentEmail) => {
+          sent.push(message);
+          return { messageId: "m1" };
+        },
+      } as never,
+      ALERT_FROM_EMAIL: "noreply@socrates.g36maid.dev",
+      ADMIN_ALERT_EMAIL: "admin@socrates.g36maid.dev",
+    } as unknown as Env;
+  }
+
+  it("records usage for a teacher's keyed provider and ignores everything else", async () => {
+    await seedTeacher("u_qa1", null, "qa1@example.com");
+    const bare = env as unknown as Env;
+    await recordTeacherUsage(bare, "u_qa1", sample("openrouter", 0.004));
+    await recordTeacherUsage(bare, "u_qa1", sample("workers-ai", 9));
+
+    const rows = await all<{ provider_id: string; model: string; input_tokens: number; cost_usd: number }>(
+      env.DB,
+      "SELECT provider_id, model, input_tokens, cost_usd FROM teacher_key_usage WHERE user_id = 'u_qa1'",
+    );
+    expect(rows).toEqual([
+      { provider_id: "openrouter", model: "z-ai/glm-5.3-flash", input_tokens: 10, cost_usd: 0.004 },
+    ]);
+    expect(await monthSpend("u_qa1")).toBeCloseTo(0.004, 6);
+    expect(await alertedThresholds("u_qa1")).toEqual([]);
+  });
+
+  it("crossing thresholds claims each alert once per window and emails teacher and admin", async () => {
+    const sent: SentEmail[] = [];
+    await seedTeacher("u_qa2", 0.1, "qa2@example.com");
+
+    await recordTeacherUsage(mailEnv(sent), "u_qa2", sample("openrouter", 0.06));
+    expect(await alertedThresholds("u_qa2")).toEqual([60]);
+    expect(sent).toHaveLength(2);
+    expect(sent.map((message) => message.to)).toEqual(["qa2@example.com", "admin@socrates.g36maid.dev"]);
+
+    await recordTeacherUsage(mailEnv(sent), "u_qa2", sample("openrouter", 0.02));
+    expect(await alertedThresholds("u_qa2")).toEqual([60, 80]);
+    expect(sent).toHaveLength(4);
+
+    await recordTeacherUsage(mailEnv(sent), "u_qa2", sample("openrouter", 0.02));
+    expect(await alertedThresholds("u_qa2")).toEqual(THRESHOLDS);
+    expect(sent).toHaveLength(6);
+
+    await recordTeacherUsage(mailEnv(sent), "u_qa2", sample("openrouter", 0.02));
+    expect(await alertedThresholds("u_qa2")).toEqual(THRESHOLDS);
+    expect(sent).toHaveLength(6);
+  });
+
+  it("a single sample that jumps past several thresholds claims each crossed one", async () => {
+    const sent: SentEmail[] = [];
+    await seedTeacher("u_qa3", 0.1, "qa3@example.com");
+
+    await recordTeacherUsage(mailEnv(sent), "u_qa3", sample("openrouter", 0.085));
+    expect(await alertedThresholds("u_qa3")).toEqual([60, 80]);
+    expect(sent).toHaveLength(4);
+  });
+
+  it("keeps the claim but skips the email path when the binding is absent", async () => {
+    await seedTeacher("u_qa4", 0.1, "qa4@example.com");
+    const withoutBinding = { ...env } as unknown as Env;
+    delete withoutBinding.SEND_EMAIL;
+
+    await expect(recordTeacherUsage(withoutBinding, "u_qa4", sample("openrouter", 0.06))).resolves.toBeUndefined();
+    expect(await alertedThresholds("u_qa4")).toEqual([60]);
+  });
+
+  it("re-arms the threshold when the send fails", async () => {
+    await seedTeacher("u_qa5", 0.1, "qa5@example.com");
+    const failing = mailEnv([]);
+    failing.SEND_EMAIL = {
+      send: async () => {
+        throw new Error("E_RATE_LIMIT_EXCEEDED");
+      },
+    } as never;
+
+    await expect(recordTeacherUsage(failing, "u_qa5", sample("openrouter", 0.06))).resolves.toBeUndefined();
+    expect(await alertedThresholds("u_qa5")).toEqual([]);
+
+    const sent: SentEmail[] = [];
+    await recordTeacherUsage(mailEnv(sent), "u_qa5", sample("openrouter", 0.01));
+    expect(await alertedThresholds("u_qa5")).toEqual([60]);
+    expect(sent).toHaveLength(2);
+  });
+});
