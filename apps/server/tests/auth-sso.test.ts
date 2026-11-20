@@ -12,7 +12,7 @@ import {
   resetGoogleKeyCache,
 } from "../src/oauth";
 import { call, classroomWithActivity, cookieOf } from "./helpers";
-import { one } from "../src/db/d1";
+import { one, run } from "../src/db/d1";
 
 const migrations = inject("d1Migrations");
 const CLIENT_ID = "test-google-client-id";
@@ -256,6 +256,18 @@ describe("Google OAuth", () => {
     const second = await googleLogin("g-100");
     const again = await me(cookieNamed(second, "socrates_session")!);
     expect(again?.id).toBe(user?.id);
+  });
+
+  test("disabled account is refused at the OAuth gate, same as password login", async () => {
+    await googleLogin("g-175");
+    await run(
+      env.DB,
+      "UPDATE users SET disabled_at = '2026-11-22T00:00:00Z' WHERE id = (SELECT user_id FROM user_identities WHERE provider = 'google' AND provider_user_id = 'g-175')",
+      {},
+    );
+    const res = await googleLogin("g-175");
+    expect(res.headers.get("Location")).toBe("/login?error=account_disabled");
+    expect(cookieNamed(res, "socrates_session")).toBeUndefined();
   });
 
   test("same email via email signup and Google stays two accounts", async () => {

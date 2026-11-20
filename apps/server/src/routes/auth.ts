@@ -191,6 +191,7 @@ export function authRoutes() {
         throw error;
       }
       const user = await userForIdentity(c, provider, profile);
+      if (!user) return oauthFailure(c, "account_disabled");
       await startSession(c, user);
       return c.redirect(OAUTH_SUCCESS_PATH, 302);
     })
@@ -231,12 +232,19 @@ function oauthFailure(c: Ctx, code: ErrorCode): Response {
   return c.redirect(`/login?error=${code}`, 302);
 }
 
-async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthProfile): Promise<User> {
+async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthProfile): Promise<User | null> {
   const findSql =
-    "SELECT u.id, u.name, u.is_admin FROM user_identities i JOIN users u ON u.id = i.user_id WHERE i.provider = $provider AND i.provider_user_id = $subject";
+    "SELECT u.id, u.name, u.is_admin, u.disabled_at FROM user_identities i JOIN users u ON u.id = i.user_id WHERE i.provider = $provider AND i.provider_user_id = $subject";
   const key = { provider, subject: profile.subject };
-  const existing = await one<{ id: string; name: string; is_admin: number }>(c.env.DB, findSql, key);
-  if (existing) return toUser(existing);
+  const existing = await one<{ id: string; name: string; is_admin: number; disabled_at: string | null }>(
+    c.env.DB,
+    findSql,
+    key,
+  );
+  if (existing) {
+    if (existing.disabled_at !== null) return null;
+    return toUser(existing);
+  }
   const id = newId("u_");
   const at = nowIso();
   try {
@@ -252,8 +260,12 @@ async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthPr
     ]);
   } catch (error) {
     if (!uniqueViolationColumns(error).some(([table]) => table === "user_identities")) throw error;
-    const raced = await one<{ id: string; name: string; is_admin: number }>(c.env.DB, findSql, key);
-    if (!raced) throw error;
+    const raced = await one<{ id: string; name: string; is_admin: number; disabled_at: string | null }>(
+      c.env.DB,
+      findSql,
+      key,
+    );
+    if (!raced || raced.disabled_at !== null) return null;
     return toUser(raced);
   }
   return { id, name: profile.name, isAdmin: false };
