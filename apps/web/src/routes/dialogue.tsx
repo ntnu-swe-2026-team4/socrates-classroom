@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
+import { meOf } from "@/api/me";
 import { readActivityId } from "@/api/local";
 import { DialogueView } from "@/components/DialogueView";
 import { useT } from "@/i18n";
@@ -16,11 +17,7 @@ export const Route = createFileRoute("/dialogue")({
     term: typeof search.term === "string" ? search.term : undefined,
   }),
   beforeLoad: async ({ search, context }) => {
-    const me = await context.queryClient.fetchQuery({
-      queryKey: ["me"],
-      queryFn: () => api.me(),
-      staleTime: Infinity,
-    });
+    const me = await meOf(context.queryClient);
     const activityId = search.activityId ?? readActivityId();
     if (!activityId) throw redirect({ to: me ? "/home" : "/join" });
   },

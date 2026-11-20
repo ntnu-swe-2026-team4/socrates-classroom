@@ -1,12 +1,13 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
+import { meOf } from "@/api/me";
 import { Button, Card, PageHeader } from "@/components/ui";
 import { useT, type MessageKey } from "@/i18n";
 
 export const Route = createFileRoute("/home")({
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
   },
   component: HomePage,

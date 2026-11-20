@@ -39,3 +39,10 @@ export function persistActivityId(id: string): void {
     localStorage.setItem(ACTIVITY_KEY, id);
   } catch {}
 }
+
+export function clearLocalUserState(): void {
+  try {
+    localStorage.removeItem(TERM_KEY);
+    localStorage.removeItem(ACTIVITY_KEY);
+  } catch {}
+}

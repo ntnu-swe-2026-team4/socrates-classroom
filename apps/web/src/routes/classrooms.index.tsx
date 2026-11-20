@@ -3,13 +3,14 @@ import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-ro
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Users } from "lucide-react";
 import { api, type ClassroomSummary } from "@/api";
+import { meOf } from "@/api/me";
 import { Button, Input, PageHeader, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
 
 export const Route = createFileRoute("/classrooms/")({
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
   },
   component: ClassroomsPage,

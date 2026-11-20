@@ -2,13 +2,14 @@ import { useState } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, type ReportPosition, type StudentAnalysis, type ViolationSlice } from "@/api";
+import { meOf } from "@/api/me";
 import { StanceConstellation } from "@/components/StanceConstellation";
 import { Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/report/$id")({
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
   },
   component: ReportPage,
