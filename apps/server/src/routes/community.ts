@@ -9,11 +9,11 @@ import {
   type PostReply,
 } from "@socrates/shared";
 import { all, one, run, type Db } from "../db/d1";
-import { enforceIpLimit, fail, newId, nowIso, parseBody, requireUser, type AppEnv } from "../http";
+import { enforceIpLimit, fail, newId, nowIso, parseBody, requireUser, type AppEnv, type Ctx } from "../http";
 import { classroomAccess } from "../services/members";
 
-const POSTS_DEFAULT_LIMIT = 50;
-const POSTS_MAX_LIMIT = 100;
+const LIST_DEFAULT_LIMIT = 50;
+const LIST_MAX_LIMIT = 100;
 
 interface PostRow {
   id: string;
@@ -22,6 +22,12 @@ interface PostRow {
   author_id: string;
   author_name: string;
   created_at: string;
+}
+
+function pageParams(c: Ctx): { limit: number; before?: string } {
+  const rawLimit = Number(c.req.query("limit"));
+  const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, LIST_MAX_LIMIT) : LIST_DEFAULT_LIMIT;
+  return { limit, before: c.req.query("before")?.trim() || undefined };
 }
 
 function toReply(row: PostRow, teacherId: string): PostReply {
@@ -82,13 +88,14 @@ export function communityRoutes() {
     .get("/classrooms/:id/announcements", async (c) => {
       const user = requireUser(c);
       const { classroom } = await classroomAccess(c.env.DB, c.req.param("id"), user);
+      const { limit, before } = pageParams(c);
       const rows = await all<{ id: string; body: string; author_name: string; created_at: string }>(
         c.env.DB,
         `SELECT a.id, a.body, u.name AS author_name, a.created_at
          FROM announcements a JOIN users u ON u.id = a.author_id
-         WHERE a.classroom_id = $cid
-         ORDER BY a.created_at DESC, a.rowid DESC`,
-        { cid: classroom.id },
+         WHERE a.classroom_id = $cid ${before ? "AND a.created_at < $before" : ""}
+         ORDER BY a.created_at DESC, a.rowid DESC LIMIT $limit`,
+        { cid: classroom.id, before, limit },
       );
       return c.json(
         rows.map(
@@ -170,10 +177,7 @@ export function communityRoutes() {
     .get("/classrooms/:id/posts", async (c) => {
       const user = requireUser(c);
       const { classroom } = await classroomAccess(c.env.DB, c.req.param("id"), user);
-      const rawLimit = Number(c.req.query("limit"));
-      const limit =
-        Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, POSTS_MAX_LIMIT) : POSTS_DEFAULT_LIMIT;
-      const before = c.req.query("before")?.trim() || undefined;
+      const { limit, before } = pageParams(c);
       return c.json(await listPosts(c.env.DB, classroom.id, classroom.teacher_id, limit, before));
     })
     .post("/classrooms/:id/posts", async (c) => {
@@ -223,6 +227,7 @@ export function communityRoutes() {
     .get("/classrooms/:id/activities", async (c) => {
       const user = requireUser(c);
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
+      const { limit, before } = pageParams(c);
       const rows = await all<{
         id: string;
         mode: "live" | "test";
@@ -233,9 +238,11 @@ export function communityRoutes() {
         c.env.DB,
         `SELECT a.id, a.mode, a.finished_at, a.created_at, t.title AS topic_title
          FROM activities a JOIN topics t ON t.id = a.topic_id
-         WHERE a.classroom_id = $cid ${isTeacher ? "" : "AND a.mode != 'test'"}
-         ORDER BY a.created_at DESC, a.rowid DESC`,
-        { cid: classroom.id },
+         WHERE a.classroom_id = $cid ${isTeacher ? "" : "AND a.mode != 'test'"} ${
+           before ? "AND a.created_at < $before" : ""
+         }
+         ORDER BY a.created_at DESC, a.rowid DESC LIMIT $limit`,
+        { cid: classroom.id, before, limit },
       );
       return c.json(
         rows.map(

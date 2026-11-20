@@ -94,6 +94,22 @@ describe("classroom announcements (#241)", () => {
     expect((await del(`/api/classrooms/${classroomId}/announcements/${id}`, owner)).status).toBe(204);
     expect((await del(`/api/classrooms/${classroomId}/announcements/${id}`, owner)).status).toBe(404);
   });
+
+  test("announcements feed paginates with limit and a createdAt cursor", async () => {
+    const pageOne = await call(`/api/classrooms/${classroomId}/announcements?limit=1`, {
+      headers: { Cookie: member },
+    });
+    const first = (await pageOne.json()) as Announcement[];
+    expect(first.length).toBe(1);
+
+    const older = (await (
+      await call(
+        `/api/classrooms/${classroomId}/announcements?limit=100&before=${encodeURIComponent(first[0]!.createdAt)}`,
+        { headers: { Cookie: member } },
+      )
+    ).json()) as Announcement[];
+    expect(older.some((a) => a.id === first[0]!.id)).toBe(false);
+  });
 });
 
 describe("classroom members roster (#241, #237)", () => {
@@ -250,5 +266,21 @@ describe("classroom activities list (#241)", () => {
       id: string;
     }>;
     expect(asOwner.some((a) => a.id === testId)).toBe(true);
+  });
+
+  test("activities list paginates with limit and a createdAt cursor", async () => {
+    const pageOne = await call(`/api/classrooms/${classroomId}/activities?limit=1`, {
+      headers: { Cookie: owner },
+    });
+    const first = (await pageOne.json()) as Array<{ id: string; createdAt: string }>;
+    expect(first.length).toBe(1);
+
+    const older = (await (
+      await call(
+        `/api/classrooms/${classroomId}/activities?limit=100&before=${encodeURIComponent(first[0]!.createdAt)}`,
+        { headers: { Cookie: owner } },
+      )
+    ).json()) as Array<{ id: string; createdAt: string }>;
+    expect(older.some((a) => a.id === first[0]!.id)).toBe(false);
   });
 });
