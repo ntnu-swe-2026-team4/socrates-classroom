@@ -10,10 +10,14 @@ const KeyInputSchema = z
   .object({
     key: z.string().min(8).max(256).optional(),
     maxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
+    monthlyQuotaUsd: z.number().positive().max(100000).nullable().optional(),
   })
-  .refine((input) => input.key !== undefined || input.maxConcurrency !== undefined, {
-    message: "key or maxConcurrency required",
-  });
+  .refine(
+    (input) => input.key !== undefined || input.maxConcurrency !== undefined || input.monthlyQuotaUsd !== undefined,
+    {
+      message: "key, maxConcurrency or monthlyQuotaUsd required",
+    },
+  );
 
 const ModelInputSchema = z.object({
   model: z.string().min(1).max(200),
@@ -30,6 +34,7 @@ interface ProviderKeyRow {
   sort_order: number;
   updated_at: string;
   max_concurrency: number | null;
+  monthly_quota_usd: number | null;
 }
 
 interface ModelRow {
@@ -51,9 +56,16 @@ export function teacherKeyRoutes() {
       const user = requireCapability(c, "manage_classes");
       const keys = await all<ProviderKeyRow>(
         c.env.DB,
-        "SELECT provider_id, last4, sort_order, updated_at, max_concurrency FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
+        "SELECT provider_id, last4, sort_order, updated_at, max_concurrency, monthly_quota_usd FROM teacher_keys WHERE user_id = $uid ORDER BY sort_order",
         { uid: user.id },
       );
+      const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
+      const usage = await all<{ provider_id: string; cost: number; tokens: number }>(
+        c.env.DB,
+        "SELECT provider_id, COALESCE(SUM(cost_usd), 0) AS cost, COALESCE(SUM(total_tokens), 0) AS tokens FROM teacher_key_usage WHERE user_id = $uid AND created_at >= $start GROUP BY provider_id",
+        { uid: user.id, start: monthStart },
+      );
+      const usageByProvider = new Map(usage.map((row) => [row.provider_id, row]));
       const legs = await all<ModelRow>(
         c.env.DB,
         "SELECT provider_id, model, max_concurrency, sort_order FROM teacher_key_models WHERE user_id = $uid ORDER BY sort_order",
@@ -69,6 +81,9 @@ export function teacherKeyRoutes() {
         provider: row.provider_id,
         last4: row.last4,
         maxConcurrency: row.max_concurrency,
+        monthlyQuotaUsd: row.monthly_quota_usd,
+        monthCostUsd: usageByProvider.get(row.provider_id)?.cost ?? 0,
+        monthTokens: usageByProvider.get(row.provider_id)?.tokens ?? 0,
         sortOrder: row.sort_order,
         updatedAt: row.updated_at,
         models: (byProvider.get(row.provider_id) ?? []).map((leg) => ({
@@ -197,18 +212,29 @@ export function teacherKeyRoutes() {
       const input = await parseBody(c, KeyInputSchema);
       if (!keyableProvider(provider)) fail(422, "byok_provider_invalid");
       if (input.key === undefined) {
-        const result = await run(
+        const existing = await one<{ max_concurrency: number | null; monthly_quota_usd: number | null }>(
           c.env.DB,
-          "UPDATE teacher_keys SET max_concurrency = $maxConcurrency, updated_at = $at WHERE user_id = $uid AND provider_id = $pid",
-          { uid: user.id, pid: provider, maxConcurrency: input.maxConcurrency ?? null, at: nowIso() },
+          "SELECT max_concurrency, monthly_quota_usd FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
+          { uid: user.id, pid: provider },
         );
-        if ((result.meta?.changes ?? 0) === 0) fail(404, "not_found");
-        return c.json({ provider, maxConcurrency: input.maxConcurrency ?? null });
+        if (!existing) fail(404, "not_found");
+        const maxConcurrency = "maxConcurrency" in input ? input.maxConcurrency : existing.max_concurrency;
+        const monthlyQuotaUsd = "monthlyQuotaUsd" in input ? input.monthlyQuotaUsd : existing.monthly_quota_usd;
+        await run(
+          c.env.DB,
+          "UPDATE teacher_keys SET max_concurrency = $maxConcurrency, monthly_quota_usd = $quota, updated_at = $at WHERE user_id = $uid AND provider_id = $pid",
+          { uid: user.id, pid: provider, maxConcurrency, quota: monthlyQuotaUsd, at: nowIso() },
+        );
+        return c.json({ provider, maxConcurrency, monthlyQuotaUsd });
       }
       const enc = await encryptKey(c.env, input.key);
-      const existing = await one<{ sort_order: number; max_concurrency: number | null }>(
+      const existing = await one<{
+        sort_order: number;
+        max_concurrency: number | null;
+        monthly_quota_usd: number | null;
+      }>(
         c.env.DB,
-        "SELECT sort_order, max_concurrency FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
+        "SELECT sort_order, max_concurrency, monthly_quota_usd FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
         { uid: user.id, pid: provider },
       );
       const last = await one<{ n: number }>(
@@ -218,11 +244,13 @@ export function teacherKeyRoutes() {
       );
       const order = existing?.sort_order ?? (last?.n ?? -1) + 1;
       const maxConcurrency = "maxConcurrency" in input ? input.maxConcurrency : (existing?.max_concurrency ?? null);
+      const monthlyQuotaUsd =
+        "monthlyQuotaUsd" in input ? input.monthlyQuotaUsd : (existing?.monthly_quota_usd ?? null);
       await run(
         c.env.DB,
-        `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at, max_concurrency)
-         VALUES ($uid, $pid, $enc, $last4, $order, $at, $maxConcurrency)
-         ON CONFLICT(user_id, provider_id) DO UPDATE SET key_enc = $enc, last4 = $last4, updated_at = $at, max_concurrency = $maxConcurrency`,
+        `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at, max_concurrency, monthly_quota_usd)
+         VALUES ($uid, $pid, $enc, $last4, $order, $at, $maxConcurrency, $quota)
+         ON CONFLICT(user_id, provider_id) DO UPDATE SET key_enc = $enc, last4 = $last4, updated_at = $at, max_concurrency = $maxConcurrency, monthly_quota_usd = $quota`,
         {
           uid: user.id,
           pid: provider,
@@ -230,10 +258,11 @@ export function teacherKeyRoutes() {
           last4: input.key.slice(-4),
           order,
           maxConcurrency,
+          quota: monthlyQuotaUsd,
           at: nowIso(),
         },
       );
-      return c.json({ provider, last4: input.key.slice(-4), maxConcurrency });
+      return c.json({ provider, last4: input.key.slice(-4), maxConcurrency, monthlyQuotaUsd });
     })
     .delete("/settings/keys/:provider", async (c) => {
       const user = requireCapability(c, "manage_classes");

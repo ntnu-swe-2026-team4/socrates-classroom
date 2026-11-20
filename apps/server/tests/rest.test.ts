@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { inject } from "vitest";
+import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
 
@@ -242,6 +243,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       provider: "openrouter",
       last4: "zzzz",
       maxConcurrency: 6,
+      monthlyQuotaUsd: null,
     });
 
     const keep = await call("/api/settings/keys/openrouter", {
@@ -274,6 +276,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     expect((await keyless.json()) as { provider: string; maxConcurrency: number | null }).toEqual({
       provider: "openrouter",
       maxConcurrency: 3,
+      monthlyQuotaUsd: null,
     });
     const keylessClear = await call("/api/settings/keys/openrouter", {
       method: "PUT",
@@ -333,6 +336,9 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
         provider: string;
         last4: string;
         maxConcurrency: number | null;
+        monthlyQuotaUsd: number | null;
+        monthCostUsd: number;
+        monthTokens: number;
         models: Array<{ model: string; maxConcurrency: number | null; sortOrder: number }>;
       }>;
     expect(await listKeys()).toEqual([
@@ -340,6 +346,9 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
         provider: "openrouter",
         last4: "zzzz",
         maxConcurrency: null,
+        monthlyQuotaUsd: null,
+        monthCostUsd: 0,
+        monthTokens: 0,
         sortOrder: 0,
         updatedAt: expect.any(String),
         models: [
@@ -402,6 +411,42 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       body: JSON.stringify({ providers: ["openrouter"] }),
     });
     expect(order.status).toBe(200);
+
+    const badQuota = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ monthlyQuotaUsd: 0 }),
+    });
+    expect(badQuota.status).toBe(422);
+
+    const setQuota = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ monthlyQuotaUsd: 5 }),
+    });
+    expect(setQuota.status).toBe(200);
+    expect(((await setQuota.json()) as { monthlyQuotaUsd: number | null }).monthlyQuotaUsd).toBe(5);
+
+    const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
+    await run(
+      env.DB,
+      `INSERT INTO teacher_key_usage (user_id, provider_id, model, input_tokens, output_tokens, total_tokens, cost_usd, billed)
+       VALUES ((SELECT id FROM users WHERE email = 'demo@socrates.tw'), 'openrouter', 'z-ai/glm-5.3-flash', 10, 5, 15, 0.004, 0)`,
+    );
+    expect(monthStart).toBeTruthy();
+    expect((await listKeys())[0].monthCostUsd).toBeCloseTo(0.004, 6);
+    expect((await listKeys())[0].monthTokens).toBe(15);
+    expect((await listKeys())[0].monthlyQuotaUsd).toBe(5);
+
+    const rekeyKeepsQuota = await call("/api/settings/keys/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ key: "sk-or-v1-rekey-9999" }),
+    });
+    expect(rekeyKeepsQuota.status).toBe(200);
+    const rekeyBody = (await rekeyKeepsQuota.json()) as { last4: string; monthlyQuotaUsd: number | null };
+    expect(rekeyBody.last4).toBe("9999");
+    expect(rekeyBody.monthlyQuotaUsd).toBe(5);
 
     const del = await call("/api/settings/keys/openrouter", { method: "DELETE", headers: { Cookie: teacher } });
     expect(del.status).toBe(204);
