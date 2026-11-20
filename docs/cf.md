@@ -137,7 +137,7 @@ secrets 管理一律走 `cf deploy --secrets-file`（見上方 Secrets）——w
 
 ## CI/CD
 
-見 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)（PR：lint → yamllint → config-drift → typecheck → test → build → dry-run，免憑證）與 [`deploy.yml`](../.github/workflows/deploy.yml)（push main：全閘門 → build once → D1 migrations → deploy；只有 migrations/deploy 兩步拿 `CLOUDFLARE_API_TOKEN`/`ACCOUNT_ID`/`D1_DATABASE_ID`）。Secrets 注入走 deploy 指令的 `--secrets-file`——CI 端即 `PROD_SECRETS_FILE` repo secret 的內容；`GOOGLE_CLIENT_ID` 走 repo variable 於 build 帶入（見 [`google-oauth.md`](./google-oauth.md) §3）。
+見 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)（PR：lint → yamllint → config-drift → typecheck → test → build → secret-drift warning → dry-run，免憑證）與 [`deploy.yml`](../.github/workflows/deploy.yml)（push main：全閘門 → build once → D1 migrations → deploy；只有 migrations/deploy 兩步拿 `CLOUDFLARE_API_TOKEN`/`ACCOUNT_ID`/`D1_DATABASE_ID`）。PR CI 以 build output 的 `worker.config.json` 與 base commit 的 production config 比較，僅對本次新增且 PR 環境沒有值的 required secret 發 `::warning`，不阻擋 merge；既有 secret 不重複警告。PR CI 不讀 `PROD_SECRETS_FILE`，無法驗證 production 中既有值。Secrets 注入走 deploy 指令的 `--secrets-file`，由 `deploy.yml` 的 `PROD_SECRETS_FILE` repo secret 提供；`GOOGLE_CLIENT_ID` 走 repo variable 於 build 帶入（見 [`google-oauth.md`](./google-oauth.md) §3）。
 
 ## 疑難排解
 
