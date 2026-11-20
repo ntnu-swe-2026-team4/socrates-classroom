@@ -17,6 +17,7 @@ import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credent
 import { reportSubmitExtension, SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../pi/extensions/report-submit";
 import { all, one, run } from "../db/d1";
 import { nowIso } from "../http";
+import { classReportInput, studentReportInput } from "../prompts/assemble";
 import {
   ClassReportSchema,
   StudentAnalysisSchema,
@@ -299,7 +300,7 @@ export class ReportRunner extends DurableObject<Env> {
               const { text, payload } = await this.runAgent(
                 harness,
                 "student-report",
-                this.studentReportPrompt(activity, transcript),
+                studentReportInput(activity, transcript),
                 legs,
                 { lang: participant.lang, submitTool: SUBMIT_STUDENT_ANALYSIS },
               );
@@ -322,7 +323,11 @@ export class ReportRunner extends DurableObject<Env> {
       );
     }
 
-    const classInput = this.classReportPrompt(activity, roster, rendered, pseudonyms);
+    const classInput = classReportInput(
+      activity,
+      roster.map((p) => pseudonyms.get(p.id) ?? "").filter(Boolean),
+      roster.map((p) => ({ id: pseudonyms.get(p.id) ?? p.id, transcript: rendered.get(p.id)?.text ?? "" })),
+    );
     try {
       const { text: classText, payload: classPayload } = await this.runAgent(
         harness,
@@ -395,23 +400,6 @@ export class ReportRunner extends DurableObject<Env> {
         excerpt: violation.excerpt,
       })),
     };
-  }
-
-  private studentReportPrompt(activity: { title: string; statement: string }, transcript: string): string {
-    return `## Topic: ${activity.title}\n${activity.statement}\n\n## Conversation\n${transcript}`;
-  }
-
-  private classReportPrompt(
-    activity: { title: string; statement: string },
-    roster: Array<{ id: string }>,
-    transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
-    pseudonyms: Map<string, string>,
-  ): string {
-    const names = roster.map((p) => pseudonyms.get(p.id) ?? "").filter(Boolean);
-    const conversations = roster
-      .map((p) => `### ${pseudonyms.get(p.id) ?? p.id}\n${transcripts.get(p.id)?.text ?? ""}`)
-      .join("\n\n");
-    return `## Topic: ${activity.title}\n${activity.statement}\n\n## Roster: ${names.length} students in the class\n${names.join(", ")}\n\n## The whole class's conversations\n${conversations}`;
   }
 
   private async persist(

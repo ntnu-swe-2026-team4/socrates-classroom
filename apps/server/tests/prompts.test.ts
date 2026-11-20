@@ -1,0 +1,39 @@
+import { describe, expect, it } from "vitest";
+import { instructionsFor } from "../src/pi/agents/profiles";
+import { classReportInput, studentReportInput } from "../src/prompts/assemble";
+import STUDENT_REPORT_RAW from "../src/prompts/student-report.md?raw";
+import CLASS_REPORT_RAW from "../src/prompts/class-report.md?raw";
+
+const LANGS = ["zh", "en", "es"] as const;
+const activity = { title: "代理孕母", statement: "契約應該被遵守嗎？" };
+
+describe("prompts (#161): what the report models receive is pinned", () => {
+  for (const name of ["student-report", "class-report"] as const) {
+    for (const lang of LANGS) {
+      it(`${name} instructions in ${lang}`, () => {
+        expect(instructionsFor(name, lang)).toMatchSnapshot();
+      });
+    }
+  }
+
+  it("report inputs", () => {
+    expect(studentReportInput(activity, "學生1（1）：契約要守")).toMatchSnapshot();
+    expect(
+      classReportInput(
+        activity,
+        ["學生1", "學生2"],
+        [
+          { id: "學生1", transcript: "學生1（1）：契約要守" },
+          { id: "學生2", transcript: "學生2（1）：人情優先" },
+        ],
+      ),
+    ).toMatchSnapshot();
+  });
+
+  it("report prompt assets hold {{lang}} and no other placeholder", () => {
+    for (const raw of [STUDENT_REPORT_RAW, CLASS_REPORT_RAW]) {
+      expect(raw).toContain("{{lang}}");
+      expect(raw.match(/{{[^}]*}}/g)?.filter((placeholder) => placeholder !== "{{lang}}") ?? []).toEqual([]);
+    }
+  });
+});

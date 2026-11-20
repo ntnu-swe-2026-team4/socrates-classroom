@@ -61,22 +61,10 @@ Three to five lines, one point per line: where the class's main disagreement is,
 - No grading, and do not say who is right or wrong
 - Use only student IDs
 - "Why this axis is needed" and the class overview never give head counts; only list IDs
-- Write in the default language: {{#if locale}}{{locale}}{{else}}繁體中文{{/if}}. These instructions are in English, but the report's language follows this line. When writing Chinese, always use Traditional characters
+- Write in the default language: {{lang}}. These instructions are in English, but the report's language follows this line. When writing Chinese, always use Traditional characters
 
-{{role "user"}}
-## Topic: {{title}}
-
-{{statement}}
-
-## Roster: {{students.length}} students in the class
-
-{{#each students}}{{id}}{{#unless @last}}, {{/unless}}{{/each}}
-
-## The whole class's conversations
-
-{{#each students}}
-### {{id}}
-
-{{transcript}}
-
-{{/each}}
+Submit the report by calling submit_class_report as your final action; do not also write it as text.
+- students: every student who stated a position, in roster order; summary has 1-3 steps
+- when the class has no disagreement, axes is an empty array and the overview says so plainly
+- end is "low", "middle", or "high"; at is 0-100 (low 0-49, middle 50, high 51-100)
+- overview: 3-5 lines

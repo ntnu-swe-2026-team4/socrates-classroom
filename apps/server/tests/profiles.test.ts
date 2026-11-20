@@ -32,7 +32,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(PROFILES["topic-gen"].instructions).toContain("debate topics");
     expect(PROFILES.lookup.instructions).not.toMatch(/\{\{/);
     expect(PROFILES["topic-gen"].instructions).not.toMatch(/\{\{/);
-    expect(PROFILES["student-report"].instructions).toContain("{{#if locale}}");
+    expect(PROFILES["student-report"].instructions).toContain("{{lang}}");
   });
 
   it("runProfile (lookup profile): full path on faux — conversation created, submit, wait, text returned", async () => {
