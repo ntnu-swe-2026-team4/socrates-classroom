@@ -22,6 +22,7 @@ import { createWebSearchExtension } from "../pi/extensions/websearch";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 import { socratesExtension } from "../pi/extensions/socrates";
 import { btwExtension, forkBtw } from "../pi/extensions/btw";
+import { createUsageExtension } from "../pi/extensions/usage";
 import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
 import { buildModels } from "../pi/models";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
@@ -55,6 +56,7 @@ export class Chat extends DurableObject<Env> {
         }),
       );
       this.registry.install(createWebSearchExtension(this.env.AI));
+      this.registry.install(createUsageExtension(this.env, () => this.teacherId()));
       this.registry.install(this.btw);
       const registry = this.registry;
       const btw = this.btw.name;

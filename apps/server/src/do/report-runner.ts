@@ -30,6 +30,7 @@ import {
 import { getRouter } from "../gateway/router";
 import { gatewayConfig } from "../gateway/config.gen";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
+import { createUsageExtension } from "../pi/extensions/usage";
 
 export type ReportAlarmPlan =
   | { action: "terminal" }
@@ -80,6 +81,7 @@ export class ReportRunner extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.registry.install(reportSubmitExtension);
+    this.registry.install(createUsageExtension(this.env, () => teacherOfActivity(this.env, this.ctx.id.name ?? "")));
     if (this.models.faux) {
       this.models.faux.setResponses([fauxReportScript]);
       this.registry.install(fauxReplayExtension(this.models.faux, fauxReportScript));

@@ -24,6 +24,7 @@ import { getRouter, type TrafficClass } from "../../gateway/router";
 import type { SettleKind } from "../../gateway/ledger";
 import { teacherLegsOf, type TeacherLeg } from "../credentials";
 import { reportSubmitExtension, SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../extensions/report-submit";
+import { createUsageExtension } from "../extensions/usage";
 import type { JsonObject } from "@earendil-works/pi-durable";
 
 export type ProfileName = "socrates" | "topic-gen" | "student-report" | "class-report" | "lookup";
@@ -142,6 +143,7 @@ export async function openProfileHarness(
 ): Promise<{ harness: Harness; runtime: ProfileRuntime; teacherLegs: Promise<TeacherLeg[]> }> {
   const models = buildModels(env, teacherOf ? { teacherOf } : {});
   const registry = profileRegistry(PROFILES[profileName], env);
+  if (teacherOf) registry.install(createUsageExtension(env, teacherOf));
   const harness = await Harness.open(new MemoryStorage(), { models: models.models, registry }, BACKGROUND_CONTEXT);
   return {
     harness,

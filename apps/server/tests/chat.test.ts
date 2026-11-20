@@ -7,7 +7,7 @@ import { ROOT_CONVERSATION_ID, type ConversationId } from "@earendil-works/pi-du
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
-import { run } from "../src/db/d1";
+import { all, run } from "../src/db/d1";
 import type { Chat } from "../src/do/chat";
 import { BTW_THINKING_LEVEL, PROFILES } from "../src/pi/agents/profiles";
 import {
@@ -84,6 +84,48 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     expect(roles).toContain("assistant");
     expect(assistantText(view)).toContain("直覺判斷");
     socket.close();
+  });
+
+  it("a turn on a teacher leg records usage for the teacher's keyed provider", async () => {
+    const teacher = await all<{ id: string }>(env.DB, "SELECT id FROM users WHERE email = 'demo@socrates.tw'");
+    expect(teacher).toHaveLength(1);
+    await run(
+      env.DB,
+      `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
+       VALUES ($uid, 'faux', 'enc', 'xxxx', 0, '2026-11-21T00:00:00.000Z')`,
+      { uid: teacher[0].id },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO teacher_key_models (user_id, provider_id, model, max_concurrency, sort_order, updated_at)
+       VALUES ($uid, 'faux', 'faux-1', NULL, 0, '2026-11-21T00:00:00.000Z')`,
+      { uid: teacher[0].id },
+    );
+
+    const student = await joinStudent("額度生");
+    const thread = `${activityId}:${student.participantId}`;
+    const socket = await connect(thread, student.cookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.some((m) => m.type === "view"));
+    socket.send(JSON.stringify({ type: "submit", id: "s1", input: "正義是什麼？" }));
+    await rx.until((f) => {
+      const view = latestView(f);
+      return view !== undefined && assistantText(view).includes("直覺判斷");
+    });
+    socket.close();
+
+    let usage: Array<{ provider_id: string; model: string }> = [];
+    for (let i = 0; i < 20 && usage.length === 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      usage = await all<{ provider_id: string; model: string }>(
+        env.DB,
+        "SELECT provider_id, model FROM teacher_key_usage WHERE user_id = $uid AND provider_id = 'faux'",
+        { uid: teacher[0].id },
+      );
+    }
+    expect(usage).toEqual([{ provider_id: "faux", model: "faux-1" }]);
   });
 
   it("reconnect after disconnect: transcript restored persistently from pi storage", async () => {
