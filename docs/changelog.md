@@ -2,6 +2,19 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — Capability bit 退役：無 mode 帳號模型落地（`feat/210-capability-retirement`，#210）
+
+### Changed
+
+- 帳號模型無 mode 定稿（[`accounts.md`](./accounts.md) §7）實作落地：**任何登入 user 皆可建班與開活動**，`requireCapability("manage_classes")` 全數改為 `requireUser`（`POST /classrooms`、`POST /topics`、`topics/generate`、`POST /classrooms/:id/topics`、`POST /classrooms/:id/activities`、`POST /topics/:id/copy`、`POST /activities/:id/invites`、`/settings/keys/*`）；擁有權檢查（`classroomAccess` 的 isTeacher）照舊，非 owner 對他人班級仍 403 `forbidden`
+- `User`／`AdminUser`／`DevAccount` 形狀移除 `canManageClasses`；`POST /admin/users` 建立帳號不帶能力欄，`PATCH /admin/users/:id` 僅剩 `{disabled}`（停用／復用，一律 bump `session_version`）——admin 的桿子收斂為帳號層：建立＋停用
+- 前端最小接線（同 PR vertical slice）：`t.setup`／`t.live`／`settings` guard 改為登入即入；建班/開活動工具對所有登入 user 顯示；admin 頁「開通/收回權限」UI 退場
+
+### Removed
+
+- Migration `010_retire_capability.sql`：`users.can_manage_classes` 欄位移除；legacy `users.role` 停止同步（寫入一律 `'student'`，無語意）
+- 錯誤碼 `capability_required`（`ERROR_CODES`／`messages.ts` 三語）與 i18n 的 teacher-request/審批殘留 keys（`admin_grant`/`admin_revoke`/`role_teacher` 等，三語）
+
 ## 2026-11-21 — 設定頁重構：分類導覽與對話偏好（`split/184-settings`，#184）
 
 ### Added
@@ -12,7 +25,7 @@
 
 ### Changed
 
-- 設定頁版面由單欄卡片改為 200px 導覷列＋內容 panel；`ProviderKeys`（含 #146 月配額編輯器）原元件移植進 keys 區 re-skin；keys 區標題由元件自帶的 h2 承擔（不重複區標題）、section 導覷按鈕 focus ring 對齊設計系統（`focus-visible` ember）
+- 設定頁版面由單欄卡片改為 200px 導覷列＋內容 panel；`ProviderKeys`（含 #146 月配額編輯器）原元件移植進 keys 區 re-skin；keys 區標題由元件自帶的 h2 承擔（不重複區標題）、section 導覽按鈕 focus ring 對齊設計系統（`focus-visible` ember）
 
 ## 2026-11-21 — Teacher BYOK 額度與警示 email（`feat/146-teacher-byok-quota`）
 
