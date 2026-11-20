@@ -25,7 +25,7 @@
 
 ### Changed
 
-- `TTS_MAX_CHARS` 2000→4000（shared 單點：server `TtsInputSchema` 與客戶端 `lib/speech.ts` 同步生效——#193 颐留的「一行 diff」）
+- `TTS_MAX_CHARS` 2000→4000（shared 單點：server `TtsInputSchema` 與客戶端 `lib/speech.ts` 同步生效——#193 預留的「一行 diff」）
 - `useVoiceInput` effect-free 重構：`useEffect`→`useLayoutEffect`／`useOnUnmount`、抽出 `startMeter`、去 `useCallback`（外部簽名不變；既有 `voice.test.tsx` 安全網全綠）——`useVoiceInput` 的 useEffect 退場（#188 前置之一）
 
 ### Fixed
