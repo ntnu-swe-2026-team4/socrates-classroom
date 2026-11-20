@@ -12,6 +12,9 @@ import { all, one, run, type Db } from "../db/d1";
 import { enforceIpLimit, fail, newId, nowIso, parseBody, requireUser, type AppEnv } from "../http";
 import { classroomAccess } from "../services/members";
 
+const POSTS_DEFAULT_LIMIT = 50;
+const POSTS_MAX_LIMIT = 100;
+
 interface PostRow {
   id: string;
   parent_id: string | null;
@@ -32,25 +35,46 @@ function toReply(row: PostRow, teacherId: string): PostReply {
   };
 }
 
-async function listPosts(db: Db, classroomId: string, teacherId: string): Promise<Post[]> {
-  const rows = await all<PostRow>(
+const POST_SELECT = `SELECT p.id, p.parent_id, p.body, p.author_id, COALESCE(m.name, u.name) AS author_name, p.created_at
+  FROM posts p
+  JOIN users u ON u.id = p.author_id
+  LEFT JOIN members m ON m.classroom_id = p.classroom_id AND m.user_id = p.author_id`;
+
+async function listPosts(
+  db: Db,
+  classroomId: string,
+  teacherId: string,
+  limit: number,
+  before?: string,
+): Promise<Post[]> {
+  const threads = await all<PostRow>(
     db,
-    `SELECT p.id, p.parent_id, p.body, p.author_id, COALESCE(m.name, u.name) AS author_name, p.created_at
-     FROM posts p
-     JOIN users u ON u.id = p.author_id
-     LEFT JOIN members m ON m.classroom_id = p.classroom_id AND m.user_id = p.author_id
-     WHERE p.classroom_id = $cid
-     ORDER BY p.created_at ASC, p.rowid ASC`,
-    { cid: classroomId },
+    `${POST_SELECT}
+     WHERE p.classroom_id = $cid AND p.parent_id IS NULL ${before ? "AND p.created_at < $before" : ""}
+     ORDER BY p.created_at DESC, p.rowid DESC LIMIT $limit`,
+    { cid: classroomId, before, limit },
   );
-  const threads = new Map<string, Post>();
-  for (const row of rows) {
-    if (row.parent_id === null) threads.set(row.id, { ...toReply(row, teacherId), replies: [] });
+  if (threads.length === 0) return [];
+  const marks = threads.map((_, index) => `$p${index}`).join(", ");
+  const params: Record<string, string> = { cid: classroomId };
+  threads.forEach((thread, index) => {
+    params[`p${index}`] = thread.id;
+  });
+  const replies = await all<PostRow>(
+    db,
+    `${POST_SELECT}
+     WHERE p.classroom_id = $cid AND p.parent_id IN (${marks})
+     ORDER BY p.created_at ASC, p.rowid ASC`,
+    params,
+  );
+  const assembled = new Map<string, Post>();
+  for (const row of threads) {
+    assembled.set(row.id, { ...toReply(row, teacherId), replies: [] });
   }
-  for (const row of rows) {
-    if (row.parent_id !== null) threads.get(row.parent_id)?.replies.push(toReply(row, teacherId));
+  for (const row of replies) {
+    assembled.get(row.parent_id!)?.replies.push(toReply(row, teacherId));
   }
-  return [...threads.values()].reverse();
+  return [...assembled.values()];
 }
 
 export function communityRoutes() {
@@ -146,7 +170,11 @@ export function communityRoutes() {
     .get("/classrooms/:id/posts", async (c) => {
       const user = requireUser(c);
       const { classroom } = await classroomAccess(c.env.DB, c.req.param("id"), user);
-      return c.json(await listPosts(c.env.DB, classroom.id, classroom.teacher_id));
+      const rawLimit = Number(c.req.query("limit"));
+      const limit =
+        Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, POSTS_MAX_LIMIT) : POSTS_DEFAULT_LIMIT;
+      const before = c.req.query("before")?.trim() || undefined;
+      return c.json(await listPosts(c.env.DB, classroom.id, classroom.teacher_id, limit, before));
     })
     .post("/classrooms/:id/posts", async (c) => {
       await enforceIpLimit(c, "community-post", 30);
@@ -194,7 +222,7 @@ export function communityRoutes() {
     })
     .get("/classrooms/:id/activities", async (c) => {
       const user = requireUser(c);
-      const { classroom } = await classroomAccess(c.env.DB, c.req.param("id"), user);
+      const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       const rows = await all<{
         id: string;
         mode: "live" | "test";
@@ -205,7 +233,7 @@ export function communityRoutes() {
         c.env.DB,
         `SELECT a.id, a.mode, a.finished_at, a.created_at, t.title AS topic_title
          FROM activities a JOIN topics t ON t.id = a.topic_id
-         WHERE a.classroom_id = $cid
+         WHERE a.classroom_id = $cid ${isTeacher ? "" : "AND a.mode != 'test'"}
          ORDER BY a.created_at DESC, a.rowid DESC`,
         { cid: classroom.id },
       );

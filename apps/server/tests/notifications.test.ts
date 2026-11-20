@@ -111,3 +111,27 @@ describe("notifications feed and read watermark (#239)", () => {
     ).toBe(422);
   });
 });
+
+describe("notifications feed hardening (#241 follow-up)", () => {
+  test("unread is not capped by the feed window", async () => {
+    expect((await call("/api/notifications/seen", { method: "POST", headers: { Cookie: student } })).status).toBe(204);
+    for (let i = 0; i < 32; i += 1) {
+      const res = await compose(admin, `未讀壓測 ${i}`);
+      expect(res.status).toBe(201);
+    }
+    const res = await call("/api/notifications", { headers: { Cookie: student } });
+    const body = (await res.json()) as { items: FeedItem[]; unread: number | null };
+    expect(body.items.length).toBe(30);
+    expect(body.unread).toBe(32);
+  });
+
+  test("feed is rate limited per IP (120/min)", async () => {
+    const headers = { "CF-Connecting-IP": "198.51.100.99" };
+    const codes: number[] = [];
+    for (let i = 0; i < 125; i += 1) {
+      codes.push((await call("/api/notifications", { headers })).status);
+    }
+    expect(codes[0]).toBe(200);
+    expect(codes.filter((code) => code === 429).length).toBeGreaterThan(0);
+  });
+});

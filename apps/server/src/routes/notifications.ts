@@ -22,6 +22,7 @@ const toNotification = (row: NotificationRow): Notification => ({
 export function notificationRoutes() {
   return new Hono<AppEnv>()
     .get("/notifications", async (c) => {
+      await enforceIpLimit(c, "notifications-feed", 120);
       const user = c.get("user");
       const rows = await all<NotificationRow>(
         c.env.DB,
@@ -36,9 +37,14 @@ export function notificationRoutes() {
           )
         : null;
       const seenAt = seen?.notifications_seen_at ?? "";
+      const unreadRow = user
+        ? await one<{ n: number }>(c.env.DB, "SELECT COUNT(*) AS n FROM notifications WHERE created_at > $at", {
+            at: seenAt,
+          })
+        : null;
       const feed: NotificationFeed = {
         items: rows.map(toNotification),
-        unread: user ? rows.filter((row) => row.created_at > seenAt).length : null,
+        unread: user ? (unreadRow?.n ?? 0) : null,
       };
       return c.json(feed);
     })

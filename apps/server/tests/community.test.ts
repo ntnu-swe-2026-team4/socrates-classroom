@@ -189,6 +189,24 @@ describe("classroom posts (#241)", () => {
     expect((await call(`/api/classrooms/${classroomId}/posts`)).status).toBe(401);
     expect((await post(`/api/classrooms/${classroomId}/posts`, joiner, { body: "路人的話" })).status).toBe(403);
   });
+
+  test("posts feed paginates with limit and a createdAt cursor", async () => {
+    const pageOne = await call(`/api/classrooms/${classroomId}/posts?limit=1`, { headers: { Cookie: member } });
+    expect(pageOne.status).toBe(200);
+    const first = (await pageOne.json()) as Post[];
+    expect(first.length).toBe(1);
+
+    const rest = await call(
+      `/api/classrooms/${classroomId}/posts?limit=100&before=${encodeURIComponent(first[0]!.createdAt)}`,
+      { headers: { Cookie: member } },
+    );
+    const older = (await rest.json()) as Post[];
+    expect(older.some((p) => p.id === first[0]!.id)).toBe(false);
+    const full = (await (
+      await call(`/api/classrooms/${classroomId}/posts`, { headers: { Cookie: member } })
+    ).json()) as Post[];
+    expect(full.length).toBe(older.length + 1);
+  });
 });
 
 describe("classroom activities list (#241)", () => {
@@ -206,5 +224,31 @@ describe("classroom activities list (#241)", () => {
     expect(list[0]!.createdAt >= list[list.length - 1]!.createdAt).toBe(true);
     expect((await call(`/api/classrooms/${classroomId}/activities`, { headers: { Cookie: joiner } })).status).toBe(403);
     expect((await call(`/api/classrooms/${classroomId}/activities`)).status).toBe(401);
+  });
+
+  test("test activities are invisible to members, visible to the owner (#134)", async () => {
+    const pool = (await (await call("/api/topics", { headers: { Cookie: owner } })).json()) as Array<{ id: string }>;
+    const started = await post(`/api/classrooms/${classroomId}/activities`, owner, {
+      topicId: pool[0]!.id,
+      mode: "test",
+    });
+    expect(started.status).toBe(201);
+    const testId = ((await started.json()) as { activityId: string }).activityId;
+
+    const asMember = (await (
+      await call(`/api/classrooms/${classroomId}/activities`, { headers: { Cookie: member } })
+    ).json()) as Array<{
+      id: string;
+      mode: string;
+    }>;
+    expect(asMember.some((a) => a.id === testId)).toBe(false);
+    expect(asMember.every((a) => a.mode !== "test")).toBe(true);
+
+    const asOwner = (await (
+      await call(`/api/classrooms/${classroomId}/activities`, { headers: { Cookie: owner } })
+    ).json()) as Array<{
+      id: string;
+    }>;
+    expect(asOwner.some((a) => a.id === testId)).toBe(true);
   });
 });
