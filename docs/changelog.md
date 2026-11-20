@@ -25,6 +25,19 @@
 - `useVoiceInput` 依賴全面注入：抽 `lib/voiceInput.ts` 的 `VoiceInputController`（`VoiceEnv` 注入 getUserMedia／AudioContext／recognition ctor／MediaRecorder／rAF／lang／stt），hook 退化為薄 state adapter；行為零變更（`voice.test.tsx`／`trace.test.ts` 安全網全綠）；死碼 `startedAt` 欄位移除
 - review 建議二項：`stop()` 的 1s 保險計時器改為僅在實際停錄時排程、`onstop` 正常觸發即清除（正常 stop 不再殘留 timer，`vi.getTimerCount` 測試釘住）；hook 移除未使用的 `env` 參數（注入縫在 `VoiceInputController` ctor，`defaultVoiceEnv` 為 hook 唯一環境）
 
+## 2026-11-21 — Notifications feed、已讀 watermark 與 admin 公告端點（`feat/239-notifications`，#239）
+
+### Added
+
+- `GET /api/notifications`：免登入公告 feed（#158 拍板——登入頁維護公告用途）；`{items, unread}`，最新在前、上限 30；`unread` 僅登入帳號回傳，未登入一律 `null`
+- `POST /api/notifications/seen`：requireUser，per-user watermark（`users.notifications_seen_at`）設為 now；冪等
+- `POST /api/admin/notifications`：requireAdmin 撰寫公告（單語內容；`created_by` FK，帳號刪除時 SET NULL——相容 #233）
+- Migration `012`：`notifications` 表＋`users.notifications_seen_at` 欄位；已讀採 watermark 而非 per-notification join 表（unread＝`created_at > watermark`，O(1)）
+
+### 決策記錄
+
+- #158 三項拍板（2026-11-21）：成員移除 cascade 改變→#237；root post CASCADE 維持（門留著）；feed 免登入維持——本 PR 實作其第三項的端點面
+
 ## 2026-11-21 — SSO 擴充：Facebook 登入與 authProviders 能力探測（`feat/207-sso-providers`，#207）
 
 ### Added
