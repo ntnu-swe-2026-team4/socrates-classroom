@@ -32,6 +32,8 @@ import {
   JoinInputSchema,
   LoginInputSchema,
   LookupInputSchema,
+  PasswordForgotInputSchema,
+  PasswordResetInputSchema,
   SttResultSchema,
   TopicCopyInputSchema,
   TopicCreateInputSchema,
@@ -68,6 +70,8 @@ export interface Api {
   me(): Promise<User | null>;
   login(email: string, password: string): Promise<User>;
   logout(): Promise<void>;
+  requestPasswordReset(email: string): Promise<void>;
+  resetPassword(token: string, password: string): Promise<void>;
   joinByCode(code: string): Promise<JoinInfo>;
   joinAsGuest(code: string, name?: string): Promise<JoinResult>;
   createActivityInvite(activityId: string): Promise<ActivityInvite>;
@@ -262,6 +266,12 @@ export const httpApi: Api = {
     await unwrap(await client.auth.logout.$post());
     clearLocalUserState();
     announceSession();
+  },
+  async requestPasswordReset(email) {
+    await unwrap(await client.auth.password.forgot.$post({ json: PasswordForgotInputSchema.parse({ email }) }));
+  },
+  async resetPassword(token, password) {
+    await unwrap(await client.auth.password.reset.$post({ json: PasswordResetInputSchema.parse({ token, password }) }));
   },
   async joinByCode(code) {
     return unwrap(await client.join[":code"].$get({ param: { code } }));

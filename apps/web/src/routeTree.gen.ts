@@ -11,9 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DialogueRouteImport } from './routes/dialogue'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as ClassroomsIndexRouteImport } from './routes/classrooms.index'
@@ -36,6 +38,11 @@ const DialogueRoute = DialogueRouteImport.update({
   path: '/dialogue',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HomeRoute = HomeRouteImport.update({
   id: '/home',
   path: '/home',
@@ -49,6 +56,11 @@ const JoinRoute = JoinRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -110,9 +122,11 @@ const TLiveIdRoute = TLiveIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dialogue': typeof DialogueRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/home': typeof HomeRoute
   '/join': typeof JoinRouteWithChildren
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/admin/users': typeof AdminUsersRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
@@ -128,8 +142,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dialogue': typeof DialogueRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/home': typeof HomeRoute
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/admin/users': typeof AdminUsersRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
@@ -146,9 +162,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dialogue': typeof DialogueRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/home': typeof HomeRoute
   '/join': typeof JoinRouteWithChildren
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/admin/users': typeof AdminUsersRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
@@ -166,9 +184,11 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dialogue'
+    | '/forgot-password'
     | '/home'
     | '/join'
     | '/login'
+    | '/reset-password'
     | '/settings'
     | '/admin/users'
     | '/classrooms/$classroomId'
@@ -184,8 +204,10 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/dialogue'
+    | '/forgot-password'
     | '/home'
     | '/login'
+    | '/reset-password'
     | '/settings'
     | '/admin/users'
     | '/classrooms/$classroomId'
@@ -201,9 +223,11 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/dialogue'
+    | '/forgot-password'
     | '/home'
     | '/join'
     | '/login'
+    | '/reset-password'
     | '/settings'
     | '/admin/users'
     | '/classrooms/$classroomId'
@@ -220,9 +244,11 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DialogueRoute: typeof DialogueRoute
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   HomeRoute: typeof HomeRoute
   JoinRoute: typeof JoinRouteWithChildren
   LoginRoute: typeof LoginRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
   AdminUsersRoute: typeof AdminUsersRoute
   ClassroomsClassroomIdRoute: typeof ClassroomsClassroomIdRoute
@@ -249,6 +275,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DialogueRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/home': {
       id: '/home'
       path: '/home'
@@ -268,6 +301,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -367,9 +407,11 @@ const JoinRouteWithChildren = JoinRoute._addFileChildren(JoinRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DialogueRoute: DialogueRoute,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   HomeRoute: HomeRoute,
   JoinRoute: JoinRouteWithChildren,
   LoginRoute: LoginRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
   AdminUsersRoute: AdminUsersRoute,
   ClassroomsClassroomIdRoute: ClassroomsClassroomIdRoute,
