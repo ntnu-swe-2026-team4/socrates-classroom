@@ -138,15 +138,15 @@ interface User {
 
 教室＝Discord 式容器（accounts.md §4）；以下端點皆需登入且為該班 owner 或成員（`classroomAccess`：未知教室 404、非成員 403）。
 
-| Operation                                                                   | 說明                                                                                                                                                                 |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET/POST/DELETE /classrooms/:id/announcements`                             | 成員可讀（最新在前）；**owner 撰寫/刪除**（announcement channel 模式）；`{body}` 單欄（title-less）；限流 30/min                                                     |
-| `GET /classrooms/:id/posts`、`POST`、`DELETE /classrooms/:id/posts/:postId` | 成員皆可發；**單層回覆**（`parentId` 必須指向 root，否則 404）；回應為 threads（最新在前、回覆 ASC）；作者或 owner 可刪——**root 刪除 CASCADE 回覆**（#158 拍板維持） |
-| `GET /classrooms/:id/members`                                               | 名冊：`{teacher: {id, name}, members: [{id, name, joinedAt}]}`（joined_at 排序）；無 `kind` 欄位（teacher-建帳模型已死）                                             |
-| `DELETE /classrooms/:id/members/:userId`                                    | **#237 拍板：只刪 `members` 列，帳號留存**——owner 可移除任何人；成員可 self-leave（刪自己）；刪 teacher 403；他人 403；冪等缺失 404                                  |
-| `GET /classrooms/:id/activities`                                            | 活動列表：`{id, mode, topicTitle, finishedAt, createdAt}` 最新在前                                                                                                   |
+| Operation                                                                   | 說明                                                                                                                                                                                                                                                          |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET/POST/DELETE /classrooms/:id/announcements`                             | 成員可讀（最新在前）；**owner 撰寫/刪除**（announcement channel 模式）；`{body}` 單欄（title-less）；限流 30/min                                                                                                                                              |
+| `GET /classrooms/:id/posts`、`POST`、`DELETE /classrooms/:id/posts/:postId` | 成員皆可發；**單層回覆**（`parentId` 必須指向 root，否則 404）；threads 回應**分頁**：`?limit=`（預設 50、上限 100）＋`?before=<thread createdAt>` 游標（同 ms 建立可能被游標截掉——已知限制）；作者或 owner 可刪——**root 刪除 CASCADE 回覆**（#158 拍板維持） |
+| `GET /classrooms/:id/members`                                               | 名冊：`{teacher: {id, name}, members: [{id, name, joinedAt}]}`（joined_at 排序）；無 `kind` 欄位（teacher-建帳模型已死）                                                                                                                                      |
+| `DELETE /classrooms/:id/members/:userId`                                    | **#237 拍板：只刪 `members` 列，帳號留存**——owner 可移除任何人；成員可 self-leave（刪自己）；刪 teacher 403；他人 403；冪等缺失 404                                                                                                                           |
+| `GET /classrooms/:id/activities`                                            | 活動列表：`{id, mode, topicTitle, finishedAt, createdAt}` 最新在前                                                                                                                                                                                            |
 
-- FK 語義：`announcements.author_id` SET NULL（作者帳號刪除時公告留存）；`posts.author_id` CASCADE（作者帳號刪除時貼文一併消失，#233 相容）；root 刪除時回覆 CASCADE
+- FK 語義：`announcements.author_id` SET NULL（作者帳號刪除時公告留存）；`posts.author_id` CASCADE（作者帳號刪除時貼文一併消失）——**暫定**，#233 帳號刪除拍板若改判 anonymize 則此 FK 重議；root 刪除時回覆 CASCADE
 - **行事曆**不在本節（#212：全新設計、無參考 code，另立設計單）；**教室公告×鈴鐘整合**（classroom-level unread）另議
 
 ## 5. 對話（WebSocket，核心；R7）
@@ -324,11 +324,11 @@ interface ViolationSlice {
 
 公告是平台維護訊息（登入頁顯示）；`unread` 是 per-user watermark（`users.notifications_seen_at`）——不是 per-notification 已讀表，`unread`＝`created_at > watermark` 的條目數，O(1) 讀取。
 
-| Operation                                                               | 說明                                                                                                                                      |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/notifications` → `NotificationFeed`                           | **免登入**（#158 拍板：登入頁公告用途）；`{items: Notification[], unread}`，最新在前、上限 30。`unread` 僅登入帳號回傳；未登入一律 `null` |
-| `POST /api/notifications/seen` → 204                                    | requireUser；watermark 設為 now（冪等——重打不變）；未登入 401                                                                             |
-| `POST /api/admin/notifications` `{title, body}` → `Notification`（201） | requireAdmin（限流同 admin-create）；公告為單語內容（admin 撰寫語言，非 UI copy）；`created_by` FK（#233 帳號刪除時 SET NULL）            |
+| Operation                                                               | 說明                                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/notifications` → `NotificationFeed`                           | **免登入**（#158 拍板：登入頁公告用途）；`{items: Notification[], unread}`，最新在前、上限 30。`unread` **不受 feed 視窗限制**（全量 COUNT）、僅登入帳號回傳，未登入一律 `null`；限流 120/min（isolate-local，見 #157） |
+| `POST /api/notifications/seen` → 204                                    | requireUser；watermark 設為 now（冪等——重打不變）；未登入 401                                                                                                                                                           |
+| `POST /api/admin/notifications` `{title, body}` → `Notification`（201） | requireAdmin（限流同 admin-create）；公告為單語內容（admin 撰寫語言，非 UI copy）；`created_by` FK（#233 帳號刪除時 SET NULL）                                                                                          |
 
 - `Notification`：`{id, title, body, createdAt}`——`kind` 欄位刻意不設（YAGNI：目前僅公告一種；#212 社群通知若需要再擴充）
 

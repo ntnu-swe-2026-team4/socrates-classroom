@@ -97,6 +97,7 @@ secret 外洩（例如出現在截圖或訊息裡），或定期更換時，照�
    - 本機：`http://localhost:5173/api/auth/oauth/facebook/callback`
    - 正式站：`https://socrates.g36maid.dev/api/auth/oauth/facebook/callback`
 3. Graph API 版本 pin **`v27.0`**（官方現行 latest；升版時改 `apps/server/src/oauth.ts` 三個常數＋本節）。
+4. **生產合規（App Review）**：dev mode 只有 App 角色成員可登入；上線前需 (a) App Review 核准 **email permission**、(b) 完成商業驗證（business verification）、(c) Data Deletion Instructions URL（見 §6.4）——三者缺一，正式環境的 Facebook 登入不可用。
 
 ### 6.3 流程與身分
 

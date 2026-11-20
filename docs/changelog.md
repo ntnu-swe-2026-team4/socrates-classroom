@@ -16,6 +16,13 @@
 
 - web-next community.ts 參考輸入的**否決清單**：`user.guest/preview` 分支（main 無此概念）、`kind/username` 欄位（teacher-建帳已死）、刪成員砍 `users` 列（#237）、自製 `access()`（改用 main 的 `classroomAccess`）；**行事曆**（全新設計無參考）不在本 PR
 
+### Fixed（同 PR hardening）
+
+- activities list 對非 owner 隱藏 test 活動（#134「任何入口」規則——首版遗漏，補測試鎖定）
+- posts feed 分頁：`?limit=`（預設 50／上限 100）＋`?before=<createdAt>` 游標（已知限制：同 ms 建立的 threads 可能被游標截掉）
+- `posts.author_id` CASCADE 標為**暫定**——#233 若改判 anonymize 則重議（契約已註記）
+- `GET /notifications` 加限流 120/min；`unread` 改全量 COUNT（不受 feed 視窗 30 封頂）；google-oauth §6.2 補 Facebook 生產合規三件套（App Review email permission／business verification／Data Deletion URL）
+
 ## 2026-11-21 — Notifications feed、已讀 watermark 與 admin 公告端點（`feat/239-notifications`，#239）
 
 ### Added
