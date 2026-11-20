@@ -2,6 +2,18 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — 設定頁重構：分類導覽與對話偏好（`split/184-settings`，#184）
+
+### Added
+
+- 設定頁分類導覽：section list（一般／對話體驗／API keys）＋ content panel，`?section=` deep link、`aria-current` 標示目前區
+- 對話體驗區（純 client-side，接 #193 的 companion store）：蘇格拉底 3D 模型開關、語音朗讀、音量與聲線偏好
+- `test/settings.test.tsx`：section 導覷切換、deep link、companion 接線、keys 區掛載
+
+### Changed
+
+- 設定頁版面由單欄卡片改為 200px 導覷列＋內容 panel；`ProviderKeys`（含 #146 月配額編輯器）原元件移植進 keys 區 re-skin；keys 區標題由元件自帶的 h2 承擔（不重複區標題）、section 導覷按鈕 focus ring 對齊設計系統（`focus-visible` ember）
+
 ## 2026-11-21 — Teacher BYOK 額度與警示 email（`feat/146-teacher-byok-quota`）
 
 ### Added
