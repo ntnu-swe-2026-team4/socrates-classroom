@@ -1,10 +1,24 @@
-const EVENT = "socrates:open-account";
+import { useSyncExternalStore } from "react";
 
-export function openAccountSheet() {
-  window.dispatchEvent(new Event(EVENT));
+let version = 0;
+const listeners = new Set<() => void>();
+
+function subscribe(notify: () => void) {
+  listeners.add(notify);
+  return () => {
+    listeners.delete(notify);
+  };
 }
 
-export function onOpenAccountSheet(listener: () => void): () => void {
-  window.addEventListener(EVENT, listener);
-  return () => window.removeEventListener(EVENT, listener);
+function getSnapshot() {
+  return version;
+}
+
+export function openAccountSheet() {
+  version += 1;
+  for (const notify of listeners) notify();
+}
+
+export function useAccountSheetRequest(): number {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

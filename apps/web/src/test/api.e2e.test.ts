@@ -146,4 +146,17 @@ describe("httpApi contract (browser-side actual code)", () => {
     expect(path).toBe("/api/activities/a_1/finish");
     expect(init.method).toBe("POST");
   });
+
+  test("login and logout announce the session change for cross-tab sync", async () => {
+    handler.mockImplementation((path) => {
+      if (path === "/api/auth/login") return json({ id: "u1", name: "小明", isAdmin: false });
+      return new Response(null, { status: 204 });
+    });
+    localStorage.removeItem("socrates_session_changed");
+    await httpApi.login("a@b.co", "password123");
+    expect(localStorage.getItem("socrates_session_changed")).not.toBeNull();
+    localStorage.removeItem("socrates_session_changed");
+    await httpApi.logout();
+    expect(localStorage.getItem("socrates_session_changed")).not.toBeNull();
+  });
 });

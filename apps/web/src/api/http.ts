@@ -239,15 +239,28 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
   });
 }
 
+export const SESSION_SIGNAL_KEY = "socrates_session_changed";
+
+function announceSession(): void {
+  try {
+    localStorage.setItem(SESSION_SIGNAL_KEY, String(Date.now()));
+  } catch {
+    return;
+  }
+}
+
 export const httpApi: Api = {
   async me() {
     return unwrap(await client.me.$get());
   },
   async login(email, password) {
-    return unwrap(await client.auth.login.$post({ json: LoginInputSchema.parse({ email, password }) }));
+    const user = unwrap(await client.auth.login.$post({ json: LoginInputSchema.parse({ email, password }) }));
+    announceSession();
+    return user;
   },
   async logout() {
     await unwrap(await client.auth.logout.$post());
+    announceSession();
   },
   async joinByCode(code) {
     return unwrap(await client.join[":code"].$get({ param: { code } }));
@@ -399,7 +412,9 @@ export const httpApi: Api = {
     return raw<DevAccounts>("/dev/accounts");
   },
   async devLogin(email) {
-    return raw<User>("/dev/login", { method: "POST", json: DevLoginInputSchema.parse({ email }) });
+    const user = await raw<User>("/dev/login", { method: "POST", json: DevLoginInputSchema.parse({ email }) });
+    announceSession();
+    return user;
   },
   async listAdminUsers() {
     return unwrap(await client.admin.users.$get());

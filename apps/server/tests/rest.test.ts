@@ -4,6 +4,8 @@ import { beforeAll, describe, expect, test, vi } from "vitest";
 import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
+import worker from "../src/index";
+import type { Env } from "../src/env";
 import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
 
 let teacher: string;
@@ -560,7 +562,61 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       body: JSON.stringify({ term: "功利主義" }),
     });
     expect(lookup.status).toBe(200);
+    expect(lookup.headers.get("X-Socrates-Fallback")).toBe("mock");
     expect(((await lookup.json()) as { markdown: string }).markdown).toContain("功利主義");
+  });
+
+  test("topics/generate mock → canned topics marked with X-Socrates-Fallback", async () => {
+    const generated = await call("/api/topics/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher, "CF-Connecting-IP": "198.51.100.42" },
+      body: JSON.stringify({ direction: "契約" }),
+    });
+    expect(generated.status).toBe(200);
+    expect(generated.headers.get("X-Socrates-Fallback")).toBe("mock");
+    expect(Array.isArray(await generated.json())).toBe(true);
+  });
+
+  test.each([
+    ["no AI binding", undefined],
+    [
+      "an AI binding whose calls fail (the model returns nothing)",
+      {
+        run: async () => {
+          throw new Error("upstream down");
+        },
+      },
+    ],
+  ])("#160: without the mock provider and with %s, the answer is a 502, never canned content", async (_, ai) => {
+    const realEnv = Object.create(env, { LLM_PROVIDER: { value: "" }, AI: { value: ai } }) as Env;
+    const callReal = (path: string, init: RequestInit) =>
+      worker.fetch(new Request(`http://worker.test${path}`, init), realEnv);
+    const student = (await registerStudent(code, `R6生H${ai ? "2" : "1"}`)).cookie;
+    const lookup = await callReal("/api/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: student },
+      body: JSON.stringify({ term: "功利主義" }),
+    });
+    expect(lookup.status).toBe(502);
+    expect(lookup.headers.get("X-Socrates-Fallback")).toBeNull();
+    const lookupBody = (await lookup.json()) as { code: string; markdown?: unknown };
+    expect(lookupBody.code).toBe("llm_unavailable");
+    expect(lookupBody).not.toHaveProperty("markdown");
+
+    const generated = await callReal("/api/topics/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: teacher,
+        "CF-Connecting-IP": ai ? "198.51.100.44" : "198.51.100.43",
+      },
+      body: JSON.stringify({ direction: "契約" }),
+    });
+    expect(generated.status).toBe(502);
+    expect(generated.headers.get("X-Socrates-Fallback")).toBeNull();
+    const generatedBody = (await generated.json()) as { code: string };
+    expect(Array.isArray(generatedBody)).toBe(false);
+    expect(generatedBody.code).toBe("llm_unavailable");
   });
 });
 

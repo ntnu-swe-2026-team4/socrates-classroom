@@ -25,11 +25,11 @@
 | 訪客加入    | 邀請碼＋姓名＋ToS 同意；不建帳號，取得活動層 participant cookie                                       | `GET /api/join/:code`・`POST /api/join`・`/join`                                      |
 | 活動邀請    | 老師產生活動專屬連結／QR；無痕開連結即成活動訪客，不進班級名冊                                        | `POST /api/activities/:id/invites`・`GET /api/invites/:token`・`/join/a/$token`       |
 | 教室清單    | 老師見自己開的教室（含 code/url）；學生見加入中的教室                                                 | `GET /api/classrooms`・`/classrooms`                                                  |
-| 建立教室    | 老師建立空教室（只建班級、產生邀請碼，不建活動）                                                      | `POST /api/classrooms`・`/t/setup`                                                    |
-| 議題集      | 議題屬於班級；班級內新增／AI 生成；跨班複製為獨立副本；系統題任何老師可用                             | `GET/POST /api/classrooms/:id/topics`・`POST /api/topics/:id/copy`・`/classrooms/:id` |
+| 建立教室    | 任何登入 user 建立空教室（建班即成為該班老師；只建班級、產生邀請碼，不建活動，#210）                  | `POST /api/classrooms`・`/t/setup`                                                    |
+| 議題集      | 議題屬於班級；班級內新增／AI 生成；跨班複製為獨立副本；系統題任何登入 user 可用（#210）               | `GET/POST /api/classrooms/:id/topics`・`POST /api/topics/:id/copy`・`/classrooms/:id` |
 | 開活動      | 以班級議題或系統題開新活動（`live` 會換掉進行中活動；`test` 不換，見下）                              | `POST /api/classrooms/:id/activities`・`/t/setup`                                     |
 | 測試模式    | 老師建 1–6 個 slot，各自一條獨立對話；學生任何入口都看不到；結束後照常產報告                          | `GET/POST /api/activities/:id/slots`・`/t/live/:id`                                   |
-| 議題池      | 系統題＋老師個人題列表；AI 生成候選（未落庫）                                                         | `GET/POST /api/topics`・`POST /api/topics/generate`                                   |
+| 議題池      | 系統題＋個人題列表；AI 生成候選（未落庫）                                                             | `GET/POST /api/topics`・`POST /api/topics/generate`                                   |
 
 ## 單人：與蘇格拉底對話
 
@@ -40,7 +40,7 @@
 | 情緒表現 | avatar extension 產生 `app.emotion` entry（機率本體）→ 頭像表情映射                                                                                             | `dialogue.tsx`（thinking 暫態 Confused；回合後按 entry）    |
 | 語音輸入 | 原生 SpeechRecognition 優先；無支援（Firefox）時 MediaRecorder → server STT；effect-free hook（#183）                                                           | `POST /api/stt`・`useVoiceInput`                            |
 | 語音朗讀 | 單通道 TTS（跨 tab 仲裁、句尾截斷 ≤4000 字）＋說話中振幅驅動嘴型（#180/#183）                                                                                   | `POST /api/tts`・`lib/speech.ts`                            |
-| 名詞查詢 | 選取文字 → 查詢面板（prose oneshot，失敗回 fallback 文字）；查詢紀錄持久化                                                                                      | `POST /api/lookup`・`TermPanel`                             |
+| 名詞查詢 | 選取文字 → 查詢面板（prose oneshot，失敗時顯示錯誤）；查詢紀錄持久化                                                                                            | `POST /api/lookup`・`TermPanel`                             |
 | 順帶一問 | 頂欄按鈕或在輸入框打 `/btw 問題` 開側欄，暫離蘇格拉底問定義／背景（例：電車難題）；fork 主對話，內容不回寫主對話與報告；「新話題」以當下主對話重新 fork（#121） | WS `btw` op（`api-contract.md` §5.4）・`BtwPanel`・`useBtw` |
 | 對話歷史 | pi transcript 永久保存於 DO；重連 watch 即恢復完整 view                                                                                                         | `watch`（無獨立歷史端點）                                   |
 
@@ -85,12 +85,13 @@
 
 ## 平台與基礎建設
 
-| 能力        | 說明                                                                                                                                                                   |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 單一 Worker | Hono API + SPA 靜態資產 + 兩個 DO，同一部署單位                                                                                                                        |
-| D1          | 應用資料（users／classrooms／topics／activities／members／activity_participants／reports／pseudonyms／teacher_keys）；migrations 走 `cf d1 migrations apply`           |
-| i18n        | 介面三語（zh-TW/en/es，typed dictionary 由 tsc 強制完備）；後端訊息 (`src/messages.ts`) 同步三語                                                                       |
-| 登入前故事  | 捲動驅動漫畫故事頁：47 張 WebP sprite sheet 於 `<canvas>` 播放（視差、人群氣球、眼睛虹彩切換）；資產 repo 外產出，更換時 bump `ASSET_VERSION`                          |
-| 設定頁      | 分類導覷（一般／對話體驗／API keys，`?section=` deep link）；對話偏好（3D 模型、朗讀、音量、聲線——companion store 純 client-side）；BYOK 金鑰與月配額管理（#153/#146） |
-| CI/CD       | GitHub Actions：PR lint/test（server＋web）/build/dry-run；main 自動 migrations + deploy（見 [`cf.md`](./cf.md)）                                                      |
-| 觀測        | Worker observability 開啟；AI Gateway log/cache 關閉（ZDR）；log 不含學生對話內容                                                                                      |
+| 能力        | 說明                                                                                                                                                                                                                   |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 單一 Worker | Hono API + SPA 靜態資產 + 兩個 DO，同一部署單位                                                                                                                                                                        |
+| D1          | 應用資料（users／classrooms／topics／activities／members／activity_participants／reports／pseudonyms／teacher_keys）；migrations 走 `cf d1 migrations apply`                                                           |
+| i18n        | 介面三語（zh-TW/en/es，typed dictionary 由 tsc 強制完備）；後端訊息 (`src/messages.ts`) 同步三語                                                                                                                       |
+| 登入前故事  | 捲動驅動漫畫故事頁：47 張 WebP sprite sheet 於 `<canvas>` 播放（視差、人群氣球、眼睛虹彩切換）；資產 repo 外產出，更換時 bump `ASSET_VERSION`                                                                          |
+| 殼層        | AppShell side rail（品牌塊、Home/Classrooms、admin 桿、主題方鈕、頭像）；compact 帳號選單（TrapDialog）；focus/visibility 重查 session 與跨 tab 同步（`SESSION_SIGNAL_KEY` announce，#179）；`ht-theme` 內頁效果層接線 |
+| 設定頁      | 分類導覷（一般／對話體驗／API keys，`?section=` deep link）；對話偏好（3D 模型、朗讀、音量、聲線——companion store 純 client-side）；BYOK 金鑰與月配額管理（#153/#146）                                                 |
+| CI/CD       | GitHub Actions：PR lint/test（server＋web）/build/dry-run；main 自動 migrations + deploy（見 [`cf.md`](./cf.md)）                                                                                                      |
+| 觀測        | Worker observability 開啟；AI Gateway log/cache 關閉（ZDR）；log 不含學生對話內容                                                                                                                                      |

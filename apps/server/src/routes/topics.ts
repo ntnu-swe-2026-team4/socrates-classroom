@@ -93,7 +93,7 @@ export function topicsRoutes() {
       await enforceIpLimit(c, "topics-generate", 10);
       const input = await parseBody(c, GenerateTopicsInputSchema);
       requireUser(c);
-      if (!c.env.AI || c.env.LLM_PROVIDER === "mock") {
+      if (c.env.LLM_PROVIDER === "mock") {
         return c.json(
           mockTopics(input.direction).topics.map((topic, index) => ({
             id: `gen_${Date.now()}_${index}`,
@@ -103,6 +103,7 @@ export function topicsRoutes() {
           { "X-Socrates-Fallback": "mock" },
         );
       }
+      if (!c.env.AI) fail(502, "llm_unavailable");
       try {
         const user = requireUser(c);
         const { harness, runtime, teacherLegs } = await openProfileHarness(c.env, "topic-gen", async () => user.id);
@@ -124,14 +125,7 @@ export function topicsRoutes() {
       } catch (error) {
         if (error instanceof ApiError) throw error;
         console.error("[topics/generate] failed", error instanceof Error ? error.name : typeof error);
-        return c.json(
-          mockTopics(input.direction).topics.map((topic, index) => ({
-            id: `gen_${Date.now()}_${index}`,
-            ...topic,
-          })),
-          200,
-          { "X-Socrates-Fallback": "mock" },
-        );
+        fail(502, "llm_unavailable");
       }
     });
 }
