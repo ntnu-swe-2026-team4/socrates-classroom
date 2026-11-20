@@ -31,6 +31,7 @@ function SettingsPage() {
   const wanted = Route.useSearch().section ?? "general";
   const section = SECTIONS.some((item) => item.id === wanted) ? wanted : "general";
   const current = SECTIONS.find((item) => item.id === section) ?? SECTIONS[0]!;
+  const hasOwnHeading = section === "keys";
 
   return (
     <div className="flex min-h-full flex-col bg-paper-deep pb-10">
@@ -52,7 +53,7 @@ function SettingsPage() {
                   void navigate({ to: "/settings", search: item.id === "general" ? {} : { section: item.id } })
                 }
                 className={cn(
-                  "flex shrink-0 cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px] whitespace-nowrap transition-colors",
+                  "flex shrink-0 cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember",
                   section === item.id
                     ? "bg-paper font-semibold text-ink shadow-sm"
                     : "text-ink-soft hover:bg-paper/60 hover:text-ink",
@@ -65,10 +66,15 @@ function SettingsPage() {
           })}
         </nav>
 
-        <section aria-labelledby="settings-section" className="flex min-w-0 max-w-2xl flex-col gap-4">
-          <h2 id="settings-section" className="text-[17px] font-semibold text-ink">
-            {t(current.label)}
-          </h2>
+        <section
+          aria-labelledby={hasOwnHeading ? undefined : "settings-section"}
+          className="flex min-w-0 max-w-2xl flex-col gap-4"
+        >
+          {!hasOwnHeading && (
+            <h2 id="settings-section" className="text-[17px] font-semibold text-ink">
+              {t(current.label)}
+            </h2>
+          )}
           {section === "general" && (
             <Card className="flex flex-col gap-3 p-5">
               <p className="font-serif text-[15.5px] text-ink">{t("settings_lang")}</p>

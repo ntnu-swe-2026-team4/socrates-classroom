@@ -8,7 +8,13 @@ import { setLocale } from "@/i18n";
 import { companion, getCompanion } from "@/lib/companion";
 
 vi.mock("@/components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
-vi.mock("@/components/ProviderKeys", () => ({ ProviderKeys: () => <div data-testid="provider-keys" /> }));
+vi.mock("@/components/ProviderKeys", () => ({
+  ProviderKeys: () => (
+    <div data-testid="provider-keys">
+      <h2>API keys (bring your own)</h2>
+    </div>
+  ),
+}));
 
 beforeEach(() => {
   setLocale("en");
@@ -74,6 +80,17 @@ test("settings shows the three section tabs and defaults to the general language
   }
 });
 
+test("section nav buttons carry the design-system focus ring", async () => {
+  const dispose = await mountRoute("/settings");
+  try {
+    for (const name of ["General", "Dialogue", "API keys"]) {
+      expect(screen.getByRole("button", { name }).className).toContain("focus-visible:outline-ember");
+    }
+  } finally {
+    dispose();
+  }
+});
+
 test("switching to the dialogue tab swaps the panel and marks the tab current", async () => {
   const dispose = await mountRoute("/settings");
   try {
@@ -123,6 +140,17 @@ test("switching to the keys tab mounts the provider keys panel", async () => {
     fireEvent.click(await screen.findByRole("button", { name: "API keys" }));
     expect(await screen.findByTestId("provider-keys")).toBeTruthy();
     expect(screen.getByRole("button", { name: "API keys" }).getAttribute("aria-current")).toBe("page");
+  } finally {
+    dispose();
+  }
+});
+
+test("the keys panel does not duplicate the provider keys heading", async () => {
+  const dispose = await mountRoute("/settings?section=keys");
+  try {
+    await screen.findByTestId("provider-keys");
+    const headings = screen.getAllByRole("heading", { level: 2 });
+    expect(headings.map((heading) => heading.textContent)).toEqual(["API keys (bring your own)"]);
   } finally {
     dispose();
   }
