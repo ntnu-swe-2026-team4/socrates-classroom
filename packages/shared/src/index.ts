@@ -324,6 +324,23 @@ export type DevAccount = z.infer<typeof DevAccountSchema>;
 export const DevAccountsSchema = z.object({ password: z.string(), accounts: z.array(DevAccountSchema) });
 export type DevAccounts = z.infer<typeof DevAccountsSchema>;
 
+export const NotificationSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
+});
+export type Notification = z.infer<typeof NotificationSchema>;
+export const NotificationFeedSchema = z.object({
+  items: z.array(NotificationSchema),
+  unread: z.number().int().nullable(),
+});
+export type NotificationFeed = z.infer<typeof NotificationFeedSchema>;
+export const NotificationInputSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  body: z.string().trim().min(1).max(2000),
+});
+
 export const TeacherKeyModelSchema = z.object({
   model: z.string(),
   maxConcurrency: z.number().int().min(1).max(100).nullable(),
