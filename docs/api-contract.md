@@ -167,7 +167,8 @@ type ServerMessage =
 ```
 
 - **客戶端以 `applyImmutable`（`@earendil-works/chord/delta`）套用 ops**——禁止手寫 delta applier
-- **回合完成判定**：submit 後記 baseline（當時最後一個 entry id，sliding window splice 安全），view/ops 中 baseline 之後出現 `pi.assistant` entry 即完成（admission receipt 不代表完成；串流中的 partial 寫在 `pi.live` doc，不會誤觸）；reconnect 後全量 view 仲裁——無本輪 `pi.user` entry＝未被 admission，清 pending 報錯（防 double-submit）
+- **回合完成判定**：submit 後記 baseline（當時最後一個 entry id），透過 view/ops 判斷本輪的 assistant 回覆是否已完成。Admission receipt 代表已受理。串流中的 partial 寫在 `pi.live` doc。重連後，若 watch window 缺少本輪的 `pi.user` entry，前端仍以可判定的回覆或明確的失敗訊號結束 `pending`。
+- **Run 失敗與逾時（#148）**：Chat DO 保存待處理的 operation，重啟後恢復追蹤。查到 run 遺失、失敗，或達到約 120 秒的 deadline 仍無結果時，向同一個 session 廣播無 `id` 的 `llm_unavailable`。失敗通知自記錄起保留 120 秒，供重連後重新 watch 同一個 session 時補收。若同一個 session 另有待追蹤的 operation，則暫緩補送上一輪的失敗通知。
 - **情緒**：`view.entries` 的 `app.emotion` entry（`{emotion, probabilities, confidence}`，#111）——UI 依機率驅動表情，文字零污染
 - **違規**：`app.violation` entry（`{type, probability, excerpt, source}`，#71）——老師面板讀 D1（#73 輪詢），學生端不消費
 - **歷史**：WS `watch` 首個 view（window 預設最新 50 則 entries）或 `entries` 指令；pi transcript（DO storage）為唯一真相
