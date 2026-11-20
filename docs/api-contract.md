@@ -32,6 +32,7 @@
 | ------------------------------------------------------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------------- |
 | `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅                                            | ✅                                                       |
 | `POST /auth/signup`、`GET /auth/oauth/:provider/start`、`GET /auth/oauth/:provider/callback`（#124）    | ✅                                            | ✅                                                       |
+| `POST /auth/password/forgot`、`POST /auth/password/reset`（#230）                                       | ✅                                            | ✅                                                       |
 | `GET /invites/:token`、`POST /invites/:token/join`（活動邀請連結，#133）                                | ✅                                            | ✅（只加入活動，不入名冊）                               |
 | `GET /notifications`（feed 免登入）、`POST /notifications/seen`、`POST /admin/notifications`（#239）    | feed ✅（未登入 `unread` null）；seen/admin — | feed ✅（`unread` 有值）；seen ✅；admin ❌ 401／403     |
 | `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —                                             | ✅                                                       |
@@ -99,6 +100,18 @@ interface User {
 - 一個帳號對應一種登入方式；同一個 email 經 email 註冊與 Google／Facebook 登入是**各自獨立的帳號**（第三方登入不以 email 認身分）
 - Google 帳號的 email 存於 `user_identities.email`，`users.email` 為 NULL（`users.email` 只承載 email 密碼登入）；Facebook 帳號同理，且其 email 可能缺席（informational）
 - callback redirect URI＝`PUBLIC_BASE_URL`（未設則用請求 origin）＋`/api/auth/oauth/<provider>/callback`；Google 需登錄於 Google Cloud Console，Facebook 需登錄於 Meta App Dashboard（設定見 [`google-oauth.md`](./google-oauth.md) §6）
+
+### 2.2 密碼找回（#230）
+
+| Endpoint                                                  | 說明                                                                                                                                                                                                                  |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/auth/password/forgot` `{email}` → 204          | 一律回 204，不透露帳號是否存在。帳號存在、有密碼且未停用時，寄出重設信（語言依 `users.lang`），連結為 `PUBLIC_BASE_URL`（未設則用請求 origin）＋`/reset-password#token=<token>`；寄信走 `waitUntil`，寄送失敗只記 log |
+| `POST /api/auth/password/reset` `{token, password}` → 204 | token 有效 → 更新密碼、`session_version + 1`（所有裝置登出），不發 session。token 無效、過期、已使用，或帳號已停用 → 400 `reset_token_invalid`；`password` 規則同 signup（8–128）→ 不符 422 `validation`              |
+
+- token 對 client 是不透明字串；有效 30 分鐘。伺服器不存 token：簽章綁定帳號目前的 `password_hash` 與 `email`，密碼或 email 一改，所有尚未使用的連結都失效（等於單次使用）；簽章金鑰依用途由 `AUTH_SECRET` 推導，不同用途的 token 不能互用
+- 連結把 token 放在 URL fragment（`#token=`），不會送到伺服器，也不會出現在 Referer 或伺服器 log
+- 限流：forgot 每 IP 每分鐘 5 次、reset 每 IP 每分鐘 10 次（`enforceIpLimit`，各 isolate 各自計數，#157）；同一 email 的冷卻待 #157
+- 純 SSO 帳號（`users.email` 為 NULL、無密碼）不適用
 
 ## 3. 入場（唯一閘門，#66/#70）
 
@@ -336,6 +349,7 @@ interface ViolationSlice {
 | BYOK / teacher keys    | `byok_provider_invalid`                                                                                                                                                                    | 422                         |
 | 第三方登入（#124）     | `oauth_unavailable` / `oauth_state_invalid` / `oauth_email_unverified` / `oauth_failed`（以 `/login?error=<code>` query 傳回，非 JSON）                                                    | 302                         |
 | 自行註冊（#124）       | `email_taken`（`POST /auth/signup` 信箱已被使用）                                                                                                                                          | 409                         |
+| 密碼找回（#230）       | `reset_token_invalid`（`POST /auth/password/reset` 的 token 無效、過期、已使用，或帳號已停用）                                                                                             | 400                         |
 
 ## 11. 端點外的既存通道
 

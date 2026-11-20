@@ -2,6 +2,19 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — Email 帳號密碼找回（`feat/230-password-reset`，#230）
+
+### Added
+
+- `POST /api/auth/password/forgot`、`POST /api/auth/password/reset`（契約見 [`api-contract.md`](./api-contract.md) §2.2）：無狀態 token（簽章綁定目前 `password_hash` 與 `email`、依用途推導金鑰、30 分鐘），重設成功 `session_version + 1`；錯誤碼 `reset_token_invalid`（三語訊息）
+- 三語重設信模板（`mail.ts`，寄件人沿用 `ALERT_FROM_EMAIL`）；寄信走 `waitUntil`，寄送失敗只記 log
+- `/forgot-password`、`/reset-password` 頁面（只用既有 `components/ui`；登入頁入口待 #178）
+- `tests/password-reset.test.ts`（17 tests：寄信與不寄信的情況、單次使用、雙連結、並行重設、session 失效、過期、竄改、跨用途、密碼或 email 在別處變更、停用、fail-open、限流）＋ `test/password-reset.test.tsx`（5 tests）
+
+### Changed
+
+- Worker 入口（`index.ts`）把 `ExecutionContext` 傳給 Hono，路由可用 `c.executionCtx.waitUntil`（先前入口沒有傳入，`waitUntil` 無法使用）
+
 ## 2026-11-21 — speech 仲裁政策抽離：`SpeechArbiter` 與注入式環境（`refactor/165-speech-arbiter`，#165）
 
 ### Added

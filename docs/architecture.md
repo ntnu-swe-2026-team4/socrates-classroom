@@ -110,9 +110,11 @@ socrates-classroom/
 
 ## 3. Worker 分層（apps/server）
 
-**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。
+**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、`SEND_EMAIL`、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。
 
-**Worker 入口（index.ts）**：`/api/*` → Hono；`/agents/*` → `routeAgentRequest`（WebSocket）；其餘 → static assets。
+**寄信（`SEND_EMAIL`，`send_email` binding）**：額度提醒信（#146）與密碼重設信（#230）共用，寄件人為 `ALERT_FROM_EMAIL`，模板在 `mail.ts`。Cloudflare Email Service 在 sending domain 完成 onboarding 之前，只能寄給帳號內已驗證的收件地址；寄給任意收件人需要 onboard sending domain，且需要 Workers Paid（[Send bindings](https://developers.cloudflare.com/email-service/configuration/send-bindings/)、[Pricing](https://developers.cloudflare.com/email-service/platform/pricing/)，2026-11-21 查證）。production 是否已滿足這兩項，repo 內無紀錄。
+
+**Worker 入口（index.ts）**：`/api/*` → Hono（傳入 `ExecutionContext`，路由可用 `c.executionCtx.waitUntil` 在回應後執行背景工作）；`/agents/*` → `routeAgentRequest`（WebSocket）；其餘 → static assets。
 
 **Db 介面（db/d1.ts）**：
 
