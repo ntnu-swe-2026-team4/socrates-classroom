@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { instructionsFor } from "../src/pi/agents/profiles";
+import { SOCRATES_PROMPTS } from "../src/pi/extensions/socrates";
 import { classReportInput, studentReportInput } from "../src/prompts/assemble";
 import STUDENT_REPORT_RAW from "../src/prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../src/prompts/class-report.md?raw";
@@ -29,6 +30,13 @@ describe("prompts (#161): what the report models receive is pinned", () => {
       ),
     ).toMatchSnapshot();
   });
+
+  for (const lang of LANGS) {
+    it(`socrates instructions in ${lang}: one file per language, no placeholder`, () => {
+      expect(SOCRATES_PROMPTS[lang]).not.toMatch(/{{[^}]*}}/);
+      expect(SOCRATES_PROMPTS[lang]).toMatchSnapshot();
+    });
+  }
 
   it("report prompt assets hold {{lang}} and no other placeholder", () => {
     for (const raw of [STUDENT_REPORT_RAW, CLASS_REPORT_RAW]) {

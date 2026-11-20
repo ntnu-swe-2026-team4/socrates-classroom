@@ -10,6 +10,7 @@ import { seedFixture } from "../src/seed";
 import { all, run } from "../src/db/d1";
 import type { Chat } from "../src/do/chat";
 import { BTW_THINKING_LEVEL, PROFILES } from "../src/pi/agents/profiles";
+import { SOCRATES_PROMPTS, socratesExtension } from "../src/pi/extensions/socrates";
 import {
   assistantText,
   call,
@@ -31,9 +32,9 @@ async function joinStudent(name: string): Promise<{ cookie: string; participantI
   return { cookie: guest.cookie, participantId: guest.participantId };
 }
 
-async function connect(thread: string, cookie?: string): Promise<WebSocket> {
+async function connect(thread: string, cookie?: string, lang?: string): Promise<WebSocket> {
   const response = await routeAgentRequest(
-    new Request(`https://example.com/agents/chat/${thread}`, {
+    new Request(`https://example.com/agents/chat/${thread}${lang ? `?lang=${lang}` : ""}`, {
       headers: { Upgrade: "websocket", ...(cookie ? { Cookie: cookie } : {}) },
     }),
     env,
@@ -62,6 +63,35 @@ beforeAll(async () => {
 });
 
 describe("chat core (real DO + real WebSocket + faux model)", () => {
+  it("Socrates' prompt is the one written in the student's language", async () => {
+    for (const lang of ["zh", "en", "es"] as const) {
+      const render = socratesExtension(() => lang).sections![0]!.render as () => Promise<string>;
+      expect(await render()).toBe(SOCRATES_PROMPTS[lang]);
+    }
+    expect(new Set(Object.values(SOCRATES_PROMPTS)).size).toBe(3);
+  });
+
+  it("the student's connection sets the language; a watching teacher's does not", async () => {
+    const student = await joinStudent("語言生");
+    const thread = `${activityId}:${student.participantId}`;
+    const stub = env.Chat.get(env.Chat.idFromName(thread)) as unknown as DurableObjectStub<Chat>;
+    const langNow = () =>
+      runInDurableObject(stub, async (instance) =>
+        (instance as unknown as { ctx: DurableObjectState }).ctx.storage.get<string>("studentLang"),
+      );
+
+    const own = await connect(thread, student.cookie, "en");
+    await frames(own).until((f) => f.some((m) => m.type === "hello"));
+    expect(await langNow()).toBe("en");
+
+    const teacher = await connect(thread, teacherCookie, "es");
+    await frames(teacher).until((f) => f.some((m) => m.type === "hello"));
+    expect(await langNow()).toBe("en");
+
+    own.close();
+    teacher.close();
+  });
+
   it("WS upgrade → hello → watch → submit → answer lands in transcript", async () => {
     const student = await joinStudent("小明");
     const thread = `${activityId}:${student.participantId}`;

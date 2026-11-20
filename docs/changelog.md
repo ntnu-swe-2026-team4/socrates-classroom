@@ -2,6 +2,19 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-20 — 報告與蘇格拉底語言修正（`fix/report-and-socrates-language`）
+
+### Fixed
+
+- 蘇格拉底用學生的語言回答：原本只有一份中文 prompt、沒有指定回答語言，英文學生收到中文（glm-5.3-flash 實測 0/3）。改為中／英／西各一份 prompt（`socrates.md`／`socrates.en.md`／`socrates.es.md`），依學生連線時帶的 `?lang=` 挑選
+- 單人報告改用老師的語言（原為各學生自己的語言；老師同時讀單人與群體報告）
+- 單人報告引用的 turns 須是學生說過的行號，否則視同格式錯誤重試
+- 群體報告落點：模型改給靠哪一端（left／middle／right）與堅定程度 1–5，`end`／`at` 由 server 換算（原本 glm-5.3-flash 把堅定程度寫成落點數字、把 high 讀成「支持題目的行動」，整班放反）
+
+### Changed
+
+- 報告 prompt 依 #161 整理：輸出格式從 `profiles.ts` 移進 `student-report.md`／`class-report.md`，刪去從未被讀取的 user template，語言佔位符改為 `{{lang}}`，輸入外框集中於 `prompts/assemble.ts`；送給模型的內容逐字不變，`prompts.test.ts` 以 snapshot 固定
+
 ## 2026-11-21 — Teacher BYOK 額度與警示 email（`feat/146-teacher-byok-quota`）
 
 ### Added

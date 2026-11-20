@@ -329,6 +329,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
   const socket = useAgent({
     agent: "chat",
     name: `${activityId}:${participantId}`,
+    query: { lang: document.documentElement.lang || "zh-TW" },
     onOpen: (event) => {
       (event.target as WebSocket).send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
       queueMicrotask(() => tryAutoSend());
