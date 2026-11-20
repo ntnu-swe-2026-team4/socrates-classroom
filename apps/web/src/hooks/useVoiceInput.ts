@@ -4,18 +4,13 @@ import {
   defaultVoiceEnv,
   VoiceInputController,
   type VoiceCallbacks,
-  type VoiceEnv,
   type VoiceError,
   type VoiceState,
 } from "@/lib/voiceInput";
 
 export type { VoiceError, VoiceState } from "@/lib/voiceInput";
 
-export function useVoiceInput(
-  onFinal: (text: string) => void,
-  onAmplitude: (value: number) => void,
-  env: VoiceEnv = defaultVoiceEnv,
-) {
+export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (value: number) => void) {
   const [state, setState] = useState<VoiceState>("idle");
   const [interim, setInterim] = useState("");
   const [error, setError] = useState<VoiceError | null>(null);
@@ -35,7 +30,7 @@ export function useVoiceInput(
       onInterim: setInterim,
       onError: setError,
     };
-    return new VoiceInputController(env, callbacks);
+    return new VoiceInputController(defaultVoiceEnv, callbacks);
   });
 
   useOnUnmount(() => controller.dispose());
