@@ -621,3 +621,16 @@
 - **`nursery.useReactCompiler: error`**：post-pick 程式合規化——StanceConstellation frame loop 改 stage svg ref callback（對齊 DotField/StoaField 慣例）、useVoiceInput controller 改 mount-scoped layout effect（StrictMode 雙呼叫不再漏 dispose）、dialogue refetch 棄手動 memoization
 - `@biomejs/biome` 2.6.4 → 2.6.8（#188 pick 參考的 CI 版本；markdown formatter drift + `!apps/server/src/prompts` 排除隨行）
 - `apps/web/AGENTS.md` 新增 **No `useEffect`** 條目（helpers：`useSubscription.ts`／`frameLoop.ts`；例外：`useVoiceInput` meter rAF）
+
+## 2026-11-21 — biome Tier 1：domains 明示、邊界禁令與安全規則上線（`chore/283-lint-tier1`，#283）
+
+### Added
+
+- `linter.domains` 明示 `react`／`test` 為 `recommended`（2026 正規寫法；react domain 帶入 useExhaustiveDependencies、useJsxKeyInIterable、useHookAtTopLevel 等）
+- `noRestrictedImports` 收斂至 `apps/web/src/**` override，三條禁令：`react/useEffect`（#188 沿用）、`rehype-raw`（Markdown safety）、**web 直匯 server 原始碼**（`**/server/src/**`、`@socrates/server`——R6 契約只准走 `@server/*` dist/types）——已插探針驗證三條皆會擋
+- `suspicious/noConsole: error`（apps/server 與 web tests override off——server 的 `wrangler tail` debug 與測試 trace 為合理使用）；`noDebugger: error`；`security/noDangerouslySetInnerHtml: error`——品質閘門 #8 與 Markdown safety 機械化
+- `nursery/noUselessTypeConversion`、`nursery/noReturnInFinally` error 級
+
+### Fixed
+
+- 清除新規則首掃的真問題：`avatar.ts` 的 `console.warn`（品質閘門 #8 違規）、D1 計數欄位的 5 處冗餘 `Number()` 轉換、`speechArbiter.ts` finally early-return 改 if 區塊
