@@ -6,7 +6,7 @@ import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import worker from "../src/index";
 import type { Env } from "../src/env";
-import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
+import { call, classroomWithActivity, cookieOf, must, participantIdOf, registerStudent, speak } from "./helpers";
 
 let teacher: string;
 let code: string;
@@ -117,10 +117,12 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       code: string | null;
       current: { activityId: string } | null;
     }>;
-    const own = teacherList.find((entry) => entry.current?.activityId === activityId);
-    expect(own).toBeDefined();
-    expect(own!.role).toBe("teacher");
-    expect(own!.code).not.toBeNull();
+    const own = must(
+      teacherList.find((entry) => entry.current?.activityId === activityId),
+      "teacher classroom entry",
+    );
+    expect(own.role).toBe("teacher");
+    expect(own.code).not.toBeNull();
 
     const joined = await registerStudent(code, "R6生C");
     const student = joined.cookie;
@@ -131,12 +133,14 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       memberCount: number;
       current: { activityId: string } | null;
     }>;
-    const member = studentList.find((entry) => entry.current?.activityId === activityId);
-    expect(member).toBeDefined();
-    expect(member!.role).toBe("student");
-    expect(member!.code).toBeNull();
-    expect(member!.teacherName).toBeTruthy();
-    expect(member!.memberCount).toBeGreaterThan(0);
+    const member = must(
+      studentList.find((entry) => entry.current?.activityId === activityId),
+      "student classroom entry",
+    );
+    expect(member.role).toBe("student");
+    expect(member.code).toBeNull();
+    expect(member.teacherName).toBeTruthy();
+    expect(member.memberCount).toBeGreaterThan(0);
   });
 
   test("startActivity — reopens an activity ({topicId} contract shape; same code yields a new activityId)", async () => {
@@ -146,7 +150,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     const restarted = await call("/api/classrooms/c_missing/activities", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ topicId: topics[0]!.id }),
+      body: JSON.stringify({ topicId: topics[0].id }),
     });
     expect(restarted.status).toBe(404);
 
@@ -154,11 +158,14 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       id: string;
       current: { activityId: string } | null;
     }>;
-    const own = classrooms.find((entry) => entry.current?.activityId === activityId);
-    const res = await call(`/api/classrooms/${own!.id}/activities`, {
+    const own = must(
+      classrooms.find((entry) => entry.current?.activityId === activityId),
+      "teacher classroom entry",
+    );
+    const res = await call(`/api/classrooms/${own.id}/activities`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ topicId: topics[0]!.id }),
+      body: JSON.stringify({ topicId: topics[0].id }),
     });
     expect(res.status).toBe(201);
     const payload = (await res.json()) as { activityId: string; code: string };
@@ -641,7 +648,7 @@ describe("report (#74: finish → pending → ready → GET)", () => {
       id: string;
       title: string;
     }>;
-    const created = await classroomWithActivity(teacher, "Report 班", topic!.id);
+    const created = await classroomWithActivity(teacher, "Report 班", topic.id);
     const student = (await registerStudent(created.code, "報告生")).cookie;
     await speak(
       `${created.activityId}:${await participantIdOf(created.activityId, student)}`,
@@ -669,7 +676,7 @@ describe("report (#74: finish → pending → ready → GET)", () => {
       },
       { timeout: 60_000, interval: 500 },
     );
-    expect(settled.topicTitle).toBe(topic!.title);
+    expect(settled.topicTitle).toBe(topic.title);
     expect(Array.isArray(settled.students)).toBe(true);
 
     const asStudent = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: student } });

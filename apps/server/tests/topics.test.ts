@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { one, run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
-import { call, cookieOf, createClassroom, startActivity, systemTopicId } from "./helpers";
+import { call, cookieOf, createClassroom, must, startActivity, systemTopicId } from "./helpers";
 
 let teacher: string;
 let otherTeacher: string;
@@ -88,9 +88,12 @@ describe("classroom / topic decoupling (#135)", () => {
     );
     expect(Number(activity?.n)).toBe(0);
 
-    const code = (await one<{ join_code: string }>(env.DB, "SELECT join_code FROM classrooms WHERE id = $id", {
-      id: classroomId,
-    }))!;
+    const code = must(
+      await one<{ join_code: string }>(env.DB, "SELECT join_code FROM classrooms WHERE id = $id", {
+        id: classroomId,
+      }),
+      "classroom join_code row",
+    );
     const preview = await call(`/api/join/${code.join_code}`);
     expect(preview.status).toBe(404);
     expect(((await preview.json()) as { code: string }).code).toBe("join_code_invalid");
@@ -140,10 +143,10 @@ describe("classroom / topic decoupling (#135)", () => {
 
   it("an activity starts from a classroom topic and becomes current; a test activity never does", async () => {
     const [topic] = await topicsOf(classroomId, teacher);
-    const live = await startActivity(teacher, classroomId, topic!.id);
+    const live = await startActivity(teacher, classroomId, topic.id);
     expect((await currentOf(classroomId, teacher))?.activityId).toBe(live.activityId);
 
-    await startActivity(teacher, classroomId, topic!.id, "test");
+    await startActivity(teacher, classroomId, topic.id, "test");
     expect((await currentOf(classroomId, teacher))?.activityId).toBe(live.activityId);
 
     const systemAcrossClasses = await startActivity(otherTeacher, otherClassroomId, systemTopic);
@@ -153,43 +156,43 @@ describe("classroom / topic decoupling (#135)", () => {
 
   it("copying a topic into another classroom makes an independent snapshot", async () => {
     const [source] = await topicsOf(classroomId, teacher);
-    const copied = await call(`/api/topics/${source!.id}/copy`, jsonInit({ classroomId: secondClassroomId }, teacher));
+    const copied = await call(`/api/topics/${source.id}/copy`, jsonInit({ classroomId: secondClassroomId }, teacher));
     expect(copied.status).toBe(201);
     const copy = (await copied.json()) as SessionTopic;
-    expect(copy.id).not.toBe(source!.id);
+    expect(copy.id).not.toBe(source.id);
     expect(copy.classroomId).toBe(secondClassroomId);
-    expect(copy.title).toBe(source!.title);
-    expect(copy.statement).toBe(source!.statement);
+    expect(copy.title).toBe(source.title);
+    expect(copy.statement).toBe(source.statement);
 
     const provenance = await one<{ copied_from: string | null }>(
       env.DB,
       "SELECT copied_from FROM topics WHERE id = $id",
       { id: copy.id },
     );
-    expect(provenance?.copied_from).toBe(source!.id);
+    expect(provenance?.copied_from).toBe(source.id);
 
-    const original = source!.statement;
+    const original = source.statement;
     await run(env.DB, "UPDATE topics SET statement = $statement WHERE id = $id", {
       statement: "來源被改過了",
-      id: source!.id,
+      id: source.id,
     });
     const [after] = await topicsOf(secondClassroomId, teacher);
-    expect(after!.statement).toBe(original);
+    expect(after.statement).toBe(original);
 
     const target = await topicsOf(secondClassroomId, teacher);
     expect(target.map((row) => row.id)).toEqual([copy.id]);
     const origin = await topicsOf(classroomId, teacher);
     expect(origin.find((row) => row.id === copy.id)).toBeUndefined();
-    expect(origin[0]!.statement).toBe("來源被改過了");
+    expect(origin[0].statement).toBe("來源被改過了");
   });
 
   it("copy needs ownership of both sides and a readable source", async () => {
     const [source] = await topicsOf(classroomId, teacher);
-    const foreign = await call(`/api/topics/${source!.id}/copy`, jsonInit({ classroomId: otherClassroomId }, teacher));
+    const foreign = await call(`/api/topics/${source.id}/copy`, jsonInit({ classroomId: otherClassroomId }, teacher));
     expect(foreign.status).toBe(403);
 
     const stolen = await call(
-      `/api/topics/${source!.id}/copy`,
+      `/api/topics/${source.id}/copy`,
       jsonInit({ classroomId: otherClassroomId }, otherTeacher),
     );
     expect(stolen.status).toBe(404);

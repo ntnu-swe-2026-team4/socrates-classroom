@@ -4,7 +4,7 @@ import type { DevAccounts, User } from "@socrates/shared";
 import { beforeAll, describe, expect, test } from "vitest";
 import { inject } from "vitest";
 import { FIXTURE_ACCOUNTS, FIXTURE_CLASSROOMS, FIXTURE_PASSWORD, seedFixture } from "../src/seed";
-import { call, callWith, cookieOf } from "./helpers";
+import { call, callWith, cookieOf, must } from "./helpers";
 
 const migrations = inject("d1Migrations");
 
@@ -18,7 +18,7 @@ async function counts(): Promise<{ users: number; classrooms: number; members: n
       (SELECT COUNT(*) FROM classrooms) AS classrooms,
       (SELECT COUNT(*) FROM members) AS members`,
   ).first<{ users: number; classrooms: number; members: number }>();
-  return row!;
+  return must(row, "seed counts row");
 }
 
 beforeAll(async () => {
@@ -50,26 +50,41 @@ describe("dev fixtures", () => {
     expect(body.password).toBe(FIXTURE_PASSWORD);
     expect(body.accounts.map((account) => account.email)).toEqual(FIXTURE_ACCOUNTS.map((account) => account.email));
 
-    const lin = body.accounts.find((account) => account.email === "demo@socrates.tw")!;
+    const lin = must(
+      body.accounts.find((account) => account.email === "demo@socrates.tw"),
+      "lin account row",
+    );
     expect(lin.fixtureRole).toBe("teacher");
     expect(lin.classrooms).toHaveLength(2);
     expect(lin.classrooms.every((room) => room.role === "teacher" && room.code !== null)).toBe(true);
 
-    const chen = body.accounts.find((account) => account.email === "chen@socrates.tw")!;
+    const chen = must(
+      body.accounts.find((account) => account.email === "chen@socrates.tw"),
+      "chen account row",
+    );
     expect("canManageClasses" in chen).toBe(false);
     expect(chen.isAdmin).toBe(false);
     expect(chen.classrooms.map((room) => room.role)).toEqual(["student"]);
-    expect(chen.classrooms[0]!.code).toBeNull();
+    expect(chen.classrooms[0].code).toBeNull();
 
-    const member = body.accounts.find((account) => account.email === "student-b@socrates.tw")!;
+    const member = must(
+      body.accounts.find((account) => account.email === "student-b@socrates.tw"),
+      "member account row",
+    );
     expect(member.classrooms.map((room) => room.id)).toEqual(["c_fx_philosophy"]);
-    expect(member.classrooms[0]!.role).toBe("student");
+    expect(member.classrooms[0].role).toBe("student");
 
-    const admin = body.accounts.find((account) => account.fixtureRole === "admin")!;
+    const admin = must(
+      body.accounts.find((account) => account.fixtureRole === "admin"),
+      "admin account row",
+    );
     expect(admin.email).toBe("admin@socrates.tw");
     expect(admin.isAdmin).toBe(true);
 
-    const philosophy = lin.classrooms.find((room) => room.id === "c_fx_philosophy")!;
+    const philosophy = must(
+      lin.classrooms.find((room) => room.id === "c_fx_philosophy"),
+      "philosophy classroom row",
+    );
     expect(philosophy.activityId).toBe("a_fx_philosophy");
     expect(philosophy.url).toContain("/join/demo-phil");
   });

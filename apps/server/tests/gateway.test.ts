@@ -1,3 +1,4 @@
+import { must } from "./helpers";
 import { describe, expect, it, inject } from "vitest";
 import { GatewayLedger } from "../src/gateway/ledger";
 import { run } from "../src/db/d1";
@@ -65,7 +66,7 @@ describe("router chain walk (config-driven, cooldown-filtered)", () => {
     expect(wa?.models?.map((m) => m.id)).toEqual(["@cf/zai-org/glm-5.3-flash", "@cf/zai-org/glm-4.7-flash"]);
     const waEntries = gatewayConfig.defaults.availability.filter((e) => e.provider === "workers-ai");
     expect(waEntries.map((e) => e.model)).toEqual(["@cf/zai-org/glm-5.3-flash", "@cf/zai-org/glm-4.7-flash"]);
-    expect(waEntries[0]!.priority).toBeLessThan(waEntries[1]!.priority);
+    expect(waEntries[0].priority).toBeLessThan(waEntries[1].priority);
   });
 
   it("ledger unit = (provider, model, credential) — same provider, different models, accounted separately", async () => {
@@ -73,9 +74,9 @@ describe("router chain walk (config-driven, cooldown-filtered)", () => {
     const { ledgerKey } = await import("../src/gateway/gateway-schema");
     const router = new Router({ AI: {} } as never);
     const cfg = (await import("../src/gateway/config.gen")).gatewayConfig;
-    const def = cfg.providers["workers-ai"]!;
-    const flash = ledgerKey(cfg.defaults.availability[0]!, def);
-    const free = ledgerKey(cfg.defaults.availability[1]!, def);
+    const def = cfg.providers["workers-ai"];
+    const flash = ledgerKey(cfg.defaults.availability[0], def);
+    const free = ledgerKey(cfg.defaults.availability[1], def);
     router.ledger.record(flash);
     router.ledger.record(flash);
     expect(router.ledger.status(flash).requests).toBe(2);
@@ -232,7 +233,7 @@ describe("teacher legs (#82: teacher keys first, platform chain as fallback)", (
     const router = new Router({ AI: {}, DGX_BASE_URL: "http://spark:8888/v1" } as never);
     const chain = router.chain("interactive", undefined, [teacherLeg]);
     expect(chain[0]).toMatchObject({ provider: "openrouter", credential: "teacher:u_teacher" });
-    expect(chain[1]!.provider).toBe("workers-ai");
+    expect(chain[1].provider).toBe("workers-ai");
 
     const blocked = router.chain("interactive", () => false, [teacherLeg]);
     expect(blocked.every((e) => e.credential !== "teacher:u_teacher")).toBe(true);
@@ -241,7 +242,7 @@ describe("teacher legs (#82: teacher keys first, platform chain as fallback)", (
   it("cooldown filters Router.chain: a leg with five straight failures is evicted and returns after ok", async () => {
     const { Router } = await import("../src/gateway/router");
     const router = new Router({ AI: {} } as never);
-    const decision = router.pick("interactive")!;
+    const decision = must(router.pick("interactive"), "interactive decision");
     for (let i = 0; i < 5; i += 1) {
       router.ledger.record(decision.key);
       router.settle(decision, "error");
@@ -259,7 +260,7 @@ describe("teacher legs (#82: teacher keys first, platform chain as fallback)", (
   it("teacher leg is accounted independently: its cooldown does not affect the platform chain", async () => {
     const { Router } = await import("../src/gateway/router");
     const router = new Router({ AI: {} } as never);
-    const decision = router.pick("interactive", undefined, [teacherLeg])!;
+    const decision = must(router.pick("interactive", undefined, [teacherLeg]), "interactive teacher decision");
     expect(decision.key.credential).toBe("teacher:u_teacher");
     for (let i = 0; i < 5; i += 1) {
       router.ledger.record(decision.key);
@@ -454,8 +455,7 @@ describe("AI-only production registry (F1 regression: YAML provider id vs create
     const router = new Router(env);
     const canServe = (entry: { provider: string; model: string }): boolean =>
       models.getModel(entry.provider, entry.model) !== undefined;
-    const decision = router.pick("interactive", canServe)!;
-    expect(decision).not.toBeNull();
+    const decision = must(router.pick("interactive", canServe), "interactive unserved decision");
     expect(decision.entry.provider).toBe("workers-ai");
     expect(decision.model).toBe("@cf/zai-org/glm-5.3-flash");
     expect(fallback).toBeDefined();

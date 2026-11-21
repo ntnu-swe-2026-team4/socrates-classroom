@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, inject, test } from "vitest";
 import worker from "../src/index";
 import { one, run } from "../src/db/d1";
 import { type AccountTokenPurpose, hashPassword, passwordResetBinding, sealAccountToken } from "../src/auth";
-import { cookieOf, scopedEnv } from "./helpers";
+import { cookieOf, must, scopedEnv } from "./helpers";
 
 interface SentEmail {
   to: string;
@@ -69,9 +69,8 @@ async function signup(m: Mailbox, email: string, password: string, lang = "zh-TW
 }
 
 function tokenOf(mail: SentEmail): string {
-  const match = /#token=([A-Za-z0-9_\-.]+)/.exec(mail.text);
-  expect(match).not.toBeNull();
-  return match![1]!;
+  const match = must(/#token=([A-Za-z0-9_\-.]+)/.exec(mail.text), "reset token");
+  return match[1];
 }
 
 async function requestLink(m: Mailbox, email: string): Promise<string> {
@@ -79,7 +78,7 @@ async function requestLink(m: Mailbox, email: string): Promise<string> {
   const res = await m.post("/api/auth/password/forgot", { email });
   expect(res.status).toBe(204);
   expect(m.sent).toHaveLength(before + 1);
-  return tokenOf(m.sent.at(-1)!);
+  return tokenOf(must(m.sent.at(-1), "latest email"));
 }
 
 const reset = (m: Mailbox, token: string, password: string) => m.post("/api/auth/password/reset", { token, password });
@@ -98,8 +97,8 @@ async function bindingOf(id: string): Promise<string> {
     "SELECT password_hash, email FROM users WHERE id = $id",
     { id },
   );
-  expect(row).not.toBeNull();
-  return passwordResetBinding(row!.password_hash, row!.email);
+  const record = must(row, "user row");
+  return passwordResetBinding(record.password_hash, record.email);
 }
 
 async function sealedToken(purpose: string, uid: string, ttlMs: number): Promise<string> {
@@ -116,9 +115,9 @@ describe("password reset (#230)", () => {
 
     expect(res.status).toBe(204);
     expect(m.sent).toHaveLength(1);
-    expect(m.sent[0]!.to).toBe(email);
-    expect(m.sent[0]!.from).toBe("noreply@socrates.test");
-    expect(m.sent[0]!.text).toContain(`${BASE}/reset-password#token=`);
+    expect(m.sent[0].to).toBe(email);
+    expect(m.sent[0].from).toBe("noreply@socrates.test");
+    expect(m.sent[0].text).toContain(`${BASE}/reset-password#token=`);
   });
 
   test("forgot for unknown, passwordless and disabled accounts → 204 and no mail", async () => {
@@ -333,7 +332,7 @@ describe("password reset rate limits (#230)", () => {
       if (i < 5) expect(last.status).toBe(204);
     }
     expect(last?.status).toBe(429);
-    expect(await codeOf(last!)).toBe("rate_limited");
+    expect(await codeOf(must(last, "rate-limit response"))).toBe("rate_limited");
   });
 
   test("reset: calls 1-10 → 400, the 11th inside one minute → 429 rate_limited", async () => {
@@ -345,6 +344,6 @@ describe("password reset rate limits (#230)", () => {
       if (i < 10) expect(last.status).toBe(400);
     }
     expect(last?.status).toBe(429);
-    expect(await codeOf(last!)).toBe("rate_limited");
+    expect(await codeOf(must(last, "rate-limit response"))).toBe("rate_limited");
   });
 });

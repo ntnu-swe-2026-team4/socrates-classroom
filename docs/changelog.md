@@ -2,6 +2,17 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-22 — TS 靜態保證 step 2 L2：tests 層 non-null assertion 清零（`refactor/293-non-null-l2-tests`，#293）
+
+### Added
+
+- `apps/server/tests/helpers.ts` 新增 `must<T>(value, what)`：fixture 窄化 helper——`.find()`／`router.pick()`／`one()`／`headers.get()` 這些「期望存在」的站點統一收斂成 guard-throw，取代「expect(x).toBeTruthy() + x!」反模式（expect 驗證不等於窄化），失敗訊息固定為 `fixture missing: <what>`
+
+### Changed
+
+- tests 層 185 處 `!` 清零：103 處為 baseline 冗贊斷言（mock.calls / 陣列 index / destructure 元素）；82 處以顯式窄化取代——server 側以 `must()` 統一（websocket 升級、find fixtures、regex token、rate-limit 回應），web 側以局部 guard（fake socket 的 listeners get-or-create、`sessionStorage.getItem`、entries frame id、`.at(-1)` mock 取樣），`helpers.ts` 的 joinActivity/participantIdOf 升級為回傳非 optional 型別
+- 全庫 `style.noNonNullAssertion` 探針歸零（src @ L1、tests @ 本層）；規則仍在 src-scoped error 凍結，L3 移除豁免翻全域
+
 ## 2026-11-22 — CI 閘門收斂共用 composite action（`chore/ci-gate-action`）
 
 ### Changed

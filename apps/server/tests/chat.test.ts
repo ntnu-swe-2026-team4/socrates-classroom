@@ -22,6 +22,7 @@ import {
   frames,
   joinGuest,
   latestView,
+  must,
   participantIdOf,
   registerStudent,
 } from "./helpers";
@@ -43,7 +44,7 @@ async function connect(thread: string, cookie?: string, lang?: string): Promise<
     env,
   );
   expect(response?.status).toBe(101);
-  const socket = response!.webSocket as WebSocket;
+  const socket = must(response?.webSocket, "chat websocket");
   socket.accept();
   return socket;
 }
@@ -68,7 +69,8 @@ beforeAll(async () => {
 describe("chat core (real DO + real WebSocket + faux model)", () => {
   it("Socrates' prompt is the one written in the student's language", async () => {
     for (const lang of ["zh", "en", "es"] as const) {
-      const render = socratesExtension(() => lang).sections![0]!.render as () => Promise<string>;
+      const sections = socratesExtension(() => lang).sections;
+      const render = must(sections?.[0], "socrates section").render as () => Promise<string>;
       expect(await render()).toBe(SOCRATES_PROMPTS[lang]);
     }
     expect(new Set(Object.values(SOCRATES_PROMPTS)).size).toBe(3);
@@ -131,7 +133,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
       return view !== undefined && assistantText(view).includes("正義是什麼");
     });
 
-    const view = latestView(rx.list)!;
+    const view = must(latestView(rx.list), "latest view");
     const roles = view.entries.map((entry) => entry.model?.[0]?.role ?? entry.kind);
     expect(roles).toContain("user");
     expect(roles).toContain("assistant");
@@ -203,7 +205,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     await rx2.until((f) => f.some((m) => m.type === "hello"));
     again.send(JSON.stringify({ type: "watch" }));
     await rx2.until((f) => f.some((m) => m.type === "view"));
-    const view = latestView(rx2.list)!;
+    const view = must(latestView(rx2.list), "latest view");
     expect(assistantText(view)).toContain("第一個問題");
     again.close();
   });

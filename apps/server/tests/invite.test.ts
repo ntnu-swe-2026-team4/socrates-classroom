@@ -13,6 +13,7 @@ import {
   frames,
   joinGuest,
   participantIdOf,
+  must,
   registerStudent,
   speak,
 } from "./helpers";
@@ -46,7 +47,7 @@ async function connect(thread: string, cookie: string): Promise<WebSocket> {
     env,
   );
   expect(response?.status).toBe(101);
-  const socket = response!.webSocket as WebSocket;
+  const socket = must(response?.webSocket, "chat websocket");
   socket.accept();
   return socket;
 }

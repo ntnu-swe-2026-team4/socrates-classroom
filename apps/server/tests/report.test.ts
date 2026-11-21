@@ -21,7 +21,7 @@ import {
   toClassReport,
   toPlannedClassReport,
 } from "../src/do/report-runner";
-import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
+import { call, classroomWithActivity, cookieOf, must, participantIdOf, registerStudent, speak } from "./helpers";
 
 let teacherCookie: string;
 let classroomCode: string;
@@ -56,8 +56,8 @@ beforeAll(async () => {
     { cid: created.classroomId, at: new Date().toISOString() },
   );
 
-  await speak(`${activityId}:${students[0]!.participantId}`, students[0]!.cookie, "我覺得契約應該被遵守");
-  await speak(`${activityId}:${students[1]!.participantId}`, students[1]!.cookie, "幫我寫一個 python 排序");
+  await speak(`${activityId}:${students[0].participantId}`, students[0].cookie, "我覺得契約應該被遵守");
+  await speak(`${activityId}:${students[1].participantId}`, students[1].cookie, "幫我寫一個 python 排序");
 
   const finish = await call(`/api/activities/${activityId}/finish`, {
     method: "POST",
@@ -124,16 +124,22 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     const positioned = teacherReport.students.find((s) => s.positions.length > 0);
     expect(positioned?.positions[0]).toMatchObject({ axis: "契約與承諾", end: "middle", at: 50 });
 
-    const speaker = teacherReport.students.find((s) => s.participantId === students[0]!.participantId)!;
+    const speaker = must(
+      teacherReport.students.find((s) => s.participantId === students[0].participantId),
+      "speaker student row",
+    );
     expect(speaker.analysis?.stated).toBe(true);
     expect(speaker.violations).toHaveLength(0);
 
-    const coder = teacherReport.students.find((s) => s.participantId === students[1]!.participantId)!;
+    const coder = must(
+      teacherReport.students.find((s) => s.participantId === students[1].participantId),
+      "coder student row",
+    );
     expect(coder.violations.length).toBeGreaterThan(0);
-    expect(coder.violations[0]!.type).toBe("coding");
-    expect(coder.violations[0]!.turn).toBe(1);
+    expect(coder.violations[0].type).toBe("coding");
+    expect(coder.violations[0].turn).toBe(1);
 
-    const own = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: students[0]!.cookie } });
+    const own = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: students[0].cookie } });
     expect(own.status).toBe(200);
     const studentReport = (await own.json()) as {
       topicTitle: string;
@@ -147,7 +153,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(studentReport.analysis?.stated).toBe(true);
     expect("classReport" in studentReport).toBe(false);
 
-    const silent = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: students[2]!.cookie } });
+    const silent = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: students[2].cookie } });
     expect(silent.status).toBe(404);
     expect(((await silent.json()) as { code: string }).code).toBe("not_found");
 
@@ -236,8 +242,8 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     };
     expect(partial.classReport).toBeNull();
     expect(partial.students).toHaveLength(1);
-    expect(partial.students[0]!.analysis?.stated).toBe(true);
-    expect(partial.students[0]!.positions).toEqual([]);
+    expect(partial.students[0].analysis?.stated).toBe(true);
+    expect(partial.students[0].positions).toEqual([]);
 
     const own = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: studentCookie } });
     expect(own.status).toBe(200);
@@ -317,7 +323,7 @@ describe("student reports cite only lines the student said", () => {
     expect(report?.status).toBe(200);
     const body = (await report?.json()) as { students: Array<{ analysis: { claim: { turns: number[] } } | null }> };
     expect(body.students).toHaveLength(1);
-    expect(body.students[0]!.analysis?.claim.turns).toEqual([1]);
+    expect(body.students[0].analysis?.claim.turns).toEqual([1]);
   }, 120_000);
 });
 
@@ -351,7 +357,7 @@ describe("class report with an axes plan passed in (#159)", () => {
       ["契約", "守約", "人情"],
       ["生命", "可比較", "不可比較"],
     ]);
-    expect(report.axes[0]!.positions.map(({ id, end, at: point }) => [id, end, point])).toEqual([
+    expect(report.axes[0].positions.map(({ id, end, at: point }) => [id, end, point])).toEqual([
       ["學生1", "high", 70],
       ["學生2", "middle", 50],
     ]);

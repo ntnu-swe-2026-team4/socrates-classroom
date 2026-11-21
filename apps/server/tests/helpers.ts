@@ -32,6 +32,11 @@ export function frames(socket: WebSocket): {
   };
 }
 
+export function must<T>(value: T | undefined | null, what: string): T {
+  if (value === undefined || value === null) throw new Error(`fixture missing: ${what}`);
+  return value;
+}
+
 export function assistantText(view: ConversationView): string {
   return view.entries
     .flatMap((entry) => entry.model ?? [])
@@ -77,7 +82,7 @@ export async function callWith(overrides: Partial<Env>, path: string, init: Requ
 }
 
 export function cookieOf(res: Response): string {
-  return (res.headers.getSetCookie?.()[0] ?? "").split(";")[0]!;
+  return (res.headers.getSetCookie?.()[0] ?? "").split(";")[0];
 }
 
 export async function joinGuest(
@@ -91,8 +96,11 @@ export async function joinGuest(
   });
   expect(res.status).toBe(200);
   const body = (await res.json()) as { activityId: string; participantId: string | null };
-  expect(body.participantId).toBeTruthy();
-  return { cookie: cookieOf(res), participantId: body.participantId!, activityId: body.activityId };
+  return {
+    cookie: cookieOf(res),
+    participantId: must(body.participantId, "join participantId"),
+    activityId: body.activityId,
+  };
 }
 
 export async function registerStudent(
@@ -114,8 +122,7 @@ export async function participantIdOf(activityId: string, cookie: string): Promi
   const res = await call(`/api/activities/${activityId}`, { headers: { Cookie: cookie } });
   expect(res.status).toBe(200);
   const { participantId } = (await res.json()) as { participantId: string | null };
-  expect(participantId).toBeTruthy();
-  return participantId!;
+  return must(participantId, "activity participantId");
 }
 
 export interface StartedActivity {
@@ -143,7 +150,7 @@ export async function systemTopicId(cookie: string): Promise<string> {
   expect(res.status).toBe(200);
   const topics = (await res.json()) as Array<{ id: string }>;
   expect(topics.length).toBeGreaterThan(0);
-  return topics[0]!.id;
+  return topics[0].id;
 }
 
 export async function startActivity(
@@ -181,7 +188,7 @@ export async function speak(thread: string, cookie: string, question: string): P
     env,
   );
   expect(response?.status).toBe(101);
-  const socket = response!.webSocket as WebSocket;
+  const socket = must(response?.webSocket, "chat websocket");
   socket.accept();
   const rx = frames(socket);
   await rx.until((f) => f.some((m) => m.type === "hello"));

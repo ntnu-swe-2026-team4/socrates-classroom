@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import { seedFixture } from "../src/seed";
-import { call, classroomWithActivity, cookieOf, frames, latestView, participantIdOf } from "./helpers";
+import { call, classroomWithActivity, cookieOf, frames, latestView, must, participantIdOf } from "./helpers";
 
 let threads: string[];
 let cookies: string[];
@@ -18,7 +18,7 @@ async function connect(name: string, index = 0): Promise<WebSocket> {
     env,
   );
   expect(response?.status).toBe(101);
-  const socket = response!.webSocket as WebSocket;
+  const socket = must(response?.webSocket, "avatar websocket");
   socket.accept();
   return socket;
 }
@@ -59,7 +59,7 @@ function toolNames(view: ConversationView | undefined): string[] {
 
 describe("judgment extension (violation detection: self-report tool + per-turn classification task)", () => {
   it("no AI binding: tool registers in the registry (hello carries tools), the answer completes, nothing throws", async () => {
-    const socket = await connect(threads[0]!, 0);
+    const socket = await connect(threads[0], 0);
     const rx = frames(socket);
     await rx.until((f) => {
       const hello = f.find((m) => m.type === "hello");
@@ -83,7 +83,7 @@ describe("judgment extension (violation detection: self-report tool + per-turn c
   }, 30_000);
 
   it("Socrates calls report_violation: an app.violation entry (source=agent) appears in the transcript", async () => {
-    const socket = await connect(threads[1]!, 1);
+    const socket = await connect(threads[1], 1);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
     socket.send(JSON.stringify({ type: "watch" }));

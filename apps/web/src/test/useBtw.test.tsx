@@ -57,15 +57,18 @@ beforeEach(() => {
 describe("useBtw (side session over its own socket)", () => {
   it("opens a fresh fork, hides the inherited root entries, and completes a side exchange", () => {
     const { result } = renderHook(() => useBtw("a_1", "u_1", true));
-    const open = sent()[0]!;
+    const open = sent()[0];
     expect(open).toMatchObject({ type: "btw" });
     expect(open.session).toBeUndefined();
 
     emit(view(root));
-    emit({ type: "result", id: open.id!, result: { session: "7" } } satisfies ServerMessage);
+    if (open.id === undefined) throw new Error("btw frame missing id");
+    emit({ type: "result", id: open.id, result: { session: "7" } } satisfies ServerMessage);
     expect(result.current.ready).toBe(true);
     expect(result.current.messages).toEqual([]);
-    expect(JSON.parse(sessionStorage.getItem("btw:a_1:u_1")!)).toEqual({ session: "7", forkHead: 2 });
+    const stored = sessionStorage.getItem("btw:a_1:u_1");
+    if (stored === null) throw new Error("missing btw storage entry");
+    expect(JSON.parse(stored)).toEqual({ session: "7", forkHead: 2 });
 
     act(() => {
       expect(result.current.ask("電車難題是什麼？")).toBe(true);
@@ -85,17 +88,17 @@ describe("useBtw (side session over its own socket)", () => {
     });
     expect(sent().some((frame) => frame.type === "submit")).toBe(false);
     emit(view(root));
-    emit({ type: "result", id: sent()[0]!.id, result: { session: "7" } });
+    emit({ type: "result", id: sent()[0].id, result: { session: "7" } });
     expect(sent().at(-1)).toMatchObject({ type: "submit", input: "功利主義是什麼？" });
   });
 
   it("re-attaches to the stored session; an UnknownSession reply falls back to a fresh fork", () => {
     sessionStorage.setItem("btw:a_1:u_1", JSON.stringify({ session: "9", forkHead: 2 }));
     renderHook(() => useBtw("a_1", "u_1", true));
-    const attach = sent()[0]!;
+    const attach = sent()[0];
     expect(attach).toMatchObject({ type: "btw", session: "9" });
     emit({ type: "error", id: attach.id, message: "gone", code: "UnknownSession" });
-    const retry = sent()[1]!;
+    const retry = sent()[1];
     expect(retry).toMatchObject({ type: "btw" });
     expect(retry.session).toBeUndefined();
     expect(sessionStorage.getItem("btw:a_1:u_1")).toBeNull();
@@ -103,7 +106,7 @@ describe("useBtw (side session over its own socket)", () => {
 
   it("NothingToFork surfaces as an error and leaves the panel unbound", () => {
     const { result } = renderHook(() => useBtw("a_1", "u_1", true));
-    emit({ type: "error", id: sent()[0]!.id, message: "empty", code: "NothingToFork" });
+    emit({ type: "error", id: sent()[0].id, message: "empty", code: "NothingToFork" });
     expect(result.current.error).toEqual({ code: "NothingToFork" });
     expect(result.current.ready).toBe(false);
   });
