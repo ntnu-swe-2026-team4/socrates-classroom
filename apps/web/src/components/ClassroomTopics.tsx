@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { classroomTopicsOptions, classroomsOptions, topicsOptions } from "@/api/queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActivityMode, ActivityStarted, ClassroomSummary, Topic } from "@socrates/shared";
 import { api } from "@/api";
@@ -6,15 +7,11 @@ import { Button, Card, Checkbox, Field, Input, Segmented, Spinner, cn } from "@/
 import { useT } from "@/i18n";
 
 export function useClassroomTopics(classroomId: string | null) {
-  return useQuery({
-    queryKey: ["classroomTopics", classroomId],
-    queryFn: () => api.listClassroomTopics(classroomId as string),
-    enabled: classroomId !== null,
-  });
+  return useQuery(classroomTopicsOptions(classroomId));
 }
 
 function invalidateTopics(queryClient: ReturnType<typeof useQueryClient>, classroomId: string) {
-  return queryClient.invalidateQueries({ queryKey: ["classroomTopics", classroomId] });
+  return queryClient.invalidateQueries({ queryKey: classroomTopicsOptions(classroomId).queryKey });
 }
 
 export function TopicPicker({
@@ -165,14 +162,10 @@ export function CopyTopic({ classroomId }: { classroomId: string }) {
   const t = useT();
   const queryClient = useQueryClient();
   const [sourceClassroom, setSourceClassroom] = useState("");
-  const system = useQuery({ queryKey: ["topics"], queryFn: () => api.listTopics(), staleTime: Infinity });
-  const rooms = useQuery({ queryKey: ["classrooms"], queryFn: () => api.listClassrooms() });
+  const system = useQuery(topicsOptions);
+  const rooms = useQuery(classroomsOptions);
   const others = (rooms.data ?? []).filter((room) => room.role === "teacher" && room.id !== classroomId);
-  const otherTopics = useQuery({
-    queryKey: ["classroomTopics", sourceClassroom],
-    queryFn: () => api.listClassroomTopics(sourceClassroom),
-    enabled: sourceClassroom !== "",
-  });
+  const otherTopics = useQuery({ ...classroomTopicsOptions(sourceClassroom), enabled: sourceClassroom !== "" });
   const copy = useMutation({
     mutationFn: (topicId: string) => api.copyTopic(topicId, classroomId),
     onSuccess: async () => {
@@ -249,7 +242,7 @@ export function StartActivity({
   const t = useT();
   const queryClient = useQueryClient();
   const classroomTopics = useClassroomTopics(classroomId);
-  const systemTopics = useQuery({ queryKey: ["topics"], queryFn: () => api.listTopics(), staleTime: Infinity });
+  const systemTopics = useQuery(topicsOptions);
   const [picked, setPicked] = useState<string | null>(null);
   const [testMode, setTestMode] = useState(false);
   const start = useMutation({
@@ -257,7 +250,7 @@ export function StartActivity({
       api.startActivity(classroomId, topicId, mode),
     onSuccess: async (started) => {
       setPicked(null);
-      await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+      await queryClient.invalidateQueries({ queryKey: classroomsOptions.queryKey });
       onStarted(started);
     },
   });

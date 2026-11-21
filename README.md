@@ -13,7 +13,7 @@ pnpm install
 pnpm dev                                      # 自動套 D1 migrations → http://localhost:5173
 ```
 
-`.env.local` 除兩個 secret 外皆 optional——沒有任何設定檔也能起 UI 與 landing（預設 `LLM_PROVIDER=mock`，離線 faux 模型）。要**登入**（`/login`、`/dev/accounts`、`/admin`）則必須有 `AUTH_SECRET`，缺了的話每個發 session 的端點都回 500 `internal_error`：
+`.env.local` 除兩個 secret 外皆 optional——沒有任何設定檔也能起 UI 與 landing（預設 `LLM_PROVIDER=mock`，離線 faux 模型）。要**登入**（`/login`、`/dev/accounts`、`/admin`）則必須有 `AUTH_SECRET`，缺了的話每個發 session 的端點都回 500 `internal_error`（本地若存在 `apps/web/.dev.vars`，dev 整檔改以該檔為準——見 `docs/cf.md` §Secrets）：
 
 ```bash
 cp apps/web/.env.example apps/web/.env.local

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { LookupInputSchema, LANG_NAMES, type Lang } from "@socrates/shared";
-import { enforceIpLimit, fail, parseBody, requireUser, type AppEnv } from "../http";
+import { fail, guardUser, rateLimit, validateJson, type AppEnv } from "../http";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
 function mockMarkdown(term: string, lang: string): string {
@@ -10,32 +10,36 @@ function mockMarkdown(term: string, lang: string): string {
 }
 
 export function lookupRoutes() {
-  return new Hono<AppEnv>().post("/lookup", async (c) => {
-    requireUser(c);
-    await enforceIpLimit(c, "lookup", 20);
-    const input = await parseBody(c, LookupInputSchema);
-    const lang = c.get("lang");
-    if (c.env.LLM_PROVIDER === "mock") {
-      return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) }, 200, {
-        "X-Socrates-Fallback": "mock",
-      });
-    }
-    if (!c.env.AI) fail(502, "llm_unavailable");
-    let markdown = "";
-    try {
-      const { harness, runtime } = await openProfileHarness(c.env, "lookup");
-      const { text } = await runProfile(
-        harness,
-        runtime,
-        "lookup",
-        `${input.term}\n\nWrite in ${LANG_NAMES[c.get("lang") as Lang]}.`,
-      );
-      markdown = text.trim();
-    } catch (error) {
-      console.error("[lookup] pipeline failed", error instanceof Error ? error.name : typeof error);
-      fail(502, "llm_unavailable");
-    }
-    if (!markdown) fail(502, "llm_unavailable");
-    return c.json({ term: input.term, markdown });
-  });
+  return new Hono<AppEnv>().post(
+    "/lookup",
+    guardUser(),
+    rateLimit("lookup", 20),
+    validateJson(LookupInputSchema),
+    async (c) => {
+      const input = c.req.valid("json");
+      const lang = c.get("lang");
+      if (c.env.LLM_PROVIDER === "mock") {
+        return c.json({ term: input.term, markdown: mockMarkdown(input.term, lang) }, 200, {
+          "X-Socrates-Fallback": "mock",
+        });
+      }
+      if (!c.env.AI) fail(502, "llm_unavailable");
+      let markdown = "";
+      try {
+        const { harness, runtime } = await openProfileHarness(c.env, "lookup");
+        const { text } = await runProfile(
+          harness,
+          runtime,
+          "lookup",
+          `${input.term}\n\nWrite in ${LANG_NAMES[c.get("lang") as Lang]}.`,
+        );
+        markdown = text.trim();
+      } catch (error) {
+        console.error("[lookup] pipeline failed", error instanceof Error ? error.name : typeof error);
+        fail(502, "llm_unavailable");
+      }
+      if (!markdown) fail(502, "llm_unavailable");
+      return c.json({ term: input.term, markdown });
+    },
+  );
 }

@@ -14,11 +14,12 @@
     "@earendil-works/chord": "~1.5.0",
     "@earendil-works/pi-ai": "~1.5.0",
     "@earendil-works/pi-durable": "~1.5.0",
+    "@earendil-works/pi-schema": "~1.5.0",
+    "@hono/zod-validator": "^0.9.1",
     "@socrates/shared": "workspace:*",
     "agents": "^0.33.0",
-    "hono": "^4.10.7",
-    "zod": "^4.6.6",
-    "@earendil-works/pi-schema": "~1.5.0"
+    "hono": "^4.11.2",
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.9",

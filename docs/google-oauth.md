@@ -30,7 +30,7 @@ Google 登入需要兩個值：
 
 ## 2. 本機開發
 
-在 `apps/web/.env.local` 填入以下內容（這個檔案已在 gitignore 中，不會進版控）：
+在 `apps/web/.env.local` 填入以下內容（這個檔案已在 gitignore 中，不會進版控；本地若存在 `.dev.vars`，dev 整檔以該檔為準、請改填該檔——見 [`cf.md`](./cf.md) §Secrets）：
 
 ```dotenv
 PUBLIC_BASE_URL=http://localhost:5173

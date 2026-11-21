@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { activitySlotsOptions, classroomsOptions, teacherActivityOptions } from "@/api/queries";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare } from "lucide-react";
@@ -12,15 +13,10 @@ export const Route = createFileRoute("/t/live/$id")({
   beforeLoad: async ({ context, params }) => {
     const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/classrooms" });
-    const activity = await context.queryClient
-      .ensureQueryData({ queryKey: ["activity", params.id, "teacher"], queryFn: () => api.activityInfo(params.id) })
-      .catch(() => {
-        throw redirect({ to: "/classrooms" });
-      });
-    const rooms = await context.queryClient.ensureQueryData({
-      queryKey: ["classrooms"],
-      queryFn: () => api.listClassrooms(),
+    const activity = await context.queryClient.ensureQueryData(teacherActivityOptions(params.id)).catch(() => {
+      throw redirect({ to: "/classrooms" });
     });
+    const rooms = await context.queryClient.ensureQueryData(classroomsOptions);
     const room = rooms.find((entry) => entry.id === activity.classroomId);
     if (room?.role !== "teacher") {
       throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: activity.classroomId } });
@@ -33,7 +29,7 @@ function LivePage() {
   const t = useT();
   const navigate = useNavigate();
   const { id } = Route.useParams();
-  const activity = useQuery({ queryKey: ["activity", id, "teacher"], queryFn: () => api.activityInfo(id) });
+  const activity = useQuery(teacherActivityOptions(id));
   const finish = useMutation({
     mutationFn: () => api.finishActivity(id),
   });
@@ -97,14 +93,11 @@ function SlotPanel({ activityId, finished }: { activityId: string; finished: boo
   const t = useT();
   const queryClient = useQueryClient();
   const [count, setCount] = useState(1);
-  const slots = useQuery({
-    queryKey: ["activity-slots", activityId],
-    queryFn: () => api.listActivitySlots(activityId),
-  });
+  const slots = useQuery(activitySlotsOptions(activityId));
   const create = useMutation({
     mutationFn: (n: number) => api.createActivitySlots(activityId, n),
     onSuccess: (data) => {
-      queryClient.setQueryData(["activity-slots", activityId], data);
+      queryClient.setQueryData(activitySlotsOptions(activityId).queryKey, data);
       setCount(1);
     },
   });

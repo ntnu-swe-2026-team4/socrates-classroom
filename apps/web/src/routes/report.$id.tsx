@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { reportOptions } from "@/api/queries";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { api, ApiError, type ReportPosition, type StudentAnalysis, type ViolationSlice } from "@/api";
+import { ApiError, type ReportPosition, type StudentAnalysis, type ViolationSlice } from "@/api";
 import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
 import { StanceConstellation } from "@/components/StanceConstellation";
@@ -24,12 +25,7 @@ function ReportPage() {
   const isTeacher = me.data != null;
   const [view, setView] = useState<"group" | "individual">("group");
   const [studentIdx, setStudentIdx] = useState(0);
-  const report = useQuery({
-    queryKey: ["report", id],
-    queryFn: () => api.report(id),
-    retry: (failureCount, error) => error instanceof ApiError && error.code === "report_pending" && failureCount < 30,
-    retryDelay: 4000,
-  });
+  const report = useQuery(reportOptions(id));
 
   if (report.isPending) {
     return (

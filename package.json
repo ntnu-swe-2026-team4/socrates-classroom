@@ -26,6 +26,7 @@
     "deploy": "pnpm --filter @socrates/web deploy"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.4"
+    "@biomejs/biome": "2.6.4",
+    "biome-plugin-tanstack-query": "^1.1.1"
   }
 }

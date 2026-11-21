@@ -54,7 +54,7 @@
 
 ## 常見問題
 
-- **登入回 500 `internal_error`（`/login`、示範教師按鈕、`/auth/register` 全都一樣）** → `.env.local` 沒有 `AUTH_SECRET`（空值與未設等價）。`apps/server/src/auth.ts` 的 `secretOf()` 對它 fail-fast，因此每個發 session 的路徑都 500，回應固定是 `{ "code": "internal_error" }`，server log 只有一行 `AUTH_SECRET is not set`。修法：`openssl rand -base64 32` 填進 `apps/web/.env.local` 的 `AUTH_SECRET=` 後重啟 dev。`BYOK_ENC_KEY` 缺值只影響 `/settings/keys*`（teacher keys），不影響登入。兩個 secret 缺值時 `pnpm dev` 啟動會直接印出警告——看到警告就表示這條路徑會壞
+- **登入回 500 `internal_error`（`/login`、示範教師按鈕、`/auth/register` 全都一樣）** → `.env.local` 沒有 `AUTH_SECRET`（空值與未設等價）。`apps/server/src/auth.ts` 的 `secretOf()` 對它 fail-fast，因此每個發 session 的路徑都 500，回應固定是 `{ "code": "internal_error" }`，server log 只有一行 `AUTH_SECRET is not set`。修法：`openssl rand -base64 32` 填進 `apps/web/.env.local` 的 `AUTH_SECRET=` 後重啟 dev（本地若存在 `apps/web/.dev.vars`，dev 整檔改以該檔為準——見 [`cf.md`](./cf.md) §Secrets）。`BYOK_ENC_KEY` 缺值只影響 `/settings/keys*`（teacher keys），不影響登入。兩個 secret 缺值時 `pnpm dev` 啟動會直接印出警告——看到警告就表示這條路徑會壞
 
 - **`pnpm dev` 啟動即退出「Port 5173 is already in use」** → port 5173 是固定契約（Google OAuth 的 redirect URI `http://localhost:5173/...` 逐字比對，見 [`google-oauth.md`](./google-oauth.md)），`strictPort` 讓 port 被占時 fail fast 而不是靜默改聽 5174 導致 OAuth mismatch；關掉占用 5173 的舊 process 再啟動即可
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { classroomsOptions } from "@/api/queries";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ActivityStarted } from "@socrates/shared";
@@ -25,7 +26,7 @@ function SetupPage() {
   const createClassroom = useMutation({
     mutationFn: () => api.createClassroom(classroomName.trim()),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+      void queryClient.invalidateQueries({ queryKey: classroomsOptions.queryKey });
     },
   });
   const classroom = createClassroom.data ?? null;

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { ZodType } from "zod";
-import type { ActivitySlot, StudentReport, TeacherReport, ViolationType } from "@socrates/shared";
+import { z } from "zod";
+import type { ActivityInfo, ActivitySlot, StudentReport, TeacherReport, ViolationType } from "@socrates/shared";
 import {
   ACTIVITY_SLOT_MAX,
   ActivitySlotCreateInputSchema,
@@ -11,18 +12,21 @@ import { all, batch, one, run } from "../db/d1";
 import {
   enforceIpLimit,
   fail,
+  guardUser,
   langOf,
   newId,
   nowIso,
-  parseBody,
   requireUser,
   uniqueViolationColumns,
+  validateJson,
+  validateQuery,
   type AppEnv,
 } from "../http";
 import type { Env } from "../env";
 import { activityAccess, activityAccessOf, ensureParticipant, participantOf, topicOf } from "../services/members";
 
 const SLOT_NAME: Record<"zh" | "en" | "es", string> = { zh: "測試", en: "Test", es: "Prueba" };
+const ActivityQuerySchema = z.object({ participantId: z.string().optional() });
 
 function storedReport<T>(raw: string | null, schema: ZodType<T>): T | undefined {
   if (raw === null) return undefined;
@@ -69,8 +73,8 @@ async function slotsPayload(env: Env, activityId: string) {
 
 export function activityRoutes() {
   return new Hono<AppEnv>()
-    .get("/activities/:id", async (c) => {
-      const requested = c.req.query("participantId");
+    .get("/activities/:id", validateQuery(ActivityQuerySchema), async (c) => {
+      const requested = c.req.valid("query").participantId;
       const { activity, classroom, participant, member, isTeacher, user } = await activityAccessOf(
         c,
         c.req.param("id"),
@@ -86,7 +90,7 @@ export function activityRoutes() {
         self = slot;
       }
       const topic = await topicOf(c.env.DB, activity.topic_id);
-      return c.json({
+      const payload: ActivityInfo = {
         id: activity.id,
         classroomId: classroom.id,
         classroomName: classroom.name,
@@ -94,7 +98,8 @@ export function activityRoutes() {
         mode: activity.mode,
         topic,
         finishedAt: activity.finished_at,
-      });
+      };
+      return c.json(payload);
     })
     .get("/activities/:id/slots", async (c) => {
       const user = requireUser(c);
@@ -106,9 +111,9 @@ export function activityRoutes() {
       if (activity.mode !== "test") fail(409, "conflict");
       return c.json(await slotsPayload(c.env, activity.id));
     })
-    .post("/activities/:id/slots", async (c) => {
+    .post("/activities/:id/slots", guardUser(), validateJson(ActivitySlotCreateInputSchema), async (c) => {
       const user = requireUser(c);
-      const input = await parseBody(c, ActivitySlotCreateInputSchema);
+      const input = c.req.valid("json");
       const { activity, classroom } = await activityAccess(c.env.DB, c.req.param("id"), {
         user,
         participant: null,

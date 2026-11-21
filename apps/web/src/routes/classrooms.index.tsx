@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { classroomsOptions } from "@/api/queries";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Users } from "lucide-react";
-import { api, type ClassroomSummary } from "@/api";
+import type { ClassroomSummary } from "@socrates/shared";
+
 import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
 import { Button, Input, PageHeader, cn } from "@/components/ui";
@@ -21,7 +23,7 @@ function ClassroomsPage() {
   const t = useT();
   const navigate = useNavigate();
   const me = useQuery(meQueryOptions);
-  const classrooms = useQuery({ queryKey: ["classrooms"], queryFn: () => api.listClassrooms() });
+  const classrooms = useQuery(classroomsOptions);
   const [code, setCode] = useState("");
   const canManage = Boolean(me.data);
   const list = classrooms.data ?? [];

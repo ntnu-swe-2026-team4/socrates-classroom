@@ -166,7 +166,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     expect(payload.code).toBe(code);
   });
 
-  test("finish → report semantics (pending → 404 report_pending; student IDOR sees only their own)", async () => {
+  test("finish → report semantics (pending → 404 report_pending; late join blocked; rejoin keeps the activity)", async () => {
     const created = await classroomWithActivity(teacher, "R6 報告班");
     const student = (await registerStudent(created.code, "R6生報")).cookie;
     await speak(
@@ -205,22 +205,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     });
     expect(rejoin.status).toBe(200);
     expect(((await rejoin.json()) as { activityId: string }).activityId).toBe(created.activityId);
-
-    await vi.waitFor(
-      async () => {
-        const res = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacher } });
-        expect(res.status).toBe(200);
-      },
-      { timeout: 30_000 },
-    );
-
-    const mine = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: student } });
-    expect(mine.status).toBe(200);
-    const mineData = (await mine.json()) as Record<string, unknown>;
-    expect("students" in mineData).toBe(false);
-    expect("classReport" in mineData).toBe(false);
-    expect(typeof mineData.pseudonym).toBe("string");
-  }, 60_000);
+  }, 15_000);
 
   test("authorization matrix spot checks: outsider 403 / owner-only 403 / cross-class report IDOR", async () => {
     const outsiderLogin = await call("/api/auth/login", {
@@ -682,7 +667,7 @@ describe("report (#74: finish → pending → ready → GET)", () => {
         expect(res.status).toBe(200);
         return (await res.json()) as { topicTitle: string; classReport: unknown; students: unknown[] };
       },
-      { timeout: 30_000, interval: 500 },
+      { timeout: 60_000, interval: 500 },
     );
     expect(settled.topicTitle).toBe(topic!.title);
     expect(Array.isArray(settled.students)).toBe(true);
@@ -692,7 +677,9 @@ describe("report (#74: finish → pending → ready → GET)", () => {
     const studentReport = (await asStudent.json()) as { pseudonym: string; analysis: unknown };
     expect(typeof studentReport.pseudonym).toBe("string");
     expect("analysis" in studentReport).toBe(true);
-  }, 40_000);
+    expect("students" in studentReport).toBe(false);
+    expect("classReport" in studentReport).toBe(false);
+  }, 120_000);
 });
 
 describe("rate limiting + register gate (round-6 restores)", () => {
@@ -757,5 +744,27 @@ describe("uniqueViolationColumns (real D1 error envelope)", () => {
     ]);
     expect(uniqueViolationColumns(new Error("UNIQUE constraint failed: users.email"))).toEqual([["users", "email"]]);
     expect(uniqueViolationColumns(new Error("FOREIGN KEY constraint failed"))).toEqual([]);
+  });
+});
+describe("zValidator migration (#264): envelope and guard ordering parity", () => {
+  test("malformed JSON body → 422 validation, not hono's raw 400", async () => {
+    const res = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{oops",
+    });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe("validation");
+  });
+
+  test("auth guards run before body validation on param routes (anonymous bodyless POST → 401)", async () => {
+    const topics = await call("/api/classrooms/c_whatever/topics", { method: "POST" });
+    expect(topics.status).toBe(401);
+
+    const models = await call("/api/settings/keys/openrouter/models", { method: "PUT" });
+    expect(models.status).toBe(401);
+
+    const admin = await call("/api/admin/users/u_whatever", { method: "PATCH" });
+    expect(admin.status).toBe(401);
   });
 });

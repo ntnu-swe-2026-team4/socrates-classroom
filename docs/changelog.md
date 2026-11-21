@@ -13,13 +13,90 @@
 
 - 沒帶 `axes` 時群體報告與 main 相同（prompt、工具、輸入逐字不變）；目前沒有後端路由傳 `axes`
 
+## 2026-11-21 — query key 全面收斂 queryOptions factory＋TanStack lint 上線（`refactor/277-query-options`，#277）
+
+### Added
+
+- `api/queries.ts`：query options registry——18 個 factory（`classroomsOptions`／`topicsOptions`／`classroomTopicsOptions(id)`／`activityOptions`／`teacherActivityOptions`／`activitySlotsOptions`／`reportOptions`／`joinOptions`／`inviteOptions`／teacher keys 三組／`adminUsersOptions`／`authProvidersOptions`／`notificationsOptions`／`devAccountsOptions`／`termHistoryOptions`／`qrOptions`），`queryFn` 走 `api` facade（同 `me.ts` 先例，保 mock 可測性）；per-call 差異（`enabled`／`select`）以 spread 覆寫於呼叫端
+- **Lint 上線**：`biome-plugin-tanstack-query`（`@tanstack/eslint-plugin-query` 的 GritQL port，mirror upstream 5.104.1）掛入根 `biome.json` plugins——`recommended-strict` preset 含 `prefer-query-options`；維持「Biome owns formatting and linting」單一工具鏈政策（ESLint 窄域整合留作 fallback）
+- Ratchet test `test/review/query-keys.test.ts`：字面 key（`queryKey: [`／`*QueryData([`／`invalidateQueries({ queryKey: [`）僅允許存在於 `api/queries.ts`／`api/me.ts`——plugin partial parity 的絕對保證（已插探針驗證會抓）
+- `apps/web/AGENTS.md` deltas：query key 必經 factory 的規範與執法機制
+
+### Changed
+
+- 39 個字面 key 站點（16 keys、14 檔，含 2 處測試 mock）全數改引用 `*Options`／`.queryKey`——行為零變更：key 陣列內容逐一保持原樣（含 `["classrooms"]` 的 7+ 站點、`["activity", id, "teacher"]` 與 slot variant 的差異鍵、`enabled`／`select`／`retry` 等呼叫端覆寫全部保留）
+- `QrBlock` 的 QR 查詢收進 registry（單一規則零例外，ratchet 才能寫死）
+
+## 2026-11-21 — parseBody 全面退役與 transport 誠實性收尾（`refactor/268-parsebody-retirement`，#268）
+
+### Added
+
+- `rest.test.ts` parity 測試沿用 #264 基礎（envelope／guard 順序語意不變）；`api.e2e.test.ts` 新增 `createActivitySlots` raw-count 契約釘（transport 不夾持，server 端 `ActivitySlotCreateInputSchema` 為唯一權威）
+
+### Changed
+
+- 15 條非 param 路由全數自 `parseBody` 遷移 `validateJson`（auth login／register／signup／password forgot／reset、join、topics／topics generate、classrooms POST、admin users POST、admin notifications、lookup、tts、dev login、settings/keys/order PUT）——guard／rate limit 語意順序以 `rateLimit`／`guardUser`／`guardAdmin`／`devGuard` middleware 保序；wire shapes 零變更，server 235 條測試全綠
+- `http.ts` 刪除 `parseBody`——server 端輸入驗證自此單一 pattern（`zValidator`）；stt 的 multipart form 解析維持手寫（非 body-json、無契約型別需求）
+- `httpApi.createActivitySlots` 移除 transport 層靜默 clamp（原 1–6 夾持會掩蓋 UI 送出的超界值；UI 層 `t.live.$id.tsx` 本有 `planned` 夾持，超界改由 server 422 `validation` 誠實拒絕）
+- `dev.accounts.tsx`／`join.$code.tsx` `["me"]` 字面 key 改 `meQueryOptions.queryKey` 共 7 處（join.×2、dev.accounts、AppShell 讀寫×3、join.a 的 invalidate）——#243 慣例單點
+- `apps/server/AGENTS.md` module map：`parseBody` → `validateJson`／`validateQuery`／guard middlewares
+
+## 2026-11-21 — server 路由 zValidator 遷移，收斂 web 端單一 hc 通道（`refactor/264-zvalidator-transport`，#264）
+
+### Added
+
+- `http.ts`：`validateJson`／`validateQuery`（包 `@hono/zod-validator`，hook 內 `fail(422, "validation")`——envelope 與 `parseBody` 完全一致）；`rateLimit`／`guardUser`／`guardAdmin` middleware——param 路由上按各路由原本的 guard／rate limit 順序保序（匿名無 body 請求仍 401；rate limit 先於驗證執行——壞 body 無法繞過限流，無效 body 亦計入配額，與 `parseBody` 時代一致）
+- `app.ts` `onError`：hono 內部 `HTTPException` 補處理——malformed JSON（`Content-Type: json` 但 body 破損）維持 422 `validation` 而非 hono 原生的 400／500
+- shared：`TeacherKeyEcho`／`TeacherKeyModelEcho`（PUT keys echo 的契約型別——補齊 `api-contract.md` L286-287 的 `last4?` optional＋`monthlyQuotaUsd`，終結 web 端 inline 型別的漂移）
+- 回應構造補型別（`payload: JoinResult`／`InviteJoined`／`ActivityInfo`／echo 等）：hono client 推導的回應型別自此直接滿足 shared 契約，web 端零 cast
+- 測試：`rest.test.ts` 二條 parity（malformed JSON → 422 `validation`；匿名無 body 的 param 路由 → 401）；`api.e2e.test.ts` 一條（`activityInfo` optional query 序列化無殘留）
+
+### Changed
+
+- 10 條 param 路由自 `parseBody` 遷移 `zValidator`（invites join、classrooms topics／activities、topics copy、activities slots、GET activities query、teacher-keys 三條 PUT、admin users PATCH）——wire shapes 零變更，server 既有測試零修改全綠（撰寫時 216 條，rebase 後 head 實測 235 條）
+- `apps/web/src/api/http.ts`：`raw()` 手寫 fetch 整支移除，所有 method 收斂 `hc<RpcApi>`＋`unwrap`；`Api` interface 的 teacher-key echo 改用 shared 契約型別
+- `GET /activities/:id` 的 `participantId` query 改 `validateQuery`（原先手寫 `c.req.query`）
+- 非目標（維持 `parseBody`）：不帶 param 的路由（auth login/signup、topics、classrooms POST、dev、notifications 等）——hc 對其 `json` 寬鬆接受，full retirement 另行評估
+
+## 2026-11-21 — 登入頁重設計：dithered colonnade、provider 探測、開放註冊（`split/178-login-page`，#178）
+
+### Added
+
+- Review suggestion 落實：重設 TTL 單一事實——`PASSWORD_RESET_TTL_MINUTES`（shared）由 server `auth.ts` 與 web 忘記密碼文案（`{minutes}` 插值，三語）共同引用，終結「30 分鐘」兩處維護
+- 忘記密碼入口：登入模式表單尾「忘記密碼？」連至 `/forgot-password`（#230 交給本單的接線；`login_forgot` 三語）
+- `routes/login.tsx` 重寫為 dithered colonnade 版面（`StoaField` 柱廊背景＋`comic-ground` 點陣）：hero 框、回故事頁連結、方形語言切換、登入／註冊模式切換、密碼直顯表單（顯示／隱藏切換掛 `aria-controls`）、邀請碼虛線表單（導向 `/join/$code`）
+- OAuth 按鈕按 `GET /auth/providers` 能力探測渲染（該端點即為本單解鎖，#207）：啟用的 google／facebook 渲染為連結，未啟用渲染虛線停用鈕；`api.authProviders()` 回 shared 契約型別 `OAuthProviders`，enabled set 由頁面端推導
+- 公告欄（NoticeBar）消費 `GET /notifications`——feed 免登入為 #158 拍板的登入頁用途；fetch 失敗整條不渲染，日後 feed 語義隨 #187 社群化收緊時零改動退化
+- `api.signup({ name, email, password, tosAccepted })`：`tosAccepted` 顯式經呼叫鏈傳遞（對齊 `joinByInvite` 慣例），server 端 `tos_required` 閘門保持有效
+- 已登入者 guard redirect（`meOf`；admin 無 `next` 參數導 `/admin`，其餘走 `safeNext`）
+- i18n 三語新增：`login_guest_hint`、`login_facebook`
+- 測試：`routes.test.tsx` 四條 #178 契約（探測渲染＋無 demo／guest 入口、未設定 provider 與 feed 失敗的退化、admin redirect、註冊模式 name+email+password+ToS 閘門與 POST body）；`api.e2e.test.ts` 三條（`authProviders`／`notifications` 契約路徑、`signup` body＋session announce、`email_taken` 錯誤映射）
+
+### Changed
+
+- 依 #204「設計先行、不照 web-next 分支實作」原則適配 main 帳號模型：登入欄 email-only（main 無 identifier／username 契約，`docs/accounts.md` §5）；註冊模式必填 `name`（`SignupInputSchema`）；錯誤映射同時收 `email_taken` 與 `conflict`
+- me query 改用 `meQueryOptions`（#243 慣例），登入成功寫回 `meQueryOptions.queryKey`
+- 密碼欄改 `label htmlFor`＋`input id` 分離結構（切換鈕不包在 label 內，accessible name 不受污染）
+
+### Removed
+
+- `landing/LandingChrome.tsx`＋`landing.css`（`/login` 為唯一消費者，#177 時保留至此退場）
+- demo 教師一鍵登入按鈕與 `login_demo_teacher` i18n key（dev fixture 登入由 `/dev/accounts` 承接）
+- web-next 稿的 `useGuestSessionExpired`／guest 逾期通知（main 訪客 `user:null`、無 guest session 機制）與 login 頁 `storage` 監聽（跨 tab 同步職責屬 AppShell `useSessionSync`，#179）
+
+### Fixed
+
+- `raw()` 補上 204 guard：`DELETE /settings/keys/:provider/models/:model` 回 204 空 body，原實作直接 `res.json()` 會拋 SyntaxError（`unwrap` 有 guard、`raw` 漏同步——雙運輸通道的直接代價）；regression test 於 `api.e2e.test.ts`
+- 錯誤解包四份複製（`unwrap`／`raw`／`stt`／`tts`）收斂為單一 `raiseApiError`
+- `joinAsGuest` 簽名改顯式 `{ name?, tosAccepted }`：原 transport 層硬編 `tosAccepted: true`，server 的 `tos_required` 閘門從此 client 永不觸發；呼叫端（`/join/$code`）改傳真實 checkbox 狀態
+
 ## 2026-11-21 — Email 帳號密碼找回（`feat/230-password-reset`，#230）
 
 ### Added
 
 - `POST /api/auth/password/forgot`、`POST /api/auth/password/reset`（契約見 [`api-contract.md`](./api-contract.md) §2.2）：無狀態 token（簽章綁定目前 `password_hash` 與 `email`、依用途推導金鑰、30 分鐘），重設成功 `session_version + 1`；錯誤碼 `reset_token_invalid`（三語訊息）
 - 三語重設信模板（`mail.ts`，寄件人沿用 `ALERT_FROM_EMAIL`）；寄信走 `waitUntil`，寄送失敗只記 log
-- `/forgot-password`、`/reset-password` 頁面（只用既有 `components/ui`；登入頁入口待 #178）
+- `/forgot-password`、`/reset-password` 頁面（只用既有 `components/ui`；入口已接線 `/login`，#178）
 - `tests/password-reset.test.ts`（17 tests：寄信與不寄信的情況、單次使用、雙連結、並行重設、session 失效、過期、竄改、跨用途、密碼或 email 在別處變更、停用、fail-open、限流）＋ `test/password-reset.test.tsx`（5 tests）
 
 ### Changed

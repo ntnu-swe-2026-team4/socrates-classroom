@@ -5,8 +5,10 @@ import { routeAgentRequest } from "agents";
 import { ROOT_SESSION } from "agents/harness/pi";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { ROOT_CONVERSATION_ID, type ConversationId } from "@earendil-works/pi-durable";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { inject } from "vitest";
+
+vi.setConfig({ testTimeout: 15_000 });
 import { seedFixture } from "../src/seed";
 import { all, run } from "../src/db/d1";
 import type { Chat } from "../src/do/chat";

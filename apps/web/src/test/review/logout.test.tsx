@@ -1,4 +1,7 @@
 import type { ReactNode } from "react";
+import { reportOptions } from "@/api/queries";
+import type { Report, User } from "@socrates/shared";
+import { meQueryOptions } from "@/api/me";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, test, vi } from "vitest";
@@ -31,8 +34,9 @@ test("S01: successful logout removes private reports from the shared client", as
   setLocale("en");
   calls.navigate.mockClear();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
-  client.setQueryData(["me"], { id: "teacher-1", isAdmin: false, name: "Teacher" });
-  client.setQueryData(["report", "activity-1"], {
+  const teacher: User = { id: "teacher-1", isAdmin: false, name: "Teacher" };
+  client.setQueryData(meQueryOptions.queryKey, teacher);
+  const reportSeed = {
     topicTitle: "Topic",
     group: { axes: [], points: [], clusters: [] },
     individuals: [
@@ -43,7 +47,8 @@ test("S01: successful logout removes private reports from the shared client", as
         violations: [],
       },
     ],
-  });
+  } as unknown as Report;
+  client.setQueryData(reportOptions("activity-1").queryKey, reportSeed);
   try {
     render(
       <QueryClientProvider client={client}>
@@ -55,7 +60,7 @@ test("S01: successful logout removes private reports from the shared client", as
     fireEvent.click(screen.getByRole("button", { name: "Account" }));
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(calls.navigate).toHaveBeenCalled());
-    expect(client.getQueryData(["report", "activity-1"])).toBeUndefined();
+    expect(client.getQueryData(reportOptions("activity-1").queryKey)).toBeUndefined();
   } finally {
     cleanup();
     client.clear();

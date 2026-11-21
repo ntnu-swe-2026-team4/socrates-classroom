@@ -373,21 +373,140 @@ test("#181: a failing identity check on /home redirects to login instead of erro
   expect(path).toBe("/login");
 });
 
-test("#243 review: the login page offers no dead-end guest entry", async () => {
+function stubStoaObservers() {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
   vi.stubGlobal(
-    "IntersectionObserver",
+    "ResizeObserver",
     class {
       observe() {}
-      disconnect() {}
       unobserve() {}
+      disconnect() {}
     },
+  );
+}
+
+test("#178: the colonnade login page renders provider buttons from the probe and no demo or guest entry", async () => {
+  stubStoaObservers();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const responses: Record<string, unknown> = {
+        "/api/me": null,
+        "/api/auth/providers": { providers: ["google", "facebook"] },
+        "/api/notifications": {
+          items: [{ id: "n1", title: "Maintenance window", body: "", createdAt: "2026-01-01T00:00:00.000Z" }],
+          unread: null,
+        },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
   );
   const dispose = await mountRoute("/login");
   try {
-    expect(await screen.findByRole("button", { name: "Sign in" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+    expect((await screen.findByRole("link", { name: "Sign in with Google" })).getAttribute("href")).toBe(
+      "/api/auth/oauth/google/start",
+    );
+    expect(screen.getByRole("link", { name: "Sign in with Facebook" }).getAttribute("href")).toBe(
+      "/api/auth/oauth/facebook/start",
+    );
+    expect(screen.getByRole("link", { name: "Back to the story" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Forgot password?" }).getAttribute("href")).toBe("/forgot-password");
+    expect(screen.getByLabelText("Have an invite code?")).toBeTruthy();
+    expect(screen.getByText("Maintenance window")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Continue as guest" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /demo teacher/ })).toBeNull();
   } finally {
     dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#178: an unconfigured probe disables the buttons and a failed feed hides the notice bar", async () => {
+  stubStoaObservers();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const status = path === "/api/notifications" ? 401 : 200;
+      const responses: Record<string, unknown> = {
+        "/api/me": null,
+        "/api/auth/providers": { providers: [] },
+        "/api/notifications": { message: "unauthorized", code: "unauthorized" },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }),
+  );
+  const dispose = await mountRoute("/login");
+  try {
+    expect(await screen.findByRole("button", { name: "Sign in with Google · Not configured" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign in with Facebook · Not configured" })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText("Announcements")).toBeNull());
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#178: a signed-in admin landing on /login is redirected to the admin console", async () => {
+  const path = await loadPath("/login", { "/api/me": { id: "admin-1", name: "Admin", isAdmin: true } });
+  expect(path).toBe("/admin");
+});
+
+test("#178: register mode gates the account form on name, email, password, and consent", async () => {
+  stubStoaObservers();
+  const calls: Array<{ path: string; body: unknown }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (init?.method === "POST") calls.push({ path, body: JSON.parse(String(init.body)) });
+      const responses: Record<string, unknown> = {
+        "/api/me": null,
+        "/api/auth/providers": { providers: [] },
+        "/api/notifications": { items: [], unread: null },
+        "/api/auth/signup": { id: "user-9", name: "New User", isAdmin: false },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), {
+        status: init?.method === "POST" ? 201 : 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }),
+  );
+  const dispose = await mountRoute("/login?mode=register");
+  try {
+    const submit = await screen.findByRole("button", { name: "Create account" });
+    expect(submit).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByRole("textbox", { name: "Display name" }), { target: { value: "New User" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "new@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password123" } });
+    expect(submit).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(submit).toHaveProperty("disabled", false);
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(calls).toEqual([
+        {
+          path: "/api/auth/signup",
+          body: { name: "New User", email: "new@example.com", password: "password123", tosAccepted: true },
+        },
+      ]),
+    );
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
   }
 });
 
