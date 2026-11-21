@@ -1,17 +1,31 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { LoginInputSchema, RegisterInputSchema, SignupInputSchema, type ErrorCode, type User } from "@socrates/shared";
-import { batch, one } from "../db/d1";
+import {
+  LoginInputSchema,
+  PasswordForgotInputSchema,
+  PasswordResetInputSchema,
+  RegisterInputSchema,
+  SignupInputSchema,
+  type ErrorCode,
+  type Lang,
+  type User,
+} from "@socrates/shared";
+import { batch, one, run } from "../db/d1";
 import {
   DUMMY_HASH,
   endSession,
   hashPassword,
   openPayload,
+  passwordResetBinding,
+  readAccountToken,
+  sealAccountToken,
   sealPayload,
   startSession,
   toUser,
+  verifyAccountToken,
   verifyPassword,
 } from "../auth";
+import { sendPasswordResetEmail } from "../mail";
 import {
   enforceIpLimit,
   fail,
@@ -44,6 +58,15 @@ const OAUTH_COOKIE = "socrates_oauth";
 const OAUTH_COOKIE_PATH = "/api/auth/oauth";
 const OAUTH_TTL_SECONDS = 600;
 const OAUTH_SUCCESS_PATH = "/home";
+const RESET_TTL_MINUTES = 30;
+
+interface ResetAccountRow {
+  id: string;
+  email: string | null;
+  password_hash: string | null;
+  lang: Lang;
+  disabled_at: string | null;
+}
 
 interface UserRow {
   id: string;
@@ -197,6 +220,64 @@ export function authRoutes() {
     })
     .post("/auth/logout", (c) => {
       endSession(c);
+      return c.body(null, 204);
+    })
+    .post("/auth/password/forgot", async (c) => {
+      await enforceIpLimit(c, "password-forgot", 5);
+      const input = await parseBody(c, PasswordForgotInputSchema);
+      const row = await one<ResetAccountRow>(
+        c.env.DB,
+        "SELECT id, email, password_hash, lang, disabled_at FROM users WHERE email = $email",
+        { email: input.email },
+      );
+      const account = row?.password_hash && row.email && row.disabled_at === null ? row : null;
+      const token = await sealAccountToken(
+        { env: c.env },
+        "password_reset",
+        account?.id ?? "",
+        passwordResetBinding(account?.password_hash ?? DUMMY_HASH, account?.email ?? null),
+        RESET_TTL_MINUTES * 60_000,
+      );
+      if (account?.email) {
+        const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
+        const mail = { to: account.email, lang: account.lang, link: `${base}/reset-password#token=${token}` };
+        c.executionCtx.waitUntil(
+          sendPasswordResetEmail(c.env, { ...mail, minutes: RESET_TTL_MINUTES }).catch((error: unknown) => {
+            console.warn("[auth] password reset mail failed:", error instanceof Error ? error.message : typeof error);
+          }),
+        );
+      }
+      return c.body(null, 204);
+    })
+    .post("/auth/password/reset", async (c) => {
+      await enforceIpLimit(c, "password-reset", 10);
+      const input = await parseBody(c, PasswordResetInputSchema);
+      const claims = readAccountToken(input.token, "password_reset");
+      const row = claims
+        ? await one<ResetAccountRow>(
+            c.env.DB,
+            "SELECT id, email, password_hash, lang, disabled_at FROM users WHERE id = $id",
+            { id: claims.uid },
+          )
+        : null;
+      const valid =
+        row?.password_hash &&
+        row.email &&
+        row.disabled_at === null &&
+        (await verifyAccountToken(
+          { env: c.env },
+          "password_reset",
+          input.token,
+          passwordResetBinding(row.password_hash, row.email),
+        ));
+      if (!row?.password_hash || !row.email || !valid) fail(400, "reset_token_invalid");
+      const result = await run(
+        c.env.DB,
+        `UPDATE users SET password_hash = $next, session_version = session_version + 1
+         WHERE id = $id AND password_hash = $current AND email = $email`,
+        { id: row.id, next: await hashPassword(input.password), current: row.password_hash, email: row.email },
+      );
+      if (!result.meta.changes) fail(400, "reset_token_invalid");
       return c.body(null, 204);
     });
 }

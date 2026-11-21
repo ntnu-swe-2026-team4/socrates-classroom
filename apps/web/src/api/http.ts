@@ -32,6 +32,8 @@ import {
   JoinInputSchema,
   LoginInputSchema,
   LookupInputSchema,
+  PasswordForgotInputSchema,
+  PasswordResetInputSchema,
   SttResultSchema,
   TopicCopyInputSchema,
   TopicCreateInputSchema,
@@ -39,7 +41,7 @@ import {
   type ErrorCode,
 } from "@socrates/shared";
 import type { RpcApi } from "@server/app";
-import { persistActivityId, recordTerm } from "./local";
+import { clearLocalUserState, persistActivityId, recordTerm } from "./local";
 
 export class ApiError extends Error {
   constructor(
@@ -68,11 +70,13 @@ export interface Api {
   me(): Promise<User | null>;
   login(email: string, password: string): Promise<User>;
   logout(): Promise<void>;
+  requestPasswordReset(email: string): Promise<void>;
+  resetPassword(token: string, password: string): Promise<void>;
   joinByCode(code: string): Promise<JoinInfo>;
-  joinAsGuest(code: string, name: string): Promise<JoinResult>;
+  joinAsGuest(code: string, name?: string): Promise<JoinResult>;
   createActivityInvite(activityId: string): Promise<ActivityInvite>;
   inviteInfo(token: string): Promise<InviteInfo>;
-  joinByInvite(token: string, name: string): Promise<InviteJoined>;
+  joinByInvite(token: string, input: { name?: string; tosAccepted: boolean }): Promise<InviteJoined>;
   listTopics(): Promise<Topic[]>;
   generateTopics(direction: string): Promise<TopicDraft[]>;
   createClassroom(name: string): Promise<ClassroomCreated>;
@@ -260,7 +264,14 @@ export const httpApi: Api = {
   },
   async logout() {
     await unwrap(await client.auth.logout.$post());
+    clearLocalUserState();
     announceSession();
+  },
+  async requestPasswordReset(email) {
+    await unwrap(await client.auth.password.forgot.$post({ json: PasswordForgotInputSchema.parse({ email }) }));
+  },
+  async resetPassword(token, password) {
+    await unwrap(await client.auth.password.reset.$post({ json: PasswordResetInputSchema.parse({ token, password }) }));
   },
   async joinByCode(code) {
     return unwrap(await client.join[":code"].$get({ param: { code } }));
@@ -279,10 +290,10 @@ export const httpApi: Api = {
   async inviteInfo(token) {
     return await raw<InviteInfo>(`/invites/${encodeURIComponent(token)}`);
   },
-  async joinByInvite(token, name) {
+  async joinByInvite(token, input) {
     const data = await raw<InviteJoined>(`/invites/${encodeURIComponent(token)}/join`, {
       method: "POST",
-      json: { name, tosAccepted: true },
+      json: input,
     });
     persistActivityId(data.activityId);
     return data;

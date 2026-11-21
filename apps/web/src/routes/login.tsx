@@ -102,14 +102,6 @@ function LoginPage() {
               type="button"
               className="pill-btn"
               disabled={busy !== null}
-              onClick={() => void navigate({ to: "/join" })}
-            >
-              {t("login_guest")}
-            </button>
-            <button
-              type="button"
-              className="pill-btn"
-              disabled={busy !== null}
               aria-busy={busy === "teacher"}
               onClick={() => void run("teacher", () => api.login("demo@socrates.tw", "demo-demo"))}
             >

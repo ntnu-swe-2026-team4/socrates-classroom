@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
 import { httpApi } from "@/api/http";
+import { meOf } from "@/api/me";
 import { ApiError } from "@/api";
 
 type Handler = (path: string, init: RequestInit) => Response | Promise<Response>;
@@ -70,7 +72,7 @@ describe("httpApi contract (browser-side actual code)", () => {
     await httpApi.inviteInfo("t1");
     expect(handler.mock.calls[1]![0]).toBe("/api/invites/t1");
 
-    const joined = await httpApi.joinByInvite("t1", "訪客");
+    const joined = await httpApi.joinByInvite("t1", { name: "訪客", tosAccepted: true });
     expect(joined.participantId).toBe("p_2");
     const [path, init] = handler.mock.calls[2]!;
     expect(path).toBe("/api/invites/t1/join");
@@ -158,5 +160,29 @@ describe("httpApi contract (browser-side actual code)", () => {
     localStorage.removeItem("socrates_session_changed");
     await httpApi.logout();
     expect(localStorage.getItem("socrates_session_changed")).not.toBeNull();
+  });
+
+  test("logout clears the term history and activity leftovers", async () => {
+    handler.mockReturnValue(new Response(null, { status: 204 }));
+    localStorage.setItem("socrates_terms", JSON.stringify([{ term: "正義", at: "2026-11-21T00:00:00.000Z" }]));
+    localStorage.setItem("socrates_activity", "a_1");
+    await httpApi.logout();
+    expect(localStorage.getItem("socrates_terms")).toBeNull();
+    expect(localStorage.getItem("socrates_activity")).toBeNull();
+  });
+
+  test("meOf treats an identity failure as logged out and caches success", async () => {
+    handler.mockReturnValue(json({ message: "壞了", code: "internal_error" }, 500));
+    const failing = new QueryClient();
+    expect(await meOf(failing)).toBeNull();
+
+    handler.mockReturnValue(json({ id: "u1", name: "小明", isAdmin: false }));
+    const client = new QueryClient();
+    expect((await meOf(client))?.id).toBe("u1");
+    handler.mockClear();
+    await meOf(client);
+    expect(handler).toHaveBeenCalledTimes(0);
+    failing.clear();
+    client.clear();
   });
 });

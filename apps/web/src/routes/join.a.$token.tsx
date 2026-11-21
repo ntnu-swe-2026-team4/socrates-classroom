@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/api";
+import { meQueryOptions } from "@/api/me";
 import { Button, Card, Checkbox, Field, Input, PageHeader, Spinner } from "@/components/ui";
 import { useT } from "@/i18n";
 
@@ -23,7 +24,7 @@ function InvitePage() {
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const info = useQuery({ queryKey: ["invite", token], queryFn: () => api.inviteInfo(token), retry: false });
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const me = useQuery(meQueryOptions);
 
   const topic = info.data?.topic;
   const needsName = me.isSuccess && me.data === null;
@@ -33,7 +34,7 @@ function InvitePage() {
     setSubmitting(true);
     setFailed(null);
     try {
-      const joined = await api.joinByInvite(token, name.trim());
+      const joined = await api.joinByInvite(token, { name: name.trim() || undefined, tosAccepted: tos });
       await navigate({
         to: "/dialogue",
         search: { activityId: joined.activityId, ...(draft ? { q: draft } : {}) },

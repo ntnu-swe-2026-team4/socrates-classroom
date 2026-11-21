@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
-import { evictDurableObject, runInDurableObject } from "cloudflare:test";
+import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
+import { ROOT_SESSION } from "agents/harness/pi";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { ROOT_CONVERSATION_ID, type ConversationId } from "@earendil-works/pi-durable";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -220,6 +221,137 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     await rx.until((f) => f.some((m) => m.type === "result" && m.id === "post-evict"));
     expect(socket.readyState).toBe(WebSocket.OPEN);
     socket.close();
+  }, 20_000);
+
+  it("reports and replays an orphaned dialogue run after eviction without a transcript entry", async () => {
+    const student = await joinStudent("失聯後重試");
+    const thread = `${activityId}:${student.participantId}`;
+    const stub = env.Chat.get(env.Chat.idFromName(thread));
+    const socket = await connect(thread, student.cookie);
+    const isFailure = (frame: ReturnType<typeof frames>["list"][number]) =>
+      frame.type === "error" && frame.code === "llm_unavailable" && frame.id === undefined;
+    try {
+      const rx = frames(socket);
+      socket.send(JSON.stringify({ type: "watch" }));
+      await rx.until((f) => f.some((m) => m.type === "view"));
+      await runInDurableObject(stub, async (instance) => {
+        await (instance as Chat).lifecycle.jobs.push({
+          fn: "dialogue-run-deadline",
+          time: Date.now() + 120_000,
+          payload: { session: ROOT_SESSION, operationId: crypto.randomUUID() },
+        });
+      });
+      await evictDurableObject(stub);
+      expect(await runDurableObjectAlarm(stub)).toBe(true);
+      socket.send(JSON.stringify({ type: "watch", id: "after-alarm" }));
+      await rx.until((f) => f.some((m) => m.type === "result" && m.id === "after-alarm"));
+      expect(rx.list.filter(isFailure)).toHaveLength(1);
+      expect(latestView(rx.list)?.entries).toHaveLength(0);
+    } finally {
+      socket.close();
+    }
+
+    const reconnected = await connect(thread, student.cookie);
+    try {
+      const rx = frames(reconnected);
+      reconnected.send(JSON.stringify({ type: "watch", id: "reconnect" }));
+      await rx.until((f) => f.some((m) => m.type === "result" && m.id === "reconnect"));
+      expect(rx.list.filter(isFailure)).toHaveLength(1);
+    } finally {
+      reconnected.close();
+    }
+  }, 20_000);
+
+  it("does not replay the previous failure after eviction when a newer run was admitted", async () => {
+    const student = await joinStudent("重啟後的新一輪");
+    const thread = `${activityId}:${student.participantId}`;
+    const stub = env.Chat.get(env.Chat.idFromName(thread));
+    let socket: WebSocket | undefined;
+
+    try {
+      await runInDurableObject(stub, async (instance, state) => {
+        const chat = instance as Chat;
+        await chat.lifecycle.start();
+        await chat.lifecycle.disableAlarms();
+        const operationId = crypto.randomUUID();
+        state.storage.kv.put(`dialogue-run-failure:${ROOT_SESSION}`, {
+          jobId: "previous-failure",
+          expiresAt: Date.now() + 120_000,
+        });
+        await chat.lifecycle.jobs.push({
+          fn: "dialogue-run-deadline",
+          time: Date.now() + 120_000,
+          payload: { session: ROOT_SESSION, operationId },
+        });
+        const session = chat.harness.session(ROOT_SESSION);
+        const receipt = await session.submit("正義是什麼？".repeat(100), { operationId, whenBusy: "reject" });
+        expect(receipt.accepted).toBe(true);
+        expect(await session.busy()).toBe(true);
+        await chat.harness.dispose();
+      });
+
+      await evictDurableObject(stub);
+      socket = await connect(thread, student.cookie);
+      const rx = frames(socket);
+      socket.send(JSON.stringify({ type: "watch", id: "after-restart" }));
+      await rx.until((f) => f.some((m) => m.type === "result" && m.id === "after-restart"));
+      expect(latestView(rx.list)?.entries.some((entry) => entry.kind === "pi.user")).toBe(true);
+      expect(rx.list.filter((m) => m.type === "error" && m.code === "llm_unavailable")).toHaveLength(0);
+
+      socket.send(JSON.stringify({ type: "abort", id: "abort-new-run" }));
+      await rx.until((f) => f.some((m) => m.type === "result" && m.id === "abort-new-run"));
+      await expect
+        .poll(
+          () =>
+            runInDurableObject(stub, (instance) =>
+              (instance as Chat).lifecycle.jobs.list().some((job) => job.fn === "dialogue-run-deadline"),
+            ),
+          { timeout: 5_000 },
+        )
+        .toBe(false);
+      socket.send(JSON.stringify({ type: "watch", id: "after-abort" }));
+      await rx.until((f) => f.some((m) => m.type === "result" && m.id === "after-abort"));
+      expect(rx.list.filter((m) => m.type === "error" && m.code === "llm_unavailable")).toHaveLength(0);
+    } finally {
+      socket?.close();
+      await runInDurableObject(stub, (instance) => (instance as Chat).harness.session(ROOT_SESSION).abort());
+    }
+  }, 20_000);
+
+  it("reports a dialogue run deadline while the original run is still active", async () => {
+    const student = await joinStudent("回覆逾時");
+    const thread = `${activityId}:${student.participantId}`;
+    const stub = env.Chat.get(env.Chat.idFromName(thread));
+    const socket = await connect(thread, student.cookie);
+    try {
+      const rx = frames(socket);
+      socket.send(JSON.stringify({ type: "watch" }));
+      await rx.until((f) => f.some((m) => m.type === "view"));
+
+      const deadline = await runInDurableObject(stub, async (instance) => {
+        const chat = instance as Chat;
+        const session = chat.harness.session(ROOT_SESSION);
+        const receipt = await session.submit("正義是什麼？".repeat(100), { whenBusy: "reject" });
+        expect(receipt.accepted).toBe(true);
+        expect(await session.busy()).toBe(true);
+        const time = Date.now() + 1_000;
+        await chat.lifecycle.jobs.push({
+          fn: "dialogue-run-deadline",
+          time,
+          payload: { session: ROOT_SESSION, operationId: receipt.operationId },
+        });
+        return time;
+      });
+
+      await rx.until((f) => f.some((m) => m.type === "error" && m.code === "llm_unavailable" && m.id === undefined));
+      expect(Date.now()).toBeGreaterThanOrEqual(deadline);
+      expect(
+        await runInDurableObject(stub, (instance) => (instance as Chat).harness.session(ROOT_SESSION).busy()),
+      ).toBe(true);
+    } finally {
+      socket.close();
+      await runInDurableObject(stub, (instance) => (instance as Chat).harness.session(ROOT_SESSION).abort());
+    }
   }, 20_000);
 
   it("revoked participant is refused after hibernation wake (ownership re-verified, not trusted from connect time)", async () => {

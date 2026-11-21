@@ -153,13 +153,40 @@ async function mountRoute(url: string) {
   };
 }
 
-test("F01: direct invitation URL renders the topic, name and required consent", async () => {
+test("F01: a signed-out visitor picks guest and gets the name field and required consent", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const responses: Record<string, unknown> = {
+        "/api/me": null,
+        "/api/join/abcdef": { code: "abcdef", classroomName: "Class", topic },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
   const dispose = await mountRoute("/join/abcdef");
   try {
     expect(await screen.findByRole("heading", { name: "Invitation topic" })).toBeTruthy();
-    expect(screen.getByRole("textbox", { name: "Your name" })).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Your name" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Join as a guest/ }));
+    expect(await screen.findByRole("textbox", { name: "Your name" })).toBeTruthy();
     expect(screen.getByRole("checkbox")).toHaveProperty("checked", false);
-    expect(screen.getByRole("button", { name: "Start the dialogue" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Start the dialogue" })).toBeTruthy();
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("F01b: a signed-in user joins under their account name without retyping it", async () => {
+  const dispose = await mountRoute("/join/abcdef");
+  try {
+    expect(await screen.findByText(/You'll join as/)).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Your name" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign out and switch account" })).toBeTruthy();
+    expect(screen.getByRole("checkbox")).toHaveProperty("checked", false);
   } finally {
     dispose();
   }
@@ -327,6 +354,7 @@ test("join error surfaces the code-specific message (ApiError from @/api, not sh
   );
   const dispose = await mountRoute("/join/abcdef");
   try {
+    fireEvent.click(await screen.findByRole("button", { name: /Join as a guest/ }));
     const name = await screen.findByRole("textbox", { name: "Your name" });
     fireEvent.change(name, { target: { value: "Late Joiner" } });
     const consent = screen.getByRole("checkbox");
@@ -337,5 +365,177 @@ test("join error surfaces the code-specific message (ApiError from @/api, not sh
     expect(await screen.findByText(/already taken/)).toBeTruthy();
   } finally {
     dispose();
+  }
+});
+
+test("#181: a failing identity check on /home redirects to login instead of erroring", async () => {
+  const path = await loadPath("/home", { "/api/me": { message: "壞了", code: "internal_error" } }, { "/api/me": 500 });
+  expect(path).toBe("/login");
+});
+
+test("#243 review: the login page offers no dead-end guest entry", async () => {
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    },
+  );
+  const dispose = await mountRoute("/login");
+  try {
+    expect(await screen.findByRole("button", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Continue as guest" })).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test("#243 review: a signed-out /dialogue without an activity redirects straight to login", async () => {
+  const path = await loadPath("/dialogue", { "/api/me": null });
+  expect(path).toBe("/login");
+});
+
+test("#243 review: a signed-in join hitting name_taken shows account guidance, not the pick-another-name hint", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const me = { id: "student-1", name: "Student", isAdmin: false };
+      if (path === "/api/me") {
+        return new Response(JSON.stringify(me), { headers: { "Content-Type": "application/json" } });
+      }
+      if (path === "/api/join/abcdef") {
+        return new Response(JSON.stringify({ code: "abcdef", classroomName: "Class", topic }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path === "/api/join" && init?.method === "POST") {
+        return new Response(JSON.stringify({ message: "name_taken", code: "name_taken" }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+  const dispose = await mountRoute("/join/abcdef");
+  try {
+    expect(await screen.findByText(/You'll join as/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Start the dialogue" }));
+    expect(await screen.findByText(/switch accounts/i)).toBeTruthy();
+    expect(screen.queryByText(/already taken — pick another/i)).toBeNull();
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#243 review: a signed-in join still reaches home when fetching the activity fails", async () => {
+  const me = { id: "student-1", name: "Student", isAdmin: false };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (path === "/api/me") {
+        return new Response(JSON.stringify(me), { headers: { "Content-Type": "application/json" } });
+      }
+      if (path === "/api/join/abcdef") {
+        return new Response(JSON.stringify({ code: "abcdef", classroomName: "Class", topic }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path === "/api/join" && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({ user: me, activityId: "activity-1", participantId: "p_2", kind: "member" }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (path === "/api/activities/activity-1") {
+        return new Response(JSON.stringify({ message: "壞了", code: "internal_error" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path === "/api/classrooms") {
+        return new Response(JSON.stringify([]), { headers: { "Content-Type": "application/json" } });
+      }
+      if (path === "/socrates.glb") return new Response(new Uint8Array());
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ["/join/abcdef"] }),
+    context: { queryClient: client },
+  });
+  await router.load();
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  try {
+    expect(await screen.findByText(/You'll join as/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Start the dialogue" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/home"));
+    expect(screen.queryByRole("alert")).toBeNull();
+  } finally {
+    cleanup();
+    client.clear();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("F01c: a signed-in join posts without a name", async () => {
+  let joinBody: Record<string, unknown> | null = null;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const me = { id: "student-1", name: "Student", isAdmin: false };
+      const responses: Record<string, unknown> = {
+        "/api/me": me,
+        "/api/join/abcdef": { code: "abcdef", classroomName: "Class", topic },
+        "/api/activities/activity-1": {
+          id: "activity-1",
+          classroomId: "class-1",
+          classroomName: "Class",
+          participantId: "p_2",
+          mode: "live",
+          topic,
+          finishedAt: null,
+        },
+      };
+      if (path === "/api/join" && init?.method === "POST") {
+        joinBody = JSON.parse(init.body as string);
+        return new Response(
+          JSON.stringify({ user: me, activityId: "activity-1", participantId: "p_2", kind: "member" }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (path === "/api/classrooms")
+        return new Response(JSON.stringify([]), { headers: { "Content-Type": "application/json" } });
+      if (path === "/api/classrooms/class-1/topics")
+        return new Response(JSON.stringify([]), { headers: { "Content-Type": "application/json" } });
+      if (path === "/socrates.glb") return new Response(new Uint8Array());
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/join/abcdef");
+  try {
+    expect(await screen.findByText(/You'll join as/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Start the dialogue" }));
+    await waitFor(() => expect(joinBody).not.toBeNull());
+    expect(joinBody).toMatchObject({ code: "abcdef", tosAccepted: true });
+    expect(joinBody).not.toHaveProperty("name");
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
   }
 });

@@ -2,12 +2,13 @@ import { useState } from "react";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type AdminUser } from "@/api";
+import { meOf } from "@/api/me";
 import { Button, Card, Field, Input, PageHeader, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/admin/users")({
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
     if (!me.isAdmin) throw redirect({ to: "/classrooms" });
   },

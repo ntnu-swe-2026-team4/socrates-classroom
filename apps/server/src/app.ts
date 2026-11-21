@@ -39,6 +39,7 @@ export type RpcApi = ReturnType<typeof createApi>;
 export function createApp() {
   return new Hono<AppEnv>()
     .use("/api/*", async (c, next) => {
+      c.header("Cache-Control", "private, no-store");
       c.set("lang", normalizeLang(c.req.header("Accept-Language")));
       const lookup = await lookupSession(c.env, getCookie(c, SESSION_COOKIE));
       c.set("user", lookup.kind === "ok" ? lookup.session.user : null);

@@ -20,6 +20,8 @@
 | 版本     | `/api` 無版本前綴（單一消費者）；外部消費者出現時才評版本化＋OpenAPI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | 型別共享 | `RpcApp = ReturnType<typeof createApp>`＋`RpcApi = ReturnType<typeof createApi>`（`apps/server/src/app.ts`）；web 端消費 declaration 產物 `hc<RpcApi>("/api")`（R6）                                                                                                                                                                                                                                                                                                                                                                                   |
 
+所有 `/api/*` 回應預設 `Cache-Control: private, no-store`，包含錯誤回應；個別 route 可顯式覆寫。`/health` 與 static assets 不套用此預設值。
+
 ### 1.1 授權矩陣
 
 > 「訪客」＝沒有帳號的活動參與者：持 `socrates_participant` cookie，**不建 `users` 列**，只存在於那一個活動（#133）。
@@ -30,6 +32,7 @@
 | ------------------------------------------------------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------------- |
 | `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅                                            | ✅                                                       |
 | `POST /auth/signup`、`GET /auth/oauth/:provider/start`、`GET /auth/oauth/:provider/callback`（#124）    | ✅                                            | ✅                                                       |
+| `POST /auth/password/forgot`、`POST /auth/password/reset`（#230）                                       | ✅                                            | ✅                                                       |
 | `GET /invites/:token`、`POST /invites/:token/join`（活動邀請連結，#133）                                | ✅                                            | ✅（只加入活動，不入名冊）                               |
 | `GET /notifications`（feed 免登入）、`POST /notifications/seen`、`POST /admin/notifications`（#239）    | feed ✅（未登入 `unread` null）；seen/admin — | feed ✅（`unread` 有值）；seen ✅；admin ❌ 401／403     |
 | `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —                                             | ✅                                                       |
@@ -97,6 +100,18 @@ interface User {
 - 一個帳號對應一種登入方式；同一個 email 經 email 註冊與 Google／Facebook 登入是**各自獨立的帳號**（第三方登入不以 email 認身分）
 - Google 帳號的 email 存於 `user_identities.email`，`users.email` 為 NULL（`users.email` 只承載 email 密碼登入）；Facebook 帳號同理，且其 email 可能缺席（informational）
 - callback redirect URI＝`PUBLIC_BASE_URL`（未設則用請求 origin）＋`/api/auth/oauth/<provider>/callback`；Google 需登錄於 Google Cloud Console，Facebook 需登錄於 Meta App Dashboard（設定見 [`google-oauth.md`](./google-oauth.md) §6）
+
+### 2.2 密碼找回（#230）
+
+| Endpoint                                                  | 說明                                                                                                                                                                                                                  |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/auth/password/forgot` `{email}` → 204          | 一律回 204，不透露帳號是否存在。帳號存在、有密碼且未停用時，寄出重設信（語言依 `users.lang`），連結為 `PUBLIC_BASE_URL`（未設則用請求 origin）＋`/reset-password#token=<token>`；寄信走 `waitUntil`，寄送失敗只記 log |
+| `POST /api/auth/password/reset` `{token, password}` → 204 | token 有效 → 更新密碼、`session_version + 1`（所有裝置登出），不發 session。token 無效、過期、已使用，或帳號已停用 → 400 `reset_token_invalid`；`password` 規則同 signup（8–128）→ 不符 422 `validation`              |
+
+- token 對 client 是不透明字串；有效 30 分鐘。伺服器不存 token：簽章綁定帳號目前的 `password_hash` 與 `email`，密碼或 email 一改，所有尚未使用的連結都失效（等於單次使用）；簽章金鑰依用途由 `AUTH_SECRET` 推導，不同用途的 token 不能互用
+- 連結把 token 放在 URL fragment（`#token=`），不會送到伺服器，也不會出現在 Referer 或伺服器 log
+- 限流：forgot 每 IP 每分鐘 5 次、reset 每 IP 每分鐘 10 次（`enforceIpLimit`，各 isolate 各自計數，#157）；同一 email 的冷卻待 #157
+- 純 SSO 帳號（`users.email` 為 NULL、無密碼）不適用
 
 ## 3. 入場（唯一閘門，#66/#70）
 
@@ -169,7 +184,8 @@ type ServerMessage =
 ```
 
 - **客戶端以 `applyImmutable`（`@earendil-works/chord/delta`）套用 ops**——禁止手寫 delta applier
-- **回合完成判定**：submit 後記 baseline（當時最後一個 entry id，sliding window splice 安全），view/ops 中 baseline 之後出現 `pi.assistant` entry 即完成（admission receipt 不代表完成；串流中的 partial 寫在 `pi.live` doc，不會誤觸）；reconnect 後全量 view 仲裁——無本輪 `pi.user` entry＝未被 admission，清 pending 報錯（防 double-submit）
+- **回合完成判定**：submit 後記 baseline（當時最後一個 entry id），透過 view/ops 判斷本輪的 assistant 回覆是否已完成。Admission receipt 代表已受理。串流中的 partial 寫在 `pi.live` doc。重連後，若 watch window 缺少本輪的 `pi.user` entry，前端仍以可判定的回覆或明確的失敗訊號結束 `pending`。
+- **Run 失敗與逾時（#148）**：Chat DO 保存待處理的 operation，重啟後恢復追蹤。查到 run 遺失、失敗，或達到約 120 秒的 deadline 仍無結果時，向同一個 session 廣播無 `id` 的 `llm_unavailable`。失敗通知自記錄起保留 120 秒，供重連後重新 watch 同一個 session 時補收。若同一個 session 另有待追蹤的 operation，則暫緩補送上一輪的失敗通知。
 - **情緒**：`view.entries` 的 `app.emotion` entry（`{emotion, probabilities, confidence}`，#111）——UI 依機率驅動表情，文字零污染
 - **違規**：`app.violation` entry（`{type, probability, excerpt, source}`，#71）——老師面板讀 D1（#73 輪詢），學生端不消費
 - **歷史**：WS `watch` 首個 view（window 預設最新 50 則 entries）或 `entries` 指令；pi transcript（DO storage）為唯一真相
@@ -269,10 +285,10 @@ interface ViolationSlice {
 
 ## 8. 語音（#69）
 
-| Operation                                          | 說明                                                                                                                                                                                  |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/stt`（multipart audio ≤15MB）→ `{text}` | 供無 Web Speech API 的瀏覽器（Firefox）；支援者前端自走原生                                                                                                                           |
-| `POST /api/tts` `{text, lang}` → audio stream      | server-side 為保證路徑；`text` ≤ `TTS_MAX_CHARS = 4000`（shared `TtsInputSchema`，客戶端 `lib/speech.ts` 同步在句尾截斷）——嘴型驅動用 amplitude：`Api.tts(text, onAmplitude, signal)` |
+| Operation                                          | 說明                                                                                                                                                                                         |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/stt`（multipart audio ≤15MB）→ `{text}` | 供無 Web Speech API 的瀏覽器（Firefox）；支援者前端自走原生                                                                                                                                  |
+| `POST /api/tts` `{text, lang}` → audio stream      | server-side 為保證路徑；`text` ≤ `TTS_MAX_CHARS = 4000`（shared `TtsInputSchema`，客戶端 `lib/speechArbiter.ts` 同步在句尾截斷）——嘴型驅動用 amplitude：`Api.tts(text, onAmplitude, signal)` |
 
 ## 9. 查詢與 teacher keys
 
@@ -333,6 +349,7 @@ interface ViolationSlice {
 | BYOK / teacher keys    | `byok_provider_invalid`                                                                                                                                                                    | 422                         |
 | 第三方登入（#124）     | `oauth_unavailable` / `oauth_state_invalid` / `oauth_email_unverified` / `oauth_failed`（以 `/login?error=<code>` query 傳回，非 JSON）                                                    | 302                         |
 | 自行註冊（#124）       | `email_taken`（`POST /auth/signup` 信箱已被使用）                                                                                                                                          | 409                         |
+| 密碼找回（#230）       | `reset_token_invalid`（`POST /auth/password/reset` 的 token 無效、過期、已使用，或帳號已停用）                                                                                             | 400                         |
 
 ## 11. 端點外的既存通道
 

@@ -13,6 +13,45 @@
 
 - 沒帶 `axes` 時群體報告與 main 相同（prompt、工具、輸入逐字不變）；目前沒有後端路由傳 `axes`
 
+## 2026-11-21 — Email 帳號密碼找回（`feat/230-password-reset`，#230）
+
+### Added
+
+- `POST /api/auth/password/forgot`、`POST /api/auth/password/reset`（契約見 [`api-contract.md`](./api-contract.md) §2.2）：無狀態 token（簽章綁定目前 `password_hash` 與 `email`、依用途推導金鑰、30 分鐘），重設成功 `session_version + 1`；錯誤碼 `reset_token_invalid`（三語訊息）
+- 三語重設信模板（`mail.ts`，寄件人沿用 `ALERT_FROM_EMAIL`）；寄信走 `waitUntil`，寄送失敗只記 log
+- `/forgot-password`、`/reset-password` 頁面（只用既有 `components/ui`；登入頁入口待 #178）
+- `tests/password-reset.test.ts`（17 tests：寄信與不寄信的情況、單次使用、雙連結、並行重設、session 失效、過期、竄改、跨用途、密碼或 email 在別處變更、停用、fail-open、限流）＋ `test/password-reset.test.tsx`（5 tests）
+
+### Changed
+
+- Worker 入口（`index.ts`）把 `ExecutionContext` 傳給 Hono，路由可用 `c.executionCtx.waitUntil`（先前入口沒有傳入，`waitUntil` 無法使用）
+
+## 2026-11-21 — speech 仲裁政策抽離：`SpeechArbiter` 與注入式環境（`refactor/165-speech-arbiter`，#165）
+
+### Added
+
+- `lib/speechArbiter.ts`：`SpeechArbiter` 持有 TTS 單通道的全部自家狀態（意圖序、當前播放、跨分頁播報），依賴經 `SpeechEnv` 注入（transport／mute／speakingSource／跨分頁 announce／字數上限）；`defaultSpeechEnv` 為瀏覽器實作，`dispose()` 退訂跨分頁監聽
+- `test/speechArbiter.test.ts`（5 tests，全為 ctor fakes、零 global stubbing）：兩個實例互不干擾、意圖優先序、靜音短路、注入式字數上限的句尾截斷、他分頁播報中斷本頁與 `dispose` 退訂
+
+### Changed
+
+- `lib/speech.ts` 退化為 facade：公開簽名（`markIntent`／`stopSpeech`／`speak`／`speakableText` 與兩個 type）不變，模組級可變狀態（`intentAt`／`sequence`／`active`／`BroadcastChannel`）全數移入 `SpeechArbiter` 實例；`test/speech.test.ts` 既有仲裁迴歸測試在新結構下全綠
+- 行為零變更：跨分頁仲裁、打斷／跳過／靜音優先序、句尾截斷與 `TTS_MAX_CHARS` 預算皆與前一版一致
+
+## 2026-11-21 — 帳號接線：meOf guards、join 雙軌、登出清殘留（`split/181-account-wiring`，#181）
+
+### Added
+
+- `api/me.ts`：`meOf` 統一 guard 輔助——identity 查詢失敗 `.catch(() => null)` 視為未登入（redirect 取代 error boundary）；九個 guard 路由全數收斂（home／dialogue／settings／t.setup／t.live／admin.users／classrooms×2／report）
+- `/join/:code` 帳號／訪客雙軌（#136 帳號模型接線）：登入直入免填名（`POST /join` 不帶 `name`、join 後落地班級頁）；訪客走選擇卡 → 填名＋ToS；`join_as` 帳號卡＋切換帳號；`JoinResult.user` 寫回 `["me"]` 快取並失效班級查詢
+- `routes.test.tsx` F01b／F01c（帳號直入不重填名；POST body 不含 `name`）＋ guard 失敗 redirect 測試
+
+### Changed
+
+- `api.joinAsGuest(code, name?)`／`api.joinByInvite(token, { name?, tosAccepted })` 簽名對齊 server（`JoinInputSchema.name` optional；invite 不再送空字串 name）
+- 登出清 `socrates_terms`／`socrates_activity` localStorage 殘留（`clearLocalUserState`）
+- `/join`（index）改 redirect `/classrooms`（入場改由班級頁的邀請碼欄）
+
 ## 2026-11-21 — 殼層重構：side rail、compact 帳號選單、跨 tab session 同步（`split/179-appshell`，#179）
 
 ### Added

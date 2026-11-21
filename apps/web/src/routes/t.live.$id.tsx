@@ -4,12 +4,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare } from "lucide-react";
 import { ACTIVITY_SLOT_MAX } from "@socrates/shared";
 import { api } from "@/api";
+import { meOf } from "@/api/me";
 import { Button, buttonStyles, Card, Field, Input, PageHeader, SectionTitle, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/t/live/$id")({
   beforeLoad: async ({ context, params }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/classrooms" });
     const activity = await context.queryClient
       .ensureQueryData({ queryKey: ["activity", params.id, "teacher"], queryFn: () => api.activityInfo(params.id) })

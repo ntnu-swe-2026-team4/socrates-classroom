@@ -1,5 +1,5 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { api } from "@/api";
+import { meOf } from "@/api/me";
 import { Card, PageHeader, Segmented, cn } from "@/components/ui";
 import { ProviderKeys } from "@/components/ProviderKeys";
 import { locales, setLocale, useI18n, useT, type Locale, type MessageKey } from "@/i18n";
@@ -18,7 +18,7 @@ export const Route = createFileRoute("/settings")({
     section: SECTIONS.find((item) => item.id === search.section && item.id !== "general")?.id,
   }),
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/home" });
   },
   component: SettingsPage,
