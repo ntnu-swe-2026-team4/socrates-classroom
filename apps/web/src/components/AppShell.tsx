@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { classroomsOptions } from "@/api/queries";
 import { useAccountSheetRequest } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -53,7 +54,7 @@ function useSessionSync() {
       }
       if (now && before && now.isAdmin !== before.isAdmin) {
         queryClient.setQueryData(meQueryOptions.queryKey, now);
-        await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+        await queryClient.invalidateQueries({ queryKey: classroomsOptions.queryKey });
       }
     } catch {
       return;

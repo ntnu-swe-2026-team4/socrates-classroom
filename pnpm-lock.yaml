@@ -194,6 +194,9 @@ importers:
       '@biomejs/biome':
         specifier: 2.6.4
         version: 2.6.4
+      biome-plugin-tanstack-query:
+        specifier: ^1.1.1
+        version: 1.1.1(@biomejs/biome@2.6.4)
       node:
         specifier: runtime:26.x
         version: runtime:26.13.0
@@ -2162,6 +2165,12 @@ packages:
 
   bignumber.js@9.3.1:
     resolution: {integrity: sha512-Ko0uX15oIUS7wJ3Rb30Fs6SkVbLmPBAKdlm7q9+ak9bbIeFf0MwuBsQV6z7+X768/cHsfg+WlysDWJcmthjsjQ==}
+
+  biome-plugin-tanstack-query@1.1.1:
+    resolution: {integrity: sha512-vAnpEBiOB4wikQ9zWoYUz5ZWHedNwgY/gMT7WOwzuQPqvRLv0Rr90mkmp6k2btc3RLPF7Ds6g2HyB4FEGjgWPg==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@biomejs/biome': '>=2.5.2'
 
   blake3-wasm@2.1.5:
     resolution: {integrity: sha512-F1+K8EbfOZE49dtoPtmxUQrpXaBIl3ICvasLh+nJta0xkz+9kF/7uet9fLnwKqhDrmj6g+6K3Tw9yQPUg2ka5g==}
@@ -5358,6 +5367,10 @@ snapshots:
       require-from-string: 2.0.2
 
   bignumber.js@9.3.1: {}
+
+  biome-plugin-tanstack-query@1.1.1(@biomejs/biome@2.6.4):
+    dependencies:
+      '@biomejs/biome': 2.6.4
 
   blake3-wasm@2.1.5: {}
 

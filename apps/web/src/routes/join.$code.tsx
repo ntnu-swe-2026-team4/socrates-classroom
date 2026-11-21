@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { classroomsOptions, joinOptions } from "@/api/queries";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight, Ghost, UserRound } from "lucide-react";
@@ -28,7 +29,7 @@ function JoinPage() {
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const [asGuest, setAsGuest] = useState(false);
-  const info = useQuery({ queryKey: ["join", code], queryFn: () => api.joinByCode(code) });
+  const info = useQuery(joinOptions(code));
   const me = useQuery(meQueryOptions);
   const account = me.data ?? null;
   const signedIn = Boolean(account);
@@ -56,7 +57,7 @@ function JoinPage() {
         tosAccepted: tos,
       });
       queryClient.setQueryData(meQueryOptions.queryKey, user);
-      await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+      await queryClient.invalidateQueries({ queryKey: classroomsOptions.queryKey });
       if (draft || !user) {
         await navigate({ to: "/dialogue", search: { activityId, ...(draft ? { q: draft } : {}) } });
         return;

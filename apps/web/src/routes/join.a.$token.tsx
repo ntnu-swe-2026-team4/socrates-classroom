@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { inviteOptions } from "@/api/queries";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/api";
@@ -23,7 +24,7 @@ function InvitePage() {
   const [tos, setTos] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
-  const info = useQuery({ queryKey: ["invite", token], queryFn: () => api.inviteInfo(token), retry: false });
+  const info = useQuery(inviteOptions(token));
   const me = useQuery(meQueryOptions);
 
   const topic = info.data?.topic;

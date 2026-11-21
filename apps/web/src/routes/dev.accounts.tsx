@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { devAccountsOptions } from "@/api/queries";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { api, ApiError, type DevAccount } from "@/api";
 import { meQueryOptions } from "@/api/me";
@@ -17,12 +18,7 @@ function DevAccountsPage() {
   const t = useT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const accounts = useQuery({
-    queryKey: ["dev-accounts"],
-    queryFn: () => api.devAccounts(),
-    retry: false,
-    staleTime: Infinity,
-  });
+  const accounts = useQuery(devAccountsOptions);
 
   const login = useMutation({
     mutationFn: (account: DevAccount) => api.devLogin(account.email),

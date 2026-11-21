@@ -1,4 +1,5 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { termHistoryOptions } from "@/api/queries";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { History, PanelRight, Search, TextSearch } from "lucide-react";
 import { api, type TermExplanation } from "@/api";
@@ -34,7 +35,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
   const inFlight = useRef(new Set<string>());
   const bodyRef = useRef<HTMLDivElement>(null);
   const { selection, clear } = useSelectionPopover(bodyRef);
-  const history = useQuery({ queryKey: ["termHistory"], queryFn: () => readTermHistory(), enabled: open });
+  const history = useQuery({ ...termHistoryOptions, enabled: open });
 
   useImperativeHandle(ref, () => ({
     openTerm(term: string) {
@@ -61,7 +62,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
         if (index >= 0) next[index] = { ...next[index], status: "ready", explanation };
         return next;
       });
-      queryClient.setQueryData(["termHistory"], readTermHistory());
+      queryClient.setQueryData(termHistoryOptions.queryKey, readTermHistory());
     } catch {
       setStack((prev) => {
         const next = [...prev];

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { classroomsOptions } from "@/api/queries";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChartNoAxesColumn, GraduationCap, MessageSquare, SquareActivity, Users } from "lucide-react";
@@ -22,8 +23,7 @@ function ClassroomPage() {
   const t = useT();
   const { classroomId } = Route.useParams();
   const room = useQuery({
-    queryKey: ["classrooms"],
-    queryFn: () => api.listClassrooms(),
+    ...classroomsOptions,
     select: (list: ClassroomSummary[]) => list.find((entry) => entry.id === classroomId) ?? null,
   });
 

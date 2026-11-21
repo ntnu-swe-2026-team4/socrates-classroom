@@ -1,4 +1,5 @@
 import { meOf, meQueryOptions } from "@/api/me";
+import { authProvidersOptions, notificationsOptions } from "@/api/queries";
 import { useState } from "react";
 import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -58,7 +59,7 @@ const LABEL = "flex flex-col gap-1.5 text-[12.5px] font-medium";
 function NoticeBar() {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const feed = useQuery({ queryKey: ["notifications"], queryFn: () => api.notifications() });
+  const feed = useQuery(notificationsOptions);
   const items = feed.data?.items ?? [];
   const latest = items[0];
   if (!feed.isSuccess) return null;
@@ -116,7 +117,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [tos, setTos] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const providers = useQuery({ queryKey: ["authProviders"], queryFn: () => api.authProviders(), staleTime: Infinity });
+  const providers = useQuery(authProvidersOptions);
   const me = useQuery({ ...meQueryOptions, enabled: false });
 
   async function run(action: () => Promise<User>) {

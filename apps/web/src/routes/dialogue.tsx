@@ -1,7 +1,8 @@
 import { useCallback } from "react";
+import { activityOptions } from "@/api/queries";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/api";
+
 import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
 import { readActivityId } from "@/api/local";
@@ -31,12 +32,7 @@ function DialoguePage() {
   const me = useQuery(meQueryOptions);
   const { activityId: activityParam, slot, q, term } = Route.useSearch();
   const activityId = activityParam ?? readActivityId() ?? "";
-  const activityQuery = useQuery({
-    queryKey: ["activity", activityId, slot ?? null],
-    queryFn: () => api.activityInfo(activityId, slot),
-    enabled: activityId !== "",
-    staleTime: Infinity,
-  });
+  const activityQuery = useQuery({ ...activityOptions(activityId, slot), enabled: activityId !== "" });
   const activityRefetch = useCallback(() => void activityQuery.refetch(), [activityQuery.refetch]);
   const topic = activityQuery.data?.topic;
 

@@ -16,6 +16,7 @@ pnpm typecheck
 
 ## Deltas & boundaries
 
+- Query keys 必經 factory（#277）：一律引用 `api/queries.ts` 或 `api/me.ts` 的 `queryOptions` 產物與其 `.queryKey`——`biome-plugin-tanstack-query`（recommended-strict preset，GritQL port of `@tanstack/eslint-plugin-query`）＋ratchet test `query-keys.test.ts` 機械化執法
 - The API layer is only `src/api/` (`httpApi` — the real backend; the v3 mock mode is retired, server-side `LLM_PROVIDER=mock` covers offline dev)
 - The dialogue transport is **WebSocket** (`/agents/chat/:name`): message types in `apps/server/src/ws/protocol.ts`, mechanics in `docs/pi.md`; client applies chord ops with `applyImmutable` — never hand-roll a delta applier; REST shapes come from `hc<RpcApi>` (R6; server declarations via `pnpm --filter @socrates/server run build:types` → `dist/types`, consumed through the `@server/*` tsconfig path) — any contract change lands in `docs/api-contract.md` + `packages/shared`
 - Styling is Tailwind v4 utilities; theme colors are CSS variables (`@theme` in `src/index.css`) — never hardcode color values
