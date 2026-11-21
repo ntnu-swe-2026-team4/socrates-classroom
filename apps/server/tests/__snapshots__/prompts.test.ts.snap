@@ -282,7 +282,7 @@ Your own axes come after the teacher's:
 - Try to add axes until the total is reached
 - Each axis you add must be a disagreement this class actually talked about that neither the teacher's axes nor your other axes already cover
 - An axis you add must separate students: counting only students who talked about it (not those placed in the middle because they did not), their positions must fall at different ends (at least two of left, middle, right). If they all fall at the same end, the axis separates no one; do not set it
-- If the class has no further disagreement that separates students, add fewer axes, or none, and say in the class overview why there are fewer
+- If the class has no further disagreement that separates students, add fewer axes, or none, and say in one line of the class overview why there are fewer (that line is one of its three to five lines)
 - If students' positions on two of your axes always move together (right on one, right on the other), it is the same disagreement; keep only one. If one of your axes moves together with a teacher's axis, it is the teacher's disagreement; do not set it
 - Write each axis you add in this order: what it asks, the position at its left end and at its right end, the positions of every student on the roster (those who did not talk about it in the middle), why this axis is needed (which students it separates who could not be separated on the earlier axes)
 - Use only disagreements this class actually talked about, not textbook or generic categories
@@ -320,7 +320,7 @@ Three to five lines, one point per line: where the class's main disagreement is,
 - A student only replying "mm" or "yes" to agree, or only picking one of the options the AI offered, does not count as their own reason
 - No grading, and do not say who is right or wrong
 - Use only student IDs
-- "Why this axis is needed" and the class overview never give head counts; only list IDs
+- Every "why" (on the teacher's axes and on yours) and the class overview never give head counts; only list IDs
 - Write in the default language: English. These instructions are in English, but the report's language follows this line. When writing Chinese, always use Traditional characters
 
 Submit the report by calling submit_class_axes_report as your final action; do not also write it as text.
@@ -366,7 +366,7 @@ Your own axes come after the teacher's:
 - Try to add axes until the total is reached
 - Each axis you add must be a disagreement this class actually talked about that neither the teacher's axes nor your other axes already cover
 - An axis you add must separate students: counting only students who talked about it (not those placed in the middle because they did not), their positions must fall at different ends (at least two of left, middle, right). If they all fall at the same end, the axis separates no one; do not set it
-- If the class has no further disagreement that separates students, add fewer axes, or none, and say in the class overview why there are fewer
+- If the class has no further disagreement that separates students, add fewer axes, or none, and say in one line of the class overview why there are fewer (that line is one of its three to five lines)
 - If students' positions on two of your axes always move together (right on one, right on the other), it is the same disagreement; keep only one. If one of your axes moves together with a teacher's axis, it is the teacher's disagreement; do not set it
 - Write each axis you add in this order: what it asks, the position at its left end and at its right end, the positions of every student on the roster (those who did not talk about it in the middle), why this axis is needed (which students it separates who could not be separated on the earlier axes)
 - Use only disagreements this class actually talked about, not textbook or generic categories
@@ -404,7 +404,7 @@ Three to five lines, one point per line: where the class's main disagreement is,
 - A student only replying "mm" or "yes" to agree, or only picking one of the options the AI offered, does not count as their own reason
 - No grading, and do not say who is right or wrong
 - Use only student IDs
-- "Why this axis is needed" and the class overview never give head counts; only list IDs
+- Every "why" (on the teacher's axes and on yours) and the class overview never give head counts; only list IDs
 - Write in the default language: Spanish (Español). These instructions are in English, but the report's language follows this line. When writing Chinese, always use Traditional characters
 
 Submit the report by calling submit_class_axes_report as your final action; do not also write it as text.
@@ -450,7 +450,7 @@ Your own axes come after the teacher's:
 - Try to add axes until the total is reached
 - Each axis you add must be a disagreement this class actually talked about that neither the teacher's axes nor your other axes already cover
 - An axis you add must separate students: counting only students who talked about it (not those placed in the middle because they did not), their positions must fall at different ends (at least two of left, middle, right). If they all fall at the same end, the axis separates no one; do not set it
-- If the class has no further disagreement that separates students, add fewer axes, or none, and say in the class overview why there are fewer
+- If the class has no further disagreement that separates students, add fewer axes, or none, and say in one line of the class overview why there are fewer (that line is one of its three to five lines)
 - If students' positions on two of your axes always move together (right on one, right on the other), it is the same disagreement; keep only one. If one of your axes moves together with a teacher's axis, it is the teacher's disagreement; do not set it
 - Write each axis you add in this order: what it asks, the position at its left end and at its right end, the positions of every student on the roster (those who did not talk about it in the middle), why this axis is needed (which students it separates who could not be separated on the earlier axes)
 - Use only disagreements this class actually talked about, not textbook or generic categories
@@ -488,7 +488,7 @@ Three to five lines, one point per line: where the class's main disagreement is,
 - A student only replying "mm" or "yes" to agree, or only picking one of the options the AI offered, does not count as their own reason
 - No grading, and do not say who is right or wrong
 - Use only student IDs
-- "Why this axis is needed" and the class overview never give head counts; only list IDs
+- Every "why" (on the teacher's axes and on yours) and the class overview never give head counts; only list IDs
 - Write in the default language: Traditional Chinese (繁體中文). These instructions are in English, but the report's language follows this line. When writing Chinese, always use Traditional characters
 
 Submit the report by calling submit_class_axes_report as your final action; do not also write it as text.

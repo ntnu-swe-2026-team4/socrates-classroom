@@ -623,7 +623,7 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
       .filter(Boolean);
     const first = roster[0] ?? "學生A";
     const second = roster[1] ?? first;
-    const axesHeader = /## Axes: (\d+) in total; the teacher set (\d+|none)/.exec(prompt);
+    const axesHeader = /## Axes: (\d+) in total; the teacher set (\d+|none)/.exec(prompt.split("## Roster:")[0] ?? "");
     if (axesHeader) {
       const everyone = roster.map((id) => ({ id, turns: [1], view: "v", side: "middle", strength: 1 }));
       const count = Number(axesHeader[1]);

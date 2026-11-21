@@ -356,6 +356,10 @@ describe("class report with an axes plan passed in (#159)", () => {
     fails(planned(everyone, [added("契約")]), "report_axis_name_duplicate");
     fails(planned(everyone, [added("契約 ")]), "report_axis_name_duplicate");
     fails({ ...base, teacherAxes: [], addedAxes: [] }, "report_teacher_axes_mismatch");
+    fails(
+      { ...planned(), teacherAxes: [...planned().teacherAxes, { axis: 2, positions: everyone, why: "w" }] },
+      "report_teacher_axes_mismatch",
+    );
     fails(planned(everyone, [added("a"), added("b"), added("c")]), "report_axes_over_count");
     expect(PlannedClassReportSubmissionSchema.safeParse(planned([], [])).success).toBe(false);
   });
@@ -376,7 +380,7 @@ describe("class report with an axes plan passed in (#159)", () => {
     for (const plan of [
       { count: 0, teacher: [] },
       { count: 4, teacher: [] },
-      { count: 1, teacher: [axis, axis] },
+      { count: 1, teacher: [axis, { ...axis, name: "其他" }] },
       { count: 1, teacher: [{ ...axis, name: "  " }] },
       { count: 1, teacher: [{ ...axis, left: "a\n## Roster:" }] },
       { count: 1, teacher: [{ ...axis, right: "a\u2028b" }] },
