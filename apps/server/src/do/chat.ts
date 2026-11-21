@@ -1,4 +1,4 @@
-import type { UserInput } from "@earendil-works/pi-durable";
+import type { EntryRecord, UserInput } from "@earendil-works/pi-durable";
 import { DurableObject } from "cloudflare:workers";
 import { createRegistry, Harness } from "@earendil-works/pi-durable";
 import {
@@ -266,33 +266,8 @@ export class Chat extends DurableObject<Env> {
     return receipt;
   }
 
-  async transcript(): Promise<{
-    messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
-    violations: Array<{ turn: number; type: string; excerpt: string }>;
-  }> {
-    const items = await this.harness.session(ROOT_SESSION).messages();
-    const messages: Array<{ role: "user" | "assistant"; turn: number; text: string }> = [];
-    const violations: Array<{ turn: number; type: string; excerpt: string }> = [];
-    let turn = 0;
-    for (const entry of items) {
-      if (entry.kind === "pi.user") {
-        turn += 1;
-        messages.push({ role: "user", turn, text: entryText(entry) });
-      } else if (entry.kind === "pi.assistant") {
-        messages.push({ role: "assistant", turn, text: entryText(entry) });
-      } else if (entry.kind === "app.violation") {
-        const data = entry.data as { type?: string; excerpt?: string };
-        violations.push({ turn, type: data.type ?? "other", excerpt: data.excerpt ?? "" });
-      }
-    }
-    const seen = new Set<string>();
-    const deduped = violations.filter((violation) => {
-      const key = `${violation.turn}:${violation.type}:${violation.excerpt}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    return { messages, violations: deduped };
+  async transcript(): Promise<TranscriptReadout> {
+    return readTranscript(await this.harness.session(ROOT_SESSION).messages());
   }
 
   private async canSubmit(identity: SocketIdentity): Promise<boolean> {
@@ -405,4 +380,27 @@ function textOf(content: Message["content"]): string {
 
 function entryText(entry: { model?: readonly Message[] }): string {
   return textOf(entry.model?.[0]?.content ?? "");
+}
+
+export interface TranscriptReadout {
+  messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
+  violations: Array<{ turn: number; type: string; excerpt: string }>;
+}
+
+export function readTranscript(items: readonly EntryRecord[]): TranscriptReadout {
+  const messages: Array<{ role: "user" | "assistant"; turn: number; text: string }> = [];
+  const violations: Array<{ turn: number; type: string; excerpt: string }> = [];
+  let turn = 0;
+  for (const entry of items) {
+    if (entry.kind === "pi.user") {
+      turn += 1;
+      messages.push({ role: "user", turn, text: entryText(entry) });
+    } else if (entry.kind === "pi.assistant") {
+      messages.push({ role: "assistant", turn, text: entryText(entry) });
+    } else if (entry.kind === "app.violation") {
+      const data = entry.data as { type?: string; excerpt?: string };
+      violations.push({ turn, type: data.type ?? "other", excerpt: data.excerpt ?? "" });
+    }
+  }
+  return { messages, violations };
 }

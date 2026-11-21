@@ -13,6 +13,15 @@
 
 - 沒帶 `axes` 時群體報告與 main 相同（prompt、工具、輸入逐字不變）；目前沒有後端路由傳 `axes`
 
+## 2026-11-21 — glue 層收斂：violation 收斂移到報告層、TTS race 記為已知限制（`refactor/165-glue-decisions`，#165）
+
+### Changed
+
+- `transcript()` 不再對 `app.violation` 做內容去重：抽 `readTranscript(items)` 純函式負責 scan，回傳 transcript 裡全部的 violation entry——用字串拼出來的身份判斷（`${turn}:${type}:${excerpt}`）退場
+- `collapseViolations()` 移入報告層（`do/report-runner.ts`，`transcriptOf` 收斂）：同一輪、同類型、同片段仍只呈現一筆且保留先寫入者——報告形狀、分析輸入、老師報告頁的違規切片完全不變（`test/transcript.test.ts` 五條紅線釘住兩側）
+- `docs/architecture.md` §12 風險表新增：TTS 跨分頁仲裁的毫秒級 race 定位為已知限制，附重啟條件
+- `docs/api-contract.md` §7：載明 violations 的收斂住在報告層
+
 ## 2026-11-21 — query key 全面收斂 queryOptions factory＋TanStack lint 上線（`refactor/277-query-options`，#277）
 
 ### Added

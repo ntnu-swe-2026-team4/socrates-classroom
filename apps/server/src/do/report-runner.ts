@@ -55,6 +55,16 @@ interface RawTranscript {
   violations: ViolationSlice[];
 }
 
+export function collapseViolations(violations: readonly ViolationSlice[]): ViolationSlice[] {
+  const seen = new Set<string>();
+  return violations.filter((violation) => {
+    const key = `${violation.turn}:${violation.type}:${violation.excerpt}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function renderTranscript(
   participantId: string,
   transcript: RawTranscript | undefined,
@@ -438,11 +448,13 @@ export class ReportRunner extends DurableObject<Env> {
     return {
       messages: data.messages,
       turns: data.messages.filter((message) => message.role === "user").length,
-      violations: data.violations.map((violation) => ({
-        turn: violation.turn,
-        type: violation.type as ViolationType,
-        excerpt: violation.excerpt,
-      })),
+      violations: collapseViolations(
+        data.violations.map((violation) => ({
+          turn: violation.turn,
+          type: violation.type as ViolationType,
+          excerpt: violation.excerpt,
+        })),
+      ),
     };
   }
 
