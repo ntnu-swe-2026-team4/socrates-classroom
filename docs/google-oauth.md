@@ -11,7 +11,7 @@ Google 登入需要兩個值：
 
 任一值留空時，Google 登入會停用：按下 Google 登入會導回 `/login?error=oauth_unavailable`，其他功能不受影響。
 
-另外會用到 `PUBLIC_BASE_URL`，它決定 Google 登入完成後要導回哪個網址：`<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`。這個網址必須和 Google Console 裡登錄的 redirect URI **一字不差**。
+另外會用到 `PUBLIC_BASE_URL`，它決定 Google 登入完成後要導回哪個網址：`<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`。這個網址 MUST 和 Google Console 裡登錄的 redirect URI **一字不差**。
 
 ## 1. 建立 OAuth 用戶端
 
@@ -26,7 +26,7 @@ Google 登入需要兩個值：
      - 正式站：`https://<正式網域>/api/auth/oauth/google/callback`
 4. 建立後馬上複製 Client ID 和 Client secret。新版 Console **只在建立當下顯示一次 secret**，之後就看不到了。
 
-> 測試中的應用程式只有「測試使用者」名單裡的帳號能登入，上限 100 人。要開放所有人使用，必須在 Google Auth Platform 把應用程式「發布為正式版」，而且要先提供隱私權政策網址。
+> 測試中的應用程式只有「測試使用者」名單裡的帳號能登入，上限 100 人。要開放所有人使用，MUST 在 Google Auth Platform 把應用程式「發布為正式版」，而且要先提供隱私權政策網址。
 
 ## 2. 本機開發
 

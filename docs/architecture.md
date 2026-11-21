@@ -272,7 +272,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 13. Scale design v2（D9–D13）——10k 併發作為 code quality bar
 
-> 狀態：規劃中（`experiment/web-next`，2026-11-04）。設計容量 10,000 條 concurrent 對話 thread，作為 code quality bar（非流量預期）：horizontal scaling 是 Cloudflare 的責任，自建 bottleneck 是本 repo 的責任。任何 hot path 必須屬於三型之一——(a) stateless-horizontal：任何 isolate 皆可執行；(b) DO-sharded：狀態鎖進單執行緒單元；(c) queue-buffered：寫入以 batch 吸收。平台事實（D1 single-writer throughput、Queues limits、DO streaming 無時限）已於 2026-11-04 對官方文件查證。
+> 狀態：規劃中（`experiment/web-next`，2026-11-04）。設計容量 10,000 條 concurrent 對話 thread，作為 code quality bar（非流量預期）：horizontal scaling 是 Cloudflare 的責任，自建 bottleneck 是本 repo 的責任。任何 hot path MUST 屬於三型之一——(a) stateless-horizontal：任何 isolate 皆可執行；(b) DO-sharded：狀態鎖進單執行緒單元；(c) queue-buffered：寫入以 batch 吸收。平台事實（D1 single-writer throughput、Queues limits、DO streaming 無時限）已於 2026-11-04 對官方文件查證。
 
 ### 13.0 負載模型（axiom）
 
@@ -301,7 +301,7 @@ v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78�
 
 - event stream（turn done／violation／usage）→ **Workers Queues**（每 queue 5,000 msg/s、consumer concurrency 至 250、batch 100、15 分鐘執行時限、DLQ）→ consumer 以 `batch()` 寫 D1——700 writes/s 收斂為 <10 batch requests/s
 - 報告生成（#74）→ **CF Workflows** 編排：activity finish → fan-out 單人分析（經 Queues parallel）→ aggregate（立場軸/落點/分群）→ 寫 D1 → 通知。50 生 parallel ≈ <2 分鐘，滿足 #74「幾分鐘內可讀」
-- 訊息不可丟：DLQ＋retention replay；consumer 必須 idempotent（以 turn id 去重）
+- 訊息不可丟：DLQ＋retention replay；consumer MUST idempotent（以 turn id 去重）
 
 ### 13.3 D11 gateway plane（parallel multi-provider，取代 §5 的 fallback chain）
 
@@ -346,6 +346,6 @@ v3 設計為 ActivityEvents DO（SSE-in-DO＋ring buffer＋Last-Event-ID replay�
 ### 13.7 Honest limits（設計不假裝解決的）
 
 1. **Provider 經濟**：220 rps × ~1.5k token ≈ 330k token/s，滿載 ~$120–360/小時（GLM flash 級）。router 只提供商業開關（namespace／kill-switch／traffic class），誰付錢是 #62 的產品決策
-2. **Workers AI judgment quota**：Clef 免費 daily quota 數小時耗盡——judgment plane 必須 multi-provider
+2. **Workers AI judgment quota**：Clef 免費 daily quota 數小時耗盡——judgment plane MUST multi-provider
 3. **單一 D1**：tiering 後 10k 可達；真到百萬級 OLTP 需求 → sharding 逃生口
 4. **單 Worker＝全體同時換版**：部署走 Gradual Deployments＋expand-contract migrations

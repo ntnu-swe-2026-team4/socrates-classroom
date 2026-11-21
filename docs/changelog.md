@@ -499,7 +499,7 @@
 ### Changed
 
 - WS error frame：pi 錯誤名作 code；內部錯誤只回 generic 訊息（不洩 D1/secret 細節）
-- YAML schema strict（未知鍵即敗）；openai-completions 必須帶 baseUrl/baseUrlEnv；死鍵 params 移除
+- YAML schema strict（未知鍵即敗）；openai-completions MUST 帶 baseUrl/baseUrlEnv；死鍵 params 移除
 - teacherLegs SQL 收斂 credentials.ts（原三份 byte 相同複本）；TeacherKeyStatus 進 shared（server/web/contract 三份手抄收斂）
 - buildModels：mock 只認 LLM_PROVIDER=mock（缺 AI binding 原靜默 fallback faux——生產 misconfig 會演假對話，現 fail-fast）
 - runProfile：完成即 ok（退化空輸出不再計入 provider 失敗）；ipHits 真正強制上限；register/join 區分 email vs name 違規

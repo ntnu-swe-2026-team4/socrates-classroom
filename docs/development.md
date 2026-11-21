@@ -23,7 +23,7 @@
 ## 本地資料庫
 
 - Schema 的 SSOT 是 `apps/server/migrations/*.sql`——production 由 CI 套同一批檔案
-- `pnpm migrate` = `cf d1 migrations apply <DB_ID> --local --persist-to .cloudflare/state`——`--persist-to` 必須對準 dev server 的 state 目錄（否則會寫到 `~/.config/cloudflare/state`，dev server 看不到）
+- `pnpm migrate` = `cf d1 migrations apply <DB_ID> --local --persist-to .cloudflare/state`——`--persist-to` MUST 對準 dev server 的 state 目錄（否則會寫到 `~/.config/cloudflare/state`，dev server 看不到）
 - `<DB_ID>` 是 `cloudflare.config.ts` 裡 `bindings.d1({ id })` 宣告的固定 UUID，與指令保持一致
 - **Persistence scope 陷阱**：改 `cloudflare.config.ts`（bindings、compat date、flags）會讓本地資料「消失」——這是 scope 隨 config hash 變化的正常行為，重啟 dev（自動 migrate）或手動 `pnpm migrate` 即可
 
