@@ -63,7 +63,9 @@ function JoinPage() {
       const code = error instanceof ApiError ? error.code : null;
       setFailed(
         code === "name_taken"
-          ? t("join_err_name_taken")
+          ? signedIn
+            ? t("join_err_name_taken_account")
+            : t("join_err_name_taken")
           : code === "activity_finished"
             ? t("join_err_finished")
             : t("join_failed"),

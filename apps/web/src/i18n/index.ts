@@ -282,6 +282,7 @@ const messages = {
     join_code_go: "進入教室",
     join_failed: "加入失敗，請稍後再試。",
     join_err_name_taken: "這個名字已被使用，換一個名字再加入。",
+    join_err_name_taken_account: "你的帳號名字已在此班級被使用——請切換帳號或聯絡老師。",
     join_err_finished: "這間教室的活動已結束，無法再加入。",
     account_title: "帳號",
     account_role: "登入身分",
@@ -931,6 +932,8 @@ const messages = {
     join_code_go: "Join classroom",
     join_failed: "Failed to join. Please try again later.",
     join_err_name_taken: "That name is already taken — pick another and join again.",
+    join_err_name_taken_account:
+      "Your account name is already taken in this classroom — switch accounts or contact your teacher.",
     join_err_finished: "This classroom\u2019s activity has ended and can no longer be joined.",
     account_title: "Account",
     account_role: "Signed in as",
@@ -1601,6 +1604,8 @@ const messages = {
     join_code_go: "Unirse a la clase",
     join_failed: "No se pudo unir. Inténtalo más tarde.",
     join_err_name_taken: "Ese nombre ya está en uso — elige otro y vuelve a unirte.",
+    join_err_name_taken_account:
+      "El nombre de tu cuenta ya está en uso en esta clase — cambia de cuenta o avisa al profesor.",
     join_err_finished: "La actividad de esta clase ya terminó y no se puede unir.",
     account_title: "Cuenta",
     account_role: "Sesión como",

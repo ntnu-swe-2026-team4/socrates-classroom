@@ -396,6 +396,42 @@ test("#243 review: a signed-out /dialogue without an activity redirects straight
   expect(path).toBe("/login");
 });
 
+test("#243 review: a signed-in join hitting name_taken shows account guidance, not the pick-another-name hint", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const me = { id: "student-1", name: "Student", isAdmin: false };
+      if (path === "/api/me") {
+        return new Response(JSON.stringify(me), { headers: { "Content-Type": "application/json" } });
+      }
+      if (path === "/api/join/abcdef") {
+        return new Response(JSON.stringify({ code: "abcdef", classroomName: "Class", topic }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path === "/api/join" && init?.method === "POST") {
+        return new Response(JSON.stringify({ message: "name_taken", code: "name_taken" }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+  const dispose = await mountRoute("/join/abcdef");
+  try {
+    expect(await screen.findByText(/You'll join as/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Start the dialogue" }));
+    expect(await screen.findByText(/switch accounts/i)).toBeTruthy();
+    expect(screen.queryByText(/already taken — pick another/i)).toBeNull();
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
 test("F01c: a signed-in join posts without a name", async () => {
   let joinBody: Record<string, unknown> | null = null;
   vi.stubGlobal(
