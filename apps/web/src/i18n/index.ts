@@ -107,7 +107,6 @@ const messages = {
     hero_chip_join: "用邀請碼加入",
     story_end_title: "準備好接受詰問了嗎？",
     login_demo_teacher: "以示範教師進入",
-    login_guest: "以訪客進入",
     live_finish: "結束並查看報告",
     live_pending_title: "即時資料尚未上線",
     live_pending_body: "學生即時狀態的資料源（#73）尚未接線。結束活動與報告生成不受影響。",
@@ -629,7 +628,6 @@ const messages = {
     login_err_oauth_unavailable: "這個登入方式尚未設定。",
     login_err_validation: "請確認 Email 格式，密碼至少 8 個字元。",
     login_google: "使用 Google 登入",
-    login_guest_hint: "沒有帳號也能用邀請碼以訪客參加一場活動；活動結束後訪客身分會失效。",
     login_mode: "登入或註冊",
     login_provider_off: "尚未設定",
     nav_chat: "提問",
@@ -727,7 +725,6 @@ const messages = {
     hero_chip_join: "Join with a code",
     story_end_title: "Ready to be questioned?",
     login_demo_teacher: "Enter as demo teacher",
-    login_guest: "Continue as guest",
     live_finish: "Finish & view report",
     live_pending_title: "Live data is not wired yet",
     live_pending_body:
@@ -1294,8 +1291,6 @@ const messages = {
     login_err_oauth_unavailable: "This sign-in method is not configured.",
     login_err_validation: "Check the email format; passwords need at least 8 characters.",
     login_google: "Sign in with Google",
-    login_guest_hint:
-      "No account? Use an invite code to join one activity as a guest — the guest pass ends with the activity.",
     login_mode: "Sign in or register",
     login_provider_off: "Not configured",
     nav_chat: "Ask",
@@ -1397,7 +1392,6 @@ const messages = {
     hero_chip_join: "Unirse con código",
     story_end_title: "¿Listo para el interrogatorio?",
     login_demo_teacher: "Entrar como docente demo",
-    login_guest: "Continuar como invitado",
     live_finish: "Terminar y ver informe",
     live_pending_title: "Los datos en vivo aún no están disponibles",
     live_pending_body:
@@ -1967,8 +1961,6 @@ const messages = {
     login_err_oauth_unavailable: "Este método de inicio de sesión no está configurado.",
     login_err_validation: "Revisa el correo; la contraseña necesita al menos 8 caracteres.",
     login_google: "Iniciar sesión con Google",
-    login_guest_hint:
-      "¿Sin cuenta? Usa un código para unirte a una actividad como invitado; el acceso termina con la actividad.",
     login_mode: "Iniciar sesión o registrarse",
     login_provider_off: "No configurado",
     nav_chat: "Preguntar",

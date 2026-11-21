@@ -373,6 +373,29 @@ test("#181: a failing identity check on /home redirects to login instead of erro
   expect(path).toBe("/login");
 });
 
+test("#243 review: the login page offers no dead-end guest entry", async () => {
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    },
+  );
+  const dispose = await mountRoute("/login");
+  try {
+    expect(await screen.findByRole("button", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Continue as guest" })).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test("#243 review: a signed-out /dialogue without an activity redirects straight to login", async () => {
+  const path = await loadPath("/dialogue", { "/api/me": null });
+  expect(path).toBe("/login");
+});
+
 test("F01c: a signed-in join posts without a name", async () => {
   let joinBody: Record<string, unknown> | null = null;
   vi.stubGlobal(

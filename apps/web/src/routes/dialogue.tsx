@@ -19,7 +19,7 @@ export const Route = createFileRoute("/dialogue")({
   beforeLoad: async ({ search, context }) => {
     const me = await meOf(context.queryClient);
     const activityId = search.activityId ?? readActivityId();
-    if (!activityId) throw redirect({ to: me ? "/home" : "/join" });
+    if (!activityId) throw redirect({ to: me ? "/home" : "/login" });
   },
   component: DialoguePage,
 });
