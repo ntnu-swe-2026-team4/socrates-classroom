@@ -9,6 +9,14 @@
 - ci.yml 與 deploy.yml 重複的六個步驟（install / lint / yamllint / config-drift / typecheck / test / build）收斂到 `.github/actions/gate` composite action——兩個 workflow 引用同一份，新增檢查只需改一處；也移除了兩份手抄清單已經出現的順序不一致
 - 兩個 workflow 僅保留各自的差異段：ci 的 secret-drift check ＋ dry-run、deploy 的 D1 migrations ＋ deploy；job id `ci` 不變（branch protection required check 綁在此名）
 
+## 2026-11-22 — TS 靜態保證 step 2 L1：src 層 non-null assertion 清零（`refactor/293-non-null-l1-src`，#293）
+
+### Changed
+
+- src 層 84 處 `!` 清零：75 處為 baseline 冗贊斷言（現行 tsconfig 下 typed-array / string index / regex group / 守衛後陣列元素本就非 nullable，`!` 編譯後擦除、移除零行為差，含 StoaField 的 40 處動畫迴圈）；9 處以顯式窄化取代——pi `runtime.conversation()` 回傳 `ConversationHandle | undefined`（undefined＝invocation scope 已結束）改為守衛後靜默跳過寫入，websearch binding 缺失回 `websearch_binding_missing`，DOM root 缺失即 throw，錯誤 frame 與 resume session 兩處改為局部變數關聯窄化
+- `biome.jsonc` overrides：src globs（`apps/*/src/**`、`packages/*/src/**`，排除 test 目錄）凍 `style.noNonNullAssertion: error`——新增 src 違規即 CI 阻斷；tests 層豁免為暫時手段，L2（tests 清零）落地後移除
+- 探針覆核：issue #293 記錄的 116 處在今日 tip 為全庫 269（src 84、tests 185）——以今日數字為準
+
 ## 2026-11-21 — 群體報告可依老師的軸與軸數產生（`feat/159-report-axes`，#159）
 
 ### Added

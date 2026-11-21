@@ -146,6 +146,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["apps/*/src/**", "packages/*/src/**", "!**/*.test.ts", "!**/*.test.tsx", "!apps/web/src/test/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "error"
+          }
+        }
+      }
     }
   ],
   "json": {
