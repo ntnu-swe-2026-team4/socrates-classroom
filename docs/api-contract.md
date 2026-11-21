@@ -265,7 +265,7 @@ interface ViolationSlice {
 - transcript 來源：Chat DO RPC（`stub.transcript()`，DO→DO；外部無 request 面）；violations 同源自 `app.violation` entries——**pi transcript 是唯一真相，violations 不落第二份儲存**
 - 逐生分析與 transcript 抓取以 Router budget 批次進行（`budget("batch")`＝鏈上各 leg maxConcurrency 總和；10k 班級的生成時間與供應端限流考量）
 - 立場星圖（#79）不新增契約欄位：前端直接從 `classReport.axes[].positions` 映射——座標＝`at`（0–100 線性對到軸的兩端），每條軸一個維度，學生沒談到的軸沒有 position（前端放在該軸中間、標為空心、不納入分群）。分群在前端做（階層式 Ward，#58），不落儲存
-- hexagon（#78 六角圖）不在本契約——`StudentAnalysis` 沒有可量化的欄位，待思辨力目標定義後更新本節
+- hexagon（#78 六角圖）**尚未進契約**：`StudentAnalysis` 沒有可量化的欄位，前端目前以示意資料渲染並在畫面標明。前端預期的形狀（提案，後端接上時再入契約）：每位學生一個 `thinking: {code; level: 0|1|2; turns?}[]`——`code` 為思辨力目標代號（spec 的 C1／C2／S1／S2／A1／A2），`level` 為未觀察到／部分／達成（不是分數），`turns` 為依據的行號；軸數跟著陣列長度走（至少 3 項）
 
 ## 8. 語音（#69）
 

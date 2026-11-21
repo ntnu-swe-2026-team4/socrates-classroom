@@ -3,8 +3,10 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, type ReportPosition, type StudentAnalysis, type ViolationSlice } from "@/api";
 import { StanceConstellation } from "@/components/StanceConstellation";
+import { ThinkingHexagon } from "@/components/ThinkingHexagon";
 import { Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
+import { sampleThinking } from "@/lib/thinking";
 
 export const Route = createFileRoute("/report/$id")({
   beforeLoad: async ({ context }) => {
@@ -96,6 +98,7 @@ function ReportPage() {
         <section className="mt-6 flex flex-col gap-6">
           <p className="text-[14px] text-ink-soft">{person.participantName}</p>
           <Positions positions={person.positions} />
+          <ThinkingHexagon goals={sampleThinking(person.pseudonym)} sample />
           <Analysis analysis={person.analysis} violations={person.violations} />
         </section>
       )}
@@ -174,6 +177,7 @@ function ReportPage() {
             ))}
           </div>
           <Positions positions={person.positions} />
+          <ThinkingHexagon goals={sampleThinking(person.pseudonym)} sample />
           <Analysis analysis={person.analysis} violations={person.violations} />
         </section>
       )}

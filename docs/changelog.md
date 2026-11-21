@@ -105,6 +105,19 @@
 - 額度水位 60/80/100% **inline 檢測**（LiteLLM/Portkey 同款，無 cron）：以 `teacher_quota_alerts` PK 原子去重，同月同水位只寄一次，UTC 月曆跨月重置；寄送失敗自動重臂
 - 佔位帶 60s claim lease（`claimed_at`/`sent_at`）：crash 產生的孤兒 pending 佔位會在 TTL 過期後被下一輪水位檢查偷走重寄，不再靜默漏水位
 - email 走 Workers `send_email` binding（`ALERT_FROM_EMAIL`＝zone 位址、`ADMIN_ALERT_EMAIL`）；binding 缺失時 log-only fail-open。老師以其 lang 收信（zh/en/es），管理員收 zh 副本
+## 2026-11-20 — 單人報告六角圖（前端呈現，`feat/78-thinking-hexagon`，#78）
+
+### Added
+
+- `ThinkingHexagon`：單人報告（老師的單人分頁與學生本人頁）在論點總結上方多一張思辨表現圖。六條軸對應 spec 的六項思辨力目標（C1／C2／S1／S2／A1／A2），每項三級：未觀察到／部分／達成，不是分數；圖右側逐項列出名稱、等級與達成判準
+- 軸數跟著資料走（至少 3 項）；不認得的代號直接顯示代號
+- 三語 `thinking_*` 字串；`test/thinkingHexagon.test.tsx`
+
+### Notes
+
+- **資料是示意的**：後端的單人分析目前沒有這六項評估。`lib/thinking.ts` 的 `sampleThinking` 以 pseudonym 產生固定的示意等級，畫面上有「示意資料」說明；後端接上後把 `report.$id.tsx` 的資料來源換掉並拿掉 `sample` 即可。預期形狀見 `docs/api-contract.md` §7
+- 後端與既有契約零變動；roadmap 的 #78 保留，等分析接上才算完成
+
 ## 2026-11-20 — 群體報告立場星圖（`feat/79-stance-constellation`，#79）
 
 ### Added
