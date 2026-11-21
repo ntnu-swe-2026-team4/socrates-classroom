@@ -39,7 +39,7 @@ function InvitePage() {
         to: "/dialogue",
         search: { activityId: joined.activityId, ...(draft ? { q: draft } : {}) },
       });
-      void queryClient.invalidateQueries({ queryKey: ["me"] });
+      void queryClient.invalidateQueries({ queryKey: meQueryOptions.queryKey });
     } catch (error) {
       const code = error instanceof ApiError ? error.code : null;
       setFailed(

@@ -42,7 +42,7 @@ function useSessionSync() {
   const checking = useRef(false);
   const check = async (force = false) => {
     if (checking.current || (!force && document.visibilityState !== "visible")) return;
-    const before = queryClient.getQueryData<User | null>(["me"]);
+    const before = queryClient.getQueryData<User | null>(meQueryOptions.queryKey);
     if (before === undefined) return;
     checking.current = true;
     try {
@@ -52,7 +52,7 @@ function useSessionSync() {
         return;
       }
       if (now && before && now.isAdmin !== before.isAdmin) {
-        queryClient.setQueryData(["me"], now);
+        queryClient.setQueryData(meQueryOptions.queryKey, now);
         await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
       }
     } catch {
@@ -89,7 +89,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
     onSuccess: async () => {
       setAccountOpen(false);
       queryClient.clear();
-      queryClient.setQueryData(["me"], null);
+      queryClient.setQueryData(meQueryOptions.queryKey, null);
       await navigate({ to: "/" });
     },
   });
