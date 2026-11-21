@@ -432,6 +432,64 @@ test("#243 review: a signed-in join hitting name_taken shows account guidance, n
   }
 });
 
+test("#243 review: a signed-in join still reaches home when fetching the activity fails", async () => {
+  const me = { id: "student-1", name: "Student", isAdmin: false };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (path === "/api/me") {
+        return new Response(JSON.stringify(me), { headers: { "Content-Type": "application/json" } });
+      }
+      if (path === "/api/join/abcdef") {
+        return new Response(JSON.stringify({ code: "abcdef", classroomName: "Class", topic }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path === "/api/join" && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({ user: me, activityId: "activity-1", participantId: "p_2", kind: "member" }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (path === "/api/activities/activity-1") {
+        return new Response(JSON.stringify({ message: "壞了", code: "internal_error" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path === "/api/classrooms") {
+        return new Response(JSON.stringify([]), { headers: { "Content-Type": "application/json" } });
+      }
+      if (path === "/socrates.glb") return new Response(new Uint8Array());
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ["/join/abcdef"] }),
+    context: { queryClient: client },
+  });
+  await router.load();
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  try {
+    expect(await screen.findByText(/You'll join as/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Start the dialogue" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/home"));
+    expect(screen.queryByRole("alert")).toBeNull();
+  } finally {
+    cleanup();
+    client.clear();
+    vi.unstubAllGlobals();
+  }
+});
+
 test("F01c: a signed-in join posts without a name", async () => {
   let joinBody: Record<string, unknown> | null = null;
   vi.stubGlobal(

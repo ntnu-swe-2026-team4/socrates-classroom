@@ -57,8 +57,10 @@ function JoinPage() {
         await navigate({ to: "/dialogue", search: { activityId, ...(draft ? { q: draft } : {}) } });
         return;
       }
-      const activity = await api.activityInfo(activityId);
-      await navigate({ to: "/classrooms/$classroomId", params: { classroomId: activity.classroomId } });
+      const activity = await api.activityInfo(activityId).catch(() => null);
+      await navigate(
+        activity ? { to: "/classrooms/$classroomId", params: { classroomId: activity.classroomId } } : { to: "/home" },
+      );
     } catch (error) {
       const code = error instanceof ApiError ? error.code : null;
       setFailed(
