@@ -2,13 +2,37 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — 登入頁重設計：dithered colonnade、provider 探測、開放註冊（`split/178-login-page`，#178）
+
+### Added
+
+- `routes/login.tsx` 重寫為 dithered colonnade 版面（`StoaField` 柱廊背景＋`comic-ground` 點陣）：hero 框、回故事頁連結、方形語言切換、登入／註冊模式切換、密碼直顯表單（顯示／隱藏切換掛 `aria-controls`）、邀請碼虛線表單（導向 `/join/$code`）
+- OAuth 按鈕按 `GET /auth/providers` 能力探測渲染（該端點即為本單解鎖，#207）：啟用的 google／facebook 渲染為連結，未啟用渲染虛線停用鈕；`api.authProviders()` 回 shared 契約型別 `OAuthProviders`，enabled set 由頁面端推導
+- 公告欄（NoticeBar）消費 `GET /notifications`——feed 免登入為 #158 拍板的登入頁用途；fetch 失敗整條不渲染，日後 feed 語義隨 #187 社群化收緊時零改動退化
+- `api.signup({ name, email, password, tosAccepted })`：`tosAccepted` 顯式經呼叫鏈傳遞（對齊 `joinByInvite` 慣例），server 端 `tos_required` 閘門保持有效
+- 已登入者 guard redirect（`meOf`；admin 無 `next` 參數導 `/admin`，其餘走 `safeNext`）
+- i18n 三語新增：`login_guest_hint`、`login_facebook`
+- 測試：`routes.test.tsx` 四條 #178 契約（探測渲染＋無 demo／guest 入口、未設定 provider 與 feed 失敗的退化、admin redirect、註冊模式 name+email+password+ToS 閘門與 POST body）；`api.e2e.test.ts` 三條（`authProviders`／`notifications` 契約路徑、`signup` body＋session announce、`email_taken` 錯誤映射）
+
+### Changed
+
+- 依 #204「設計先行、不照 web-next 分支實作」原則適配 main 帳號模型：登入欄 email-only（main 無 identifier／username 契約，`docs/accounts.md` §5）；註冊模式必填 `name`（`SignupInputSchema`）；錯誤映射同時收 `email_taken` 與 `conflict`
+- me query 改用 `meQueryOptions`（#243 慣例），登入成功寫回 `meQueryOptions.queryKey`
+- 密碼欄改 `label htmlFor`＋`input id` 分離結構（切換鈕不包在 label 內，accessible name 不受污染）
+
+### Removed
+
+- `landing/LandingChrome.tsx`＋`landing.css`（`/login` 為唯一消費者，#177 時保留至此退場）
+- demo 教師一鍵登入按鈕與 `login_demo_teacher` i18n key（dev fixture 登入由 `/dev/accounts` 承接）
+- web-next 稿的 `useGuestSessionExpired`／guest 逾期通知（main 訪客 `user:null`、無 guest session 機制）與 login 頁 `storage` 監聽（跨 tab 同步職責屬 AppShell `useSessionSync`，#179）
+
 ## 2026-11-21 — Email 帳號密碼找回（`feat/230-password-reset`，#230）
 
 ### Added
 
 - `POST /api/auth/password/forgot`、`POST /api/auth/password/reset`（契約見 [`api-contract.md`](./api-contract.md) §2.2）：無狀態 token（簽章綁定目前 `password_hash` 與 `email`、依用途推導金鑰、30 分鐘），重設成功 `session_version + 1`；錯誤碼 `reset_token_invalid`（三語訊息）
 - 三語重設信模板（`mail.ts`，寄件人沿用 `ALERT_FROM_EMAIL`）；寄信走 `waitUntil`，寄送失敗只記 log
-- `/forgot-password`、`/reset-password` 頁面（只用既有 `components/ui`；登入頁入口待 #178）
+- `/forgot-password`、`/reset-password` 頁面（只用既有 `components/ui`；入口已接線 `/login`，#178）
 - `tests/password-reset.test.ts`（17 tests：寄信與不寄信的情況、單次使用、雙連結、並行重設、session 失效、過期、竄改、跨用途、密碼或 email 在別處變更、停用、fail-open、限流）＋ `test/password-reset.test.tsx`（5 tests）
 
 ### Changed
