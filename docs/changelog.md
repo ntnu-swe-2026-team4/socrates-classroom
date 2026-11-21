@@ -641,8 +641,8 @@
 ### Added
 
 - `linter.domains.types: "all"`：type-aware 分析進 CI 阻斷級——注意 domain 的 `"recommended"` 值對 type-aware 規則是空集合（規則在 nursery），`"all"` 才是可用形狀
-- `useArraySortCompare` error 級：七處 `.sort()` 補顯式 code-unit 比較器（CJK fixture 的確定性排序）
-- `#293` spike 三層證據：`noFloatingPromises` 全庫僅 2 個真命中（promise �紀律已達標）、`noUnsafeTypeAssertion` 470 個（step 1b 分批）、`noUncheckedIndexedAccess` 開啟半徑 143 errors（step 4 另案）
+- `useArraySortCompare` error 級：八處 `.sort()` 補顯式 code-unit 比較器（CJK fixture 的確定性排序）
+- `#293` spike 三層證據：`noFloatingPromises` 全庫僅 2 個真命中（promise �紀律已達標）、`noUnsafeTypeAssertion` 480 個（step 1b 分批）、`noUncheckedIndexedAccess` 開啟半徑 143 errors（step 4 另案）
 
 ### Fixed
 
@@ -652,5 +652,5 @@
 
 ### 帶證據的兩個 off（probe-verified 全誤報，nursery 推論限制）
 
-- `useAwaitThenable`：9/9 誤報——無法解析函式型別參數、narrowed local、overload set
-- `noUnnecessaryConditions`：16/21 誤報——TanStack 判別聯集 isPending（無 initialData 仍解為 always-falsy）、跨 closure 的 ref/field mutation、index access
+- `useAwaitThenable`：6/6 誤報——無法解析函式型別參數、narrowed local、overload set
+- `noUnnecessaryConditions`：~76%/31 誤報——TanStack 判別聯集 isPending（無 initialData 仍解為 always-falsy）、跨 closure 的 ref/field mutation、index access
