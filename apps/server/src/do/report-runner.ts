@@ -9,6 +9,7 @@ import {
   type AssistantMessage,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
+import { byCodeUnit } from "@socrates/shared";
 import type { Env } from "../env";
 import { secretOf } from "../auth";
 import { buildModels } from "../pi/models";
@@ -548,7 +549,7 @@ export function toPlannedClassReport(
     ...teacherAxes.map(({ positions, why }, index) => ({ ...plan.teacher[index]!, positions, why })),
     ...addedAxes,
   ];
-  const everyone = [...roster].sort();
+  const everyone = [...roster].sort(byCodeUnit);
   for (const axis of axes) {
     const listed = axis.positions.map(({ id }) => id).sort();
     if (listed.length !== everyone.length || listed.some((id, index) => id !== everyone[index])) {

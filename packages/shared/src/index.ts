@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { ClassReportSchema, StudentAnalysisSchema, type ClassReport, type StudentAnalysis } from "./reports";
 
+export const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 export type Lang = "zh" | "en" | "es";
 export const LANG_NAMES: Record<Lang, string> = {
   zh: "Traditional Chinese (繁體中文)",
