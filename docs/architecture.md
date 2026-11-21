@@ -174,7 +174,6 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 | `ledger.ts`         | (provider, model, credential) 記帳＋cooldown（pi 無結構化錯誤狀態→只記 ok/error；連續 5 error 開 60s、ok 重置、過期自然回無 probe）       |
 | `router.ts`         | traffic class 鏈走訪（priority 排序＋cooldown/maxConcurrency 過濾、teacher legs 前置）→ pick；isolate 生命週期（getRouter WeakMap）       |
 
-
 **請求層 vs 決策層**：fallback legs 的試錯、retry 退避由 pi 原生（`streamWithFallback`／`settings.retry`）；gateway 只決定「誰該拿到哪條 legs、誰的錢、記誰的帳」。調查過 LiteLLM Router／pi-router／pi-fallback-provider（#98 留言，2026-11-06）——結論：不引入，pi 原生＋三個小件已涵蓋。
 
 **credential**：`platform`（env）／`teacher:{user_id}`（D1 `teacher_keys`，一 provider 一把 key，AES-GCM）。學生無 BYOK（#82 定案）。teacher key 設定頁是前端配套（#82）。
