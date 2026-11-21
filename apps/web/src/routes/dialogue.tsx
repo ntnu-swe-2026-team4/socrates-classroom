@@ -1,4 +1,3 @@
-import { useCallback } from "react";
 import { activityOptions } from "@/api/queries";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -33,7 +32,7 @@ function DialoguePage() {
   const { activityId: activityParam, slot, q, term } = Route.useSearch();
   const activityId = activityParam ?? readActivityId() ?? "";
   const activityQuery = useQuery({ ...activityOptions(activityId, slot), enabled: activityId !== "" });
-  const activityRefetch = useCallback(() => void activityQuery.refetch(), [activityQuery.refetch]);
+  const activityRefetch = () => void activityQuery.refetch();
   const topic = activityQuery.data?.topic;
 
   if (me.isPending) return <div className="h-dvh" aria-busy="true" />;
