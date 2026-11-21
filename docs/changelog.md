@@ -2,6 +2,20 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — query key 全面收斂 queryOptions factory＋TanStack lint 上線（`refactor/277-query-options`，#277）
+
+### Added
+
+- `api/queries.ts`：query options registry——18 個 factory（`classroomsOptions`／`topicsOptions`／`classroomTopicsOptions(id)`／`activityOptions`／`teacherActivityOptions`／`activitySlotsOptions`／`reportOptions`／`joinOptions`／`inviteOptions`／teacher keys 三組／`adminUsersOptions`／`authProvidersOptions`／`notificationsOptions`／`devAccountsOptions`／`termHistoryOptions`／`qrOptions`），`queryFn` 走 `api` facade（同 `me.ts` 先例，保 mock 可測性）；per-call 差異（`enabled`／`select`）以 spread 覆寫於呼叫端
+- **Lint 上線**：`biome-plugin-tanstack-query`（`@tanstack/eslint-plugin-query` 的 GritQL port，mirror upstream 5.104.1）掛入根 `biome.json` plugins——`recommended-strict` preset 含 `prefer-query-options`；維持「Biome owns formatting and linting」單一工具鏈政策（ESLint 窄域整合留作 fallback）
+- Ratchet test `test/review/query-keys.test.ts`：字面 key（`queryKey: [`／`*QueryData([`／`invalidateQueries({ queryKey: [`）僅允許存在於 `api/queries.ts`／`api/me.ts`——plugin partial parity 的絕對保證（已插探針驗證會抓）
+- `apps/web/AGENTS.md` deltas：query key 必經 factory 的規範與執法機制
+
+### Changed
+
+- 39 個字面 key 站點（16 keys、14 檔，含 2 處測試 mock）全數改引用 `*Options`／`.queryKey`——行為零變更：key 陣列內容逐一保持原樣（含 `["classrooms"]` 的 7+ 站點、`["activity", id, "teacher"]` 與 slot variant 的差異鍵、`enabled`／`select`／`retry` 等呼叫端覆寫全部保留）
+- `QrBlock` 的 QR 查詢收進 registry（單一規則零例外，ratchet 才能寫死）
+
 ## 2026-11-21 — parseBody 全面退役與 transport 誠實性收尾（`refactor/268-parsebody-retirement`，#268）
 
 ### Added
