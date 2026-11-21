@@ -630,6 +630,7 @@
 - `noRestrictedImports` 收斂至 `apps/web/src/**` override，三條禁令：`react/useEffect`（#188 沿用）、`rehype-raw`（Markdown safety）、**web 直匯 server 原始碼**（`**/server/src/**`、`@socrates/server`——R6 契約只准走 `@server/*` dist/types）——已插探針驗證三條皆會擋
 - `suspicious/noConsole: error`（apps/server 與 web tests override off——server 的 `wrangler tail` debug 與測試 trace 為合理使用）；`noDebugger: error`；`security/noDangerouslySetInnerHtml: error`——品質閘門 #8 與 Markdown safety 機械化
 - `nursery/noUselessTypeConversion`、`nursery/noReturnInFinally` error 級
+- **CI 阻斷政策對齊**:warn 級全數升 error（`noUnusedVariables`、`noUnusedImports`、`noArrayIndexKey`、`noExplicitAny`——手寫碼零 `any`，18 處皆在已排除的 `routeTree.gen.ts`）、a11y 四條無理由 off 移除回 recommended；新增共用 `Backdrop` 元件收斂三個 dialog 的 pointer-only 關閉層（抑制集中兩行、理由入註），`Field` 的 wrapping-label 標註理由
 
 ### Fixed
 
