@@ -3,7 +3,8 @@ import { useAgent } from "agents/react";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import type { Message } from "@earendil-works/pi-ai";
 import type { ConversationView } from "@earendil-works/pi-durable";
-import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
+import type { ClientMessage } from "@server/ws/protocol";
+import { parseServerMessage } from "@/lib/wsProtocol";
 import {
   answered,
   dialogueName,
@@ -104,12 +105,8 @@ export function useBtw(threadId: string, userId: string, enabled: boolean, agent
 
   function onFrame(raw: unknown) {
     if (typeof raw !== "string") return;
-    let frame: ServerMessage;
-    try {
-      frame = JSON.parse(raw) as ServerMessage;
-    } catch {
-      return;
-    }
+    const frame = parseServerMessage(raw);
+    if (frame === null) return;
     switch (frame.type) {
       case "view": {
         if (freshRef.current && openIdRef.current !== null) {

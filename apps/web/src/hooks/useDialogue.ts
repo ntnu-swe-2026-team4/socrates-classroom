@@ -16,7 +16,8 @@ import {
   type TranscriptItem,
   type TranscriptView,
 } from "@earendil-works/pi-durable";
-import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
+import type { ClientMessage } from "@server/ws/protocol";
+import { parseServerMessage } from "@/lib/wsProtocol";
 
 export type DialoguePhase = "idle" | "thinking" | "streaming" | "speaking";
 export type DialogueAgent = "chat" | "solo-chat";
@@ -277,12 +278,8 @@ export function useDialogue(threadId: string, userId: string, options?: Dialogue
 
   function onFrame(raw: unknown) {
     if (typeof raw !== "string") return;
-    let frame: ServerMessage;
-    try {
-      frame = JSON.parse(raw) as ServerMessage;
-    } catch {
-      return;
-    }
+    const frame = parseServerMessage(raw);
+    if (frame === null) return;
     switch (frame.type) {
       case "view": {
         adopt(frame.view);

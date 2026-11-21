@@ -46,3 +46,75 @@ export type ServerMessage =
         | null;
     }
   | { readonly type: "error"; readonly id?: string; readonly message: string; readonly code?: string };
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}
+
+export function isEntryId(value: unknown): value is EntryId {
+  return typeof value === "number" && Number.isSafeInteger(value);
+}
+
+export function entryIdOf(value: number): EntryId {
+  if (!isEntryId(value)) throw new Error(`invalid entry id: ${value}`);
+  return value;
+}
+
+function optionalEntryId(value: unknown): EntryId | undefined {
+  return isEntryId(value) ? value : undefined;
+}
+
+export function parseClientMessage(raw: string): ClientMessage | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const kind = Reflect.get(parsed, "type");
+  const id = readString(Reflect.get(parsed, "id"));
+  switch (kind) {
+    case "submit": {
+      const input = Reflect.get(parsed, "input");
+      if (typeof input !== "string") return null;
+      return {
+        type: "submit",
+        id,
+        input,
+        operationId: readString(Reflect.get(parsed, "operationId")),
+      };
+    }
+    case "abort":
+      return { type: "abort", id };
+    case "btw":
+      return { type: "btw", id, session: readString(Reflect.get(parsed, "session")) };
+    case "watch":
+      return { type: "watch", id, from: optionalEntryId(Reflect.get(parsed, "from")) };
+    case "entries": {
+      const query = Reflect.get(parsed, "query");
+      const limit = readNumber(Reflect.get(parsed, "limit"));
+      if (id === undefined || limit === undefined || typeof query !== "object" || query === null) {
+        return null;
+      }
+      const order = readString(Reflect.get(query, "order"));
+      if (order !== undefined && order !== "ascending" && order !== "descending") return null;
+      return {
+        type: "entries",
+        id,
+        limit,
+        query: {
+          minEntryId: optionalEntryId(Reflect.get(query, "minEntryId")),
+          maxEntryId: optionalEntryId(Reflect.get(query, "maxEntryId")),
+          order,
+        },
+      };
+    }
+    default:
+      return null;
+  }
+}
