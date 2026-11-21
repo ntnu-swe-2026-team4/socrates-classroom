@@ -4,6 +4,7 @@ name: Feature request
 about: 提議新功能或行為變更
 title: "[feat] "
 labels:
+
 - enhancement
 
 ---
