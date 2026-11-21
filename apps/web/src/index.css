@@ -110,11 +110,11 @@
   --color-ink-faint: #a5a096;
   --color-line: rgb(242 239 232 / 0.16);
   --color-line-strong: rgb(242 239 232 / 0.34);
-  --color-ember: #e5645a;
+  --color-ember: #f19a92;
   --color-ember-deep: #c1302a;
-  --color-ember-wash: rgb(206 174 98 / 0.2);
-  --color-on-ember: #ffffff;
-  --color-moss: #9aab6e;
+  --color-ember-wash: rgb(206 174 98 / 0.12);
+  --color-on-ember: #232326;
+  --color-moss: #aeba84;
   --color-stance-1: #e5645a;
   --color-stance-2: #7fb0dc;
   --color-stance-3: #ceae62;
