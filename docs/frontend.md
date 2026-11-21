@@ -87,6 +87,8 @@ packages/shared  zod schema（請求/回應驗證）＋ 報告分析型別
 apps/web  hc<RpcApp>("/api") ＋ WS client（ws/protocol.ts 的訊息型別在 server 端定義）
 ```
 
+- 單一 transport 通道（#264）：所有 method 走 `hc<RpcApi>`＋`unwrap`——param 路由的 request 驗證在 server 端為 `zValidator`（envelope 同 `fail(422, "validation")`），手寫 `raw()` fetch 已移除
+
 - RPC：web 只 `import type`（零 runtime 依賴），契約變更於編譯期反映
 - `.d.ts` precompile：server 先編型別宣告供 web 消費（Hono 官方 monorepo 建議，控制 tsc／IDE 推導成本）
 - **對話不走 RPC**：WebSocket `/agents/chat/:name`（R7）；訊息型別見 `apps/server/src/ws/protocol.ts`、機制見 [`pi.md`](./pi.md)；客戶端以 `applyImmutable` 套用 chord ops

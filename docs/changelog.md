@@ -2,6 +2,23 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — server 路由 zValidator 遷移，收斂 web 端單一 hc 通道（`refactor/264-zvalidator-transport`，#264）
+
+### Added
+
+- `http.ts`：`validateJson`／`validateQuery`（包 `@hono/zod-validator`，hook 內 `fail(422, "validation")`——envelope 與 `parseBody` 完全一致）；`rateLimit`／`guardUser`／`guardAdmin` middleware——param 路由上保持原本「guard → rate limit → 驗證」的語意順序（匿名無 body 請求仍 401、無效 body 不消耗 rate limit 配額）
+- `app.ts` `onError`：hono 內部 `HTTPException` 補處理——malformed JSON（`Content-Type: json` 但 body 破損）維持 422 `validation` 而非 hono 原生的 400／500
+- shared：`TeacherKeyEcho`／`TeacherKeyModelEcho`（PUT keys echo 的契約型別——補齊 `api-contract.md` L286-287 的 `last4?` optional＋`monthlyQuotaUsd`，終結 web 端 inline 型別的漂移）
+- 回應構造補型別（`payload: JoinResult`／`InviteJoined`／`ActivityInfo`／echo 等）：hono client 推導的回應型別自此直接滿足 shared 契約，web 端零 cast
+- 測試：`rest.test.ts` 二條 parity（malformed JSON → 422 `validation`；匿名無 body 的 param 路由 → 401）；`api.e2e.test.ts` 一條（`activityInfo` optional query 序列化無殘留）
+
+### Changed
+
+- 10 條 param 路由自 `parseBody` 遷移 `zValidator`（invites join、classrooms topics／activities、topics copy、activities slots、GET activities query、teacher-keys 三條 PUT、admin users PATCH）——wire shapes 零變更，server 216 條既有測試全綠
+- `apps/web/src/api/http.ts`：`raw()` 手寫 fetch 整支移除，所有 method 收斂 `hc<RpcApi>`＋`unwrap`；`Api` interface 的 teacher-key echo 改用 shared 契約型別
+- `GET /activities/:id` 的 `participantId` query 改 `validateQuery`（原先手寫 `c.req.query`）
+- 非目標（維持 `parseBody`）：不帶 param 的路由（auth login/signup、topics、classrooms POST、dev、notifications 等）——hc 對其 `json` 寬鬆接受，full retirement 另行評估
+
 ## 2026-11-21 — 登入頁重設計：dithered colonnade、provider 探測、開放註冊（`split/178-login-page`，#178）
 
 ### Added
