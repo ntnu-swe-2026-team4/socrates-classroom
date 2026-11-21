@@ -185,4 +185,51 @@ describe("httpApi contract (browser-side actual code)", () => {
     failing.clear();
     client.clear();
   });
+
+  test("authProviders and notifications hit their read endpoints", async () => {
+    handler.mockImplementation((path) => {
+      if (path === "/api/auth/providers") return json({ providers: ["google"] });
+      return json({
+        items: [{ id: "n1", title: "維護公告", body: "", createdAt: "2026-01-01T00:00:00.000Z" }],
+        unread: null,
+      });
+    });
+    const providers = await httpApi.authProviders();
+    expect(providers.providers).toEqual(["google"]);
+    expect(handler.mock.calls[0]![0]).toBe("/api/auth/providers");
+
+    const feed = await httpApi.notifications();
+    expect(feed.items[0]!.title).toBe("維護公告");
+    expect(feed.unread).toBeNull();
+    expect(handler.mock.calls[1]![0]).toBe("/api/notifications");
+  });
+
+  test("signup posts the consented account and announces the session", async () => {
+    handler.mockReturnValue(json({ id: "u2", name: "小明", isAdmin: false }, 201));
+    localStorage.removeItem("socrates_session_changed");
+    const user = await httpApi.signup({
+      name: "小明",
+      email: "new@example.com",
+      password: "password123",
+      tosAccepted: true,
+    });
+    expect(user.id).toBe("u2");
+    const [path, init] = handler.mock.calls[0]!;
+    expect(path).toBe("/api/auth/signup");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({
+      name: "小明",
+      email: "new@example.com",
+      password: "password123",
+      tosAccepted: true,
+    });
+    expect(localStorage.getItem("socrates_session_changed")).not.toBeNull();
+  });
+
+  test("signup surfaces email_taken as an ApiError", async () => {
+    handler.mockReturnValue(json({ message: "這個 Email 已經註冊過。", code: "email_taken" }, 409));
+    await expect(
+      httpApi.signup({ name: "小明", email: "dup@example.com", password: "password123", tosAccepted: true }),
+    ).rejects.toMatchObject({ code: "email_taken" });
+  });
 });
