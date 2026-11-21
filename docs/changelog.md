@@ -7,7 +7,7 @@
 ### Changed
 
 - `transcript()` 不再對 `app.violation` 做內容去重：抽 `readTranscript(items)` 純函式負責 scan，回傳 transcript 裡全部的 violation entry——用字串拼出來的身份判斷（`${turn}:${type}:${excerpt}`）退場
-- `collapseViolations()` 移入報告層（`do/report-runner.ts`，`transcriptOf` 收敛）：同一輪、同類型、同片段仍只呈現一筆且保留先寫入者——報告形狀、分析輸入、老師報告頁的違規切片完全不变（`test/transcript.test.ts` 五條紅線釘住兩側）
+- `collapseViolations()` 移入報告層（`do/report-runner.ts`，`transcriptOf` 收斂）：同一輪、同類型、同片段仍只呈現一筆且保留先寫入者——報告形狀、分析輸入、老師報告頁的違規切片完全不變（`test/transcript.test.ts` 五條紅線釘住兩側）
 - `docs/architecture.md` §12 風險表新增：TTS 跨分頁仲裁的毫秒級 race 定位為已知限制，附重啟條件
 - `docs/api-contract.md` §7：載明 violations 的收斂住在報告層
 
