@@ -117,18 +117,6 @@ export async function googleProfile(config: GoogleConfig, code: string, pending:
   return verifyGoogleIdToken(body.id_token, config.clientId, pending.nonce);
 }
 
-interface IdTokenClaims {
-  iss?: unknown;
-  aud?: unknown;
-  exp?: unknown;
-  iat?: unknown;
-  sub?: unknown;
-  nonce?: unknown;
-  email?: unknown;
-  email_verified?: unknown;
-  name?: unknown;
-}
-
 function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

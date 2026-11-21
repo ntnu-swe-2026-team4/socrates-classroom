@@ -57,20 +57,17 @@ function lastAssistantText(view: ConversationView | null): string {
   return "";
 }
 
-export interface WindowedEntry {
-  id: number;
-  kind: string;
-  model?: readonly unknown[];
-}
+export type WindowedEntry = Pick<EntryRecord, "id" | "kind" | "model">;
 
 const ANSWER_STOP_REASONS = new Set(["stop", "length"]);
 
 export function intermediateAssistant(entry: WindowedEntry): boolean {
-  const message = entry.model?.[0] as { stopReason?: string; content?: readonly { type?: string }[] } | undefined;
-  if (message?.stopReason === undefined) return false;
+  const message = entry.model?.[0];
+  if (message?.role !== "assistant") return false;
+  if (message.stopReason === undefined) return false;
   if (ANSWER_STOP_REASONS.has(message.stopReason)) return false;
   // pi answers a toolUse message that carries no tool calls (malformed provider output ends the run)
-  if (message.stopReason === "toolUse" && !(message.content ?? []).some((part) => part.type === "toolCall")) {
+  if (message.stopReason === "toolUse" && !message.content.some((part) => part.type === "toolCall")) {
     return false;
   }
   return true;
@@ -78,25 +75,41 @@ export function intermediateAssistant(entry: WindowedEntry): boolean {
 
 export function answered(entries: readonly WindowedEntry[]): boolean {
   return entries.some(
-    (entry) =>
-      entry.kind === "pi.assistant" &&
-      !intermediateAssistant(entry) &&
-      textOf(entry.model?.[0] as Message | undefined).trim() !== "",
+    (entry) => entry.kind === "pi.assistant" && !intermediateAssistant(entry) && textOf(entry.model?.[0]).trim() !== "",
   );
 }
 
+function canSend(value: unknown): value is { send: (data: string) => void } {
+  return typeof value === "object" && value !== null && typeof Reflect.get(value, "send") === "function";
+}
+
 export function runFailureOf(view: ConversationView | null): unknown {
-  const live = view?.docs["pi.live"] as { runFailure?: unknown } | undefined;
-  return live?.runFailure;
+  const live = view?.docs["pi.live"];
+  if (typeof live !== "object" || live === null || Array.isArray(live)) return undefined;
+  return Reflect.get(live, "runFailure");
 }
 
 function latestEmotionOf(view: ConversationView | null): { id: EntryId; data: DialogueEmotion } | null {
   if (!view) return null;
   for (const entry of [...view.entries].reverse()) {
     if (entry.kind !== "app.emotion") continue;
-    return { id: entry.id, data: (entry.data ?? null) as DialogueEmotion };
+    return { id: entry.id, data: readEmotion(entry.data) };
   }
   return null;
+}
+
+export function readEmotion(data: unknown): DialogueEmotion {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+  const emotion = Reflect.get(data, "emotion");
+  const confidence = Reflect.get(data, "confidence");
+  const probabilities = Reflect.get(data, "probabilities");
+  if (typeof emotion !== "string" || typeof confidence !== "number") return null;
+  if (typeof probabilities !== "object" || probabilities === null || Array.isArray(probabilities)) return null;
+  const record: Record<string, number> = {};
+  for (const [key, value] of Object.entries(probabilities)) {
+    if (typeof value === "number") record[key] = value;
+  }
+  return { emotion, confidence, probabilities: record };
 }
 
 export interface DialogueOptions {
@@ -115,11 +128,30 @@ const EXPRESSIONS: Record<string, "Happy" | "Angry" | "Confused"> = {
   confused: "Confused",
 };
 
+export function textOfContent(content: string | readonly unknown[]): string {
+  if (typeof content === "string") return content;
+  const parts: string[] = [];
+  for (const part of content) {
+    if (typeof part !== "object" || part === null) continue;
+    const text = Reflect.get(part, "text");
+    if (Reflect.get(part, "type") === "text" && typeof text === "string") {
+      parts.push(text);
+    }
+  }
+  return parts.join("");
+}
+
 export function liveTextOf(view: ConversationView | null): string {
   if (!view) return "";
-  const live = view.docs["pi.live"] as { generation?: { message?: { content?: readonly unknown[] } } } | undefined;
-  const content = live?.generation?.message?.content;
-  return content === undefined ? "" : textOf({ role: "assistant", content } as Message);
+  const live = view.docs["pi.live"];
+  if (typeof live !== "object" || live === null || Array.isArray(live)) return "";
+  const generation = Reflect.get(live, "generation");
+  if (typeof generation !== "object" || generation === null || Array.isArray(generation)) return "";
+  const message = Reflect.get(generation, "message");
+  if (typeof message !== "object" || message === null || Array.isArray(message)) return "";
+  const content = Reflect.get(message, "content");
+  if (typeof content === "string" || Array.isArray(content)) return textOfContent(content);
+  return "";
 }
 
 export function useDialogue(threadId: string, userId: string, options?: DialogueOptions) {
@@ -332,7 +364,9 @@ export function useDialogue(threadId: string, userId: string, options?: Dialogue
         if (waiter === undefined) return;
         entriesWaiters.current.delete(frame.id);
         if (frame.result && typeof frame.result === "object" && "items" in frame.result) {
-          waiter.resolve(frame.result as Page<EntryRecord, Cursor>);
+          const items = frame.result.items;
+          const next = "next" in frame.result ? frame.result.next : undefined;
+          waiter.resolve({ items: Array.isArray(items) ? items : [], next });
         } else {
           waiter.reject(new Error("entries_result_invalid"));
         }
@@ -362,7 +396,9 @@ export function useDialogue(threadId: string, userId: string, options?: Dialogue
     name: dialogueName(agent, threadId, userId),
     query: { lang: document.documentElement.lang || "zh-TW" },
     onOpen: (event) => {
-      (event.target as WebSocket).send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
+      if (canSend(event.target)) {
+        event.target.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
+      }
       queueMicrotask(() => tryAutoSend());
     },
     onMessage: (event) => onFrame(event.data),
@@ -498,12 +534,12 @@ export function useDialogue(threadId: string, userId: string, options?: Dialogue
     const out: DialogueMessage[] = [];
     for (const item of transcriptView?.items ?? []) {
       if (item.kind !== "entry") continue;
-      const entry = item.entry as WindowedEntry;
+      const entry: WindowedEntry = item.entry;
       if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") continue;
       out.push({
         id: `e${entry.id}`,
         role: entry.kind === "pi.user" ? "user" : "assistant",
-        text: textOf((entry.model?.[0] ?? undefined) as Message | undefined),
+        text: textOf(entry.model?.[0]),
       });
     }
     return out;
@@ -520,7 +556,7 @@ export function useDialogue(threadId: string, userId: string, options?: Dialogue
       !intermediateAssistant(tail) &&
       tail.id > (baseline ?? Number.MAX_SAFE_INTEGER)
     ) {
-      return textOf((tail.model?.[0] ?? undefined) as Message | undefined);
+      return textOf(tail.model?.[0]);
     }
     return "";
   }, [view, phase, baseline]);
@@ -530,22 +566,22 @@ export function useDialogue(threadId: string, userId: string, options?: Dialogue
       if (item.kind !== "entry") continue;
       const entry = item.entry;
       if (entry.kind !== "app.emotion") continue;
-      return (entry.data ?? null) as DialogueEmotion;
+      return readEmotion(entry.data);
     }
     return null;
   }, [transcriptView]);
 
   const gaps = useMemo(
     () =>
-      (transcriptView?.items.filter((item) => item.kind === "gap") ?? []) as Array<
-        Extract<TranscriptItem, { kind: "gap" }>
-      >,
+      (transcriptView?.items ?? []).filter(
+        (item): item is Extract<TranscriptItem, { kind: "gap" }> => item.kind === "gap",
+      ),
     [transcriptView],
   );
 
   return {
     messages,
-    items: (transcriptView?.items ?? []) as TranscriptItem[],
+    items: transcriptView?.items ?? [],
     draft,
     phase,
     error,
