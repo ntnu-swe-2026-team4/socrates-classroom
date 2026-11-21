@@ -32,5 +32,3 @@ Two boundaries worth restating: gateway decides _which_ legs / _whose money_ / _
 ## Testing
 
 Real DO + real WebSocket + faux model — no fetch interception, no mocked DOs. Assertions check shape only, never content. See `tests/chat.test.ts` for the pattern; details in `docs/pi.md` §測試.
-
-Per-request env overrides go through `scopedEnv()` / `callWith()` in `tests/helpers.ts` — never assign onto an object derived from `env`. The `cloudflare:workers` `env` is a Proxy whose `set` trap writes to the shared env regardless of the receiver, so `Object.assign(Object.create(env), overrides)` leaks the overrides into every later request.
