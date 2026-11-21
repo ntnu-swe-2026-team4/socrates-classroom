@@ -102,6 +102,7 @@ socrates-classroom/
 ├── packages/
 │   └── shared/                     # API 契約：zod schemas + ErrorCode + Lang + 報告分析
 ├── .github/workflows/{ci,deploy}.yml
+├── .github/actions/gate/action.yml      # 共用驗證閘門（兩 workflow 同步引用）
 ├── pnpm-workspace.yaml             # apps/* packages/*
 └── docs/                           # SSOT：architecture（本文）/ api-contract / pi / providers / feature / roadmap / changelog
 ```
@@ -201,8 +202,10 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 8. CI/CD（.github/workflows）
 
+兩個 workflow 共用 `.github/actions/gate` composite action（同一份步驟清單，避免兩處手抄漂移）；caller 先 `actions/checkout` 再掛 gate（local action 引用需先有 checkout）。
+
 ```yaml
-# ci.yml（PR + push main）：全部閘門，不需要 secrets
+# actions/gate（ci.yml 與 deploy.yml 共用）：全部閘門，不需要 secrets
 - uses: pnpm/action-setup + actions/setup-node@v6 (node 26, cache pnpm)
 - run: pnpm install --frozen-lockfile
 - run: pnpm lint # biome
@@ -211,10 +214,11 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 - run: pnpm typecheck # server build:types → web tsc（RpcApi 宣告先產出）
 - run: pnpm test # pnpm -r test：server（workerd 真runtime，hookTimeout 120s）+ web
 - run: pnpm exec cf build # apps/web：client assets + worker bundle
+
+# ci.yml（PR + push main）：checkout + gate，接著不需要 secrets 的驗證
 - run: pnpm exec cf deploy --prebuilt --mode production --dry-run
 
-# deploy.yml（push main）：同一產物部署
-- run: pnpm exec cf build
+# deploy.yml（push main）：checkout + gate，同一產物部署
 - run: pnpm exec cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations
 - run: pnpm exec cf deploy --prebuilt --mode production # 唯一拿 secrets 的 step
 ```

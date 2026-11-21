@@ -2,6 +2,13 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-22 — CI 閘門收斂共用 composite action（`chore/ci-gate-action`）
+
+### Changed
+
+- ci.yml 與 deploy.yml 重複的六個步驟（install / lint / yamllint / config-drift / typecheck / test / build）收斂到 `.github/actions/gate` composite action——兩個 workflow 引用同一份，新增檢查只需改一處；也移除了兩份手抄清單已經出現的順序不一致
+- 兩個 workflow 僅保留各自的差異段：ci 的 secret-drift check ＋ dry-run、deploy 的 D1 migrations ＋ deploy；job id `ci` 不變（branch protection required check 綁在此名）
+
 ## 2026-11-21 — 群體報告可依老師的軸與軸數產生（`feat/159-report-axes`，#159）
 
 ### Added
