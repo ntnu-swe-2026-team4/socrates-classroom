@@ -53,8 +53,17 @@ export function Input({ className, ...props }: React.ComponentProps<"input">) {
   );
 }
 
+export function Backdrop({ onClick, className }: { onClick: () => void; className?: string }) {
+  return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: pointer-only by design — the keyboard path is the dialog's Escape handling and cancel button
+    // biome-ignore lint/a11y/noStaticElementInteractions: pointer-only by design — the keyboard path is the dialog's Escape handling and cancel button
+    <div className={className} onClick={onClick} />
+  );
+}
+
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: children always contain the form control — the wrapping label is the WCAG-preferred implicit association
     <label className="flex flex-col gap-1">
       <span className="text-xs text-ink-soft">{label}</span>
       {children}
@@ -327,7 +336,7 @@ export function ConfirmDialog({
   if (!open) return null;
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div className="anim-fade absolute inset-0 bg-black/40" onClick={onCancel} />
+      <Backdrop className="anim-fade absolute inset-0 bg-black/40" onClick={onCancel} />
       <div
         ref={trapDialogFocus}
         role="alertdialog"
@@ -393,7 +402,7 @@ export function FormDialog({
   if (!open) return null;
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div className="anim-fade absolute inset-0 bg-black/40" onClick={onCancel} />
+      <Backdrop className="anim-fade absolute inset-0 bg-black/40" onClick={onCancel} />
       <form
         ref={trapDialogFocus}
         role="dialog"
@@ -447,7 +456,7 @@ export function TrapDialog({
 }) {
   return (
     <div className="fixed inset-0 z-50">
-      <div className={cn("absolute inset-0", !plain && "anim-fade bg-black/40")} onClick={onClose} />
+      <Backdrop className={cn("absolute inset-0", !plain && "anim-fade bg-black/40")} onClick={onClose} />
       <div
         ref={trapDialogFocus}
         role="dialog"

@@ -223,6 +223,8 @@ function ProviderSheet({
   };
 
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: pointer-only backdrop by design — the keyboard path is the sheet's Escape handling and cancel button
+    // biome-ignore lint/a11y/noStaticElementInteractions: pointer-only backdrop by design — the keyboard path is the sheet's Escape handling and cancel button
     <div
       ref={restoreFocus}
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/50 p-4 sm:items-center sm:p-8"

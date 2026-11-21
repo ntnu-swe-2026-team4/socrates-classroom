@@ -51,8 +51,8 @@
     "rules": {
       "preset": "recommended",
       "correctness": {
-        "noUnusedVariables": "warn",
-        "noUnusedImports": "warn"
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error"
       },
       "style": {
         "noNonNullAssertion": "off"
@@ -68,16 +68,9 @@
       "security": {
         "noDangerouslySetInnerHtml": "error"
       },
-      "a11y": {
-        "useKeyWithClickEvents": "off",
-        "noStaticElementInteractions": "off",
-        "useAnchorContent": "off",
-        "useSemanticElements": "warn",
-        "noLabelWithoutControl": "off"
-      },
       "suspicious": {
-        "noExplicitAny": "off",
-        "noArrayIndexKey": "warn",
+        "noExplicitAny": "error",
+        "noArrayIndexKey": "error",
         "noConsole": "error",
         "noDebugger": "error"
       }
