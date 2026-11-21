@@ -379,6 +379,9 @@ describe("class report with an axes plan passed in (#159)", () => {
   it("ReportAxesPlanSchema: count 1-3, teacher axes no more than the count, distinct one-line non-blank text", () => {
     const axis = { name: "契約", left: "守約", right: "人情" };
     expect(ReportAxesPlanSchema.safeParse({ count: 2, teacher: [axis] }).success).toBe(true);
+    expect(ReportAxesPlanSchema.safeParse({ count: 1, teacher: [{ ...axis, name: "契".repeat(120) }] }).success).toBe(
+      true,
+    );
     for (const plan of [
       { count: 0, teacher: [] },
       { count: 4, teacher: [] },
@@ -389,6 +392,7 @@ describe("class report with an axes plan passed in (#159)", () => {
       { count: 1, teacher: [{ ...axis, right: "a\u0085b" }] },
       { count: 2, teacher: [axis, { ...axis, left: "其他" }] },
       { count: 2, teacher: [axis, { ...axis, name: ` ${axis.name} ` }] },
+      { count: 1, teacher: [{ ...axis, name: "契".repeat(121) }] },
     ]) {
       expect(ReportAxesPlanSchema.safeParse(plan).success).toBe(false);
     }
