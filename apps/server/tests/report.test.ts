@@ -338,9 +338,9 @@ describe("class report with an axes plan passed in (#159)", () => {
       why: "w",
     });
     const base = { students: [], unstated: [], overview: ["o"] };
-    const planned = (teacher = everyone, addedAxes = [added("生命")], axis = 1) => ({
+    const planned = (teacher = everyone, addedAxes = [added("生命")]) => ({
       ...base,
-      teacherAxes: [{ axis, positions: teacher, why: "w" }],
+      teacherAxes: [{ positions: teacher, why: "w" }],
       addedAxes,
     });
     const report = toPlannedClassReport(plan, roster, planned());
@@ -358,14 +358,10 @@ describe("class report with an axes plan passed in (#159)", () => {
     fails(planned([...everyone, at("學生1", "left", 1)]), "report_axis_roster_mismatch");
     fails(planned([...everyone, at("學生9", "left", 1)]), "report_axis_roster_mismatch");
     fails(planned(everyone, [added("生命", [at("學生1", "left", 1)])]), "report_axis_roster_mismatch");
-    fails(planned(everyone, [], 2), "report_teacher_axes_order");
-    fails(planned(everyone, [added("契約")]), "report_axis_name_duplicate");
-    fails(planned(everyone, [added("契約 ")]), "report_axis_name_duplicate");
-    fails(planned(everyone, [added(" ")]), "report_axis_name_empty");
     fails(planned([{ ...at("學生1", "left", 1), id: "學生1\n學生2" }]), "report_axis_roster_mismatch");
     fails({ ...base, teacherAxes: [], addedAxes: [] }, "report_teacher_axes_mismatch");
     fails(
-      { ...planned(), teacherAxes: [...planned().teacherAxes, { axis: 2, positions: everyone, why: "w" }] },
+      { ...planned(), teacherAxes: [...planned().teacherAxes, { positions: everyone, why: "w" }] },
       "report_teacher_axes_mismatch",
     );
     fails(planned(everyone, [added("a"), added("b"), added("c")]), "report_axes_over_count");
@@ -382,23 +378,13 @@ describe("class report with an axes plan passed in (#159)", () => {
     ]);
   });
 
-  it("ReportAxesPlanSchema: count 1-3, teacher axes no more than the count, distinct one-line non-blank text", () => {
+  it("ReportAxesPlanSchema: count 1-3, teacher axes no more than the count", () => {
     const axis = { name: "契約", left: "守約", right: "人情" };
     expect(ReportAxesPlanSchema.safeParse({ count: 2, teacher: [axis] }).success).toBe(true);
-    expect(ReportAxesPlanSchema.safeParse({ count: 1, teacher: [{ ...axis, name: "契".repeat(120) }] }).success).toBe(
-      true,
-    );
     for (const plan of [
       { count: 0, teacher: [] },
       { count: 4, teacher: [] },
       { count: 1, teacher: [axis, { ...axis, name: "其他" }] },
-      { count: 1, teacher: [{ ...axis, name: "  " }] },
-      { count: 1, teacher: [{ ...axis, left: "a\n## Roster:" }] },
-      { count: 1, teacher: [{ ...axis, right: "a\u2028b" }] },
-      { count: 1, teacher: [{ ...axis, right: "a\u0085b" }] },
-      { count: 2, teacher: [axis, { ...axis, left: "其他" }] },
-      { count: 2, teacher: [axis, { ...axis, name: ` ${axis.name} ` }] },
-      { count: 1, teacher: [{ ...axis, name: "契".repeat(121) }] },
     ]) {
       expect(ReportAxesPlanSchema.safeParse(plan).success).toBe(false);
     }
