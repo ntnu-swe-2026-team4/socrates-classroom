@@ -91,7 +91,7 @@ socrates-classroom/
 │       │   │   ├── ledger.ts           # (provider, model, credential) 記帳＋cooldown
 │       │   │   └── router.ts           # traffic class 鏈走訪（teacher legs 前置合併）
 │       │   ├── prompts/            # LLM 組的 prompt 資產（build-time ?raw）
-│       │   │   ├── socrates.md / class-report.md / student-report.md
+│       │   │   ├── socrates.md（＋.en／.es）/ class-report.md / class-report-axes.md / student-report.md / assemble.ts
 │       │   ├── ws/                 # transport glue（protocol + sockets）
 │       │   ├── auth.ts / auth-crypto.ts  # session＋AES-GCM（byok.ts 併入）
 │       │   ├── db/d1.ts / http.ts / messages.ts / seed.ts / services/
@@ -110,9 +110,11 @@ socrates-classroom/
 
 ## 3. Worker 分層（apps/server）
 
-**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。
+**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、`SEND_EMAIL`、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。
 
-**Worker 入口（index.ts）**：`/api/*` → Hono；`/agents/*` → `routeAgentRequest`（WebSocket）；其餘 → static assets。
+**寄信（`SEND_EMAIL`，`send_email` binding）**：額度提醒信（#146）與密碼重設信（#230）共用，寄件人為 `ALERT_FROM_EMAIL`，模板在 `mail.ts`。Cloudflare Email Service 在 sending domain 完成 onboarding 之前，只能寄給帳號內已驗證的收件地址；寄給任意收件人需要 onboard sending domain，且需要 Workers Paid（[Send bindings](https://developers.cloudflare.com/email-service/configuration/send-bindings/)、[Pricing](https://developers.cloudflare.com/email-service/platform/pricing/)，2026-11-21 查證）。production 是否已滿足這兩項，repo 內無紀錄。
+
+**Worker 入口（index.ts）**：`/api/*` → Hono（傳入 `ExecutionContext`，路由可用 `c.executionCtx.waitUntil` 在回應後執行背景工作）；`/agents/*` → `routeAgentRequest`（WebSocket）；其餘 → static assets。
 
 **Db 介面（db/d1.ts）**：
 
@@ -153,12 +155,13 @@ no queue：busy 時第二發被拒（`ConversationBusy` → error frame），不
 ```
 startReport → pending 標記 → alarm → generate：
   transcriptOf（AI：…/學生（n）：… 編號＋假名冪等）
-  → Promise.all 平行 per-student studentReport（重試 2）
-  → classReport（立場軸/落點/分群）
+  → Promise.all 平行 per-student studentReport（重試 2；語言＝老師的 users.lang，與 classReport 相同；引用的 turns 須是學生說過的行號，否則視同格式錯誤重試）
+  → classReport（立場軸/落點/分群；落點由模型給 side＋strength，server 換算 end/at：left→low、right→high，at＝50∓10×strength，middle＝50）
+    startReport 帶 axes（{count: 1–3, teacher: 老師的軸}）時改用 class-report-axes：老師的軸依序在前、由 server 填入名稱與兩端（模型交這些軸的落點與 why），模型補的軸寫完整、接在後面，總數不超過 count；老師軸的數量不對、總數超過 count、任一條軸的落點名單不是全班各一次（落點的意義見 api-contract.md §7），都視同格式錯誤；沒帶 axes 時與上一行相同
   → persist（D1 reports：teacher_report=classReport、student_reports=analysis+violations-from-transcript）
 ```
 
-模型呼叫經 `runProfile("report-analyst")`（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片從 pi transcript 抽取（`/transcript` 端點，不落第二份儲存）。
+模型呼叫經 `runProfile("student-report")`／`runProfile("class-report")`（帶 axes 時為 `class-report-axes`）（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片從 pi transcript 抽取（`/transcript` 端點，不落第二份儲存）。
 
 ## 5. Gateway（apps/server/src/gateway/）
 
@@ -258,17 +261,18 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 12. 風險與對策
 
-| 風險                                                        | 對策                                                                                                |
-| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| D1 無互動式交易，tx→batch 語意差異                          | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                    |
-| cf beta 格式變動                                            | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                                |
-| dgx-spark 腿延遲（暫時移除，回歸時適用）                    | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                      |
-| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）      | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                          |
-| module 級狀態（rate-limit 的 Map）隨 isolate 分散且重啟歸零 | 定位為 best-effort；跨請求一致的併發守衛在 Chat DO 的 whenBusy reject。多 isolate 佈局後限流改走 DO |
+| 風險                                                             | 對策                                                                                                                                                          |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1 無互動式交易，tx→batch 語意差異                               | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                                                                              |
+| cf beta 格式變動                                                 | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                                                                                          |
+| dgx-spark 腿延遲（暫時移除，回歸時適用）                         | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                                                                                |
+| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）           | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                                                                                    |
+| module 級狀態（rate-limit 的 Map）隨 isolate 分散且重啟歸零      | 定位為 best-effort；跨請求一致的併發守衛在 Chat DO 的 whenBusy reject。多 isolate 佈局後限流改走 DO                                                           |
+| TTS 跨分頁仲裁的毫秒級 race（`SpeechArbiter`，同一使用者多 tab） | 已知限制：窗口為毫秒級、需同一使用者雙 tab 同時觸發朗讀才有感；目前不修。重啟條件：出現使用者可見的重複播放或殘留播放，或跨 tab 朗讀成為正式功能（#165 決定） |
 
 ## 13. Scale design v2（D9–D13）——10k 併發作為 code quality bar
 
-> 狀態：規劃中（`experiment/web-next`，2026-11-04）。設計容量 10,000 條 concurrent 對話 thread，作為 code quality bar（非流量預期）：horizontal scaling 是 Cloudflare 的責任，自建 bottleneck 是本 repo 的責任。任何 hot path 必須屬於三型之一——(a) stateless-horizontal：任何 isolate 皆可執行；(b) DO-sharded：狀態鎖進單執行緒單元；(c) queue-buffered：寫入以 batch 吸收。平台事實（D1 single-writer throughput、Queues limits、DO streaming 無時限）已於 2026-11-04 對官方文件查證。
+> 狀態：規劃中（`experiment/web-next`，2026-11-04）。設計容量 10,000 條 concurrent 對話 thread，作為 code quality bar（非流量預期）：horizontal scaling 是 Cloudflare 的責任，自建 bottleneck 是本 repo 的責任。任何 hot path MUST 屬於三型之一——(a) stateless-horizontal：任何 isolate 皆可執行；(b) DO-sharded：狀態鎖進單執行緒單元；(c) queue-buffered：寫入以 batch 吸收。平台事實（D1 single-writer throughput、Queues limits、DO streaming 無時限）已於 2026-11-04 對官方文件查證。
 
 ### 13.0 負載模型（axiom）
 
@@ -297,7 +301,7 @@ v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78�
 
 - event stream（turn done／violation／usage）→ **Workers Queues**（每 queue 5,000 msg/s、consumer concurrency 至 250、batch 100、15 分鐘執行時限、DLQ）→ consumer 以 `batch()` 寫 D1——700 writes/s 收斂為 <10 batch requests/s
 - 報告生成（#74）→ **CF Workflows** 編排：activity finish → fan-out 單人分析（經 Queues parallel）→ aggregate（立場軸/落點/分群）→ 寫 D1 → 通知。50 生 parallel ≈ <2 分鐘，滿足 #74「幾分鐘內可讀」
-- 訊息不可丟：DLQ＋retention replay；consumer 必須 idempotent（以 turn id 去重）
+- 訊息不可丟：DLQ＋retention replay；consumer MUST idempotent（以 turn id 去重）
 
 ### 13.3 D11 gateway plane（parallel multi-provider，取代 §5 的 fallback chain）
 
@@ -342,6 +346,6 @@ v3 設計為 ActivityEvents DO（SSE-in-DO＋ring buffer＋Last-Event-ID replay�
 ### 13.7 Honest limits（設計不假裝解決的）
 
 1. **Provider 經濟**：220 rps × ~1.5k token ≈ 330k token/s，滿載 ~$120–360/小時（GLM flash 級）。router 只提供商業開關（namespace／kill-switch／traffic class），誰付錢是 #62 的產品決策
-2. **Workers AI judgment quota**：Clef 免費 daily quota 數小時耗盡——judgment plane 必須 multi-provider
+2. **Workers AI judgment quota**：Clef 免費 daily quota 數小時耗盡——judgment plane MUST multi-provider
 3. **單一 D1**：tiering 後 10k 可達；真到百萬級 OLTP 需求 → sharding 逃生口
 4. **單 Worker＝全體同時換版**：部署走 Gradual Deployments＋expand-contract migrations

@@ -1,12 +1,40 @@
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { z } from "zod";
-import { ClassReportSchema, StudentAnalysisSchema } from "@socrates/shared";
+import { ClassReportSchema, ClassReportSubmissionSchema, StudentAnalysisSchema } from "@socrates/shared";
 
 export const SUBMIT_STUDENT_ANALYSIS = "submit_student_analysis";
 export const SUBMIT_CLASS_REPORT = "submit_class_report";
+export const SUBMIT_CLASS_AXES_REPORT = "submit_class_axes_report";
+
+export const ReportAxesPlanSchema = z
+  .object({
+    count: z.number().int().min(1).max(3),
+    teacher: z.array(z.object({ name: z.string(), left: z.string(), right: z.string() })),
+  })
+  .refine((plan) => plan.teacher.length <= plan.count, { message: "teacher_axes_over_count" });
+
+export type ReportAxesPlan = z.infer<typeof ReportAxesPlanSchema>;
+
+const submittedAxis = ClassReportSubmissionSchema.shape.axes.element;
+
+export const PlannedClassReportSubmissionSchema = z.object({
+  students: ClassReportSchema.shape.students,
+  unstated: ClassReportSchema.shape.unstated,
+  teacherAxes: z.array(
+    z.object({
+      positions: z.array(submittedAxis.shape.positions.element).min(1),
+      why: z.string(),
+    }),
+  ),
+  addedAxes: z.array(submittedAxis),
+  overview: ClassReportSchema.shape.overview,
+});
+
+export type PlannedClassReportSubmission = z.infer<typeof PlannedClassReportSubmissionSchema>;
 
 const studentAnalysisParameters = z.toJSONSchema(z.object({ report: StudentAnalysisSchema }));
-const classReportParameters = z.toJSONSchema(ClassReportSchema);
+const classReportParameters = z.toJSONSchema(ClassReportSubmissionSchema);
+const classAxesReportParameters = z.toJSONSchema(PlannedClassReportSubmissionSchema);
 
 const submitStudentAnalysis = defineTool({
   name: SUBMIT_STUDENT_ANALYSIS,
@@ -32,7 +60,24 @@ const submitClassReport = defineTool({
   },
 });
 
+const submitClassAxesReport = defineTool({
+  name: SUBMIT_CLASS_AXES_REPORT,
+  description:
+    "Submit the class report as your final action. The report's shape is this tool's schema: per-student summaries, unstated ids, the positions on each of the teacher's axes in order, the axes you add with each student's stance, and the overview. Calling it ends the turn; do not also write the report as text.",
+  parameters: classAxesReportParameters,
+  constrainedSampling: { type: "json_schema", strict: "prefer" },
+  replay: "safe",
+  async execute() {
+    return { control: { terminate: true } };
+  },
+});
+
 export const reportSubmitExtension = defineExtension({
   name: "report-submit",
   tools: [submitStudentAnalysis, submitClassReport],
+});
+
+export const reportSubmitAxesExtension = defineExtension({
+  name: "report-submit-axes",
+  tools: [submitClassAxesReport],
 });

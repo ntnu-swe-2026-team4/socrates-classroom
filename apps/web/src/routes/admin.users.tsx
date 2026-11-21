@@ -1,13 +1,15 @@
 import { useState } from "react";
+import { adminUsersOptions } from "@/api/queries";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type AdminUser } from "@/api";
+import { meOf } from "@/api/me";
 import { Button, Card, Field, Input, PageHeader, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/admin/users")({
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
     if (!me.isAdmin) throw redirect({ to: "/classrooms" });
   },
@@ -17,14 +19,14 @@ export const Route = createFileRoute("/admin/users")({
 function AdminUsersPage() {
   const t = useT();
   const queryClient = useQueryClient();
-  const users = useQuery({ queryKey: ["admin-users"], queryFn: () => api.listAdminUsers() });
+  const users = useQuery(adminUsersOptions);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [created, setCreated] = useState<string | null>(null);
 
   const invalidate = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    await queryClient.invalidateQueries({ queryKey: adminUsersOptions.queryKey });
   };
 
   const create = useMutation({

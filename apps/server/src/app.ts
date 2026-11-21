@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { ApiError } from "@socrates/shared";
 import { localize } from "./messages";
 import { fail, normalizeLang, type AppEnv } from "./http";
@@ -15,7 +16,9 @@ import { voiceRoutes } from "./routes/voice";
 import { lookupRoutes } from "./routes/lookup";
 import { teacherKeyRoutes } from "./routes/teacher-keys";
 import { adminRoutes } from "./routes/admin";
+import { notificationRoutes } from "./routes/notifications";
 import { devRoutes, isDev } from "./routes/dev";
+import { FAIL_FAST_SECRETS } from "./env";
 import { timingSafeEqual } from "./auth-crypto";
 
 export function createApi() {
@@ -30,6 +33,7 @@ export function createApi() {
     .route("/", lookupRoutes())
     .route("/", teacherKeyRoutes())
     .route("/", adminRoutes())
+    .route("/", notificationRoutes())
     .route("/", devRoutes());
 }
 export type RpcApi = ReturnType<typeof createApi>;
@@ -37,6 +41,7 @@ export type RpcApi = ReturnType<typeof createApi>;
 export function createApp() {
   return new Hono<AppEnv>()
     .use("/api/*", async (c, next) => {
+      c.header("Cache-Control", "private, no-store");
       c.set("lang", normalizeLang(c.req.header("Accept-Language")));
       const lookup = await lookupSession(c.env, getCookie(c, SESSION_COOKIE));
       c.set("user", lookup.kind === "ok" ? lookup.session.user : null);
@@ -44,7 +49,11 @@ export function createApp() {
       await next();
     })
     .route("/api", createApi())
-    .get("/health", (c) => c.json({ ok: true }))
+    .get("/health", (c) =>
+      isDev(c.env)
+        ? c.json({ ok: true, warnings: FAIL_FAST_SECRETS.filter((key) => !c.env[key]) })
+        : c.json({ ok: true }),
+    )
     .post("/api/dev/seed", async (c) => {
       if (!isDev(c.env)) fail(404, "not_found");
       const token = c.req.header("x-seed-token") ?? "";
@@ -57,6 +66,12 @@ export function createApp() {
       const lang = c.get("lang") ?? normalizeLang(c.req.header("Accept-Language"));
       if (error instanceof ApiError) {
         return c.json({ message: localize(error.code, lang, error.vars), code: error.code }, error.status as never);
+      }
+      if (error instanceof HTTPException && error.status === 400) {
+        return c.json({ message: localize("validation", lang), code: "validation" }, 422);
+      }
+      if (error instanceof HTTPException) {
+        return error.getResponse();
       }
       console.error("[api] unhandled", error);
       return c.json({ message: localize("internal_error", lang), code: "internal_error" }, 500);

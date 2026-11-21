@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { TtsInputSchema } from "@socrates/shared";
-import { enforceIpLimit, fail, langOf, parseBody, requireUser, type AppEnv } from "../http";
+import { enforceIpLimit, fail, guardUser, langOf, rateLimit, requireUser, validateJson, type AppEnv } from "../http";
 import { gatewayConfig } from "../gateway/config.gen";
 import { BindingModelSchema } from "../gateway/gateway-schema";
 
@@ -103,10 +103,8 @@ export function voiceRoutes() {
         fail(502, "llm_unavailable");
       }
     })
-    .post("/tts", async (c) => {
-      requireUser(c);
-      await enforceIpLimit(c, "tts", 30);
-      const parsed = await parseBody(c, TtsInputSchema);
+    .post("/tts", guardUser(), rateLimit("tts", 30), validateJson(TtsInputSchema), async (c) => {
+      const parsed = c.req.valid("json");
       const speech = cleanSpeechText(parsed.text);
       if (!speech) fail(502, "llm_unavailable");
       const input = { text: speech, lang: parsed.lang };

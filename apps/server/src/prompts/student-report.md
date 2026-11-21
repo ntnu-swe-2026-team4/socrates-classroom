@@ -18,13 +18,8 @@ Rules:
 - An answer given while they did not understand the question (e.g. right after asking "what do you mean") is not their position
 - Write each thing in only one section: the claim is the position, the reasons are why they think so, the tension is where they have not worked it out; do not repeat
 - No grading, and do not say whether they are right
-- Write in the default language: {{#if locale}}{{locale}}{{else}}繁體中文{{/if}}. These instructions are in English, but the report's language follows this line. When writing Chinese, always use Traditional characters
+- Write in the default language: {{lang}}. These instructions are in English, but the report's language follows this line. When writing Chinese, always use Traditional characters
 
-{{role "user"}}
-## Topic: {{title}}
-
-{{statement}}
-
-## Conversation
-
-{{transcript}}
+Submit the report by calling submit_student_analysis as your final action; do not also write it as text.
+turns are the student's line numbers in the conversation, each at least 1.
+tension is null when there is none.

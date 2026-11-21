@@ -13,7 +13,11 @@ import type {
   InviteJoined,
   JoinInfo,
   JoinResult,
+  NotificationFeed,
+  OAuthProviders,
   Report,
+  TeacherKeyEcho,
+  TeacherKeyModelEcho,
   TeacherKeyStatus,
   TermExplanation,
   Topic,
@@ -22,7 +26,6 @@ import type {
 } from "@socrates/shared";
 import {
   ActivityStartInputSchema,
-  ACTIVITY_SLOT_MAX,
   AdminUserCreateInputSchema,
   AdminUserUpdateInputSchema,
   ClassroomCreateInputSchema,
@@ -32,6 +35,9 @@ import {
   JoinInputSchema,
   LoginInputSchema,
   LookupInputSchema,
+  PasswordForgotInputSchema,
+  PasswordResetInputSchema,
+  SignupInputSchema,
   SttResultSchema,
   TopicCopyInputSchema,
   TopicCreateInputSchema,
@@ -39,7 +45,7 @@ import {
   type ErrorCode,
 } from "@socrates/shared";
 import type { RpcApi } from "@server/app";
-import { persistActivityId, recordTerm } from "./local";
+import { clearLocalUserState, persistActivityId, recordTerm } from "./local";
 
 export class ApiError extends Error {
   constructor(
@@ -67,12 +73,17 @@ export interface KeyModelInfo {
 export interface Api {
   me(): Promise<User | null>;
   login(email: string, password: string): Promise<User>;
+  signup(input: { name: string; email: string; password: string; tosAccepted: boolean }): Promise<User>;
   logout(): Promise<void>;
+  requestPasswordReset(email: string): Promise<void>;
+  resetPassword(token: string, password: string): Promise<void>;
+  authProviders(): Promise<OAuthProviders>;
+  notifications(): Promise<NotificationFeed>;
   joinByCode(code: string): Promise<JoinInfo>;
-  joinAsGuest(code: string, name: string): Promise<JoinResult>;
+  joinAsGuest(code: string, input: { name?: string; tosAccepted: boolean }): Promise<JoinResult>;
   createActivityInvite(activityId: string): Promise<ActivityInvite>;
   inviteInfo(token: string): Promise<InviteInfo>;
-  joinByInvite(token: string, name: string): Promise<InviteJoined>;
+  joinByInvite(token: string, input: { name?: string; tosAccepted: boolean }): Promise<InviteJoined>;
   listTopics(): Promise<Topic[]>;
   generateTopics(direction: string): Promise<TopicDraft[]>;
   createClassroom(name: string): Promise<ClassroomCreated>;
@@ -96,24 +107,10 @@ export interface Api {
   listTeacherKeys(): Promise<TeacherKeyStatus[]>;
   listKeyProviders(): Promise<KeyProviderInfo[]>;
   listKeyProviderModels(provider: string): Promise<KeyModelInfo[]>;
-  putTeacherKey(
-    provider: string,
-    key: string,
-    maxConcurrency?: number | null,
-  ): Promise<{ provider: string; last4: string; maxConcurrency: number | null }>;
-  putTeacherKeyProviderLimit(
-    provider: string,
-    maxConcurrency: number | null,
-  ): Promise<{ provider: string; maxConcurrency: number | null }>;
-  putTeacherKeyMonthlyQuota(
-    provider: string,
-    monthlyQuotaUsd: number | null,
-  ): Promise<{ provider: string; monthlyQuotaUsd: number | null }>;
-  putTeacherKeyModel(
-    provider: string,
-    model: string,
-    maxConcurrency?: number | null,
-  ): Promise<{ provider: string; model: string; maxConcurrency: number | null }>;
+  putTeacherKey(provider: string, key: string, maxConcurrency?: number | null): Promise<TeacherKeyEcho>;
+  putTeacherKeyProviderLimit(provider: string, maxConcurrency: number | null): Promise<TeacherKeyEcho>;
+  putTeacherKeyMonthlyQuota(provider: string, monthlyQuotaUsd: number | null): Promise<TeacherKeyEcho>;
+  putTeacherKeyModel(provider: string, model: string, maxConcurrency?: number | null): Promise<TeacherKeyModelEcho>;
   deleteTeacherKeyModel(provider: string, model: string): Promise<void>;
   orderTeacherKeyModels(provider: string, models: string[]): Promise<void>;
   deleteTeacherKey(provider: string): Promise<void>;
@@ -143,41 +140,21 @@ type JsonLike = {
   json(): Promise<unknown>;
 };
 
-async function unwrap<R extends JsonLike>(res: R): Promise<Awaited<ReturnType<R["json"]>>> {
-  if (res.status === 204) return undefined as Awaited<ReturnType<R["json"]>>;
-  if (!res.ok) {
-    const error = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new ApiError(toErrorCode(error?.code), error?.message ?? res.statusText);
-  }
-  return res.json() as Promise<Awaited<ReturnType<R["json"]>>>;
+async function raiseApiError(res: { statusText: string; json(): Promise<unknown> }): Promise<never> {
+  const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+  throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
 }
 
-async function raw<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
-  const { json, ...rest } = init;
-  const res = await fetch(`/api${path}`, {
-    credentials: "include",
-    headers: {
-      ...langHeaders(),
-      ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(rest.headers ?? {}),
-    },
-    ...rest,
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  });
-  if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
-  }
-  return (await res.json()) as T;
+async function unwrap<R extends JsonLike>(res: R): Promise<Awaited<ReturnType<R["json"]>>> {
+  if (res.status === 204) return undefined as Awaited<ReturnType<R["json"]>>;
+  if (!res.ok) return raiseApiError(res);
+  return res.json() as Promise<Awaited<ReturnType<R["json"]>>>;
 }
 
 async function playTts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void> {
   const input = TtsInputSchema.parse({ text, lang: langHeaders()["Accept-Language"] });
   const res = await client.tts.$post({ json: input }, { init: { signal } });
-  if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
-  }
+  if (!res.ok) return raiseApiError(res);
   const bytes = await res.arrayBuffer();
   const AudioContextCtor =
     window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -258,32 +235,48 @@ export const httpApi: Api = {
     announceSession();
     return user;
   },
+  async signup(input) {
+    const user = unwrap(await client.auth.signup.$post({ json: SignupInputSchema.parse(input) }));
+    announceSession();
+    return user;
+  },
   async logout() {
     await unwrap(await client.auth.logout.$post());
+    clearLocalUserState();
     announceSession();
+  },
+  async requestPasswordReset(email) {
+    await unwrap(await client.auth.password.forgot.$post({ json: PasswordForgotInputSchema.parse({ email }) }));
+  },
+  async resetPassword(token, password) {
+    await unwrap(await client.auth.password.reset.$post({ json: PasswordResetInputSchema.parse({ token, password }) }));
+  },
+  async authProviders() {
+    return unwrap(await client.auth.providers.$get());
+  },
+  async notifications() {
+    return unwrap(await client.notifications.$get());
   },
   async joinByCode(code) {
     return unwrap(await client.join[":code"].$get({ param: { code } }));
   },
-  async joinAsGuest(code, name) {
-    const data = await raw<JoinResult>("/join", {
-      method: "POST",
-      json: JoinInputSchema.parse({ code, name, tosAccepted: true }),
-    });
+  async joinAsGuest(code, input) {
+    const data = await unwrap(
+      await client.join.$post({
+        json: JoinInputSchema.parse({ code, name: input.name, tosAccepted: input.tosAccepted }),
+      }),
+    );
     persistActivityId(data.activityId);
     return data;
   },
   async createActivityInvite(activityId) {
-    return await raw<ActivityInvite>(`/activities/${encodeURIComponent(activityId)}/invites`, { method: "POST" });
+    return unwrap(await client.activities[":id"].invites.$post({ param: { id: activityId } }));
   },
   async inviteInfo(token) {
-    return await raw<InviteInfo>(`/invites/${encodeURIComponent(token)}`);
+    return unwrap(await client.invites[":token"].$get({ param: { token } }));
   },
-  async joinByInvite(token, name) {
-    const data = await raw<InviteJoined>(`/invites/${encodeURIComponent(token)}/join`, {
-      method: "POST",
-      json: { name, tosAccepted: true },
-    });
+  async joinByInvite(token, input) {
+    const data = await unwrap(await client.invites[":token"].join.$post({ param: { token }, json: input }));
     persistActivityId(data.activityId);
     return data;
   },
@@ -305,46 +298,48 @@ export const httpApi: Api = {
     return unwrap(await client.classrooms.$get());
   },
   async listClassroomTopics(classroomId) {
-    return await raw<Topic[]>(`/classrooms/${encodeURIComponent(classroomId)}/topics`);
+    return unwrap(await client.classrooms[":id"].topics.$get({ param: { id: classroomId } }));
   },
   async createClassroomTopic(classroomId, input) {
-    return await raw<Topic>(`/classrooms/${encodeURIComponent(classroomId)}/topics`, {
-      method: "POST",
-      json: TopicCreateInputSchema.parse(input),
-    });
+    return unwrap(
+      await client.classrooms[":id"].topics.$post({
+        param: { id: classroomId },
+        json: TopicCreateInputSchema.parse(input),
+      }),
+    );
   },
   async copyTopic(topicId, classroomId) {
-    return await raw<Topic>(`/topics/${encodeURIComponent(topicId)}/copy`, {
-      method: "POST",
-      json: TopicCopyInputSchema.parse({ classroomId }),
-    });
+    return unwrap(
+      await client.topics[":id"].copy.$post({
+        param: { id: topicId },
+        json: TopicCopyInputSchema.parse({ classroomId }),
+      }),
+    );
   },
   async startActivity(classroomId, topicId, mode = "live") {
     const input = ActivityStartInputSchema.parse({ topicId, mode });
-    return await raw<ActivityStarted>(`/classrooms/${classroomId}/activities`, { method: "POST", json: input });
+    return unwrap(await client.classrooms[":id"].activities.$post({ param: { id: classroomId }, json: input }));
   },
   async listActivitySlots(activityId) {
-    return raw<ActivitySlots>(`/activities/${encodeURIComponent(activityId)}/slots`);
+    return unwrap(await client.activities[":id"].slots.$get({ param: { id: activityId } }));
   },
   async createActivitySlots(activityId, count) {
-    return raw<ActivitySlots>(`/activities/${encodeURIComponent(activityId)}/slots`, {
-      method: "POST",
-      json: { count: Math.min(Math.max(count, 1), ACTIVITY_SLOT_MAX) },
-    });
+    return unwrap(
+      await client.activities[":id"].slots.$post({
+        param: { id: activityId },
+        json: { count },
+      }),
+    );
   },
   async stt(audio) {
     const file = audio instanceof File ? audio : new File([audio], "speech.webm", { type: audio.type });
     const res = await client.stt.$post({ form: { audio: file } });
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-      throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
-    }
+    if (!res.ok) return raiseApiError(res);
     return SttResultSchema.parse(await res.json()).text;
   },
   tts: playTts,
   async activityInfo(activityId, participantId) {
-    const query = participantId === undefined ? "" : `?participantId=${encodeURIComponent(participantId)}`;
-    return raw<ActivityInfo>(`/activities/${encodeURIComponent(activityId)}${query}`);
+    return unwrap(await client.activities[":id"].$get({ param: { id: activityId }, query: { participantId } }));
   },
   async finishActivity(activityId) {
     await unwrap(await client.activities[":id"].finish.$post({ param: { id: activityId } }));
@@ -368,39 +363,32 @@ export const httpApi: Api = {
     return unwrap(await client.settings.keys.providers[":provider"].models.$get({ param: { provider } }));
   },
   async putTeacherKey(provider, key, maxConcurrency) {
-    return raw<{ provider: string; last4: string; maxConcurrency: number | null }>(
-      `/settings/keys/${encodeURIComponent(provider)}`,
-      { method: "PUT", json: maxConcurrency === undefined ? { key } : { key, maxConcurrency } },
+    return unwrap(
+      await client.settings.keys[":provider"].$put({
+        param: { provider },
+        json: maxConcurrency === undefined ? { key } : { key, maxConcurrency },
+      }),
     );
   },
   async putTeacherKeyProviderLimit(provider, maxConcurrency) {
-    return raw<{ provider: string; maxConcurrency: number | null }>(`/settings/keys/${encodeURIComponent(provider)}`, {
-      method: "PUT",
-      json: { maxConcurrency },
-    });
+    return unwrap(await client.settings.keys[":provider"].$put({ param: { provider }, json: { maxConcurrency } }));
   },
   async putTeacherKeyMonthlyQuota(provider, monthlyQuotaUsd) {
-    return raw<{ provider: string; monthlyQuotaUsd: number | null }>(`/settings/keys/${encodeURIComponent(provider)}`, {
-      method: "PUT",
-      json: { monthlyQuotaUsd },
-    });
+    return unwrap(await client.settings.keys[":provider"].$put({ param: { provider }, json: { monthlyQuotaUsd } }));
   },
   async putTeacherKeyModel(provider, model, maxConcurrency) {
-    return raw<{ provider: string; model: string; maxConcurrency: number | null }>(
-      `/settings/keys/${encodeURIComponent(provider)}/models`,
-      { method: "PUT", json: maxConcurrency === undefined ? { model } : { model, maxConcurrency } },
+    return unwrap(
+      await client.settings.keys[":provider"].models.$put({
+        param: { provider },
+        json: maxConcurrency === undefined ? { model } : { model, maxConcurrency },
+      }),
     );
   },
   async deleteTeacherKeyModel(provider, model) {
-    await raw<void>(`/settings/keys/${encodeURIComponent(provider)}/models/${encodeURIComponent(model)}`, {
-      method: "DELETE",
-    });
+    await unwrap(await client.settings.keys[":provider"].models[":model"].$delete({ param: { provider, model } }));
   },
   async orderTeacherKeyModels(provider, models) {
-    await raw<void>(`/settings/keys/${encodeURIComponent(provider)}/models/order`, {
-      method: "PUT",
-      json: { models },
-    });
+    await unwrap(await client.settings.keys[":provider"].models.order.$put({ param: { provider }, json: { models } }));
   },
   async deleteTeacherKey(provider) {
     await unwrap(await client.settings.keys[":provider"].$delete({ param: { provider } }));
@@ -409,10 +397,10 @@ export const httpApi: Api = {
     await unwrap(await client.settings.keys.order.$put({ json: { providers } }));
   },
   async devAccounts() {
-    return raw<DevAccounts>("/dev/accounts");
+    return unwrap(await client.dev.accounts.$get());
   },
   async devLogin(email) {
-    const user = await raw<User>("/dev/login", { method: "POST", json: DevLoginInputSchema.parse({ email }) });
+    const user = await unwrap(await client.dev.login.$post({ json: DevLoginInputSchema.parse({ email }) }));
     announceSession();
     return user;
   },
@@ -420,12 +408,11 @@ export const httpApi: Api = {
     return unwrap(await client.admin.users.$get());
   },
   async createAdminUser(input) {
-    return raw<AdminUser>("/admin/users", { method: "POST", json: AdminUserCreateInputSchema.parse(input) });
+    return unwrap(await client.admin.users.$post({ json: AdminUserCreateInputSchema.parse(input) }));
   },
   async updateAdminUser(id, input) {
-    return raw<AdminUser>(`/admin/users/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      json: AdminUserUpdateInputSchema.parse(input),
-    });
+    return unwrap(
+      await client.admin.users[":id"].$patch({ param: { id }, json: AdminUserUpdateInputSchema.parse(input) }),
+    );
   },
 };

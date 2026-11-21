@@ -47,7 +47,7 @@
 
 - 使用者可以是數個班級的教師：任何使用者可以新增／刪除自己的班級；一個班級只由一個教師管理；教師送出加入班級的邀請碼與入班窗口——學生經窗口自行建立帳號，自動成為該班學生
 - 班級擁有一系列議題：該班教師可以在網頁中新增或編輯議題；議題只從屬於一個班級，但教師可以把相同議題複製到其他班級
-- 教師可以在班級中創建活動：活動必須基於一個議題；活動除了預設所有學生皆可參與之外，也須提供一次性邀請連結——未登入狀態下打開一次性邀請窗口，即會自動成為訪客；訪客不會列在該班級的名冊中，也不能存取班級的任何部分；訪客實體持續到活動關閉時消失；已登入狀態下打開一次性邀請窗口，不會加入班級，只會加入活動
+- 教師可以在班級中創建活動：活動 MUST 基於一個議題；活動除了預設所有學生皆可參與之外，也須提供一次性邀請連結——未登入狀態下打開一次性邀請窗口，即會自動成為訪客；訪客不會列在該班級的名冊中，也不能存取班級的任何部分；訪客實體持續到活動關閉時消失；已登入狀態下打開一次性邀請窗口，不會加入班級，只會加入活動
 - 處於未登入狀態時，要可以單獨註冊為使用者
 - 管理員可以直接創建新的使用者帳號（供應學校；帳號無預設——任何帳號皆可自建班級）；管理員可以注銷帳號
 
@@ -74,6 +74,10 @@ flowchart LR
 ```
 
 ## 7. 討論與拍板
+
+**拍板（2026-11-21）**
+
+- **Apple 登入退場（#207 範圍收斂）**：Sign in with Apple 的設定面（Services ID、`.p8` private key）僅 **Apple Developer Program** 會員可及（US$99／年；查證 2026-11-21：Apple 官方 enrollment 頁與 Firebase 官方文件「Sign In with Apple can only be configured by members of the Apple Developer Program」），且 web 流程要求一個啟用該 capability 的 **primary iOS/macOS/tvOS/watchOS App ID**——Apple 的設計假設開發者有原生 App，純 web 產品需另建 placeholder App ID。團隊無會籍，#207 收斂為 Facebook＋`GET /auth/providers`。註：fee waiver 限 nonprofit／accredited educational institution／government 法人（不含個人或團隊）——日後由學校法人營運可重開評估。
 
 **已討論（2026-11-17，spec rev 200）**
 
@@ -102,6 +106,6 @@ flowchart LR
 
 實作分階段進行；功能存在性清單的 SSOT 是 [`feature.md`](./feature.md)，此處只記模型落地：
 
-- **已上 main**：班級邀請註冊（`POST /auth/register`）、訪客與 activity participants（#132/#133）、測試模式（#134）、自行註冊與 Google OAuth（#124）；capability 模型（`can_manage_classes`，#131/#142）——**已退役**（#210，無 mode 定稿 §7）：建立類端點開放給所有登入 user，`users.can_manage_classes` 與 legacy `users.role` 欄位移除，`PATCH /admin/users/:id` 僅剩停用
+- **已上 main**：班級邀請註冊（`POST /auth/register`）、訪客與 activity participants（#132/#133）、測試模式（#134）、自行註冊與 Google OAuth（#124）、email 帳號的密碼找回（#230，§1「email 是註冊加找回」的找回半邊）；capability 模型（`can_manage_classes`，#131/#142）——**已退役**（#210，無 mode 定稿 §7）：建立類端點開放給所有登入 user，`users.can_manage_classes` 與 legacy `users.role` 欄位移除，`PATCH /admin/users/:id` 僅剩停用
 - **已結案**：user↔teacher mode toggle（#208——未 merge 即 close，被無 mode 定稿取代）
-- **計畫中**：SSO 擴充 Apple／Facebook 與 authProviders 探測（#207）；teacher 端建立 student（#206——原範圍已被窗口拍板推翻，待重劃或關閉）
+- **計畫中**：SSO 擴充 Facebook 與 authProviders 探測（#207——Apple 拍板退場，見 §7）；teacher 端建立 student（#206——原範圍已被窗口拍板推翻，待重劃或關閉）

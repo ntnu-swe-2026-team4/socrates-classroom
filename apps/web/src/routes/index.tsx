@@ -1671,7 +1671,8 @@ function ComicLanding() {
             </svg>
             <span className="hidden md:inline">{t("comic_skip")}</span>
           </button>
-          <fieldset aria-label={t("settings_lang")} className="flex items-center px-2">
+          <fieldset className="flex items-center px-2">
+            <legend className="sr-only">{t("settings_lang")}</legend>
             {LANGS.map((lang, index) => (
               <span key={lang.code} className="flex items-center">
                 {index > 0 && (
@@ -1748,7 +1749,7 @@ function ComicLanding() {
           data-layer
           data-depth="0"
           data-fade
-          className="absolute inset-x-0 bottom-5 flex items-center justify-center gap-2 text-[12px] font-medium tracking-[0.3em] text-comic-ink"
+          className="absolute inset-x-0 bottom-5 flex items-center justify-center gap-2 text-[12px] font-medium tracking-[0.3em] text-comic-paper"
         >
           {t("comic_scroll")} ↓
         </p>

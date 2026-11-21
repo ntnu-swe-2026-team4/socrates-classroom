@@ -1,6 +1,8 @@
-# Google 登入金鑰設定
+# 第三方登入（SSO）設定
 
-Google 登入（#124）需要兩個值：
+本文件擁有 SSO 設定域：目前支援 **Google**（#124，§1–§5）與 **Facebook**（#207，§6）；**Apple 拍板退場**（見 [`accounts.md`](./accounts.md) §7——僅 Apple Developer Program 會員可設定，且 web 流程要求原生 App ID）。
+
+Google 登入需要兩個值：
 
 | 名稱                   | 類型         | 是否機密                 | 說明                                                  |
 | ---------------------- | ------------ | ------------------------ | ----------------------------------------------------- |
@@ -9,7 +11,7 @@ Google 登入（#124）需要兩個值：
 
 任一值留空時，Google 登入會停用：按下 Google 登入會導回 `/login?error=oauth_unavailable`，其他功能不受影響。
 
-另外會用到 `PUBLIC_BASE_URL`，它決定 Google 登入完成後要導回哪個網址：`<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`。這個網址必須和 Google Console 裡登錄的 redirect URI **一字不差**。
+另外會用到 `PUBLIC_BASE_URL`，它決定 Google 登入完成後要導回哪個網址：`<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`。這個網址 MUST 和 Google Console 裡登錄的 redirect URI **一字不差**。
 
 ## 1. 建立 OAuth 用戶端
 
@@ -24,11 +26,11 @@ Google 登入（#124）需要兩個值：
      - 正式站：`https://<正式網域>/api/auth/oauth/google/callback`
 4. 建立後馬上複製 Client ID 和 Client secret。新版 Console **只在建立當下顯示一次 secret**，之後就看不到了。
 
-> 測試中的應用程式只有「測試使用者」名單裡的帳號能登入，上限 100 人。要開放所有人使用，必須在 Google Auth Platform 把應用程式「發布為正式版」，而且要先提供隱私權政策網址。
+> 測試中的應用程式只有「測試使用者」名單裡的帳號能登入，上限 100 人。要開放所有人使用，MUST 在 Google Auth Platform 把應用程式「發布為正式版」，而且要先提供隱私權政策網址。
 
 ## 2. 本機開發
 
-在 `apps/web/.env.local` 填入以下內容（這個檔案已在 gitignore 中，不會進版控）：
+在 `apps/web/.env.local` 填入以下內容（這個檔案已在 gitignore 中，不會進版控；本地若存在 `.dev.vars`，dev 整檔以該檔為準、請改填該檔——見 [`cf.md`](./cf.md) §Secrets）：
 
 ```dotenv
 PUBLIC_BASE_URL=http://localhost:5173
@@ -76,3 +78,41 @@ secret 外洩（例如出現在截圖或訊息裡），或定期更換時，照�
 | `/login?error=oauth_state_invalid`            | 登入請求超過 10 分鐘，或 cookie 遺失                                    | 重新按一次 Google 登入                                             |
 | `/login?error=oauth_email_unverified`         | 這個 Google 帳號的信箱還沒驗證                                          | 請使用者先到 Google 驗證信箱                                       |
 | Google 顯示「存取遭拒／應用程式尚未經過驗證」 | 應用程式還在測試模式，而且帳號不在測試使用者名單裡                      | 把帳號加進測試使用者，或發布為正式版                               |
+
+## 6. Facebook 登入（#207）
+
+### 6.1 金鑰
+
+| 名稱                  | 類型         | 是否機密 | 說明                                   |
+| --------------------- | ------------ | -------- | -------------------------------------- |
+| `FACEBOOK_APP_ID`     | text binding | 否       | Meta App ID                            |
+| `FACEBOOK_APP_SECRET` | secret       | **是**   | App Secret（App Dashboard → Settings） |
+
+任一值留空時 Facebook 登入停用（`GET /api/auth/providers` 不會列出它），其他功能不受影響——與 Google 同一條件式 binding 模式。
+
+### 6.2 建立 Meta App
+
+1. [Meta for Developers](https://developers.facebook.com/) → 建立 App（用途選「Business」或「Consumer」皆可，本產品只用 Facebook Login）。
+2. 加入 **Facebook Login** product → Settings → **Valid OAuth Redirect URIs** 登錄：
+   - 本機：`http://localhost:5173/api/auth/oauth/facebook/callback`
+   - 正式站：`https://socrates.g36maid.dev/api/auth/oauth/facebook/callback`
+3. Graph API 版本 pin **`v27.0`**（官方現行 latest；升版時改 `apps/server/src/oauth.ts` 三個常數＋本節）。
+
+### 6.3 流程與身分
+
+- 標準 web code flow：dialog（`scope=email`、state）→ server-side 換 access token → `GET /me?fields=id,name,email`（帶 `appsecret_proof`：以 app secret 對 access token 計算的 HMAC-SHA256，防 token 偽造的 Meta 建議強化）。Meta 無 nonce／PKCE，CSRF 靠 state cookie（同 Google 的 HMAC `socrates_oauth`）。
+- **身分一律 `(facebook, id)`**——不以 email 認身分（與 Google 同規則）。Meta 無 `email_verified` 信號：email 為 **informational**（缺 email 照常建帳，`user_identities.email` NULL）。
+- access token **用完即棄，不落庫**（只取 id/name/email 三欄位即丟棄）。
+
+### 6.4 資料保留查證（2026-11-21，#207 驗收）
+
+| 事實                 | 內容                                                                                                                                                                                           |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 我們儲存什麼         | `users` 一列（name、lang）＋`user_identities` 一列（`(provider, sub)`、email informational）。**不儲存** Meta access token、不拉取 email 以外的 Graph 資料、無內容流量——純 auth 用途。         |
+| Meta 側保留          | Meta 依其平台條款保留 app 相關活動紀錄（我們不接觸）。access token 生命週期由 Meta 管理，我們不持有。                                                                                          |
+| 使用者刪除權         | Meta 平台條款要求提供 **Data Deletion Instructions URL**（App Dashboard 設定）。⚠️ 上線前需於 App Dashboard 填寫本站帳號刪除說明——目前未做，列為上線前待辦（帳號刪除功能本身在 §9 未定範圍）。 |
+| 學生資料（ZDR 考量） | Facebook 登入只提供身分，不進對話鏈——對話內容只走 `providers.md` 的 ZDR-reviewed chain，與 SSO 無涉。                                                                                          |
+
+## 7. Apple 登入：拍板退場
+
+Apple 登入已拍板退場（2026-11-21，理由與查證見 [`accounts.md`](./accounts.md) §7）。`OAUTH_PROVIDERS` 不含 `apple`；若日後由學校法人營運（fee waiver 條件成立）可重開評估。

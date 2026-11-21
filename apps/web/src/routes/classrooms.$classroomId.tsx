@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { classroomsOptions } from "@/api/queries";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChartNoAxesColumn, GraduationCap, MessageSquare, SquareActivity, Users } from "lucide-react";
 import { api } from "@/api";
+import { meOf } from "@/api/me";
 import type { ClassroomSummary } from "@socrates/shared";
 import { AddTopic, CopyTopic, StartActivity, useClassroomTopics } from "@/components/ClassroomTopics";
 import { QrBlock, absoluteUrl } from "@/components/QrBlock";
@@ -11,7 +13,7 @@ import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/classrooms/$classroomId")({
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
   },
   component: ClassroomPage,
@@ -21,8 +23,7 @@ function ClassroomPage() {
   const t = useT();
   const { classroomId } = Route.useParams();
   const room = useQuery({
-    queryKey: ["classrooms"],
-    queryFn: () => api.listClassrooms(),
+    ...classroomsOptions,
     select: (list: ClassroomSummary[]) => list.find((entry) => entry.id === classroomId) ?? null,
   });
 

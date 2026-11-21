@@ -1,8 +1,9 @@
+import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { DevLoginInputSchema, type DevAccount, type User } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
 import { startSession } from "../auth";
-import { fail, parseBody, type AppEnv, type Ctx } from "../http";
+import { fail, validateJson, type AppEnv, type Ctx } from "../http";
 import { FIXTURE_ACCOUNTS, FIXTURE_PASSWORD } from "../seed";
 
 export function isDev(env: { ENVIRONMENT?: string }): boolean {
@@ -11,6 +12,13 @@ export function isDev(env: { ENVIRONMENT?: string }): boolean {
 
 function requireDev(c: Ctx): void {
   if (!isDev(c.env)) fail(404, "not_found");
+}
+
+function devGuard(): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    requireDev(c);
+    await next();
+  };
 }
 
 interface AccountRow {
@@ -70,9 +78,8 @@ export function devRoutes() {
       }
       return c.json({ password: FIXTURE_PASSWORD, accounts });
     })
-    .post("/dev/login", async (c) => {
-      requireDev(c);
-      const input = await parseBody(c, DevLoginInputSchema);
+    .post("/dev/login", devGuard(), validateJson(DevLoginInputSchema), async (c) => {
+      const input = c.req.valid("json");
       const fixture = FIXTURE_ACCOUNTS.find((account) => account.email === input.email);
       if (!fixture) fail(404, "not_found");
       let row = await loadAccount(c.env.DB, input.email);

@@ -116,6 +116,11 @@ const M: Record<ErrorCode, Entry> = {
     en: "Third-party sign-in failed. Please try again.",
     es: "El inicio de sesión externo falló. Inténtalo de nuevo.",
   },
+  reset_token_invalid: {
+    zh: "重設密碼的連結無效或已過期，請重新申請。",
+    en: "This password reset link is invalid or has expired. Please request a new one.",
+    es: "Este enlace para restablecer la contraseña no es válido o ha caducado. Solicita uno nuevo.",
+  },
 };
 
 export function localize(code: ErrorCode, lang: Lang, vars: Record<string, string | number> = {}): string {

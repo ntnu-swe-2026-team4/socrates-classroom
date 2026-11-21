@@ -1,7 +1,10 @@
 import { useCallback } from "react";
+import { activityOptions } from "@/api/queries";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/api";
+
+import { meQueryOptions } from "@/api/me";
+import { meOf } from "@/api/me";
 import { readActivityId } from "@/api/local";
 import { DialogueView } from "@/components/DialogueView";
 import { useT } from "@/i18n";
@@ -16,13 +19,9 @@ export const Route = createFileRoute("/dialogue")({
     term: typeof search.term === "string" ? search.term : undefined,
   }),
   beforeLoad: async ({ search, context }) => {
-    const me = await context.queryClient.fetchQuery({
-      queryKey: ["me"],
-      queryFn: () => api.me(),
-      staleTime: Infinity,
-    });
+    const me = await meOf(context.queryClient);
     const activityId = search.activityId ?? readActivityId();
-    if (!activityId) throw redirect({ to: me ? "/home" : "/join" });
+    if (!activityId) throw redirect({ to: me ? "/home" : "/login" });
   },
   component: DialoguePage,
 });
@@ -30,15 +29,10 @@ export const Route = createFileRoute("/dialogue")({
 function DialoguePage() {
   const t = useT();
   const navigate = useNavigate();
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const me = useQuery(meQueryOptions);
   const { activityId: activityParam, slot, q, term } = Route.useSearch();
   const activityId = activityParam ?? readActivityId() ?? "";
-  const activityQuery = useQuery({
-    queryKey: ["activity", activityId, slot ?? null],
-    queryFn: () => api.activityInfo(activityId, slot),
-    enabled: activityId !== "",
-    staleTime: Infinity,
-  });
+  const activityQuery = useQuery({ ...activityOptions(activityId, slot), enabled: activityId !== "" });
   const activityRefetch = useCallback(() => void activityQuery.refetch(), [activityQuery.refetch]);
   const topic = activityQuery.data?.topic;
 

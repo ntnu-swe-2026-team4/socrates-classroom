@@ -1,11 +1,11 @@
+import { OAUTH_PROVIDERS, type OAuthProvider } from "@socrates/shared";
 import { b64url, fromB64url } from "./auth";
 
-export const OAUTH_PROVIDERS = ["google"] as const;
-export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
+export type { OAuthProvider };
 
 export interface OAuthProfile {
   subject: string;
-  email: string;
+  email: string | null;
   name: string;
 }
 
@@ -33,6 +33,20 @@ export class OAuthError extends Error {
   constructor(public readonly code: "oauth_failed" | "oauth_email_unverified") {
     super(code);
   }
+}
+
+export interface ProviderEnv {
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  FACEBOOK_APP_ID?: string;
+  FACEBOOK_APP_SECRET?: string;
+}
+
+export function oauthProviders(env: ProviderEnv): OAuthProvider[] {
+  const providers: OAuthProvider[] = [];
+  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) providers.push("google");
+  if (env.FACEBOOK_APP_ID && env.FACEBOOK_APP_SECRET) providers.push("facebook");
+  return providers;
 }
 
 export function isOAuthProvider(value: string): value is OAuthProvider {
@@ -167,4 +181,68 @@ async function googleKey(kid: string): Promise<CryptoKey> {
   if (!jwk) jwk = (await loadJwks(true)).find((key) => key.kid === kid);
   if (jwk?.kty !== "RSA") throw new OAuthError("oauth_failed");
   return crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+}
+
+export interface FacebookConfig {
+  appId: string;
+  appSecret: string;
+  redirectUri: string;
+}
+
+export const FACEBOOK_DIALOG_URL = "https://www.facebook.com/v27.0/dialog/oauth";
+export const FACEBOOK_TOKEN_URL = "https://graph.facebook.com/v27.0/oauth/access_token";
+export const FACEBOOK_ME_URL = "https://graph.facebook.com/v27.0/me";
+const FACEBOOK_FIELDS = "id,name,email";
+
+export async function appsecretProof(appSecret: string, accessToken: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(appSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(accessToken));
+  return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function facebookAuthorizeUrl(config: FacebookConfig, pending: OAuthPending): string {
+  const url = new URL(FACEBOOK_DIALOG_URL);
+  url.search = new URLSearchParams({
+    client_id: config.appId,
+    redirect_uri: config.redirectUri,
+    response_type: "code",
+    scope: "email",
+    state: pending.state,
+  }).toString();
+  return url.toString();
+}
+
+export async function facebookProfile(config: FacebookConfig, code: string): Promise<OAuthProfile> {
+  const tokenUrl = new URL(FACEBOOK_TOKEN_URL);
+  tokenUrl.search = new URLSearchParams({
+    client_id: config.appId,
+    client_secret: config.appSecret,
+    redirect_uri: config.redirectUri,
+    code,
+  }).toString();
+  const tokenRes = await fetch(tokenUrl);
+  if (!tokenRes.ok) throw new OAuthError("oauth_failed");
+  const tokenBody = (await tokenRes.json()) as { access_token?: unknown };
+  if (typeof tokenBody.access_token !== "string" || tokenBody.access_token.length === 0) {
+    throw new OAuthError("oauth_failed");
+  }
+  const meUrl = new URL(FACEBOOK_ME_URL);
+  meUrl.search = new URLSearchParams({
+    fields: FACEBOOK_FIELDS,
+    access_token: tokenBody.access_token,
+    appsecret_proof: await appsecretProof(config.appSecret, tokenBody.access_token),
+  }).toString();
+  const meRes = await fetch(meUrl);
+  if (!meRes.ok) throw new OAuthError("oauth_failed");
+  const me = (await meRes.json()) as { id?: unknown; name?: unknown; email?: unknown };
+  if (typeof me.id !== "string" || me.id.length === 0) throw new OAuthError("oauth_failed");
+  const name = (typeof me.name === "string" ? me.name : "").trim().slice(0, 80) || `Facebook ${me.id.slice(0, 8)}`;
+  const email = typeof me.email === "string" && me.email.length > 0 ? me.email.toLowerCase() : null;
+  return { subject: me.id, email, name };
 }

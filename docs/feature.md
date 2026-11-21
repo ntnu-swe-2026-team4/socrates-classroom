@@ -1,6 +1,6 @@
 # 功能總覽（Feature Inventory）
 
-> 最後更新：2026-11-09 ｜ 對應 `apps/server/src/routes` 與 `apps/web/src/routes`
+> 最後更新：2026-11-21 ｜ 對應 `apps/server/src/routes` 與 `apps/web/src/routes`
 > API 細節見 [`api-contract.md`](./api-contract.md)；架構見 [`architecture.md`](./architecture.md)
 
 ## 目錄
@@ -16,20 +16,21 @@
 
 ## 學生與老師：帳號與教室
 
-| 功能        | 說明                                                                                                  | 主要路由 / 頁面                                                                       |
-| ----------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| 老師登入    | email＋密碼（PBKDF2）；HMAC cookie session 30 天                                                      | `POST /api/auth/login`・`/login`                                                      |
-| 註冊學生    | 以邀請碼註冊學生帳號（email＋密碼），註冊即成員；同 email 可登入                                      | `POST /api/auth/register`                                                             |
-| 自行註冊    | 不需邀請碼，email＋密碼註冊為獨立帳號（#124）；加入班級後即一般學生                                   | `POST /api/auth/signup`                                                               |
-| Google 登入 | OAuth 2.0／OIDC（PKCE＋state＋nonce）；首次登入建獨立帳號；同 email 與 email 帳號分屬兩個帳號（#124） | `GET /api/auth/oauth/google/start`・`/callback`                                       |
-| 訪客加入    | 邀請碼＋姓名＋ToS 同意；不建帳號，取得活動層 participant cookie                                       | `GET /api/join/:code`・`POST /api/join`・`/join`                                      |
-| 活動邀請    | 老師產生活動專屬連結／QR；無痕開連結即成活動訪客，不進班級名冊                                        | `POST /api/activities/:id/invites`・`GET /api/invites/:token`・`/join/a/$token`       |
-| 教室清單    | 老師見自己開的教室（含 code/url）；學生見加入中的教室                                                 | `GET /api/classrooms`・`/classrooms`                                                  |
-| 建立教室    | 任何登入 user 建立空教室（建班即成為該班老師；只建班級、產生邀請碼，不建活動，#210）                  | `POST /api/classrooms`・`/t/setup`                                                    |
-| 議題集      | 議題屬於班級；班級內新增／AI 生成；跨班複製為獨立副本；系統題任何登入 user 可用（#210）               | `GET/POST /api/classrooms/:id/topics`・`POST /api/topics/:id/copy`・`/classrooms/:id` |
-| 開活動      | 以班級議題或系統題開新活動（`live` 會換掉進行中活動；`test` 不換，見下）                              | `POST /api/classrooms/:id/activities`・`/t/setup`                                     |
-| 測試模式    | 老師建 1–6 個 slot，各自一條獨立對話；學生任何入口都看不到；結束後照常產報告                          | `GET/POST /api/activities/:id/slots`・`/t/live/:id`                                   |
-| 議題池      | 系統題＋個人題列表；AI 生成候選（未落庫）                                                             | `GET/POST /api/topics`・`POST /api/topics/generate`                                   |
+| 功能     | 說明                                                                                                                                                                                                                       | 主要路由 / 頁面                                                                                          |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 登入頁   | dithered colonnade 重設計（#178）：email＋密碼（PBKDF2、HMAC cookie 30 天）；登入／註冊模式切換（註冊 name 必填）；忘記密碼入口（#230）；系統公告欄；邀請碼入場；已登入 admin 由 guard 導 `/admin`；SSO 按鈕見「SSO 登入」 | `POST /api/auth/login`・`GET /api/auth/providers`・`/login`                                              |
+| 註冊學生 | 以邀請碼註冊學生帳號（email＋密碼），註冊即成員；同 email 可登入                                                                                                                                                           | `POST /api/auth/register`                                                                                |
+| 自行註冊 | 不需邀請碼，email＋密碼註冊為獨立帳號（#124）；加入班級後即一般學生                                                                                                                                                        | `POST /api/auth/signup`                                                                                  |
+| SSO 登入 | Google／Facebook OAuth 2.0／OIDC（PKCE＋state＋nonce，#124、#207）；同 email 與 email 帳號分屬兩個帳號；登入頁按 `GET /auth/providers` 探測渲染按鈕（#178）                                                                | `GET /api/auth/oauth/:provider/start`・`/callback`                                                       |
+| 密碼找回 | email 帳號申請重設信，以信中連結設定新密碼（#230，契約見 api-contract §2.2）；登入頁「忘記密碼」入口（#178）                                                                                                               | `POST /api/auth/password/forgot`・`POST /api/auth/password/reset`・`/forgot-password`・`/reset-password` |
+| 訪客加入 | 邀請碼頁雙軌（#181）：帳號直入免填名（`POST /join` 不帶 name、成員身分、落地班級頁）；或訪客填名＋ToS（不建帳號，取得活動層 participant cookie）；`/join` index 改由班級頁邀請碼欄取代                                     | `GET /api/join/:code`・`POST /api/join`・`/join/$code`                                                   |
+| 活動邀請 | 老師產生活動專屬連結／QR；無痕開連結即成活動訪客，不進班級名冊                                                                                                                                                             | `POST /api/activities/:id/invites`・`GET /api/invites/:token`・`/join/a/$token`                          |
+| 教室清單 | 老師見自己開的教室（含 code/url）；學生見加入中的教室                                                                                                                                                                      | `GET /api/classrooms`・`/classrooms`                                                                     |
+| 建立教室 | 任何登入 user 建立空教室（建班即成為該班老師；只建班級、產生邀請碼，不建活動，#210）                                                                                                                                       | `POST /api/classrooms`・`/t/setup`                                                                       |
+| 議題集   | 議題屬於班級；班級內新增／AI 生成；跨班複製為獨立副本；系統題任何登入 user 可用（#210）                                                                                                                                    | `GET/POST /api/classrooms/:id/topics`・`POST /api/topics/:id/copy`・`/classrooms/:id`                    |
+| 開活動   | 以班級議題或系統題開新活動（`live` 會換掉進行中活動；`test` 不換，見下）                                                                                                                                                   | `POST /api/classrooms/:id/activities`・`/t/setup`                                                        |
+| 測試模式 | 老師建 1–6 個 slot，各自一條獨立對話；學生任何入口都看不到；結束後照常產報告                                                                                                                                               | `GET/POST /api/activities/:id/slots`・`/t/live/:id`                                                      |
+| 議題池   | 系統題＋個人題列表；AI 生成候選（未落庫）                                                                                                                                                                                  | `GET/POST /api/topics`・`POST /api/topics/generate`                                                      |
 
 ## 單人：與蘇格拉底對話
 
@@ -39,7 +40,7 @@
 | 3D 頭像  | three.js 蘇格拉底半身像（`socrates.glb`）＋viseme/expression morph targets，對話頁角落小窗 `SocratesCompanion` 呈現（可拖曳、可關閉、主題切換墨色）             | `SocratesCompanion`・`public/socrates.glb`                  |
 | 情緒表現 | avatar extension 產生 `app.emotion` entry（機率本體）→ 頭像表情映射                                                                                             | `dialogue.tsx`（thinking 暫態 Confused；回合後按 entry）    |
 | 語音輸入 | 原生 SpeechRecognition 優先；無支援（Firefox）時 MediaRecorder → server STT；effect-free hook（#183）                                                           | `POST /api/stt`・`useVoiceInput`                            |
-| 語音朗讀 | 單通道 TTS（跨 tab 仲裁、句尾截斷 ≤4000 字）＋說話中振幅驅動嘴型（#180/#183）                                                                                   | `POST /api/tts`・`lib/speech.ts`                            |
+| 語音朗讀 | 單通道 TTS（跨 tab 仲裁、句尾截斷 ≤4000 字）＋說話中振幅驅動嘴型（#180/#183）                                                                                   | `POST /api/tts`・`lib/speechArbiter.ts`                     |
 | 名詞查詢 | 選取文字 → 查詢面板（prose oneshot，失敗時顯示錯誤）；查詢紀錄持久化                                                                                            | `POST /api/lookup`・`TermPanel`                             |
 | 順帶一問 | 頂欄按鈕或在輸入框打 `/btw 問題` 開側欄，暫離蘇格拉底問定義／背景（例：電車難題）；fork 主對話，內容不回寫主對話與報告；「新話題」以當下主對話重新 fork（#121） | WS `btw` op（`api-contract.md` §5.4）・`BtwPanel`・`useBtw` |
 | 對話歷史 | pi transcript 永久保存於 DO；重連 watch 即恢復完整 view                                                                                                         | `watch`（無獨立歷史端點）                                   |
@@ -57,16 +58,16 @@
 
 ## 對話引擎（Pi Durable）
 
-| 能力             | 說明                                                                                                                              | 位置                                       |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| Durable 對話     | 每執行緒一個 Chat DO：transcript/admission/retry/恢復存於 DO SQLite（pi_* 表）；no queue（busy 拒絕）                             | `apps/server/src/do/chat.ts`               |
-| WebSocket        | `session.watch()` → view + chord ops；客戶端 `applyImmutable` 套用；斷線 `onConnectionError` 復原                                 | `apps/server/src/ws/`・`useDialogue`       |
-| 情緒協議         | avatar extension：Clef choice 題 → `app.emotion` entry（機率）；文字零污染（#111）                                                | `apps/server/src/pi/extensions/avatar/`    |
-| 違規偵測         | judgment extension：逐輪 Clef 分類＋`report_violation` 自報 tool → `app.violation` entry（#71）                                   | `apps/server/src/pi/extensions/judgment/`  |
-| BTW side session | btw extension：root 的 pi fork，只選 `btw`（`prompts/btw.md`）；host 預設 selection 排除 btw，主對話不受影響（#121）              | `apps/server/src/pi/extensions/btw.ts`     |
-| 網路搜尋         | websearch extension：`web_search`（全網）／`fetch_content`（任意 URL，per-hop SSRF 驗證）／`get_search_content`（分頁＋findText） | `apps/server/src/pi/extensions/websearch/` |
-| Agent profiles   | socrates／lookup／topic-gen／report-analyst——角色欄位，model 由 gateway 依 traffic class 解析（#113）                             | `apps/server/src/pi/agents/profiles.ts`    |
-| 供 mock 測試     | pi-ai faux provider（`LLM_PROVIDER=mock`）                                                                                        | `apps/server/src/pi/models.ts`             |
+| 能力             | 說明                                                                                                                                   | 位置                                       |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Durable 對話     | 每執行緒一個 Chat DO：transcript/admission/retry/恢復存於 DO SQLite（pi_* 表）；no queue（busy 拒絕）                                  | `apps/server/src/do/chat.ts`               |
+| WebSocket        | `session.watch()` → view + chord ops；客戶端 `applyImmutable` 套用；斷線 `onConnectionError` 復原                                      | `apps/server/src/ws/`・`useDialogue`       |
+| 情緒協議         | avatar extension：Clef choice 題 → `app.emotion` entry（機率）；文字零污染（#111）                                                     | `apps/server/src/pi/extensions/avatar/`    |
+| 違規偵測         | judgment extension：逐輪 Clef 分類＋`report_violation` 自報 tool → `app.violation` entry（#71）                                        | `apps/server/src/pi/extensions/judgment/`  |
+| BTW side session | btw extension：root 的 pi fork，只選 `btw`（`prompts/btw.md`）；host 預設 selection 排除 btw，主對話不受影響（#121）                   | `apps/server/src/pi/extensions/btw.ts`     |
+| 網路搜尋         | websearch extension：`web_search`（全網）／`fetch_content`（任意 URL，per-hop SSRF 驗證）／`get_search_content`（分頁＋findText）      | `apps/server/src/pi/extensions/websearch/` |
+| Agent profiles   | socrates／lookup／topic-gen／student-report／class-report／class-report-axes——角色欄位，model 由 gateway 依 traffic class 解析（#113） | `apps/server/src/pi/agents/profiles.ts`    |
+| 供 mock 測試     | pi-ai faux provider（`LLM_PROVIDER=mock`）                                                                                             | `apps/server/src/pi/models.ts`             |
 
 詳細：[`pi.md`](./pi.md)
 

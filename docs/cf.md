@@ -25,7 +25,7 @@ cf auth login          # 瀏覽器授權；與 wrangler login 的憑證互相獨
 cf --version
 ```
 
-- **Bun 不能載入 `cloudflare.config.ts`**——cf 指令必須以 Node 執行
+- **Bun 不能載入 `cloudflare.config.ts`**——cf 指令 MUST 以 Node 執行
 - CI／無人環境用 `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`（不吃 `cf auth login` 的憑證）
 
 ## 常用指令
@@ -47,15 +47,15 @@ cf --version
 
 `apps/web/cloudflare.config.ts`——TypeScript 設定，取代 `wrangler.jsonc`。本專案使用的鍵：
 
-| 鍵                                 | 本專案值                                                                        |
-| ---------------------------------- | ------------------------------------------------------------------------------- |
-| `worker.entrypoint`                | `../server/src/index.ts`（Worker 原始碼在 apps/server）                         |
-| `worker.compatibilityDate / Flags` | `2026-11-01` / `nodejs_compat`                                                  |
-| `worker.env.DB`                    | `bindings.d1({ name: "socrates", id: <固定 UUID> })`                            |
-| `worker.env.AI`                    | `bindings.ai({})`（dev 設 `CF_REMOTE_AI=true` 時 `dev.remote: true`）           |
-| `worker.env.Chat / ReportRunner`   | `bindings.durableObject({ worker, exportName })`                                |
-| `worker.exports`                   | `exports.durableObject({ storage: "sqlite" })`——**取代 wrangler 的 migrations** |
-| `worker.env.*`（text/secret）      | vars 與 secrets 宣告（dev 用 `loadEnv` 讀 `.env.local` override）               |
+| 鍵                                 | 本專案值                                                                                                          |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `worker.entrypoint`                | `../server/src/index.ts`（Worker 原始碼在 apps/server）                                                           |
+| `worker.compatibilityDate / Flags` | `2026-11-01` / `nodejs_compat`                                                                                    |
+| `worker.env.DB`                    | `bindings.d1({ name: "socrates", id: <固定 UUID> })`                                                              |
+| `worker.env.AI`                    | `bindings.ai({})`（dev 設 `CF_REMOTE_AI=true` 時 `dev.remote: true`）                                             |
+| `worker.env.Chat / ReportRunner`   | `bindings.durableObject({ worker, exportName })`                                                                  |
+| `worker.exports`                   | `exports.durableObject({ storage: "sqlite" })`——**取代 wrangler 的 migrations**                                   |
+| `worker.env.*`（text/secret）      | vars 與 secrets 宣告（dev：`.dev.vars` 存在時整檔優先，否則 `loadEnv` 讀 `.env.local` override——見下方 §Secrets） |
 
 注意：
 
@@ -82,7 +82,7 @@ cf deploy --prebuilt --mode production --secrets-file .env.production.local
 ```
 
 - `--mode` 配 `cloudflare.config.ts` 的 `switch (ctx.mode)`：staging／production 各自的資源
-- `--secrets-file`（dotenv 格式）是 secrets 的唯一通道——首次部署**必須**先備妥（見下方 Secrets），否則 `AUTH_SECRET` 未設，登入/對話全部 500；cf 會對值做 `$VAR`/`${VAR}` 環境變數展開，secret 值請避免含 `$`
+- `--secrets-file`（dotenv 格式）是 secrets 的唯一通道——首次部署 MUST 先備妥（見下方 Secrets），否則 `AUTH_SECRET` 未設，登入/對話全部 500；cf 會對值做 `$VAR`/`${VAR}` 環境變數展開，secret 值請避免含 `$`
 - dry-run 驗證（免憑證，fork PR 安全）：`cf deploy --prebuilt --mode production --dry-run`
 - 前端是同一 Worker 的 Static Assets——不需要另外的靜態部署
 - 團隊日常部署走 CI（push main）；手動 deploy 僅用於緊急修補——先確認本地 HEAD 與 main 一致
@@ -110,6 +110,10 @@ Schema 的 SSOT 是 `apps/server/migrations/*.sql`（`001_init.sql` 起依序前
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret（只在 `GOOGLE_CLIENT_ID` 非空時宣告；未宣告＝Google 登入停用，回 `oauth_unavailable`） | Google Cloud Console → OAuth 用戶端 |
 
 新增無條件 `bindings.secret()` 時，須同步核對 `PROD_SECRETS_FILE`，並在 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) 的 dry-run step 為該 binding 加入 dummy 值；若漏加 dummy，後續 PR CI 會持續發 `::warning`。dummy 值不可用於 production。
+
+### dev 通道與優先序（`.dev.vars` vs `.env.local`）
+
+dev 的 vars／secrets 取值只有一條規則：`apps/web/.dev.vars` 存在時，本地 bindings **整檔以它為準**（`@cloudflare/vite-plugin` 的 `loadDevVars`）——`.env`／`.env.local` 與 process env 一律不讀，且沒有任何遮蔽警告；沒有 `.dev.vars` 的機器（fresh clone 的預設）才由 `loadEnv` 讀 `.env.local`。兩條通道 MUST 二擇一：本地若留有早期 setup 產生的 `.dev.vars`，刪除它、或把它當唯一通道維護——`pnpm seed`（`apps/server/scripts/seed.mjs`）與 dev 啟動的 missing-secrets 警告（`apps/web/vite.config.ts`）都照同一條優先序取值。`--mode` 變體 `.dev.vars.<mode>` 存在時會取代 `.dev.vars`（官方行為，本專案未使用）。
 
 Google 登入另需 text binding `GOOGLE_CLIENT_ID`（`cloudflare.config.ts`：dev 由 `.env.local`，production 由 repo variable 於 build 時帶入），並在 Google Cloud Console 登錄 redirect URI `<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`；本地開發需在 `.env.local` 設 `PUBLIC_BASE_URL=http://localhost:5173`。建立用戶端、正式環境設定與 secret 輪替步驟見 [`google-oauth.md`](./google-oauth.md)。
 

@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
   const local = mode === "development" ? loadEnv(mode, import.meta.dirname, "") : {};
   const text = (key: string, fallback: string) => bindings.text(local[key] ?? fallback);
   const googleClientId = local.GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID ?? "";
+  const facebookAppId = local.FACEBOOK_APP_ID ?? process.env.FACEBOOK_APP_ID ?? "";
 
   return {
     worker: {
@@ -37,6 +38,12 @@ export default defineConfig(({ mode }) => {
         ...(googleClientId
           ? {
               GOOGLE_CLIENT_SECRET: mode === "development" ? text("GOOGLE_CLIENT_SECRET", "") : bindings.secret(),
+            }
+          : {}),
+        FACEBOOK_APP_ID: bindings.text(facebookAppId),
+        ...(facebookAppId
+          ? {
+              FACEBOOK_APP_SECRET: mode === "development" ? text("FACEBOOK_APP_SECRET", "") : bindings.secret(),
             }
           : {}),
         ALERT_FROM_EMAIL: text("ALERT_FROM_EMAIL", "noreply@socrates.g36maid.dev"),

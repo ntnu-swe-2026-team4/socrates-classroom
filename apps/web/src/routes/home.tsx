@@ -1,12 +1,15 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { classroomsOptions } from "@/api/queries";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/api";
+
+import { meQueryOptions } from "@/api/me";
+import { meOf } from "@/api/me";
 import { Button, Card, PageHeader } from "@/components/ui";
 import { useT, type MessageKey } from "@/i18n";
 
 export const Route = createFileRoute("/home")({
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
   },
   component: HomePage,
@@ -27,8 +30,8 @@ function greetingKey(): MessageKey {
 
 function HomePage() {
   const t = useT();
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
-  const classrooms = useQuery({ queryKey: ["classrooms"], queryFn: () => api.listClassrooms() });
+  const me = useQuery(meQueryOptions);
+  const classrooms = useQuery(classroomsOptions);
   const canManage = Boolean(me.data);
   const roomList = classrooms.data ?? [];
   const running = roomList.filter((room) => room.current && !room.current.finished);

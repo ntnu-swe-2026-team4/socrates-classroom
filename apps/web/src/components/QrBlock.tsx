@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import QRCode from "qrcode";
+import { qrOptions } from "@/api/queries";
 import { useT } from "@/i18n";
 
 export const absoluteUrl = (url: string) => (url.startsWith("/") ? `${window.location.origin}${url}` : url);
@@ -7,16 +7,7 @@ export const absoluteUrl = (url: string) => (url.startsWith("/") ? `${window.loc
 export function QrBlock({ url: rawUrl, size = 192 }: { url: string; size?: number }) {
   const t = useT();
   const url = absoluteUrl(rawUrl);
-  const { data: dataUrl } = useQuery({
-    queryKey: ["qr", url, size],
-    queryFn: () =>
-      QRCode.toDataURL(url, {
-        margin: 1,
-        width: size,
-        color: { dark: "#17181c", light: "#ffffff" },
-      }),
-    staleTime: Infinity,
-  });
+  const { data: dataUrl } = useQuery(qrOptions(url, size));
   const box = { width: size, height: size };
   if (!dataUrl) return <div style={box} className="rounded-xl bg-paper-deep" />;
   return (

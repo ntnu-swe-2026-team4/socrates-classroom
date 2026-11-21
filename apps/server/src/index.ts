@@ -8,10 +8,10 @@ export { Chat, ReportRunner };
 export type { RpcApp } from "./app";
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/") || url.pathname === "/health") {
-      return createApp().fetch(request, env);
+      return createApp().fetch(request, env, ctx);
     }
     try {
       return (await routeAgentRequest(request, env, { cors: false })) ?? new Response("Not found", { status: 404 });

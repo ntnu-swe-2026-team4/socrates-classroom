@@ -1,6 +1,6 @@
 # AGENTS.md — docs/ (documentation rules)
 
-This directory is the project's **documentation SSOT**. Each document owns one domain; domain knowledge lives in exactly one place — elsewhere, link to it. Never copy.
+This directory is the project's **documentation SSOT**. Each document owns one domain; domain knowledge lives in exactly one place — elsewhere, link to it. MUST NOT copy.
 
 ## SSOT map
 
@@ -22,19 +22,27 @@ This directory is the project's **documentation SSOT**. Each document owns one d
 
 ## Rules
 
-- **Never** state the same fact in two documents — write it in one, link from the others (anchors welcome).
-- **Current state vs. vision**: `feature.md` lists only features that **exist and are testable** (an unwired capability listed there = a bug); ideas, plans, and pending designs belong in `roadmap.md`. On completion, follow three steps: remove the roadmap entry → add a changelog entry → add the feature row.
-- **Never** keep stale content: a doc contradicting code/facts is a bug — fix or delete it on sight.
-- **Never** create a document without assigning its domain (update the SSOT map first).
-- When changing an API, read `api-contract.md` and `feature.md` together — the contract owns formats, feature owns existence.
+- MUST NOT state the same fact in two documents — write it in one, link from the others (anchors welcome).
+- **Current state vs. vision**: `feature.md` MUST list only features that **exist and are testable** (an unwired capability listed there = a bug); ideas, plans, and pending designs belong in `roadmap.md`. On completion, follow three steps: remove the roadmap entry → add a changelog entry → add the feature row.
+- MUST NOT keep stale content: a doc contradicting code/facts is a bug — fix or delete it on sight.
+- MUST NOT create a document without assigning its domain (update the SSOT map first).
+- When changing an API, you MUST read `api-contract.md` and `feature.md` together — the contract owns formats, feature owns existence.
 - Boundaries and prohibitions (ZDR, secrets) appear in both `providers.md` and the per-layer `AGENTS.md` files — `providers.md` is authoritative; AGENTS.md files carry only action directives.
-- Biome formats Markdown — after formatting, verify tables and semantics survived.
-- **Never** write an ambiguous date. Doc dates, verification stamps, and changelog entries are `YYYY-MM-DD`; a year-month alone is unverifiable, and "recently"/"lately" is not a date.
-- **Never** draw diagrams as ASCII art — always use Mermaid (`flowchart` / `sequenceDiagram` / `stateDiagram`, any diagram type). GitHub and most Markdown renderers render it natively.
+- Biome formats Markdown — after formatting, you MUST verify tables and semantics survived.
+- MUST NOT write an ambiguous date: doc dates, verification stamps, and changelog entries MUST be `YYYY-MM-DD`; a year-month alone is unverifiable, and "recently"/"lately" is not a date.
+- Diagrams MUST use Mermaid (`flowchart` / `sequenceDiagram` / `stateDiagram`, any diagram type) and MUST NOT be ASCII art. GitHub and most Markdown renderers render it natively.
 
 ## Language
 
-- Docs prose is **zh-TW**, but **all technical details are English**: component names, mechanism and architecture terms (e.g. failover, affinity, circuit breaker, ledger, projection, tiering, traffic class, sliding window, hibernation), identifiers, config keys, CLI flags, HTTP semantics. Never coin a Chinese translation for a technical term — the English term is what you grep for and what upstream docs use.
+- Docs prose is **zh-TW**, but **all technical details are English**: component names, mechanism and architecture terms (e.g. failover, affinity, circuit breaker, ledger, projection, tiering, traffic class, sliding window, hibernation), identifiers, config keys, CLI flags, HTTP semantics. MUST NOT coin a Chinese translation for a technical term — the English term is what you grep for and what upstream docs use.
 - Use zh-TW where the content is product-level: feature names, user-facing copy, business rationale, spec/product decisions (主題集、老師即時面板、去識別化、停損…).
 - No gratuitous English in product prose, no gratuitous Chinese in technical description. If the codebase, the platform, or upstream docs establish an English name for something, use that name.
 - This file (and every `AGENTS.md`) is **English only** — they are agent-facing.
+
+## Normative language
+
+- Rule statements in `docs/` use **RFC 2119 keywords as clarified by RFC 8174** (BCP 14): MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT, MAY (REQUIRED, RECOMMENDED, OPTIONAL are synonyms). Keywords are normative **only in ALL CAPS** — lowercase "must" is plain prose, so avoid lowercase forms entirely.
+- MUST marks a non-negotiable rule (a violation is a bug); SHOULD marks a strong default where a documented, engineering-justified deviation is acceptable; MAY marks a genuine option. MUST NOT attach keywords to descriptions or background — keyword inflation destroys the signal.
+- Keywords stay in English inside zh-TW prose (per § Language); never translate them (write 「fallback MUST 鎖模型白名單」, not 「必須」).
+- Existing prose migrates opportunistically: when a rule statement is edited, convert it to keyword form in the same change; a statement whose keyword strength contradicts its wording is a bug — fix on sight.
+- This policy covers `docs/*.md`; the English `AGENTS.md` files MAY adopt the same keywords but are not required to.

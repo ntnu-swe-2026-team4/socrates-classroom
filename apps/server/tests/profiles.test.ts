@@ -6,7 +6,13 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createRegistry, Harness } from "@earendil-works/pi-durable";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import { BTW_THINKING_LEVEL, runProfile, PROFILES, profileRegistry } from "../src/pi/agents/profiles";
-import { SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../src/pi/extensions/report-submit";
+import {
+  reportSubmitAxesExtension,
+  reportSubmitExtension,
+  SUBMIT_CLASS_AXES_REPORT,
+  SUBMIT_CLASS_REPORT,
+  SUBMIT_STUDENT_ANALYSIS,
+} from "../src/pi/extensions/report-submit";
 
 describe("agent profiles (#113: role definitions, models resolved by gateway)", () => {
   it("profiles table: role fields correct (zero model hardcode)", () => {
@@ -16,6 +22,18 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(PROFILES["topic-gen"].trafficClass).toBe("batch");
     expect(PROFILES["student-report"].extensions).toEqual(["report-submit"]);
     expect(PROFILES["class-report"].extensions).toEqual(["report-submit"]);
+    expect(reportSubmitExtension.tools?.map((tool) => tool.name)).toEqual([
+      SUBMIT_STUDENT_ANALYSIS,
+      SUBMIT_CLASS_REPORT,
+    ]);
+    expect(reportSubmitAxesExtension.tools?.map((tool) => tool.name)).toEqual([SUBMIT_CLASS_AXES_REPORT]);
+    expect(
+      profileRegistry(PROFILES["class-report-axes"], env as never)
+        .snapshot()
+        .tools()
+        .map(({ tool }) => tool.name)
+        .filter((name) => name.startsWith("submit_")),
+    ).toEqual([SUBMIT_CLASS_AXES_REPORT]);
     for (const profile of Object.values(PROFILES)) {
       const json = JSON.stringify(profile);
       expect(json).not.toMatch(/glm|claude|gpt|@cf\//i);
@@ -28,11 +46,12 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(PROFILES["student-report"].instructions).toContain("First judge whether they stated a position");
     expect(PROFILES["class-report"].instructions).toContain("You are analyzing the whole class's conversations");
     expect(PROFILES["class-report"].instructions).toContain(SUBMIT_CLASS_REPORT);
+    expect(PROFILES["class-report-axes"].instructions).toContain(SUBMIT_CLASS_AXES_REPORT);
     expect(PROFILES.lookup.instructions).toContain("term-lookup assistant");
     expect(PROFILES["topic-gen"].instructions).toContain("debate topics");
     expect(PROFILES.lookup.instructions).not.toMatch(/\{\{/);
     expect(PROFILES["topic-gen"].instructions).not.toMatch(/\{\{/);
-    expect(PROFILES["student-report"].instructions).toContain("{{#if locale}}");
+    expect(PROFILES["student-report"].instructions).toContain("{{lang}}");
   });
 
   it("runProfile (lookup profile): full path on faux — conversation created, submit, wait, text returned", async () => {

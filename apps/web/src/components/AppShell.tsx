@@ -1,9 +1,11 @@
 import { useRef, useState } from "react";
+import { classroomsOptions } from "@/api/queries";
 import { useAccountSheetRequest } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, GraduationCap, Home, LogIn, LogOut, Menu, Moon, Settings, ShieldCheck, Sun } from "lucide-react";
 import { api, type User } from "@/api";
+import { meQueryOptions } from "@/api/me";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
 import { Initial, TrapDialog, cn } from "@/components/ui";
 import { useDomEvent } from "@/hooks/useSubscription";
@@ -41,7 +43,7 @@ function useSessionSync() {
   const checking = useRef(false);
   const check = async (force = false) => {
     if (checking.current || (!force && document.visibilityState !== "visible")) return;
-    const before = queryClient.getQueryData<User | null>(["me"]);
+    const before = queryClient.getQueryData<User | null>(meQueryOptions.queryKey);
     if (before === undefined) return;
     checking.current = true;
     try {
@@ -51,8 +53,8 @@ function useSessionSync() {
         return;
       }
       if (now && before && now.isAdmin !== before.isAdmin) {
-        queryClient.setQueryData(["me"], now);
-        await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+        queryClient.setQueryData(meQueryOptions.queryKey, now);
+        await queryClient.invalidateQueries({ queryKey: classroomsOptions.queryKey });
       }
     } catch {
       return;
@@ -82,13 +84,13 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
 
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const me = useQuery(meQueryOptions);
   const logout = useMutation({
     mutationFn: () => api.logout(),
     onSuccess: async () => {
       setAccountOpen(false);
       queryClient.clear();
-      queryClient.setQueryData(["me"], null);
+      queryClient.setQueryData(meQueryOptions.queryKey, null);
       await navigate({ to: "/" });
     },
   });

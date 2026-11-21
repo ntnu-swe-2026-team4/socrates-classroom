@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keyProviderModelsOptions, keyProvidersOptions, teacherKeysOptions } from "@/api/queries";
 import type { TeacherKeyStatus } from "@socrates/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
@@ -33,12 +34,8 @@ const kindOrder: ProviderKind[] = ["vendor", "relay", "platform"];
 export function ProviderKeys() {
   const t = useT();
   const queryClient = useQueryClient();
-  const keys = useQuery({ queryKey: ["teacherKeys"], queryFn: () => api.listTeacherKeys() });
-  const providers = useQuery({
-    queryKey: ["keyProviders"],
-    queryFn: () => api.listKeyProviders(),
-    staleTime: Infinity,
-  });
+  const keys = useQuery(teacherKeysOptions);
+  const providers = useQuery(keyProvidersOptions);
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -51,7 +48,7 @@ export function ProviderKeys() {
     return (id: string) => map.get(id) ?? id;
   }, [providers.data]);
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["teacherKeys"] });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: teacherKeysOptions.queryKey });
 
   const run = async (action: () => Promise<void>) => {
     setError(null);
@@ -477,11 +474,7 @@ function ProviderEditor({
 }) {
   const t = useT();
   const queryClient = useQueryClient();
-  const models = useQuery({
-    queryKey: ["keyProviderModels", entry.provider],
-    queryFn: () => api.listKeyProviderModels(entry.provider),
-    staleTime: Infinity,
-  });
+  const models = useQuery(keyProviderModelsOptions(entry.provider));
   const [search, setSearch] = useState("");
   const [editingLimit, setEditingLimit] = useState<string | null>(null);
   const [limitDraft, setLimitDraft] = useState("");
@@ -495,7 +488,7 @@ function ProviderEditor({
   const [keyDraft, setKeyDraft] = useState("");
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null);
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["teacherKeys"] });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: teacherKeysOptions.queryKey });
 
   const catalog = models.data ?? [];
   const owned = new Set(entry.models.map((leg) => leg.model));

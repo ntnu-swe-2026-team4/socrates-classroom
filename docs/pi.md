@@ -10,7 +10,7 @@
 
 - pi-durable 是 experimental，minor 升級可能改 API
 - 儲存格式跨 minor 不相容：pi 1.5 寫入的 conversation，退回 1.4 的 Worker 讀不了。升級是單向門，出錯只能 roll forward
-- 升級時 `agents` 與 `@earendil-works/pi-*` 必須一起評估
+- 升級時 `agents` 與 `@earendil-works/pi-*` MUST 一起評估
 
 ## 兩大原則
 
@@ -86,7 +86,7 @@ watch 沒有 event cursor；重連以 `watch({ from: newestEntryId + 1 })` 讓 w
 
 本專案已裝：
 
-- `socrates`（單檔）：preamble section，內容為 `apps/server/src/prompts/socrates.md`
+- `socrates`（單檔）：preamble section，依學生的介面語言取 `apps/server/src/prompts/socrates.md`（zh）／`socrates.en.md`／`socrates.es.md`；語言來自學生連線的 `?lang=`（語意見 `docs/api-contract.md`）
 - `avatar`（目錄，#111）：afterRun hook → Clef choice 題 → 寫 `app.emotion` entry（`{emotion, probabilities, confidence}`）
 - `judgment`（目錄，#71）：afterRun 分類 task＋`report_violation` tool → 寫 `app.violation` entry
 - `websearch`（目錄，#112）：`web_search` / `fetch_content` / `get_search_content` 三 tool（形制參考 pi-web-access，裁剪至 Workers 環境）
@@ -103,16 +103,17 @@ watch 沒有 event cursor；重連以 `watch({ from: newestEntryId + 1 })` 讓 w
 
 每個 conversation 自帶 `AgentState`：`model` / `extensions` / `tools` / `instructions` / `maxTurns`。`createConversation` / `fork` / `root` 都接受 `agent: AgentChange`。
 
-本專案的四個 profile（`pi/agents/profiles.ts`）：
+本專案的 profile（`pi/agents/profiles.ts`）：
 
 - `socrates`：學生對話（root），extensions 全開
 - `lookup`（#76）：查詢，websearch tools，maxTurns 3
 - `topic-gen`（#77）：出題，websearch tools，maxTurns 6
-- `report-analyst`（#74）：報告，無 tool，maxTurns 4
+- `student-report`、`class-report`（#74）：單人與群體報告，`report-submit` 的交件工具，maxTurns 4
+- `class-report-axes`（#159）：依老師的軸與軸數產生群體報告，`report-submit-axes` 的交件工具，maxTurns 4
 
 準則：功能升格為 agent（有工具迴圈或長任務）；單發的分類（violation / 情緒）用 oneshot。profile 不寫 model——model 由 gateway 依 traffic class 解析（`apps/server/providers.config.yaml`，#98）。
 
-驅動（`runProfile`）：`router.pick(trafficClass)` → `conversation.configure({ model })` → `submit` → `wait` → 從 answer entry 取文。models 與 registry 由呼叫端傳入，必須與 harness 同一實例——registry 訂閱與 faux 狀態都是 per-instance，另建一份拿不到（踩過）。
+驅動（`runProfile`）：`router.pick(trafficClass)` → `conversation.configure({ model })` → `submit` → `wait` → 從 answer entry 取文。models 與 registry 由呼叫端傳入，MUST 與 harness 同一實例——registry 訂閱與 faux 狀態都是 per-instance，另建一份拿不到（踩過）。
 
 ## Fallback legs
 
@@ -141,7 +142,7 @@ const model = ai(head, { fallback: [leg1, leg2] });
 
 孤兒 run（設計決定，#110）：WS 斷線時 run 繼續跑完，回應照樣進 transcript——學生回來看得到完整回答。佔用秒級（回覆 ≤3 句），不取消。
 
-registry 必須是 DO 的 instance field：pi 對 registry 的訂閱持續到 Harness 關閉，而 evicted object 永不關閉，module scope 的 registry 會跨實例洩漏（官方文件明言）。
+registry MUST 是 DO 的 instance field：pi 對 registry 的訂閱持續到 Harness 關閉，而 evicted object 永不關閉，module scope 的 registry 會跨實例洩漏（官方文件明言）。
 
 ## 測試
 

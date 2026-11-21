@@ -14,7 +14,7 @@
 **學生流量（生產鏈）全 ZDR；Coding Plan 不碰學生資料。**
 
 > 2026-11-10：自架 DGX Spark 腿**暫時移除**（等 Cloudflare Tunnel 上線＋key 管控後回歸，回歸 = 把 provider block 加回 `providers.config.yaml`，零程式碼變更）。移除期間平台鏈單一 provider（全 Cloudflare），排查單純。
-> fallback 必須**鎖模型白名單**（只准 0-day retention 的模型），不能只鎖 provider。
+> fallback MUST **鎖模型白名單**（只准 0-day retention 的模型），不能只鎖 provider。
 
 ---
 
