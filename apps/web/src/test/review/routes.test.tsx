@@ -292,9 +292,9 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
       "/api/classrooms/class-9/topics",
       "/api/classrooms/class-9/activities",
     ]);
-    expect(calls[0]!.body).toEqual({ name: "My class" });
-    expect(calls[1]!.body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
-    expect(calls[2]!.body).toMatchObject({ topicId: "topic-persisted", mode: "live" });
+    expect(calls[0].body).toEqual({ name: "My class" });
+    expect(calls[1].body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
+    expect(calls[2].body).toMatchObject({ topicId: "topic-persisted", mode: "live" });
   } finally {
     dispose();
   }

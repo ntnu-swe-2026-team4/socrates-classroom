@@ -116,7 +116,7 @@ function mountController(overrides: Partial<VoiceEnv> = {}): Harness {
 }
 
 function recorderOf(harness: Harness): FakeRecorder {
-  return (harness.env.createRecorder as Mock).mock.results[0]!.value as FakeRecorder;
+  return (harness.env.createRecorder as Mock).mock.results[0].value as FakeRecorder;
 }
 
 function recognitionResult(
@@ -279,7 +279,7 @@ test("the fallback path collects recorder chunks and uploads them through stt ex
   recorder.ondataavailable?.({ data: new Blob(["A"], { type: "audio/webm" }) });
   await h.controller.stop();
   expect(h.env.stt).toHaveBeenCalledTimes(1);
-  const blob = (h.env.stt as Mock).mock.calls[0]![0] as Blob;
+  const blob = (h.env.stt as Mock).mock.calls[0][0] as Blob;
   expect(blob.type).toBe("audio/webm");
   expect(h.onFinal).toHaveBeenCalledWith("Final transcript");
   expect(h.states).toEqual(["listening", "processing", "idle"]);
