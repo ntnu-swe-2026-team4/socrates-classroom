@@ -212,6 +212,9 @@ importers:
       '@earendil-works/pi-schema':
         specifier: ~1.5.0
         version: 1.5.0
+      '@hono/zod-validator':
+        specifier: ^0.9.1
+        version: 0.9.1(hono@4.13.16)(zod@4.6.6)
       '@socrates/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -1100,6 +1103,12 @@ packages:
     peerDependenciesMeta:
       '@modelcontextprotocol/sdk':
         optional: true
+
+  '@hono/zod-validator@0.9.1':
+    resolution: {integrity: sha512-iiv6w0qrIc0arfvCtUqBWsvl4fXjzaTcQcCJTTtCnkawF9HHGE+KjEl0ox3gQJ6rKZEgE3mLExlQCF72M+mNuw==}
+    peerDependencies:
+      hono: '>=4.11.2'
+      zod: ^3.25.0 || ^4.0.0
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -4559,6 +4568,11 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
+
+  '@hono/zod-validator@0.9.1(hono@4.13.16)(zod@4.6.6)':
+    dependencies:
+      hono: 4.13.16
+      zod: 4.6.6
 
   '@img/colour@1.1.0': {}
 

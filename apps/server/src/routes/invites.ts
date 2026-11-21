@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
-import { InviteJoinInputSchema } from "@socrates/shared";
+import { InviteJoinInputSchema, type InviteJoined } from "@socrates/shared";
 import { one } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, startParticipantSession } from "../auth";
 import {
@@ -13,7 +13,7 @@ import {
   type InviteRow,
   type MemberRow,
 } from "../services/members";
-import { enforceIpLimit, fail, newId, nowIso, parseBody, requireUser, type AppEnv } from "../http";
+import { enforceIpLimit, fail, newId, nowIso, rateLimit, requireUser, validateJson, type AppEnv } from "../http";
 
 async function activeInvite(db: D1Database, activityId: string): Promise<InviteRow | null> {
   return await one<InviteRow>(
@@ -70,9 +70,8 @@ export function inviteRoutes() {
         finishedAt: activity.finished_at,
       });
     })
-    .post("/invites/:token/join", async (c) => {
-      await enforceIpLimit(c, "invite-join", 30);
-      const input = await parseBody(c, InviteJoinInputSchema);
+    .post("/invites/:token/join", rateLimit("invite-join", 30), validateJson(InviteJoinInputSchema), async (c) => {
+      const input = c.req.valid("json");
       if (input.tosAccepted !== true) fail(422, "tos_required");
       const { activity } = await resolveInvite(c.env.DB, c.req.param("token"));
       if (activity.finished_at) fail(409, "activity_finished");
@@ -83,12 +82,13 @@ export function inviteRoutes() {
         const existing = await participantOf(c.env.DB, activity.id, held.participantId);
         if (existing && existing.user_id === (user?.id ?? null)) {
           await startParticipantSession(c, activity.id, existing.id);
-          return c.json({
+          const payload: InviteJoined = {
             activityId: activity.id,
             participantId: existing.id,
             displayName: existing.display_name,
             kind: existing.kind === "member" ? "member" : "guest",
-          });
+          };
+          return c.json(payload);
         }
       }
 
@@ -101,23 +101,25 @@ export function inviteRoutes() {
         );
         const participant = await ensureParticipant(c.env.DB, activity.id, user, at, member ? "member" : "guest");
         await startParticipantSession(c, activity.id, participant.id);
-        return c.json({
+        const payload: InviteJoined = {
           activityId: activity.id,
           participantId: participant.id,
           displayName: participant.display_name,
           kind: member ? "member" : "guest",
-        });
+        };
+        return c.json(payload);
       }
 
       const name = input.name?.trim();
       if (!name) fail(422, "validation");
       const participant = await createGuestParticipant(c.env.DB, activity.id, name, at);
       await startParticipantSession(c, activity.id, participant.id);
-      return c.json({
+      const payload: InviteJoined = {
         activityId: activity.id,
         participantId: participant.id,
         displayName: participant.display_name,
         kind: "guest",
-      });
+      };
+      return c.json(payload);
     });
 }

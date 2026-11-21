@@ -8,7 +8,7 @@ import {
   type User,
 } from "@socrates/shared";
 import { all, batch, one, run, type SqlEntry } from "../db/d1";
-import { fail, newId, nowIso, parseBody, requireUser, type AppEnv } from "../http";
+import { fail, guardUser, newId, nowIso, parseBody, requireUser, validateJson, type AppEnv } from "../http";
 import { classroomAccess, parsePrompts, topicForActivity, type TopicRow } from "../services/members";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -146,9 +146,9 @@ export function classroomsRoutes() {
       );
       return c.json(rows.map(parsePrompts));
     })
-    .post("/classrooms/:id/topics", async (c) => {
+    .post("/classrooms/:id/topics", guardUser(), validateJson(TopicCreateInputSchema), async (c) => {
       const user = requireUser(c);
-      const input = await parseBody(c, TopicCreateInputSchema);
+      const input = c.req.valid("json");
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");
       const id = newId("t_");
@@ -170,9 +170,9 @@ export function classroomsRoutes() {
       if (!row) fail(500, "internal_error");
       return c.json(parsePrompts(row), 201);
     })
-    .post("/classrooms/:id/activities", async (c) => {
+    .post("/classrooms/:id/activities", guardUser(), validateJson(ActivityStartInputSchema), async (c) => {
       const user = requireUser(c);
-      const input = await parseBody(c, ActivityStartInputSchema);
+      const input = c.req.valid("json");
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");
       await topicForActivity(c.env.DB, input.topicId, classroom.id, user.id);

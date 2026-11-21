@@ -5,12 +5,14 @@ import { hashPassword } from "../auth";
 import {
   enforceIpLimit,
   fail,
+  guardAdmin,
   langOf,
   newId,
   nowIso,
   parseBody,
   requireAdmin,
   uniqueViolationColumns,
+  validateJson,
   type AppEnv,
 } from "../http";
 
@@ -81,9 +83,9 @@ export function adminRoutes() {
       if (!created) fail(500, "internal_error");
       return c.json(created, 201);
     })
-    .patch("/admin/users/:id", async (c) => {
+    .patch("/admin/users/:id", guardAdmin(), validateJson(AdminUserUpdateInputSchema), async (c) => {
       const actor = requireAdmin(c);
-      const input = await parseBody(c, AdminUserUpdateInputSchema);
+      const input = c.req.valid("json");
       const target = await one<AdminUserRow>(c.env.DB, `SELECT ${ADMIN_USER_COLUMNS} FROM users WHERE id = $id`, {
         id: c.req.param("id"),
       });

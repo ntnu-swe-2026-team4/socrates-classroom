@@ -8,7 +8,18 @@ import {
   ApiError,
 } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
-import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, requireUser, type AppEnv } from "../http";
+import {
+  enforceIpLimit,
+  fail,
+  guardUser,
+  langOf,
+  newId,
+  nowIso,
+  parseBody,
+  requireUser,
+  validateJson,
+  type AppEnv,
+} from "../http";
 import { classroomAccess, parsePrompts, type TopicRow } from "../services/members";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
@@ -33,9 +44,9 @@ export function topicsRoutes() {
       );
       return c.json(rows.map(parsePrompts));
     })
-    .post("/topics/:id/copy", async (c) => {
+    .post("/topics/:id/copy", guardUser(), validateJson(TopicCopyInputSchema), async (c) => {
       const user = requireUser(c);
-      const input = await parseBody(c, TopicCopyInputSchema);
+      const input = c.req.valid("json");
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, input.classroomId, user);
       if (!isTeacher) fail(403, "forbidden");
       const source = await one<TopicRow>(c.env.DB, "SELECT * FROM topics WHERE id = $id", { id: c.req.param("id") });

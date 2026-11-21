@@ -1,5 +1,6 @@
-import type { Context } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import type { z } from "zod";
+import { zValidator } from "@hono/zod-validator";
 import { ApiError, type ErrorCode, type Lang, type User } from "@socrates/shared";
 import type { Env } from "./env";
 
@@ -48,6 +49,39 @@ export async function parseBody<S extends z.ZodType>(c: Ctx, schema: S): Promise
   const parsed = schema.safeParse(raw);
   if (!parsed.success) fail(422, "validation");
   return parsed.data;
+}
+
+export function validateJson<S extends z.ZodType>(schema: S) {
+  return zValidator("json", schema, (result) => {
+    if (!result.success) fail(422, "validation");
+  });
+}
+
+export function validateQuery<S extends z.ZodType>(schema: S) {
+  return zValidator("query", schema, (result) => {
+    if (!result.success) fail(422, "validation");
+  });
+}
+
+export function rateLimit(key: string, max: number): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    await enforceIpLimit(c, key, max);
+    await next();
+  };
+}
+
+export function guardUser(): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    requireUser(c);
+    await next();
+  };
+}
+
+export function guardAdmin(): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    requireAdmin(c);
+    await next();
+  };
 }
 
 export function requireUser(c: Ctx): User {

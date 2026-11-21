@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import type { TeacherKeyStatus } from "@socrates/shared";
+import type { TeacherKeyEcho, TeacherKeyModelEcho, TeacherKeyStatus } from "@socrates/shared";
 import { all, batch, one, run } from "../db/d1";
-import { fail, nowIso, parseBody, requireUser, type AppEnv } from "../http";
+import { fail, guardUser, nowIso, parseBody, requireUser, validateJson, type AppEnv } from "../http";
 import { encryptKey } from "../auth-crypto";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 
@@ -130,10 +130,10 @@ export function teacherKeyRoutes() {
       );
       return c.json({ providers: input.providers });
     })
-    .put("/settings/keys/:provider/models/order", async (c) => {
+    .put("/settings/keys/:provider/models/order", guardUser(), validateJson(ModelOrderInputSchema), async (c) => {
       const user = requireUser(c);
       const provider = c.req.param("provider");
-      const input = await parseBody(c, ModelOrderInputSchema);
+      const input = c.req.valid("json");
       const owned = await all<{ model: string }>(
         c.env.DB,
         "SELECT model FROM teacher_key_models WHERE user_id = $uid AND provider_id = $pid",
@@ -155,10 +155,10 @@ export function teacherKeyRoutes() {
       );
       return c.json({ models: input.models });
     })
-    .put("/settings/keys/:provider/models", async (c) => {
+    .put("/settings/keys/:provider/models", guardUser(), validateJson(ModelInputSchema), async (c) => {
       const user = requireUser(c);
       const provider = c.req.param("provider");
-      const input = await parseBody(c, ModelInputSchema);
+      const input = c.req.valid("json");
       const def = keyableProvider(provider);
       if (!def) fail(422, "byok_provider_invalid");
       if (!def.getModels().some((model) => model.id === input.model)) fail(422, "byok_provider_invalid");
@@ -173,11 +173,8 @@ export function teacherKeyRoutes() {
         "SELECT max_concurrency FROM teacher_key_models WHERE user_id = $uid AND provider_id = $pid AND model = $model",
         { uid: user.id, pid: provider, model: input.model },
       );
-      const maxConcurrency = existing
-        ? "maxConcurrency" in input
-          ? input.maxConcurrency
-          : existing.max_concurrency
-        : (input.maxConcurrency ?? null);
+      const maxConcurrency =
+        ("maxConcurrency" in input ? input.maxConcurrency : (existing?.max_concurrency ?? null)) ?? null;
       if (existing) {
         await run(
           c.env.DB,
@@ -194,7 +191,8 @@ export function teacherKeyRoutes() {
           { uid: user.id, pid: provider, model: input.model, maxConcurrency, at: nowIso() },
         );
       }
-      return c.json({ provider, model: input.model, maxConcurrency });
+      const payload: TeacherKeyModelEcho = { provider, model: input.model, maxConcurrency };
+      return c.json(payload);
     })
     .delete("/settings/keys/:provider/models/:model", async (c) => {
       const user = requireUser(c);
@@ -206,10 +204,10 @@ export function teacherKeyRoutes() {
       if ((result.meta?.changes ?? 0) === 0) fail(404, "not_found");
       return c.body(null, 204);
     })
-    .put("/settings/keys/:provider", async (c) => {
+    .put("/settings/keys/:provider", guardUser(), validateJson(KeyInputSchema), async (c) => {
       const user = requireUser(c);
       const provider = c.req.param("provider");
-      const input = await parseBody(c, KeyInputSchema);
+      const input = c.req.valid("json");
       if (!keyableProvider(provider)) fail(422, "byok_provider_invalid");
       if (input.key === undefined) {
         const existing = await one<{ max_concurrency: number | null; monthly_quota_usd: number | null }>(
@@ -218,14 +216,16 @@ export function teacherKeyRoutes() {
           { uid: user.id, pid: provider },
         );
         if (!existing) fail(404, "not_found");
-        const maxConcurrency = "maxConcurrency" in input ? input.maxConcurrency : existing.max_concurrency;
-        const monthlyQuotaUsd = "monthlyQuotaUsd" in input ? input.monthlyQuotaUsd : existing.monthly_quota_usd;
+        const maxConcurrency = ("maxConcurrency" in input ? input.maxConcurrency : existing.max_concurrency) ?? null;
+        const monthlyQuotaUsd =
+          ("monthlyQuotaUsd" in input ? input.monthlyQuotaUsd : existing.monthly_quota_usd) ?? null;
         await run(
           c.env.DB,
           "UPDATE teacher_keys SET max_concurrency = $maxConcurrency, monthly_quota_usd = $quota, updated_at = $at WHERE user_id = $uid AND provider_id = $pid",
           { uid: user.id, pid: provider, maxConcurrency, quota: monthlyQuotaUsd, at: nowIso() },
         );
-        return c.json({ provider, maxConcurrency, monthlyQuotaUsd });
+        const payload: TeacherKeyEcho = { provider, maxConcurrency, monthlyQuotaUsd };
+        return c.json(payload);
       }
       const enc = await encryptKey(c.env, input.key);
       const existing = await one<{
@@ -243,9 +243,10 @@ export function teacherKeyRoutes() {
         { uid: user.id, pid: provider },
       );
       const order = existing?.sort_order ?? (last?.n ?? -1) + 1;
-      const maxConcurrency = "maxConcurrency" in input ? input.maxConcurrency : (existing?.max_concurrency ?? null);
+      const maxConcurrency =
+        ("maxConcurrency" in input ? input.maxConcurrency : (existing?.max_concurrency ?? null)) ?? null;
       const monthlyQuotaUsd =
-        "monthlyQuotaUsd" in input ? input.monthlyQuotaUsd : (existing?.monthly_quota_usd ?? null);
+        ("monthlyQuotaUsd" in input ? input.monthlyQuotaUsd : (existing?.monthly_quota_usd ?? null)) ?? null;
       await run(
         c.env.DB,
         `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at, max_concurrency, monthly_quota_usd)
@@ -262,7 +263,8 @@ export function teacherKeyRoutes() {
           at: nowIso(),
         },
       );
-      return c.json({ provider, last4: input.key.slice(-4), maxConcurrency, monthlyQuotaUsd });
+      const payload: TeacherKeyEcho = { provider, last4: input.key.slice(-4), maxConcurrency, monthlyQuotaUsd };
+      return c.json(payload);
     })
     .delete("/settings/keys/:provider", async (c) => {
       const user = requireUser(c);

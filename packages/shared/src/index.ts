@@ -367,6 +367,21 @@ export const TeacherKeyStatusSchema = z.object({
 });
 export type TeacherKeyStatus = z.infer<typeof TeacherKeyStatusSchema>;
 
+export const TeacherKeyEchoSchema = z.object({
+  provider: z.string(),
+  last4: z.string().optional(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+});
+export type TeacherKeyEcho = z.infer<typeof TeacherKeyEchoSchema>;
+
+export const TeacherKeyModelEchoSchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+});
+export type TeacherKeyModelEcho = z.infer<typeof TeacherKeyModelEchoSchema>;
+
 export const ViolationChoiceSchema = z.object({
   type: z.string(),
   probability: z.number().min(0).max(1),

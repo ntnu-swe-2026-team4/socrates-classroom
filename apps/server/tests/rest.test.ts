@@ -759,3 +759,25 @@ describe("uniqueViolationColumns (real D1 error envelope)", () => {
     expect(uniqueViolationColumns(new Error("FOREIGN KEY constraint failed"))).toEqual([]);
   });
 });
+describe("zValidator migration (#264): envelope and guard ordering parity", () => {
+  test("malformed JSON body → 422 validation, not hono's raw 400", async () => {
+    const res = await call("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{oops",
+    });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe("validation");
+  });
+
+  test("auth guards run before body validation on param routes (anonymous bodyless POST → 401)", async () => {
+    const topics = await call("/api/classrooms/c_whatever/topics", { method: "POST" });
+    expect(topics.status).toBe(401);
+
+    const models = await call("/api/settings/keys/openrouter/models", { method: "PUT" });
+    expect(models.status).toBe(401);
+
+    const admin = await call("/api/admin/users/u_whatever", { method: "PATCH" });
+    expect(admin.status).toBe(401);
+  });
+});
