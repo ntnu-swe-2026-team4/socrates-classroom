@@ -637,6 +637,7 @@ const messages = {
     login_err_oauth_failed: "第三方登入失敗，請再試一次。",
     login_err_oauth_unavailable: "這個登入方式尚未設定。",
     login_err_validation: "請確認 Email 格式，密碼至少 8 個字元。",
+    login_forgot: "忘記密碼？",
     login_facebook: "使用 Facebook 登入",
     login_google: "使用 Google 登入",
     login_guest_hint: "沒有帳號也能用邀請碼以訪客參加一場活動；活動結束後訪客身分會失效。",
@@ -1313,6 +1314,7 @@ const messages = {
     login_err_oauth_failed: "Third-party sign-in failed. Please try again.",
     login_err_oauth_unavailable: "This sign-in method is not configured.",
     login_err_validation: "Check the email format; passwords need at least 8 characters.",
+    login_forgot: "Forgot password?",
     login_facebook: "Sign in with Facebook",
     login_google: "Sign in with Google",
     login_guest_hint:
@@ -1999,6 +2001,7 @@ const messages = {
     login_err_oauth_failed: "Falló el inicio de sesión externo. Inténtalo de nuevo.",
     login_err_oauth_unavailable: "Este método de inicio de sesión no está configurado.",
     login_err_validation: "Revisa el correo; la contraseña necesita al menos 8 caracteres.",
+    login_forgot: "¿Olvidaste tu contraseña?",
     login_facebook: "Iniciar sesión con Facebook",
     login_google: "Iniciar sesión con Google",
     login_guest_hint:

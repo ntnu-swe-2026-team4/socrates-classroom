@@ -395,6 +395,14 @@ function LoginPage() {
                   </span>
                 )}
               </button>
+              {mode === "login" && (
+                <Link
+                  to="/forgot-password"
+                  className={cn("self-end text-[12.5px] underline underline-offset-4", FOCUS)}
+                >
+                  {t("login_forgot")}
+                </Link>
+              )}
             </form>
           </div>
         </div>

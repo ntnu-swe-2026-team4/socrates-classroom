@@ -418,6 +418,7 @@ test("#178: the colonnade login page renders provider buttons from the probe and
       "/api/auth/oauth/facebook/start",
     );
     expect(screen.getByRole("link", { name: "Back to the story" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Forgot password?" }).getAttribute("href")).toBe("/forgot-password");
     expect(screen.getByLabelText("Have an invite code?")).toBeTruthy();
     expect(screen.getByText("Maintenance window")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Continue as guest" })).toBeNull();
