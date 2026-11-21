@@ -635,3 +635,22 @@
 ### Fixed
 
 - 清除新規則首掃的真問題：`avatar.ts` 的 `console.warn`（品質閘門 #8 違規）、D1 計數欄位的 5 處冗餘 `Number()` 轉換、`speechArbiter.ts` finally early-return 改 if 區塊
+
+## 2026-11-21 — biome types domain 上線：type-aware lint 進 CI（`refactor/293-types-clean`，#293 step 1）
+
+### Added
+
+- `linter.domains.types: "all"`：type-aware 分析進 CI 阻斷級——注意 domain 的 `"recommended"` 值對 type-aware 規則是空集合（規則在 nursery），`"all"` 才是可用形狀
+- `useArraySortCompare` error 級：七處 `.sort()` 補顯式 code-unit 比較器（CJK fixture 的確定性排序）
+- `#293` spike 三層證據：`noFloatingPromises` 全庫僅 2 個真命中（promise �紀律已達標）、`noUnsafeTypeAssertion` 470 個（step 1b 分批）、`noUncheckedIndexedAccess` 開啟半徑 143 errors（step 4 另案）
+
+### Fixed
+
+- 死防衛清除（信型別）：`sink?.`（非 nullable）、`result?.text`、cast 後 `?.source`、`memberCount ?? 0`（前一 PR）
+- env 記錄改誠實型別 `Record<string, string | undefined>`（fallback 守衛變成型別必要）
+- `reattach` 的 verify 流重構為 local narrow（analyzer 可解析）
+
+### 帶證據的兩個 off（probe-verified 全誤報，nursery 推論限制）
+
+- `useAwaitThenable`：9/9 誤報——無法解析函式型別參數、narrowed local、overload set
+- `noUnnecessaryConditions`：16/21 誤報——TanStack 判別聯集 isPending（無 initialData 仍解為 always-falsy）、跨 closure 的 ref/field mutation、index access
