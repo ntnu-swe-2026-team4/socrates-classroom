@@ -2,6 +2,17 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-21 — 群體報告可依老師的軸與軸數產生（`feat/159-report-axes`，#159）
+
+### Added
+
+- `ReportRunner.startReport` 可帶 `axes`：群體報告改依老師的軸與軸數產生（流程見 `docs/architecture.md` ReportRunner）
+- `report-submit-axes` extension 與 `submit_class_axes_report` 工具，只裝在這條路徑用的 registry
+
+### Notes
+
+- 沒帶 `axes` 時群體報告與 main 相同（prompt、工具、輸入逐字不變）；目前沒有後端路由傳 `axes`
+
 ## 2026-11-21 — 殼層重構：side rail、compact 帳號選單、跨 tab session 同步（`split/179-appshell`，#179）
 
 ### Added

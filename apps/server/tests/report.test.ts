@@ -5,7 +5,13 @@ import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import type { StudentAnalysis } from "@socrates/shared";
-import { citesSpokenLines, pointOnAxis, reportAlarmPlan, toClassReport } from "../src/do/report-runner";
+import {
+  citesSpokenLines,
+  pointOnAxis,
+  reportAlarmPlan,
+  toClassReport,
+  toPlannedClassReport,
+} from "../src/do/report-runner";
 import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
 
 let teacherCookie: string;
@@ -302,6 +308,84 @@ describe("student reports cite only lines the student said", () => {
     expect(body.students).toHaveLength(1);
     expect(body.students[0]!.analysis?.claim.turns).toEqual([1]);
   }, 120_000);
+});
+
+describe("class report with an axes plan passed in (#159)", () => {
+  it("toPlannedClassReport: teacher's axes first as written; every axis must list every student once", () => {
+    const plan = { count: 3, teacher: [{ name: "契約", left: "守約", right: "人情" }] };
+    const roster = ["學生1", "學生2"];
+    const at = (id: string, side: "left" | "middle" | "right", strength: number) => ({
+      id,
+      turns: [1],
+      view: "v",
+      side,
+      strength,
+    });
+    const everyone = [at("學生1", "right", 2), at("學生2", "middle", 1)];
+    const added = { name: "生命", left: "可比較", right: "不可比較", positions: everyone, why: "w" };
+    const base = { students: [], unstated: [], overview: ["o"] };
+    const report = toPlannedClassReport(plan, roster, {
+      ...base,
+      teacherAxes: [{ positions: everyone, why: "w" }],
+      addedAxes: [added],
+    });
+    expect(report.axes.map(({ name, low, high }) => [name, low, high])).toEqual([
+      ["契約", "守約", "人情"],
+      ["生命", "可比較", "不可比較"],
+    ]);
+    expect(report.axes[0]!.positions.map(({ id, end, at: point }) => [id, end, point])).toEqual([
+      ["學生1", "high", 70],
+      ["學生2", "middle", 50],
+    ]);
+    const planned = (teacher: ReturnType<typeof at>[]) => ({
+      ...base,
+      teacherAxes: [{ positions: teacher, why: "w" }],
+      addedAxes: [],
+    });
+    expect(() => toPlannedClassReport(plan, roster, planned([at("學生1", "left", 1)]))).toThrow(
+      "report_axis_roster_mismatch",
+    );
+    expect(() => toPlannedClassReport(plan, roster, planned([...everyone, at("學生1", "left", 1)]))).toThrow(
+      "report_axis_roster_mismatch",
+    );
+    expect(() => toPlannedClassReport(plan, roster, planned([...everyone, at("學生9", "left", 1)]))).toThrow(
+      "report_axis_roster_mismatch",
+    );
+    expect(() => toPlannedClassReport(plan, roster, { ...base, teacherAxes: [], addedAxes: [] })).toThrow(
+      "report_teacher_axes_mismatch",
+    );
+    expect(() =>
+      toPlannedClassReport(plan, roster, { ...planned(everyone), addedAxes: [added, added, added] }),
+    ).toThrow("report_axes_over_count");
+  });
+
+  it("an axes plan passed in: the report has the teacher's axes first, then the added ones up to the count", async () => {
+    const created = await classroomWithActivity(teacherCookie, "老師軸班");
+    const account = await registerStudent(created.code, "小軸");
+    const participantId = await participantIdOf(created.activityId, account.cookie);
+    await speak(`${created.activityId}:${participantId}`, account.cookie, "我會守約");
+    await run(env.DB, "UPDATE activities SET finished_at = $at WHERE id = $id", {
+      id: created.activityId,
+      at: new Date().toISOString(),
+    });
+    await env.ReportRunner.getByName(created.activityId).startReport({
+      activityId: created.activityId,
+      axes: { count: 2, teacher: [{ name: "契約與承諾", left: "契約至上", right: "人情優先" }] },
+    });
+    let report: Response | null = null;
+    for (let i = 0; i < 120; i += 1) {
+      report = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacherCookie } });
+      if (report.status === 200) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    expect(report?.status).toBe(200);
+    const body = (await report?.json()) as {
+      classReport: { axes: Array<{ name: string; low: string; high: string; positions: unknown[] }> };
+    };
+    expect(body.classReport.axes).toHaveLength(2);
+    expect(body.classReport.axes[0]).toMatchObject({ name: "契約與承諾", low: "契約至上", high: "人情優先" });
+    for (const axis of body.classReport.axes) expect(axis.positions).toHaveLength(1);
+  }, 90_000);
 });
 
 describe("stored report read-back validation", () => {

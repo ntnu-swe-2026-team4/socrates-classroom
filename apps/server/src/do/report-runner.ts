@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { createRegistry, Harness } from "@earendil-works/pi-durable";
+import { createRegistry, Harness, type Registry } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import type { JsonObject } from "@earendil-works/pi-durable";
@@ -14,15 +14,25 @@ import { secretOf } from "../auth";
 import { buildModels } from "../pi/models";
 import { runProfile } from "../pi/agents/profiles";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
-import { reportSubmitExtension, SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../pi/extensions/report-submit";
+import {
+  reportSubmitAxesExtension,
+  reportSubmitExtension,
+  SUBMIT_CLASS_AXES_REPORT,
+  SUBMIT_CLASS_REPORT,
+  SUBMIT_STUDENT_ANALYSIS,
+} from "../pi/extensions/report-submit";
 import { all, one, run } from "../db/d1";
 import { nowIso } from "../http";
 import { classReportInput, studentReportInput } from "../prompts/assemble";
 import {
   ClassReportSubmissionSchema,
+  PlannedClassReportSubmissionSchema,
+  ReportAxesPlanSchema,
   StudentAnalysisSchema,
   type ClassReport,
   type ClassReportSubmission,
+  type PlannedClassReportSubmission,
+  type ReportAxesPlan,
   type Lang,
   type ReportPosition,
   type StudentAnalysis,
@@ -79,18 +89,25 @@ export class ReportRunner extends DurableObject<Env> {
     teacherOf: () => teacherOfActivity(this.env, this.ctx.id.name ?? ""),
   });
   readonly registry = createRegistry();
+  readonly axesRegistry = createRegistry();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.registry.install(reportSubmitExtension);
-    this.registry.install(createUsageExtension(this.env, () => teacherOfActivity(this.env, this.ctx.id.name ?? "")));
+    this.axesRegistry.install(reportSubmitAxesExtension);
+    for (const registry of [this.registry, this.axesRegistry]) {
+      registry.install(createUsageExtension(this.env, () => teacherOfActivity(this.env, this.ctx.id.name ?? "")));
+    }
     if (this.models.faux) {
       this.models.faux.setResponses([fauxReportScript]);
-      this.registry.install(fauxReplayExtension(this.models.faux, fauxReportScript));
+      for (const registry of [this.registry, this.axesRegistry]) {
+        registry.install(fauxReplayExtension(this.models.faux, fauxReportScript));
+      }
     }
   }
 
-  async startReport(input: { activityId: string }): Promise<"started" | "ready"> {
+  async startReport(input: { activityId: string; axes?: ReportAxesPlan }): Promise<"started" | "ready"> {
+    const axes = input.axes === undefined ? undefined : ReportAxesPlanSchema.parse(input.axes);
     const db = this.env.DB;
     const row = await one<{ status: string }>(db, "SELECT status FROM reports WHERE activity_id = $id", {
       id: input.activityId,
@@ -117,6 +134,8 @@ export class ReportRunner extends DurableObject<Env> {
         },
       );
     }
+    if (axes) await this.ctx.storage.put(AXES_PLAN_KEY, axes);
+    else await this.ctx.storage.delete(AXES_PLAN_KEY);
     if (!this.#inFlight) await this.ctx.storage.put("attempts", 0);
     await this.ctx.storage.setAlarm(Date.now() + 50);
     return "started";
@@ -215,6 +234,7 @@ export class ReportRunner extends DurableObject<Env> {
       { id: activityId },
     );
     if (!activity) throw new Error("activity_missing");
+    const axesPlan = await this.ctx.storage.get<ReportAxesPlan>(AXES_PLAN_KEY);
     if (this.models.faux && activity.statement.includes(FAUX_GENERATE_FAILURE_MARKER)) {
       throw new Error("faux_report_generate_failure");
     }
@@ -327,20 +347,17 @@ export class ReportRunner extends DurableObject<Env> {
       );
     }
 
+    const classRoster = roster.map((p) => pseudonyms.get(p.id) ?? "").filter(Boolean);
     const classInput = classReportInput(
       activity,
-      roster.map((p) => pseudonyms.get(p.id) ?? "").filter(Boolean),
+      classRoster,
       roster.map((p) => ({ id: pseudonyms.get(p.id) ?? p.id, transcript: rendered.get(p.id)?.text ?? "" })),
+      axesPlan,
     );
     try {
-      const { text: classText, payload: classPayload } = await this.runAgent(
-        harness,
-        "class-report",
-        classInput,
-        legs,
-        { lang: teacherLang, submitTool: SUBMIT_CLASS_REPORT },
-      );
-      const classReport = toClassReport(ClassReportSubmissionSchema.parse(payloadOf(classText, classPayload)));
+      const classReport = axesPlan
+        ? await this.plannedClassReport(axesPlan, classRoster, classInput, legs, teacherLang)
+        : await this.openClassReport(harness, classInput, legs, teacherLang);
       await this.persist(activityId, activity.title, classReport, roster, studentAnalyses, pseudonyms, rendered);
     } catch (error) {
       console.error("[report] class report failed", error instanceof Error ? error.name : typeof error);
@@ -349,29 +366,46 @@ export class ReportRunner extends DurableObject<Env> {
     }
   }
 
-  private async openHarness(): Promise<Harness> {
-    return Harness.open(
-      new MemoryStorage(),
-      { models: this.models.models, registry: this.registry },
-      BACKGROUND_CONTEXT,
+  private async openClassReport(harness: Harness, input: string, legs: TeacherLeg[], lang: Lang): Promise<ClassReport> {
+    const { text, payload } = await this.runAgent(harness, "class-report", input, legs, {
+      lang,
+      submitTool: SUBMIT_CLASS_REPORT,
+    });
+    return toClassReport(ClassReportSubmissionSchema.parse(payloadOf(text, payload)));
+  }
+
+  private async plannedClassReport(
+    plan: ReportAxesPlan,
+    roster: string[],
+    input: string,
+    legs: TeacherLeg[],
+    lang: Lang,
+  ): Promise<ClassReport> {
+    const harness = await this.openHarness(this.axesRegistry);
+    const { text, payload } = await this.runAgent(
+      harness,
+      "class-report-axes",
+      input,
+      legs,
+      { lang, submitTool: SUBMIT_CLASS_AXES_REPORT },
+      this.axesRegistry,
     );
+    return toPlannedClassReport(plan, roster, PlannedClassReportSubmissionSchema.parse(payloadOf(text, payload)));
+  }
+
+  private async openHarness(registry: Registry = this.registry): Promise<Harness> {
+    return Harness.open(new MemoryStorage(), { models: this.models.models, registry }, BACKGROUND_CONTEXT);
   }
 
   private async runAgent(
     harness: Harness,
-    profile: "student-report" | "class-report",
+    profile: "student-report" | "class-report" | "class-report-axes",
     input: string,
     legs: TeacherLeg[],
     options: { lang: Lang; submitTool: string },
+    registry: Registry = this.registry,
   ): Promise<{ text: string; payload: JsonObject | null }> {
-    return runProfile(
-      harness,
-      { models: this.models, registry: this.registry, env: this.env },
-      profile,
-      input,
-      legs,
-      options,
-    );
+    return runProfile(harness, { models: this.models, registry, env: this.env }, profile, input, legs, options);
   }
 
   private async teacherLanguage(): Promise<Lang> {
@@ -490,6 +524,31 @@ export function pointOnAxis(
   return side === "left" ? { end: "low", at: 50 - strength * 10 } : { end: "high", at: 50 + strength * 10 };
 }
 
+export function toPlannedClassReport(
+  plan: ReportAxesPlan,
+  roster: string[],
+  submission: PlannedClassReportSubmission,
+): ClassReport {
+  if (submission.teacherAxes.length !== plan.teacher.length) throw new Error("report_teacher_axes_mismatch");
+  if (plan.teacher.length + submission.addedAxes.length > plan.count) throw new Error("report_axes_over_count");
+  const { teacherAxes, addedAxes, ...rest } = submission;
+  const axes = [
+    ...teacherAxes.map(({ positions, why }, index) => ({ ...plan.teacher[index]!, positions, why })),
+    ...addedAxes,
+  ];
+  const everyone = [...roster].sort().join("\n");
+  for (const axis of axes) {
+    if (
+      axis.positions
+        .map(({ id }) => id)
+        .sort()
+        .join("\n") !== everyone
+    )
+      throw new Error("report_axis_roster_mismatch");
+  }
+  return toClassReport({ ...rest, axes });
+}
+
 export function toClassReport(submission: ClassReportSubmission): ClassReport {
   return {
     ...submission,
@@ -539,6 +598,7 @@ function textOf(content: string | readonly unknown[]): string {
     .join("");
 }
 
+const AXES_PLAN_KEY = "axesPlan";
 const FAUX_CLASS_FAILURE_MARKER = "FORCE-CLASS-REPORT-FAILURE";
 const FAUX_GENERATE_FAILURE_MARKER = "FORCE-REPORT-GENERATE-FAILURE";
 const FAUX_UNSPOKEN_TURN_MARKER = "FORCE-UNSPOKEN-TURN";
@@ -560,6 +620,30 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
       .filter(Boolean);
     const first = roster[0] ?? "學生A";
     const second = roster[1] ?? first;
+    const axesHeader = /## Axes: (\d+) in total; the teacher set (\d+|none)/.exec(prompt);
+    if (axesHeader) {
+      const everyone = roster.map((id) => ({ id, turns: [1], view: "v", side: "middle", strength: 1 }));
+      const count = Number(axesHeader[1]);
+      const teacher = axesHeader[2] === "none" ? 0 : Number(axesHeader[2]);
+      return fauxAssistantMessage(
+        [
+          fauxToolCall(SUBMIT_CLASS_AXES_REPORT, {
+            students: [{ id: first, summary: [{ step: "守約→會拉", turns: [1] }] }],
+            unstated: [],
+            teacherAxes: Array.from({ length: teacher }, () => ({ positions: everyone, why: "x" })),
+            addedAxes: Array.from({ length: count - teacher }, (_, index) => ({
+              name: `補${index + 1}`,
+              left: "甲",
+              right: "乙",
+              positions: everyone,
+              why: "x",
+            })),
+            overview: ["x"],
+          }),
+        ],
+        { stopReason: "toolUse" },
+      );
+    }
     return fauxAssistantMessage(
       [
         fauxToolCall(SUBMIT_CLASS_REPORT, {
