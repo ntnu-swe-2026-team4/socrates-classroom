@@ -132,24 +132,24 @@ function buildColonnade(W: number, H: number, LW: number) {
       }
     }
   }
-  for (let i = 0; i < W * H; i++) if (g[i]! > 0) g[i] = Math.min(1, g[i]! * 1.2 + 0.14);
+  for (let i = 0; i < W * H; i++) if (g[i] > 0) g[i] = Math.min(1, g[i] * 1.2 + 0.14);
   const hx: number[] = [];
   const hy: number[] = [];
   for (let yy = 0; yy < H; yy++)
     for (let xx = 0; xx < W; xx++) {
       const i = yy * W + xx;
-      const v = g[i]!;
+      const v = g[i];
       const on = v >= 0.5;
       const e = v - (on ? 1 : 0);
       if (on) {
         hx.push(xx);
         hy.push(yy);
       }
-      if (xx + 1 < W) g[i + 1]! += (e * 7) / 16;
+      if (xx + 1 < W) g[i + 1] += (e * 7) / 16;
       if (yy + 1 < H) {
-        if (xx > 0) g[i + W - 1]! += (e * 3) / 16;
-        g[i + W]! += (e * 5) / 16;
-        if (xx + 1 < W) g[i + W + 1]! += e / 16;
+        if (xx > 0) g[i + W - 1] += (e * 3) / 16;
+        g[i + W] += (e * 5) / 16;
+        if (xx + 1 < W) g[i + W + 1] += e / 16;
       }
     }
   return { hx, hy };
@@ -213,8 +213,8 @@ function createField(cv: HTMLCanvasElement, reserve: number): Field | null {
   for (let k = 0, haze = Math.round(core * 0.18); k < haze; k++) {
     const j = (R() * core) | 0;
     const s = 3 + R() * 12;
-    hx.push(hx[j]! + gs() * s);
-    hy.push(hy[j]! + gs() * s * 0.8);
+    hx.push(hx[j] + gs() * s);
+    hy.push(hy[j] + gs() * s * 0.8);
   }
   const n = hx.length;
   const f: Field = {
@@ -247,8 +247,8 @@ function createField(cv: HTMLCanvasElement, reserve: number): Field | null {
     const far = R() < 0.5;
     const a = R() * 6.283;
     const r = 8 + R() * 30;
-    f.sx[i] = far ? R() * W : hx[i]! + Math.cos(a) * r;
-    f.sy[i] = far ? R() * H : hy[i]! + Math.sin(a) * r * 0.7;
+    f.sx[i] = far ? R() * W : hx[i] + Math.cos(a) * r;
+    f.sy[i] = far ? R() * H : hy[i] + Math.sin(a) * r * 0.7;
     f.ph[i] = R() * 6.283;
     f.ax[i] = (R() - 0.5) * 40;
     f.per[i] = 25 + R() * 45;
@@ -269,7 +269,7 @@ function createField(cv: HTMLCanvasElement, reserve: number): Field | null {
     const right = i >= base;
     f.fl[i] = right ? W / 2 : 0;
     f.fs[i] = right ? W - W / 2 : W;
-    f.fx[i] = f.fl[i]! + R() * f.fs[i]!;
+    f.fx[i] = f.fl[i] + R() * f.fs[i];
     f.fy[i] = R() * H;
     f.fp[i] = R() * 6.283;
     f.fv[i] = 0.015 + R() * 0.0875;
@@ -279,14 +279,14 @@ function createField(cv: HTMLCanvasElement, reserve: number): Field | null {
 
 function displace(ox: Float32Array, oy: Float32Array, i: number, x: number, y: number, pointer: Pointer, push: number) {
   if (!pointer.active) return;
-  const dx = x + ox[i]! - pointer.x;
-  const dy = y + oy[i]! - pointer.y;
+  const dx = x + ox[i] - pointer.x;
+  const dy = y + oy[i] - pointer.y;
   const d2 = dx * dx + dy * dy;
   if (d2 >= PUSH_RADIUS * PUSH_RADIUS) return;
   const d = Math.sqrt(d2) || 0.001;
   const step = (PUSH_RADIUS - d) * push;
-  ox[i]! += (dx / d) * step;
-  oy[i]! += (dy / d) * step;
+  ox[i] += (dx / d) * step;
+  oy[i] += (dy / d) * step;
 }
 
 function drawField(f: Field, t: number, ink: number, pointer: Pointer, dt: number) {
@@ -296,48 +296,48 @@ function drawField(f: Field, t: number, ink: number, pointer: Pointer, dt: numbe
   const push = 1 - (1 - PUSH_RATE) ** (dt * 60);
   const win = 0.1;
   for (let i = 0; i < f.hx.length; i++) {
-    const hx = f.hx[i]!;
-    const hy = f.hy[i]!;
-    const q = f.ph[i]!;
-    const w = f.ws[i]!;
+    const hx = f.hx[i];
+    const hy = f.hy[i];
+    const q = f.ph[i];
+    const w = f.ws[i];
     const wa = 0.5 + 0.5 * Math.sin(t * 0.55 + hx * 0.018 - hy * 0.012);
     const wb = 0.5 + 0.5 * Math.sin(t * 0.37 - hx * 0.011 - hy * 0.021 + 2);
     const amp = 0.25 + 1.5 * wa ** 4 + 0.9 * wb ** 4;
     const sway = 0.9 * Math.sin(t * 0.21 + hy * 0.019) + 0.5 * Math.sin(t * 0.13 - hy * 0.007 + hx * 0.01);
     let x = hx + sway + amp * Math.sin(t * w + q);
     let y = hy + amp * 0.8 * Math.cos(t * w * 0.8 + q * 1.7);
-    const p = (t / f.per[i]! + f.st[i]!) % 1;
+    const p = (t / f.per[i] + f.st[i]) % 1;
     if (p < win) {
       const e = 0.5 - 0.5 * Math.cos((2 * Math.PI * p) / win);
-      const fx = f.sx[i]! + 8 * Math.sin(t * 0.17 + q) + 3 * Math.sin(t * 0.41 + q * 2.1);
-      const fy = f.sy[i]! + 6 * Math.cos(t * 0.13 + q * 1.3) + 3 * Math.sin(t * 0.37 + q);
-      const arc = Math.sin(Math.PI * e) * f.ax[i]!;
+      const fx = f.sx[i] + 8 * Math.sin(t * 0.17 + q) + 3 * Math.sin(t * 0.41 + q * 2.1);
+      const fy = f.sy[i] + 6 * Math.cos(t * 0.13 + q * 1.3) + 3 * Math.sin(t * 0.37 + q);
+      const arc = Math.sin(Math.PI * e) * f.ax[i];
       x += (fx - x) * e + arc;
       y += (fy - y) * e - arc * 0.5;
     }
-    ox[i]! *= keep;
-    oy[i]! *= keep;
+    ox[i] *= keep;
+    oy[i] *= keep;
     displace(ox, oy, i, x, y, pointer, push);
-    x = (x + ox[i]! + 0.5) | 0;
-    y = (y + oy[i]! + 0.5) | 0;
+    x = (x + ox[i] + 0.5) | 0;
+    y = (y + oy[i] + 0.5) | 0;
     if (x >= 0 && y >= 0 && x < W && y < H) buf[y * W + x] = ink;
   }
   for (let i = 0; i < f.fx.length; i++) {
-    const q = f.fp[i]!;
-    const v = f.fv[i]!;
+    const q = f.fp[i];
+    const v = f.fv[i];
     if (Math.sin(t * (0.4 + v * 0.6) + q * 3) < -0.7) continue;
-    const left = f.fl[i]!;
-    const span = f.fs[i]!;
-    let x = (f.fx[i]! - left + t * v * Math.cos(q) + 6 * Math.sin(t * 0.01375 + q)) % span;
-    let y = (f.fy[i]! + t * v * 0.6 * Math.sin(q) + 5 * Math.cos(t * 0.01125 + q * 1.7)) % H;
+    const left = f.fl[i];
+    const span = f.fs[i];
+    let x = (f.fx[i] - left + t * v * Math.cos(q) + 6 * Math.sin(t * 0.01375 + q)) % span;
+    let y = (f.fy[i] + t * v * 0.6 * Math.sin(q) + 5 * Math.cos(t * 0.01125 + q * 1.7)) % H;
     if (x < 0) x += span;
     x += left;
     if (y < 0) y += H;
-    cox[i]! *= keep;
-    coy[i]! *= keep;
+    cox[i] *= keep;
+    coy[i] *= keep;
     displace(cox, coy, i, x, y, pointer, push);
-    x = (x + cox[i]!) | 0;
-    y = (y + coy[i]!) | 0;
+    x = (x + cox[i]) | 0;
+    y = (y + coy[i]) | 0;
     if (x >= 0 && y >= 0 && x < W && y < H) buf[y * W + x] = ink;
   }
   f.ctx.putImageData(f.img, 0, 0);

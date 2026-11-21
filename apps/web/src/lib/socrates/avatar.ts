@@ -79,7 +79,7 @@ class ClipLayer {
 
   apply(i: number, base: number): number {
     if (!this.weight || !this.used[i] || !this.values) return base;
-    return base + (this.values[i]! - base) * this.weight;
+    return base + (this.values[i] - base) * this.weight;
   }
 }
 

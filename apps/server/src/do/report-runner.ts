@@ -546,7 +546,7 @@ export function toPlannedClassReport(
   if (plan.teacher.length + submission.addedAxes.length > plan.count) throw new Error("report_axes_over_count");
   const { teacherAxes, addedAxes, ...rest } = submission;
   const axes = [
-    ...teacherAxes.map(({ positions, why }, index) => ({ ...plan.teacher[index]!, positions, why })),
+    ...teacherAxes.map(({ positions, why }, index) => ({ ...plan.teacher[index], positions, why })),
     ...addedAxes,
   ];
   const everyone = [...roster].sort(byCodeUnit);
@@ -623,7 +623,7 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
         stopReason: "toolUse",
       });
     }
-    const rosterLine = prompt.split("## Roster:")[1]!.split("\n")[1] ?? "";
+    const rosterLine = prompt.split("## Roster:")[1].split("\n")[1] ?? "";
     const roster = rosterLine
       .split(",")
       .map((name) => name.trim())

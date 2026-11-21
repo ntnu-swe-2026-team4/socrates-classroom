@@ -19,7 +19,7 @@ function newCode(): string {
   while (code.length < 6) {
     const [byte] = crypto.getRandomValues(new Uint8Array(1));
     if (byte === undefined || byte >= CODE_MAX) continue;
-    code += CODE_ALPHABET[byte % CODE_ALPHABET.length]!;
+    code += CODE_ALPHABET[byte % CODE_ALPHABET.length];
   }
   return code;
 }

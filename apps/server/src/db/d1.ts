@@ -10,7 +10,7 @@ export function prepare(sql: string, params?: Record<string, unknown>): { sql: s
   let out = "";
   let quoted = false;
   for (let i = 0; i < sql.length; i += 1) {
-    const char = sql[i]!;
+    const char = sql[i];
     if (char === "'") {
       if (quoted && sql[i + 1] === "'") {
         out += "''";
@@ -24,7 +24,7 @@ export function prepare(sql: string, params?: Record<string, unknown>): { sql: s
     if (!quoted && char === "$") {
       const match = /^\$(\w+)/.exec(sql.slice(i));
       if (match) {
-        const name = match[1]!;
+        const name = match[1];
         if (!params || !(name in params)) throw new Error(`d1: missing bind param $${name}`);
         const value = params[name];
         values.push(value === undefined ? null : value);

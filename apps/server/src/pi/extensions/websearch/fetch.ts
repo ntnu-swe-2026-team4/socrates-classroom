@@ -52,13 +52,13 @@ function isPrivateIp(host: string): boolean {
   if (!groups) return false;
   if (groups.every((group) => group === 0)) return true;
   if (groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1) return true;
-  if (groups[0]! >= 0xfe80 && groups[0]! <= 0xfebf) return true;
-  if (groups[0]! >= 0xfc00 && groups[0]! <= 0xfdff) return true;
-  if (groups[0]! >= 0xff00) return true;
+  if (groups[0] >= 0xfe80 && groups[0] <= 0xfebf) return true;
+  if (groups[0] >= 0xfc00 && groups[0] <= 0xfdff) return true;
+  if (groups[0] >= 0xff00) return true;
   if (groups[0] === 0x0064 && groups[1] === 0xff9b) return true;
   if (groups[0] === 0x2002) return true;
   if (groups.slice(0, 6).every((group) => group === 0)) {
-    return isPrivateIpv4(groups[6]! >> 8, groups[6]! & 0xff) || isPrivateIpv4(groups[7]! >> 8, groups[7]! & 0xff);
+    return isPrivateIpv4(groups[6] >> 8, groups[6] & 0xff) || isPrivateIpv4(groups[7] >> 8, groups[7] & 0xff);
   }
   const ffff = groups.indexOf(0xffff);
   if (ffff !== -1 && ffff <= 5) {
@@ -67,7 +67,7 @@ function isPrivateIp(host: string): boolean {
     const ipv4 = rest.slice(-2);
     const middle = rest.slice(0, -2);
     if (before.every((group) => group === 0) && middle.every((group) => group === 0)) {
-      return isPrivateIpv4(ipv4[0]! >> 8, ipv4[0]! & 0xff) || isPrivateIpv4(ipv4[1]! >> 8, ipv4[1]! & 0xff);
+      return isPrivateIpv4(ipv4[0] >> 8, ipv4[0] & 0xff) || isPrivateIpv4(ipv4[1] >> 8, ipv4[1] & 0xff);
     }
   }
   return false;

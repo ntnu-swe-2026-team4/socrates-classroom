@@ -27,7 +27,7 @@ function boundedSpeech(text: string, maxChars: number): string {
   if (capped.length === text.length) return capped;
   let cut = -1;
   for (let index = 0; index < capped.length; index += 1) {
-    const at = SENTENCE_END.indexOf(capped[index]!);
+    const at = SENTENCE_END.indexOf(capped[index]);
     if (at >= 0 && (SENTENCE_END[at] === "\n" || capped[index + 1] === undefined || capped[index + 1] === " ")) {
       cut = index;
     }

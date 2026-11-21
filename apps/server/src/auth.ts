@@ -188,7 +188,7 @@ async function tokenClaims(
     const a = fromB64url(sig);
     const b = fromB64url(expected);
     let diff = 0;
-    for (let i = 0; i < a.length; i += 1) diff |= a[i]! ^ b[i]!;
+    for (let i = 0; i < a.length; i += 1) diff |= a[i] ^ b[i];
     if (diff !== 0) return null;
     const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as TokenClaims;
     if (claims.exp < Date.now()) return null;
@@ -283,7 +283,7 @@ export async function lookupParticipant(
     const a = fromB64url(sig);
     const b = fromB64url(expected);
     let diff = 0;
-    for (let i = 0; i < a.length; i += 1) diff |= a[i]! ^ b[i]!;
+    for (let i = 0; i < a.length; i += 1) diff |= a[i] ^ b[i];
     if (diff !== 0) return null;
     const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as ParticipantClaims;
     if (claims.exp < Date.now()) return null;

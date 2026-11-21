@@ -30,7 +30,7 @@ function SettingsPage() {
   const navigate = useNavigate();
   const wanted = Route.useSearch().section ?? "general";
   const section = SECTIONS.some((item) => item.id === wanted) ? wanted : "general";
-  const current = SECTIONS.find((item) => item.id === section) ?? SECTIONS[0]!;
+  const current = SECTIONS.find((item) => item.id === section) ?? SECTIONS[0];
   const hasOwnHeading = section === "keys";
 
   return (
