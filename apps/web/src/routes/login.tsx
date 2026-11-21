@@ -108,7 +108,9 @@ function LoginPage() {
   const [mode, setMode] = useState<Mode>(search.mode ?? "login");
   const [busy, setBusy] = useState(false);
   const [joinCode, setJoinCode] = useState("");
-  const [error, setError] = useState(search.error && ERROR_KEYS[search.error] ? t(ERROR_KEYS[search.error]!) : "");
+  const [errorKey, setErrorKey] = useState<MessageKey | null>(
+    search.error && ERROR_KEYS[search.error] ? ERROR_KEYS[search.error] : null,
+  );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -119,7 +121,7 @@ function LoginPage() {
 
   async function run(action: () => Promise<User>) {
     if (busy) return;
-    setError("");
+    setErrorKey(null);
     setBusy(true);
     try {
       const user = await action();
@@ -127,15 +129,16 @@ function LoginPage() {
       await navigate({ href: user.isAdmin && !search.next ? "/admin" : next });
     } catch (caught) {
       const code = caught instanceof ApiError ? caught.code : null;
-      setError(
+      setErrorKey(
         code === "unauthorized"
-          ? t("login_err_credentials")
+          ? "login_err_credentials"
           : code === "conflict" || code === "email_taken"
-            ? t("login_err_email_taken")
+            ? "login_err_email_taken"
             : code === "validation"
-              ? t("login_err_validation")
-              : t("common_error"),
+              ? "login_err_validation"
+              : "common_error",
       );
+    } finally {
       setBusy(false);
     }
   }
@@ -236,7 +239,7 @@ function LoginPage() {
                     aria-pressed={mode === value}
                     onClick={() => {
                       setMode(value);
-                      setError("");
+                      setErrorKey(null);
                     }}
                     className={cn(
                       "cursor-pointer px-3.5 py-1.5 text-[13px] not-first:border-l-[1.5px] not-first:border-comic-ink",
@@ -371,9 +374,9 @@ function LoginPage() {
                 />
                 {t("join_tos")}
               </label>
-              {error && (
+              {errorKey && (
                 <p role="alert" className="text-[12.5px] text-vermilion">
-                  {error}
+                  {t(errorKey)}
                 </p>
               )}
               <button
