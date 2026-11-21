@@ -354,7 +354,7 @@ interface ViolationSlice {
 
 ## 11. 端點外的既存通道
 
-- `GET /health` → `{ok: true}`（無需 session；deploy 後煙霧測試用）
+- `GET /health` → `{ok: true}`（無需 session；deploy 後煙霧測試用）——production 回應僅此欄位；`ENVIRONMENT=dev` 時另帶 `warnings: string[]`，列出缺值的 fail-fast secret（`AUTH_SECRET`／`BYOK_ENC_KEY`，缺值時對應登入與 teacher-key 端點回 `internal_error`）
 - `POST /api/dev/seed`（需 `ENVIRONMENT=dev`＋server 端 `SEED_TOKEN`；header 帶同值 token）——播種固定 fixture（8 個固定 id 帳號、共用密碼 `demo-demo`、3 個系統題、2 間教室）；冪等 upsert，重跑不改 id、不動既有對話資料
 
 ## 11.1 Dev-only 端點（#130；`ENVIRONMENT=dev` 之外一律 404）
