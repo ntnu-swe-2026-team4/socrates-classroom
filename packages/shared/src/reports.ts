@@ -32,44 +32,60 @@ export const ClassReportSchema = z.object({
 
 export type ClassReport = z.infer<typeof ClassReportSchema>;
 
-const submittedPosition = z.object({
-  id: z.string(),
-  turns,
-  view: z.string(),
-  side: z.enum(["left", "middle", "right"]),
-  strength: z.number().int().min(1).max(5),
-});
-
-const submittedAxis = z.object({
-  name: z.string(),
-  left: z.string(),
-  right: z.string(),
-  positions: z.array(submittedPosition).min(1),
-  why: z.string(),
-});
-
 export const ClassReportSubmissionSchema = ClassReportSchema.extend({
-  axes: z.array(submittedAxis),
+  axes: z.array(
+    z.object({
+      name: z.string(),
+      left: z.string(),
+      right: z.string(),
+      positions: z
+        .array(
+          z.object({
+            id: z.string(),
+            turns,
+            view: z.string(),
+            side: z.enum(["left", "middle", "right"]),
+            strength: z.number().int().min(1).max(5),
+          }),
+        )
+        .min(1),
+      why: z.string(),
+    }),
+  ),
 });
 
 export type ClassReportSubmission = z.infer<typeof ClassReportSubmissionSchema>;
 
-export const AXES_MAX = 3;
+const submittedAxis = ClassReportSubmissionSchema.shape.axes.element;
+const submittedPosition = submittedAxis.shape.positions.element;
+const AXES_MAX = 3;
+const axisEnd = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .refine((text) => !/[\r\n]/.test(text), { message: "axis_text_single_line" });
 
 export const ReportAxesPlanSchema = z
   .object({
     count: z.number().int().min(1).max(AXES_MAX),
-    teacher: z
-      .array(z.object({ name: z.string().min(1), left: z.string().min(1), right: z.string().min(1) }))
-      .max(AXES_MAX),
+    teacher: z.array(z.object({ name: axisEnd, left: axisEnd, right: axisEnd })).max(AXES_MAX),
   })
-  .refine((plan) => plan.teacher.length <= plan.count, { message: "teacher_axes_over_count" });
+  .refine((plan) => plan.teacher.length <= plan.count, { message: "teacher_axes_over_count" })
+  .refine((plan) => new Set(plan.teacher.map(({ name }) => name)).size === plan.teacher.length, {
+    message: "teacher_axis_name_duplicate",
+  });
 
 export type ReportAxesPlan = z.infer<typeof ReportAxesPlanSchema>;
 
-export const PlannedClassReportSubmissionSchema = ClassReportSchema.omit({ axes: true }).extend({
-  teacherAxes: z.array(z.object({ positions: z.array(submittedPosition).min(1), why: z.string() })),
+export const PlannedClassReportSubmissionSchema = z.object({
+  students: ClassReportSchema.shape.students,
+  unstated: ClassReportSchema.shape.unstated,
+  teacherAxes: z.array(
+    z.object({ axis: z.number().int().min(1), positions: z.array(submittedPosition), why: z.string() }),
+  ),
   addedAxes: z.array(submittedAxis),
+  overview: ClassReportSchema.shape.overview,
 });
 
 export type PlannedClassReportSubmission = z.infer<typeof PlannedClassReportSubmissionSchema>;

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { instructionsFor } from "../src/pi/agents/profiles";
 import { SOCRATES_PROMPTS } from "../src/pi/extensions/socrates";
 import { classReportInput, studentReportInput } from "../src/prompts/assemble";
+import { z } from "zod";
+import { ClassReportSubmissionSchema, StudentAnalysisSchema } from "@socrates/shared";
 import STUDENT_REPORT_RAW from "../src/prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../src/prompts/class-report.md?raw";
 import CLASS_REPORT_AXES_RAW from "../src/prompts/class-report-axes.md?raw";
@@ -30,6 +32,11 @@ describe("prompts (#161): what the report models receive is pinned", () => {
         ],
       ),
     ).toMatchSnapshot();
+  });
+
+  it("the existing report tools' JSON schemas are pinned", () => {
+    expect(z.toJSONSchema(ClassReportSubmissionSchema)).toMatchSnapshot();
+    expect(z.toJSONSchema(z.object({ report: StudentAnalysisSchema }))).toMatchSnapshot();
   });
 
   it("class report input with an axes plan: the count and the teacher's axes follow the topic", () => {

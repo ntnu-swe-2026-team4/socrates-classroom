@@ -4,7 +4,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
-import type { StudentAnalysis } from "@socrates/shared";
+import { z } from "zod";
+import { PlannedClassReportSubmissionSchema, ReportAxesPlanSchema, type StudentAnalysis } from "@socrates/shared";
 import {
   citesSpokenLines,
   pointOnAxis,
@@ -311,7 +312,7 @@ describe("student reports cite only lines the student said", () => {
 });
 
 describe("class report with an axes plan passed in (#159)", () => {
-  it("toPlannedClassReport: teacher's axes first as written; every axis must list every student once", () => {
+  it("toPlannedClassReport: teacher's axes first as written; every axis lists every student once", () => {
     const plan = { count: 3, teacher: [{ name: "契約", left: "守約", right: "人情" }] };
     const roster = ["學生1", "學生2"];
     const at = (id: string, side: "left" | "middle" | "right", strength: number) => ({
@@ -322,13 +323,20 @@ describe("class report with an axes plan passed in (#159)", () => {
       strength,
     });
     const everyone = [at("學生1", "right", 2), at("學生2", "middle", 1)];
-    const added = { name: "生命", left: "可比較", right: "不可比較", positions: everyone, why: "w" };
-    const base = { students: [], unstated: [], overview: ["o"] };
-    const report = toPlannedClassReport(plan, roster, {
-      ...base,
-      teacherAxes: [{ positions: everyone, why: "w" }],
-      addedAxes: [added],
+    const added = (name: string, positions = everyone) => ({
+      name,
+      left: "可比較",
+      right: "不可比較",
+      positions,
+      why: "w",
     });
+    const base = { students: [], unstated: [], overview: ["o"] };
+    const planned = (teacher = everyone, addedAxes = [added("生命")], axis = 1) => ({
+      ...base,
+      teacherAxes: [{ axis, positions: teacher, why: "w" }],
+      addedAxes,
+    });
+    const report = toPlannedClassReport(plan, roster, planned());
     expect(report.axes.map(({ name, low, high }) => [name, low, high])).toEqual([
       ["契約", "守約", "人情"],
       ["生命", "可比較", "不可比較"],
@@ -337,26 +345,43 @@ describe("class report with an axes plan passed in (#159)", () => {
       ["學生1", "high", 70],
       ["學生2", "middle", 50],
     ]);
-    const planned = (teacher: ReturnType<typeof at>[]) => ({
-      ...base,
-      teacherAxes: [{ positions: teacher, why: "w" }],
-      addedAxes: [],
-    });
-    expect(() => toPlannedClassReport(plan, roster, planned([at("學生1", "left", 1)]))).toThrow(
-      "report_axis_roster_mismatch",
-    );
-    expect(() => toPlannedClassReport(plan, roster, planned([...everyone, at("學生1", "left", 1)]))).toThrow(
-      "report_axis_roster_mismatch",
-    );
-    expect(() => toPlannedClassReport(plan, roster, planned([...everyone, at("學生9", "left", 1)]))).toThrow(
-      "report_axis_roster_mismatch",
-    );
-    expect(() => toPlannedClassReport(plan, roster, { ...base, teacherAxes: [], addedAxes: [] })).toThrow(
-      "report_teacher_axes_mismatch",
-    );
-    expect(() =>
-      toPlannedClassReport(plan, roster, { ...planned(everyone), addedAxes: [added, added, added] }),
-    ).toThrow("report_axes_over_count");
+    const fails = (submission: Parameters<typeof toPlannedClassReport>[2], code: string) =>
+      expect(() => toPlannedClassReport(plan, roster, submission)).toThrow(code);
+    fails(planned([at("學生1", "left", 1)]), "report_axis_roster_mismatch");
+    fails(planned([...everyone, at("學生1", "left", 1)]), "report_axis_roster_mismatch");
+    fails(planned([...everyone, at("學生9", "left", 1)]), "report_axis_roster_mismatch");
+    fails(planned(everyone, [added("生命", [at("學生1", "left", 1)])]), "report_axis_roster_mismatch");
+    fails(planned(everyone, [], 2), "report_teacher_axes_order");
+    fails(planned(everyone, [added("契約")]), "report_axis_name_duplicate");
+    fails(planned(everyone, [added("契約 ")]), "report_axis_name_duplicate");
+    fails({ ...base, teacherAxes: [], addedAxes: [] }, "report_teacher_axes_mismatch");
+    fails(planned(everyone, [added("a"), added("b"), added("c")]), "report_axes_over_count");
+    expect(toPlannedClassReport(plan, [], planned([], [])).axes).toEqual([]);
+  });
+
+  it("the planned tool asks for the axes before the overview, as the prompt orders", () => {
+    expect(Object.keys(z.toJSONSchema(PlannedClassReportSubmissionSchema).properties ?? {})).toEqual([
+      "students",
+      "unstated",
+      "teacherAxes",
+      "addedAxes",
+      "overview",
+    ]);
+  });
+
+  it("ReportAxesPlanSchema: count 1-3, teacher axes no more than the count, distinct one-line non-blank text", () => {
+    const axis = { name: "契約", left: "守約", right: "人情" };
+    expect(ReportAxesPlanSchema.safeParse({ count: 2, teacher: [axis] }).success).toBe(true);
+    for (const plan of [
+      { count: 0, teacher: [] },
+      { count: 4, teacher: [] },
+      { count: 1, teacher: [axis, axis] },
+      { count: 1, teacher: [{ ...axis, name: "  " }] },
+      { count: 1, teacher: [{ ...axis, left: "a\n## Roster:" }] },
+      { count: 2, teacher: [axis, { ...axis, left: "其他" }] },
+    ]) {
+      expect(ReportAxesPlanSchema.safeParse(plan).success).toBe(false);
+    }
   });
 
   it("an axes plan passed in: the report has the teacher's axes first, then the added ones up to the count", async () => {

@@ -15,7 +15,8 @@ export function studentReportInput(activity: { title: string; statement: string 
 export function axesBlock(plan: ReportAxesPlan): string {
   const set = plan.teacher.length === 0 ? "none" : String(plan.teacher.length);
   const lines = plan.teacher.map(
-    ({ name, left, right }, index) => `${index + 1}. ${name}: left end "${left}", right end "${right}"`,
+    ({ name, left, right }, index) =>
+      `${index + 1}. ${JSON.stringify(name)}: left end ${JSON.stringify(left)}, right end ${JSON.stringify(right)}`,
   );
   return section(`Axes: ${plan.count} in total; the teacher set ${set}`, lines.join("\n")).trimEnd();
 }

@@ -7,6 +7,8 @@ import { createRegistry, Harness } from "@earendil-works/pi-durable";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import { BTW_THINKING_LEVEL, runProfile, PROFILES, profileRegistry } from "../src/pi/agents/profiles";
 import {
+  reportSubmitAxesExtension,
+  reportSubmitExtension,
   SUBMIT_CLASS_AXES_REPORT,
   SUBMIT_CLASS_REPORT,
   SUBMIT_STUDENT_ANALYSIS,
@@ -21,6 +23,11 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(PROFILES["student-report"].extensions).toEqual(["report-submit"]);
     expect(PROFILES["class-report"].extensions).toEqual(["report-submit"]);
     expect(PROFILES["class-report-axes"].extensions).toEqual(["report-submit-axes"]);
+    expect(reportSubmitExtension.tools?.map((tool) => tool.name)).toEqual([
+      SUBMIT_STUDENT_ANALYSIS,
+      SUBMIT_CLASS_REPORT,
+    ]);
+    expect(reportSubmitAxesExtension.tools?.map((tool) => tool.name)).toEqual([SUBMIT_CLASS_AXES_REPORT]);
     for (const profile of Object.values(PROFILES)) {
       const json = JSON.stringify(profile);
       expect(json).not.toMatch(/glm|claude|gpt|@cf\//i);

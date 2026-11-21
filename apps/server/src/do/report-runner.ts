@@ -530,12 +530,15 @@ export function toPlannedClassReport(
   submission: PlannedClassReportSubmission,
 ): ClassReport {
   if (submission.teacherAxes.length !== plan.teacher.length) throw new Error("report_teacher_axes_mismatch");
+  if (submission.teacherAxes.some(({ axis }, index) => axis !== index + 1))
+    throw new Error("report_teacher_axes_order");
   if (plan.teacher.length + submission.addedAxes.length > plan.count) throw new Error("report_axes_over_count");
   const { teacherAxes, addedAxes, ...rest } = submission;
   const axes = [
     ...teacherAxes.map(({ positions, why }, index) => ({ ...plan.teacher[index]!, positions, why })),
-    ...addedAxes,
+    ...addedAxes.map((axis) => ({ ...axis, name: axis.name.trim() })),
   ];
+  if (new Set(axes.map(({ name }) => name)).size !== axes.length) throw new Error("report_axis_name_duplicate");
   const everyone = [...roster].sort().join("\n");
   for (const axis of axes) {
     if (
@@ -546,7 +549,7 @@ export function toPlannedClassReport(
     )
       throw new Error("report_axis_roster_mismatch");
   }
-  return toClassReport({ ...rest, axes });
+  return toClassReport({ ...rest, axes: roster.length === 0 ? [] : axes });
 }
 
 export function toClassReport(submission: ClassReportSubmission): ClassReport {
@@ -630,7 +633,11 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
           fauxToolCall(SUBMIT_CLASS_AXES_REPORT, {
             students: [{ id: first, summary: [{ step: "守約→會拉", turns: [1] }] }],
             unstated: [],
-            teacherAxes: Array.from({ length: teacher }, () => ({ positions: everyone, why: "x" })),
+            teacherAxes: Array.from({ length: teacher }, (_, index) => ({
+              axis: index + 1,
+              positions: everyone,
+              why: "x",
+            })),
             addedAxes: Array.from({ length: count - teacher }, (_, index) => ({
               name: `補${index + 1}`,
               left: "甲",
