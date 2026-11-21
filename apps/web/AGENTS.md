@@ -19,7 +19,7 @@ pnpm typecheck
 - The API layer is only `src/api/` (`httpApi` — the real backend; the v3 mock mode is retired, server-side `LLM_PROVIDER=mock` covers offline dev)
 - The dialogue transport is **WebSocket** (`/agents/chat/:name`): message types in `apps/server/src/ws/protocol.ts`, mechanics in `docs/pi.md`; client applies chord ops with `applyImmutable` — never hand-roll a delta applier; REST shapes come from `hc<RpcApi>` (R6; server declarations via `pnpm --filter @socrates/server run build:types` → `dist/types`, consumed through the `@server/*` tsconfig path) — any contract change lands in `docs/api-contract.md` + `packages/shared`
 - Styling is Tailwind v4 utilities; theme colors are CSS variables (`@theme` in `src/index.css`) — never hardcode color values
-- The landing story (`src/routes/index.tsx`) plays pre-rendered WebP sprite sheets from `public/story/` on `<canvas>` — no live 3D, no lottie. The assets are produced outside the repo (Blender renders packed with Pillow); bump `ASSET_VERSION` in that file whenever they are replaced. The remaining `src/landing/` files (`LandingChrome` for `/login`) retire with the login redesign unit (#178)
+- The landing story (`src/routes/index.tsx`) plays pre-rendered WebP sprite sheets from `public/story/` on `<canvas>` — no live 3D, no lottie. The assets are produced outside the repo (Blender renders packed with Pillow); bump `ASSET_VERSION` in that file whenever they are replaced.
 - **Never** put any key into a `VITE_*` variable (bundled into the browser)
 - **Ask first**: major upgrades of React/TanStack, changes to the route structure (`src/routes/`, file-based), changing `cloudflare.config.ts` bindings
 

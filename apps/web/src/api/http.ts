@@ -13,6 +13,8 @@ import type {
   InviteJoined,
   JoinInfo,
   JoinResult,
+  NotificationFeed,
+  OAuthProviders,
   Report,
   TeacherKeyStatus,
   TermExplanation,
@@ -34,6 +36,7 @@ import {
   LookupInputSchema,
   PasswordForgotInputSchema,
   PasswordResetInputSchema,
+  SignupInputSchema,
   SttResultSchema,
   TopicCopyInputSchema,
   TopicCreateInputSchema,
@@ -69,9 +72,12 @@ export interface KeyModelInfo {
 export interface Api {
   me(): Promise<User | null>;
   login(email: string, password: string): Promise<User>;
+  signup(input: { name: string; email: string; password: string; tosAccepted: boolean }): Promise<User>;
   logout(): Promise<void>;
   requestPasswordReset(email: string): Promise<void>;
   resetPassword(token: string, password: string): Promise<void>;
+  authProviders(): Promise<OAuthProviders>;
+  notifications(): Promise<NotificationFeed>;
   joinByCode(code: string): Promise<JoinInfo>;
   joinAsGuest(code: string, name?: string): Promise<JoinResult>;
   createActivityInvite(activityId: string): Promise<ActivityInvite>;
@@ -262,6 +268,11 @@ export const httpApi: Api = {
     announceSession();
     return user;
   },
+  async signup(input) {
+    const user = unwrap(await client.auth.signup.$post({ json: SignupInputSchema.parse(input) }));
+    announceSession();
+    return user;
+  },
   async logout() {
     await unwrap(await client.auth.logout.$post());
     clearLocalUserState();
@@ -272,6 +283,12 @@ export const httpApi: Api = {
   },
   async resetPassword(token, password) {
     await unwrap(await client.auth.password.reset.$post({ json: PasswordResetInputSchema.parse({ token, password }) }));
+  },
+  async authProviders() {
+    return unwrap(await client.auth.providers.$get());
+  },
+  async notifications() {
+    return unwrap(await client.notifications.$get());
   },
   async joinByCode(code) {
     return unwrap(await client.join[":code"].$get({ param: { code } }));
