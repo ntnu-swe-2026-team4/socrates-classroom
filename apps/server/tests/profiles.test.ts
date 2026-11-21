@@ -22,7 +22,6 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(PROFILES["topic-gen"].trafficClass).toBe("batch");
     expect(PROFILES["student-report"].extensions).toEqual(["report-submit"]);
     expect(PROFILES["class-report"].extensions).toEqual(["report-submit"]);
-    expect(PROFILES["class-report-axes"].extensions).toEqual(["report-submit-axes"]);
     expect(reportSubmitExtension.tools?.map((tool) => tool.name)).toEqual([
       SUBMIT_STUDENT_ANALYSIS,
       SUBMIT_CLASS_REPORT,

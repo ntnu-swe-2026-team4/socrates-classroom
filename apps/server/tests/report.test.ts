@@ -355,6 +355,8 @@ describe("class report with an axes plan passed in (#159)", () => {
     fails(planned(everyone, [], 2), "report_teacher_axes_order");
     fails(planned(everyone, [added("契約")]), "report_axis_name_duplicate");
     fails(planned(everyone, [added("契約 ")]), "report_axis_name_duplicate");
+    fails(planned(everyone, [added(" ")]), "report_axis_name_empty");
+    fails(planned([{ ...at("學生1", "left", 1), id: "學生1\n學生2" }]), "report_axis_roster_mismatch");
     fails({ ...base, teacherAxes: [], addedAxes: [] }, "report_teacher_axes_mismatch");
     fails(
       { ...planned(), teacherAxes: [...planned().teacherAxes, { axis: 2, positions: everyone, why: "w" }] },

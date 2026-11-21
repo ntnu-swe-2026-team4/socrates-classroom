@@ -393,7 +393,8 @@ export class ReportRunner extends DurableObject<Env> {
     try {
       return toPlannedClassReport(plan, roster, PlannedClassReportSubmissionSchema.parse(payloadOf(text, payload)));
     } catch (error) {
-      console.error("[report] axes plan report rejected", error instanceof Error ? error.message : typeof error);
+      const code = error instanceof Error && /^report_[a-z_]+$/.test(error.message) ? error.message : undefined;
+      console.error("[report] axes plan report rejected", code ?? (error instanceof Error ? error.name : typeof error));
       throw error;
     }
   }
@@ -543,16 +544,14 @@ export function toPlannedClassReport(
     ...teacherAxes.map(({ positions, why }, index) => ({ ...plan.teacher[index]!, positions, why })),
     ...addedAxes.map((axis) => ({ ...axis, name: axis.name.trim() })),
   ];
+  if (axes.some(({ name }) => name === "")) throw new Error("report_axis_name_empty");
   if (new Set(axes.map(({ name }) => name)).size !== axes.length) throw new Error("report_axis_name_duplicate");
-  const everyone = [...roster].sort().join("\n");
+  const everyone = [...roster].sort();
   for (const axis of axes) {
-    if (
-      axis.positions
-        .map(({ id }) => id)
-        .sort()
-        .join("\n") !== everyone
-    )
+    const listed = axis.positions.map(({ id }) => id).sort();
+    if (listed.length !== everyone.length || listed.some((id, index) => id !== everyone[index])) {
       throw new Error("report_axis_roster_mismatch");
+    }
   }
   return toClassReport({ ...rest, axes });
 }

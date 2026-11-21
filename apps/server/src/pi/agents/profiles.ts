@@ -24,7 +24,7 @@ import { createWebSearchExtension } from "../extensions/websearch";
 import { getRouter, type TrafficClass } from "../../gateway/router";
 import type { SettleKind } from "../../gateway/ledger";
 import { teacherLegsOf, type TeacherLeg } from "../credentials";
-import { reportSubmitAxesExtension, reportSubmitExtension } from "../extensions/report-submit";
+import { reportSubmitExtension } from "../extensions/report-submit";
 import { createUsageExtension } from "../extensions/usage";
 import type { JsonObject } from "@earendil-works/pi-durable";
 
@@ -111,7 +111,6 @@ export function profileRegistry(profile: AgentProfile, env: Env): Registry {
   }
   if (profile.extensions.includes("websearch")) registry.install(createWebSearchExtension(env.AI));
   if (profile.extensions.includes("report-submit")) registry.install(reportSubmitExtension);
-  if (profile.extensions.includes("report-submit-axes")) registry.install(reportSubmitAxesExtension);
   return registry;
 }
 
