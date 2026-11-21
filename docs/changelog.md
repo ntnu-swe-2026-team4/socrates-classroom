@@ -2,6 +2,13 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-22 — TS 靜態保證 step 2 L3：noNonNullAssertion 全域凍結 error（`refactor/293-non-null-l3-freeze`，#293）
+
+### Changed
+
+- `style.noNonNullAssertion` 從 `off` 直接翻全域 `error`，L1 引入的 src-scoped override 隨之退役（此時全庫探針為零，凍結不帶任何豁免面）——任何新 `!`（含 tests）即 CI 阻斷；已插 probe 實證測試檔會被擋
+- #293 step 2 至此全部落地：L1 清 src 84 處、L2 清 tests 185 處、本層凍結——總量 269→0，規則以 error 級永久凍結
+
 ## 2026-11-22 — TS 靜態保證 step 2 L2：tests 層 non-null assertion 清零（`refactor/293-non-null-l2-tests`，#293）
 
 ### Added

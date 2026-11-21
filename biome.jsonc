@@ -56,7 +56,7 @@
         "noUnusedImports": "error"
       },
       "style": {
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "error"
       },
       "complexity": {
         "noVoid": "off"
@@ -143,16 +143,6 @@
         "rules": {
           "suspicious": {
             "noConsole": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["apps/*/src/**", "packages/*/src/**", "!**/*.test.ts", "!**/*.test.tsx", "!apps/web/src/test/**"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noNonNullAssertion": "error"
           }
         }
       }
