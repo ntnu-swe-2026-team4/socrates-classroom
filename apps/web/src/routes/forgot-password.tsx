@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PASSWORD_RESET_TTL_MINUTES } from "@socrates/shared";
 import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@/api";
 import { Button, Field, Input } from "@/components/ui";
@@ -30,7 +31,7 @@ function ForgotPasswordPage() {
         <h1 className="text-[22px] leading-tight font-semibold tracking-tight text-ink">{t("forgot_title")}</h1>
         {state === "sent" ? (
           <p role="status" className="mt-3 text-sm leading-relaxed text-ink-soft">
-            {t("forgot_sent")}
+            {t("forgot_sent", { minutes: PASSWORD_RESET_TTL_MINUTES })}
           </p>
         ) : (
           <form

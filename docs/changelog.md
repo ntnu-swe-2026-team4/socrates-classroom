@@ -6,6 +6,7 @@
 
 ### Added
 
+- Review suggestion 落實：重設 TTL 單一事實——`PASSWORD_RESET_TTL_MINUTES`（shared）由 server `auth.ts` 與 web 忘記密碼文案（`{minutes}` 插值，三語）共同引用，終結「30 分鐘」兩處維護
 - 忘記密碼入口：登入模式表單尾「忘記密碼？」連至 `/forgot-password`（#230 交給本單的接線；`login_forgot` 三語）
 - `routes/login.tsx` 重寫為 dithered colonnade 版面（`StoaField` 柱廊背景＋`comic-ground` 點陣）：hero 框、回故事頁連結、方形語言切換、登入／註冊模式切換、密碼直顯表單（顯示／隱藏切換掛 `aria-controls`）、邀請碼虛線表單（導向 `/join/$code`）
 - OAuth 按鈕按 `GET /auth/providers` 能力探測渲染（該端點即為本單解鎖，#207）：啟用的 google／facebook 渲染為連結，未啟用渲染虛線停用鈕；`api.authProviders()` 回 shared 契約型別 `OAuthProviders`，enabled set 由頁面端推導

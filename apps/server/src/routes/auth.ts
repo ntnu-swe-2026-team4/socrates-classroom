@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
+  PASSWORD_RESET_TTL_MINUTES,
   LoginInputSchema,
   PasswordForgotInputSchema,
   PasswordResetInputSchema,
@@ -58,7 +59,6 @@ const OAUTH_COOKIE = "socrates_oauth";
 const OAUTH_COOKIE_PATH = "/api/auth/oauth";
 const OAUTH_TTL_SECONDS = 600;
 const OAUTH_SUCCESS_PATH = "/home";
-const RESET_TTL_MINUTES = 30;
 
 interface ResetAccountRow {
   id: string;
@@ -236,13 +236,13 @@ export function authRoutes() {
         "password_reset",
         account?.id ?? "",
         passwordResetBinding(account?.password_hash ?? DUMMY_HASH, account?.email ?? null),
-        RESET_TTL_MINUTES * 60_000,
+        PASSWORD_RESET_TTL_MINUTES * 60_000,
       );
       if (account?.email) {
         const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
         const mail = { to: account.email, lang: account.lang, link: `${base}/reset-password#token=${token}` };
         c.executionCtx.waitUntil(
-          sendPasswordResetEmail(c.env, { ...mail, minutes: RESET_TTL_MINUTES }).catch((error: unknown) => {
+          sendPasswordResetEmail(c.env, { ...mail, minutes: PASSWORD_RESET_TTL_MINUTES }).catch((error: unknown) => {
             console.warn("[auth] password reset mail failed:", error instanceof Error ? error.message : typeof error);
           }),
         );
