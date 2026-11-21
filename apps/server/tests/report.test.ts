@@ -5,8 +5,8 @@ import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import { z } from "zod";
-import { ReportAxesPlanSchema, type StudentAnalysis } from "@socrates/shared";
-import { PlannedClassReportSubmissionSchema } from "../src/pi/extensions/report-submit";
+import type { StudentAnalysis } from "@socrates/shared";
+import { PlannedClassReportSubmissionSchema, ReportAxesPlanSchema } from "../src/pi/extensions/report-submit";
 import {
   citesSpokenLines,
   pointOnAxis,

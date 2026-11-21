@@ -16,8 +16,10 @@ import { runProfile } from "../pi/agents/profiles";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import {
   PlannedClassReportSubmissionSchema,
+  ReportAxesPlanSchema,
   reportSubmitAxesExtension,
   type PlannedClassReportSubmission,
+  type ReportAxesPlan,
   reportSubmitExtension,
   SUBMIT_CLASS_AXES_REPORT,
   SUBMIT_CLASS_REPORT,
@@ -28,11 +30,9 @@ import { nowIso } from "../http";
 import { classReportInput, studentReportInput } from "../prompts/assemble";
 import {
   ClassReportSubmissionSchema,
-  ReportAxesPlanSchema,
   StudentAnalysisSchema,
   type ClassReport,
   type ClassReportSubmission,
-  type ReportAxesPlan,
   type Lang,
   type ReportPosition,
   type StudentAnalysis,

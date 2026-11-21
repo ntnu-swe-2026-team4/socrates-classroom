@@ -6,6 +6,26 @@ export const SUBMIT_STUDENT_ANALYSIS = "submit_student_analysis";
 export const SUBMIT_CLASS_REPORT = "submit_class_report";
 export const SUBMIT_CLASS_AXES_REPORT = "submit_class_axes_report";
 
+const AXES_MAX = 3;
+const axisEnd = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .refine((text) => !/[\r\n\u0085\u2028\u2029]/.test(text), { message: "axis_text_single_line" });
+
+export const ReportAxesPlanSchema = z
+  .object({
+    count: z.number().int().min(1).max(AXES_MAX),
+    teacher: z.array(z.object({ name: axisEnd, left: axisEnd, right: axisEnd })).max(AXES_MAX),
+  })
+  .refine((plan) => plan.teacher.length <= plan.count, { message: "teacher_axes_over_count" })
+  .refine((plan) => new Set(plan.teacher.map(({ name }) => name)).size === plan.teacher.length, {
+    message: "teacher_axis_name_duplicate",
+  });
+
+export type ReportAxesPlan = z.infer<typeof ReportAxesPlanSchema>;
+
 const submittedAxis = ClassReportSubmissionSchema.shape.axes.element;
 
 export const PlannedClassReportSubmissionSchema = z.object({

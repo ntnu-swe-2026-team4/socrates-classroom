@@ -1,4 +1,4 @@
-import type { ReportAxesPlan } from "@socrates/shared";
+import type { ReportAxesPlan } from "../pi/extensions/report-submit";
 
 export function topicBlock(title: string, statement: string): string {
   return `## Topic: ${title}\n${statement}`;
