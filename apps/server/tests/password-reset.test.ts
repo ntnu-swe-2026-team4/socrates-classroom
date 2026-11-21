@@ -4,8 +4,7 @@ import { beforeAll, describe, expect, inject, test } from "vitest";
 import worker from "../src/index";
 import { one, run } from "../src/db/d1";
 import { type AccountTokenPurpose, hashPassword, passwordResetBinding, sealAccountToken } from "../src/auth";
-import type { Env } from "../src/env";
-import { cookieOf } from "./helpers";
+import { cookieOf, scopedEnv } from "./helpers";
 
 interface SentEmail {
   to: string;
@@ -32,11 +31,11 @@ function mailbox(delivery: Delivery = "delivered") {
       return { messageId: "m" };
     },
   };
-  const scoped = Object.assign(Object.create(env as object), {
+  const scoped = scopedEnv({
     SEND_EMAIL: delivery === "missing" ? undefined : binding,
     ALERT_FROM_EMAIL: "noreply@socrates.test",
     PUBLIC_BASE_URL: BASE,
-  }) as unknown as Env;
+  });
   const request = async (path: string, init: RequestInit = {}): Promise<Response> => {
     const pending: Promise<unknown>[] = [];
     const res = await (

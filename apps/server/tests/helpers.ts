@@ -64,11 +64,14 @@ export async function call(path: string, init: RequestInit = {}): Promise<Respon
   );
 }
 
+export function scopedEnv(overrides: Partial<Env>): Env {
+  return Object.create(env as object, Object.getOwnPropertyDescriptors(overrides)) as Env;
+}
+
 export async function callWith(overrides: Partial<Env>, path: string, init: RequestInit = {}): Promise<Response> {
-  const scoped = Object.assign(Object.create(env as object), overrides) as unknown as Env;
   return (worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }).fetch(
     new Request(`http://worker.test${path}`, init),
-    scoped,
+    scopedEnv(overrides),
     { waitUntil: () => {} },
   );
 }
