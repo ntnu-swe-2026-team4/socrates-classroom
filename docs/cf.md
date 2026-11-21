@@ -47,15 +47,15 @@ cf --version
 
 `apps/web/cloudflare.config.ts`——TypeScript 設定，取代 `wrangler.jsonc`。本專案使用的鍵：
 
-| 鍵                                 | 本專案值                                                                        |
-| ---------------------------------- | ------------------------------------------------------------------------------- |
-| `worker.entrypoint`                | `../server/src/index.ts`（Worker 原始碼在 apps/server）                         |
-| `worker.compatibilityDate / Flags` | `2026-11-01` / `nodejs_compat`                                                  |
-| `worker.env.DB`                    | `bindings.d1({ name: "socrates", id: <固定 UUID> })`                            |
-| `worker.env.AI`                    | `bindings.ai({})`（dev 設 `CF_REMOTE_AI=true` 時 `dev.remote: true`）           |
-| `worker.env.Chat / ReportRunner`   | `bindings.durableObject({ worker, exportName })`                                |
-| `worker.exports`                   | `exports.durableObject({ storage: "sqlite" })`——**取代 wrangler 的 migrations** |
-| `worker.env.*`（text/secret）      | vars 與 secrets 宣告（dev 用 `loadEnv` 讀 `.env.local` override）               |
+| 鍵                                 | 本專案值                                                                                                          |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `worker.entrypoint`                | `../server/src/index.ts`（Worker 原始碼在 apps/server）                                                           |
+| `worker.compatibilityDate / Flags` | `2026-11-01` / `nodejs_compat`                                                                                    |
+| `worker.env.DB`                    | `bindings.d1({ name: "socrates", id: <固定 UUID> })`                                                              |
+| `worker.env.AI`                    | `bindings.ai({})`（dev 設 `CF_REMOTE_AI=true` 時 `dev.remote: true`）                                             |
+| `worker.env.Chat / ReportRunner`   | `bindings.durableObject({ worker, exportName })`                                                                  |
+| `worker.exports`                   | `exports.durableObject({ storage: "sqlite" })`——**取代 wrangler 的 migrations**                                   |
+| `worker.env.*`（text/secret）      | vars 與 secrets 宣告（dev：`.dev.vars` 存在時整檔優先，否則 `loadEnv` 讀 `.env.local` override——見下方 §Secrets） |
 
 注意：
 
@@ -108,6 +108,10 @@ Schema 的 SSOT 是 `apps/server/migrations/*.sql`（`001_init.sql` 起依序前
 | `BYOK_ENC_KEY`         | teacher keys 的 AES-GCM 金鑰（必填，缺了 fail-fast）                                                              | `openssl rand -base64 32`           |
 | `SEED_TOKEN`           | `POST /api/dev/seed` 閘門（production 留空即可禁用）                                                              | 任意亂數                            |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret（只在 `GOOGLE_CLIENT_ID` 非空時宣告；未宣告＝Google 登入停用，回 `oauth_unavailable`） | Google Cloud Console → OAuth 用戶端 |
+
+### dev 通道與優先序（`.dev.vars` vs `.env.local`）
+
+dev 的 vars／secrets 取值只有一條規則：`apps/web/.dev.vars` 存在時，本地 bindings **整檔以它為準**（`@cloudflare/vite-plugin` 的 `loadDevVars`）——`.env`／`.env.local` 與 process env 一律不讀，且沒有任何遮蔽警告；沒有 `.dev.vars` 的機器（fresh clone 的預設）才由 `loadEnv` 讀 `.env.local`。兩條通道 MUST 二擇一：本地若留有早期 setup 產生的 `.dev.vars`，刪除它、或把它當唯一通道維護——`pnpm seed`（`apps/server/scripts/seed.mjs`）與 dev 啟動的 missing-secrets 警告（`apps/web/vite.config.ts`）都照同一條優先序取值。`--mode` 變體 `.dev.vars.<mode>` 存在時會取代 `.dev.vars`（官方行為，本專案未使用）。
 
 Google 登入另需 text binding `GOOGLE_CLIENT_ID`（`cloudflare.config.ts`：dev 由 `.env.local`，production 由 repo variable 於 build 時帶入），並在 Google Cloud Console 登錄 redirect URI `<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`；本地開發需在 `.env.local` 設 `PUBLIC_BASE_URL=http://localhost:5173`。建立用戶端、正式環境設定與 secret 輪替步驟見 [`google-oauth.md`](./google-oauth.md)。
 
