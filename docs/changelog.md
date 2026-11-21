@@ -2,6 +2,13 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-22 — TS 靜態保證 step 3：suppression ratchet 白名單凍結（`refactor/293-step3-ratchet`，#293）
+
+### Added
+
+- Ratchet test `apps/web/src/test/review/lint-suppressions.test.ts`：walker 掃全 repo lintable 檔，捕捉 `biome-ignore(-all|-start|-end) lint/<group>/<rule>` 並核對 `(file, rule)` 白名單三態斷言（未列新增→紅、白名單 stale→紅、總數/內容逐條相等→綠）——新增抑制 MUST 改白名單；已插兩隻 negative probe 實證（server 測試檔加抑制→紅、移除 ui.tsx 既有抑制→紅）
+- 現存 10 條 `biome-ignore`（5 個 web 檔：DialogueView、ProviderKeys、StanceConstellation×3、ui×3、report.$id）固化為初始白名單
+
 ## 2026-11-22 — TS 靜態保證 step 2 L3：noNonNullAssertion 全域凍結 error（`refactor/293-non-null-l3-freeze`，#293）
 
 ### Changed
