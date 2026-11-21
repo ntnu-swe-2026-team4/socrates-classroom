@@ -38,6 +38,14 @@ pnpm lint && pnpm typecheck         # must be green before any PR
 - Do not write organizational or summary comments. Comments only explain **why** the code is written in some way, and only when the reason is tricky / non-obvious.
 - Prefer implementing functionality in existing files unless it is a new logical component. Avoid creating many small files.
 
+## Design research (before implementing)
+
+- For every feature or significant change, investigate the domain **before writing code** and settle on the industry-recognized best design, not the fastest acceptable one.
+- "Industry best practice" must be **verified with the staying-current skill (`/stay-current`)** against current upstream docs; claims recalled from training data do not count.
+- Keep the investigation result — chosen design, alternatives considered, rejection reasons — it feeds the PR template's 設計審查（Design Review）answers.
+- When no industry consensus exists for the problem, say so in the PR and justify the closest recognized pattern instead.
+- Scale depth to change size: a one-line fix needs a truthful design-review answer, not a survey.
+
 ## Code style
 
 - Biome owns formatting and linting: `pnpm lint` must pass before PRs; `pnpm format` auto-fixes
