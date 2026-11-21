@@ -38,7 +38,7 @@ function JoinPage() {
       await api.logout();
     } finally {
       queryClient.clear();
-      queryClient.setQueryData(["me"], null);
+      queryClient.setQueryData(meQueryOptions.queryKey, null);
       await navigate({ to: "/login" });
     }
   }
@@ -55,7 +55,7 @@ function JoinPage() {
         name: signedIn ? undefined : name.trim(),
         tosAccepted: tos,
       });
-      queryClient.setQueryData(["me"], user);
+      queryClient.setQueryData(meQueryOptions.queryKey, user);
       await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
       if (draft || !user) {
         await navigate({ to: "/dialogue", search: { activityId, ...(draft ? { q: draft } : {}) } });

@@ -26,7 +26,6 @@ import type {
 } from "@socrates/shared";
 import {
   ActivityStartInputSchema,
-  ACTIVITY_SLOT_MAX,
   AdminUserCreateInputSchema,
   AdminUserUpdateInputSchema,
   ClassroomCreateInputSchema,
@@ -328,7 +327,7 @@ export const httpApi: Api = {
     return unwrap(
       await client.activities[":id"].slots.$post({
         param: { id: activityId },
-        json: { count: Math.min(Math.max(count, 1), ACTIVITY_SLOT_MAX) },
+        json: { count },
       }),
     );
   },

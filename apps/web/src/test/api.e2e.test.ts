@@ -259,4 +259,13 @@ describe("httpApi contract (browser-side actual code)", () => {
     await httpApi.activityInfo("a_1", "p_9");
     expect(handler.mock.calls[1]![0]).toBe("/api/activities/a_1?participantId=p_9");
   });
+
+  test("createActivitySlots passes the count through unclamped (the server owns the 1-6 bounds)", async () => {
+    handler.mockImplementation(() => json({ activityId: "a_1", mode: "test", maxSlots: 6, slots: [] }));
+    await httpApi.createActivitySlots("a_1", 9);
+    const [path, init] = handler.mock.calls[0]!;
+    expect(path).toBe("/api/activities/a_1/slots");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ count: 9 });
+  });
 });
