@@ -1,10 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { keyProviderModelsOptions, keyProvidersOptions, teacherKeysOptions } from "@/api/queries";
 import type { TeacherKeyStatus } from "@socrates/shared";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { api } from "@/api";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { Card, cn } from "@/components/ui";
+import { Card, cn, ConfirmDialog } from "@/components/ui";
 import { useT } from "@/i18n";
 import { focusNextIn, focusRestoreOnUnmount } from "@/lib/focus";
 import { providerIcon, providerKind, type ProviderKind } from "@/lib/providers";
@@ -187,7 +186,11 @@ function ProviderSheet({
     element?.focus();
   }, []);
 
-  useEffect(() => focusRestoreOnUnmount(), []);
+  const restoreFocus = (node: HTMLElement | null) => {
+    if (!node) return;
+    const restore = focusRestoreOnUnmount();
+    return () => restore();
+  };
 
   const f = query.trim().toLowerCase();
   const matches = (entry: { id: string; name: string }) =>
@@ -221,6 +224,7 @@ function ProviderSheet({
 
   return (
     <div
+      ref={restoreFocus}
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/50 p-4 sm:items-center sm:p-8"
       onClick={onClose}
     >
@@ -874,24 +878,27 @@ function ProviderEditor({
           {t("settings_keys_delete")}
         </button>
       </div>
-      {confirmTarget ? (
-        <ConfirmDialog
-          title={
-            confirmTarget.kind === "provider"
+      <ConfirmDialog
+        open={confirmTarget !== null}
+        title={
+          confirmTarget
+            ? confirmTarget.kind === "provider"
               ? t("settings_keys_confirm_delete_provider_title", { name })
               : t("settings_keys_confirm_remove_model_title", { model: confirmTarget.model })
-          }
-          message={
-            confirmTarget.kind === "provider"
+            : ""
+        }
+        body={
+          confirmTarget
+            ? confirmTarget.kind === "provider"
               ? t("settings_keys_confirm_delete_provider_message")
               : t("settings_keys_confirm_remove_model_message")
-          }
-          confirmLabel={t("settings_keys_confirm_remove")}
-          cancelLabel={t("settings_keys_cancel")}
-          onConfirm={confirmedRemoval}
-          onCancel={() => setConfirmTarget(null)}
-        />
-      ) : null}
+            : null
+        }
+        confirmLabel={t("settings_keys_confirm_remove")}
+        cancelLabel={t("settings_keys_cancel")}
+        onConfirm={confirmedRemoval}
+        onCancel={() => setConfirmTarget(null)}
+      />
     </div>
   );
 }

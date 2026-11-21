@@ -20,7 +20,8 @@
       "!**/config.gen.ts",
       "!.agents",
       "!.claude",
-      "!.playwright-cli"
+      "!.playwright-cli",
+      "!apps/server/src/prompts"
     ]
   },
   "formatter": {
@@ -50,10 +51,24 @@
         "noUnusedImports": "warn"
       },
       "style": {
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "off",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "react": {
+                "importNames": ["useEffect"],
+                "message": "useEffect is banned in apps/web"
+              }
+            }
+          }
+        }
       },
       "complexity": {
         "noVoid": "off"
+      },
+      "nursery": {
+        "useReactCompiler": "error"
       },
       "a11y": {
         "useKeyWithClickEvents": "off",
@@ -68,14 +83,6 @@
       }
     }
   },
-  "overrides": [
-    {
-      "includes": ["apps/web/src/landing/**"],
-      "linter": {
-        "enabled": false
-      }
-    }
-  ],
   "json": {
     "formatter": {
       "enabled": true
