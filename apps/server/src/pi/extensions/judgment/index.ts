@@ -8,16 +8,20 @@ import {
   type Entry,
 } from "@earendil-works/pi-durable";
 import type { Ai } from "@cloudflare/workers-types";
-import type { ViolationType } from "@socrates/shared";
+import { VIOLATION_TYPES, type ViolationType } from "@socrates/shared";
 import type { TopicSource } from "../socrates";
 import { createClefViolationClassifier, type ViolationJudgment } from "./classify";
 import { createReportViolationTool } from "./tool";
 
-export interface ViolationData {
+export type ViolationData = {
   type: ViolationType;
   probability: number;
   excerpt: string;
   source: "classifier" | "agent";
+};
+
+export function readViolationType(value: string): ViolationType {
+  return VIOLATION_TYPES.find((type) => type === value) ?? "other";
 }
 
 export const ViolationEntry: Entry<{ [key: string]: never }> = defineEntry("app.violation");
@@ -58,7 +62,7 @@ export function createJudgmentExtension(
           };
           if (handle) {
             await runtime.commit(async (tx) => {
-              await handle.submit(tx, { type: "write", entry: { kind: "app.violation", data: data as never } });
+              await handle.submit(tx, { type: "write", entry: { kind: "app.violation", data: data } });
             }, context);
           }
         }
@@ -75,7 +79,7 @@ export function createJudgmentExtension(
     tools: [
       createReportViolationTool(async (input) => {
         await sink({
-          type: input.type as ViolationType,
+          type: readViolationType(input.type),
           probability: input.probability,
           excerpt: input.excerpt,
           source: "agent",
