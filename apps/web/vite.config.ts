@@ -57,6 +57,7 @@ function parseDotenv(text: string): Record<string, string> {
 }
 
 export default defineConfig({
+  assetsInclude: ["**/*.glb"],
   plugins: [
     tanstackRouter({ target: "react", autoCodeSplitting: true }),
     react({ compiler: true }),

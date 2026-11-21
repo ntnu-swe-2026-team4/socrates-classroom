@@ -74,7 +74,7 @@ beforeEach(() => {
         },
         "/api/topics": [topic],
       };
-      if (path === "/socrates.glb") return new Response(new Uint8Array());
+      if (path.endsWith("socrates.glb")) return new Response(new Uint8Array());
       if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
       return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
     }),
@@ -580,7 +580,7 @@ test("#243 review: a signed-in join still reaches home when fetching the activit
       if (path === "/api/classrooms") {
         return new Response(JSON.stringify([]), { headers: { "Content-Type": "application/json" } });
       }
-      if (path === "/socrates.glb") return new Response(new Uint8Array());
+      if (path.endsWith("socrates.glb")) return new Response(new Uint8Array());
       throw new Error(`Unexpected request: ${path}`);
     }),
   );
@@ -640,7 +640,7 @@ test("F01c: a signed-in join posts without a name", async () => {
         return new Response(JSON.stringify([]), { headers: { "Content-Type": "application/json" } });
       if (path === "/api/classrooms/class-1/topics")
         return new Response(JSON.stringify([]), { headers: { "Content-Type": "application/json" } });
-      if (path === "/socrates.glb") return new Response(new Uint8Array());
+      if (path.endsWith("socrates.glb")) return new Response(new Uint8Array());
       if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
       return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
     }),

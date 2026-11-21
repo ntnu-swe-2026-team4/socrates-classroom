@@ -5,6 +5,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Avatar } from "./avatar";
+import glbUrl from "./socrates.glb?url";
 
 type GLTF = { scene: THREE.Object3D; animations: THREE.AnimationClip[] };
 const modelCache = new Map<string, Promise<GLTF>>();
@@ -139,7 +140,7 @@ export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElemen
   const ro = new ResizeObserver(() => resize());
   ro.observe(stage);
 
-  loadModel("/socrates.glb")
+  loadModel(glbUrl)
     .then(({ model, clips }) => {
       if (disposed) return;
       avatar = new Avatar(model, clips);
