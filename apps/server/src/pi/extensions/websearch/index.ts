@@ -81,7 +81,12 @@ export function createWebSearchExtension(ai: Ai | undefined) {
       }
       const searchRecord = responses.getStored(args.responseId);
       const fetchRecord = searchRecord ? null : responses.getStoredFetch(args.responseId);
-      if (!searchRecord && !fetchRecord) {
+      let content: string;
+      if (searchRecord) {
+        content = serialize(searchRecord);
+      } else if (fetchRecord) {
+        content = fetchRecord.urls.map((url) => `## ${url.title || url.url}\n${url.content}`).join("\n\n") || "";
+      } else {
         return {
           output: [
             {
@@ -91,9 +96,6 @@ export function createWebSearchExtension(ai: Ai | undefined) {
           ],
         };
       }
-      const content = searchRecord
-        ? serialize(searchRecord)
-        : fetchRecord!.urls.map((url) => `## ${url.title || url.url}\n${url.content}`).join("\n\n") || "";
       if (args.findText !== undefined) {
         const queries = args.query ? [...args.findText, args.query] : args.findText;
         return {

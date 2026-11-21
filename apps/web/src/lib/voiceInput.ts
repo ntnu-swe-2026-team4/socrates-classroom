@@ -125,9 +125,9 @@ export class VoiceInputController {
     const capturedFinal = s.liveText;
 
     let chunks: Blob[] = [];
-    if (s.recorder) {
+    const { recorder } = s;
+    if (recorder) {
       chunks = await new Promise<Blob[]>((resolve) => {
-        const recorder = s.recorder!;
         const originalOnData = recorder.ondataavailable;
         const collected: Blob[] = [...s.chunks];
         recorder.ondataavailable = (event) => {
@@ -154,7 +154,7 @@ export class VoiceInputController {
       if (hasRecognition && capturedFinal) {
         this.cb.onFinal(capturedFinal);
       } else if (chunks.length > 0) {
-        const blob = new Blob(chunks, { type: chunks[0]!.type });
+        const blob = new Blob(chunks, { type: chunks[0].type });
         try {
           const text = await this.env.stt(blob);
           this.cb.onFinal(text);
@@ -265,8 +265,8 @@ export class VoiceInputController {
           if (!s) return;
           let interimText = "";
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            const result = event.results[i]!;
-            const transcript = result[0]!.transcript;
+            const result = event.results[i];
+            const transcript = result[0].transcript;
             if (result.isFinal) s.finalText += transcript;
             else interimText += transcript;
           }

@@ -106,13 +106,15 @@ export function createAvatarExtension(ai: Ai | undefined) {
         }
         const judgment = await classifier(task.input.text);
         if (judgment) {
-          const handle = (await runtime.conversation(runtime.conversationId, context))!;
-          await runtime.commit(async (tx) => {
-            await handle.submit(tx, {
-              type: "write",
-              entry: { kind: "app.emotion", data: { ...judgment } },
-            });
-          }, context);
+          const handle = await runtime.conversation(runtime.conversationId, context);
+          if (handle) {
+            await runtime.commit(async (tx) => {
+              await handle.submit(tx, {
+                type: "write",
+                entry: { kind: "app.emotion", data: { ...judgment } },
+              });
+            }, context);
+          }
         }
         await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
       },

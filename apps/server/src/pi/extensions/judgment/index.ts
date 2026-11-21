@@ -44,16 +44,18 @@ export function createJudgmentExtension(ai: Ai | undefined, reportViolation: Vio
         }
         const judgment: ViolationJudgment | null = await judge(task.input.latest);
         if (judgment && judgment.type !== "on_topic") {
-          const handle = (await runtime.conversation(runtime.conversationId, context))!;
+          const handle = await runtime.conversation(runtime.conversationId, context);
           const data: ViolationData = {
             type: judgment.type,
             probability: judgment.probability,
             excerpt: task.input.latest.slice(0, 200),
             source: "classifier",
           };
-          await runtime.commit(async (tx) => {
-            await handle.submit(tx, { type: "write", entry: { kind: "app.violation", data: data as never } });
-          }, context);
+          if (handle) {
+            await runtime.commit(async (tx) => {
+              await handle.submit(tx, { type: "write", entry: { kind: "app.violation", data: data as never } });
+            }, context);
+          }
         }
         await runtime.memo("judgment", JSON.stringify(judgment), context);
         await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);

@@ -25,16 +25,18 @@ export function createReportViolationTool(report: (input: ViolationReport) => Pr
         };
       }
       await report({ type: args.type, excerpt: args.excerpt, probability: 1 });
-      const handle = (await api.conversation(api.conversationId, context))!;
-      await api.commit(async (tx) => {
-        await handle.submit(tx, {
-          type: "write",
-          entry: {
-            kind: "app.violation",
-            data: { type: args.type, probability: 1, excerpt: args.excerpt, source: "agent" } as never,
-          },
-        });
-      }, context);
+      const handle = await api.conversation(api.conversationId, context);
+      if (handle) {
+        await api.commit(async (tx) => {
+          await handle.submit(tx, {
+            type: "write",
+            entry: {
+              kind: "app.violation",
+              data: { type: args.type, probability: 1, excerpt: args.excerpt, source: "agent" } as never,
+            },
+          });
+        }, context);
+      }
       await api.memo("violation_recorded", true, context);
       return {
         output: [

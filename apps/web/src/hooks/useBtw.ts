@@ -59,15 +59,14 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
   function open(socket: { send: (data: string) => void }, fresh: boolean) {
     const id = crypto.randomUUID();
     openIdRef.current = id;
-    freshRef.current = fresh || sessionRef.current === null;
+    const existing = sessionRef.current;
+    freshRef.current = fresh || existing === null;
     setBound(false);
-    socket.send(
-      JSON.stringify({
-        type: "btw",
-        id,
-        ...(freshRef.current ? {} : { session: sessionRef.current! }),
-      } satisfies ClientMessage),
-    );
+    if (existing === null || fresh) {
+      socket.send(JSON.stringify({ type: "btw", id } satisfies ClientMessage));
+      return;
+    }
+    socket.send(JSON.stringify({ type: "btw", id, session: existing } satisfies ClientMessage));
   }
 
   function finishPending(failure?: string) {

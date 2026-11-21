@@ -312,15 +312,18 @@ export function useDialogue(activityId: string, participantId: string, options?:
         return;
       }
       case "error": {
-        const waiter = frame.id !== undefined ? entriesWaiters.current.get(frame.id) : undefined;
+        const id = frame.id;
+        if (id === undefined) {
+          if (pendingRef.current !== null) failPending(frame.code ?? "llm_unavailable");
+          return;
+        }
+        const waiter = entriesWaiters.current.get(id);
         if (waiter !== undefined) {
-          entriesWaiters.current.delete(frame.id!);
+          entriesWaiters.current.delete(id);
           waiter.reject(new Error("entries_failed"));
           return;
         }
-        if (frame.id !== undefined && frame.id !== pendingRef.current) return;
-        if (frame.id === undefined && pendingRef.current === null) return;
-        failPending(frame.code ?? "llm_unavailable");
+        if (id === pendingRef.current) failPending(frame.code ?? "llm_unavailable");
         return;
       }
     }
