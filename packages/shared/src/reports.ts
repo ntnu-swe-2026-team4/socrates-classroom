@@ -56,15 +56,13 @@ export const ClassReportSubmissionSchema = ClassReportSchema.extend({
 
 export type ClassReportSubmission = z.infer<typeof ClassReportSubmissionSchema>;
 
-const submittedAxis = ClassReportSubmissionSchema.shape.axes.element;
-const submittedPosition = submittedAxis.shape.positions.element;
 const AXES_MAX = 3;
 const axisEnd = z
   .string()
   .trim()
   .min(1)
   .max(120)
-  .refine((text) => !/[\r\n]/.test(text), { message: "axis_text_single_line" });
+  .refine((text) => !/[\r\n\u2028\u2029]/.test(text), { message: "axis_text_single_line" });
 
 export const ReportAxesPlanSchema = z
   .object({
@@ -77,18 +75,6 @@ export const ReportAxesPlanSchema = z
   });
 
 export type ReportAxesPlan = z.infer<typeof ReportAxesPlanSchema>;
-
-export const PlannedClassReportSubmissionSchema = z.object({
-  students: ClassReportSchema.shape.students,
-  unstated: ClassReportSchema.shape.unstated,
-  teacherAxes: z.array(
-    z.object({ axis: z.number().int().min(1), positions: z.array(submittedPosition), why: z.string() }),
-  ),
-  addedAxes: z.array(submittedAxis),
-  overview: ClassReportSchema.shape.overview,
-});
-
-export type PlannedClassReportSubmission = z.infer<typeof PlannedClassReportSubmissionSchema>;
 
 export const StudentAnalysisSchema = z.union([
   z.object({

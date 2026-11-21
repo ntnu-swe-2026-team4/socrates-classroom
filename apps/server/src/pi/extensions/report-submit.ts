@@ -1,14 +1,28 @@
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { z } from "zod";
-import {
-  ClassReportSubmissionSchema,
-  PlannedClassReportSubmissionSchema,
-  StudentAnalysisSchema,
-} from "@socrates/shared";
+import { ClassReportSchema, ClassReportSubmissionSchema, StudentAnalysisSchema } from "@socrates/shared";
 
 export const SUBMIT_STUDENT_ANALYSIS = "submit_student_analysis";
 export const SUBMIT_CLASS_REPORT = "submit_class_report";
 export const SUBMIT_CLASS_AXES_REPORT = "submit_class_axes_report";
+
+const submittedAxis = ClassReportSubmissionSchema.shape.axes.element;
+
+export const PlannedClassReportSubmissionSchema = z.object({
+  students: ClassReportSchema.shape.students,
+  unstated: ClassReportSchema.shape.unstated,
+  teacherAxes: z.array(
+    z.object({
+      axis: z.number().int().min(1),
+      positions: z.array(submittedAxis.shape.positions.element).min(1),
+      why: z.string(),
+    }),
+  ),
+  addedAxes: z.array(submittedAxis),
+  overview: ClassReportSchema.shape.overview,
+});
+
+export type PlannedClassReportSubmission = z.infer<typeof PlannedClassReportSubmissionSchema>;
 
 const studentAnalysisParameters = z.toJSONSchema(z.object({ report: StudentAnalysisSchema }));
 const classReportParameters = z.toJSONSchema(ClassReportSubmissionSchema);

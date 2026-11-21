@@ -4,6 +4,7 @@ import { SOCRATES_PROMPTS } from "../src/pi/extensions/socrates";
 import { classReportInput, studentReportInput } from "../src/prompts/assemble";
 import { z } from "zod";
 import { ClassReportSubmissionSchema, StudentAnalysisSchema } from "@socrates/shared";
+import { PlannedClassReportSubmissionSchema } from "../src/pi/extensions/report-submit";
 import STUDENT_REPORT_RAW from "../src/prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../src/prompts/class-report.md?raw";
 import CLASS_REPORT_AXES_RAW from "../src/prompts/class-report-axes.md?raw";
@@ -37,6 +38,10 @@ describe("prompts (#161): what the report models receive is pinned", () => {
   it("the existing report tools' JSON schemas are pinned", () => {
     expect(z.toJSONSchema(ClassReportSubmissionSchema)).toMatchSnapshot();
     expect(z.toJSONSchema(z.object({ report: StudentAnalysisSchema }))).toMatchSnapshot();
+  });
+
+  it("the axes-plan report tool's JSON schema is pinned", () => {
+    expect(z.toJSONSchema(PlannedClassReportSubmissionSchema)).toMatchSnapshot();
   });
 
   it("class report input with an axes plan: the count and the teacher's axes follow the topic", () => {

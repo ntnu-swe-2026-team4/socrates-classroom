@@ -15,7 +15,9 @@ import { buildModels } from "../pi/models";
 import { runProfile } from "../pi/agents/profiles";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import {
+  PlannedClassReportSubmissionSchema,
   reportSubmitAxesExtension,
+  type PlannedClassReportSubmission,
   reportSubmitExtension,
   SUBMIT_CLASS_AXES_REPORT,
   SUBMIT_CLASS_REPORT,
@@ -26,12 +28,10 @@ import { nowIso } from "../http";
 import { classReportInput, studentReportInput } from "../prompts/assemble";
 import {
   ClassReportSubmissionSchema,
-  PlannedClassReportSubmissionSchema,
   ReportAxesPlanSchema,
   StudentAnalysisSchema,
   type ClassReport,
   type ClassReportSubmission,
-  type PlannedClassReportSubmission,
   type ReportAxesPlan,
   type Lang,
   type ReportPosition,
@@ -549,7 +549,7 @@ export function toPlannedClassReport(
     )
       throw new Error("report_axis_roster_mismatch");
   }
-  return toClassReport({ ...rest, axes: roster.length === 0 ? [] : axes });
+  return toClassReport({ ...rest, axes });
 }
 
 export function toClassReport(submission: ClassReportSubmission): ClassReport {

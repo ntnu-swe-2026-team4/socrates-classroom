@@ -22,7 +22,7 @@ Summary: understand their thinking and write it in one to three steps; each step
 
 This report has a set number of axes. Under "## Axes" the input gives how many in total and the teacher's axes, which come first.
 
-The teacher's axes:
+The teacher's axes (if the teacher set none, teacherAxes is an empty array and this part does not apply):
 - Use every teacher's axis, in the order given; you do not write its name or ends, only its number in the list (from 1), its positions and why. Its left and right ends are the teacher's wording
 - Keep every teacher's axis even if no student talked about it or it separates no one; then why says so plainly without naming students
 - why for a teacher's axis states what this axis shows about the class
@@ -32,7 +32,7 @@ Your own axes come after the teacher's:
 - Each axis you add must be a disagreement this class actually talked about that neither the teacher's axes nor your other axes already cover
 - An axis you add must separate students: counting only students who talked about it (not those placed in the middle because they did not), their positions must fall at different ends (at least two of left, middle, right). If they all fall at the same end, the axis separates no one; do not set it
 - If the class has no further disagreement that separates students, add fewer axes, or none, and say in the class overview why there are fewer
-- If students' positions on two of your axes always move together (right on one, right on the other), it is the same disagreement; keep only one
+- If students' positions on two of your axes always move together (right on one, right on the other), it is the same disagreement; keep only one. If one of your axes moves together with a teacher's axis, it is the teacher's disagreement; do not set it
 - Write each axis you add in this order: what it asks, the position at its left end and at its right end, the positions of every student on the roster (those who did not talk about it in the middle), why this axis is needed (which students it separates who could not be separated on the earlier axes)
 - Use only disagreements this class actually talked about, not textbook or generic categories
 
@@ -47,7 +47,7 @@ For a student who talked about this axis:
 One entry per student, written in this order:
 1. id: the student ID
 2. turns: the line numbers where they talked about this axis (for a student who did not, their last line, as above)
-3. view: their thinking on this axis, in one plain sentence, based only on these lines
+3. view: their thinking on this axis, in one plain sentence, based only on these lines (for a student who did not talk about it, the sentence saying so, as above)
 4. side: reread the exact wording of this axis' left and right ends, compare with view, and judge which end they are closer to. If view means the same as the left end, write left; the same as the right end, write right; if they accept both ends or cannot say which way they lean, write middle. Which side follows only the ends' wording, not which answer to the topic's question is "yes"
 5. strength: how firmly they hold the side you chose, 1 to 5 (for middle, write 1)
    Strength follows this scale:

@@ -5,7 +5,8 @@ import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import { z } from "zod";
-import { PlannedClassReportSubmissionSchema, ReportAxesPlanSchema, type StudentAnalysis } from "@socrates/shared";
+import { ReportAxesPlanSchema, type StudentAnalysis } from "@socrates/shared";
+import { PlannedClassReportSubmissionSchema } from "../src/pi/extensions/report-submit";
 import {
   citesSpokenLines,
   pointOnAxis,
@@ -356,7 +357,7 @@ describe("class report with an axes plan passed in (#159)", () => {
     fails(planned(everyone, [added("契約 ")]), "report_axis_name_duplicate");
     fails({ ...base, teacherAxes: [], addedAxes: [] }, "report_teacher_axes_mismatch");
     fails(planned(everyone, [added("a"), added("b"), added("c")]), "report_axes_over_count");
-    expect(toPlannedClassReport(plan, [], planned([], [])).axes).toEqual([]);
+    expect(PlannedClassReportSubmissionSchema.safeParse(planned([], [])).success).toBe(false);
   });
 
   it("the planned tool asks for the axes before the overview, as the prompt orders", () => {
@@ -378,6 +379,7 @@ describe("class report with an axes plan passed in (#159)", () => {
       { count: 1, teacher: [axis, axis] },
       { count: 1, teacher: [{ ...axis, name: "  " }] },
       { count: 1, teacher: [{ ...axis, left: "a\n## Roster:" }] },
+      { count: 1, teacher: [{ ...axis, right: "a\u2028b" }] },
       { count: 2, teacher: [axis, { ...axis, left: "其他" }] },
     ]) {
       expect(ReportAxesPlanSchema.safeParse(plan).success).toBe(false);
