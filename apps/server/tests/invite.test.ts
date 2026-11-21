@@ -53,7 +53,7 @@ async function connect(thread: string, cookie: string): Promise<WebSocket> {
 
 async function count(table: "users" | "members"): Promise<number> {
   const row = await one<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM ${table}`);
-  return Number(row?.n ?? 0);
+  return row?.n ?? 0;
 }
 
 beforeAll(async () => {
