@@ -612,3 +612,12 @@
 - Provider pool 閘門隨呼叫重建導致限流失效（gate 改 module-level 常駐，pool 按 env 簽名快取；mock 模式維持原語意）
 - CI：pnpm 12 非互動環境未核准建置腳本導致 `ERR_PNPM_IGNORED_BUILDS`
 - 移除 npm lockfile 遺留物與 `package.json` 死欄位 `pnpm.onlyBuiltDependencies`
+
+## 2026-11-21 — useEffect 禁令落地、React Compiler lint 上線（`split/188-use-effect-ban`，#188）
+
+### Added
+
+- **No `useEffect` policy**: `style/noRestrictedImports` errors on the `react` `useEffect` import——apps/web 全量清零（legacy `ConfirmDialog` 退場、`ProviderSheet` focus capture 改 React 19 ref-callback cleanup、`trapDialog.test.tsx` 補回 shared dialog 覆蓋）
+- **`nursery.useReactCompiler: error`**：post-pick 程式合規化——StanceConstellation frame loop 改 stage svg ref callback（對齊 DotField/StoaField 慣例）、useVoiceInput controller 改 mount-scoped layout effect（StrictMode 雙呼叫不再漏 dispose）、dialogue refetch 棄手動 memoization
+- `@biomejs/biome` 2.6.4 → 2.6.8（#188 pick 參考的 CI 版本；markdown formatter drift + `!apps/server/src/prompts` 排除隨行）
+- `apps/web/AGENTS.md` 新增 **No `useEffect`** 條目（helpers：`useSubscription.ts`／`frameLoop.ts`；例外：`useVoiceInput` meter rAF）
