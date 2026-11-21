@@ -19,6 +19,8 @@ export interface SendEmailBinding {
   send(message: EmailMessageBuilder): Promise<{ messageId: string }>;
 }
 
+export const FAIL_FAST_SECRETS = ["AUTH_SECRET", "BYOK_ENC_KEY"] as const;
+
 export interface Env {
   DB: D1Database;
   Chat: DurableObjectNamespace<import("./do/chat").Chat>;

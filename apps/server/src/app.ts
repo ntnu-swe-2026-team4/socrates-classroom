@@ -18,6 +18,7 @@ import { teacherKeyRoutes } from "./routes/teacher-keys";
 import { adminRoutes } from "./routes/admin";
 import { notificationRoutes } from "./routes/notifications";
 import { devRoutes, isDev } from "./routes/dev";
+import { FAIL_FAST_SECRETS } from "./env";
 import { timingSafeEqual } from "./auth-crypto";
 
 export function createApi() {
@@ -48,7 +49,11 @@ export function createApp() {
       await next();
     })
     .route("/api", createApi())
-    .get("/health", (c) => c.json({ ok: true }))
+    .get("/health", (c) =>
+      isDev(c.env)
+        ? c.json({ ok: true, warnings: FAIL_FAST_SECRETS.filter((key) => !c.env[key]) })
+        : c.json({ ok: true }),
+    )
     .post("/api/dev/seed", async (c) => {
       if (!isDev(c.env)) fail(404, "not_found");
       const token = c.req.header("x-seed-token") ?? "";
