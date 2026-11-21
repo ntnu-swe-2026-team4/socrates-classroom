@@ -10,7 +10,7 @@
 
 ### Changed
 
-- 13 條非 param 路由全數自 `parseBody` 遷移 `validateJson`（auth login／register／signup／password forgot／reset、join、topics／topics generate、classrooms POST、admin users POST、admin notifications、lookup、tts、dev login）——guard／rate limit 語意順序以 `rateLimit`／`guardUser`／`guardAdmin`／`devGuard` middleware 保序；wire shapes 零變更，server 235 條測試全綠
+- 15 條非 param 路由全數自 `parseBody` 遷移 `validateJson`（auth login／register／signup／password forgot／reset、join、topics／topics generate、classrooms POST、admin users POST、admin notifications、lookup、tts、dev login、settings/keys/order PUT）——guard／rate limit 語意順序以 `rateLimit`／`guardUser`／`guardAdmin`／`devGuard` middleware 保序；wire shapes 零變更，server 235 條測試全綠
 - `http.ts` 刪除 `parseBody`——server 端輸入驗證自此單一 pattern（`zValidator`）；stt 的 multipart form 解析維持手寫（非 body-json、無契約型別需求）
 - `httpApi.createActivitySlots` 移除 transport 層靜默 clamp（原 1–6 夾持會掩蓋 UI 送出的超界值；UI 層 `t.live.$id.tsx` 本有 `planned` 夾持，超界改由 server 422 `validation` 誠實拒絕）
 - `dev.accounts.tsx`／`join.$code.tsx` 共 3 處 `setQueryData(["me"], …)` 字面 key 改 `meQueryOptions.queryKey`（#243 慣例單點）
