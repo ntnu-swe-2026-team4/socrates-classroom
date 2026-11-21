@@ -142,7 +142,7 @@ async function fetchFollowingRedirects(
 export async function fetchPage(
   rawUrl: string,
   mode: "readable" | "raw",
-  toMarkdown?: Ai["toMarkdown"],
+  toMarkdown?: (doc: { name: string; blob: Blob }) => Promise<ConversionResponse>,
   permitTarget?: (url: URL) => boolean,
 ): Promise<FetchOutcome> {
   try {

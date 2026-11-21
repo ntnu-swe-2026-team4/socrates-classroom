@@ -32,7 +32,8 @@ export function createJudgmentExtension(ai: Ai | undefined, reportViolation: Vio
     initial: () => ({ phase: "classify" }),
     phases: {
       classify: async (task, runtime, context) => {
-        if (!classifier) {
+        const judge = classifier;
+        if (judge === null) {
           await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
           return;
         }
@@ -41,7 +42,7 @@ export function createJudgmentExtension(ai: Ai | undefined, reportViolation: Vio
           await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
           return;
         }
-        const judgment: ViolationJudgment | null = await classifier(task.input.latest);
+        const judgment: ViolationJudgment | null = await judge(task.input.latest);
         if (judgment && judgment.type !== "on_topic") {
           const handle = (await runtime.conversation(runtime.conversationId, context))!;
           const data: ViolationData = {
@@ -66,7 +67,7 @@ export function createJudgmentExtension(ai: Ai | undefined, reportViolation: Vio
     name: "judgment",
     tools: [
       createReportViolationTool(async (input) => {
-        await sink?.({
+        await sink({
           type: input.type as ViolationType,
           probability: input.probability,
           excerpt: input.excerpt,

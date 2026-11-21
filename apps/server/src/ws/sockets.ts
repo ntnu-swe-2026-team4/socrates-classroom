@@ -125,8 +125,8 @@ export class ChatSockets {
       handlers: {
         onConnect: (connection, ctx) => this.#onConnect(connection, ctx),
         onMessage: (connection, message) => this.#onMessage(connection, message),
-        onClose: (connection) => this.#unwatch(connection),
-        onError: (connection) => this.#unwatch(connection),
+        onClose: (connection) => void this.#unwatch(connection),
+        onError: (connection) => void this.#unwatch(connection),
       },
     };
   }
@@ -139,10 +139,14 @@ export class ChatSockets {
         this.#refuse(connection);
         continue;
       }
-      const outcome: ReverifyOutcome = reverify ? await reverify(identity) : "member";
-      if (outcome === "revoked") {
-        this.#refuse(connection);
-        continue;
+      const verify = reverify;
+      let outcome: ReverifyOutcome = "member";
+      if (verify) {
+        outcome = await verify(identity);
+        if (outcome === "revoked") {
+          this.#refuse(connection);
+          continue;
+        }
       }
       if (outcome === "error") {
         this.#unavailable(connection);
@@ -156,7 +160,7 @@ export class ChatSockets {
 
   #unavailable(socket: Connection): void {
     this.#authorized.delete(socket);
-    this.#unwatch(socket);
+    void this.#unwatch(socket);
     try {
       socket.close(1011, "verification unavailable");
     } catch {
@@ -202,8 +206,9 @@ export class ChatSockets {
   }
 
   async #onConnect(connection: Connection, ctx: ConnectionContext): Promise<void> {
-    if (this.#authorize) {
-      const identity = await this.#authorize(ctx.request);
+    const authorize = this.#authorize;
+    if (authorize) {
+      const identity = await authorize(ctx.request);
       if (!identity) {
         this.#refuse(connection);
         return;
@@ -282,9 +287,12 @@ export class ChatSockets {
       this.#refuse(connection);
       return;
     }
-    if (identity && this.#revalidate && (await this.#revalidate(identity)) === "revoked") {
-      this.#refuse(connection);
-      return;
+    const revalidate = this.#revalidate;
+    if (revalidate && identity) {
+      if ((await revalidate(identity)) === "revoked") {
+        this.#refuse(connection);
+        return;
+      }
     }
     let message: ClientMessage;
     try {
@@ -316,19 +324,23 @@ export class ChatSockets {
       case "submit": {
         if (typeof message.input !== "string") throw new Error("Invalid input");
         const identity = this.#authorized.get(socket);
-        if (identity === undefined || (this.#canSubmit && !(await this.#canSubmit(identity)))) {
-          throw new SubmitForbiddenError();
+        if (identity === undefined) throw new SubmitForbiddenError();
+        const canSubmit = this.#canSubmit;
+        if (canSubmit) {
+          if (!(await canSubmit(identity))) throw new SubmitForbiddenError();
         }
         const input = DialogueInputSchema.parse({ text: message.input });
-        return this.#submitRoute
-          ? await this.#submitRoute(handle, input.text, {
-              ...(message.operationId ? { operationId: message.operationId } : {}),
-              whenBusy: "reject",
-            })
-          : await handle.submit(input.text, {
-              ...(message.operationId ? { operationId: message.operationId } : {}),
-              whenBusy: "reject",
-            });
+        const submitRoute = this.#submitRoute;
+        if (submitRoute) {
+          return await submitRoute(handle, input.text, {
+            ...(message.operationId ? { operationId: message.operationId } : {}),
+            whenBusy: "reject",
+          });
+        }
+        return await handle.submit(input.text, {
+          ...(message.operationId ? { operationId: message.operationId } : {}),
+          whenBusy: "reject",
+        });
       }
       case "abort":
         return await handle.abort();
@@ -336,10 +348,14 @@ export class ChatSockets {
         let session: string;
         if (message.session === undefined) {
           const identity = this.#authorized.get(socket);
-          if (!this.#openBtw || identity === undefined || (this.#canSubmit && !(await this.#canSubmit(identity)))) {
-            throw new SubmitForbiddenError();
+          if (identity === undefined) throw new SubmitForbiddenError();
+          const openBtw = this.#openBtw;
+          if (!openBtw) throw new SubmitForbiddenError();
+          const canSubmit = this.#canSubmit;
+          if (canSubmit) {
+            if (!(await canSubmit(identity))) throw new SubmitForbiddenError();
           }
-          session = await this.#openBtw();
+          session = await openBtw();
         } else {
           if (typeof message.session !== "string" || !(await this.#isBtwSession(message.session))) {
             throw new UnknownSessionError();

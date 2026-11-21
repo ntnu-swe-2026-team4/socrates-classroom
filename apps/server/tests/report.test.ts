@@ -22,6 +22,8 @@ import {
 } from "../src/do/report-runner";
 import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
 
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 let teacherCookie: string;
 let classroomCode: string;
 let activityId: string;
@@ -116,7 +118,9 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     };
     expect(teacherReport.classReport.axes.length).toBeGreaterThan(0);
     expect(teacherReport.students).toHaveLength(2);
-    expect(teacherReport.students.map((s) => s.participantName).sort()).toEqual(["小明", "阿華"].sort());
+    expect(teacherReport.students.map((s) => s.participantName).sort(byCodeUnit)).toEqual(
+      ["小明", "阿華"].sort(byCodeUnit),
+    );
     expect(teacherReport.students.map((s) => s.pseudonym).every((p) => p.startsWith("學生"))).toBe(true);
     const positioned = teacherReport.students.find((s) => s.positions.length > 0);
     expect(positioned?.positions[0]).toMatchObject({ axis: "契約與承諾", end: "middle", at: 50 });

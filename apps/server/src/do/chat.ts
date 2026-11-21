@@ -156,7 +156,7 @@ export class Chat extends DurableObject<Env> {
 
   private checkRun(job: LifecycleJob): Promise<void> {
     const current = this.#runChecks.get(job.id);
-    if (current) return current;
+    if (current !== undefined) return current;
     const check = this.settleRun(job).finally(() => this.#runChecks.delete(job.id));
     this.#runChecks.set(job.id, check);
     return check;

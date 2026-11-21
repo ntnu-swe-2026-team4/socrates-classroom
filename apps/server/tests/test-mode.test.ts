@@ -5,6 +5,8 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
 import { run } from "../src/db/d1";
+
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 import {
   call,
   classroomWithActivity,
@@ -166,7 +168,7 @@ describe("test mode (#134): teacher slots", () => {
     const created = await call(`/api/activities/${activityId}/slots`, jsonInit({ count: 3 }, teacher));
     expect(created.status).toBe(201);
     const payload = (await created.json()) as { slots: Array<{ name: string }> };
-    expect(payload.slots.map((slot) => slot.name).sort()).toEqual(["測試 1", "測試 3", "測試 4"]);
+    expect(payload.slots.map((slot) => slot.name).sort(byCodeUnit)).toEqual(["測試 1", "測試 3", "測試 4"]);
   });
 
   it("the teacher reads a slot through GET /activities/:id?participantId=…", async () => {
@@ -241,7 +243,9 @@ describe("test mode (#134): parallel dialogues and report", () => {
     );
     expect(report.classReport).not.toBeNull();
     expect(report.students).toHaveLength(3);
-    expect(report.students.map((entry) => entry.participantId).sort()).toEqual(slots.map((slot) => slot.id).sort());
+    expect(report.students.map((entry) => entry.participantId).sort(byCodeUnit)).toEqual(
+      slots.map((slot) => slot.id).sort(byCodeUnit),
+    );
     expect(new Set(report.students.map((entry) => entry.pseudonym)).size).toBe(3);
 
     const rooms = (await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()) as Array<{

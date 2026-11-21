@@ -96,7 +96,7 @@ export function voiceRoutes() {
       try {
         const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
         const result = (await ai.run(gatewayConfig.voice.stt, input)) as { text?: string };
-        if (result?.text) return c.json({ text: result.text });
+        if (result.text) return c.json({ text: result.text });
         fail(502, "llm_unavailable");
       } catch (error) {
         console.error("[stt] binding failed", error instanceof Error ? error.name : typeof error);
