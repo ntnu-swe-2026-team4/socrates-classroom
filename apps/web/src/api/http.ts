@@ -79,7 +79,7 @@ export interface Api {
   authProviders(): Promise<OAuthProviders>;
   notifications(): Promise<NotificationFeed>;
   joinByCode(code: string): Promise<JoinInfo>;
-  joinAsGuest(code: string, name?: string): Promise<JoinResult>;
+  joinAsGuest(code: string, input: { name?: string; tosAccepted: boolean }): Promise<JoinResult>;
   createActivityInvite(activityId: string): Promise<ActivityInvite>;
   inviteInfo(token: string): Promise<InviteInfo>;
   joinByInvite(token: string, input: { name?: string; tosAccepted: boolean }): Promise<InviteJoined>;
@@ -153,12 +153,14 @@ type JsonLike = {
   json(): Promise<unknown>;
 };
 
+async function raiseApiError(res: { statusText: string; json(): Promise<unknown> }): Promise<never> {
+  const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+  throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
+}
+
 async function unwrap<R extends JsonLike>(res: R): Promise<Awaited<ReturnType<R["json"]>>> {
   if (res.status === 204) return undefined as Awaited<ReturnType<R["json"]>>;
-  if (!res.ok) {
-    const error = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new ApiError(toErrorCode(error?.code), error?.message ?? res.statusText);
-  }
+  if (!res.ok) return raiseApiError(res);
   return res.json() as Promise<Awaited<ReturnType<R["json"]>>>;
 }
 
@@ -174,20 +176,15 @@ async function raw<T>(path: string, init: RequestInit & { json?: unknown } = {})
     ...rest,
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
-  if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
-  }
+  if (res.status === 204) return undefined as T;
+  if (!res.ok) return raiseApiError(res);
   return (await res.json()) as T;
 }
 
 async function playTts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void> {
   const input = TtsInputSchema.parse({ text, lang: langHeaders()["Accept-Language"] });
   const res = await client.tts.$post({ json: input }, { init: { signal } });
-  if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
-  }
+  if (!res.ok) return raiseApiError(res);
   const bytes = await res.arrayBuffer();
   const AudioContextCtor =
     window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -293,10 +290,10 @@ export const httpApi: Api = {
   async joinByCode(code) {
     return unwrap(await client.join[":code"].$get({ param: { code } }));
   },
-  async joinAsGuest(code, name) {
+  async joinAsGuest(code, input) {
     const data = await raw<JoinResult>("/join", {
       method: "POST",
-      json: JoinInputSchema.parse({ code, name, tosAccepted: true }),
+      json: JoinInputSchema.parse({ code, name: input.name, tosAccepted: input.tosAccepted }),
     });
     persistActivityId(data.activityId);
     return data;
@@ -363,10 +360,7 @@ export const httpApi: Api = {
   async stt(audio) {
     const file = audio instanceof File ? audio : new File([audio], "speech.webm", { type: audio.type });
     const res = await client.stt.$post({ form: { audio: file } });
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-      throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
-    }
+    if (!res.ok) return raiseApiError(res);
     return SttResultSchema.parse(await res.json()).text;
   },
   tts: playTts,

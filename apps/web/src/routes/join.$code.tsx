@@ -51,7 +51,10 @@ function JoinPage() {
     setSubmitting(true);
     setFailed(null);
     try {
-      const { activityId, user } = await api.joinAsGuest(code, signedIn ? undefined : name.trim());
+      const { activityId, user } = await api.joinAsGuest(code, {
+        name: signedIn ? undefined : name.trim(),
+        tosAccepted: tos,
+      });
       queryClient.setQueryData(["me"], user);
       await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
       if (draft || !user) {

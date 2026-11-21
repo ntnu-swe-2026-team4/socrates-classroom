@@ -42,7 +42,7 @@ describe("httpApi contract (browser-side actual code)", () => {
 
   test("joinAsGuest: POST /api/join contract shape + activity id persisted", async () => {
     handler.mockReturnValue(json({ user: null, activityId: "a_1", participantId: "p_1", kind: "guest" }));
-    const payload = await httpApi.joinAsGuest("socrat", "小明");
+    const payload = await httpApi.joinAsGuest("socrat", { name: "小明", tosAccepted: true });
     expect(payload.activityId).toBe("a_1");
     expect(payload.user).toBeNull();
     expect(payload.participantId).toBe("p_1");
@@ -81,15 +81,16 @@ describe("httpApi contract (browser-side actual code)", () => {
 
   test("error mapping: 422 tos_required → ApiError.code", async () => {
     handler.mockImplementation(() => json({ message: "需要同意使用條款才能進入。", code: "tos_required" }, 422));
-    await expect(httpApi.joinAsGuest("socrat", "小明")).rejects.toMatchObject({
+    await expect(httpApi.joinAsGuest("socrat", { name: "小明", tosAccepted: true })).rejects.toMatchObject({
       code: "tos_required",
       message: "需要同意使用條款才能進入。",
     });
     try {
-      await httpApi.joinAsGuest("socrat", "小明");
+      await httpApi.joinAsGuest("socrat", { name: "小明", tosAccepted: false });
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
       expect((error as ApiError).code).toBe("tos_required");
+      expect(JSON.parse(handler.mock.calls.at(-1)![1].body as string).tosAccepted).toBe(false);
     }
   });
 
@@ -231,5 +232,13 @@ describe("httpApi contract (browser-side actual code)", () => {
     await expect(
       httpApi.signup({ name: "小明", email: "dup@example.com", password: "password123", tosAccepted: true }),
     ).rejects.toMatchObject({ code: "email_taken" });
+  });
+
+  test("teacher key model delete resolves on a 204 with an empty body", async () => {
+    handler.mockReturnValue(new Response(null, { status: 204 }));
+    await expect(httpApi.deleteTeacherKeyModel("openai", "gpt-4o")).resolves.toBeUndefined();
+    const [path, init] = handler.mock.calls[0]!;
+    expect(path).toBe("/api/settings/keys/openai/models/gpt-4o");
+    expect(init.method).toBe("DELETE");
   });
 });
