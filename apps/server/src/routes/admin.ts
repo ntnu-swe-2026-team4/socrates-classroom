@@ -3,13 +3,12 @@ import { AdminUserCreateInputSchema, AdminUserUpdateInputSchema, type AdminUser 
 import { all, one, run } from "../db/d1";
 import { hashPassword } from "../auth";
 import {
-  enforceIpLimit,
   fail,
   guardAdmin,
   langOf,
   newId,
   nowIso,
-  parseBody,
+  rateLimit,
   requireAdmin,
   uniqueViolationColumns,
   validateJson,
@@ -53,36 +52,40 @@ export function adminRoutes() {
       );
       return c.json(rows.map(toAdminUser));
     })
-    .post("/admin/users", async (c) => {
-      requireAdmin(c);
-      await enforceIpLimit(c, "admin-create-user", 30);
-      const input = await parseBody(c, AdminUserCreateInputSchema);
-      const id = newId("u_");
-      const hash = await hashPassword(input.password);
-      try {
-        await run(
-          c.env.DB,
-          `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+    .post(
+      "/admin/users",
+      guardAdmin(),
+      rateLimit("admin-create-user", 30),
+      validateJson(AdminUserCreateInputSchema),
+      async (c) => {
+        const input = c.req.valid("json");
+        const id = newId("u_");
+        const hash = await hashPassword(input.password);
+        try {
+          await run(
+            c.env.DB,
+            `INSERT INTO users (id, name, email, password_hash, lang, created_at)
            VALUES ($id, $name, $email, $hash, $lang, $at)`,
-          {
-            id,
-            name: input.name,
-            email: input.email,
-            hash,
-            lang: langOf(c),
-            at: nowIso(),
-          },
-        );
-      } catch (error) {
-        if (uniqueViolationColumns(error).some(([table, column]) => table === "users" && column === "email")) {
-          fail(409, "conflict");
+            {
+              id,
+              name: input.name,
+              email: input.email,
+              hash,
+              lang: langOf(c),
+              at: nowIso(),
+            },
+          );
+        } catch (error) {
+          if (uniqueViolationColumns(error).some(([table, column]) => table === "users" && column === "email")) {
+            fail(409, "conflict");
+          }
+          throw error;
         }
-        throw error;
-      }
-      const created = await loadAdminUser(c.env.DB, id);
-      if (!created) fail(500, "internal_error");
-      return c.json(created, 201);
-    })
+        const created = await loadAdminUser(c.env.DB, id);
+        if (!created) fail(500, "internal_error");
+        return c.json(created, 201);
+      },
+    )
     .patch("/admin/users/:id", guardAdmin(), validateJson(AdminUserUpdateInputSchema), async (c) => {
       const actor = requireAdmin(c);
       const input = c.req.valid("json");

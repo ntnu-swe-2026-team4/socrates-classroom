@@ -39,18 +39,6 @@ export function fail(status: number, code: ErrorCode, vars: Record<string, strin
   throw new ApiError(status, code, vars);
 }
 
-export async function parseBody<S extends z.ZodType>(c: Ctx, schema: S): Promise<z.output<S>> {
-  let raw: unknown;
-  try {
-    raw = await c.req.json();
-  } catch {
-    fail(422, "validation");
-  }
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) fail(422, "validation");
-  return parsed.data;
-}
-
 export function validateJson<S extends z.ZodType>(schema: S) {
   return zValidator("json", schema, (result) => {
     if (!result.success) fail(422, "validation");

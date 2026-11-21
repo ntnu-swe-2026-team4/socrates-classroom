@@ -33,7 +33,8 @@ import {
   langOf,
   newId,
   nowIso,
-  parseBody,
+  rateLimit,
+  validateJson,
   uniqueViolationColumns,
   type AppEnv,
   type Ctx,
@@ -84,9 +85,8 @@ export function authRoutes() {
       return c.json({ providers: oauthProviders(c.env) });
     })
     .get("/me", (c) => c.json(c.get("user")))
-    .post("/auth/login", async (c) => {
-      await enforceIpLimit(c, "login", 30);
-      const input = await parseBody(c, LoginInputSchema);
+    .post("/auth/login", rateLimit("login", 30), validateJson(LoginInputSchema), async (c) => {
+      const input = c.req.valid("json");
       const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE email = $email", {
         email: input.email,
       });
@@ -97,9 +97,8 @@ export function authRoutes() {
       await startSession(c, user);
       return c.json(user);
     })
-    .post("/auth/register", async (c) => {
-      await enforceIpLimit(c, "register", 30);
-      const input = await parseBody(c, RegisterInputSchema);
+    .post("/auth/register", rateLimit("register", 30), validateJson(RegisterInputSchema), async (c) => {
+      const input = c.req.valid("json");
       if (!input.tosAccepted) fail(422, "tos_required");
       const classroom = await one<{ id: string; current_activity_id: string | null }>(
         c.env.DB,
@@ -148,9 +147,8 @@ export function authRoutes() {
       await startSession(c, user);
       return c.json(user);
     })
-    .post("/auth/signup", async (c) => {
-      await enforceIpLimit(c, "register", 30);
-      const input = await parseBody(c, SignupInputSchema);
+    .post("/auth/signup", rateLimit("register", 30), validateJson(SignupInputSchema), async (c) => {
+      const input = c.req.valid("json");
       if (!input.tosAccepted) fail(422, "tos_required");
       const hash = await hashPassword(input.password);
       const id = newId("u_");
@@ -222,64 +220,72 @@ export function authRoutes() {
       endSession(c);
       return c.body(null, 204);
     })
-    .post("/auth/password/forgot", async (c) => {
-      await enforceIpLimit(c, "password-forgot", 5);
-      const input = await parseBody(c, PasswordForgotInputSchema);
-      const row = await one<ResetAccountRow>(
-        c.env.DB,
-        "SELECT id, email, password_hash, lang, disabled_at FROM users WHERE email = $email",
-        { email: input.email },
-      );
-      const account = row?.password_hash && row.email && row.disabled_at === null ? row : null;
-      const token = await sealAccountToken(
-        { env: c.env },
-        "password_reset",
-        account?.id ?? "",
-        passwordResetBinding(account?.password_hash ?? DUMMY_HASH, account?.email ?? null),
-        PASSWORD_RESET_TTL_MINUTES * 60_000,
-      );
-      if (account?.email) {
-        const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
-        const mail = { to: account.email, lang: account.lang, link: `${base}/reset-password#token=${token}` };
-        c.executionCtx.waitUntil(
-          sendPasswordResetEmail(c.env, { ...mail, minutes: PASSWORD_RESET_TTL_MINUTES }).catch((error: unknown) => {
-            console.warn("[auth] password reset mail failed:", error instanceof Error ? error.message : typeof error);
-          }),
+    .post(
+      "/auth/password/forgot",
+      rateLimit("password-forgot", 5),
+      validateJson(PasswordForgotInputSchema),
+      async (c) => {
+        const input = c.req.valid("json");
+        const row = await one<ResetAccountRow>(
+          c.env.DB,
+          "SELECT id, email, password_hash, lang, disabled_at FROM users WHERE email = $email",
+          { email: input.email },
         );
-      }
-      return c.body(null, 204);
-    })
-    .post("/auth/password/reset", async (c) => {
-      await enforceIpLimit(c, "password-reset", 10);
-      const input = await parseBody(c, PasswordResetInputSchema);
-      const claims = readAccountToken(input.token, "password_reset");
-      const row = claims
-        ? await one<ResetAccountRow>(
-            c.env.DB,
-            "SELECT id, email, password_hash, lang, disabled_at FROM users WHERE id = $id",
-            { id: claims.uid },
-          )
-        : null;
-      const valid =
-        row?.password_hash &&
-        row.email &&
-        row.disabled_at === null &&
-        (await verifyAccountToken(
+        const account = row?.password_hash && row.email && row.disabled_at === null ? row : null;
+        const token = await sealAccountToken(
           { env: c.env },
           "password_reset",
-          input.token,
-          passwordResetBinding(row.password_hash, row.email),
-        ));
-      if (!row?.password_hash || !row.email || !valid) fail(400, "reset_token_invalid");
-      const result = await run(
-        c.env.DB,
-        `UPDATE users SET password_hash = $next, session_version = session_version + 1
+          account?.id ?? "",
+          passwordResetBinding(account?.password_hash ?? DUMMY_HASH, account?.email ?? null),
+          PASSWORD_RESET_TTL_MINUTES * 60_000,
+        );
+        if (account?.email) {
+          const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
+          const mail = { to: account.email, lang: account.lang, link: `${base}/reset-password#token=${token}` };
+          c.executionCtx.waitUntil(
+            sendPasswordResetEmail(c.env, { ...mail, minutes: PASSWORD_RESET_TTL_MINUTES }).catch((error: unknown) => {
+              console.warn("[auth] password reset mail failed:", error instanceof Error ? error.message : typeof error);
+            }),
+          );
+        }
+        return c.body(null, 204);
+      },
+    )
+    .post(
+      "/auth/password/reset",
+      rateLimit("password-reset", 10),
+      validateJson(PasswordResetInputSchema),
+      async (c) => {
+        const input = c.req.valid("json");
+        const claims = readAccountToken(input.token, "password_reset");
+        const row = claims
+          ? await one<ResetAccountRow>(
+              c.env.DB,
+              "SELECT id, email, password_hash, lang, disabled_at FROM users WHERE id = $id",
+              { id: claims.uid },
+            )
+          : null;
+        const valid =
+          row?.password_hash &&
+          row.email &&
+          row.disabled_at === null &&
+          (await verifyAccountToken(
+            { env: c.env },
+            "password_reset",
+            input.token,
+            passwordResetBinding(row.password_hash, row.email),
+          ));
+        if (!row?.password_hash || !row.email || !valid) fail(400, "reset_token_invalid");
+        const result = await run(
+          c.env.DB,
+          `UPDATE users SET password_hash = $next, session_version = session_version + 1
          WHERE id = $id AND password_hash = $current AND email = $email`,
-        { id: row.id, next: await hashPassword(input.password), current: row.password_hash, email: row.email },
-      );
-      if (!result.meta.changes) fail(400, "reset_token_invalid");
-      return c.body(null, 204);
-    });
+          { id: row.id, next: await hashPassword(input.password), current: row.password_hash, email: row.email },
+        );
+        if (!result.meta.changes) fail(400, "reset_token_invalid");
+        return c.body(null, 204);
+      },
+    );
 }
 
 interface ProviderRuntime {

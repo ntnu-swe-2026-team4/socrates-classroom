@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { TeacherKeyEcho, TeacherKeyModelEcho, TeacherKeyStatus } from "@socrates/shared";
 import { all, batch, one, run } from "../db/d1";
-import { fail, guardUser, nowIso, parseBody, requireUser, validateJson, type AppEnv } from "../http";
+import { fail, guardUser, nowIso, requireUser, validateJson, type AppEnv } from "../http";
 import { encryptKey } from "../auth-crypto";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 
@@ -104,9 +104,9 @@ export function teacherKeyRoutes() {
       if (!provider) fail(404, "not_found");
       return c.json(provider.getModels().map((model) => ({ id: model.id, name: model.name })));
     })
-    .put("/settings/keys/order", async (c) => {
+    .put("/settings/keys/order", guardUser(), validateJson(OrderInputSchema), async (c) => {
       const user = requireUser(c);
-      const input = await parseBody(c, OrderInputSchema);
+      const input = c.req.valid("json");
       const owned = await all<{ provider_id: string }>(
         c.env.DB,
         "SELECT provider_id FROM teacher_keys WHERE user_id = $uid",

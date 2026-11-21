@@ -8,7 +8,7 @@ import {
   type User,
 } from "@socrates/shared";
 import { all, batch, one, run, type SqlEntry } from "../db/d1";
-import { fail, guardUser, newId, nowIso, parseBody, requireUser, validateJson, type AppEnv } from "../http";
+import { fail, guardUser, newId, nowIso, requireUser, validateJson, type AppEnv } from "../http";
 import { classroomAccess, parsePrompts, topicForActivity, type TopicRow } from "../services/members";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -112,9 +112,9 @@ export function classroomsRoutes() {
       );
       return c.json(rows.map((row) => toSummary(row, user, base)));
     })
-    .post("/classrooms", async (c) => {
+    .post("/classrooms", guardUser(), validateJson(ClassroomCreateInputSchema), async (c) => {
       const user = requireUser(c);
-      const input = await parseBody(c, ClassroomCreateInputSchema);
+      const input = c.req.valid("json");
       const id = newId("c_");
       const at = nowIso();
       for (let attempt = 0; attempt < 5; attempt += 1) {

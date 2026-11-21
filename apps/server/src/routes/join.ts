@@ -3,7 +3,7 @@ import { getCookie } from "hono/cookie";
 import { JoinInputSchema, type JoinResult } from "@socrates/shared";
 import { one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, startParticipantSession } from "../auth";
-import { enforceIpLimit, fail, nowIso, parseBody, uniqueViolationColumns, type AppEnv } from "../http";
+import { enforceIpLimit, fail, nowIso, rateLimit, uniqueViolationColumns, validateJson, type AppEnv } from "../http";
 import {
   createGuestParticipant,
   ensureParticipant,
@@ -28,9 +28,8 @@ export function joinRoutes() {
       const topic = await topicOf(c.env.DB, activity.topic_id);
       return c.json({ code: classroom.join_code, classroomName: classroom.name, topic });
     })
-    .post("/join", async (c) => {
-      await enforceIpLimit(c, "join", 30);
-      const input = await parseBody(c, JoinInputSchema);
+    .post("/join", rateLimit("join", 30), validateJson(JoinInputSchema), async (c) => {
+      const input = c.req.valid("json");
       if (input.tosAccepted !== true) fail(422, "tos_required");
       const classroom = await one<ClassroomRow>(c.env.DB, "SELECT * FROM classrooms WHERE join_code = $code", {
         code: input.code,
