@@ -241,4 +241,22 @@ describe("httpApi contract (browser-side actual code)", () => {
     expect(path).toBe("/api/settings/keys/openai/models/gpt-4o");
     expect(init.method).toBe("DELETE");
   });
+
+  test("activityInfo serializes the optional participantId without residue", async () => {
+    handler.mockImplementation(() =>
+      json({
+        id: "a_1",
+        classroomId: "c_1",
+        classroomName: "X",
+        participantId: null,
+        mode: "live",
+        topic: { id: "t_1", title: "T", statement: "S", prompts: [] },
+        finishedAt: null,
+      }),
+    );
+    await httpApi.activityInfo("a_1");
+    expect(handler.mock.calls[0]![0]).toBe("/api/activities/a_1");
+    await httpApi.activityInfo("a_1", "p_9");
+    expect(handler.mock.calls[1]![0]).toBe("/api/activities/a_1?participantId=p_9");
+  });
 });
