@@ -45,7 +45,7 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     error,
     start: () => controllerRef.current?.start() ?? Promise.resolve(),
     stop: () => {
-      controllerRef.current?.stop();
+      void controllerRef.current?.stop();
     },
   };
 }

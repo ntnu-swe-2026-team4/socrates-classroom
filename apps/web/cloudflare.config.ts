@@ -7,7 +7,8 @@ import { loadEnv } from "vite";
 import { bindings, defineConfig, exports } from "cf/config";
 
 export default defineConfig(({ mode }) => {
-  const local = mode === "development" ? loadEnv(mode, import.meta.dirname, "") : {};
+  const local: Record<string, string | undefined> =
+    mode === "development" ? loadEnv(mode, import.meta.dirname, "") : {};
   const text = (key: string, fallback: string) => bindings.text(local[key] ?? fallback);
   const googleClientId = local.GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID ?? "";
   const facebookAppId = local.FACEBOOK_APP_ID ?? process.env.FACEBOOK_APP_ID ?? "";

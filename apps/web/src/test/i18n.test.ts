@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { dictionaries, translate } from "@/i18n";
 
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 describe("i18n", () => {
   it("every locale exposes the identical key set", async () => {
-    const keys = Object.keys(dictionaries["zh-TW"]!).sort();
+    const keys = Object.keys(dictionaries["zh-TW"]!).sort(byCodeUnit);
     expect(keys.length).toBeGreaterThan(100);
     for (const locale of ["en", "es"] as const) {
-      expect(Object.keys(dictionaries[locale]!).sort()).toEqual(keys);
+      expect(Object.keys(dictionaries[locale]!).sort(byCodeUnit)).toEqual(keys);
     }
   });
 
