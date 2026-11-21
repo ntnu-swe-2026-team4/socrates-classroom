@@ -1,5 +1,10 @@
 import type { ReportAxesPlan } from "../pi/extensions/report-submit";
 
+export interface Topic {
+  title: string;
+  statement: string;
+}
+
 export function topicBlock(title: string, statement: string): string {
   return `## Topic: ${title}\n${statement}`;
 }

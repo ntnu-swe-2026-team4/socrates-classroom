@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createClefViolationClassifier } from "../src/pi/extensions/judgment/classify";
 import { createEmotionClassifier, emotionOf } from "../src/pi/extensions/avatar";
+import { topicBlock } from "../src/prompts/assemble";
 
 function clefAi(answer: unknown, mode: "ok" | "throw" = "ok") {
   return {
@@ -24,6 +25,28 @@ describe("Clef choice decoders (classifiers.emotion / classifiers.violation)", (
     expect(await noChoice("anything")).toBeNull();
     const failing = createClefViolationClassifier(clefAi({}, "throw") as never);
     expect(await failing("anything")).toBeNull();
+  });
+
+  it("judgment: the activity's topic goes into the Clef state and grounds on_topic; without one it stays generic", async () => {
+    const inputs: Array<{
+      state: Record<string, string>;
+      questions: { violation: { criteria: Record<string, string> } };
+    }> = [];
+    const classify = createClefViolationClassifier({
+      run: async (_model: string, input: (typeof inputs)[number]) => {
+        inputs.push(input);
+        return { answers: { violation: { choice: "on_topic", probabilities: { on_topic: 0.8 } } } };
+      },
+    } as never);
+    const topic = { title: "代理孕母", statement: "契約應該被遵守嗎？" };
+
+    expect(await classify("契約要守", topic)).toEqual({ type: "on_topic", probability: 0.8 });
+    expect(inputs[0].state).toEqual({ topic: topicBlock(topic.title, topic.statement), latest: "契約要守" });
+    expect(inputs[0].questions.violation.criteria.on_topic).toContain("state.topic");
+
+    await classify("契約要守", null);
+    expect(inputs[1].state).toEqual({ latest: "契約要守" });
+    expect(inputs[1].questions.violation.criteria.on_topic).not.toContain("state.topic");
   });
 
   it("avatar: emotionOf decodes choice + probabilities + confidence", () => {

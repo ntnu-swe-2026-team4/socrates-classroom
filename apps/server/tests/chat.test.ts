@@ -11,10 +11,11 @@ import { inject } from "vitest";
 
 vi.setConfig({ testTimeout: 15_000 });
 import { seedFixture } from "../src/seed";
-import { all, batch, run } from "../src/db/d1";
+import { all, batch, one, run } from "../src/db/d1";
 import type { Chat } from "../src/do/chat";
 import { BTW_THINKING_LEVEL, PROFILES } from "../src/pi/agents/profiles";
 import { SOCRATES_PROMPTS, socratesExtension } from "../src/pi/extensions/socrates";
+import { topicBlock, type Topic } from "../src/prompts/assemble";
 import {
   assistantText,
   call,
@@ -52,6 +53,22 @@ async function connect(thread: string, cookie?: string, lang?: string): Promise<
 
 const migrations = inject("d1Migrations");
 
+async function activityTopic(): Promise<Topic> {
+  const topic = await one<Topic>(
+    env.DB,
+    "SELECT t.title, t.statement FROM activities a JOIN topics t ON t.id = a.topic_id WHERE a.id = $id",
+    { id: activityId },
+  );
+  return must(topic, "activity topic");
+}
+
+async function sessionContext(thread: string, session: string): Promise<string> {
+  const stub = env.Chat.get(env.Chat.idFromName(thread)) as unknown as DurableObjectStub<Chat>;
+  return runInDurableObject(stub, async (instance) =>
+    JSON.stringify(await instance.harness.session(session).messages()),
+  );
+}
+
 beforeAll(async () => {
   await applyD1Migrations(env.DB, migrations);
   await seedFixture(env.DB);
@@ -75,6 +92,41 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
       expect(await render()).toBe(SOCRATES_PROMPTS[lang]);
     }
     expect(new Set(Object.values(SOCRATES_PROMPTS)).size).toBe(3);
+  });
+
+  it("the topic section renders the activity's topic block, and nothing without a topic", async () => {
+    const topic = { title: "代理孕母", statement: "契約應該被遵守嗎？" };
+    const withTopic = must(
+      socratesExtension(
+        () => "zh",
+        async () => topic,
+      ).sections?.[1],
+      "socrates topic section",
+    );
+    expect(withTopic.key).toBe("topic");
+    expect(await (withTopic.render as () => Promise<string | undefined>)()).toBe(
+      topicBlock(topic.title, topic.statement),
+    );
+    const without = must(socratesExtension(() => "zh").sections?.[1], "socrates topic section without topic");
+    expect(await (without.render as () => Promise<string | undefined>)()).toBeUndefined();
+  });
+
+  it("Socrates' run context carries the activity's topic (#162)", async () => {
+    const student = await joinStudent("辯題生");
+    const thread = `${activityId}:${student.participantId}`;
+    const socket = await connect(thread, student.cookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.some((m) => m.type === "view"));
+    socket.send(JSON.stringify({ type: "submit", id: "s1", input: "我同意" }));
+    await rx.until((f) => latestView(f)?.entries.some((entry) => entry.kind === "pi.assistant") === true);
+    socket.close();
+
+    const topic = await activityTopic();
+    expect(await sessionContext(thread, ROOT_SESSION)).toContain(
+      JSON.stringify(topicBlock(topic.title, topic.statement)).slice(1, -1),
+    );
   });
 
   it("a student connected with ?lang=en is answered through the English prompt", async () => {
@@ -637,6 +689,10 @@ describe("btw side session (#121): a fork of the root that never writes back", (
       return view !== undefined && view.entries.filter((entry) => entry.kind === "pi.assistant").length >= 2;
     });
     expect(userTexts(latestView(side.rx.list))).toContain("電車難題是什麼");
+    const topic = await activityTopic();
+    expect(await sessionContext(thread, session)).toContain(
+      JSON.stringify(topicBlock(topic.title, topic.statement)).slice(1, -1),
+    );
 
     expect(userTexts(latestView(main.rx.list))).not.toContain("電車難題是什麼");
     expect(await rootUserTexts(thread)).toEqual(["主對話第一句"]);

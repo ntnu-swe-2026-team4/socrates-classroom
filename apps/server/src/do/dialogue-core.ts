@@ -15,7 +15,7 @@ import { createAvatarExtension } from "../pi/extensions/avatar";
 import { createJudgmentExtension } from "../pi/extensions/judgment";
 import { createWebSearchExtension } from "../pi/extensions/websearch";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
-import { SOCRATES_PROMPTS, socratesExtension } from "../pi/extensions/socrates";
+import { SOCRATES_PROMPTS, socratesExtension, type TopicSource } from "../pi/extensions/socrates";
 import { btwExtension } from "../pi/extensions/btw";
 import type { Extension } from "@earendil-works/pi-durable";
 
@@ -49,6 +49,7 @@ export function failureKey(session: string): string {
 export interface DialogueHarnessConfig {
   credentialOwner: () => Promise<string | null>;
   getLang?: () => Promise<Lang>;
+  getTopic?: TopicSource;
 }
 
 export interface DialogueCore {
@@ -63,16 +64,20 @@ export function createDialogueCore(env: Env, config: DialogueHarnessConfig): Dia
   const { credentialOwner } = config;
   const registry = createRegistry();
   const models = buildModels(env, { teacherOf: credentialOwner });
-  const btw = btwExtension();
+  const btw = btwExtension(config.getTopic);
 
   const harness = new PiHarness({
     harness: ({ storage, context, onWake }) => {
-      registry.install(socratesExtension(config.getLang));
+      registry.install(socratesExtension(config.getLang, config.getTopic));
       registry.install(createAvatarExtension(env.AI));
       registry.install(
-        createJudgmentExtension(env.AI, async (violation) => {
-          console.warn("[judgment:sink]", violation.type, violation.source);
-        }),
+        createJudgmentExtension(
+          env.AI,
+          async (violation) => {
+            console.warn("[judgment:sink]", violation.type, violation.source);
+          },
+          config.getTopic,
+        ),
       );
       registry.install(createWebSearchExtension(env.AI));
       registry.install(createUsageExtension(env, credentialOwner));

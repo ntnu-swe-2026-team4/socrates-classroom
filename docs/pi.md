@@ -86,12 +86,12 @@ watch 沒有 event cursor；重連以 `watch({ from: newestEntryId + 1 })` 讓 w
 
 本專案已裝：
 
-- `socrates`（單檔）：preamble section，依學生的介面語言取 `apps/server/src/prompts/socrates.md`（zh）／`socrates.en.md`／`socrates.es.md`；語言來自學生連線的 `?lang=`（語意見 `docs/api-contract.md`）
+- `socrates`（單檔）：preamble section，依學生的介面語言取 `apps/server/src/prompts/socrates.md`（zh）／`socrates.en.md`／`socrates.es.md`；語言來自學生連線的 `?lang=`（語意見 `docs/api-contract.md`）。其後接 `topic` section：Chat DO 依 `ctx.id.name` 的 activityId 從 D1 載入該活動的 topic（title＋statement，per-instance memo），以 `topicBlock()` 輸出（#162）；載入失敗或查無 topic 時該 section 省略、只剩 preamble
 - `avatar`（目錄，#111）：afterRun hook → Clef choice 題 → 寫 `app.emotion` entry（`{emotion, probabilities, confidence}`）
-- `judgment`（目錄，#71）：afterRun 分類 task＋`report_violation` tool → 寫 `app.violation` entry
+- `judgment`（目錄，#71）：afterRun 分類 task＋`report_violation` tool → 寫 `app.violation` entry。分類時 Clef `state` 帶 `topicBlock()`，`on_topic`＝本活動辯題及由它延伸的哲學討論，與辯題無關的哲學話題記為 `other`；無 topic 時退回泛哲學定義（#162）
 - `websearch`（目錄，#112）：`web_search` / `fetch_content` / `get_search_content` 三 tool（形制參考 pi-web-access，裁剪至 Workers 環境）
 - `usage`（單檔，#146）：afterResponse hook → `gateway/usage.ts` 記老師鏈 tokens/cost 入 D1＋額度水位檢測（詳見 [`providers.md`](./providers.md) § Teacher keys）；sink 永不 throw（fail-open，記帳失敗只 log）
-- `btw`（單檔，#121）：side session 的 prompt section（`apps/server/src/prompts/btw.md`）＋`forkBtw`。**不在 host 預設 selection**：Chat DO 的 `settings.extensions` 是 getter，回傳「已安裝且非 btw」的 extensions（pi 每次 resolution 都重讀 settings），所以 root 照舊、新裝的 extension（如 faux-replay）自動納入；btw 只在 `root.fork(at, { agent: { extensions: [btw] } })` 的 fork 上生效。fork 繼承 fork 點之前的 entries，之後的 entries 只屬於 fork——這是 side session 不污染 root context 的機制
+- `btw`（單檔，#121）：side session 的 prompt section（`apps/server/src/prompts/btw.md`）＋與 `socrates` 共用的 `topic` section（fork 只選 btw，看不到 socrates 的 section，故自帶，#162）＋`forkBtw`。**不在 host 預設 selection**：Chat DO 的 `settings.extensions` 是 getter，回傳「已安裝且非 btw」的 extensions（pi 每次 resolution 都重讀 settings），所以 root 照舊、新裝的 extension（如 faux-replay）自動納入；btw 只在 `root.fork(at, { agent: { extensions: [btw] } })` 的 fork 上生效。fork 繼承 fork 點之前的 entries，之後的 entries 只屬於 fork——這是 side session 不污染 root context 的機制
 
 寫 extension 的要點：
 

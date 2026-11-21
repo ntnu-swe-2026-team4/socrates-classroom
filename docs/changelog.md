@@ -49,6 +49,18 @@
 - `biome.jsonc` overrides：src globs（`apps/*/src/**`、`packages/*/src/**`，排除 test 目錄）凍 `style.noNonNullAssertion: error`——新增 src 違規即 CI 阻斷；tests 層豁免為暫時手段，L2（tests 清零）落地後移除
 - 探針覆核：issue #293 記錄的 116 處在今日 tip 為全庫 269（src 84、tests 185）——以今日數字為準
 
+## 2026-11-21 — 對話引擎注入辯題（`fix/162-topic-grounding`，#162）
+
+### Fixed
+
+- 蘇格拉底收得到活動的辯題：Chat DO 從 D1 載入 activity 的 topic，`socrates` extension 新增 `topic` section（`topicBlock()` 輸出，與報告 agent 收到的格式一致）；三語 `socrates*.md` 說明 Topic 段的位置，並要求即使辯題是其他語言仍以介面語言回覆
+- btw 側欄同樣收得到辯題：`btw` extension 自帶 `topic` section；`btw.md` 指向 Topic 段
+- judgment 分類器的 `on_topic` 改以該活動辯題為準（辯題及其延伸的哲學討論）；與辯題無關的哲學話題記為 `other`，無 topic 時退回原本的泛哲學定義
+
+### Notes
+
+- 不改 WS protocol、API 契約與 PiHarness settings；`report_violation` tool description 與分類器文字搬遷留給 #161，socrates prompt 重寫留給 #75
+
 ## 2026-11-21 — 群體報告可依老師的軸與軸數產生（`feat/159-report-axes`，#159）
 
 ### Added

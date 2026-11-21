@@ -18,6 +18,7 @@ import { teacherOfActivity } from "../pi/credentials";
 import { one } from "../db/d1";
 import { ApiError, type Lang } from "@socrates/shared";
 import { normalizeLang } from "../http";
+import type { Topic } from "../prompts/assemble";
 import { ChatSockets, type ReverifyOutcome, type SocketIdentity } from "../ws/sockets";
 import {
   createDialogueCore,
@@ -40,11 +41,13 @@ class ActivityFinishedError extends Error {
 
 export class Chat extends DurableObject<Env> {
   #teacherId: string | null | undefined;
+  #topic: Topic | null | undefined;
   readonly #sessionModels = new Map<string, { provider: string; id: string }>();
 
   readonly core = createDialogueCore(this.env, {
     credentialOwner: () => this.teacherId(),
     getLang: () => this.studentLang(),
+    getTopic: () => this.topic(),
   });
 
   readonly tracker = new RunDeadlineTracker(
@@ -109,6 +112,24 @@ export class Chat extends DurableObject<Env> {
       this.#teacherId = activityId ? await teacherOfActivity(this.env, activityId) : null;
     }
     return this.#teacherId;
+  }
+
+  private async topic(): Promise<Topic | null> {
+    if (this.#topic !== undefined) return this.#topic;
+    const activityId = this.ctx.id.name?.split(":")[0] ?? "";
+    if (!activityId) return null;
+    try {
+      this.#topic =
+        (await one<Topic>(
+          this.env.DB,
+          "SELECT t.title, t.statement FROM activities a JOIN topics t ON t.id = a.topic_id WHERE a.id = $id",
+          { id: activityId },
+        )) ?? null;
+    } catch (error) {
+      console.warn("[chat] topic load failed", error instanceof Error ? error.name : typeof error);
+      return null;
+    }
+    return this.#topic;
   }
 
   private async studentLang(): Promise<Lang> {
