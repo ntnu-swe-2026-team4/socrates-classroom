@@ -109,17 +109,19 @@ export async function sealPayload(ctx: { env: { AUTH_SECRET?: string } }, data: 
   return `${payload}.${await sign(payload, secretOf(ctx))}`;
 }
 
-export async function openPayload<T>(
-  ctx: { env: { AUTH_SECRET?: string } },
-  token: string | undefined,
-): Promise<T | null> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export async function openPayload(ctx: { env: { AUTH_SECRET?: string } }, token: string | undefined): Promise<unknown> {
   if (!token) return null;
   const [payload, sig] = token.split(".");
   if (!payload || !sig) return null;
   const expected = await sign(payload, secretOf(ctx));
   if (!timingSafeEqual(expected, sig)) return null;
   try {
-    return JSON.parse(new TextDecoder().decode(fromB64url(payload))) as T;
+    const decoded: unknown = JSON.parse(new TextDecoder().decode(fromB64url(payload)));
+    return isRecord(decoded) ? decoded : null;
   } catch {
     return null;
   }
@@ -161,10 +163,13 @@ export function readAccountToken(token: string, purpose: AccountTokenPurpose): {
   const [payload, sig, extra] = token.split(".");
   if (!payload || !sig || extra !== undefined) return null;
   try {
-    const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as Partial<AccountTokenClaims>;
-    if (claims.purpose !== purpose || typeof claims.uid !== "string" || typeof claims.exp !== "number") return null;
-    if (claims.exp <= Date.now()) return null;
-    return { uid: claims.uid };
+    const decoded: unknown = JSON.parse(new TextDecoder().decode(fromB64url(payload)));
+    if (!isRecord(decoded)) return null;
+    if (decoded.purpose !== purpose || typeof decoded.uid !== "string" || typeof decoded.exp !== "number") {
+      return null;
+    }
+    if (decoded.exp <= Date.now()) return null;
+    return { uid: decoded.uid };
   } catch {
     return null;
   }
@@ -212,7 +217,12 @@ async function tokenClaims(
     let diff = 0;
     for (let i = 0; i < a.length; i += 1) diff |= a[i] ^ b[i];
     if (diff !== 0) return null;
-    const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as TokenClaims;
+    const decoded: unknown = JSON.parse(new TextDecoder().decode(fromB64url(payload)));
+    if (!isRecord(decoded)) return null;
+    if (typeof decoded.uid !== "string" || typeof decoded.ver !== "number" || typeof decoded.exp !== "number") {
+      return null;
+    }
+    const claims: TokenClaims = { uid: decoded.uid, ver: decoded.ver, exp: decoded.exp };
     if (claims.exp < Date.now()) return null;
     return claims;
   } catch {
@@ -307,10 +317,13 @@ export async function lookupParticipant(
     let diff = 0;
     for (let i = 0; i < a.length; i += 1) diff |= a[i] ^ b[i];
     if (diff !== 0) return null;
-    const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as ParticipantClaims;
-    if (claims.exp < Date.now()) return null;
-    if (typeof claims.aid !== "string" || typeof claims.pid !== "string") return null;
-    return { activityId: claims.aid, participantId: claims.pid };
+    const decoded: unknown = JSON.parse(new TextDecoder().decode(fromB64url(payload)));
+    if (!isRecord(decoded)) return null;
+    if (typeof decoded.aid !== "string" || typeof decoded.pid !== "string" || typeof decoded.exp !== "number") {
+      return null;
+    }
+    if (decoded.exp < Date.now()) return null;
+    return { activityId: decoded.aid, participantId: decoded.pid };
   } catch {
     return null;
   }
@@ -324,7 +337,7 @@ const PBKDF2_ITERATIONS = 100_000;
 async function pbkdf2(password: string, salt: Uint8Array): Promise<string> {
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: salt as BufferSource, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    { name: "PBKDF2", salt: salt, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
     key,
     256,
   );
@@ -345,7 +358,7 @@ export async function verifyPassword(password: string, stored: string | null): P
   if (scheme !== "pbkdf2" || !iterations || !salt || !hash) return false;
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: fromB64url(salt) as BufferSource, iterations: Number(iterations), hash: "SHA-256" },
+    { name: "PBKDF2", salt: fromB64url(salt), iterations: Number(iterations), hash: "SHA-256" },
     key,
     256,
   );
