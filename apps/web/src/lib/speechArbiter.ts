@@ -103,9 +103,10 @@ export class SpeechArbiter {
         throw error;
       })
       .finally(() => {
-        if (this.#active?.id !== current.id) return;
-        this.#active = null;
-        this.env.setSpeakingSource(null);
+        if (this.#active?.id === current.id) {
+          this.#active = null;
+          this.env.setSpeakingSource(null);
+        }
       });
   }
 

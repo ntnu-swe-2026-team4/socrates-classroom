@@ -119,7 +119,6 @@ export class Avatar {
         this.meshes.push(mesh as MorphMesh);
       }
     });
-    if (this.meshes.length === 0) console.warn("Model has no morph targets; lip-sync disabled");
     for (const v of VISEMES) {
       this.visemeTarget.set(v, 0);
       this.visemeCurrent.set(v, 0);
