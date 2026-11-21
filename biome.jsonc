@@ -44,6 +44,10 @@
   },
   "linter": {
     "enabled": true,
+    "domains": {
+      "react": "recommended",
+      "test": "recommended"
+    },
     "rules": {
       "preset": "recommended",
       "correctness": {
@@ -51,24 +55,18 @@
         "noUnusedImports": "warn"
       },
       "style": {
-        "noNonNullAssertion": "off",
-        "noRestrictedImports": {
-          "level": "error",
-          "options": {
-            "paths": {
-              "react": {
-                "importNames": ["useEffect"],
-                "message": "useEffect is banned in apps/web"
-              }
-            }
-          }
-        }
+        "noNonNullAssertion": "off"
       },
       "complexity": {
         "noVoid": "off"
       },
       "nursery": {
-        "useReactCompiler": "error"
+        "useReactCompiler": "error",
+        "noUselessTypeConversion": "error",
+        "noReturnInFinally": "error"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "error"
       },
       "a11y": {
         "useKeyWithClickEvents": "off",
@@ -79,10 +77,63 @@
       },
       "suspicious": {
         "noExplicitAny": "off",
-        "noArrayIndexKey": "warn"
+        "noArrayIndexKey": "warn",
+        "noConsole": "error",
+        "noDebugger": "error"
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["apps/web/src/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "react": {
+                    "importNames": ["useEffect"],
+                    "message": "useEffect is banned in apps/web"
+                  },
+                  "rehype-raw": {
+                    "message": "react-markdown only — raw HTML in markdown is a stated boundary (AGENTS.md)"
+                  }
+                },
+                "patterns": [
+                  {
+                    "group": ["**/server/src/**", "@socrates/server"],
+                    "message": "the server contract channel is @server/* (dist/types) only — never import server source (R6)"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/server/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/test/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    }
+  ],
   "json": {
     "formatter": {
       "enabled": true

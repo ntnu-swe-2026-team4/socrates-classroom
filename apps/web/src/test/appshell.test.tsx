@@ -18,7 +18,7 @@ const calls = vi.hoisted(() => ({
 
 vi.mock("@/api", () => ({ api: { me: calls.me, logout: calls.logout } }));
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children, to }: { children: ReactNode; to?: string }) => <a href={String(to ?? "#")}>{children}</a>,
+  Link: ({ children, to }: { children: ReactNode; to?: string }) => <a href={to ?? "#"}>{children}</a>,
   useNavigate: () => calls.navigate,
   useRouterState: ({ select }: { select: (state: unknown) => unknown }) =>
     select({ location: { pathname: calls.pathname } }),

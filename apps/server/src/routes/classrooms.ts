@@ -81,7 +81,7 @@ function toSummary(row: SummaryRow, user: User, base: string): ClassroomSummary 
     name: row.name,
     role: owner ? "teacher" : "student",
     teacherName: row.teacher_name,
-    memberCount: Number(row.member_count ?? 0),
+    memberCount: row.member_count ?? 0,
     code: owner ? row.join_code : null,
     url: owner ? `${base}/join/${row.join_code}` : null,
     current:

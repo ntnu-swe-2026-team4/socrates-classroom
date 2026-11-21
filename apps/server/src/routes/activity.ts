@@ -126,7 +126,7 @@ export function activityRoutes() {
         "SELECT COUNT(*) AS n FROM activity_participants WHERE activity_id = $aid AND kind = 'teacher'",
         { aid: activity.id },
       );
-      const taken = Number(existing?.n ?? 0);
+      const taken = existing?.n ?? 0;
       if (taken + input.count > ACTIVITY_SLOT_MAX) fail(409, "conflict");
       const label = SLOT_NAME[langOf(c)];
       const at = nowIso();
@@ -176,7 +176,7 @@ export function activityRoutes() {
         "SELECT COUNT(*) AS n FROM activity_participants WHERE activity_id = $aid AND kind = 'teacher'",
         { aid: activity.id },
       );
-      if (Number(created?.n ?? 0) !== taken + input.count) fail(409, "conflict");
+      if ((created?.n ?? 0) !== taken + input.count) fail(409, "conflict");
       return c.json(await slotsPayload(c.env, activity.id), 201);
     })
     .post("/activities/:id/finish", async (c) => {
