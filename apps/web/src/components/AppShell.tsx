@@ -4,6 +4,7 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, GraduationCap, Home, LogIn, LogOut, Menu, Moon, Settings, ShieldCheck, Sun } from "lucide-react";
 import { api, type User } from "@/api";
+import { meQueryOptions } from "@/api/me";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
 import { Initial, TrapDialog, cn } from "@/components/ui";
 import { useDomEvent } from "@/hooks/useSubscription";
@@ -82,7 +83,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
 
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const me = useQuery(meQueryOptions);
   const logout = useMutation({
     mutationFn: () => api.logout(),
     onSuccess: async () => {
