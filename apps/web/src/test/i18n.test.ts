@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { byCodeUnit } from "@socrates/shared";
 import { dictionaries, translate } from "@/i18n";
-
-const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 describe("i18n", () => {
   it("every locale exposes the identical key set", async () => {

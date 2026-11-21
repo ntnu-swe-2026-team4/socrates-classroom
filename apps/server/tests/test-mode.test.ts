@@ -1,12 +1,12 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
+import { byCodeUnit } from "@socrates/shared";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
 import { run } from "../src/db/d1";
 
-const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 import {
   call,
   classroomWithActivity,

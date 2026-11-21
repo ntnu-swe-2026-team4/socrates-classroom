@@ -6,6 +6,7 @@ import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import { z } from "zod";
 import type { StudentAnalysis } from "@socrates/shared";
+import { byCodeUnit } from "@socrates/shared";
 import {
   PlannedClassReportSubmissionSchema,
   ReportAxesPlanSchema,
@@ -21,8 +22,6 @@ import {
   toPlannedClassReport,
 } from "../src/do/report-runner";
 import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
-
-const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 let teacherCookie: string;
 let classroomCode: string;
