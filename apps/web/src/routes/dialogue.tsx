@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
+import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
 import { readActivityId } from "@/api/local";
 import { DialogueView } from "@/components/DialogueView";
@@ -27,7 +28,7 @@ export const Route = createFileRoute("/dialogue")({
 function DialoguePage() {
   const t = useT();
   const navigate = useNavigate();
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const me = useQuery(meQueryOptions);
   const { activityId: activityParam, slot, q, term } = Route.useSearch();
   const activityId = activityParam ?? readActivityId() ?? "";
   const activityQuery = useQuery({

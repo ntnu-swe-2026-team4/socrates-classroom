@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight, Ghost, UserRound } from "lucide-react";
 import { api } from "@/api";
+import { meQueryOptions } from "@/api/me";
 import { ApiError } from "@/api";
 import { Button, Card, Checkbox, Field, Initial, Input, PageHeader, Spinner } from "@/components/ui";
 import { useT } from "@/i18n";
@@ -28,7 +29,7 @@ function JoinPage() {
   const [failed, setFailed] = useState<string | null>(null);
   const [asGuest, setAsGuest] = useState(false);
   const info = useQuery({ queryKey: ["join", code], queryFn: () => api.joinByCode(code) });
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const me = useQuery(meQueryOptions);
   const account = me.data ?? null;
   const signedIn = Boolean(account);
 

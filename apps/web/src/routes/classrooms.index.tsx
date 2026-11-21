@@ -3,6 +3,7 @@ import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-ro
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Users } from "lucide-react";
 import { api, type ClassroomSummary } from "@/api";
+import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
 import { Button, Input, PageHeader, cn } from "@/components/ui";
 import { useT } from "@/i18n";
@@ -19,7 +20,7 @@ export const Route = createFileRoute("/classrooms/")({
 function ClassroomsPage() {
   const t = useT();
   const navigate = useNavigate();
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+  const me = useQuery(meQueryOptions);
   const classrooms = useQuery({ queryKey: ["classrooms"], queryFn: () => api.listClassrooms() });
   const [code, setCode] = useState("");
   const canManage = Boolean(me.data);

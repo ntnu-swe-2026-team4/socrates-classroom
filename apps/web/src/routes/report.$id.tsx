@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, type ReportPosition, type StudentAnalysis, type ViolationSlice } from "@/api";
+import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
 import { StanceConstellation } from "@/components/StanceConstellation";
 import { Segmented, Spinner, cn } from "@/components/ui";
@@ -19,7 +20,7 @@ function ReportPage() {
   const t = useT();
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity, enabled: false });
+  const me = useQuery({ ...meQueryOptions, enabled: false });
   const isTeacher = me.data != null;
   const [view, setView] = useState<"group" | "individual">("group");
   const [studentIdx, setStudentIdx] = useState(0);
