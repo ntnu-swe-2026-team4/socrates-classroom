@@ -1,5 +1,4 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { useOnUnmount } from "@/hooks/useSubscription";
 import {
   defaultVoiceEnv,
   VoiceInputController,
@@ -22,7 +21,9 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
     onAmplitudeRef.current = onAmplitude;
   });
 
-  const [controller] = useState(() => {
+  const controllerRef = useRef<VoiceInputController | null>(null);
+
+  useLayoutEffect(() => {
     const callbacks: VoiceCallbacks = {
       onFinal: (text) => onFinalRef.current(text),
       onAmplitude: (value) => onAmplitudeRef.current(value),
@@ -30,10 +31,21 @@ export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (val
       onInterim: setInterim,
       onError: setError,
     };
-    return new VoiceInputController(defaultVoiceEnv, callbacks);
-  });
+    const controller = new VoiceInputController(defaultVoiceEnv, callbacks);
+    controllerRef.current = controller;
+    return () => {
+      controller.dispose();
+      controllerRef.current = null;
+    };
+  }, []);
 
-  useOnUnmount(() => controller.dispose());
-
-  return { state, interim, error, start: () => controller.start(), stop: () => controller.stop() };
+  return {
+    state,
+    interim,
+    error,
+    start: () => controllerRef.current?.start() ?? Promise.resolve(),
+    stop: () => {
+      controllerRef.current?.stop();
+    },
+  };
 }
