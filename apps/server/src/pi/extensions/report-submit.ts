@@ -7,7 +7,7 @@ export const SUBMIT_CLASS_REPORT = "submit_class_report";
 export const SUBMIT_CLASS_AXES_REPORT = "submit_class_axes_report";
 
 const AXES_MAX = 3;
-const axisEnd = z
+const axisText = z
   .string()
   .trim()
   .min(1)
@@ -17,7 +17,7 @@ const axisEnd = z
 export const ReportAxesPlanSchema = z
   .object({
     count: z.number().int().min(1).max(AXES_MAX),
-    teacher: z.array(z.object({ name: axisEnd, left: axisEnd, right: axisEnd })).max(AXES_MAX),
+    teacher: z.array(z.object({ name: axisText, left: axisText, right: axisText })).max(AXES_MAX),
   })
   .refine((plan) => plan.teacher.length <= plan.count, { message: "teacher_axes_over_count" })
   .refine((plan) => new Set(plan.teacher.map(({ name }) => name)).size === plan.teacher.length, {

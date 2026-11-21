@@ -32,7 +32,7 @@ Your own axes come after the teacher's:
 - Each axis you add must be a disagreement this class actually talked about that neither the teacher's axes nor your other axes already cover
 - An axis you add must separate students: counting only students who talked about it (not those placed in the middle because they did not), their positions must fall at different ends (at least two of left, middle, right). If they all fall at the same end, the axis separates no one; do not set it
 - If the class has no further disagreement that separates students, add fewer axes, or none, and say in one line of the class overview why there are fewer (that line is one of its three to five lines)
-- If students' positions on two of your axes always move together (right on one, right on the other), it is the same disagreement; keep only one. If one of your axes moves together with a teacher's axis, it is the teacher's disagreement; do not set it
+- If students' positions on two of your axes always move together (right on one, right on the other), it is the same disagreement; keep only one. If one of your axes moves together with a teacher's axis (counting only students who talked about both), it is the teacher's disagreement; do not set it
 - Write each axis you add in this order: what it asks, the position at its left end and at its right end, the positions of every student on the roster (those who did not talk about it in the middle), why this axis is needed (if it is the first axis of the report, because the teacher set none, it states the class's main disagreement; otherwise it states which students it separates who could not be separated on the earlier axes)
 - Use only disagreements this class actually talked about, not textbook or generic categories
 

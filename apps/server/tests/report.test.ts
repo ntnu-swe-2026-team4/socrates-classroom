@@ -1,12 +1,18 @@
 import { env } from "cloudflare:workers";
-import { applyD1Migrations } from "cloudflare:test";
+import { applyD1Migrations, runInDurableObject } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import { z } from "zod";
 import type { StudentAnalysis } from "@socrates/shared";
-import { PlannedClassReportSubmissionSchema, ReportAxesPlanSchema } from "../src/pi/extensions/report-submit";
+import {
+  PlannedClassReportSubmissionSchema,
+  ReportAxesPlanSchema,
+  SUBMIT_CLASS_AXES_REPORT,
+  SUBMIT_CLASS_REPORT,
+  SUBMIT_STUDENT_ANALYSIS,
+} from "../src/pi/extensions/report-submit";
 import {
   citesSpokenLines,
   pointOnAxis,
@@ -396,6 +402,24 @@ describe("class report with an axes plan passed in (#159)", () => {
     ]) {
       expect(ReportAxesPlanSchema.safeParse(plan).success).toBe(false);
     }
+  });
+
+  it("the existing report runs never see the axes tool; only the axes registry offers it", async () => {
+    const created = await classroomWithActivity(teacherCookie, "工具清單班");
+    const names = await runInDurableObject(env.ReportRunner.getByName(created.activityId), async (runner) => ({
+      main: runner.registry
+        .snapshot()
+        .tools()
+        .map(({ tool }) => tool.name),
+      axes: runner.axesRegistry
+        .snapshot()
+        .tools()
+        .map(({ tool }) => tool.name),
+    }));
+    expect(names.main).not.toContain(SUBMIT_CLASS_AXES_REPORT);
+    expect(names.main).toEqual(expect.arrayContaining([SUBMIT_STUDENT_ANALYSIS, SUBMIT_CLASS_REPORT]));
+    expect(names.axes).toContain(SUBMIT_CLASS_AXES_REPORT);
+    expect(names.axes).not.toContain(SUBMIT_CLASS_REPORT);
   });
 
   it("an axes plan passed in: the report has the teacher's axes first, then the added ones up to the count", async () => {
