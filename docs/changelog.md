@@ -26,6 +26,12 @@
 - demo 教師一鍵登入按鈕與 `login_demo_teacher` i18n key（dev fixture 登入由 `/dev/accounts` 承接）
 - web-next 稿的 `useGuestSessionExpired`／guest 逾期通知（main 訪客 `user:null`、無 guest session 機制）與 login 頁 `storage` 監聽（跨 tab 同步職責屬 AppShell `useSessionSync`，#179）
 
+### Fixed
+
+- `raw()` 補上 204 guard：`DELETE /settings/keys/:provider/models/:model` 回 204 空 body，原實作直接 `res.json()` 會拋 SyntaxError（`unwrap` 有 guard、`raw` 漏同步——雙運輸通道的直接代價）；regression test 於 `api.e2e.test.ts`
+- 錯誤解包四份複製（`unwrap`／`raw`／`stt`／`tts`）收斂為單一 `raiseApiError`
+- `joinAsGuest` 簽名改顯式 `{ name?, tosAccepted }`：原 transport 層硬編 `tosAccepted: true`，server 的 `tos_required` 閘門從此 client 永不觸發；呼叫端（`/join/$code`）改傳真實 checkbox 狀態
+
 ## 2026-11-21 — Email 帳號密碼找回（`feat/230-password-reset`，#230）
 
 ### Added
