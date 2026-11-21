@@ -157,7 +157,7 @@ startReport → pending 標記 → alarm → generate：
   transcriptOf（AI：…/學生（n）：… 編號＋假名冪等）
   → Promise.all 平行 per-student studentReport（重試 2；語言＝老師的 users.lang，與 classReport 相同；引用的 turns 須是學生說過的行號，否則視同格式錯誤重試）
   → classReport（立場軸/落點/分群；落點由模型給 side＋strength，server 換算 end/at：left→low、right→high，at＝50∓10×strength，middle＝50）
-    startReport 帶 axes（{count: 1–3, teacher: 老師的軸}）時改用 class-report-axes：老師的軸依序在前、由 server 填入名稱與兩端（模型交這些軸的落點與 why），模型補的軸寫完整、接在後面，總數不超過 count；落點不符 api-contract.md §7 的規定即視同格式錯誤；沒帶 axes 時與上一行相同
+    startReport 帶 axes（{count: 1–3, teacher: 老師的軸}）時改用 class-report-axes：老師的軸依序在前、由 server 填入名稱與兩端（模型交這些軸的落點與 why），模型補的軸寫完整、接在後面，總數不超過 count；老師軸的數量或編號不對、總數超過 count、軸名重複或空白、任一條軸的落點名單不是全班各一次（落點的意義見 api-contract.md §7），都視同格式錯誤；沒帶 axes 時與上一行相同
   → persist（D1 reports：teacher_report=classReport、student_reports=analysis+violations-from-transcript）
 ```
 

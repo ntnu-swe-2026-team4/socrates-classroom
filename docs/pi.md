@@ -105,7 +105,7 @@ watch 沒有 event cursor；重連以 `watch({ from: newestEntryId + 1 })` 讓 w
 
 本專案的 profile（`pi/agents/profiles.ts`）：
 
-- `socrates`：學生對話（root），extensions socrates／avatar／judgment／websearch，maxTurns 8
+- `socrates`：學生對話（root），extensions 全開
 - `lookup`（#76）：查詢，websearch tools，maxTurns 3
 - `topic-gen`（#77）：出題，websearch tools，maxTurns 6
 - `student-report`、`class-report`（#74）：單人與群體報告，`report-submit` 的交件工具，maxTurns 4
