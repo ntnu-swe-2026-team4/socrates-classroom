@@ -4,7 +4,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
-import { reportAlarmPlan } from "../src/do/report-runner";
+import type { StudentAnalysis } from "@socrates/shared";
+import { citesSpokenLines, pointOnAxis, reportAlarmPlan, toClassReport } from "../src/do/report-runner";
 import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
 
 let teacherCookie: string;
@@ -227,6 +228,80 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(ownReport.analysis?.stated).toBe(true);
     expect(ownReport.positions).toEqual([]);
   }, 60_000);
+});
+
+describe("class report positions: the model gives the side and how firmly; the server computes the point", () => {
+  it("pointOnAxis: left is below 50, right above, middle 50; firmer is farther from the middle", () => {
+    expect([1, 3, 5].map((strength) => pointOnAxis("left", strength))).toEqual([
+      { end: "low", at: 40 },
+      { end: "low", at: 20 },
+      { end: "low", at: 0 },
+    ]);
+    expect([1, 3, 5].map((strength) => pointOnAxis("right", strength).at)).toEqual([60, 80, 100]);
+    expect(pointOnAxis("middle", 5)).toEqual({ end: "middle", at: 50 });
+  });
+
+  it("toClassReport: the axis' left and right ends become low and high; positions carry end and at, not side", () => {
+    const report = toClassReport({
+      students: [],
+      unstated: [],
+      axes: [
+        {
+          name: "n",
+          left: "l",
+          right: "r",
+          positions: [{ id: "學生1", turns: [1], view: "v", side: "right", strength: 2 }],
+          why: "w",
+        },
+      ],
+      overview: ["o"],
+    });
+    expect(report.axes[0]).toEqual({
+      name: "n",
+      low: "l",
+      high: "r",
+      positions: [{ id: "學生1", turns: [1], view: "v", end: "high", at: 70 }],
+      why: "w",
+    });
+  });
+});
+
+describe("student reports cite only lines the student said", () => {
+  const stated = (turns: number[]): StudentAnalysis => ({
+    stated: true,
+    claim: { text: "c", turns },
+    reasons: { text: "r", turns: [1] },
+    tension: null,
+  });
+
+  it("citesSpokenLines: every cited line must be one the student said", () => {
+    expect(citesSpokenLines(stated([1, 2]), 2)).toBe(true);
+    expect(citesSpokenLines(stated([3]), 2)).toBe(false);
+    expect(citesSpokenLines({ stated: false, doing: { text: "d", turns: [4] } }, 3)).toBe(false);
+  });
+
+  it("a report citing an unspoken line is refused and retried; the retried report is kept", async () => {
+    const created = await classroomWithActivity(teacherCookie, "引用錯行班");
+    const account = await registerStudent(created.code, "小錯");
+    const participantId = await participantIdOf(created.activityId, account.cookie);
+    await speak(`${created.activityId}:${participantId}`, account.cookie, "我會拉 FORCE-UNSPOKEN-TURN");
+
+    const finish = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacherCookie, "CF-Connecting-IP": "198.51.100.23" },
+    });
+    expect(finish.status).toBe(204);
+    let report: Response | null = null;
+    for (let i = 0; i < 180; i += 1) {
+      report = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacherCookie } });
+      if (report.status === 200) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    expect(report?.status).toBe(200);
+    const body = (await report?.json()) as { students: Array<{ analysis: { claim: { turns: number[] } } | null }> };
+    expect(body.students).toHaveLength(1);
+    expect(body.students[0]!.analysis?.claim.turns).toEqual([1]);
+  }, 120_000);
 });
 
 describe("stored report read-back validation", () => {

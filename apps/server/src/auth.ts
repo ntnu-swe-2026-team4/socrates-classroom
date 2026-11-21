@@ -107,6 +107,59 @@ export async function openPayload<T>(
   }
 }
 
+export type AccountTokenPurpose = "password_reset";
+
+interface AccountTokenClaims {
+  purpose: AccountTokenPurpose;
+  uid: string;
+  exp: number;
+}
+
+function purposeSecret(ctx: { env: { AUTH_SECRET?: string } }, purpose: AccountTokenPurpose): Promise<string> {
+  return sign(`socrates:${purpose}`, secretOf(ctx));
+}
+
+export function passwordResetBinding(passwordHash: string, email: string | null): string {
+  return `${passwordHash}\n${email ?? ""}`;
+}
+
+export async function sealAccountToken(
+  ctx: { env: { AUTH_SECRET?: string } },
+  purpose: AccountTokenPurpose,
+  uid: string,
+  binding: string,
+  ttlMs: number,
+): Promise<string> {
+  const claims: AccountTokenClaims = { purpose, uid, exp: Date.now() + ttlMs };
+  const payload = b64url(encoder.encode(JSON.stringify(claims)));
+  return `${payload}.${await sign(`${payload}.${binding}`, await purposeSecret(ctx, purpose))}`;
+}
+
+export function readAccountToken(token: string, purpose: AccountTokenPurpose): { uid: string } | null {
+  const [payload, sig, extra] = token.split(".");
+  if (!payload || !sig || extra !== undefined) return null;
+  try {
+    const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as Partial<AccountTokenClaims>;
+    if (claims.purpose !== purpose || typeof claims.uid !== "string" || typeof claims.exp !== "number") return null;
+    if (claims.exp <= Date.now()) return null;
+    return { uid: claims.uid };
+  } catch {
+    return null;
+  }
+}
+
+export async function verifyAccountToken(
+  ctx: { env: { AUTH_SECRET?: string } },
+  purpose: AccountTokenPurpose,
+  token: string,
+  binding: string,
+): Promise<boolean> {
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return false;
+  const expected = await sign(`${payload}.${binding}`, await purposeSecret(ctx, purpose));
+  return timingSafeEqual(expected, sig);
+}
+
 export async function issueSessionToken(
   ctx: { env: { AUTH_SECRET?: string } },
   user: User,

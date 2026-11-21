@@ -15,6 +15,12 @@ export const UserSchema = z.object({
 });
 export type User = z.infer<typeof UserSchema>;
 
+export const OAUTH_PROVIDERS = ["google", "facebook"] as const;
+export const PASSWORD_RESET_TTL_MINUTES = 30;
+export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
+export const OAuthProvidersSchema = z.object({ providers: z.array(z.enum(OAUTH_PROVIDERS)) });
+export type OAuthProviders = z.infer<typeof OAuthProvidersSchema>;
+
 export const TopicDraftSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -221,6 +227,11 @@ export const SignupInputSchema = z.object({
   name: z.string().trim().min(1).max(80),
   tosAccepted: z.boolean(),
 });
+export const PasswordForgotInputSchema = z.object({ email: emailField });
+export const PasswordResetInputSchema = z.object({
+  token: z.string().max(2048),
+  password: z.string().min(8).max(128),
+});
 export const JoinInputSchema = z.object({
   code: z.string().min(4).max(32),
   name: z.string().trim().max(80).optional(),
@@ -319,6 +330,23 @@ export type DevAccount = z.infer<typeof DevAccountSchema>;
 export const DevAccountsSchema = z.object({ password: z.string(), accounts: z.array(DevAccountSchema) });
 export type DevAccounts = z.infer<typeof DevAccountsSchema>;
 
+export const NotificationSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
+});
+export type Notification = z.infer<typeof NotificationSchema>;
+export const NotificationFeedSchema = z.object({
+  items: z.array(NotificationSchema),
+  unread: z.number().int().nullable(),
+});
+export type NotificationFeed = z.infer<typeof NotificationFeedSchema>;
+export const NotificationInputSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  body: z.string().trim().min(1).max(2000),
+});
+
 export const TeacherKeyModelSchema = z.object({
   model: z.string(),
   maxConcurrency: z.number().int().min(1).max(100).nullable(),
@@ -338,6 +366,21 @@ export const TeacherKeyStatusSchema = z.object({
   models: z.array(TeacherKeyModelSchema),
 });
 export type TeacherKeyStatus = z.infer<typeof TeacherKeyStatusSchema>;
+
+export const TeacherKeyEchoSchema = z.object({
+  provider: z.string(),
+  last4: z.string().optional(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+});
+export type TeacherKeyEcho = z.infer<typeof TeacherKeyEchoSchema>;
+
+export const TeacherKeyModelEchoSchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+});
+export type TeacherKeyModelEcho = z.infer<typeof TeacherKeyModelEchoSchema>;
 
 export const ViolationChoiceSchema = z.object({
   type: z.string(),
@@ -372,6 +415,7 @@ export const ERROR_CODES = [
   "oauth_email_unverified",
   "oauth_failed",
   "email_taken",
+  "reset_token_invalid",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

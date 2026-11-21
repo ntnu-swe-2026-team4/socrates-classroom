@@ -91,7 +91,7 @@ socrates-classroom/
 │       │   │   ├── ledger.ts           # (provider, model, credential) 記帳＋cooldown
 │       │   │   └── router.ts           # traffic class 鏈走訪（teacher legs 前置合併）
 │       │   ├── prompts/            # LLM 組的 prompt 資產（build-time ?raw）
-│       │   │   ├── socrates.md / class-report.md / student-report.md
+│       │   │   ├── socrates.md（＋.en／.es）/ class-report.md / student-report.md / assemble.ts
 │       │   ├── ws/                 # transport glue（protocol + sockets）
 │       │   ├── auth.ts / auth-crypto.ts  # session＋AES-GCM（byok.ts 併入）
 │       │   ├── db/d1.ts / http.ts / messages.ts / seed.ts / services/
@@ -110,9 +110,11 @@ socrates-classroom/
 
 ## 3. Worker 分層（apps/server）
 
-**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。
+**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、`SEND_EMAIL`、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。
 
-**Worker 入口（index.ts）**：`/api/*` → Hono；`/agents/*` → `routeAgentRequest`（WebSocket）；其餘 → static assets。
+**寄信（`SEND_EMAIL`，`send_email` binding）**：額度提醒信（#146）與密碼重設信（#230）共用，寄件人為 `ALERT_FROM_EMAIL`，模板在 `mail.ts`。Cloudflare Email Service 在 sending domain 完成 onboarding 之前，只能寄給帳號內已驗證的收件地址；寄給任意收件人需要 onboard sending domain，且需要 Workers Paid（[Send bindings](https://developers.cloudflare.com/email-service/configuration/send-bindings/)、[Pricing](https://developers.cloudflare.com/email-service/platform/pricing/)，2026-11-21 查證）。production 是否已滿足這兩項，repo 內無紀錄。
+
+**Worker 入口（index.ts）**：`/api/*` → Hono（傳入 `ExecutionContext`，路由可用 `c.executionCtx.waitUntil` 在回應後執行背景工作）；`/agents/*` → `routeAgentRequest`（WebSocket）；其餘 → static assets。
 
 **Db 介面（db/d1.ts）**：
 
@@ -153,8 +155,8 @@ no queue：busy 時第二發被拒（`ConversationBusy` → error frame），不
 ```
 startReport → pending 標記 → alarm → generate：
   transcriptOf（AI：…/學生（n）：… 編號＋假名冪等）
-  → Promise.all 平行 per-student studentReport（重試 2）
-  → classReport（立場軸/落點/分群）
+  → Promise.all 平行 per-student studentReport（重試 2；語言＝老師的 users.lang，與 classReport 相同；引用的 turns 須是學生說過的行號，否則視同格式錯誤重試）
+  → classReport（立場軸/落點/分群；落點由模型給 side＋strength，server 換算 end/at：left→low、right→high，at＝50∓10×strength，middle＝50）
   → persist（D1 reports：teacher_report=classReport、student_reports=analysis+violations-from-transcript）
 ```
 

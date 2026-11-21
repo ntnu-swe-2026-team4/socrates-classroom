@@ -20,31 +20,35 @@
 | 版本     | `/api` 無版本前綴（單一消費者）；外部消費者出現時才評版本化＋OpenAPI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | 型別共享 | `RpcApp = ReturnType<typeof createApp>`＋`RpcApi = ReturnType<typeof createApi>`（`apps/server/src/app.ts`）；web 端消費 declaration 產物 `hc<RpcApi>("/api")`（R6）                                                                                                                                                                                                                                                                                                                                                                                   |
 
+所有 `/api/*` 回應預設 `Cache-Control: private, no-store`，包含錯誤回應；個別 route 可顯式覆寫。`/health` 與 static assets 不套用此預設值。
+
 ### 1.1 授權矩陣
 
 > 「訪客」＝沒有帳號的活動參與者：持 `socrates_participant` cookie，**不建 `users` 列**，只存在於那一個活動（#133）。
 > 「老師」不是帳號屬性，而是班級的擁有關係（無 mode 定稿，#210、[`accounts.md`](./accounts.md) §7）：伺服器不記錄任何 mode/capability——**任何登入 user 皆可建班與開活動**，建班即成為該班 teacher（`classrooms.teacher_id`）；同一帳號可以同時是 A 班老師、B 班學生。`isAdmin` 只解鎖 `/admin/*`（seed 建立，API 不可授予）。
-> 自行註冊（`POST /auth/signup`）與 Google OAuth（#124）建立的獨立帳號：未加入任何教室前權利同「已登入」欄（無班級關係，多數班級操作本就需成員或 owner）。
+> 自行註冊（`POST /auth/signup`）與 Google／Facebook OAuth（#124/#207）建立的獨立帳號：未加入任何教室前權利同「已登入」欄（無班級關係，多數班級操作本就需成員或 owner）。
 
-| Operation                                                                                               | 訪客                      | 已登入                                                   |
-| ------------------------------------------------------------------------------------------------------- | ------------------------- | -------------------------------------------------------- |
-| `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅                        | ✅                                                       |
-| `POST /auth/signup`、`GET /auth/oauth/:provider/start`、`GET /auth/oauth/:provider/callback`（#124）    | ✅                        | ✅                                                       |
-| `GET /invites/:token`、`POST /invites/:token/join`（活動邀請連結，#133）                                | ✅                        | ✅（只加入活動，不入名冊）                               |
-| `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —                         | ✅                                                       |
-| `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —                         | ✅（無 mode，#210）                                      |
-| `GET /classrooms/:id/topics`（#135）                                                                    | —                         | 需該班成員                                               |
-| `POST /classrooms/:id/topics`、`POST /topics/:id/copy`（#135）                                          | —                         | 需目標班 owner                                           |
-| `POST /activities/:id/invites`（#133）                                                                  | —                         | 需該班 owner                                             |
-| `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —                         | ✅（per-user BYOK，#210）                                |
-| `GET /admin/users`、`POST /admin/users`、`PATCH /admin/users/:id`                                       | —                         | ❌ 401／403 `forbidden`                                  |
-| `GET /activities/:id`                                                                                   | 需本人 participant cookie | 需教室成員                                               |
-| `GET /activities/:id/report`                                                                            | —                         | 需教室成員                                               |
-| `GET/POST /activities/:id/slots`（#134）                                                                | —                         | 需該班 owner                                             |
-| **WS** `/agents/chat/:name`（watch/entries/abort）                                                      | 僅本人 participant thread | 本人 participant thread，或該班 owner 可觀察自己帶的班級 |
-| **WS** `submit` op                                                                                      | 僅本人 participant thread | 僅本人 participant thread                                |
-| **WS** `btw` op（開新 side session）／`btw {session}`（附掛既有）                                       | 僅本人 participant thread | 僅本人 participant thread                                |
-| `POST /activities/:id/finish`                                                                           | —                         | 需教室成員（owner）                                      |
+| Operation                                                                                               | 訪客                                          | 已登入                                                   |
+| ------------------------------------------------------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------------- |
+| `GET /join/:code`、`POST /join`、`POST /auth/login`、`POST /auth/register`                              | ✅                                            | ✅                                                       |
+| `POST /auth/signup`、`GET /auth/oauth/:provider/start`、`GET /auth/oauth/:provider/callback`（#124）    | ✅                                            | ✅                                                       |
+| `POST /auth/password/forgot`、`POST /auth/password/reset`（#230）                                       | ✅                                            | ✅                                                       |
+| `GET /invites/:token`、`POST /invites/:token/join`（活動邀請連結，#133）                                | ✅                                            | ✅（只加入活動，不入名冊）                               |
+| `GET /notifications`（feed 免登入）、`POST /notifications/seen`、`POST /admin/notifications`（#239）    | feed ✅（未登入 `unread` null）；seen/admin — | feed ✅（`unread` 有值）；seen ✅；admin ❌ 401／403     |
+| `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                             | —                                             | ✅                                                       |
+| `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities` | —                                             | ✅（無 mode，#210）                                      |
+| `GET /classrooms/:id/topics`（#135）                                                                    | —                                             | 需該班成員                                               |
+| `POST /classrooms/:id/topics`、`POST /topics/:id/copy`（#135）                                          | —                                             | 需目標班 owner                                           |
+| `POST /activities/:id/invites`（#133）                                                                  | —                                             | 需該班 owner                                             |
+| `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —                                             | ✅（per-user BYOK，#210）                                |
+| `GET /admin/users`、`POST /admin/users`、`PATCH /admin/users/:id`                                       | —                                             | ❌ 401／403 `forbidden`                                  |
+| `GET /activities/:id`                                                                                   | 需本人 participant cookie                     | 需教室成員                                               |
+| `GET /activities/:id/report`                                                                            | —                                             | 需教室成員                                               |
+| `GET/POST /activities/:id/slots`（#134）                                                                | —                                             | 需該班 owner                                             |
+| **WS** `/agents/chat/:name`（watch/entries/abort）                                                      | 僅本人 participant thread                     | 本人 participant thread，或該班 owner 可觀察自己帶的班級 |
+| **WS** `submit` op                                                                                      | 僅本人 participant thread                     | 僅本人 participant thread                                |
+| **WS** `btw` op（開新 side session）／`btw {session}`（附掛既有）                                       | 僅本人 participant thread                     | 僅本人 participant thread                                |
+| `POST /activities/:id/finish`                                                                           | —                                             | 需教室成員（owner）                                      |
 
 - **test 活動（#134）只對該班 owner 存在**：`GET /activities/:id`、`/report`、`/slots`、WS 一律 403／close 1008 給其他任何身分（含班級成員與訪客）；`POST /activities/:id/invites` 對 test 活動回 409 `conflict`
 - test 活動的 `kind = 'teacher'` slot 由老師本人持有（`user_id` = 老師），所以同一帳號在這些 thread 上可以 `submit`（`live` 活動的老師仍無 participant，仍 `SubmitForbidden`）
@@ -86,15 +90,28 @@ interface User {
 
 ### 2.1 自行註冊與第三方登入（#124）
 
-| Endpoint                                                                | 說明                                                                                                                                                                                                                                                |
-| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/auth/signup` `{email, password, name, tosAccepted}` → `User` | 不需邀請碼；建獨立帳號（無能力，未屬任何教室）並發 session。email 已被 email 帳號使用 → 409 `email_taken`；`tosAccepted` 非 true → 422 `tos_required`；限流與 register 共用                                                                         |
-| `GET /api/auth/oauth/:provider/start`（目前 `provider` 僅 `google`）    | 302 至 provider 授權頁；state＋nonce＋PKCE（S256）封入 10 分鐘 httpOnly cookie `socrates_oauth`（HMAC 簽章，path `/api/auth/oauth`）。未設定 `GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET` → 302 `/login?error=oauth_unavailable`；未知 provider → 404 |
-| `GET /api/auth/oauth/:provider/callback?code&state`                     | 驗 state cookie → code＋PKCE verifier 換 ID token → 驗簽章（JWKS）／`iss`／`aud`／`exp`／`nonce`／`email_verified` → 以 `(provider, sub)` 找或建獨立帳號 → 發 session → 302 `/home`。失敗一律 302 `/login?error=<code>`，不發 session               |
+| Endpoint                                                                      | 說明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/auth/signup` `{email, password, name, tosAccepted}` → `User`       | 不需邀請碼；建獨立帳號（無能力，未屬任何教室）並發 session。email 已被 email 帳號使用 → 409 `email_taken`；`tosAccepted` 非 true → 422 `tos_required`；限流與 register 共用                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `GET /api/auth/providers` → `{providers: ("google" \| "facebook")[]}`（#207） | 能力探測：回傳**已設定環境變數而啟用**的 SSO provider（`GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET`、`FACEBOOK_APP_ID`／`FACEBOOK_APP_SECRET` 任一對齊才算啟用）；未設定的不列出——前端（#178）據此決定顯示哪些按鈕。免 session、不讀 DB。**`apple` 永不回傳**（拍板退場，[`accounts.md`](./accounts.md) §7）；回應帶 `Cache-Control: public, max-age=300`——内容常數（僅隨 deploy／env 變動），瀏覽器可快取，Cloudflare edge 對 JSON 預設不快取（全域 Cache-Control 策略另由 #245 拍板）                                                                                                                                                                                                                         |
+| `GET /api/auth/oauth/:provider/start`（`provider` = `google`｜`facebook`）    | 302 至 provider 授權頁；state＋nonce＋PKCE（S256）封入 10 分鐘 httpOnly cookie `socrates_oauth`（HMAC 簽章，path `/api/auth/oauth`）。Google：PKCE S256＋nonce；Facebook：state only（Meta 無 nonce／PKCE，`verifier` 欄位存在但不送）。未設定該 provider 的環境變數 → 302 `/login?error=oauth_unavailable`；未知 provider → 404                                                                                                                                                                                                                                                                                                                                                                              |
+| `GET /api/auth/oauth/:provider/callback?code&state`                           | 驗 state cookie → 換 token → 取身分 → 以 `(provider, sub)` 找或建獨立帳號 → 發 session → 302 `/home`。失敗一律 302 `/login?error=<code>`，不發 session；**帳號已停用 → 302 `/login?error=account_disabled`（與密碼登入同一閘門，不發 session）**。**Google**：PKCE verifier 換 ID token，驗 JWKS 簽章／`iss`／`aud`／`exp`／`nonce`／`email_verified`（未驗證 → `oauth_email_unverified`）。**Facebook**（#207）：code 換 access token（server-side）→ `GET /me?fields=id,name,email`；身分一律 `(facebook, id)`，**email 焺 informational**（Meta 無 `email_verified` 信號，不參與身分判定；缺 email 照常建帳，`user_identities.email` 為 NULL）；access token 用完即棄，**不落庫**（Graph API pin `v27.0`） |
 
-- 一個帳號對應一種登入方式；同一個 email 經 email 註冊與 Google 登入是**兩個帳號**（第三方登入不以 email 認身分）
-- Google 帳號的 email 存於 `user_identities.email`，`users.email` 為 NULL（`users.email` 只承載 email 密碼登入）
-- callback redirect URI＝`PUBLIC_BASE_URL`（未設則用請求 origin）＋`/api/auth/oauth/google/callback`，需登錄於 Google Cloud Console
+- 一個帳號對應一種登入方式；同一個 email 經 email 註冊與 Google／Facebook 登入是**各自獨立的帳號**（第三方登入不以 email 認身分）
+- Google 帳號的 email 存於 `user_identities.email`，`users.email` 為 NULL（`users.email` 只承載 email 密碼登入）；Facebook 帳號同理，且其 email 可能缺席（informational）
+- callback redirect URI＝`PUBLIC_BASE_URL`（未設則用請求 origin）＋`/api/auth/oauth/<provider>/callback`；Google 需登錄於 Google Cloud Console，Facebook 需登錄於 Meta App Dashboard（設定見 [`google-oauth.md`](./google-oauth.md) §6）
+
+### 2.2 密碼找回（#230）
+
+| Endpoint                                                  | 說明                                                                                                                                                                                                                  |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/auth/password/forgot` `{email}` → 204          | 一律回 204，不透露帳號是否存在。帳號存在、有密碼且未停用時，寄出重設信（語言依 `users.lang`），連結為 `PUBLIC_BASE_URL`（未設則用請求 origin）＋`/reset-password#token=<token>`；寄信走 `waitUntil`，寄送失敗只記 log |
+| `POST /api/auth/password/reset` `{token, password}` → 204 | token 有效 → 更新密碼、`session_version + 1`（所有裝置登出），不發 session。token 無效、過期、已使用，或帳號已停用 → 400 `reset_token_invalid`；`password` 規則同 signup（8–128）→ 不符 422 `validation`              |
+
+- token 對 client 是不透明字串；有效 30 分鐘。伺服器不存 token：簽章綁定帳號目前的 `password_hash` 與 `email`，密碼或 email 一改，所有尚未使用的連結都失效（等於單次使用）；簽章金鑰依用途由 `AUTH_SECRET` 推導，不同用途的 token 不能互用
+- 連結把 token 放在 URL fragment（`#token=`），不會送到伺服器，也不會出現在 Referer 或伺服器 log
+- 限流：forgot 每 IP 每分鐘 5 次、reset 每 IP 每分鐘 10 次（`enforceIpLimit`，各 isolate 各自計數，#157）；同一 email 的冷卻待 #157
+- 純 SSO 帳號（`users.email` 為 NULL、無密碼）不適用
 
 ## 3. 入場（唯一閘門，#66/#70）
 
@@ -136,7 +153,7 @@ interface User {
 
 ### 5.1 通道
 
-- `GET /agents/chat/:name`（WebSocket 升級）——**對話唯一通道**（先前的 SSE 端點已退役）
+- `GET /agents/chat/:name?lang=<介面語言>`（WebSocket 升級）——**對話唯一通道**（先前的 SSE 端點已退役）。`lang`：學生目前的介面語言（前端送 `zh-TW`／`en`／`es`；WebSocket 無法帶自訂的 Accept-Language）。語言碼為 `zh`／`en`／`es`（可帶 `-地區`，如 `zh-TW`、`en-US`）才採用，其他值不改它；只採用學生本人連線帶來的值，老師旁觀的連線不改它；沒帶過時為中文。蘇格拉底如何依語言取 prompt 見 `docs/pi.md`
 - thread name 協定：`{activityId}:{participantId}`（**一人一 thread 已不再是規則**——同一帳號在同一活動可以有多個 participant，#132／#134；DO name 即路由鍵）
 - 授權：升級請求帶 cookie，`socrates_session` 與 `socrates_participant` **兩顆都接受**（#133）。onConnect 先驗 session＋班級關係，再驗 participant cookie（簽章 `aid`／`pid` 必須等於 thread 名）；**`submit` 的擁有者規則是「該 participant slot 屬於這條連線」**：participant 帶 `user_id` 時必須等於 session 的 uid，`user_id = null` 的訪客則靠 participant cookie 證明持有（`ChatSockets` 每次 submit 重讀 participant；老師在自己班代打 → error frame code `SubmitForbidden`），班級 owner 可觀察全班（watch/entries/abort）；未通過 → close 1008（無 hello）；hibernation 喚醒後 reverify 確定撤權（ApiError）→ close 1008；reverify 暫時性錯誤（D1 失敗等）或 watch 遺失（session 驅逐）→ close 1011（客戶端重連即重試）
 - 每則 client message 先做一次**身分重驗**：帳號 session 看 `disabled_at`／`session_version`（#131），訪客看 participant 是否仍存在（#133）——不符 → close 1008（停用與撤銷即刻生效，含已建立連線）
@@ -167,7 +184,8 @@ type ServerMessage =
 ```
 
 - **客戶端以 `applyImmutable`（`@earendil-works/chord/delta`）套用 ops**——禁止手寫 delta applier
-- **回合完成判定**：submit 後記 baseline（當時最後一個 entry id，sliding window splice 安全），view/ops 中 baseline 之後出現 `pi.assistant` entry 即完成（admission receipt 不代表完成；串流中的 partial 寫在 `pi.live` doc，不會誤觸）；reconnect 後全量 view 仲裁——無本輪 `pi.user` entry＝未被 admission，清 pending 報錯（防 double-submit）
+- **回合完成判定**：submit 後記 baseline（當時最後一個 entry id），透過 view/ops 判斷本輪的 assistant 回覆是否已完成。Admission receipt 代表已受理。串流中的 partial 寫在 `pi.live` doc。重連後，若 watch window 缺少本輪的 `pi.user` entry，前端仍以可判定的回覆或明確的失敗訊號結束 `pending`。
+- **Run 失敗與逾時（#148）**：Chat DO 保存待處理的 operation，重啟後恢復追蹤。查到 run 遺失、失敗，或達到約 120 秒的 deadline 仍無結果時，向同一個 session 廣播無 `id` 的 `llm_unavailable`。失敗通知自記錄起保留 120 秒，供重連後重新 watch 同一個 session 時補收。若同一個 session 另有待追蹤的 operation，則暫緩補送上一輪的失敗通知。
 - **情緒**：`view.entries` 的 `app.emotion` entry（`{emotion, probabilities, confidence}`，#111）——UI 依機率驅動表情，文字零污染
 - **違規**：`app.violation` entry（`{type, probability, excerpt, source}`，#71）——老師面板讀 D1（#73 輪詢），學生端不消費
 - **歷史**：WS `watch` 首個 view（window 預設最新 50 則 entries）或 `entries` 指令；pi transcript（DO storage）為唯一真相
@@ -302,7 +320,19 @@ interface ViolationSlice {
 | `PATCH /api/admin/users/:id` `{disabled}` → `AdminUser`                | 停用／復用。一律 bump `session_version`（停用即刻踢掉既有 REST session 與 WS；復用後舊 token 不復活，需重新登入）。停用自己 → 409 `conflict`。（#210：能力調整已退役，`canManageClasses` 不再是欄位） |
 
 - 停用帳號的 WS：連線上的下一則 frame 被 1008 關閉，重連亦被拒（§5.1）
-- 對應頁面 `/admin/users`（`apps/web/src/routes/admin.users.tsx`）：列表、切換能力、停用／復用、建立帳號
+- 對應頁面 `/admin/users`（`apps/web/src/routes/admin.users.tsx`）：列表、建立、停用／復用（#210：能力調整已退役）
+
+### 9.2 通知與公告（#158 拍板，#239）
+
+公告是平台維護訊息（登入頁顯示）；`unread` 是 per-user watermark（`users.notifications_seen_at`）——不是 per-notification 已讀表，`unread`＝`created_at > watermark` 的條目數，計數以 feed 內（前 30 筆）為準——超過上限的公告不會推高 `unread`（badge 封頂用途足夠；真實總數日後有需要再以獨立 COUNT 查詢提供），O(1) 讀取。
+
+| Operation                                                               | 說明                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/notifications` → `NotificationFeed`                           | **免登入**（#158 拍板：登入頁公告用途）；`{items: Notification[], unread}`，最新在前、上限 30。`unread` 僅登入帳號回傳；未登入一律 `null`。無限流（read-only 成本低＋CF always-on DDoS 緩解；#187 feed 納入社群內容後再評估 edge rule／per-user limit，ceiling 需按單一 IP 合法尖峰校準避開校園 NAT 誤傷） |
+| `POST /api/notifications/seen` → 204                                    | requireUser；watermark 設為 now（冪等——重打不變）；未登入 401                                                                                                                                                                                                                                              |
+| `POST /api/admin/notifications` `{title, body}` → `Notification`（201） | requireAdmin（限流同 admin-create）；公告為單語內容（admin 撰寫語言，非 UI copy）；`created_by` FK（#233 帳號刪除時 SET NULL）                                                                                                                                                                             |
+
+- `Notification`：`{id, title, body, createdAt}`——`kind` 欄位刻意不設（YAGNI：目前僅公告一種；#212 社群通知若需要再擴充）
 
 ## 10. 錯誤碼
 
@@ -320,6 +350,7 @@ interface ViolationSlice {
 | BYOK / teacher keys    | `byok_provider_invalid`                                                                                                                                                                    | 422                         |
 | 第三方登入（#124）     | `oauth_unavailable` / `oauth_state_invalid` / `oauth_email_unverified` / `oauth_failed`（以 `/login?error=<code>` query 傳回，非 JSON）                                                    | 302                         |
 | 自行註冊（#124）       | `email_taken`（`POST /auth/signup` 信箱已被使用）                                                                                                                                          | 409                         |
+| 密碼找回（#230）       | `reset_token_invalid`（`POST /auth/password/reset` 的 token 無效、過期、已使用，或帳號已停用）                                                                                             | 400                         |
 
 ## 11. 端點外的既存通道
 

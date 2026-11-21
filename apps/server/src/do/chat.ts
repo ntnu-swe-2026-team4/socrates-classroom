@@ -11,7 +11,7 @@ import {
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { PiHarness, type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } from "agents/harness/pi";
-import { Lifecycle } from "agents/lifecycle";
+import { Lifecycle, type LifecycleJob, type LifecycleJobContext } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
 import { SESSION_COOKIE, PARTICIPANT_COOKIE, accountState, lookupParticipant, lookupSession } from "../auth";
@@ -20,7 +20,7 @@ import { createAvatarExtension } from "../pi/extensions/avatar";
 import { createJudgmentExtension } from "../pi/extensions/judgment";
 import { createWebSearchExtension } from "../pi/extensions/websearch";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
-import { socratesExtension } from "../pi/extensions/socrates";
+import { SOCRATES_PROMPTS, socratesExtension } from "../pi/extensions/socrates";
 import { btwExtension, forkBtw } from "../pi/extensions/btw";
 import { createUsageExtension } from "../pi/extensions/usage";
 import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
@@ -28,8 +28,11 @@ import { buildModels } from "../pi/models";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import { one } from "../db/d1";
 import { getRouter } from "../gateway/router";
-import { ApiError } from "@socrates/shared";
+import { ApiError, type Lang } from "@socrates/shared";
+import { normalizeLang } from "../http";
 import { ChatSockets, type ReverifyOutcome, type SocketIdentity } from "../ws/sockets";
+
+const STUDENT_LANG_KEY = "studentLang";
 
 class ActivityFinishedError extends Error {
   constructor() {
@@ -38,17 +41,29 @@ class ActivityFinishedError extends Error {
   }
 }
 
+const RUN_DEADLINE_JOB = "dialogue-run-deadline";
+const RUN_TIMEOUT_MS = 120_000;
+const FAILURE_REPLAY_MS = 120_000;
+
+type DialogueRun = { session: string; operationId: string };
+type RunFailure = { jobId: string; expiresAt: number };
+
+function failureKey(session: string): string {
+  return `dialogue-run-failure:${session}`;
+}
+
 export class Chat extends DurableObject<Env> {
   readonly registry = createRegistry();
   readonly models = buildModels(this.env, { teacherOf: () => this.teacherId() });
   #teacherId: string | null | undefined;
   readonly #sessionModels = new Map<string, { provider: string; id: string }>();
+  readonly #runChecks = new Map<string, Promise<void>>();
 
   readonly btw = btwExtension();
 
   readonly harness = new PiHarness({
     harness: ({ storage, context, onWake }) => {
-      this.registry.install(socratesExtension());
+      this.registry.install(socratesExtension(() => this.studentLang()));
       this.registry.install(createAvatarExtension(this.env.AI));
       this.registry.install(
         createJudgmentExtension(this.env.AI, async (violation) => {
@@ -88,12 +103,16 @@ export class Chat extends DurableObject<Env> {
   readonly sockets = new ChatSockets(
     this.harness,
     this.registry,
-    (tag) => this.ctx.getWebSockets(tag),
-    (request) => this.authorize(request),
+    async (request) => {
+      const identity = await this.authorize(request);
+      if (identity) await this.rememberStudentLang(request, identity);
+      return identity;
+    },
     (handle, input, options) => this.routeSubmit(handle, input, options),
     (identity) => this.canSubmit(identity),
     () => forkBtw(this.harness, this.btw),
     (identity) => this.revalidate(identity),
+    (session) => this.recentRunFailure(session),
   );
   readonly webSockets = new WebSockets(this.sockets.options());
   readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.harness);
@@ -108,6 +127,86 @@ export class Chat extends DurableObject<Env> {
 
   async onStart(): Promise<void> {
     await this.sockets.reattach(this.webSockets.getConnections(), (identity) => this.reverify(identity));
+    for (const job of this.lifecycle.jobs.list()) {
+      if (job.fn === RUN_DEADLINE_JOB) this.ctx.waitUntil(this.checkRun(job));
+    }
+  }
+
+  async onJob({ job }: LifecycleJobContext): Promise<void> {
+    if (job.fn === RUN_DEADLINE_JOB) await this.checkRun(job);
+  }
+
+  private runDeadlineJobs(session: string): LifecycleJob[] {
+    return this.lifecycle.jobs
+      .list()
+      .filter((job) => job.fn === RUN_DEADLINE_JOB && (job.payload as DialogueRun).session === session);
+  }
+
+  private recentRunFailure(session: string): string | undefined {
+    const key = failureKey(session);
+    const failure = this.ctx.storage.kv.get<RunFailure>(key);
+    if (!failure) return undefined;
+    if (failure.expiresAt <= Date.now()) {
+      this.ctx.storage.kv.delete(key);
+      return undefined;
+    }
+    if (this.runDeadlineJobs(session).some((job) => job.id !== failure.jobId)) return undefined;
+    return failure.jobId;
+  }
+
+  private checkRun(job: LifecycleJob): Promise<void> {
+    const current = this.#runChecks.get(job.id);
+    if (current) return current;
+    const check = this.settleRun(job).finally(() => this.#runChecks.delete(job.id));
+    this.#runChecks.set(job.id, check);
+    return check;
+  }
+
+  private async settleRun(job: LifecycleJob): Promise<void> {
+    const { session, operationId } = job.payload as DialogueRun;
+    const handle = this.harness.session(session);
+    const wait = new AbortController();
+    const timer = setTimeout(() => wait.abort(), Math.max(1_000, job.time - Date.now()));
+    const result = await handle
+      .wait(operationId, wait.signal)
+      .catch(() => undefined)
+      .finally(() => clearTimeout(timer));
+    if (!this.lifecycle.jobs.get(job.id)) return;
+    if (result?.status !== "done" && result?.reason !== "aborted") {
+      this.ctx.storage.kv.put(failureKey(session), {
+        jobId: job.id,
+        expiresAt: Date.now() + FAILURE_REPLAY_MS,
+      } satisfies RunFailure);
+      this.sockets.notifyRunFailure(session, job.id);
+    } else {
+      this.ctx.storage.kv.delete(failureKey(session));
+    }
+    await this.lifecycle.jobs.cancel(job.id);
+  }
+
+  private async submitWithDeadline(handle: PiSession, input: UserInput, options: PiSubmitOptions): Promise<PiReceipt> {
+    const operationId = options.operationId ?? crypto.randomUUID();
+    const olderJobs = this.runDeadlineJobs(handle.id);
+    const job = await this.lifecycle.jobs.push({
+      fn: RUN_DEADLINE_JOB,
+      time: Date.now() + RUN_TIMEOUT_MS,
+      payload: { session: handle.id, operationId } satisfies DialogueRun,
+    });
+    let receipt: PiReceipt;
+    try {
+      receipt = await handle.submit(input, { ...options, operationId });
+    } catch (error) {
+      await this.lifecycle.jobs.cancel(job.id);
+      throw error;
+    }
+    if (!receipt.accepted) {
+      await this.lifecycle.jobs.cancel(job.id);
+      return receipt;
+    }
+    this.ctx.storage.kv.delete(failureKey(handle.id));
+    await Promise.all(olderJobs.map((older) => this.lifecycle.jobs.cancel(older.id)));
+    this.ctx.waitUntil(this.checkRun(job));
+    return receipt;
   }
 
   private async teacherId(): Promise<string | null> {
@@ -116,6 +215,16 @@ export class Chat extends DurableObject<Env> {
       this.#teacherId = activityId ? await teacherOfActivity(this.env, activityId) : null;
     }
     return this.#teacherId;
+  }
+
+  private async studentLang(): Promise<Lang> {
+    return (await this.ctx.storage.get<Lang>(STUDENT_LANG_KEY)) ?? "zh";
+  }
+
+  private async rememberStudentLang(request: Request, identity: SocketIdentity): Promise<void> {
+    const lang = new URL(request.url).searchParams.get("lang");
+    if (!lang || !/^(zh|en|es)\b/i.test(lang) || !(await this.canSubmit(identity))) return;
+    await this.ctx.storage.put(STUDENT_LANG_KEY, normalizeLang(lang));
   }
 
   private async teacherLegs(): Promise<TeacherLeg[]> {
@@ -135,7 +244,7 @@ export class Chat extends DurableObject<Env> {
       this.models.models.getModel(entry.provider, entry.model) !== undefined;
     const decision = router.pick("interactive", canServe, await this.teacherLegs());
     if (!decision && !this.models.faux) throw new NoAvailableModelError();
-    if (!decision) return handle.submit(input, options);
+    if (!decision) return this.submitWithDeadline(handle, input, options);
     const model = this.models.models.getModel(decision.entry.provider, decision.model);
     const receipt = await router.withRoute(decision, async () => {
       const current = this.#sessionModels.get(handle.id);
@@ -143,18 +252,16 @@ export class Chat extends DurableObject<Env> {
         await handle.setModel({ provider: model.provider, id: model.id });
         this.#sessionModels.set(handle.id, { provider: model.provider, id: model.id });
       }
-      return handle.submit(input, options);
+      return this.submitWithDeadline(handle, input, options);
     });
     void handle
       .wait(receipt.operationId)
       .then((result) => {
         const ok = result.status === "done" || (result.status === "unanswered" && result.reason === "aborted");
         router.settle(decision, ok ? "ok" : "error");
-        if (!ok) this.sockets.notifyRunFailure(handle.id);
       })
       .catch(() => {
         if (router.ledger.inFlight(decision.key) > 0) router.settle(decision, "error");
-        this.sockets.notifyRunFailure(handle.id);
       });
     return receipt;
   }
@@ -253,6 +360,12 @@ function fauxSocraticScript(context: TranscriptContext): AssistantMessage {
     return fauxAssistantMessage([fauxToolCall("report_violation", { type: "coding", excerpt: said })], {
       stopReason: "toolUse",
     });
+  }
+  const preamble = context.messages
+    .filter((message) => message.role === "system")
+    .map((message) => (message as { sections?: Record<string, string> }).sections?.preamble);
+  if (preamble.includes(SOCRATES_PROMPTS.en)) {
+    return fauxAssistantMessage([fauxText(`You said "${said}". What is your first judgment, and why?`)]);
   }
   return fauxAssistantMessage([fauxText(`你提到「${said}」。先別急著找標準答案——你的直覺判斷是什麼？為什麼？`)]);
 }

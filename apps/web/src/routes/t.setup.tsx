@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { classroomsOptions } from "@/api/queries";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ActivityStarted } from "@socrates/shared";
 import { api } from "@/api";
+import { meOf } from "@/api/me";
 import { AddTopic, StartActivity, useClassroomTopics } from "@/components/ClassroomTopics";
 import { Button, Card, Field, Input, PageHeader, SectionTitle, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
@@ -10,7 +12,7 @@ import { QrBlock, absoluteUrl } from "@/components/QrBlock";
 
 export const Route = createFileRoute("/t/setup")({
   beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), staleTime: Infinity });
+    const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/classrooms" });
   },
   component: SetupPage,
@@ -24,7 +26,7 @@ function SetupPage() {
   const createClassroom = useMutation({
     mutationFn: () => api.createClassroom(classroomName.trim()),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+      void queryClient.invalidateQueries({ queryKey: classroomsOptions.queryKey });
     },
   });
   const classroom = createClassroom.data ?? null;

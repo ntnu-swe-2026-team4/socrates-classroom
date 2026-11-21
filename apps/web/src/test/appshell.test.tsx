@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { meQueryOptions } from "@/api/me";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -28,7 +29,7 @@ const teacher: User = { id: "u1", name: "Teacher", isAdmin: false };
 function mountShell(user: User | null = teacher, pathname = calls.pathname) {
   calls.pathname = pathname;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  if (user) client.setQueryData(["me"], user);
+  if (user) client.setQueryData(meQueryOptions.queryKey, user);
   render(
     <QueryClientProvider client={client}>
       <AppShell>

@@ -8,7 +8,7 @@ import {
   ApiError,
 } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
-import { enforceIpLimit, fail, langOf, newId, nowIso, parseBody, requireUser, type AppEnv } from "../http";
+import { fail, guardUser, langOf, newId, nowIso, rateLimit, requireUser, validateJson, type AppEnv } from "../http";
 import { classroomAccess, parsePrompts, type TopicRow } from "../services/members";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
@@ -33,9 +33,9 @@ export function topicsRoutes() {
       );
       return c.json(rows.map(parsePrompts));
     })
-    .post("/topics/:id/copy", async (c) => {
+    .post("/topics/:id/copy", guardUser(), validateJson(TopicCopyInputSchema), async (c) => {
       const user = requireUser(c);
-      const input = await parseBody(c, TopicCopyInputSchema);
+      const input = c.req.valid("json");
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, input.classroomId, user);
       if (!isTeacher) fail(403, "forbidden");
       const source = await one<TopicRow>(c.env.DB, "SELECT * FROM topics WHERE id = $id", { id: c.req.param("id") });
@@ -68,9 +68,9 @@ export function topicsRoutes() {
       if (!row) fail(500, "internal_error");
       return c.json(parsePrompts(row), 201);
     })
-    .post("/topics", async (c) => {
+    .post("/topics", guardUser(), validateJson(TopicCreateInputSchema), async (c) => {
       const user = requireUser(c);
-      const input = await parseBody(c, TopicCreateInputSchema);
+      const input = c.req.valid("json");
       const id = newId("t_");
       await run(
         c.env.DB,
@@ -89,9 +89,8 @@ export function topicsRoutes() {
       if (!row) fail(500, "internal_error");
       return c.json(parsePrompts(row), 201);
     })
-    .post("/topics/generate", async (c) => {
-      await enforceIpLimit(c, "topics-generate", 10);
-      const input = await parseBody(c, GenerateTopicsInputSchema);
+    .post("/topics/generate", rateLimit("topics-generate", 10), validateJson(GenerateTopicsInputSchema), async (c) => {
+      const input = c.req.valid("json");
       requireUser(c);
       if (c.env.LLM_PROVIDER === "mock") {
         return c.json(

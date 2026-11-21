@@ -1,31 +1,46 @@
 #!/usr/bin/env node
 /**
  * Seeds demo data into the local dev server (pnpm dev, http://localhost:5173
- * by default). SEED_TOKEN resolution: env var, then apps/web/.env.local,
- * then apps/web/.env (same source as the Worker's vars).
+ * by default). SEED_TOKEN resolution mirrors the dev server's local bindings
+ * (loadDevVars): apps/web/.dev.vars when present — in that mode env and the
+ * .env files are not read at all; otherwise env var, then apps/web/.env.local,
+ * then apps/web/.env.
  */
 import { readFileSync } from "node:fs";
 
 const BASE = process.env.SEED_BASE ?? "http://localhost:5173";
 
-function localEnvToken() {
-  for (const name of ["../../web/.env.local", "../../web/.env"]) {
-    try {
-      const text = readFileSync(new URL(name, import.meta.url), "utf8");
-      const line = text.split("\n").find((l) => /^SEED_TOKEN=/.test(l));
-      const value = line
-        ?.slice("SEED_TOKEN=".length)
-        .trim()
-        .replace(/^["']|["']$/g, "");
-      if (value) return value;
-    } catch {}
-  }
-  return "";
+function readFileOrNull(name) {
+  try {
+    return readFileSync(new URL(name, import.meta.url), "utf8");
+  } catch {}
+  return null;
 }
 
-const TOKEN = process.env.SEED_TOKEN || localEnvToken();
+function parseToken(text) {
+  const line = text.split("\n").find((l) => /^SEED_TOKEN=/.test(l));
+  return (
+    line
+      ?.slice("SEED_TOKEN=".length)
+      .trim()
+      .replace(/^["']|["']$/g, "") || ""
+  );
+}
+
+const devVarsText = readFileOrNull("../../web/.dev.vars");
+const TOKEN =
+  devVarsText !== null
+    ? parseToken(devVarsText)
+    : process.env.SEED_TOKEN ||
+      parseToken(readFileOrNull("../../web/.env.local") ?? "") ||
+      parseToken(readFileOrNull("../../web/.env") ?? "");
+if (devVarsText !== null) console.log("SEED_TOKEN 來源：apps/web/.dev.vars（.env.local 已被遮蔽）");
 if (!TOKEN) {
-  console.error("找不到 SEED_TOKEN：設環境變數，或在 apps/web/.env.local 設定（dev server 需重啟才會載入）");
+  console.error(
+    devVarsText !== null
+      ? "找不到 SEED_TOKEN：生效通道是 apps/web/.dev.vars，請在該檔補 SEED_TOKEN 行（此模式下 env 與 .env.local 都不會被 worker 讀取）"
+      : "找不到 SEED_TOKEN：設環境變數，或在 apps/web/.env.local 設定（dev server 需重啟才會載入）",
+  );
   process.exit(1);
 }
 

@@ -86,7 +86,7 @@ watch 沒有 event cursor；重連以 `watch({ from: newestEntryId + 1 })` 讓 w
 
 本專案已裝：
 
-- `socrates`（單檔）：preamble section，內容為 `apps/server/src/prompts/socrates.md`
+- `socrates`（單檔）：preamble section，依學生的介面語言取 `apps/server/src/prompts/socrates.md`（zh）／`socrates.en.md`／`socrates.es.md`；語言來自學生連線的 `?lang=`（語意見 `docs/api-contract.md`）
 - `avatar`（目錄，#111）：afterRun hook → Clef choice 題 → 寫 `app.emotion` entry（`{emotion, probabilities, confidence}`）
 - `judgment`（目錄，#71）：afterRun 分類 task＋`report_violation` tool → 寫 `app.violation` entry
 - `websearch`（目錄，#112）：`web_search` / `fetch_content` / `get_search_content` 三 tool（形制參考 pi-web-access，裁剪至 Workers 環境）

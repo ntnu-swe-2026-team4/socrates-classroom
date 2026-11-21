@@ -1,24 +1,40 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { LoginInputSchema, RegisterInputSchema, SignupInputSchema, type ErrorCode, type User } from "@socrates/shared";
-import { batch, one } from "../db/d1";
+import {
+  PASSWORD_RESET_TTL_MINUTES,
+  LoginInputSchema,
+  PasswordForgotInputSchema,
+  PasswordResetInputSchema,
+  RegisterInputSchema,
+  SignupInputSchema,
+  type ErrorCode,
+  type Lang,
+  type User,
+} from "@socrates/shared";
+import { batch, one, run } from "../db/d1";
 import {
   DUMMY_HASH,
   endSession,
   hashPassword,
   openPayload,
+  passwordResetBinding,
+  readAccountToken,
+  sealAccountToken,
   sealPayload,
   startSession,
   toUser,
+  verifyAccountToken,
   verifyPassword,
 } from "../auth";
+import { sendPasswordResetEmail } from "../mail";
 import {
   enforceIpLimit,
   fail,
   langOf,
   newId,
   nowIso,
-  parseBody,
+  rateLimit,
+  validateJson,
   uniqueViolationColumns,
   type AppEnv,
   type Ctx,
@@ -26,10 +42,14 @@ import {
 import { ensureParticipant } from "../services/members";
 import {
   OAuthError,
+  facebookAuthorizeUrl,
+  facebookProfile,
   googleAuthorizeUrl,
   googleProfile,
   isOAuthProvider,
+  oauthProviders,
   randomToken,
+  type FacebookConfig,
   type GoogleConfig,
   type OAuthPending,
   type OAuthProfile,
@@ -40,6 +60,14 @@ const OAUTH_COOKIE = "socrates_oauth";
 const OAUTH_COOKIE_PATH = "/api/auth/oauth";
 const OAUTH_TTL_SECONDS = 600;
 const OAUTH_SUCCESS_PATH = "/home";
+
+interface ResetAccountRow {
+  id: string;
+  email: string | null;
+  password_hash: string | null;
+  lang: Lang;
+  disabled_at: string | null;
+}
 
 interface UserRow {
   id: string;
@@ -52,10 +80,13 @@ interface UserRow {
 
 export function authRoutes() {
   return new Hono<AppEnv>()
+    .get("/auth/providers", (c) => {
+      c.header("Cache-Control", "public, max-age=300");
+      return c.json({ providers: oauthProviders(c.env) });
+    })
     .get("/me", (c) => c.json(c.get("user")))
-    .post("/auth/login", async (c) => {
-      await enforceIpLimit(c, "login", 30);
-      const input = await parseBody(c, LoginInputSchema);
+    .post("/auth/login", rateLimit("login", 30), validateJson(LoginInputSchema), async (c) => {
+      const input = c.req.valid("json");
       const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE email = $email", {
         email: input.email,
       });
@@ -66,9 +97,8 @@ export function authRoutes() {
       await startSession(c, user);
       return c.json(user);
     })
-    .post("/auth/register", async (c) => {
-      await enforceIpLimit(c, "register", 30);
-      const input = await parseBody(c, RegisterInputSchema);
+    .post("/auth/register", rateLimit("register", 30), validateJson(RegisterInputSchema), async (c) => {
+      const input = c.req.valid("json");
       if (!input.tosAccepted) fail(422, "tos_required");
       const classroom = await one<{ id: string; current_activity_id: string | null }>(
         c.env.DB,
@@ -117,9 +147,8 @@ export function authRoutes() {
       await startSession(c, user);
       return c.json(user);
     })
-    .post("/auth/signup", async (c) => {
-      await enforceIpLimit(c, "register", 30);
-      const input = await parseBody(c, SignupInputSchema);
+    .post("/auth/signup", rateLimit("register", 30), validateJson(SignupInputSchema), async (c) => {
+      const input = c.req.valid("json");
       if (!input.tosAccepted) fail(422, "tos_required");
       const hash = await hashPassword(input.password);
       const id = newId("u_");
@@ -143,8 +172,8 @@ export function authRoutes() {
       await enforceIpLimit(c, "oauth", 30);
       const provider = c.req.param("provider");
       if (!isOAuthProvider(provider)) fail(404, "not_found");
-      const config = googleConfig(c);
-      if (!config) return oauthFailure(c, "oauth_unavailable");
+      const runtime = providerRuntime(c, provider);
+      if (!runtime) return oauthFailure(c, "oauth_unavailable");
       const pending: OAuthPending = {
         provider,
         state: randomToken(),
@@ -159,7 +188,7 @@ export function authRoutes() {
         path: OAUTH_COOKIE_PATH,
         maxAge: OAUTH_TTL_SECONDS,
       });
-      return c.redirect(await googleAuthorizeUrl(config, pending), 302);
+      return c.redirect(await runtime.authorizeUrl(pending), 302);
     })
     .get("/auth/oauth/:provider/callback", async (c) => {
       await enforceIpLimit(c, "oauth", 30);
@@ -173,43 +202,136 @@ export function authRoutes() {
         return oauthFailure(c, "oauth_state_invalid");
       }
       if (c.req.query("error") || !code) return oauthFailure(c, "oauth_failed");
-      const config = googleConfig(c);
-      if (!config) return oauthFailure(c, "oauth_unavailable");
+      const runtime = providerRuntime(c, provider);
+      if (!runtime) return oauthFailure(c, "oauth_unavailable");
       let profile: OAuthProfile;
       try {
-        profile = await googleProfile(config, code, pending);
+        profile = await runtime.profile(code, pending);
       } catch (error) {
         if (error instanceof OAuthError) return oauthFailure(c, error.code);
         throw error;
       }
       const user = await userForIdentity(c, provider, profile);
+      if (!user) return oauthFailure(c, "account_disabled");
       await startSession(c, user);
       return c.redirect(OAUTH_SUCCESS_PATH, 302);
     })
     .post("/auth/logout", (c) => {
       endSession(c);
       return c.body(null, 204);
-    });
+    })
+    .post(
+      "/auth/password/forgot",
+      rateLimit("password-forgot", 5),
+      validateJson(PasswordForgotInputSchema),
+      async (c) => {
+        const input = c.req.valid("json");
+        const row = await one<ResetAccountRow>(
+          c.env.DB,
+          "SELECT id, email, password_hash, lang, disabled_at FROM users WHERE email = $email",
+          { email: input.email },
+        );
+        const account = row?.password_hash && row.email && row.disabled_at === null ? row : null;
+        const token = await sealAccountToken(
+          { env: c.env },
+          "password_reset",
+          account?.id ?? "",
+          passwordResetBinding(account?.password_hash ?? DUMMY_HASH, account?.email ?? null),
+          PASSWORD_RESET_TTL_MINUTES * 60_000,
+        );
+        if (account?.email) {
+          const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
+          const mail = { to: account.email, lang: account.lang, link: `${base}/reset-password#token=${token}` };
+          c.executionCtx.waitUntil(
+            sendPasswordResetEmail(c.env, { ...mail, minutes: PASSWORD_RESET_TTL_MINUTES }).catch((error: unknown) => {
+              console.warn("[auth] password reset mail failed:", error instanceof Error ? error.message : typeof error);
+            }),
+          );
+        }
+        return c.body(null, 204);
+      },
+    )
+    .post(
+      "/auth/password/reset",
+      rateLimit("password-reset", 10),
+      validateJson(PasswordResetInputSchema),
+      async (c) => {
+        const input = c.req.valid("json");
+        const claims = readAccountToken(input.token, "password_reset");
+        const row = claims
+          ? await one<ResetAccountRow>(
+              c.env.DB,
+              "SELECT id, email, password_hash, lang, disabled_at FROM users WHERE id = $id",
+              { id: claims.uid },
+            )
+          : null;
+        const valid =
+          row?.password_hash &&
+          row.email &&
+          row.disabled_at === null &&
+          (await verifyAccountToken(
+            { env: c.env },
+            "password_reset",
+            input.token,
+            passwordResetBinding(row.password_hash, row.email),
+          ));
+        if (!row?.password_hash || !row.email || !valid) fail(400, "reset_token_invalid");
+        const result = await run(
+          c.env.DB,
+          `UPDATE users SET password_hash = $next, session_version = session_version + 1
+         WHERE id = $id AND password_hash = $current AND email = $email`,
+          { id: row.id, next: await hashPassword(input.password), current: row.password_hash, email: row.email },
+        );
+        if (!result.meta.changes) fail(400, "reset_token_invalid");
+        return c.body(null, 204);
+      },
+    );
 }
 
-function googleConfig(c: Ctx): GoogleConfig | null {
-  const clientId = c.env.GOOGLE_CLIENT_ID;
-  const clientSecret = c.env.GOOGLE_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return null;
+interface ProviderRuntime {
+  authorizeUrl: (pending: OAuthPending) => Promise<string>;
+  profile: (code: string, pending: OAuthPending) => Promise<OAuthProfile>;
+}
+
+function providerRuntime(c: Ctx, provider: OAuthProvider): ProviderRuntime | null {
   const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
-  return { clientId, clientSecret, redirectUri: `${base}/api/auth/oauth/google/callback` };
+  if (provider === "google") {
+    const clientId = c.env.GOOGLE_CLIENT_ID;
+    const clientSecret = c.env.GOOGLE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return null;
+    const config: GoogleConfig = { clientId, clientSecret, redirectUri: `${base}/api/auth/oauth/google/callback` };
+    return {
+      authorizeUrl: (pending) => googleAuthorizeUrl(config, pending),
+      profile: (code, pending) => googleProfile(config, code, pending),
+    };
+  }
+  const appId = c.env.FACEBOOK_APP_ID;
+  const appSecret = c.env.FACEBOOK_APP_SECRET;
+  if (!appId || !appSecret) return null;
+  const config: FacebookConfig = { appId, appSecret, redirectUri: `${base}/api/auth/oauth/facebook/callback` };
+  return {
+    authorizeUrl: (pending) => Promise.resolve(facebookAuthorizeUrl(config, pending)),
+    profile: (code) => facebookProfile(config, code),
+  };
 }
 
 function oauthFailure(c: Ctx, code: ErrorCode): Response {
   return c.redirect(`/login?error=${code}`, 302);
 }
 
-async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthProfile): Promise<User> {
+async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthProfile): Promise<User | null> {
   const findSql =
-    "SELECT u.id, u.name, u.is_admin FROM user_identities i JOIN users u ON u.id = i.user_id WHERE i.provider = $provider AND i.provider_user_id = $subject";
+    "SELECT u.id, u.name, u.is_admin, u.disabled_at FROM user_identities i JOIN users u ON u.id = i.user_id WHERE i.provider = $provider AND i.provider_user_id = $subject";
   const key = { provider, subject: profile.subject };
-  const existing = await one<{ id: string; name: string; is_admin: number }>(c.env.DB, findSql, key);
-  if (existing) return toUser(existing);
+  const existing = await one<{ id: string; name: string; is_admin: number; disabled_at: string | null }>(
+    c.env.DB,
+    findSql,
+    key,
+  );
+  if (existing) {
+    if (existing.disabled_at !== null) return null;
+    return toUser(existing);
+  }
   const id = newId("u_");
   const at = nowIso();
   try {
@@ -225,8 +347,12 @@ async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthPr
     ]);
   } catch (error) {
     if (!uniqueViolationColumns(error).some(([table]) => table === "user_identities")) throw error;
-    const raced = await one<{ id: string; name: string; is_admin: number }>(c.env.DB, findSql, key);
-    if (!raced) throw error;
+    const raced = await one<{ id: string; name: string; is_admin: number; disabled_at: string | null }>(
+      c.env.DB,
+      findSql,
+      key,
+    );
+    if (!raced || raced.disabled_at !== null) return null;
     return toUser(raced);
   }
   return { id, name: profile.name, isAdmin: false };

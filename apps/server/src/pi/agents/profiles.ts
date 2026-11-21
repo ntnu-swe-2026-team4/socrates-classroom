@@ -23,29 +23,16 @@ import { createWebSearchExtension } from "../extensions/websearch";
 import { getRouter, type TrafficClass } from "../../gateway/router";
 import type { SettleKind } from "../../gateway/ledger";
 import { teacherLegsOf, type TeacherLeg } from "../credentials";
-import { reportSubmitExtension, SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../extensions/report-submit";
+import { reportSubmitExtension } from "../extensions/report-submit";
 import { createUsageExtension } from "../extensions/usage";
 import type { JsonObject } from "@earendil-works/pi-durable";
 
 export type ProfileName = "socrates" | "topic-gen" | "student-report" | "class-report" | "lookup";
 
-const ROLE_USER_MARKER = '{{role "user"}}';
-const LOCALE_BLOCK = "{{#if locale}}{{locale}}{{else}}繁體中文{{/if}}";
+const LANG_PLACEHOLDER = "{{lang}}";
 
-const STUDENT_REPORT_SHAPE = `Submit the report by calling ${SUBMIT_STUDENT_ANALYSIS} as your final action; do not also write it as text.
-turns are the student's line numbers in the conversation, each at least 1.
-tension is null when there is none.`;
-
-const CLASS_REPORT_SHAPE = `Submit the report by calling ${SUBMIT_CLASS_REPORT} as your final action; do not also write it as text.
-- students: every student who stated a position, in roster order; summary has 1-3 steps
-- when the class has no disagreement, axes is an empty array and the overview says so plainly
-- end is "low", "middle", or "high"; at is 0-100 (low 0-49, middle 50, high 51-100)
-- overview: 3-5 lines`;
-
-function instructionsOf(asset: string, outputShape?: string): string {
-  const [instructions] = asset.split(ROLE_USER_MARKER);
-  const body = instructions.trim();
-  return outputShape ? `${body}\n\n${outputShape}` : body;
+function instructionsOf(asset: string): string {
+  return asset.trim();
 }
 
 export interface AgentProfile {
@@ -76,7 +63,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
   },
   "student-report": {
     name: "student-report",
-    instructions: instructionsOf(STUDENT_REPORT_RAW, STUDENT_REPORT_SHAPE),
+    instructions: instructionsOf(STUDENT_REPORT_RAW),
     extensions: ["report-submit"],
     maxTurns: 4,
     trafficClass: "batch",
@@ -84,7 +71,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
   },
   "class-report": {
     name: "class-report",
-    instructions: instructionsOf(CLASS_REPORT_RAW, CLASS_REPORT_SHAPE),
+    instructions: instructionsOf(CLASS_REPORT_RAW),
     extensions: ["report-submit"],
     maxTurns: 4,
     trafficClass: "batch",
@@ -118,9 +105,13 @@ export function profileRegistry(profile: AgentProfile, env: Env): Registry {
   return registry;
 }
 
+export function instructionsFor(name: ProfileName, lang: Lang): string {
+  return PROFILES[name].instructions.replaceAll(LANG_PLACEHOLDER, LANG_NAMES[lang]);
+}
+
 function agentChangeFor(profile: AgentProfile, lang: Lang): AgentChange {
   return {
-    instructions: (profile.instructions || undefined)?.replaceAll(LOCALE_BLOCK, LANG_NAMES[lang]),
+    instructions: instructionsFor(profile.name, lang) || undefined,
     ...(profile.maxTurns !== undefined ? { maxTurns: profile.maxTurns } : {}),
     thinkingLevel: profile.thinkingLevel,
   };

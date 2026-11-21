@@ -24,11 +24,11 @@ The fewer axes the better, but students who think differently must be separated:
 - If the class has no disagreement (nobody stated a position, or everyone who did stands at the same place), write axes as an empty array and say so plainly in the class overview (for example: nobody stated a position; everyone took the same side)
 - First set one: the main disagreement in this class
 - Then check: are there students in about the same place on the existing axes whose thinking is clearly different (different reasons, caring about different things)? Only if so, add an axis to separate them; otherwise stop
-- If students' positions on two axes always move together (high on one, high on the other), it is the same disagreement; merge them into one
+- If students' positions on two axes always move together (right on one, right on the other), it is the same disagreement; merge them into one
 - Do not merge just to have fewer: if after merging, students who think differently land in the same place, the merge is wrong
-- Write each axis in this order: what it asks, what position each end is, the positions of the students who talked about this axis, why this axis is needed (the first axis states the class's main disagreement; each later one states which students it separates who could not be separated on the earlier axes)
+- Write each axis in this order: what it asks, the position at its left end and at its right end, the positions of the students who talked about this axis, why this axis is needed (the first axis states the class's main disagreement; each later one states which students it separates who could not be separated on the earlier axes)
 - "Why this axis is needed" may only name students listed in this axis' positions, and the positions must really separate them; students not listed may not be named, even if you can guess what they would think, and do not even write "so-and-so did not talk about this". After writing, confirm one by one that every ID named is in this axis' positions
-- An axis must separate students: the positions of students who talked about it must fall at different ends (at least two of low, middle, high). If all fall at the same end, the axis separates no one; do not set it
+- An axis must separate students: the positions of students who talked about it must fall at different ends (at least two of left, middle, right). If all fall at the same end, the axis separates no one; do not set it
 - Use only disagreements this class actually talked about, not textbook or generic categories
 
 ## Positions
@@ -39,14 +39,14 @@ One entry per student, written in this order:
 1. id: the student ID
 2. turns: the line numbers where they talked about this axis
 3. view: their thinking on this axis, in one plain sentence, based only on these lines
-4. end: reread the exact wording of this axis' low and high, compare with view, and judge which end they are closer to. If view means the same as the low sentence, write low; the same as high, write high; if they accept both ends or cannot say which way they lean, write middle
-5. at: a number measuring how close they are to that end. low is 0 to 49, high is 51 to 100, middle can only be 50
-   Numbers follow this scale:
+4. side: reread the exact wording of this axis' left and right ends, compare with view, and judge which end they are closer to. If view means the same as the left end, write left; the same as the right end, write right; if they accept both ends or cannot say which way they lean, write middle. Which side follows only the ends' wording, not which answer to the topic's question is "yes"
+5. strength: how firmly they hold the side you chose, 1 to 5 (for middle, write 1)
+   Strength follows this scale:
 
-- 0 or 100: fully at that end, can give that end's reasons, holds up when rebutted
-- 25 or 75: leans to that end, but also accepts part of the other end, or does not hold up well when rebutted
-- 50: accepts both ends, or cannot say which way they lean
-- Estimate numbers in between from these points
+- 5: fully at that end, can give that end's reasons, holds up when rebutted
+- 3: leans to that end, but also accepts part of the other end, or does not hold up well when rebutted
+- 1: only barely leans to that end
+- 2 and 4 lie between these points
 - For every student, compare again with the exact wording of both ends of this axis; do not copy another student's position just because their thinking is similar
 
 ## Class overview
@@ -61,22 +61,10 @@ Three to five lines, one point per line: where the class's main disagreement is,
 - No grading, and do not say who is right or wrong
 - Use only student IDs
 - "Why this axis is needed" and the class overview never give head counts; only list IDs
-- Write in the default language: {{#if locale}}{{locale}}{{else}}繁體中文{{/if}}. These instructions are in English, but the report's language follows this line. When writing Chinese, always use Traditional characters
+- Write in the default language: {{lang}}. These instructions are in English, but the report's language follows this line. When writing Chinese, always use Traditional characters
 
-{{role "user"}}
-## Topic: {{title}}
-
-{{statement}}
-
-## Roster: {{students.length}} students in the class
-
-{{#each students}}{{id}}{{#unless @last}}, {{/unless}}{{/each}}
-
-## The whole class's conversations
-
-{{#each students}}
-### {{id}}
-
-{{transcript}}
-
-{{/each}}
+Submit the report by calling submit_class_report as your final action; do not also write it as text.
+- students: every student who stated a position, in roster order; summary has 1-3 steps
+- when the class has no disagreement, axes is an empty array and the overview says so plainly
+- side is "left", "middle", or "right"; strength is 1-5, how firmly they hold that side (1 for middle)
+- overview: 3-5 lines

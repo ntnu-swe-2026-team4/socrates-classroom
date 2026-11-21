@@ -34,6 +34,8 @@ export interface Env {
   SEED_TOKEN?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  FACEBOOK_APP_ID?: string;
+  FACEBOOK_APP_SECRET?: string;
   FAUX_TOKENS_PER_SECOND?: string;
   SEND_EMAIL?: SendEmailBinding;
   ALERT_FROM_EMAIL?: string;

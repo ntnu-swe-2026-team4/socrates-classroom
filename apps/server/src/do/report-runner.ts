@@ -17,10 +17,12 @@ import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credent
 import { reportSubmitExtension, SUBMIT_CLASS_REPORT, SUBMIT_STUDENT_ANALYSIS } from "../pi/extensions/report-submit";
 import { all, one, run } from "../db/d1";
 import { nowIso } from "../http";
+import { classReportInput, studentReportInput } from "../prompts/assemble";
 import {
-  ClassReportSchema,
+  ClassReportSubmissionSchema,
   StudentAnalysisSchema,
   type ClassReport,
+  type ClassReportSubmission,
   type Lang,
   type ReportPosition,
   type StudentAnalysis,
@@ -226,11 +228,10 @@ export class ReportRunner extends DurableObject<Env> {
     if (this.models.faux && activity.statement.includes(FAUX_GENERATE_FAILURE_MARKER)) {
       throw new Error("faux_report_generate_failure");
     }
-    const participants = await all<{ id: string; display_name: string; lang: Lang }>(
+    const participants = await all<{ id: string; display_name: string }>(
       db,
-      `SELECT p.id, p.display_name, COALESCE(u.lang, 'zh') AS lang
+      `SELECT p.id, p.display_name
        FROM activity_participants p
-       LEFT JOIN users u ON u.id = p.user_id
        WHERE p.activity_id = $aid
        ORDER BY p.joined_at, p.id`,
       { aid: activityId },
@@ -309,12 +310,16 @@ export class ReportRunner extends DurableObject<Env> {
               const { text, payload } = await this.runAgent(
                 harness,
                 "student-report",
-                this.studentReportPrompt(activity, transcript),
+                studentReportInput(activity, transcript),
                 legs,
-                { lang: participant.lang, submitTool: SUBMIT_STUDENT_ANALYSIS },
+                { lang: teacherLang, submitTool: SUBMIT_STUDENT_ANALYSIS },
               );
               try {
-                studentAnalyses.set(participant.id, StudentAnalysisSchema.parse(payloadOf(text, payload, "report")));
+                const analysis = StudentAnalysisSchema.parse(payloadOf(text, payload, "report"));
+                if (!citesSpokenLines(analysis, transcripts.get(participant.id)?.turns ?? 0)) {
+                  throw new Error("report_turn_not_spoken");
+                }
+                studentAnalyses.set(participant.id, analysis);
                 break;
               } catch (error) {
                 console.error(
@@ -332,7 +337,11 @@ export class ReportRunner extends DurableObject<Env> {
       );
     }
 
-    const classInput = this.classReportPrompt(activity, roster, rendered, pseudonyms);
+    const classInput = classReportInput(
+      activity,
+      roster.map((p) => pseudonyms.get(p.id) ?? "").filter(Boolean),
+      roster.map((p) => ({ id: pseudonyms.get(p.id) ?? p.id, transcript: rendered.get(p.id)?.text ?? "" })),
+    );
     try {
       const { text: classText, payload: classPayload } = await this.runAgent(
         harness,
@@ -341,7 +350,7 @@ export class ReportRunner extends DurableObject<Env> {
         legs,
         { lang: teacherLang, submitTool: SUBMIT_CLASS_REPORT },
       );
-      const classReport = ClassReportSchema.parse(payloadOf(classText, classPayload));
+      const classReport = toClassReport(ClassReportSubmissionSchema.parse(payloadOf(classText, classPayload)));
       await this.persist(activityId, activity.title, classReport, roster, studentAnalyses, pseudonyms, rendered);
     } catch (error) {
       console.error("[report] class report failed", error instanceof Error ? error.name : typeof error);
@@ -407,23 +416,6 @@ export class ReportRunner extends DurableObject<Env> {
         })),
       ),
     };
-  }
-
-  private studentReportPrompt(activity: { title: string; statement: string }, transcript: string): string {
-    return `## Topic: ${activity.title}\n${activity.statement}\n\n## Conversation\n${transcript}`;
-  }
-
-  private classReportPrompt(
-    activity: { title: string; statement: string },
-    roster: Array<{ id: string }>,
-    transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
-    pseudonyms: Map<string, string>,
-  ): string {
-    const names = roster.map((p) => pseudonyms.get(p.id) ?? "").filter(Boolean);
-    const conversations = roster
-      .map((p) => `### ${pseudonyms.get(p.id) ?? p.id}\n${transcripts.get(p.id)?.text ?? ""}`)
-      .join("\n\n");
-    return `## Topic: ${activity.title}\n${activity.statement}\n\n## Roster: ${names.length} students in the class\n${names.join(", ")}\n\n## The whole class's conversations\n${conversations}`;
   }
 
   private async persist(
@@ -502,6 +494,39 @@ function positionsOf(classReport: ClassReport | null, pseudonym: string): Report
   return positions;
 }
 
+export function pointOnAxis(
+  side: "left" | "middle" | "right",
+  strength: number,
+): { end: "low" | "middle" | "high"; at: number } {
+  if (side === "middle") return { end: "middle", at: 50 };
+  return side === "left" ? { end: "low", at: 50 - strength * 10 } : { end: "high", at: 50 + strength * 10 };
+}
+
+export function toClassReport(submission: ClassReportSubmission): ClassReport {
+  return {
+    ...submission,
+    axes: submission.axes.map(({ name, left, right, positions, why }) => ({
+      name,
+      low: left,
+      high: right,
+      positions: positions.map(({ id, turns, view, side, strength }) => ({
+        id,
+        turns,
+        view,
+        ...pointOnAxis(side, strength),
+      })),
+      why,
+    })),
+  };
+}
+
+export function citesSpokenLines(analysis: StudentAnalysis, spokenLines: number): boolean {
+  const cited = analysis.stated
+    ? [...analysis.claim.turns, ...analysis.reasons.turns, ...(analysis.tension?.turns ?? [])]
+    : analysis.doing.turns;
+  return cited.every((turn) => turn <= spokenLines);
+}
+
 function payloadOf(text: string, payload: JsonObject | null, key?: string): unknown {
   if (payload !== null) {
     const value = key === undefined ? payload : payload[key];
@@ -528,6 +553,8 @@ function textOf(content: string | readonly unknown[]): string {
 
 const FAUX_CLASS_FAILURE_MARKER = "FORCE-CLASS-REPORT-FAILURE";
 const FAUX_GENERATE_FAILURE_MARKER = "FORCE-REPORT-GENERATE-FAILURE";
+const FAUX_UNSPOKEN_TURN_MARKER = "FORCE-UNSPOKEN-TURN";
+const fauxUnspokenCited = new Set<string>();
 
 function fauxReportScript(context: TranscriptContext): AssistantMessage {
   const last = context.messages.filter((message) => message.role !== "system").at(-1);
@@ -553,27 +580,30 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
           axes: [
             {
               name: "契約與承諾",
-              low: "契約至上",
-              high: "人情優先",
+              left: "契約至上",
+              right: "人情優先",
               positions: [
-                { id: first, turns: [1], view: "先守約再談情", end: "middle", at: 50 },
-                { id: second, turns: [1], view: "契約就是契約", end: "low", at: 10 },
+                { id: first, turns: [1], view: "先守約再談情", side: "middle", strength: 1 },
+                { id: second, turns: [1], view: "契約就是契約", side: "left", strength: 4 },
               ],
-              why: "全班多數先守約，但接受例外",
+              why: "多數先守約",
             },
           ],
-          overview: ["全班集中在契約與人情的取捨"],
+          overview: ["契約與人情的取捨"],
         }),
       ],
       { stopReason: "toolUse" },
     );
   }
+  const citesUnspoken = prompt.includes(FAUX_UNSPOKEN_TURN_MARKER) && !fauxUnspokenCited.has(prompt);
+  if (citesUnspoken) fauxUnspokenCited.add(prompt);
+  const claimTurns = citesUnspoken ? [99] : [1];
   return fauxAssistantMessage(
     [
       fauxToolCall(SUBMIT_STUDENT_ANALYSIS, {
         report: {
           stated: true,
-          claim: { text: "契約應該被遵守", turns: [1] },
+          claim: { text: "契約應該被遵守", turns: claimTurns },
           reasons: { text: "因為雙方事先同意", turns: [1] },
           tension: null,
         },

@@ -171,6 +171,7 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
   const socket = useAgent({
     agent: "chat",
     name: `${activityId}:${participantId}`,
+    query: { lang: document.documentElement.lang || "zh-TW" },
     enabled,
     onOpen: (event) => open(event.target as WebSocket, false),
     onMessage: (event) => onFrame(event.data),
