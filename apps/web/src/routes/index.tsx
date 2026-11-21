@@ -1671,7 +1671,8 @@ function ComicLanding() {
             </svg>
             <span className="hidden md:inline">{t("comic_skip")}</span>
           </button>
-          <fieldset aria-label={t("settings_lang")} className="flex items-center px-2">
+          <fieldset className="flex items-center px-2">
+            <legend className="sr-only">{t("settings_lang")}</legend>
             {LANGS.map((lang, index) => (
               <span key={lang.code} className="flex items-center">
                 {index > 0 && (
