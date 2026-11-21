@@ -27,6 +27,13 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
       SUBMIT_CLASS_REPORT,
     ]);
     expect(reportSubmitAxesExtension.tools?.map((tool) => tool.name)).toEqual([SUBMIT_CLASS_AXES_REPORT]);
+    expect(
+      profileRegistry(PROFILES["class-report-axes"], env as never)
+        .snapshot()
+        .tools()
+        .map(({ tool }) => tool.name)
+        .filter((name) => name.startsWith("submit_")),
+    ).toEqual([SUBMIT_CLASS_AXES_REPORT]);
     for (const profile of Object.values(PROFILES)) {
       const json = JSON.stringify(profile);
       expect(json).not.toMatch(/glm|claude|gpt|@cf\//i);
