@@ -24,7 +24,7 @@ This report has a set number of axes. Under "## Axes" the input gives how many i
 
 The teacher's axes (if the teacher set none, teacherAxes is an empty array and this part does not apply):
 - Use every teacher's axis, in the order given; you do not write its name or ends, only its number in the list (from 1), its positions and why. Its left and right ends are the teacher's wording
-- Keep every teacher's axis even if no student talked about it or it separates no one; then why says so plainly without naming students
+- Keep every teacher's axis even if no student talked about it or it separates no one, and say so plainly in why; if no student talked about it, why names no student
 - why for a teacher's axis states what this axis shows about the class
 
 Your own axes come after the teacher's:

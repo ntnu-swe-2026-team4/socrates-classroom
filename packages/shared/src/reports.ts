@@ -62,7 +62,7 @@ const axisEnd = z
   .trim()
   .min(1)
   .max(120)
-  .refine((text) => !/[\r\n\u2028\u2029]/.test(text), { message: "axis_text_single_line" });
+  .refine((text) => !/[\r\n\u0085\u2028\u2029]/.test(text), { message: "axis_text_single_line" });
 
 export const ReportAxesPlanSchema = z
   .object({

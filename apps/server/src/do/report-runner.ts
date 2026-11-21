@@ -390,7 +390,12 @@ export class ReportRunner extends DurableObject<Env> {
       { lang, submitTool: SUBMIT_CLASS_AXES_REPORT },
       this.axesRegistry,
     );
-    return toPlannedClassReport(plan, roster, PlannedClassReportSubmissionSchema.parse(payloadOf(text, payload)));
+    try {
+      return toPlannedClassReport(plan, roster, PlannedClassReportSubmissionSchema.parse(payloadOf(text, payload)));
+    } catch (error) {
+      console.error("[report] axes plan report rejected", error instanceof Error ? error.message : typeof error);
+      throw error;
+    }
   }
 
   private async openHarness(registry: Registry = this.registry): Promise<Harness> {

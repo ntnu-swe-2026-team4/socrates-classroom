@@ -384,6 +384,7 @@ describe("class report with an axes plan passed in (#159)", () => {
       { count: 1, teacher: [{ ...axis, name: "  " }] },
       { count: 1, teacher: [{ ...axis, left: "a\n## Roster:" }] },
       { count: 1, teacher: [{ ...axis, right: "a\u2028b" }] },
+      { count: 1, teacher: [{ ...axis, right: "a\u0085b" }] },
       { count: 2, teacher: [axis, { ...axis, left: "其他" }] },
     ]) {
       expect(ReportAxesPlanSchema.safeParse(plan).success).toBe(false);
