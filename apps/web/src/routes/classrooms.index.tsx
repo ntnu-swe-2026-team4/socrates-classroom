@@ -13,9 +13,9 @@ import { useFormatDate, useT } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
 
 export const Route = createFileRoute("/classrooms/")({
-  beforeLoad: async ({ context }) => {
+  beforeLoad: async ({ context, location }) => {
     const me = await meOf(context.queryClient);
-    if (!me) throw redirect({ to: "/login" });
+    if (!me) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
   },
   component: ClassroomsPage,
 });

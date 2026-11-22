@@ -10,9 +10,9 @@ import { Button, buttonStyles, Card, Field, Input, PageHeader, SectionTitle, Spi
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/t/live/$id")({
-  beforeLoad: async ({ context, params }) => {
+  beforeLoad: async ({ context, params, location }) => {
     const me = await meOf(context.queryClient);
-    if (!me) throw redirect({ to: "/classrooms" });
+    if (!me) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
     const activity = await context.queryClient.ensureQueryData(teacherActivityOptions(params.id)).catch(() => {
       throw redirect({ to: "/classrooms" });
     });

@@ -9,9 +9,9 @@ import { Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/report/$id")({
-  beforeLoad: async ({ context }) => {
+  beforeLoad: async ({ context, location }) => {
     const me = await meOf(context.queryClient);
-    if (!me) throw redirect({ to: "/login" });
+    if (!me) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
   },
   component: ReportPage,
 });

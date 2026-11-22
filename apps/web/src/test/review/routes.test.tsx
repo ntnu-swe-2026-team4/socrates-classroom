@@ -111,7 +111,7 @@ function roomSummary(role: "teacher" | "student") {
   };
 }
 
-async function loadPath(url: string, responses: Record<string, unknown>, statuses: Record<string, number> = {}) {
+async function loadLocation(url: string, responses: Record<string, unknown>, statuses: Record<string, number> = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -130,9 +130,13 @@ async function loadPath(url: string, responses: Record<string, unknown>, statuse
     context: { queryClient: client },
   });
   await router.load();
-  const path = router.state.location.pathname;
+  const location = router.state.location;
   client.clear();
-  return path;
+  return location;
+}
+
+async function loadPath(url: string, responses: Record<string, unknown>, statuses: Record<string, number> = {}) {
+  return (await loadLocation(url, responses, statuses)).pathname;
 }
 
 async function mountRoute(url: string) {
@@ -1073,5 +1077,93 @@ test("#316: a loaded report does not fetch activity or classroom lists for the f
     expect(screen.getByText(topic.title)).toBeTruthy();
   } finally {
     dispose();
+  }
+});
+
+test.each([
+  "/report/activity-1",
+  "/classrooms",
+  "/classrooms/room-1?tab=members",
+  "/settings?section=keys",
+  "/admin/users",
+  "/t/live/activity-1",
+  "/t/setup",
+])("#318: a signed-out visit to %s goes to login carrying the address to return to", async (url) => {
+  const location = await loadLocation(url, { "/api/me": null });
+  expect(location.pathname).toBe("/login");
+  expect(location.search).toMatchObject({ next: url });
+});
+
+test("#318: signing in with a return address lands back on that page", async () => {
+  stubStoaObservers();
+  let signedIn = false;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const user = { id: "u1", name: "Teacher", isAdmin: false };
+      if (path === "/api/auth/login" && init?.method === "POST") signedIn = true;
+      const responses: Record<string, unknown> = {
+        "/api/me": signedIn ? user : null,
+        "/api/auth/login": user,
+        "/api/auth/providers": { providers: [] },
+        "/api/notifications": { items: [], unread: null },
+        "/api/classrooms": [],
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ["/classrooms"] }),
+    context: { queryClient: client },
+  });
+  await router.load();
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  try {
+    expect(router.state.location.pathname).toBe("/login");
+    fireEvent.change(await screen.findByRole("textbox", { name: "Email" }), { target: { value: "a@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password123" } });
+    const submit = screen
+      .getAllByRole("button", { name: "Sign in" })
+      .find((button) => button.getAttribute("type") === "submit");
+    if (!submit) throw new Error("submit button missing");
+    fireEvent.click(submit);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/classrooms"));
+  } finally {
+    cleanup();
+    client.clear();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#318: the join page sends account holders to login with the invite address to return to", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const responses: Record<string, unknown> = {
+        "/api/me": null,
+        "/api/join/abcdef": { code: "abcdef", classroomName: "Class", topic },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/join/abcdef?draft=why%20so");
+  try {
+    await screen.findByRole("heading", { name: "Invitation topic" });
+    const link = screen.getAllByRole("link").find((item) => item.getAttribute("href")?.startsWith("/login"));
+    const next = new URL(link?.getAttribute("href") ?? "", "http://localhost").searchParams.get("next");
+    expect(next).toBe("/join/abcdef?draft=why%20so");
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
   }
 });

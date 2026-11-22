@@ -8,9 +8,9 @@ import { Button, Card, Field, Input, PageHeader, Spinner, cn } from "@/component
 import { useT } from "@/i18n";
 
 export const Route = createFileRoute("/admin/users")({
-  beforeLoad: async ({ context }) => {
+  beforeLoad: async ({ context, location }) => {
     const me = await meOf(context.queryClient);
-    if (!me) throw redirect({ to: "/login" });
+    if (!me) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
     if (!me.isAdmin) throw redirect({ to: "/classrooms" });
   },
   component: AdminUsersPage,

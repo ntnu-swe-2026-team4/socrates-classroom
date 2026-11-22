@@ -26,9 +26,9 @@ export const Route = createFileRoute("/classrooms/$classroomId")({
   validateSearch: (search: Record<string, unknown>): { tab?: Tab } => ({
     tab: typeof search.tab === "string" && Object.hasOwn(channels, search.tab) ? (search.tab as Tab) : undefined,
   }),
-  beforeLoad: async ({ context }) => {
+  beforeLoad: async ({ context, location }) => {
     const me = await meOf(context.queryClient);
-    if (!me) throw redirect({ to: "/login" });
+    if (!me) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
     return { viewerId: me.id };
   },
   component: ClassroomPage,

@@ -21,6 +21,7 @@ function JoinPage() {
   const { code: rawCode } = Route.useParams();
   const code = normalizeJoinCode(rawCode);
   const { draft } = Route.useSearch();
+  const returnPath = draft ? `/join/${code}?draft=${encodeURIComponent(draft)}` : `/join/${code}`;
   const t = useT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -40,7 +41,7 @@ function JoinPage() {
     } finally {
       queryClient.clear();
       queryClient.setQueryData(meQueryOptions.queryKey, null);
-      await navigate({ to: "/login" });
+      await navigate({ to: "/login", search: { next: returnPath } });
     }
   }
 
@@ -136,6 +137,7 @@ function JoinPage() {
                   <p className="text-[13px] text-ink-soft">{t("join_choose")}</p>
                   <Link
                     to="/login"
+                    search={{ next: returnPath }}
                     className="flex items-center gap-3 rounded-xl border border-line-strong bg-paper px-3 py-3 transition-colors hover:border-ember"
                   >
                     <UserRound className="size-5 shrink-0 text-ember" />

@@ -11,9 +11,9 @@ import { useT } from "@/i18n";
 import { QrBlock, absoluteUrl } from "@/components/QrBlock";
 
 export const Route = createFileRoute("/t/setup")({
-  beforeLoad: async ({ context }) => {
+  beforeLoad: async ({ context, location }) => {
     const me = await meOf(context.queryClient);
-    if (!me) throw redirect({ to: "/classrooms" });
+    if (!me) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
   },
   component: SetupPage,
 });
