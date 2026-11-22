@@ -102,7 +102,7 @@ export interface DialogueOptions {
   agent?: DialogueAgent;
   autoSend?: string;
   autoSendOperationId?: string;
-  onAutoSent?: () => void;
+  onAutoSent?: (receipt?: { accepted: boolean }) => void;
   onSubmitReceipt?: () => void;
   onActivityFinished?: () => void;
   onDisconnect?: () => void;
@@ -321,7 +321,11 @@ export function useDialogue(threadId: string, userId: string, options?: Dialogue
         ) {
           if (result.operationId === pendingAutoSend.current) {
             pendingAutoSend.current = null;
-            options?.onAutoSent?.();
+            if (result.accepted) {
+              options?.onAutoSent?.({ accepted: true });
+            } else {
+              setSentAutoSend(null);
+            }
           }
           if (!result.accepted && frame.id === pendingRef.current) completePending();
           options?.onSubmitReceipt?.();
@@ -436,7 +440,7 @@ export function useDialogue(threadId: string, userId: string, options?: Dialogue
     if (phaseRef.current === "speaking") return;
     if (send(autoSend.slice(0, 2000), options.autoSendOperationId)) {
       setSentAutoSend(autoSend);
-      if (!options.autoSendOperationId) options.onAutoSent?.();
+      if (!options.autoSendOperationId) options.onAutoSent?.({ accepted: true });
     }
   }
 
@@ -457,7 +461,7 @@ export function useDialogue(threadId: string, userId: string, options?: Dialogue
   function interrupt() {
     if (pendingAutoSend.current !== null) {
       pendingAutoSend.current = null;
-      options?.onAutoSent?.();
+      options?.onAutoSent?.({ accepted: true });
     }
     if (pendingRef.current) {
       socket.send(JSON.stringify({ type: "abort", id: pendingRef.current } satisfies ClientMessage));

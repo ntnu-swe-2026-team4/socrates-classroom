@@ -137,7 +137,7 @@ function SoloSidebar({ userId }: { userId: string }) {
                   chat={chat}
                   userId={userId}
                   active={pathname === `/chat/${chat.id}`}
-                  deleting={remove.isPending}
+                  deleting={remove.isPending && remove.variables === chat.id}
                   onRenameEnd={(thread) => {
                     restoreFocus.current = { id: thread.id, updatedAt: thread.updatedAt };
                   }}

@@ -36,7 +36,7 @@ export interface DialogueViewProps {
   prompts?: string[];
   autoSend?: string;
   autoSendOperationId?: string;
-  onAutoSent?: () => void;
+  onAutoSent?: (receipt?: { accepted: boolean }) => void;
   onSubmitReceipt?: () => void;
   onActivityFinished?: () => void;
   onFirstSend?: (text: string) => void;

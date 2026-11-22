@@ -36,8 +36,20 @@ const thread: SoloThread = {
   updatedAt: "2026-09-01T00:00:00.000Z",
 };
 
-function mountChat(path: string, user: User | null = { id: "u_1", name: "Socrates", isAdmin: false }) {
-  let saved: SoloThread | undefined = path === "/chat" ? undefined : thread;
+const secondThread: SoloThread = {
+  id: "solo_2",
+  title: "What is courage?",
+  createdAt: "2026-09-02T00:00:00.000Z",
+  updatedAt: "2026-09-02T00:00:00.000Z",
+};
+
+function mountChat(
+  path: string,
+  user: User | null = { id: "u_1", name: "Socrates", isAdmin: false },
+  initialThreads?: SoloThread[],
+  onDeleteRequest?: (id: string) => Promise<void> | void,
+) {
+  let saved: SoloThread[] = initialThreads ?? (path === "/chat" ? [] : [thread]);
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const { pathname } = new URL(String(input), "http://localhost");
     if (pathname === "/api/me") return Response.json(user);
@@ -45,20 +57,28 @@ function mountChat(path: string, user: User | null = { id: "u_1", name: "Socrate
     if (pathname === "/api/notifications") return Response.json({ items: [] });
     if (pathname === "/api/solo/threads") {
       if (init?.method === "POST") {
-        saved = { ...thread, ...JSON.parse(String(init.body)) };
-        return Response.json(saved, { status: 201 });
+        const created: SoloThread = { ...thread, ...JSON.parse(String(init.body)) };
+        saved = [created, ...saved];
+        return Response.json(created, { status: 201 });
       }
-      return Response.json(saved ? [saved] : []);
+      return Response.json(saved);
     }
-    if (pathname === `/api/solo/threads/${thread.id}` && saved) {
+    const match = pathname.match(/^\/api\/solo\/threads\/([^/]+)$/);
+    if (match) {
+      const id = match[1];
+      const target = saved.find((item) => item.id === id);
+      if (!target) return Response.json({ code: "not_found" }, { status: 404 });
       if (init?.method === "DELETE") {
-        saved = undefined;
+        if (onDeleteRequest) await onDeleteRequest(id);
+        saved = saved.filter((item) => item.id !== id);
         return new Response(null, { status: 204 });
       }
       if (init?.method === "PATCH") {
-        saved = { ...saved, ...JSON.parse(String(init.body)), updatedAt: new Date().toISOString() };
+        const updated = { ...target, ...JSON.parse(String(init.body)), updatedAt: new Date().toISOString() };
+        saved = saved.map((item) => (item.id === id ? updated : item));
+        return Response.json(updated);
       }
-      return Response.json(saved);
+      return Response.json(target);
     }
     return Response.json({ code: "not_found" }, { status: 404 });
   });
@@ -123,6 +143,24 @@ test("retries the first question with the same operation ID after a disconnect a
       }),
     });
   });
+  expect(router.state.location.state).toHaveProperty("soloQuestion.text", thread.title);
+
+  act(emitView);
+  const submitsAfterReject = socket.send.mock.calls
+    .map(([frame]) => JSON.parse(frame))
+    .filter((frame) => frame.type === "submit");
+  expect(submitsAfterReject).toHaveLength(3);
+  expect(submitsAfterReject[2]).toMatchObject({ input: thread.title, operationId: submits[0].operationId });
+
+  act(() => {
+    socket.options?.onMessage({
+      data: JSON.stringify({
+        type: "result",
+        id: submitsAfterReject[2].id,
+        result: { accepted: true, operationId: submitsAfterReject[2].operationId, session: "root" },
+      }),
+    });
+  });
   await waitFor(() => expect(router.state.location.state).not.toHaveProperty("soloQuestion"));
 });
 
@@ -138,6 +176,36 @@ test("renames a selected thread and returns to the composer when that thread is 
   fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete chat" }));
   await screen.findByRole("textbox", { name: "Type a question you want to think through…" });
   expect(screen.queryByRole("link", { name: "A new title" })).toBeNull();
+});
+
+test("disables actions only on the thread currently being deleted", async () => {
+  let releaseDelete: (() => void) | null = null;
+  mountChat(
+    `/chat/${thread.id}`,
+    { id: "u_1", name: "Socrates", isAdmin: false },
+    [thread, secondThread],
+    () =>
+      new Promise<void>((resolve) => {
+        releaseDelete = resolve;
+      }),
+  );
+  await screen.findByRole("link", { name: thread.title });
+  await screen.findByRole("link", { name: secondThread.title });
+
+  const deleteButtons = screen.getAllByRole("button", { name: "Delete chat" });
+  fireEvent.click(deleteButtons[0]);
+  fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete chat" }));
+
+  await waitFor(() =>
+    expect(screen.getAllByRole("button", { name: "Delete chat" })[0]).toHaveProperty("disabled", true),
+  );
+  expect(screen.getAllByRole("button", { name: "Delete chat" })[1]).toHaveProperty("disabled", false);
+
+  act(() => {
+    releaseDelete?.();
+  });
+  await waitFor(() => expect(screen.queryByRole("link", { name: thread.title })).toBeNull());
+  expect(screen.getByRole("link", { name: secondThread.title })).not.toBeNull();
 });
 
 test("requires a signed-in account on direct links to a solo thread", async () => {
