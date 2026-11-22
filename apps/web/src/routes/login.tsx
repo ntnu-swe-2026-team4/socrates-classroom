@@ -1,3 +1,4 @@
+import { rememberClassroomInvite } from "@/lib/classroomInvite";
 import { meOf, meQueryOptions } from "@/api/me";
 import { authProvidersOptions, notificationsOptions } from "@/api/queries";
 import { useState } from "react";
@@ -270,6 +271,7 @@ function LoginPage() {
                   <a
                     key={id}
                     href={`/api/auth/oauth/${id}/start`}
+                    onClick={() => rememberClassroomInvite(next)}
                     aria-label={label}
                     className={cn(base, "hover:bg-comic-ink hover:text-comic-paper", FOCUS)}
                   >

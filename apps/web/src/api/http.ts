@@ -7,6 +7,7 @@ import type {
   ActivityStarted,
   AdminUser,
   ClassroomCreated,
+  ClassroomInviteScope,
   ClassroomSummary,
   DevAccounts,
   InviteInfo,
@@ -76,6 +77,7 @@ export interface KeyModelInfo {
 }
 
 export interface Api {
+  classroom: typeof classroomApi;
   me(): Promise<User | null>;
   login(email: string, password: string): Promise<User>;
   signup(input: { name: string; email: string; password: string; tosAccepted: boolean }): Promise<User>;
@@ -237,7 +239,80 @@ function announceSession(): void {
   }
 }
 
+type ScopedInviteInput =
+  | { scope: "classroom" }
+  | { scope: Exclude<ClassroomInviteScope, "classroom">; activityId: string };
+
+const classroom = client.classrooms[":id"];
+const scopedInvite = client["classroom-invites"][":token"];
+
+function idempotencyHeaders(key: string) {
+  return { headers: { ...langHeaders(), "Idempotency-Key": key } };
+}
+
+const classroomApi = {
+  async announcements(id: string, cursor?: string) {
+    return unwrap(await classroom.announcements.$get({ param: { id }, query: { cursor } }));
+  },
+  async publish(id: string, body: string, key: string) {
+    return unwrap(await classroom.announcements.$post({ param: { id }, json: { body } }, idempotencyHeaders(key)));
+  },
+  async deleteAnnouncement(id: string, itemId: string) {
+    await unwrap(await classroom.announcements[":itemId"].$delete({ param: { id, itemId } }));
+  },
+  async posts(id: string, cursor?: string) {
+    return unwrap(await classroom.posts.$get({ param: { id }, query: { cursor } }));
+  },
+  async post(id: string, body: string, key: string) {
+    return unwrap(await classroom.posts.$post({ param: { id }, json: { body } }, idempotencyHeaders(key)));
+  },
+  async replies(id: string, postId: string, cursor?: string) {
+    return unwrap(await classroom.posts[":postId"].replies.$get({ param: { id, postId }, query: { cursor } }));
+  },
+  async reply(id: string, postId: string, body: string, key: string) {
+    return unwrap(
+      await classroom.posts[":postId"].replies.$post(
+        { param: { id, postId }, json: { body } },
+        idempotencyHeaders(key),
+      ),
+    );
+  },
+  async deletePost(id: string, postId: string) {
+    await unwrap(await classroom.posts[":postId"].$delete({ param: { id, postId } }));
+  },
+  async members(id: string, cursor?: string) {
+    return unwrap(await classroom.members.$get({ param: { id }, query: { cursor } }));
+  },
+  async removeMember(id: string, userId: string) {
+    await unwrap(await classroom.members[":userId"].$delete({ param: { id, userId } }));
+  },
+  async activities(id: string, cursor?: string) {
+    return unwrap(await classroom.activities.$get({ param: { id }, query: { cursor } }));
+  },
+  async invites(id: string, cursor?: string) {
+    return unwrap(await classroom.invites.$get({ param: { id }, query: { cursor } }));
+  },
+  async createInvite(id: string, input: ScopedInviteInput) {
+    return unwrap(await classroom.invites.$post({ param: { id }, json: input }));
+  },
+  async revokeInvite(id: string, inviteId: string) {
+    await unwrap(await classroom.invites[":inviteId"].$delete({ param: { id, inviteId } }));
+  },
+  async previewInvite(token: string) {
+    return unwrap(await scopedInvite.$get({ param: { token } }));
+  },
+  async acceptInvite(token: string, input: { name?: string; tosAccepted: boolean }) {
+    const joined = await unwrap(await scopedInvite.join.$post({ param: { token }, json: input }));
+    if (joined.activityId) persistActivityId(joined.activityId);
+    return joined;
+  },
+  async myReports(cursor?: string) {
+    return unwrap(await client.me.reports.$get({ query: { cursor } }));
+  },
+};
+
 export const httpApi: Api = {
+  classroom: classroomApi,
   async me() {
     return unwrap(await client.me.$get());
   },

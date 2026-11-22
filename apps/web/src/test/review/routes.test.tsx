@@ -698,6 +698,19 @@ function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<R
     topicStatement: topicA.statement,
     finished: false,
   };
+  let activities = [
+    {
+      id: "activity-a",
+      mode: "live",
+      topicTitle: topicA.title,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      finishedAt: null,
+    },
+  ];
+  class TestSocket extends EventTarget {
+    close() {}
+  }
+  vi.stubGlobal("WebSocket", TestSocket);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -708,6 +721,15 @@ function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<R
       if (path === "/api/classrooms") return json([{ ...roomSummary("teacher"), current }]);
       if (path === "/api/classrooms/class-1/topics") return json([topicA, topicB]);
       if (path === "/api/topics") return json([]);
+      if (path === "/api/classrooms/class-1/members") {
+        return json({ items: [], nextCursor: null, teacher: { id: "teacher-1", name: "Teacher" } });
+      }
+      if (path === "/api/classrooms/class-1/invites" && (!init?.method || init.method === "GET")) {
+        return json({ items: [], nextCursor: null });
+      }
+      if (path === "/api/classrooms/class-1/activities" && (!init?.method || init.method === "GET")) {
+        return json({ items: activities, nextCursor: null });
+      }
       if (path === "/api/classrooms/class-1/activities" && init?.method === "POST") {
         current = {
           activityId: "activity-b",
@@ -716,6 +738,16 @@ function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<R
           topicStatement: topicB.statement,
           finished: false,
         };
+        activities = [
+          {
+            id: "activity-b",
+            mode: "live",
+            topicTitle: topicB.title,
+            createdAt: "2026-01-02T00:00:00.000Z",
+            finishedAt: null,
+          },
+          ...activities,
+        ];
         return json(
           {
             classroomId: "class-1",
@@ -727,8 +759,11 @@ function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<R
           201,
         );
       }
-      const inviteMatch = path.match(/^\/api\/activities\/([^/]+)\/invites$/);
-      if (inviteMatch?.[1] && init?.method === "POST") return await onInvite(inviteMatch[1]);
+      if (path === "/api/classrooms/class-1/invites" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { activityId?: string };
+        if (!body.activityId) throw new Error("Expected activityId in classroom invite payload");
+        return await onInvite(body.activityId);
+      }
       throw new Error(`Unexpected request: ${path}`);
     }),
   );
@@ -741,28 +776,44 @@ test("#314: starting a new live activity on the classroom page resets the activi
     const token = activityId === "activity-a" ? "tok-a" : "tok-b";
     return new Response(
       JSON.stringify({
-        token,
+        id: `iv_${token}`,
+        classroomId: "class-1",
         activityId,
-        url: `/join/a/${token}`,
+        scope: "activity_guest",
+        token,
+        url: `/join/i/${token}`,
         createdAt: "2026-01-01T00:00:00.000Z",
-        expiresAt: null,
+        expiresAt: "2026-12-01T00:00:00.000Z",
+        revokedAt: null,
       }),
-      { headers: { "Content-Type": "application/json" } },
+      { status: 201, headers: { "Content-Type": "application/json" } },
     );
   });
-  const dispose = await mountRoute("/classrooms/class-1");
+  const dispose = await mountRoute("/classrooms/class-1?tab=members");
   try {
-    expect(await screen.findByRole("heading", { name: "Topic A" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Create an invite link" }));
-    expect(await screen.findByText(/\/join\/a\/tok-a/)).toBeTruthy();
+    const scope = await screen.findByLabelText("Invitation type");
+    fireEvent.change(scope, { target: { value: "activity_guest" } });
+    const create = screen.getByRole("button", { name: "Create an invite link" });
+    await waitFor(() => expect(create).toHaveProperty("disabled", false));
+    fireEvent.click(create);
+    expect(await screen.findByText(/\/join\/i\/tok-a/)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /Topic B/ }));
+    fireEvent.click(screen.getByRole("link", { name: "Topics" }));
+    expect(await screen.findByRole("heading", { name: "Topic A" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /Topic B/ }));
     fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
     expect(await screen.findByRole("heading", { name: "Topic B" })).toBeTruthy();
 
-    expect(screen.queryByText(/\/join\/a\/tok-a/)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Create an invite link" }));
-    expect(await screen.findByText(/\/join\/a\/tok-b/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("link", { name: "Members" }));
+    fireEvent.change(await screen.findByLabelText("Invitation type"), { target: { value: "activity_guest" } });
+    const nextCreate = screen.getByRole("button", { name: "Create an invite link" });
+    await waitFor(() => expect(nextCreate).toHaveProperty("disabled", false));
+    expect(screen.queryByText(/\/join\/i\/tok-a/)).toBeNull();
+    fireEvent.click(nextCreate);
+    expect(await screen.findByText(/\/join\/i\/tok-b/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Activity"), { target: { value: "activity-a" } });
+    expect(screen.queryByText(/\/join\/i\/tok-b/)).toBeNull();
     expect(inviteCalls).toEqual(["activity-a", "activity-b"]);
   } finally {
     dispose();
@@ -778,32 +829,45 @@ test("#314: an in-flight invite creation for the previous activity does not popu
       pending.resolve = resolve;
     });
   });
-  const dispose = await mountRoute("/classrooms/class-1");
+  const dispose = await mountRoute("/classrooms/class-1?tab=members");
   try {
-    expect(await screen.findByRole("heading", { name: "Topic A" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Create an invite link" }));
+    fireEvent.change(await screen.findByLabelText("Invitation type"), { target: { value: "activity_guest" } });
+    const create = screen.getByRole("button", { name: "Create an invite link" });
+    await waitFor(() => expect(create).toHaveProperty("disabled", false));
+    fireEvent.click(create);
     await waitFor(() => expect(pending.resolve).not.toBeNull());
 
-    fireEvent.click(screen.getByRole("button", { name: /Topic B/ }));
+    fireEvent.click(screen.getByRole("link", { name: "Topics" }));
+    expect(await screen.findByRole("heading", { name: "Topic A" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /Topic B/ }));
     fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
     expect(await screen.findByRole("heading", { name: "Topic B" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("link", { name: "Members" }));
+    fireEvent.change(await screen.findByLabelText("Invitation type"), { target: { value: "activity_guest" } });
+    const nextCreate = screen.getByRole("button", { name: "Create an invite link" });
+    await waitFor(() => expect(nextCreate).toHaveProperty("disabled", false));
 
     pending.resolve?.(
       new Response(
         JSON.stringify({
-          token: "tok-a",
+          id: "iv_tok-a",
+          classroomId: "class-1",
           activityId: "activity-a",
-          url: "/join/a/tok-a",
+          scope: "activity_guest",
+          token: "tok-a",
+          url: "/join/i/tok-a",
           createdAt: "2026-01-01T00:00:00.000Z",
-          expiresAt: null,
+          expiresAt: "2026-12-01T00:00:00.000Z",
+          revokedAt: null,
         }),
-        { headers: { "Content-Type": "application/json" } },
+        { status: 201, headers: { "Content-Type": "application/json" } },
       ),
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(screen.queryByText(/\/join\/a\/tok-a/)).toBeNull();
-    expect(screen.getByRole("button", { name: "Create an invite link" })).toHaveProperty("disabled", false);
+    expect(screen.queryByText(/\/join\/i\/tok-a/)).toBeNull();
+    expect(nextCreate).toHaveProperty("disabled", false);
   } finally {
     dispose();
     vi.unstubAllGlobals();

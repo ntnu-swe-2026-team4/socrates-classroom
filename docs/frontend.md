@@ -8,7 +8,7 @@
 - AppShell icon rail 提供首頁、提問和教室。提問頁從登入帳戶開啟單人對話。
 - 語音為主、文字並行
 - 學生零配置：名字唯一必填；ToS 勾選屬入場流程（guest-first 維持；login-first 反轉不收）
-- v3 已裁撤的頁面（側邊欄／題庫／教室社群／四階段活動／上傳／教室探索／音效）不重建
+- v3 已裁撤的頁面（側邊欄／題庫／四階段活動／上傳／教室探索／音效）不重建
 
 ## 2. Route map
 
@@ -29,6 +29,9 @@ flowchart LR
     subgraph rail[rail 可達（PR #108 收編）]
         J["/home　首頁"] --> K["/classrooms　教室列表"]
         K --> L["/classrooms/:id　教室詳情"]
+        V["/join/i/:token　班級與活動邀請"] --> L
+        V --> D
+        K -->|"我的報告"| G
         J --> O["/chat　提問"]
         O --> P["/chat/:chatId　單人對話"]
     end
@@ -53,15 +56,18 @@ flowchart LR
 | 7   | `/report/:id`      | 報告頁                     | 老師＋學生（看自己）               | 群體：維度漸展星圖＋分群；單人：論點總結＋六角圖；同頁兩視角、去識別化                                                                                                  | #74、#78、#79、#72  |
 | 8   | `/settings`        | 設定                       | 老師                               | 介面語言。學生經 account sheet（名字顯示＋登出），無此頁入口                                                                                                            | —                   |
 | 9   | `/home`            | 首頁                       | 所有人（rail）                     | greeting＋教室統計/動態                                                                                                                                                 | PR #108             |
-| 10  | `/classrooms`      | 教室列表                   | 所有人（rail）                     | 我的教室（`GET /classrooms`；老師見 code/QR，學生見成員視角）                                                                                                           | PR #108             |
-| 11  | `/classrooms/:id`  | 教室詳情                   | 成員                               | 當前活動（進對話/面板/報告）＋老師：議題集（新增／AI 生成／複製既有）＋開新活動（可勾測試模式，建完直接進 `/t/live/:id`）＋QR 邀請；資料以列表 select 過濾              | PR #108、#134、#135 |
+| 10  | `/classrooms`      | 教室列表                   | 登入帳戶（rail）                   | 班級清單、舊邀請碼入口與跨班級的「我的報告」                                                                                                                            | #187                |
+| 11  | `/classrooms/:id`  | 教室詳情                   | 成員                               | 主題／公告／討論區／成員。老師管理議題、活動及邀請，學生參與活動、討論及查看報告                                                                                        | #187                |
 | 12  | `/admin`           | 運維 dashboard（P1）       | 管理員                             | provider 健康／水位／停損／違規總覽／封禁                                                                                                                               | #80                 |
 | 13  | `/forgot-password` | 申請重設密碼               | email 帳號使用者                   | email 欄位＋送出；送出後一律顯示相同的確認訊息（不透露帳號是否存在）。登入頁「忘記密碼」入口（#178）                                                                    | #230                |
 | 14  | `/reset-password`  | 設定新密碼                 | 收到重設信的使用者                 | 從 `#token=` 讀 token；新密碼欄位＋送出；成功後從網址移除 token 並提供登入連結，token 無效時提供重新申請連結                                                            | #230                |
 | 15  | `/chat`            | 提問                       | 登入帳戶（rail）                   | 首問 composer、建議問題與對話歷史                                                                                                                                       | #186                |
 | 16  | `/chat/:chatId`    | 單人對話                   | thread 擁有者                      | 共用 DialogueView 和 BTW，歷史側欄提供搜尋、改名與刪除                                                                                                                  | #186                |
+| 17  | `/join/i/:token`   | 教室邀請                   | 受邀者                             | 預覽邀請。需要帳號時可登入或註冊，明確接受後導向該班或活動                                                                                                              | #187                |
 
 單人對話的 `StartChat` 建立 thread 後以 history state 傳遞首問與 `operationId`。`DialogueView` 收到 WebSocket view 後送出首問，收到 `accepted: true` 的 submission receipt 後清除 history state；若被拒絕則保留 state 供重試。若在 receipt 前斷線，重連後沿用相同 `operationId`。REST 和 WebSocket 契約見 [API contract](./api-contract.md#55-單人自由提問對話solo-chat281)。
+
+教室使用 `?tab=` 保存站內分頁，桌面以左側導覽顯示，窄螢幕改成上方導覽。各分頁以 infinite query 讀取 cursor pagination。教室事件在 `ready` 或資源變更時 invalidate 對應 queries，重連後再讀 REST。發文送出失敗時保留 draft 與 idempotency key。邀請依 server 回傳的 scope 顯示接受流程，OAuth 登入後回到原邀請頁。REST 與事件契約見 [API contract](./api-contract.md#41-教室社群與邀請324)。
 
 Journey：學生 `1→2→5→7`；老師 `1→3→4→6→7`；回訪 `9/10→5 或 7`（關掉瀏覽器後可從教室列表回到進行中活動）。
 

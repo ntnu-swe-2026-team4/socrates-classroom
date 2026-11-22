@@ -29,6 +29,7 @@ import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as ReportIdRouteImport } from './routes/report.$id'
 import { Route as TSetupRouteImport } from './routes/t.setup'
 import { Route as JoinATokenRouteImport } from './routes/join.a.$token'
+import { Route as JoinITokenRouteImport } from './routes/join.i.$token'
 import { Route as TLiveIdRouteImport } from './routes/t.live.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -131,6 +132,11 @@ const JoinATokenRoute = JoinATokenRouteImport.update({
   path: '/a/$token',
   getParentRoute: () => JoinRoute,
 } as any)
+const JoinITokenRoute = JoinITokenRouteImport.update({
+  id: '/i/$token',
+  path: '/i/$token',
+  getParentRoute: () => JoinRoute,
+} as any)
 const TLiveIdRoute = TLiveIdRouteImport.update({
   id: '/t/live/$id',
   path: '/t/live/$id',
@@ -158,6 +164,7 @@ export interface FileRoutesByFullPath {
   '/classrooms/': typeof ClassroomsIndexRoute
   '/join/': typeof JoinIndexRoute
   '/join/a/$token': typeof JoinATokenRoute
+  '/join/i/$token': typeof JoinITokenRoute
   '/t/live/$id': typeof TLiveIdRoute
 }
 export interface FileRoutesByTo {
@@ -179,6 +186,7 @@ export interface FileRoutesByTo {
   '/classrooms': typeof ClassroomsIndexRoute
   '/join': typeof JoinIndexRoute
   '/join/a/$token': typeof JoinATokenRoute
+  '/join/i/$token': typeof JoinITokenRoute
   '/t/live/$id': typeof TLiveIdRoute
 }
 export interface FileRoutesById {
@@ -203,6 +211,7 @@ export interface FileRoutesById {
   '/classrooms/': typeof ClassroomsIndexRoute
   '/join/': typeof JoinIndexRoute
   '/join/a/$token': typeof JoinATokenRoute
+  '/join/i/$token': typeof JoinITokenRoute
   '/t/live/$id': typeof TLiveIdRoute
 }
 export interface FileRouteTypes {
@@ -228,6 +237,7 @@ export interface FileRouteTypes {
     | '/classrooms/'
     | '/join/'
     | '/join/a/$token'
+    | '/join/i/$token'
     | '/t/live/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -249,6 +259,7 @@ export interface FileRouteTypes {
     | '/classrooms'
     | '/join'
     | '/join/a/$token'
+    | '/join/i/$token'
     | '/t/live/$id'
   id:
     | '__root__'
@@ -272,6 +283,7 @@ export interface FileRouteTypes {
     | '/classrooms/'
     | '/join/'
     | '/join/a/$token'
+    | '/join/i/$token'
     | '/t/live/$id'
   fileRoutesById: FileRoutesById
 }
@@ -436,6 +448,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JoinATokenRouteImport
       parentRoute: typeof JoinRoute
     }
+    '/join/i/$token': {
+      id: '/join/i/$token'
+      path: '/i/$token'
+      fullPath: '/join/i/$token'
+      preLoaderRoute: typeof JoinITokenRouteImport
+      parentRoute: typeof JoinRoute
+    }
     '/t/live/$id': {
       id: '/t/live/$id'
       path: '/t/live/$id'
@@ -462,12 +481,14 @@ interface JoinRouteChildren {
   JoinCodeRoute: typeof JoinCodeRoute
   JoinIndexRoute: typeof JoinIndexRoute
   JoinATokenRoute: typeof JoinATokenRoute
+  JoinITokenRoute: typeof JoinITokenRoute
 }
 
 const JoinRouteChildren: JoinRouteChildren = {
   JoinCodeRoute: JoinCodeRoute,
   JoinIndexRoute: JoinIndexRoute,
   JoinATokenRoute: JoinATokenRoute,
+  JoinITokenRoute: JoinITokenRoute,
 }
 
 const JoinRouteWithChildren = JoinRoute._addFileChildren(JoinRouteChildren)

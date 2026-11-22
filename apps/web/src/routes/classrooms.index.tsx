@@ -1,14 +1,15 @@
-import { useState } from "react";
-import { classroomsOptions } from "@/api/queries";
+import { useId, useState } from "react";
+import { classroomsOptions, myReportsOptions } from "@/api/queries";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { Plus, Users } from "lucide-react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { ChartNoAxesColumn, ChevronDown, Plus, Users } from "lucide-react";
 import type { ClassroomSummary } from "@socrates/shared";
 
 import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
+import { EmptyPanel, LoadMore, PanelState } from "@/components/ClassroomCommunity";
 import { Button, Input, PageHeader, cn } from "@/components/ui";
-import { useT } from "@/i18n";
+import { useFormatDate, useT } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
 
 export const Route = createFileRoute("/classrooms/")({
@@ -88,6 +89,7 @@ function ClassroomsPage() {
             {canManage ? t("classrooms_empty_teacher") : t("classrooms_empty_student")}
           </div>
         )}
+        {me.data && <PersonalReports key={me.data.id} userId={me.data.id} />}
       </div>
     </div>
   );
@@ -129,5 +131,66 @@ function ClassroomCard({ room }: { room: ClassroomSummary }) {
         </div>
       </div>
     </Link>
+  );
+}
+
+function PersonalReports({ userId }: { userId: string }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const contentId = useId();
+  return (
+    <section className="mt-8 border-t border-line pt-4">
+      <h2 className="font-serif text-xl text-ink">
+        <Button
+          variant="ghost"
+          className="h-auto px-2 py-2 font-serif text-xl"
+          aria-expanded={open}
+          aria-controls={contentId}
+          onClick={() => setOpen(!open)}
+        >
+          <ChartNoAxesColumn className="size-5" aria-hidden />
+          {t("room_my_reports")}
+          <ChevronDown className={cn("size-4", open && "rotate-180")} aria-hidden />
+        </Button>
+      </h2>
+      <div id={contentId} hidden={!open} className="mt-2">
+        {open && <PersonalReportList userId={userId} />}
+      </div>
+    </section>
+  );
+}
+
+function PersonalReportList({ userId }: { userId: string }) {
+  const t = useT();
+  const formatDate = useFormatDate();
+  const reports = useInfiniteQuery(myReportsOptions(userId));
+  const items = reports.data?.pages.flatMap((page) => page.items) ?? [];
+  return (
+    <div className="space-y-3">
+      <PanelState pending={reports.isPending} error={reports.isError} retry={() => void reports.refetch()} />
+      {reports.isSuccess && !items.length && <EmptyPanel>{t("room_my_reports_empty")}</EmptyPanel>}
+      {items.length > 0 && (
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-paper">
+          {items.map((report) => (
+            <li key={report.activityId}>
+              <Link
+                to="/report/$id"
+                params={{ id: report.activityId }}
+                className="block px-4 py-3 outline-none hover:bg-paper-deep focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ember"
+              >
+                <p className="break-words font-serif text-base text-ink">{report.topicTitle}</p>
+                <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-ink-soft">
+                  <span className="break-words">{report.classroomName}</span>
+                  {report.finishedAt && <time dateTime={report.finishedAt}>{formatDate(report.finishedAt)}</time>}
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      {reports.hasNextPage && (
+        <LoadMore pending={reports.isFetchingNextPage} onClick={() => void reports.fetchNextPage()} />
+      )}
+    </div>
   );
 }

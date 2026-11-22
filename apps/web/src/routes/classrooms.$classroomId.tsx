@@ -1,20 +1,35 @@
-import { useState } from "react";
-import { classroomsOptions } from "@/api/queries";
-import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ChartNoAxesColumn, GraduationCap, MessageSquare, SquareActivity, Users } from "lucide-react";
-import { api } from "@/api";
-import { meOf } from "@/api/me";
+import { useCallback } from "react";
 import type { ClassroomSummary } from "@socrates/shared";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, BookOpen, ChartNoAxesColumn, Megaphone, MessageSquare, SquareActivity, Users } from "lucide-react";
+import { subscribeToClassroom } from "@/api/classroom-events";
+import { meOf } from "@/api/me";
+import { classroomActivitiesOptions, classroomsOptions } from "@/api/queries";
+import { ClassroomFeed, EmptyPanel, LoadMore, PanelState } from "@/components/ClassroomCommunity";
+import { ClassroomPeople } from "@/components/ClassroomPeople";
 import { AddTopic, CopyTopic, StartActivity, useClassroomTopics } from "@/components/ClassroomTopics";
-import { QrBlock, absoluteUrl } from "@/components/QrBlock";
-import { Button, Card, SectionTitle, Spinner, cn } from "@/components/ui";
-import { useT } from "@/i18n";
+import { Button, Card, SectionTitle, buttonStyles, cn } from "@/components/ui";
+import { useFormatDate, useT } from "@/i18n";
+
+const channels = {
+  topics: { label: "room_tab_topics", icon: BookOpen },
+  announcements: { label: "room_tab_announcements", icon: Megaphone },
+  board: { label: "room_tab_board", icon: MessageSquare },
+  members: { label: "room_tab_members", icon: Users },
+} as const;
+
+type Tab = keyof typeof channels;
+const tabs = Object.keys(channels) as Tab[];
 
 export const Route = createFileRoute("/classrooms/$classroomId")({
+  validateSearch: (search: Record<string, unknown>): { tab?: Tab } => ({
+    tab: typeof search.tab === "string" && Object.hasOwn(channels, search.tab) ? (search.tab as Tab) : undefined,
+  }),
   beforeLoad: async ({ context }) => {
     const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
+    return { viewerId: me.id };
   },
   component: ClassroomPage,
 });
@@ -22,91 +37,214 @@ export const Route = createFileRoute("/classrooms/$classroomId")({
 function ClassroomPage() {
   const t = useT();
   const { classroomId } = Route.useParams();
-  const room = useQuery({
-    ...classroomsOptions,
-    select: (list: ClassroomSummary[]) => list.find((entry) => entry.id === classroomId) ?? null,
-  });
+  const { viewerId } = Route.useRouteContext();
+  const { tab = "topics" } = Route.useSearch();
+  const classrooms = useQuery(classroomsOptions);
+  const room = classrooms.data?.find((entry) => entry.id === classroomId);
 
-  if (room.isPending) {
+  if (classrooms.isPending || classrooms.isError) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Spinner className="h-6 w-6" />
+      <div className="mx-auto max-w-5xl px-6 pt-20 md:pt-8">
+        <PanelState pending={classrooms.isPending} error={classrooms.isError} retry={() => void classrooms.refetch()} />
       </div>
     );
   }
-  if (room.isError || !room.data) {
+  if (!room) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-[15px] text-ink-soft">{t("classroom_missing")}</p>
-        <Link to="/classrooms" className="text-sm text-ember">
+        <Link to="/classrooms" className={buttonStyles({ variant: "outline" })}>
           {t("classroom_back")}
         </Link>
       </div>
     );
   }
+  return <ClassroomView key={room.id} room={room} rooms={classrooms.data} viewerId={viewerId} tab={tab} />;
+}
 
-  const data = room.data;
-  const teacher = data.role === "teacher";
+function ClassroomView({
+  room,
+  rooms,
+  viewerId,
+  tab,
+}: {
+  room: ClassroomSummary;
+  rooms: ClassroomSummary[];
+  viewerId: string;
+  tab: Tab;
+}) {
+  const t = useT();
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const teacher = room.role === "teacher";
+  const connect = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node) return subscribeToClassroom(client, room.id);
+    },
+    [client, room.id],
+  );
+  const ChannelIcon = channels[tab].icon;
+
   return (
-    <div className="min-h-full pb-16">
-      <div className="mx-auto w-full max-w-5xl px-6 pt-20 md:pt-8">
-        <Link
-          to="/classrooms"
-          className="inline-flex items-center gap-1.5 text-[13px] text-ink-faint transition-colors hover:text-ink"
-        >
-          <ArrowLeft className="size-3.5" />
-          {t("nav_classrooms")}
-        </Link>
-        <section className="relative mt-3 overflow-hidden rounded-3xl border border-line bg-gradient-to-br from-ember-wash via-card to-card px-7 py-8 md:px-10 md:py-10">
-          <GraduationCap
-            aria-hidden
-            className="pointer-events-none absolute -right-6 -bottom-8 size-48 text-ember opacity-[0.07]"
-          />
-          <p className="text-[12.5px] font-medium text-ember">
-            {teacher ? t("classroom_you_teach") : t("classroom_teacher_is", { name: data.teacherName })}
-          </p>
-          <h1 className="mt-1.5 font-serif text-[30px] leading-tight text-ink md:text-[38px]">{data.name}</h1>
-          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-ink-soft">
-            <span className="flex items-center gap-1.5">
-              <Users className="size-4" />
-              {t("classroom_members", { n: data.memberCount })}
-            </span>
-            {data.current && (
-              <span
-                className={cn(
-                  "rounded-full px-2.5 py-0.5 text-[12px]",
-                  data.current.finished ? "bg-paper-deep text-ink-faint" : "bg-moss-wash text-moss",
-                )}
-              >
-                {data.current.finished ? t("classroom_finished") : t("classroom_running")}
-              </span>
-            )}
-          </div>
-        </section>
-      </div>
-      <div
-        className={cn("mx-auto grid w-full max-w-5xl gap-6 px-6 pt-8", teacher && "lg:grid-cols-[minmax(0,1fr)_320px]")}
+    <div ref={connect} className="mx-auto min-h-full w-full max-w-6xl px-4 pt-18 pb-12 sm:px-6 md:pt-8">
+      <Link
+        to="/classrooms"
+        activeOptions={{ exact: true }}
+        className="inline-flex items-center gap-1.5 rounded-sm text-sm text-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-ember"
       >
-        <div className="flex min-w-0 flex-col gap-6">
-          <CurrentTopic room={data} />
-          {teacher && <Topics room={data} />}
-          {teacher && <NewActivity room={data} />}
+        <ArrowLeft className="size-4" aria-hidden />
+        {t("nav_classrooms")}
+      </Link>
+      <header className="mt-3 min-w-0 border-y border-line py-5 sm:py-6">
+        <h1 className="break-words font-serif text-3xl leading-tight text-ink sm:text-4xl">{room.name}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-soft">
+          <p>{teacher ? t("classroom_you_teach") : t("classroom_teacher_is", { name: room.teacherName })}</p>
+          <p className="flex items-center gap-1.5">
+            <Users className="size-4" aria-hidden />
+            {t("classroom_members", { n: room.memberCount })}
+          </p>
         </div>
-        {teacher && data.url && data.code && (
-          <aside className="flex flex-col gap-8 lg:sticky lg:top-6 lg:self-start">
-            <div>
-              <SectionTitle>{t("setup_step_share")}</SectionTitle>
-              <InviteCard url={data.url} code={data.code} />
-              {data.current && !data.current.finished && (
-                <div className="mt-4">
-                  <ActivityInviteCard key={data.current.activityId} activityId={data.current.activityId} />
-                </div>
-              )}
+      </header>
+      <div className="mt-4 grid min-w-0 items-start gap-4 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-6">
+        <aside className="min-w-0 rounded-xl border border-line bg-card p-2 md:sticky md:top-6">
+          {rooms.length > 1 && (
+            <select
+              aria-label={t("classroom_pick_class")}
+              value={room.id}
+              onChange={(event) =>
+                void navigate({
+                  to: "/classrooms/$classroomId",
+                  params: { classroomId: event.target.value },
+                  search: {},
+                })
+              }
+              className="mb-2 h-10 w-full truncate rounded-lg border border-line-strong bg-paper px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-ember/60"
+            >
+              {rooms.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <nav aria-label={t("room_tabs")} className="grid grid-cols-2 gap-1 sm:grid-cols-4 md:grid-cols-1">
+            {tabs.map((entry) => {
+              const channel = channels[entry];
+              const Icon = channel.icon;
+              return (
+                <Link
+                  key={entry}
+                  to="/classrooms/$classroomId"
+                  params={{ classroomId: room.id }}
+                  search={entry === "topics" ? {} : { tab: entry }}
+                  activeOptions={{ exact: true, includeSearch: true }}
+                  className={cn(
+                    "flex min-w-0 items-center gap-2 rounded-lg border-l-2 px-2.5 py-2.5 text-sm leading-tight outline-none focus-visible:ring-2 focus-visible:ring-ember/60",
+                    tab === entry
+                      ? "border-ember bg-paper-deep font-semibold text-ink"
+                      : "border-transparent text-ink-soft hover:bg-paper-deep hover:text-ink",
+                  )}
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden />
+                  <span className="min-w-0 break-words">{t(channel.label)}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </aside>
+        <div className="min-w-0">
+          <h2 className="mb-4 flex items-center gap-2 border-b border-line pb-3 font-serif text-xl text-ink">
+            <ChannelIcon className="size-5 shrink-0 text-ember" aria-hidden />
+            {t(channels[tab].label)}
+          </h2>
+          {tab === "topics" && (
+            <div className="space-y-6">
+              <CurrentTopic room={room} />
+              <ActivityHistory room={room} />
+              {teacher && <NewActivity room={room} />}
+              {teacher && <Topics room={room} />}
             </div>
-          </aside>
-        )}
+          )}
+          {tab === "announcements" && (
+            <ClassroomFeed key={tab} id={room.id} viewerId={viewerId} teacher={teacher} kind="announcements" />
+          )}
+          {tab === "board" && (
+            <ClassroomFeed key={tab} id={room.id} viewerId={viewerId} teacher={teacher} kind="posts" />
+          )}
+          {tab === "members" && (
+            <ClassroomPeople
+              id={room.id}
+              viewerId={viewerId}
+              teacher={teacher}
+              onLeave={() => void navigate({ to: "/classrooms" })}
+            />
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+function ActivityHistory({ room }: { room: ClassroomSummary }) {
+  const t = useT();
+  const formatDate = useFormatDate();
+  const options = classroomActivitiesOptions(room.id);
+  const history = useInfiniteQuery(options);
+  const teacher = room.role === "teacher";
+  const activities =
+    history.data?.pages
+      .flatMap((page) => page.items)
+      .filter((activity) => (teacher || activity.mode === "live") && activity.id !== room.current?.activityId) ?? [];
+  return (
+    <section className="space-y-3">
+      <SectionTitle>{t("room_activity_history")}</SectionTitle>
+      <PanelState pending={history.isPending} error={history.isError} retry={() => void history.refetch()} />
+      {history.isSuccess && !activities.length && <EmptyPanel>{t("room_activity_empty")}</EmptyPanel>}
+      {activities.length > 0 && (
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-paper">
+          {activities.map((activity) => (
+            <li key={activity.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 p-4">
+              <div className="min-w-0 flex-1 basis-48">
+                <p className="break-words font-serif text-base text-ink">{activity.topicTitle}</p>
+                <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-ink-soft">
+                  <time dateTime={activity.createdAt}>{formatDate(activity.createdAt)}</time>
+                  {activity.mode === "test" && <span>{t("room_activity_test")}</span>}
+                  <span>{t(activity.finishedAt ? "classroom_finished" : "classroom_running")}</span>
+                </div>
+              </div>
+              {activity.finishedAt ? (
+                <Link
+                  to="/report/$id"
+                  params={{ id: activity.id }}
+                  className={buttonStyles({ variant: "outline", size: "sm" })}
+                >
+                  {t("classroom_view_report")}
+                </Link>
+              ) : teacher ? (
+                <Link
+                  to="/t/live/$id"
+                  params={{ id: activity.id }}
+                  className={buttonStyles({ variant: "outline", size: "sm" })}
+                >
+                  {t("nav_live")}
+                </Link>
+              ) : (
+                <Link
+                  to="/dialogue"
+                  search={{ activityId: activity.id }}
+                  className={buttonStyles({ variant: "outline", size: "sm" })}
+                >
+                  {t("classroom_enter")}
+                </Link>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {history.hasNextPage && (
+        <LoadMore pending={history.isFetchingNextPage} onClick={() => void history.fetchNextPage()} />
+      )}
+    </section>
   );
 }
 
@@ -202,6 +340,7 @@ function Topics({ room }: { room: ClassroomSummary }) {
 function NewActivity({ room }: { room: ClassroomSummary }) {
   const t = useT();
   const navigate = useNavigate();
+  const client = useQueryClient();
   return (
     <section>
       <SectionTitle>{t("classroom_new_topic")}</SectionTitle>
@@ -209,72 +348,10 @@ function NewActivity({ room }: { room: ClassroomSummary }) {
         classroomId={room.id}
         allowTest
         onStarted={(started) => {
+          void client.invalidateQueries({ queryKey: classroomActivitiesOptions(room.id).queryKey });
           if (started.mode === "test") void navigate({ to: "/t/live/$id", params: { id: started.activityId } });
         }}
       />
     </section>
-  );
-}
-
-function CopyLinkButton({ url }: { url: string }) {
-  const t = useT();
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(absoluteUrl(url));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      setCopied(false);
-    }
-  }
-  return (
-    <Button variant="outline" onClick={() => void copy()}>
-      {copied ? t("setup_copied") : t("setup_copy")}
-    </Button>
-  );
-}
-
-function InviteCard({ url, code }: { url: string; code: string }) {
-  const t = useT();
-  return (
-    <Card className="flex flex-col items-center gap-4 p-6 text-center">
-      <p className="text-[13px] leading-relaxed text-ink-soft">{t("setup_share_hint")}</p>
-      <QrBlock url={url} />
-      <span className="font-mono text-2xl tracking-[0.3em]">{code}</span>
-      <code className="max-w-full truncate rounded-full bg-paper-deep px-4 py-1.5 font-mono text-[12px] text-ink-soft">
-        {absoluteUrl(url)}
-      </code>
-      <CopyLinkButton url={url} />
-    </Card>
-  );
-}
-
-function ActivityInviteCard({ activityId }: { activityId: string }) {
-  const t = useT();
-  const create = useMutation({
-    mutationFn: () => api.createActivityInvite(activityId),
-  });
-  const url = create.data?.url;
-  return (
-    <Card className="flex flex-col items-center gap-4 p-6 text-center">
-      <p className="text-[13px] leading-relaxed text-ink-soft">{t("classroom_activity_invite_hint")}</p>
-      {url ? (
-        <>
-          <QrBlock url={url} size={160} />
-          <code className="max-w-full truncate rounded-full bg-paper-deep px-4 py-1.5 font-mono text-[12px] text-ink-soft">
-            {absoluteUrl(url)}
-          </code>
-          <CopyLinkButton url={url} />
-        </>
-      ) : (
-        <>
-          <Button variant="outline" disabled={create.isPending} onClick={() => create.mutate()}>
-            {create.isPending ? <Spinner /> : t("classroom_activity_invite")}
-          </Button>
-          {create.isError && <p className="text-[12.5px] text-flag">{t("common_error")}</p>}
-        </>
-      )}
-    </Card>
   );
 }

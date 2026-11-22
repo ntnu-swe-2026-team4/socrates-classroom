@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import { api, ApiError } from "@/api";
 import { readTermHistory } from "./local";
@@ -148,5 +148,76 @@ export function qrOptions(url: string, size: number) {
         color: { dark: "#17181c", light: "#ffffff" },
       }),
     staleTime: Infinity,
+  });
+}
+
+const classroomPage = {
+  initialPageParam: "",
+  getNextPageParam: (page: { nextCursor: string | null }) => page.nextCursor ?? undefined,
+  retry: (attempt: number, error: Error) =>
+    attempt < 2 && !(error instanceof ApiError && ["forbidden", "unauthorized", "not_found"].includes(error.code)),
+};
+
+export function classroomAnnouncementsOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "announcements"],
+    queryFn: ({ pageParam }) => api.classroom.announcements(id, pageParam || undefined),
+  });
+}
+
+export function classroomPostsOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "posts"],
+    queryFn: ({ pageParam }) => api.classroom.posts(id, pageParam || undefined),
+  });
+}
+
+export function classroomRepliesOptions(id: string, postId: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: [...classroomPostsOptions(id).queryKey, postId],
+    queryFn: ({ pageParam }) => api.classroom.replies(id, postId, pageParam || undefined),
+  });
+}
+
+export function classroomMembersOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "members"],
+    queryFn: ({ pageParam }) => api.classroom.members(id, pageParam || undefined),
+  });
+}
+
+export function classroomActivitiesOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "activities"],
+    queryFn: ({ pageParam }) => api.classroom.activities(id, pageParam || undefined),
+  });
+}
+
+export function classroomInvitesOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "invites"],
+    queryFn: ({ pageParam }) => api.classroom.invites(id, pageParam || undefined),
+  });
+}
+
+export function scopedInviteOptions(token: string) {
+  return queryOptions({
+    queryKey: ["scopedInvite", token],
+    queryFn: () => api.classroom.previewInvite(token),
+    retry: false,
+  });
+}
+
+export function myReportsOptions(userId: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["myReports", userId],
+    queryFn: ({ pageParam }) => api.classroom.myReports(pageParam || undefined),
   });
 }

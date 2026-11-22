@@ -173,7 +173,7 @@ interface User {
 
 公告、根貼文與回覆的 `POST` MAY 帶 `Idempotency-Key`（1–128 個可見 ASCII 字元）。相同帳號、班級、操作與 key 的同內容重試回 200 及原 item，內容不同回 409。已刪除的 item 保留 request key 的 deduplication 效果。
 
-新邀請 token 僅建立時回傳，`url` 為 `PUBLIC_BASE_URL/join/i/{token}`，頁面接線由 #187 處理。班級邀請可在沒有活動時使用，組合邀請以同一 D1 transaction 寫入 membership 與 participant。既有六碼與活動邀請維持 §3 的相容契約。
+新邀請 token 僅建立時回傳，`url` 為 `PUBLIC_BASE_URL/join/i/{token}`，邀請頁面見 [前端 route map](./frontend.md#2-route-map)。班級邀請可在沒有活動時使用，組合邀請以同一 D1 transaction 寫入 membership 與 participant。既有六碼與活動邀請維持 §3 的相容契約。
 
 ### 4.2 教室事件（#324）
 
