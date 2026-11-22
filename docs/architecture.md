@@ -260,7 +260,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 - **D1 vs DO SQLite**（D2）：D1 有 SQL 檔遷移、查詢分析、跨 DO 共享；pi 私有狀態本來就自帶 schema 管理
 - **WS 直上**（D4）：SSE adapter 於 web-next 重建時退役——pi transcript 是唯一真相，view＋chord ops 的快照恢復（斷線重連）原生免實作
 - **Teacher keys 一 provider 一 key**（D6/D7）：teacher keyed 流量 ToS 移轉老師——平台無法稽核任意 provider×model 空間（2026-11-09 拍板）
-- **Teacher keys 加密**（D7）：`BYOK_ENC_KEY` AES-GCM；key 永不進 log、永不回前端明文；學生無 BYOK 入口（#82 定案）
+- **BYOK 加密**（D7）使用 `BYOK_ENC_KEY` AES-GCM。Key 明文不進 log 或 API response。
 
 ## 12. 風險與對策
 

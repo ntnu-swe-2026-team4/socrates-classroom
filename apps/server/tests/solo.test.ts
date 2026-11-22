@@ -177,6 +177,45 @@ describe("Solo chat REST API", () => {
 });
 
 describe("Solo chat WebSocket communication", () => {
+  it("refuses to open a thread that has no record owned by the signed-in user", async () => {
+    const socket = await connectSolo(`${userId}:solo_missing`, userCookie);
+    try {
+      const firstEvent = await new Promise<string | number>((resolve) => {
+        socket.addEventListener("message", (event) => {
+          if ((JSON.parse(event.data as string) as ServerMessage).type === "hello") resolve("hello");
+        });
+        socket.addEventListener("close", (event) => resolve(event.code), { once: true });
+      });
+      expect(firstEvent).toBe(1008);
+    } finally {
+      socket.close();
+    }
+  });
+
+  it("refuses subsequent requests on an open socket after the thread is deleted", async () => {
+    const created = await call("/api/solo/threads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: userCookie },
+      body: JSON.stringify({ title: "Deleted thread" }),
+    });
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as SoloThread;
+    const socket = await connectSolo(`${userId}:${id}`, userCookie);
+    try {
+      await waitMessage(socket, (message): message is ServerMessage & { type: "hello" } => message.type === "hello");
+      const removed = await call(`/api/solo/threads/${id}`, { method: "DELETE", headers: { Cookie: userCookie } });
+      expect(removed.status).toBe(204);
+      const firstEvent = new Promise<string | number>((resolve) => {
+        socket.addEventListener("message", () => resolve("message"), { once: true });
+        socket.addEventListener("close", (event) => resolve(event.code), { once: true });
+      });
+      socket.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
+      expect(await firstEvent).toBe(1008);
+    } finally {
+      socket.close();
+    }
+  });
+
   it("rejects unauthorized connection with 1008", async () => {
     const thread = `${userId}:solo_test1`;
     const res = await routeAgentRequest(

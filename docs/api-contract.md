@@ -215,7 +215,7 @@ type ServerMessage =
 | `POST /api/solo/threads` `{title?}` → `SoloThread`（201） | 建立新 solo thread（`id` 為 `solo_…`）。未登入 401               |
 | `GET /api/solo/threads/:id` → `SoloThread`                | 取得單一 thread 資訊。非本人 404                                 |
 | `PATCH /api/solo/threads/:id` `{title}` → `SoloThread`    | 變更 thread 標題。非本人 404                                     |
-| `DELETE /api/solo/threads/:id` → 204                      | 刪除 thread。非本人 404；使用者帳號刪除時 CASCADE                |
+| `DELETE /api/solo/threads/:id` → 204                      | 移除 thread 的 D1 紀錄並撤銷存取。非本人 404                     |
 
 `SoloThread`：`{ id: string, title: string, createdAt: string, updatedAt: string }`
 
@@ -223,8 +223,9 @@ type ServerMessage =
 
 - `GET /agents/solo-chat/:name?lang=<介面語言>`（WebSocket 升級）
 - thread name 協定：`{userId}:{threadId}`（DO name 即路由鍵，由獨立的 `SoloChat` DO 服務）
-- 授權：**僅接受已登入帳號的 `socrates_session` cookie**（訪客/preview 不可用）；驗證 session 有效且 `userId` 等於連線路徑的擁有者，未通過一律 close 1008
-- 供應鏈：無教師腿，純走 platform-credential ZDR chain（`providers.config.yaml` 的 defaults availability）
+- 連線時驗證 `socrates_session` 和 D1 thread ownership，喚醒及收到指令時重新驗證。驗證失敗以 close 1008 結束連線。
+- 對話的 credential owner 和 fallback 見 [Gateway](./architecture.md#5-gatewayappsserversrcgateway)。
+- `DELETE` 後拒絕新連線與既有連線的後續指令。D1 刪除不會清除 Durable Object transcript。
 - 通訊協定：完全維持既有 WebSocket chord protocol（§5.2、§5.3、§5.4 BTW side session 均支援），既有客戶端邏輯可 100% 複用
 
 ## 6. 老師即時面板（#73）與測試模式 slot（#134）
@@ -332,7 +333,7 @@ interface ViolationSlice {
 | `GET /api/settings/keys/providers` → `{id, name}[]`                                                                                                                              | 可選 provider 清單（pi builtin catalog，api-key 類）                                                                                                                                                                                                                                                                                                                                                     |
 | `GET /api/settings/keys/providers/:provider/models` → `{id, name}[]`                                                                                                             | 該 provider 的 model catalog（設定頁選單）                                                                                                                                                                                                                                                                                                                                                               |
 
-- **學生無 BYOK 入口**（#82 定案）
+- BYOK 設定屬於登入帳戶。各對話模式的 credential owner 見 [Gateway](./architecture.md#5-gatewayappsserversrcgateway)。
 - **teacher keys 服務語意**（2026-11-09 定案）：老師 keys 的教室流量**老師鏈在前、平台鏈墊後**；teacher leg 的 provider/model 資料責任由 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；ledger 以 `teacher:<userId>` credential 獨立記帳；within-turn fallback 僅存在於平台 binding 鏈（pi 機制限制），跨輪失敗由 ledger cooldown 接手
 
 ## 9.1 管理員：帳號與能力（#131）
