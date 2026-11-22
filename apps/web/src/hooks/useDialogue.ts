@@ -19,6 +19,11 @@ import {
 import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
 
 export type DialoguePhase = "idle" | "thinking" | "streaming" | "speaking";
+export type DialogueAgent = "chat" | "solo-chat";
+
+export function dialogueName(agent: DialogueAgent, threadId: string, userId: string): string {
+  return agent === "solo-chat" ? `${userId}:${threadId}` : `${threadId}:${userId}`;
+}
 export type DialogueError = { code: string } | null;
 export type DialogueEmotion = {
   emotion: string;
@@ -94,8 +99,11 @@ function latestEmotionOf(view: ConversationView | null): { id: EntryId; data: Di
 }
 
 export interface DialogueOptions {
+  agent?: DialogueAgent;
   autoSend?: string;
+  autoSendOperationId?: string;
   onAutoSent?: () => void;
+  onSubmitReceipt?: () => void;
   onActivityFinished?: () => void;
   onDisconnect?: () => void;
 }
@@ -113,7 +121,7 @@ export function liveTextOf(view: ConversationView | null): string {
   return content === undefined ? "" : textOf({ role: "assistant", content } as Message);
 }
 
-export function useDialogue(activityId: string, participantId: string, options?: DialogueOptions) {
+export function useDialogue(threadId: string, userId: string, options?: DialogueOptions) {
   const [view, setView] = useState<ConversationView | null>(null);
   const [phase, setPhase] = useState<DialoguePhase>("idle");
   const [error, setError] = useState<DialogueError>(null);
@@ -122,6 +130,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
   const viewRef = useRef<ConversationView | null>(null);
   const socketRef = useRef<{ send: (data: string) => void; readyState: number; OPEN: number } | null>(null);
   const pendingRef = useRef<string | null>(null);
+  const pendingAutoSend = useRef<string | null>(null);
   const [pendingView, setPendingView] = useState(false);
   const [baseline, setBaseline] = useState<number | null>(null);
   const failedInputRef = useRef<string | null>(null);
@@ -301,6 +310,23 @@ export function useDialogue(activityId: string, participantId: string, options?:
         return;
       }
       case "result": {
+        const result = frame.result;
+        if (
+          result &&
+          typeof result === "object" &&
+          "operationId" in result &&
+          typeof result.operationId === "string" &&
+          "accepted" in result &&
+          typeof result.accepted === "boolean"
+        ) {
+          if (result.operationId === pendingAutoSend.current) {
+            pendingAutoSend.current = null;
+            options?.onAutoSent?.();
+          }
+          if (!result.accepted && frame.id === pendingRef.current) completePending();
+          options?.onSubmitReceipt?.();
+          return;
+        }
         const waiter = entriesWaiters.current.get(frame.id);
         if (waiter === undefined) return;
         entriesWaiters.current.delete(frame.id);
@@ -329,9 +355,10 @@ export function useDialogue(activityId: string, participantId: string, options?:
     }
   }
 
+  const agent = options?.agent ?? "chat";
   const socket = useAgent({
-    agent: "chat",
-    name: `${activityId}:${participantId}`,
+    agent,
+    name: dialogueName(agent, threadId, userId),
     query: { lang: document.documentElement.lang || "zh-TW" },
     onOpen: (event) => {
       (event.target as WebSocket).send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
@@ -343,6 +370,16 @@ export function useDialogue(activityId: string, participantId: string, options?:
       stopSpeech("dialogue");
     },
     onClose: () => {
+      if (pendingAutoSend.current !== null && pendingRef.current !== null) {
+        pendingAutoSend.current = null;
+        pendingRef.current = null;
+        viewRef.current = null;
+        setPendingView(false);
+        setBaseline(null);
+        setSentAutoSend(null);
+        phaseRef.current = "idle";
+        setPhase("idle");
+      }
       for (const waiter of entriesWaiters.current.values()) waiter.reject(new Error("socket_closed"));
       entriesWaiters.current.clear();
       options?.onDisconnect?.();
@@ -370,7 +407,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
     () => false,
   );
 
-  function send(text: string) {
+  function send(text: string, operationId?: string) {
     const trimmed = text.trim();
     if (!trimmed || pendingRef.current || !viewRef.current) return false;
     if (socket.readyState !== WebSocket.OPEN) return false;
@@ -379,6 +416,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
     stopSpeech("dialogue");
     const id = crypto.randomUUID();
     pendingRef.current = id;
+    pendingAutoSend.current = operationId ?? null;
     sentOnceRef.current = true;
     setPendingView(true);
     setBaseline(viewRef.current.entries.at(-1)?.id ?? null);
@@ -388,7 +426,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
     setTtsSkipped(false);
     phaseRef.current = "thinking";
     setPhase("thinking");
-    socket.send(JSON.stringify({ type: "submit", id, input: trimmed } satisfies ClientMessage));
+    socket.send(JSON.stringify({ type: "submit", id, input: trimmed, operationId } satisfies ClientMessage));
     return true;
   }
 
@@ -396,9 +434,9 @@ export function useDialogue(activityId: string, participantId: string, options?:
     const autoSend = options?.autoSend;
     if (!autoSend || sentAutoSend === autoSend) return;
     if (phaseRef.current === "speaking") return;
-    if (send(autoSend.slice(0, 2000))) {
+    if (send(autoSend.slice(0, 2000), options.autoSendOperationId)) {
       setSentAutoSend(autoSend);
-      options.onAutoSent?.();
+      if (!options.autoSendOperationId) options.onAutoSent?.();
     }
   }
 
@@ -406,7 +444,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
     if (pendingRef.current) return;
     const text = failedInputRef.current;
     if (!text) return;
-    send(text);
+    send(text, pendingAutoSend.current ?? undefined);
   }
 
   function replay() {
@@ -417,6 +455,10 @@ export function useDialogue(activityId: string, participantId: string, options?:
   }
 
   function interrupt() {
+    if (pendingAutoSend.current !== null) {
+      pendingAutoSend.current = null;
+      options?.onAutoSent?.();
+    }
     if (pendingRef.current) {
       socket.send(JSON.stringify({ type: "abort", id: pendingRef.current } satisfies ClientMessage));
       pendingRef.current = null;

@@ -44,6 +44,21 @@ export function activitySlotsOptions(activityId: string) {
   });
 }
 
+export function soloThreadsOptions(userId: string) {
+  return queryOptions({
+    queryKey: ["soloThreads", userId],
+    queryFn: () => api.listSoloThreads(),
+  });
+}
+
+export function soloThreadOptions(userId: string, id: string) {
+  return queryOptions({
+    queryKey: [...soloThreadsOptions(userId).queryKey, id],
+    queryFn: () => api.getSoloThread(id),
+    retry: (failureCount, error) => failureCount < 1 && !(error instanceof ApiError && error.code === "not_found"),
+  });
+}
+
 export function reportOptions(id: string) {
   return queryOptions({
     queryKey: ["report", id],

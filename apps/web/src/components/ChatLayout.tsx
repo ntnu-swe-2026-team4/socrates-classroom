@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { cn } from "@/components/ui";
+import { cn, trapDialogFocus } from "@/components/ui";
 import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useMediaQuery } from "@/hooks/useSubscription";
 import { useT } from "@/i18n";
@@ -17,6 +17,16 @@ function useIsMobile(): boolean {
   return useMediaQuery(MOBILE_QUERY);
 }
 
+function trapSidebarFocus(node: HTMLElement | null) {
+  if (!node) return;
+  const trigger = document.activeElement;
+  const release = trapDialogFocus(node);
+  return () => {
+    release?.();
+    if (trigger instanceof HTMLElement) queueMicrotask(() => trigger.focus());
+  };
+}
+
 export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; children: ReactNode }) {
   const t = useT();
   const mobile = useIsMobile();
@@ -29,6 +39,7 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
   }
   const open = mobile ? mobileOpen : desktopOpen;
   const toggle = () => (mobile ? setMobileOpen((value) => !value) : setDesktopOpen(!desktopOpen));
+  const SidebarPanel = mobile ? "div" : "aside";
 
   if (!sidebar) return <div className="flex h-full min-h-0 flex-col">{children}</div>;
 
@@ -43,7 +54,10 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
             className="anim-fade fixed inset-0 z-40 cursor-default bg-black/40"
           />
         )}
-        <aside
+        <SidebarPanel
+          ref={mobile && open ? trapSidebarFocus : undefined}
+          role={mobile && open ? "dialog" : undefined}
+          aria-modal={mobile && open ? true : undefined}
           aria-label={t("chat_sidebar")}
           inert={!open}
           className={cn(
@@ -57,10 +71,15 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
           onClickCapture={(event) => {
             if (mobile && (event.target as HTMLElement).closest("a")) setMobileOpen(false);
           }}
+          onKeyDown={(event) => {
+            if (mobile && open && event.key === "Escape") setMobileOpen(false);
+          }}
         >
           {sidebar}
-        </aside>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
+        </SidebarPanel>
+        <div inert={mobile && open} className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {children}
+        </div>
       </div>
     </SidebarContext.Provider>
   );

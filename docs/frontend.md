@@ -5,12 +5,12 @@
 
 ## 1. 產品形態
 
-- 三分頁 IA（AppShell icon rail）：首頁／教室；聊天 tab 待 solo 設計拍板（週三對齊）後加回
+- AppShell icon rail 提供首頁、提問和教室。提問頁從登入帳戶開啟單人對話。
 - 語音為主、文字並行
 - 學生零配置：名字唯一必填；ToS 勾選屬入場流程（guest-first 維持；login-first 反轉不收）
 - v3 已裁撤的頁面（側邊欄／題庫／教室社群／四階段活動／上傳／教室探索／音效）不重建
 
-## 2. Route map（13 頁＋1 個 P1）
+## 2. Route map
 
 ```mermaid
 flowchart LR
@@ -29,6 +29,8 @@ flowchart LR
     subgraph rail[rail 可達（PR #108 收編）]
         J["/home　首頁"] --> K["/classrooms　教室列表"]
         K --> L["/classrooms/:id　教室詳情"]
+        J --> O["/chat　提問"]
+        O --> P["/chat/:chatId　單人對話"]
     end
     A -.-> J
     subgraph admin[管理員 P1]
@@ -50,12 +52,16 @@ flowchart LR
 | 6   | `/t/live/:id`      | 即時面板                   | 老師                               | `live`：資料源（#73）尚未接線，顯示待上線提示；`test`：1–6 個 slot 列表＋建 slot（含成本提示）＋每 slot 新分頁開對話；結束活動按鈕可用                                  | #73、#101、#134     |
 | 7   | `/report/:id`      | 報告頁                     | 老師＋學生（看自己）               | 群體：維度漸展星圖＋分群；單人：論點總結＋六角圖；同頁兩視角、去識別化                                                                                                  | #74、#78、#79、#72  |
 | 8   | `/settings`        | 設定                       | 老師                               | 介面語言。學生經 account sheet（名字顯示＋登出），無此頁入口                                                                                                            | —                   |
-| 9   | `/home`            | 首頁                       | 所有人（rail）                     | greeting＋教室統計/動態；solo 提問表單未收（待設計拍板）                                                                                                                | PR #108             |
+| 9   | `/home`            | 首頁                       | 所有人（rail）                     | greeting＋教室統計/動態                                                                                                                                                 | PR #108             |
 | 10  | `/classrooms`      | 教室列表                   | 所有人（rail）                     | 我的教室（`GET /classrooms`；老師見 code/QR，學生見成員視角）                                                                                                           | PR #108             |
 | 11  | `/classrooms/:id`  | 教室詳情                   | 成員                               | 當前活動（進對話/面板/報告）＋老師：議題集（新增／AI 生成／複製既有）＋開新活動（可勾測試模式，建完直接進 `/t/live/:id`）＋QR 邀請；資料以列表 select 過濾              | PR #108、#134、#135 |
 | 12  | `/admin`           | 運維 dashboard（P1）       | 管理員                             | provider 健康／水位／停損／違規總覽／封禁                                                                                                                               | #80                 |
 | 13  | `/forgot-password` | 申請重設密碼               | email 帳號使用者                   | email 欄位＋送出；送出後一律顯示相同的確認訊息（不透露帳號是否存在）。登入頁「忘記密碼」入口（#178）                                                                    | #230                |
 | 14  | `/reset-password`  | 設定新密碼                 | 收到重設信的使用者                 | 從 `#token=` 讀 token；新密碼欄位＋送出；成功後從網址移除 token 並提供登入連結，token 無效時提供重新申請連結                                                            | #230                |
+| 15  | `/chat`            | 提問                       | 登入帳戶（rail）                   | 首問 composer、建議問題與對話歷史                                                                                                                                       | #186                |
+| 16  | `/chat/:chatId`    | 單人對話                   | thread 擁有者                      | 共用 DialogueView 和 BTW，歷史側欄提供搜尋、改名與刪除                                                                                                                  | #186                |
+
+單人對話的 `StartChat` 建立 thread 後以 history state 傳遞首問與 `operationId`。`DialogueView` 收到 WebSocket view 後送出首問，收到 submission receipt 後清除 history state。若在 receipt 前斷線，重連後沿用相同 `operationId`。REST 和 WebSocket 契約見 [API contract](./api-contract.md#55-單人自由提問對話solo-chat281)。
 
 Journey：學生 `1→2→5→7`；老師 `1→3→4→6→7`；回訪 `9/10→5 或 7`（關掉瀏覽器後可從教室列表回到進行中活動）。
 

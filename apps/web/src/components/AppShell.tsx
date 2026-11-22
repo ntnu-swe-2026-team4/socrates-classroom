@@ -3,7 +3,19 @@ import { classroomsOptions } from "@/api/queries";
 import { useAccountSheetRequest } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, GraduationCap, Home, LogIn, LogOut, Menu, Moon, Settings, ShieldCheck, Sun } from "lucide-react";
+import {
+  Eye,
+  GraduationCap,
+  Home,
+  LogIn,
+  LogOut,
+  Menu,
+  MessageCircle,
+  Moon,
+  Settings,
+  ShieldCheck,
+  Sun,
+} from "lucide-react";
 import { api, type User } from "@/api";
 import { meQueryOptions } from "@/api/me";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
@@ -28,6 +40,7 @@ const RAIL_SQUARE_BTN = cn(
 
 const NAV = [
   { to: "/home", label: "nav_home", icon: Home, match: ["/home"] },
+  { to: "/chat", label: "nav_chat", icon: MessageCircle, match: ["/chat"] },
   {
     to: "/classrooms",
     label: "nav_classrooms",
@@ -36,7 +49,7 @@ const NAV = [
   },
 ] as const;
 
-const HALFTONE_MATCH = ["/home", "/classrooms", "/dialogue", "/admin", "/t/", "/report", "/settings", "/join"];
+const HALFTONE_MATCH = ["/home", "/chat", "/classrooms", "/dialogue", "/admin", "/t/", "/report", "/settings", "/join"];
 
 function useSessionSync() {
   const queryClient = useQueryClient();
@@ -132,6 +145,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
 
       <div className="flex flex-col items-center gap-1.5">
         {NAV.map((item) => {
+          if (item.to === "/chat" && !me.data) return null;
           const active = item.match.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
           const Icon = item.icon;
           return (

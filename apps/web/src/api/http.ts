@@ -16,6 +16,9 @@ import type {
   NotificationFeed,
   OAuthProviders,
   Report,
+  SoloThread,
+  SoloThreadCreateInput,
+  SoloThreadUpdateInput,
   TeacherKeyEcho,
   TeacherKeyModelEcho,
   TeacherKeyStatus,
@@ -38,6 +41,8 @@ import {
   PasswordForgotInputSchema,
   PasswordResetInputSchema,
   SignupInputSchema,
+  SoloThreadCreateInputSchema,
+  SoloThreadUpdateInputSchema,
   SttResultSchema,
   TopicCopyInputSchema,
   TopicCreateInputSchema,
@@ -103,6 +108,11 @@ export interface Api {
   activityInfo(activityId: string, participantId?: string): Promise<ActivityInfo>;
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
+  listSoloThreads(): Promise<SoloThread[]>;
+  getSoloThread(id: string): Promise<SoloThread>;
+  createSoloThread(input: SoloThreadCreateInput): Promise<SoloThread>;
+  updateSoloThread(id: string, input: SoloThreadUpdateInput): Promise<SoloThread>;
+  deleteSoloThread(id: string): Promise<void>;
   lookupTerm(term: string): Promise<TermExplanation>;
   listTeacherKeys(): Promise<TeacherKeyStatus[]>;
   listKeyProviders(): Promise<KeyProviderInfo[]>;
@@ -346,6 +356,23 @@ export const httpApi: Api = {
   },
   async report(activityId) {
     return unwrap(await client.activities[":id"].report.$get({ param: { id: activityId } }));
+  },
+  async listSoloThreads() {
+    return unwrap(await client.solo.threads.$get());
+  },
+  async getSoloThread(id) {
+    return unwrap(await client.solo.threads[":id"].$get({ param: { id } }));
+  },
+  async createSoloThread(input) {
+    return unwrap(await client.solo.threads.$post({ json: SoloThreadCreateInputSchema.parse(input) }));
+  },
+  async updateSoloThread(id, input) {
+    return unwrap(
+      await client.solo.threads[":id"].$patch({ param: { id }, json: SoloThreadUpdateInputSchema.parse(input) }),
+    );
+  },
+  async deleteSoloThread(id) {
+    await unwrap(await client.solo.threads[":id"].$delete({ param: { id } }));
   },
   async lookupTerm(term) {
     const input = LookupInputSchema.parse({ term });
