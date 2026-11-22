@@ -154,10 +154,10 @@ function LoginPage() {
   const title = mode === "login" ? t("login_title") : t("register_title");
 
   return (
-    <div className="relative flex min-h-dvh flex-col overflow-x-hidden bg-comic-ground bg-[radial-gradient(var(--color-comic-dot)_1.1px,transparent_1.5px)] bg-size-[12px_12px] font-sans text-comic-ink [color-scheme:light] lg:grid lg:min-h-[max(100dvh,640px)] lg:grid-cols-[minmax(0,1fr)_minmax(600px,58%)] lg:overflow-hidden">
+    <div className="relative flex min-h-dvh flex-col overflow-x-hidden bg-comic-ground bg-[radial-gradient(var(--color-comic-dot)_1.1px,transparent_1.5px)] bg-size-[12px_12px] font-sans text-comic-ink [color-scheme:light] lg:grid lg:min-h-[max(100dvh,640px)] lg:grid-cols-[minmax(0,1fr)_minmax(600px,58%)] lg:overflow-clip">
       <StoaField reserve={RIGHT_COLUMN_PX} className="opacity-35 max-lg:hidden" />
 
-      <section className="relative flex flex-col gap-6 px-4 pt-6 sm:px-8 lg:px-16 lg:pt-14">
+      <section className="relative flex flex-col gap-6 px-4 pt-6 sm:px-8 lg:sticky lg:top-0 lg:h-dvh lg:min-h-[640px] lg:self-start lg:px-16 lg:pt-14">
         <div className="flex flex-wrap items-center gap-3">
           <Link to="/" className={cn(BOX, "inline-flex items-center gap-3 bg-comic-paper pr-3.5", FOCUS)}>
             <span className="flex size-10 items-center justify-center bg-comic-ink text-[20px] font-bold text-comic-paper">
@@ -226,10 +226,10 @@ function LoginPage() {
         </div>
       </section>
 
-      <section className="relative mx-auto flex w-full max-w-[560px] flex-col justify-center gap-5 px-4 py-8 sm:px-8 lg:mx-0 lg:max-w-none lg:px-12 lg:py-12 lg:*:mx-auto lg:*:w-full lg:*:max-w-[460px]">
+      <section className="relative mx-auto flex w-full max-w-[560px] flex-col justify-center gap-5 px-4 py-8 sm:px-8 lg:mx-0 lg:max-w-none lg:px-12 lg:py-12 lg:short:gap-3 lg:short:py-3 lg:*:mx-auto lg:*:w-full lg:*:max-w-[460px]">
         <div className="relative">
           <div aria-hidden className="absolute inset-[8px_-8px_-8px_8px] bg-comic-ink" />
-          <div className={cn(BOX, "relative bg-comic-paper p-5 sm:p-7")}>
+          <div className={cn(BOX, "relative bg-comic-paper p-5 sm:p-7 lg:short:p-5")}>
             <div className="flex items-center justify-between gap-3">
               <h2 className="font-serif text-[28px] leading-tight font-black">{title}</h2>
               <fieldset className={cn(BOX, "m-0 flex p-0")}>
@@ -254,7 +254,7 @@ function LoginPage() {
                 ))}
               </fieldset>
             </div>
-            <p className="mt-1.5 mb-5 text-[13px] text-comic-soft">{t("login_hint")}</p>
+            <p className="mt-1.5 mb-5 text-[13px] text-comic-soft lg:short:mb-3">{t("login_hint")}</p>
 
             <div className="grid grid-cols-1 gap-2">
               {OAUTH_PROVIDERS.map((id) => {
@@ -292,14 +292,14 @@ function LoginPage() {
               })}
             </div>
 
-            <div className="my-[18px] flex items-center gap-3 text-[12px] text-comic-soft">
+            <div className="my-[18px] flex items-center gap-3 text-[12px] text-comic-soft lg:short:my-2">
               <span className="flex-1 border-t-2 border-dotted border-comic-ink" />
               {t("login_or")}
               <span className="flex-1 border-t-2 border-dotted border-comic-ink" />
             </div>
 
             <form
-              className="flex flex-col gap-3.5"
+              className="flex flex-col gap-3.5 lg:short:gap-2.5"
               onSubmit={(event) => {
                 event.preventDefault();
                 if (!formReady) return;
@@ -365,7 +365,7 @@ function LoginPage() {
                 aria-hidden={mode === "login"}
                 className={cn(
                   "flex cursor-pointer items-start gap-2.5 text-[12.5px] leading-relaxed",
-                  mode === "login" && "invisible",
+                  mode === "login" && "invisible lg:short:hidden",
                 )}
               >
                 <input
@@ -414,7 +414,7 @@ function LoginPage() {
         </div>
 
         <form
-          className="border-[1.5px] border-dashed border-comic-ink bg-comic-paper/75 px-5 py-4"
+          className="border-[1.5px] border-dashed border-comic-ink bg-comic-paper/75 px-5 py-4 lg:short:py-2.5"
           onSubmit={(event) => {
             event.preventDefault();
             const code = joinCode.trim().toLowerCase();
