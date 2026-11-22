@@ -511,6 +511,34 @@ test("#178: register mode gates the account form on name, email, password, and c
   }
 });
 
+test("#302: the login hint refers to guests instead of students across all locales", async () => {
+  stubStoaObservers();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const responses: Record<string, unknown> = {
+        "/api/me": null,
+        "/api/auth/providers": { providers: [] },
+        "/api/notifications": { items: [], unread: null },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/login");
+  try {
+    expect(await screen.findByText("Guests don't need an account — enter from the invite link.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "中" }));
+    expect(await screen.findByText("訪客不需要帳號——從邀請連結進入即可。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "ES" }));
+    expect(await screen.findByText("Los invitados no necesitan cuenta — entra desde el enlace.")).toBeTruthy();
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
 test("#243 review: a signed-out /dialogue without an activity redirects straight to login", async () => {
   const path = await loadPath("/dialogue", { "/api/me": null });
   expect(path).toBe("/login");
