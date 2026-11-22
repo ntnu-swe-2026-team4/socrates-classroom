@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { AXES_MAX, TopicAxesInputSchema, type Axis } from "@socrates/shared";
 import { api, type Topic } from "@/api";
-import { Button, Input } from "@/components/ui";
+import { Button, Field, Input } from "@/components/ui";
 import { useT } from "@/i18n";
 
 export type AxisDraft = Axis & { key: number };
@@ -66,34 +66,30 @@ export function AxesEditor({
       <p className="text-[12.5px] leading-relaxed text-ink-soft">{t("setup_axes_hint")}</p>
       {axes.map((axis, index) => (
         <div key={axis.key} className="flex flex-col gap-2 rounded-xl border border-line p-3">
-          <Input
-            aria-label={`${t("setup_axis_name")} ${index + 1}`}
-            placeholder={t("setup_axis_name")}
-            value={axis.name}
-            maxLength={40}
-            disabled={disabled}
-            onChange={(event) => edit(index, "name", event.target.value)}
-          />
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+          <Field label={t("setup_axis_name")}>
             <Input
-              aria-label={`${t("setup_axis_left")} ${index + 1}`}
-              placeholder={t("setup_axis_left")}
-              value={axis.left}
+              aria-label={`${t("setup_axis_name")} ${index + 1}`}
+              value={axis.name}
               maxLength={40}
               disabled={disabled}
-              onChange={(event) => edit(index, "left", event.target.value)}
+              onChange={(event) => edit(index, "name", event.target.value)}
             />
-            <span aria-hidden="true" className="text-ink-faint">
-              ↔
-            </span>
-            <Input
-              aria-label={`${t("setup_axis_right")} ${index + 1}`}
-              placeholder={t("setup_axis_right")}
-              value={axis.right}
-              maxLength={40}
-              disabled={disabled}
-              onChange={(event) => edit(index, "right", event.target.value)}
-            />
+          </Field>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {(["left", "right"] as const).map((end) => {
+              const label = t(`setup_axis_${end}`);
+              return (
+                <Field key={end} label={label}>
+                  <Input
+                    aria-label={`${label} ${index + 1}`}
+                    value={axis[end]}
+                    maxLength={40}
+                    disabled={disabled}
+                    onChange={(event) => edit(index, end, event.target.value)}
+                  />
+                </Field>
+              );
+            })}
           </div>
           {axes.length > (optional ? 0 : 1) && (
             <Button
