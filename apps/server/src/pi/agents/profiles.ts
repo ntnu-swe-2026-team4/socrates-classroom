@@ -50,7 +50,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     name: "socrates",
     instructions: "",
     extensions: ["socrates", "avatar", "judgment", "websearch"],
-    maxTurns: 40,
+    maxTurns: 8,
     trafficClass: "interactive",
     thinkingLevel: "low",
   },
