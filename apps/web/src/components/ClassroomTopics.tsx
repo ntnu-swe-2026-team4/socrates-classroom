@@ -2,8 +2,8 @@ import { useId, useState } from "react";
 import { classroomTopicsOptions, classroomsOptions, clientConfigOptions, topicsOptions } from "@/api/queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActivityMode, ActivityStarted, ClassroomSummary, ReportAxes, Topic } from "@socrates/shared";
-import { api } from "@/api";
-import { AxesEditor, axesOf, axesValid, draftsOf, useTopicWithAxes, type AxisDraft } from "./AxesEditor";
+import { ApiError, api } from "@/api";
+import { AxesEditor, axesOf, axesValid, draftsOf, type AxisDraft } from "./AxesEditor";
 import { Button, Card, Checkbox, Field, Input, Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
@@ -275,6 +275,10 @@ export function CopyTopic({ classroomId }: { classroomId: string }) {
   );
 }
 
+function isAxesPolicyError(error: unknown): boolean {
+  return error != null && error instanceof ApiError && error.code === "report_axes_not_allowed";
+}
+
 export function StartActivity({
   classroomId,
   onStarted,
@@ -297,16 +301,18 @@ export function StartActivity({
   const policy = config.data?.reportAxes;
   const reportAxes = policy === "both" ? chosen : policy;
   const teacherAxes = reportAxes === "teacher";
-  const topicWithAxes = useTopicWithAxes(classroomId);
   const own = classroomTopics.data ?? [];
   const shared = (systemTopics.data ?? []).filter((topic) => topic.classroomId === null);
   const topics = [...own, ...shared];
   const pickedTopic = topics.find(({ id }) => id === picked);
   const start = useMutation({
-    mutationFn: async (input: { topic: Topic; mode: ActivityMode; reportAxes: ReportAxes; axes: AxisDraft[] }) => {
-      const topicId =
-        input.reportAxes === "teacher" ? await topicWithAxes(input.topic, axesOf(input.axes)) : input.topic.id;
-      return api.startActivity(classroomId, topicId, input.mode, input.reportAxes);
+    mutationFn: (input: { topic: Topic; mode: ActivityMode; reportAxes: ReportAxes; axes: AxisDraft[] }) => {
+      const edited = axesOf(input.axes);
+      const topicAxes =
+        input.reportAxes === "teacher" && JSON.stringify(edited) !== JSON.stringify(input.topic.axes)
+          ? edited
+          : undefined;
+      return api.startActivity(classroomId, input.topic.id, input.mode, input.reportAxes, topicAxes);
     },
     onSuccess: async (started) => {
       setPicked(null);
@@ -316,8 +322,12 @@ export function StartActivity({
       ]);
       onStarted(started);
     },
-    onError: () => queryClient.invalidateQueries({ queryKey: clientConfigOptions.queryKey }),
+    onError: async (error) => {
+      if (isAxesPolicyError(error)) await config.refetch();
+    },
   });
+  const policyChanged = isAxesPolicyError(start.error);
+  const needsPolicyRefresh = policyChanged && (config.isError || config.isFetching);
   const pick = (topicId: string) => {
     if (topicId === picked || start.isPending) return;
     setPicked(topicId);
@@ -359,8 +369,13 @@ export function StartActivity({
         </fieldset>
       )}
       {pickedTopic && teacherAxes && <AxesEditor axes={axes} onChange={setAxes} disabled={start.isPending} />}
-      {config.isError && !policy && (
-        <Button variant="outline" className="self-start" onClick={() => void config.refetch()}>
+      {config.isError && (!policy || policyChanged) && (
+        <Button
+          variant="outline"
+          className="self-start"
+          disabled={config.isFetching}
+          onClick={() => void config.refetch()}
+        >
           {t("room_retry")}
         </Button>
       )}
@@ -373,9 +388,22 @@ export function StartActivity({
         </div>
       )}
       <div className="flex items-center justify-between gap-3">
-        {start.isError ? <p className="text-[12.5px] text-flag">{t("common_error")}</p> : <span />}
+        {start.isError ? (
+          <p role="alert" className="text-[12.5px] text-flag">
+            {t(policyChanged ? "setup_axes_policy_changed" : "common_error")}
+            {policyChanged && !needsPolicyRefresh && policy && policy !== "both" && (
+              <span className="block text-ink-soft">
+                {t("setup_axes_mode")} · {t(policy === "teacher" ? "setup_axes_mode_teacher" : "setup_axes_mode_ai")}
+              </span>
+            )}
+          </p>
+        ) : (
+          <span />
+        )}
         <Button
-          disabled={!pickedTopic || !reportAxes || start.isPending || (teacherAxes && !axesValid(axes))}
+          disabled={
+            !pickedTopic || !reportAxes || start.isPending || needsPolicyRefresh || (teacherAxes && !axesValid(axes))
+          }
           onClick={() => {
             if (pickedTopic && reportAxes)
               start.mutate({ topic: pickedTopic, mode: testMode ? "test" : "live", reportAxes, axes });

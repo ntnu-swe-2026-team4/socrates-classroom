@@ -158,6 +158,7 @@ const messages = {
     setup_axes_mode: "價值軸由誰設定",
     setup_axes_mode_teacher: "老師設定",
     setup_axes_mode_ai: "AI 依全班對話生成",
+    setup_axes_policy_changed: "價值軸設定已變更。請確認目前的模式後再開始活動。",
     setup_axes_hint: "報告會把每位學生放到這些軸上。每條寫它在問什麼，以及左右兩端各是什麼立場。",
     setup_axis_name: "這條軸在問什麼",
     setup_axis_left: "左端",
@@ -839,6 +840,7 @@ const messages = {
     setup_axes_mode: "Who sets the value axes",
     setup_axes_mode_teacher: "Set by me",
     setup_axes_mode_ai: "AI, from the class's dialogues",
+    setup_axes_policy_changed: "The value-axis setting changed. Review the current mode before starting again.",
     setup_axes_hint:
       "The report places every student on these axes. Write what each one asks, and the position at each end.",
     setup_axis_name: "What this axis asks",
@@ -1571,6 +1573,8 @@ const messages = {
     setup_axes_mode: "Quién define los ejes de valor",
     setup_axes_mode_teacher: "Los defino yo",
     setup_axes_mode_ai: "IA, a partir de los diálogos de la clase",
+    setup_axes_policy_changed:
+      "La configuración de los ejes cambió. Revisa el modo actual antes de iniciar la actividad de nuevo.",
     setup_axes_hint:
       "El informe sitúa a cada estudiante en estos ejes. Escribe qué pregunta cada uno y la postura de cada extremo.",
     setup_axis_name: "Qué pregunta este eje",

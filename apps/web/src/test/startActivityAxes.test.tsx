@@ -3,6 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Topic } from "@socrates/shared";
 import { AddTopic, StartActivity } from "@/components/ClassroomTopics";
+import { ApiError } from "@/api/http";
+import { clientConfigOptions } from "@/api/queries";
 import { setLocale } from "@/i18n";
 
 const listClassroomTopics = vi.fn();
@@ -12,7 +14,8 @@ const startActivity = vi.fn();
 const config = vi.fn();
 const createClassroomTopic = vi.fn();
 
-vi.mock("@/api", () => ({
+vi.mock("@/api", async (importOriginal) => ({
+  ApiError: (await importOriginal<typeof import("@/api")>()).ApiError,
   api: {
     createClassroomTopic: (...args: unknown[]) => createClassroomTopic(...args),
     config: (...args: unknown[]) => config(...args),
@@ -34,8 +37,7 @@ const withAxes: Topic = {
 const legacy: Topic = { ...withAxes, id: "t_legacy", title: "Old topic", axes: [] };
 const started = { classroomId: "c1", code: "abcdef", url: "u", activityId: "a1", mode: "live" as const };
 
-function renderStart() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderStart(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const onStarted = vi.fn();
   render(
     <QueryClientProvider client={client}>
@@ -47,7 +49,7 @@ function renderStart() {
 
 beforeEach(() => {
   setLocale("en");
-  config.mockResolvedValue({ reportAxes: "teacher" });
+  config.mockReset().mockResolvedValue({ reportAxes: "teacher" });
   listClassroomTopics.mockResolvedValue([withAxes, legacy]);
   listTopics.mockResolvedValue([]);
   createClassroomTopic.mockReset();
@@ -65,11 +67,10 @@ describe("StartActivity: the picked topic's axes", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
     await waitFor(() => expect(onStarted).toHaveBeenCalled());
     expect(copyTopic).not.toHaveBeenCalled();
-    expect(startActivity).toHaveBeenCalledWith("c1", "t_axes", "live", "teacher");
+    expect(startActivity).toHaveBeenCalledWith("c1", "t_axes", "live", "teacher", undefined);
   });
 
-  it("a topic without axes needs them; it starts on a copy with those axes, saved once across a retry", async () => {
-    copyTopic.mockResolvedValue({ ...legacy, id: "t_copy", axes: [{ name: "Q", left: "L", right: "R" }] });
+  it("sends edited axes in the start request and keeps them after a failed start", async () => {
     startActivity.mockRejectedValueOnce(new Error("boom")).mockResolvedValueOnce(started);
     const onStarted = renderStart();
     fireEvent.click(await screen.findByRole("button", { name: /Old topic/ }));
@@ -84,9 +85,12 @@ describe("StartActivity: the picked topic's axes", () => {
     await waitFor(() => expect(start).toHaveProperty("disabled", false));
     fireEvent.click(start);
     await waitFor(() => expect(onStarted).toHaveBeenCalled());
-    expect(copyTopic).toHaveBeenCalledTimes(1);
-    expect(copyTopic).toHaveBeenCalledWith("t_legacy", "c1", [{ name: "Q", left: "L", right: "R" }]);
-    expect(startActivity).toHaveBeenLastCalledWith("c1", "t_copy", "live", "teacher");
+    expect(copyTopic).not.toHaveBeenCalled();
+    expect(startActivity).toHaveBeenCalledTimes(2);
+    expect(startActivity).toHaveBeenNthCalledWith(1, "c1", "t_legacy", "live", "teacher", [
+      { name: "Q", left: "L", right: "R" },
+    ]);
+    expect(startActivity.mock.calls[1]).toEqual(startActivity.mock.calls[0]);
   });
 
   it("re-clicking the picked topic keeps the teacher's edits", async () => {
@@ -111,7 +115,7 @@ describe("StartActivity when the model sets the axes (report.axes = ai)", () => 
     fireEvent.click(start);
     await waitFor(() => expect(onStarted).toHaveBeenCalled());
     expect(copyTopic).not.toHaveBeenCalled();
-    expect(startActivity).toHaveBeenCalledWith("c1", "t_legacy", "live", "ai");
+    expect(startActivity).toHaveBeenCalledWith("c1", "t_legacy", "live", "ai", undefined);
   });
 });
 
@@ -132,7 +136,27 @@ describe("StartActivity when the backend lets the teacher choose (report axes = 
     fireEvent.click(start);
     await waitFor(() => expect(onStarted).toHaveBeenCalled());
     expect(copyTopic).not.toHaveBeenCalled();
-    expect(startActivity).toHaveBeenCalledWith("c1", "t_legacy", "live", "ai");
+    expect(startActivity).toHaveBeenCalledWith("c1", "t_legacy", "live", "ai", undefined);
+  });
+
+  it("refreshes the policy after a rejection and retains unsaved axes", async () => {
+    config.mockResolvedValueOnce({ reportAxes: "both" }).mockResolvedValueOnce({ reportAxes: "ai" });
+    startActivity.mockRejectedValueOnce(new ApiError("report_axes_not_allowed", "Policy locked"));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onStarted = renderStart(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Topic with axes/ }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Right end 1" }), { target: { value: "Results" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("The value-axis setting changed.");
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Right end 1" })).toBeNull());
+    expect(startActivity).toHaveBeenCalledTimes(1);
+    expect(onStarted).not.toHaveBeenCalled();
+
+    config.mockResolvedValue({ reportAxes: "both" });
+    await client.invalidateQueries({ queryKey: clientConfigOptions.queryKey });
+    expect(await screen.findByRole("textbox", { name: "Right end 1" })).toHaveProperty("value", "Results");
   });
 
   it("does not offer the choice when the backend locks one", async () => {

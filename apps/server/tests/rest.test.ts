@@ -3,10 +3,20 @@ import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { inject } from "vitest";
 import { one, run } from "../src/db/d1";
+import { setReportAxesPolicy } from "../src/services/settings";
 import { seedFixture } from "../src/seed";
 import worker from "../src/index";
 import type { Env } from "../src/env";
-import { call, classroomWithActivity, cookieOf, must, participantIdOf, registerStudent, speak } from "./helpers";
+import {
+  call,
+  classroomWithActivity,
+  cookieOf,
+  createClassroom,
+  must,
+  participantIdOf,
+  registerStudent,
+  speak,
+} from "./helpers";
 
 let teacher: string;
 let classroomId: string;
@@ -962,6 +972,91 @@ describe("rate limiting + register gate (round-6 restores)", () => {
       { id: teacherPayload.activityId },
     );
     expect(teacherRow?.report_axes).toBe("teacher");
+  });
+});
+
+describe("starting with edited topic axes", () => {
+  const topicAxes = [{ name: "Justice", left: "Rules", right: "Outcomes" }];
+
+  async function setupAxesClassroom(name: string) {
+    const { classroomId } = await createClassroom(teacher, name);
+    const json = { "Content-Type": "application/json", Cookie: teacher };
+    const seed = await call(`/api/classrooms/${classroomId}/topics`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ title: "A topic", statement: "A statement", prompts: [] }),
+    });
+    expect(seed.status).toBe(201);
+    const { id: topicId } = (await seed.json()) as { id: string };
+    const start = (id = topicId) =>
+      call(`/api/classrooms/${classroomId}/activities`, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ topicId: id, reportAxes: "teacher", topicAxes }),
+      });
+    const state = () =>
+      one(
+        env.DB,
+        `SELECT current_activity_id,
+        (SELECT COUNT(*) FROM topics WHERE classroom_id = $id) AS topics,
+        (SELECT COUNT(*) FROM activities WHERE classroom_id = $id) AS activities
+        FROM classrooms WHERE id = $id`,
+        { id: classroomId },
+      );
+    return { topicId, start, state };
+  }
+
+  test("starting with edited topic axes saves a snapshot and reuses it when unchanged", async () => {
+    const { topicId, start, state } = await setupAxesClassroom("Atomic axes success");
+    const started = await start();
+    expect(started.status).toBe(201);
+    const { activityId } = (await started.json()) as { activityId: string };
+    const snapshot = await one<{ id: string; copied_from: string; axes: string; title: string; statement: string }>(
+      env.DB,
+      "SELECT t.* FROM activities a JOIN topics t ON a.topic_id = t.id WHERE a.id = $id",
+      { id: activityId },
+    );
+    expect(snapshot).toMatchObject({
+      copied_from: topicId,
+      axes: JSON.stringify(topicAxes),
+      title: "A topic",
+      statement: "A statement",
+    });
+    expect(await one(env.DB, "SELECT axes FROM topics WHERE id = $id", { id: topicId })).toEqual({ axes: "[]" });
+    expect(await state()).toEqual({ topics: 2, activities: 1, current_activity_id: activityId });
+
+    expect((await start(must(snapshot, "copied topic").id)).status).toBe(201);
+    expect(await state()).toMatchObject({ topics: 2, activities: 2 });
+  });
+
+  test("starting with edited topic axes after an AI policy lock writes nothing", async () => {
+    const { start, state } = await setupAxesClassroom("Atomic axes policy lock");
+    await setReportAxesPolicy(env.DB, "ai");
+    try {
+      const denied = await start();
+      expect(denied.status).toBe(422);
+      expect(await denied.json()).toMatchObject({ code: "report_axes_not_allowed" });
+      expect(await state()).toEqual({ topics: 1, activities: 0, current_activity_id: null });
+    } finally {
+      await setReportAxesPolicy(env.DB, "both");
+    }
+  });
+
+  test("starting with edited topic axes rolls back both inserts if the live pointer update fails", async () => {
+    const { start, state } = await setupAxesClassroom("Atomic axes rollback");
+    await run(
+      env.DB,
+      `CREATE TRIGGER abort_live_axes_start
+      BEFORE UPDATE OF current_activity_id ON classrooms
+      WHEN NEW.name = 'Atomic axes rollback'
+      BEGIN SELECT RAISE(ABORT, 'test live activity pointer write failed'); END`,
+    );
+    try {
+      expect((await start()).status).toBe(500);
+      expect(await state()).toEqual({ topics: 1, activities: 0, current_activity_id: null });
+    } finally {
+      await run(env.DB, "DROP TRIGGER abort_live_axes_start");
+    }
   });
 });
 

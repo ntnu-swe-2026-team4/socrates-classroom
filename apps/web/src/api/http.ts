@@ -105,12 +105,13 @@ export interface Api {
     classroomId: string,
     input: { title: string; statement: string; summary?: string; prompts: string[]; axes?: Axis[] },
   ): Promise<Topic>;
-  copyTopic(topicId: string, classroomId: string, axes?: Axis[]): Promise<Topic>;
+  copyTopic(topicId: string, classroomId: string): Promise<Topic>;
   startActivity(
     classroomId: string,
     topicId: string,
     mode?: ActivityMode,
     reportAxes?: ReportAxes,
+    topicAxes?: Axis[],
   ): Promise<ActivityStarted>;
   listActivitySlots(activityId: string): Promise<ActivitySlots>;
   createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
@@ -415,16 +416,16 @@ export const httpApi: Api = {
       }),
     );
   },
-  async copyTopic(topicId, classroomId, axes) {
+  async copyTopic(topicId, classroomId) {
     return unwrap(
       await client.topics[":id"].copy.$post({
         param: { id: topicId },
-        json: TopicCopyInputSchema.parse({ classroomId, axes }),
+        json: TopicCopyInputSchema.parse({ classroomId }),
       }),
     );
   },
-  async startActivity(classroomId, topicId, mode = "live", reportAxes) {
-    const input = ActivityStartInputSchema.parse({ topicId, mode, reportAxes });
+  async startActivity(classroomId, topicId, mode = "live", reportAxes, topicAxes) {
+    const input = ActivityStartInputSchema.parse({ topicId, mode, reportAxes, topicAxes });
     return unwrap(await client.classrooms[":id"].activities.$post({ param: { id: classroomId }, json: input }));
   },
   async listActivitySlots(activityId) {

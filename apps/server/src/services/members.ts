@@ -1,6 +1,6 @@
 import { getCookie } from "hono/cookie";
-import { ApiError, AxisSchema, type ActivityMode, type ReportAxes, type User } from "@socrates/shared";
-import type { Db } from "../db/d1";
+import { ApiError, AxisSchema, type ActivityMode, type Axis, type ReportAxes, type User } from "@socrates/shared";
+import type { Db, SqlEntry } from "../db/d1";
 import { one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, type ParticipantIdentity } from "../auth";
 import { fail, newId, nowIso, type Ctx } from "../http";
@@ -67,6 +67,27 @@ export function parsePrompts(row: TopicRow) {
   };
 }
 
+export function topicCopyInsert(
+  source: TopicRow,
+  input: { id: string; userId: string; classroomId: string; axes?: Axis[] },
+): SqlEntry {
+  return {
+    sql: "INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $axes, $at)",
+    params: {
+      id: input.id,
+      uid: input.userId,
+      cid: input.classroomId,
+      from: source.id,
+      title: source.title,
+      statement: source.statement,
+      summary: source.summary,
+      prompts: source.prompts,
+      axes: input.axes ? JSON.stringify(input.axes) : source.axes,
+      at: nowIso(),
+    },
+  };
+}
+
 export async function activityOf(
   db: Db,
   activityId: string,
@@ -108,13 +129,11 @@ export async function topicForActivity(
   topicId: string,
   classroomId: string,
   userId: string,
-  reportAxes: ReportAxes,
 ): Promise<TopicRow> {
   const topic = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id", { id: topicId });
   if (!topic) fail(404, "not_found");
   const systemOrOwn = topic.classroom_id === null && (topic.owner_id === null || topic.owner_id === userId);
   if (topic.classroom_id !== classroomId && !systemOrOwn) fail(404, "not_found");
-  if (reportAxes === "teacher" && parsePrompts(topic).axes.length === 0) fail(422, "topic_axes_required");
   return topic;
 }
 

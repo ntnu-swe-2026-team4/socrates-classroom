@@ -1,6 +1,4 @@
-import { useRef } from "react";
 import { AXES_MAX, TopicAxesInputSchema, type Axis } from "@socrates/shared";
-import { api, type Topic } from "@/api";
 import { Button, Field, Input } from "@/components/ui";
 import { useT } from "@/i18n";
 
@@ -29,19 +27,6 @@ function duplicateNames(drafts: AxisDraft[]): boolean {
 
 export function axesValid(drafts: AxisDraft[], optional = false): boolean {
   return (optional || drafts.length > 0) && TopicAxesInputSchema.safeParse(axesOf(drafts)).success;
-}
-
-export function useTopicWithAxes(classroomId: string): (topic: Topic, axes: Axis[]) => Promise<string> {
-  const saved = useRef(new Map<string, string>());
-  return async (topic, axes) => {
-    if (JSON.stringify(topic.axes) === JSON.stringify(axes)) return topic.id;
-    const key = JSON.stringify([classroomId, topic.id, axes]);
-    const known = saved.current.get(key);
-    if (known) return known;
-    const copy = await api.copyTopic(topic.id, classroomId, axes);
-    saved.current.set(key, copy.id);
-    return copy.id;
-  };
 }
 
 export function AxesEditor({

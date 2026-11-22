@@ -313,6 +313,7 @@ export const ActivityStartInputSchema = z.object({
   topicId: z.string().min(1),
   mode: ActivityModeSchema.default("live"),
   reportAxes: ReportAxesSchema.optional(),
+  topicAxes: TopicAxesInputSchema.optional(),
 });
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
 

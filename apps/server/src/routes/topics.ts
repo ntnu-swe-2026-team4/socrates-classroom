@@ -10,7 +10,7 @@ import {
 } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
 import { fail, guardUser, langOf, newId, nowIso, rateLimit, requireUser, validateJson, type AppEnv } from "../http";
-import { classroomAccess, parsePrompts, type TopicRow } from "../services/members";
+import { classroomAccess, parsePrompts, topicCopyInsert, type TopicRow } from "../services/members";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
 function mockTopics(direction: string) {
@@ -58,22 +58,8 @@ export function topicsRoutes() {
         if (owner?.teacher_id !== user.id) fail(404, "not_found");
       }
       const id = newId("t_");
-      await run(
-        c.env.DB,
-        "INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $axes, $at)",
-        {
-          id,
-          uid: user.id,
-          cid: classroom.id,
-          from: source.id,
-          title: source.title,
-          statement: source.statement,
-          summary: source.summary,
-          prompts: source.prompts,
-          axes: input.axes ? JSON.stringify(input.axes) : source.axes,
-          at: nowIso(),
-        },
-      );
+      const copy = topicCopyInsert(source, { id, userId: user.id, classroomId: classroom.id, axes: input.axes });
+      await run(c.env.DB, copy.sql, copy.params);
       const row = await one<TopicRow>(c.env.DB, "SELECT * FROM topics WHERE id = $id", { id });
       if (!row) fail(500, "internal_error");
       return c.json(parsePrompts(row), 201);
