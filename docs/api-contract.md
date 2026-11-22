@@ -239,7 +239,7 @@ interface StudentAnalysis {
 interface Indicator {
   level: 0 | 1 | 2 | 3;                          // 0＝這場對話沒有可判斷的證據，不代表能力差
   turns: number[];                               // level 0 時為空陣列；1–3 時至少一個，都必須是學生說過的行號
-  evidence: string;                              // 一句依據說明（老師的語言）；level 0 時為空字串
+  evidence: string;                              // 一句依據說明（老師的語言）；內容只由 prompt 要求，server 不檢查（level 0 時要求空字串）
 }
 interface ThinkingIndicators { c1: Indicator; c2: Indicator; s1: Indicator; s2: Indicator; a1: Indicator; a2: Indicator }  // 六項思辨力指標（#255）
 interface ClassReport {
