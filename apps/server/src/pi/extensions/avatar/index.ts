@@ -14,6 +14,7 @@ import { gatewayConfig } from "../../../gateway/config.gen";
 import type { Ai } from "@cloudflare/workers-types";
 import EMOTION_RAW from "../../../prompts/emotion-classify.md?raw";
 import { clefChoicePrompt } from "../../clef-prompt";
+import { aiRunOf, readChoiceResult } from "../../ai-run";
 
 export type Emotion = "happy" | "angry" | "confused" | "neutral";
 
@@ -35,34 +36,30 @@ const EMOTION_MODEL = gatewayConfig.classifiers.emotion;
 
 export const EMOTION_QUESTION = clefChoicePrompt<Emotion>(EMOTION_RAW);
 
-interface ClefRunResult {
-  answers?: Record<string, { choice?: string; probabilities?: Record<string, number>; confidence?: number }>;
-}
-
 export function createEmotionClassifier(ai: Ai): (text: string) => Promise<EmotionJudgment | null> {
   return (text) => classify(ai, text);
 }
 
 async function classify(ai: Ai, text: string): Promise<EmotionJudgment | null> {
   try {
-    const raw = (await (ai as unknown as { run: (m: string, i: unknown) => Promise<unknown> }).run(EMOTION_MODEL, {
+    const raw = await aiRunOf(ai)(EMOTION_MODEL, {
       state: { latest: text.slice(0, 2000) },
       questions: {
         emotion: { type: "choice", ...EMOTION_QUESTION },
       },
-    })) as ClefRunResult;
+    });
     return emotionOf(raw);
   } catch {
     return null;
   }
 }
 
-export function emotionOf(raw: ClefRunResult): EmotionJudgment | null {
-  const answer = raw.answers?.emotion;
-  const choice = answer?.choice;
-  if (answer === undefined || choice === undefined || !EMOTIONS.includes(choice as Emotion)) return null;
-  const emotion = choice as Emotion;
-  return { emotion, probabilities: answer.probabilities ?? {}, confidence: answer.confidence ?? 0 };
+export function emotionOf(raw: unknown): EmotionJudgment | null {
+  const answer = readChoiceResult(raw, "emotion");
+  if (answer === null) return null;
+  const emotion = EMOTIONS.find((candidate) => candidate === answer.choice);
+  if (emotion === undefined) return null;
+  return { emotion, probabilities: answer.probabilities, confidence: answer.confidence };
 }
 
 function lastStudentTextOf(run: RunSummary, api: HookApi, context: Context): Promise<string> {

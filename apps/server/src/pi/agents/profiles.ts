@@ -33,7 +33,6 @@ import {
   reportSubmitIndicatorsExtension,
 } from "../extensions/report-submit";
 import { createUsageExtension } from "../extensions/usage";
-import type { JsonObject } from "@earendil-works/pi-durable";
 
 export type ProfileName =
   | "socrates"
@@ -191,23 +190,29 @@ export interface RunProfileOptions {
   submitTool?: string;
 }
 
-function toolCallPayload(entry: { model?: readonly unknown[] }, toolName: string): JsonObject | null {
+function toolCallPayload(entry: { model?: readonly unknown[] }, toolName: string): Record<string, unknown> | null {
   for (const message of entry.model ?? []) {
-    const candidate = message as { role?: string; content?: unknown };
-    if (candidate.role !== "assistant" || typeof candidate.content !== "object" || candidate.content === null) continue;
-    if (Array.isArray(candidate.content)) {
-      for (const part of candidate.content) {
-        const block = part as { type?: string; name?: string; arguments?: unknown };
-        if (block.type !== "toolCall" || block.name !== toolName) continue;
-        let args: unknown = block.arguments;
-        if (typeof args === "string") {
-          try {
-            args = JSON.parse(args);
-          } catch {
-            continue;
-          }
+    if (typeof message !== "object" || message === null) continue;
+    if (Reflect.get(message, "role") !== "assistant") continue;
+    const content: unknown = Reflect.get(message, "content");
+    if (typeof content !== "object" || content === null || !Array.isArray(content)) continue;
+    for (const part of content) {
+      if (typeof part !== "object" || part === null) continue;
+      if (Reflect.get(part, "type") !== "toolCall" || Reflect.get(part, "name") !== toolName) continue;
+      let args: unknown = Reflect.get(part, "arguments");
+      if (typeof args === "string") {
+        try {
+          args = JSON.parse(args);
+        } catch {
+          continue;
         }
-        if (args && typeof args === "object" && !Array.isArray(args)) return args as JsonObject;
+      }
+      if (args !== null && typeof args === "object" && !Array.isArray(args)) {
+        const record: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(args)) {
+          record[key] = value;
+        }
+        return record;
       }
     }
   }
@@ -228,7 +233,7 @@ export async function runProfile(
   input: string,
   teacherLegs?: TeacherLeg[],
   options: RunProfileOptions = {},
-): Promise<{ text: string; payload: JsonObject | null; conversation: Conversation }> {
+): Promise<{ text: string; payload: Record<string, unknown> | null; conversation: Conversation }> {
   const profile = PROFILES[profileName];
   const conversation = await harness.createConversation(
     { ownership: { kind: "ownerless" }, agent: agentChangeFor(profile, options.lang ?? "zh") },

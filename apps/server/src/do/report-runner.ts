@@ -1,8 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
-import { createRegistry, Harness, type Registry } from "@earendil-works/pi-durable";
+import { createRegistry, Harness, type JsonObject, type Registry } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
-import type { JsonObject } from "@earendil-works/pi-durable";
 import type { ZodType } from "zod";
 import {
   fauxAssistantMessage,
@@ -542,7 +541,7 @@ export class ReportRunner extends DurableObject<Env> {
     legs: TeacherLeg[],
     options: { lang: Lang; submitTool: string },
     registry: Registry = this.registry,
-  ): Promise<{ text: string; payload: JsonObject | null }> {
+  ): Promise<{ text: string; payload: Record<string, unknown> | null }> {
     return runProfile(harness, { models: this.models, registry, env: this.env }, profile, input, legs, options);
   }
 
