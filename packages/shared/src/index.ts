@@ -281,6 +281,24 @@ export const ActivityStartInputSchema = z.object({
   mode: ActivityModeSchema.default("live"),
 });
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
+
+export const SoloThreadSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type SoloThread = z.infer<typeof SoloThreadSchema>;
+
+export const SoloThreadCreateInputSchema = z.object({
+  title: z.string().trim().max(120).optional(),
+});
+export type SoloThreadCreateInput = z.infer<typeof SoloThreadCreateInputSchema>;
+
+export const SoloThreadUpdateInputSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+});
+export type SoloThreadUpdateInput = z.infer<typeof SoloThreadUpdateInputSchema>;
 export const LookupInputSchema = z.object({ term: z.string().trim().min(1).max(30) });
 export const TTS_MAX_CHARS = 4000;
 export const TtsInputSchema = z.object({

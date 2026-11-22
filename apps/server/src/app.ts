@@ -17,6 +17,7 @@ import { lookupRoutes } from "./routes/lookup";
 import { teacherKeyRoutes } from "./routes/teacher-keys";
 import { adminRoutes } from "./routes/admin";
 import { notificationRoutes } from "./routes/notifications";
+import { soloRoutes } from "./routes/solo";
 import { devRoutes, isDev } from "./routes/dev";
 import { FAIL_FAST_SECRETS } from "./env";
 import { timingSafeEqual } from "./auth-crypto";
@@ -34,6 +35,7 @@ export function createApi() {
     .route("/", teacherKeyRoutes())
     .route("/", adminRoutes())
     .route("/", notificationRoutes())
+    .route("/", soloRoutes())
     .route("/", devRoutes());
 }
 export type RpcApi = ReturnType<typeof createApi>;

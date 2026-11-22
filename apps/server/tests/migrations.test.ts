@@ -342,3 +342,33 @@ describe("migration 007: user identities", () => {
     expect(identities).toEqual([]);
   });
 });
+
+describe("migration 013: solo threads (#281)", () => {
+  it("creates solo_threads table with user foreign key cascade", async () => {
+    expect(migrations.some((migration) => migration.name === "013_solo_threads.sql")).toBe(true);
+
+    const at = "2026-11-22T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_solo_m', '單人使用者', 'solo_m@example.com', 'x', 'zh', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO solo_threads (id, user_id, title, created_at, updated_at)
+       VALUES ('solo_m1', 'u_solo_m', '測試題目', $at, $at)`,
+      { at },
+    );
+
+    const threads = await all<{ id: string; title: string }>(
+      env.DB,
+      "SELECT id, title FROM solo_threads WHERE user_id = 'u_solo_m'",
+    );
+    expect(threads).toEqual([{ id: "solo_m1", title: "測試題目" }]);
+
+    await run(env.DB, "DELETE FROM users WHERE id = 'u_solo_m'");
+    const after = await all<{ id: string }>(env.DB, "SELECT id FROM solo_threads WHERE user_id = 'u_solo_m'");
+    expect(after).toEqual([]);
+  });
+});

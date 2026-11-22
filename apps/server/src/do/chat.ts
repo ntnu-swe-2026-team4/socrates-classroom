@@ -1,38 +1,28 @@
-import type { EntryRecord, UserInput } from "@earendil-works/pi-durable";
+import type { UserInput } from "@earendil-works/pi-durable";
 import { DurableObject } from "cloudflare:workers";
-import { createRegistry, Harness } from "@earendil-works/pi-durable";
-import {
-  fauxAssistantMessage,
-  fauxText,
-  fauxToolCall,
-  type AssistantMessage,
-  type Message,
-  type TextContent,
-  type TranscriptContext,
-} from "@earendil-works/pi-ai";
-import { PiHarness, type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } from "agents/harness/pi";
-import { Lifecycle, type LifecycleJob, type LifecycleJobContext } from "agents/lifecycle";
+import { type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } from "agents/harness/pi";
+import { Lifecycle, type LifecycleJobContext } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
 import { SESSION_COOKIE, PARTICIPANT_COOKIE, accountState, lookupParticipant, lookupSession } from "../auth";
 import { activityAccess, participantOf } from "../services/members";
-import { createAvatarExtension } from "../pi/extensions/avatar";
-import { createJudgmentExtension } from "../pi/extensions/judgment";
-import { createWebSearchExtension } from "../pi/extensions/websearch";
-import { fauxReplayExtension } from "../pi/extensions/faux-replay";
-import { SOCRATES_PROMPTS, socratesExtension } from "../pi/extensions/socrates";
-import { btwExtension, forkBtw } from "../pi/extensions/btw";
-import { createUsageExtension } from "../pi/extensions/usage";
-import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
-import { buildModels } from "../pi/models";
+import { forkBtw } from "../pi/extensions/btw";
 import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
 import { one } from "../db/d1";
-import { getRouter } from "../gateway/router";
 import { ApiError, type Lang } from "@socrates/shared";
 import { normalizeLang } from "../http";
 import { ChatSockets, type ReverifyOutcome, type SocketIdentity } from "../ws/sockets";
+import {
+  createDialogueCore,
+  RunDeadlineTracker,
+  submitViaRouter,
+  RUN_DEADLINE_JOB,
+  STUDENT_LANG_KEY,
+  readTranscript,
+  type TranscriptReadout,
+} from "./dialogue-core";
 
-const STUDENT_LANG_KEY = "studentLang";
+export { readTranscript, type TranscriptReadout };
 
 class ActivityFinishedError extends Error {
   constructor() {
@@ -41,68 +31,25 @@ class ActivityFinishedError extends Error {
   }
 }
 
-const RUN_DEADLINE_JOB = "dialogue-run-deadline";
-const RUN_TIMEOUT_MS = 120_000;
-const FAILURE_REPLAY_MS = 120_000;
-
-type DialogueRun = { session: string; operationId: string };
-type RunFailure = { jobId: string; expiresAt: number };
-
-function failureKey(session: string): string {
-  return `dialogue-run-failure:${session}`;
-}
-
 export class Chat extends DurableObject<Env> {
-  readonly registry = createRegistry();
-  readonly models = buildModels(this.env, { teacherOf: () => this.teacherId() });
   #teacherId: string | null | undefined;
   readonly #sessionModels = new Map<string, { provider: string; id: string }>();
-  readonly #runChecks = new Map<string, Promise<void>>();
 
-  readonly btw = btwExtension();
-
-  readonly harness = new PiHarness({
-    harness: ({ storage, context, onWake }) => {
-      this.registry.install(socratesExtension(() => this.studentLang()));
-      this.registry.install(createAvatarExtension(this.env.AI));
-      this.registry.install(
-        createJudgmentExtension(this.env.AI, async (violation) => {
-          console.warn("[judgment:sink]", violation.type, violation.source);
-        }),
-      );
-      this.registry.install(createWebSearchExtension(this.env.AI));
-      this.registry.install(createUsageExtension(this.env, () => this.teacherId()));
-      this.registry.install(this.btw);
-      const registry = this.registry;
-      const btw = this.btw.name;
-      return Harness.open(
-        storage,
-        {
-          models: this.models.models,
-          registry: this.registry,
-          onWake,
-          settings: {
-            get extensions() {
-              return registry
-                .snapshot()
-                .installed()
-                .filter((extension) => extension.name !== btw);
-            },
-            retry: { enabled: true, maxRetries: 5, baseDelayMs: 1000 },
-            afterFailedRun: "continue",
-          },
-          onReport: (report) =>
-            console.warn("[pi]", report.kind, report.error instanceof Error ? report.error.name : typeof report.error),
-        },
-        context,
-      );
-    },
-    defaults: { model: this.models.default, thinkingLevel: PROFILES.socrates.thinkingLevel },
+  readonly core = createDialogueCore(this.env, {
+    teacherOf: () => this.teacherId(),
+    getLang: () => this.studentLang(),
   });
 
-  readonly sockets = new ChatSockets(
-    this.harness,
-    this.registry,
+  readonly tracker = new RunDeadlineTracker(
+    () => this.lifecycle,
+    this.ctx.storage,
+    this.core.harness,
+    (session, failureId) => this.sockets.notifyRunFailure(session, failureId),
+  );
+
+  readonly sockets: ChatSockets = new ChatSockets(
+    this.core.harness,
+    this.core.registry,
     async (request) => {
       const identity = await this.authorize(request);
       if (identity) await this.rememberStudentLang(request, identity);
@@ -110,103 +57,43 @@ export class Chat extends DurableObject<Env> {
     },
     (handle, input, options) => this.routeSubmit(handle, input, options),
     (identity) => this.canSubmit(identity),
-    () => forkBtw(this.harness, this.btw),
+    () => forkBtw(this.core.harness, this.core.btw),
     (identity) => this.revalidate(identity),
-    (session) => this.recentRunFailure(session),
+    (session) => this.tracker.recentRunFailure(session),
   );
+
   readonly webSockets = new WebSockets(this.sockets.options());
-  readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.harness);
+  readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.core.harness);
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    if (this.models.faux) {
-      this.models.faux.setResponses([fauxSocraticScript]);
-      this.registry.install(fauxReplayExtension(this.models.faux, fauxSocraticScript));
-    }
+  }
+
+  get harness() {
+    return this.core.harness;
+  }
+
+  get registry() {
+    return this.core.registry;
+  }
+
+  get models() {
+    return this.core.models;
+  }
+
+  get btw() {
+    return this.core.btw;
   }
 
   async onStart(): Promise<void> {
     await this.sockets.reattach(this.webSockets.getConnections(), (identity) => this.reverify(identity));
     for (const job of this.lifecycle.jobs.list()) {
-      if (job.fn === RUN_DEADLINE_JOB) this.ctx.waitUntil(this.checkRun(job));
+      if (job.fn === RUN_DEADLINE_JOB) this.ctx.waitUntil(this.tracker.checkRun(job));
     }
   }
 
   async onJob({ job }: LifecycleJobContext): Promise<void> {
-    if (job.fn === RUN_DEADLINE_JOB) await this.checkRun(job);
-  }
-
-  private runDeadlineJobs(session: string): LifecycleJob[] {
-    return this.lifecycle.jobs
-      .list()
-      .filter((job) => job.fn === RUN_DEADLINE_JOB && (job.payload as DialogueRun).session === session);
-  }
-
-  private recentRunFailure(session: string): string | undefined {
-    const key = failureKey(session);
-    const failure = this.ctx.storage.kv.get<RunFailure>(key);
-    if (!failure) return undefined;
-    if (failure.expiresAt <= Date.now()) {
-      this.ctx.storage.kv.delete(key);
-      return undefined;
-    }
-    if (this.runDeadlineJobs(session).some((job) => job.id !== failure.jobId)) return undefined;
-    return failure.jobId;
-  }
-
-  private checkRun(job: LifecycleJob): Promise<void> {
-    const current = this.#runChecks.get(job.id);
-    if (current !== undefined) return current;
-    const check = this.settleRun(job).finally(() => this.#runChecks.delete(job.id));
-    this.#runChecks.set(job.id, check);
-    return check;
-  }
-
-  private async settleRun(job: LifecycleJob): Promise<void> {
-    const { session, operationId } = job.payload as DialogueRun;
-    const handle = this.harness.session(session);
-    const wait = new AbortController();
-    const timer = setTimeout(() => wait.abort(), Math.max(1_000, job.time - Date.now()));
-    const result = await handle
-      .wait(operationId, wait.signal)
-      .catch(() => undefined)
-      .finally(() => clearTimeout(timer));
-    if (!this.lifecycle.jobs.get(job.id)) return;
-    if (result?.status !== "done" && result?.reason !== "aborted") {
-      this.ctx.storage.kv.put(failureKey(session), {
-        jobId: job.id,
-        expiresAt: Date.now() + FAILURE_REPLAY_MS,
-      } satisfies RunFailure);
-      this.sockets.notifyRunFailure(session, job.id);
-    } else {
-      this.ctx.storage.kv.delete(failureKey(session));
-    }
-    await this.lifecycle.jobs.cancel(job.id);
-  }
-
-  private async submitWithDeadline(handle: PiSession, input: UserInput, options: PiSubmitOptions): Promise<PiReceipt> {
-    const operationId = options.operationId ?? crypto.randomUUID();
-    const olderJobs = this.runDeadlineJobs(handle.id);
-    const job = await this.lifecycle.jobs.push({
-      fn: RUN_DEADLINE_JOB,
-      time: Date.now() + RUN_TIMEOUT_MS,
-      payload: { session: handle.id, operationId } satisfies DialogueRun,
-    });
-    let receipt: PiReceipt;
-    try {
-      receipt = await handle.submit(input, { ...options, operationId });
-    } catch (error) {
-      await this.lifecycle.jobs.cancel(job.id);
-      throw error;
-    }
-    if (!receipt.accepted) {
-      await this.lifecycle.jobs.cancel(job.id);
-      return receipt;
-    }
-    this.ctx.storage.kv.delete(failureKey(handle.id));
-    await Promise.all(olderJobs.map((older) => this.lifecycle.jobs.cancel(older.id)));
-    this.ctx.waitUntil(this.checkRun(job));
-    return receipt;
+    if (job.fn === RUN_DEADLINE_JOB) await this.tracker.checkRun(job);
   }
 
   private async teacherId(): Promise<string | null> {
@@ -239,35 +126,21 @@ export class Chat extends DurableObject<Env> {
       { id: activityId },
     );
     if (activity?.finished_at) throw new ActivityFinishedError();
-    const router = getRouter(this.env);
-    const canServe = (entry: { provider: string; model: string }): boolean =>
-      this.models.models.getModel(entry.provider, entry.model) !== undefined;
-    const decision = router.pick("interactive", canServe, await this.teacherLegs());
-    if (!decision && !this.models.faux) throw new NoAvailableModelError();
-    if (!decision) return this.submitWithDeadline(handle, input, options);
-    const model = this.models.models.getModel(decision.entry.provider, decision.model);
-    const receipt = await router.withRoute(decision, async () => {
-      const current = this.#sessionModels.get(handle.id);
-      if (model && (current?.provider !== model.provider || current?.id !== model.id)) {
-        await handle.setModel({ provider: model.provider, id: model.id });
-        this.#sessionModels.set(handle.id, { provider: model.provider, id: model.id });
-      }
-      return this.submitWithDeadline(handle, input, options);
-    });
-    void handle
-      .wait(receipt.operationId)
-      .then((result) => {
-        const ok = result.status === "done" || (result.status === "unanswered" && result.reason === "aborted");
-        router.settle(decision, ok ? "ok" : "error");
-      })
-      .catch(() => {
-        if (router.ledger.inFlight(decision.key) > 0) router.settle(decision, "error");
-      });
-    return receipt;
+
+    return submitViaRouter(
+      this.env,
+      this.core.models,
+      this.#sessionModels,
+      await this.teacherLegs(),
+      handle,
+      input,
+      options,
+      (h, inp, opt) => this.tracker.submitWithDeadline(h, inp, opt, (p) => this.ctx.waitUntil(p)),
+    );
   }
 
   async transcript(): Promise<TranscriptReadout> {
-    return readTranscript(await this.harness.session(ROOT_SESSION).messages());
+    return readTranscript(await this.core.harness.session(ROOT_SESSION).messages());
   }
 
   private async canSubmit(identity: SocketIdentity): Promise<boolean> {
@@ -351,56 +224,4 @@ function cookieValue(header: string, name: string): string | undefined {
     .map((part) => part.trim())
     .find((part) => part.startsWith(`${name}=`))
     ?.slice(name.length + 1);
-}
-
-function fauxSocraticScript(context: TranscriptContext): AssistantMessage {
-  const last = context.messages.filter((message) => message.role !== "system").at(-1);
-  const said = last?.role === "user" ? textOf(last.content) : "";
-  if (/python|排序|數學|程式/.test(said)) {
-    return fauxAssistantMessage([fauxToolCall("report_violation", { type: "coding", excerpt: said })], {
-      stopReason: "toolUse",
-    });
-  }
-  const preamble = context.messages
-    .filter((message) => message.role === "system")
-    .map((message) => (message as { sections?: Record<string, string> }).sections?.preamble);
-  if (preamble.includes(SOCRATES_PROMPTS.en)) {
-    return fauxAssistantMessage([fauxText(`You said "${said}". What is your first judgment, and why?`)]);
-  }
-  return fauxAssistantMessage([fauxText(`你提到「${said}」。先別急著找標準答案——你的直覺判斷是什麼？為什麼？`)]);
-}
-
-function textOf(content: Message["content"]): string {
-  if (typeof content === "string") return content;
-  return content
-    .filter((part): part is TextContent => part.type === "text")
-    .map((part) => part.text)
-    .join("");
-}
-
-function entryText(entry: { model?: readonly Message[] }): string {
-  return textOf(entry.model?.[0]?.content ?? "");
-}
-
-export interface TranscriptReadout {
-  messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
-  violations: Array<{ turn: number; type: string; excerpt: string }>;
-}
-
-export function readTranscript(items: readonly EntryRecord[]): TranscriptReadout {
-  const messages: Array<{ role: "user" | "assistant"; turn: number; text: string }> = [];
-  const violations: Array<{ turn: number; type: string; excerpt: string }> = [];
-  let turn = 0;
-  for (const entry of items) {
-    if (entry.kind === "pi.user") {
-      turn += 1;
-      messages.push({ role: "user", turn, text: entryText(entry) });
-    } else if (entry.kind === "pi.assistant") {
-      messages.push({ role: "assistant", turn, text: entryText(entry) });
-    } else if (entry.kind === "app.violation") {
-      const data = entry.data as { type?: string; excerpt?: string };
-      violations.push({ turn, type: data.type ?? "other", excerpt: data.excerpt ?? "" });
-    }
-  }
-  return { messages, violations };
 }

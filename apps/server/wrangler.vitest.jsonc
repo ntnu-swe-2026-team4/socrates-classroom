@@ -7,9 +7,13 @@
   "rules": [{ "type": "Text", "globs": ["**/*.md", "**/*.sql"] }],
   "d1_databases": [{ "binding": "DB", "database_name": "socrates-test", "database_id": "local-test" }],
   "durable_objects": {
-    "bindings": [{ "name": "Chat", "class_name": "Chat" }, { "name": "ReportRunner", "class_name": "ReportRunner" }]
+    "bindings": [
+      { "name": "Chat", "class_name": "Chat" },
+      { "name": "SoloChat", "class_name": "SoloChat" },
+      { "name": "ReportRunner", "class_name": "ReportRunner" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Chat", "ReportRunner"] }],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Chat", "SoloChat", "ReportRunner"] }],
   "vars": {
     // Test-only fixtures sharing names with production secrets; never real credentials.
     "ENVIRONMENT": "dev",

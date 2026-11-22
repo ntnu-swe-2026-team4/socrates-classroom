@@ -24,6 +24,7 @@ export const FAIL_FAST_SECRETS = ["AUTH_SECRET", "BYOK_ENC_KEY"] as const;
 export interface Env {
   DB: D1Database;
   Chat: DurableObjectNamespace<import("./do/chat").Chat>;
+  SoloChat: DurableObjectNamespace<import("./do/solo-chat").SoloChat>;
   ReportRunner: DurableObjectNamespace<import("./do/report-runner").ReportRunner>;
   AI?: Ai;
   PUBLIC_BASE_URL?: string;

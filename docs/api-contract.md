@@ -41,6 +41,7 @@
 | `POST /classrooms/:id/topics`、`POST /topics/:id/copy`（#135）                                          | —                                             | 需目標班 owner                                           |
 | `POST /activities/:id/invites`（#133）                                                                  | —                                             | 需該班 owner                                             |
 | `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）               | —                                             | ✅（per-user BYOK，#210）                                |
+| `GET/POST /api/solo/threads`、`GET/PATCH/DELETE /api/solo/threads/:id`（#281 solo chat）                | —                                             | ✅（僅本人 thread）                                      |
 | `GET /admin/users`、`POST /admin/users`、`PATCH /admin/users/:id`                                       | —                                             | ❌ 401／403 `forbidden`                                  |
 | `GET /activities/:id`                                                                                   | 需本人 participant cookie                     | 需教室成員                                               |
 | `GET /activities/:id/report`                                                                            | —                                             | 需教室成員                                               |
@@ -48,6 +49,7 @@
 | **WS** `/agents/chat/:name`（watch/entries/abort）                                                      | 僅本人 participant thread                     | 本人 participant thread，或該班 owner 可觀察自己帶的班級 |
 | **WS** `submit` op                                                                                      | 僅本人 participant thread                     | 僅本人 participant thread                                |
 | **WS** `btw` op（開新 side session）／`btw {session}`（附掛既有）                                       | 僅本人 participant thread                     | 僅本人 participant thread                                |
+| **WS** `/agents/solo-chat/:name`（#281 solo chat WS）                                                   | —                                             | 僅本人 thread（`userId === thread owner`）               |
 | `POST /activities/:id/finish`                                                                           | —                                             | 需教室成員（owner）                                      |
 
 - **test 活動（#134）只對該班 owner 存在**：`GET /activities/:id`、`/report`、`/slots`、WS 一律 403／close 1008 給其他任何身分（含班級成員與訪客）；`POST /activities/:id/invites` 對 test 活動回 409 `conflict`
@@ -200,6 +202,30 @@ type ServerMessage =
 - 每次不帶 `session` 的 `btw` 都 fork 新的 side session（fork 點＝當下 root 最新 entry）；舊 side session 留在 DO storage
 - 錯誤 code：`NothingToFork`（root 尚無 entry）、`UnknownSession`、`SubmitForbidden`（開新 side session 與 submit 同權限：限 thread 學生本人；老師可附掛觀察）
 - 規則同 root：no queue（side session 與 root 各自 busy，互不阻擋）、活動結束後 submit → `ActivityFinished`、run 失敗的無 id `llm_unavailable` 廣播只送給綁在該 session 的連線
+
+### 5.5 單人自由提問對話（Solo chat，#281）
+
+免教室的自由提問（不經 activity/participant 語意，以登入使用者為 thread owner）。
+
+#### 5.5.1 REST 端點
+
+| Operation                                                 | 說明                                                             |
+| --------------------------------------------------------- | ---------------------------------------------------------------- |
+| `GET /api/solo/threads` → `SoloThread[]`                  | 列出登入者的所有 solo thread（依 `updated_at DESC`）。未登入 401 |
+| `POST /api/solo/threads` `{title?}` → `SoloThread`（201） | 建立新 solo thread（`id` 為 `solo_…`）。未登入 401               |
+| `GET /api/solo/threads/:id` → `SoloThread`                | 取得單一 thread 資訊。非本人 404                                 |
+| `PATCH /api/solo/threads/:id` `{title}` → `SoloThread`    | 變更 thread 標題。非本人 404                                     |
+| `DELETE /api/solo/threads/:id` → 204                      | 刪除 thread。非本人 404；使用者帳號刪除時 CASCADE                |
+
+`SoloThread`：`{ id: string, title: string, createdAt: string, updatedAt: string }`
+
+#### 5.5.2 WebSocket 通道
+
+- `GET /agents/solo-chat/:name?lang=<介面語言>`（WebSocket 升級）
+- thread name 協定：`{userId}:{threadId}`（DO name 即路由鍵，由獨立的 `SoloChat` DO 服務）
+- 授權：**僅接受已登入帳號的 `socrates_session` cookie**（訪客/preview 不可用）；驗證 session 有效且 `userId` 等於連線路徑的擁有者，未通過一律 close 1008
+- 供應鏈：無教師腿，純走 platform-credential ZDR chain（`providers.config.yaml` 的 defaults availability）
+- 通訊協定：完全維持既有 WebSocket chord protocol（§5.2、§5.3、§5.4 BTW side session 均支援），既有客戶端邏輯可 100% 複用
 
 ## 6. 老師即時面板（#73）與測試模式 slot（#134）
 
