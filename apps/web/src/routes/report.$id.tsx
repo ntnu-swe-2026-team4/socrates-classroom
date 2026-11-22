@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { reportOptions } from "@/api/queries";
+import { activityOptions, classroomsOptions, reportOptions } from "@/api/queries";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, type ReportPosition, type StudentAnalysis, type ViolationSlice } from "@/api";
-import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
 import { StanceConstellation } from "@/components/StanceConstellation";
 import { Segmented, Spinner, cn } from "@/components/ui";
@@ -21,13 +20,15 @@ function ReportPage() {
   const t = useT();
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const me = useQuery({ ...meQueryOptions, enabled: false });
-  const isTeacher = me.data != null;
   const [view, setView] = useState<"group" | "individual">("group");
   const [studentIdx, setStudentIdx] = useState(0);
   const report = useQuery(reportOptions(id));
+  const err = report.isError && report.error instanceof ApiError ? report.error : null;
+  const failed = err?.code === "report_failed";
+  const activity = useQuery({ ...activityOptions(id), enabled: failed });
+  const rooms = useQuery({ ...classroomsOptions, enabled: failed });
 
-  if (report.isPending) {
+  if (report.isPending || (failed && (activity.isPending || rooms.isPending))) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Spinner className="h-6 w-6" />
@@ -35,33 +36,40 @@ function ReportPage() {
     );
   }
   if (report.isError) {
-    const err = report.error instanceof ApiError ? report.error : null;
     const pending = err?.code === "report_pending";
-    const failed = err?.code === "report_failed";
+    if (failed) {
+      const isTeacher =
+        activity.data != null &&
+        rooms.data?.some((room) => room.id === activity.data.classroomId && room.role === "teacher") === true;
+      return (
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-[15px] text-ink-soft">
+          {isTeacher ? (
+            <>
+              <p>{err?.message ?? t("common_error")}</p>
+              <button
+                type="button"
+                onClick={() => void navigate({ to: "/t/live/$id", params: { id } })}
+                className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
+              >
+                {t("report_refinish")}
+              </button>
+            </>
+          ) : (
+            <p>{t("report_failed_student")}</p>
+          )}
+        </div>
+      );
+    }
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-[15px] text-ink-soft">
         <p>{pending ? t("report_generating") : (err?.message ?? t("common_error"))}</p>
-        {failed ? (
-          isTeacher ? (
-            <button
-              type="button"
-              onClick={() => void navigate({ to: "/t/live/$id", params: { id } })}
-              className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
-            >
-              {t("report_refinish")}
-            </button>
-          ) : (
-            <p className="text-[13px] text-ink-faint">{t("report_failed_student")}</p>
-          )
-        ) : (
-          <button
-            type="button"
-            onClick={() => report.refetch()}
-            className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
-          >
-            {t("report_retry")}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => report.refetch()}
+          className="cursor-pointer rounded-full border border-line-strong bg-paper-deep px-4 py-1.5 text-[13px] text-ink transition-colors hover:text-ember"
+        >
+          {t("report_retry")}
+        </button>
       </div>
     );
   }

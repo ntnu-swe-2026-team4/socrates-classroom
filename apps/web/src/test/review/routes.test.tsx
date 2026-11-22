@@ -885,3 +885,101 @@ test("#303: t.live test-slot count input rejects out-of-range and non-integer va
     dispose();
   }
 });
+
+function stubFailedReport(options: { rooms: Array<ReturnType<typeof roomSummary>> | null; activityError?: boolean }) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const json = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (path === "/api/me") return json({ id: "user-1", name: "User", isAdmin: false });
+      if (path === "/api/activities/activity-1/report") {
+        return json(
+          {
+            code: "report_failed",
+            message: "Report generation failed. Finish the activity again to retry.",
+          },
+          500,
+        );
+      }
+      if (path === "/api/activities/activity-1") {
+        if (options.activityError) return json({ code: "internal_error", message: "boom" }, 500);
+        return json({ ...liveActivity, finishedAt: "2026-01-01T00:00:00.000Z" });
+      }
+      if (path === "/api/classrooms") {
+        if (options.rooms === null) return json({ code: "internal_error", message: "boom" }, 500);
+        return json(options.rooms);
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+}
+
+test("#316: report_failed shows student guidance without the teacher button for a classroom student", async () => {
+  stubFailedReport({
+    rooms: [roomSummary("student"), { ...roomSummary("teacher"), id: "class-other" }],
+  });
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    expect(await screen.findByText("Report generation failed — ask your teacher to run it again.")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByText(/Finish the activity again/i)).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test("#316: report_failed shows the teacher refinish button for the classroom owner", async () => {
+  stubFailedReport({ rooms: [roomSummary("teacher")] });
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    expect(await screen.findByRole("button", { name: "Back to the session — finish again to retry" })).toBeTruthy();
+    expect(screen.getByText("Report generation failed. Finish the activity again to retry.")).toBeTruthy();
+    expect(screen.queryByText("Report generation failed — ask your teacher to run it again.")).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test("#316: report_failed falls back to student guidance when role lookup fails", async () => {
+  stubFailedReport({ rooms: null, activityError: true });
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    expect(await screen.findByText("Report generation failed — ask your teacher to run it again.")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test("#316: a loaded report does not fetch activity or classroom lists for the failed-report role check", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const json = (body: unknown) =>
+        new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+      if (path === "/api/me") return json({ id: "student-1", name: "Student", isAdmin: false });
+      if (path === "/api/activities/activity-1/report") {
+        return json({
+          topicTitle: topic.title,
+          participantName: "Student",
+          pseudonym: "Student",
+          analysis: null,
+          indicators: null,
+          violations: [],
+          positions: [],
+        });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    expect(await screen.findByRole("heading", { name: "Class report" })).toBeTruthy();
+    expect(screen.getByText(topic.title)).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
