@@ -27,7 +27,7 @@ vi.mock("agents/react", () => ({
     return socket;
   },
 }));
-vi.mock("@/components/SocratesCompanion", () => ({ SocratesWindow: () => null }));
+vi.mock("@/components/SocratesCompanion", () => ({ SocratesWindow: () => null, SocratesCompanion: () => null }));
 
 const thread: SoloThread = {
   id: "solo_1",

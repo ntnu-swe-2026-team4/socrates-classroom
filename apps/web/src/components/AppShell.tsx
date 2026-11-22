@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { Suspense, lazy, useRef, useState } from "react";
 import { classroomsOptions } from "@/api/queries";
 import { useAccountSheetRequest } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
@@ -24,6 +24,10 @@ import { Initial, TrapDialog, cn } from "@/components/ui";
 import { useDomEvent } from "@/hooks/useSubscription";
 import { useI18n } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
+
+const SocratesCompanion = lazy(() =>
+  import("@/components/SocratesCompanion").then((module) => ({ default: module.SocratesCompanion })),
+);
 
 const BARE_ROUTES = [/^\/$/, /^\/login\/?$/];
 
@@ -238,6 +242,10 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           {children}
         </main>
       </div>
+
+      <Suspense fallback={null}>
+        <SocratesCompanion />
+      </Suspense>
 
       {accountOpen && (
         <TrapDialog

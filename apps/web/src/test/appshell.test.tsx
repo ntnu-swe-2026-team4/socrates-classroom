@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { AppShell } from "@/components/AppShell";
+import { COMPANION_DOCK_ATTR } from "@/components/SocratesCompanion";
 import { openAccountSheet, useAccountSheetRequest } from "@/lib/accountSheet";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
 import { setLocale } from "@/i18n";
@@ -28,17 +29,19 @@ vi.mock("@tanstack/react-router", () => ({
     select({ location: { pathname: calls.pathname } }),
 }));
 
+vi.mock("@/lib/socrates/scene", () => ({
+  createSocratesScene: () => ({ setSpeaking: vi.fn(), setExpression: vi.fn(), dispose: vi.fn() }),
+}));
+
 const teacher: User = { id: "u1", name: "Teacher", isAdmin: false };
 
-function mountShell(user: User | null = teacher, pathname = calls.pathname) {
+function mountShell(user: User | null = teacher, pathname = calls.pathname, page: ReactNode = <p>page</p>) {
   calls.pathname = pathname;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   if (user) client.setQueryData(meQueryOptions.queryKey, user);
   render(
     <QueryClientProvider client={client}>
-      <AppShell>
-        <p>page</p>
-      </AppShell>
+      <AppShell>{page}</AppShell>
     </QueryClientProvider>,
   );
   return client;
@@ -221,6 +224,29 @@ test("the landing and login routes render bare without the rail", () => {
   try {
     expect(screen.getByText("page")).toBeTruthy();
     expect(document.querySelector("main")).toBeNull();
+  } finally {
+    client.clear();
+  }
+});
+
+test("a page that offers a companion dock gets the Socrates model drawn into it", async () => {
+  const measure = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    return this.hasAttribute(COMPANION_DOCK_ATTR) ? new DOMRect(40, 60, 196, 196) : new DOMRect();
+  });
+  const client = mountShell(teacher, "/dialogue/activity-1", <div {...{ [COMPANION_DOCK_ATTR]: "" }} />);
+  try {
+    expect(await screen.findByRole("img", { name: "Socrates" })).toBeTruthy();
+  } finally {
+    measure.mockRestore();
+    client.clear();
+  }
+});
+
+test("a page without a companion dock shows no Socrates model", async () => {
+  const client = mountShell(teacher, "/home");
+  try {
+    await screen.findByRole("button", { name: "Notifications" });
+    expect(screen.queryByRole("img", { name: "Socrates" })).toBeNull();
   } finally {
     client.clear();
   }
