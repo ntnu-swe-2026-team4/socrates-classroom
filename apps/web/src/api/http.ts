@@ -84,6 +84,7 @@ export interface Api {
   resetPassword(token: string, password: string): Promise<void>;
   authProviders(): Promise<OAuthProviders>;
   notifications(): Promise<NotificationFeed>;
+  markNotificationsSeen(): Promise<void>;
   joinByCode(code: string): Promise<JoinInfo>;
   joinAsGuest(code: string, input: { name?: string; tosAccepted: boolean }): Promise<JoinResult>;
   createActivityInvite(activityId: string): Promise<ActivityInvite>;
@@ -266,6 +267,9 @@ export const httpApi: Api = {
   },
   async notifications() {
     return unwrap(await client.notifications.$get());
+  },
+  async markNotificationsSeen() {
+    await unwrap(await client.notifications.seen.$post());
   },
   async joinByCode(code) {
     return unwrap(await client.join[":code"].$get({ param: { code } }));

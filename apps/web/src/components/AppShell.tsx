@@ -19,6 +19,7 @@ import {
 import { api, type User } from "@/api";
 import { meQueryOptions } from "@/api/me";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
+import { NotificationBell } from "@/components/Notifications";
 import { Initial, TrapDialog, cn } from "@/components/ui";
 import { useDomEvent } from "@/hooks/useSubscription";
 import { useI18n } from "@/i18n";
@@ -168,6 +169,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
         </div>
       )}
       <div className="mb-3.5 flex flex-col items-center gap-2 pt-3">
+        {me.data && <NotificationBell key={me.data.id} userId={me.data.id} className={RAIL_SQUARE_BTN} />}
         <button type="button" onClick={toggleTheme} aria-label={themeTip} title={themeTip} className={RAIL_SQUARE_BTN}>
           {theme === "dark" ? <Moon className="size-[17px]" /> : <Sun className="size-[17px]" />}
         </button>

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { meQueryOptions } from "@/api/me";
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { AppShell } from "@/components/AppShell";
@@ -16,7 +17,10 @@ const calls = vi.hoisted(() => ({
   pathname: "/report/activity-1",
 }));
 
-vi.mock("@/api", () => ({ api: { me: calls.me, logout: calls.logout } }));
+vi.mock("@/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api")>();
+  return { ...actual, api: { ...actual.api, me: calls.me, logout: calls.logout } };
+});
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, to }: { children: ReactNode; to?: string }) => <a href={to ?? "#"}>{children}</a>,
   useNavigate: () => calls.navigate,
@@ -43,11 +47,56 @@ function mountShell(user: User | null = teacher, pathname = calls.pathname) {
 beforeEach(() => {
   setLocale("en");
   localStorage.clear();
+  vi.stubGlobal("fetch", async () => Response.json({ items: [], unread: 0 }));
 });
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  vi.unstubAllGlobals();
+});
+
+test("opening the rail bell shows notices and clears the unread count through the server", async () => {
+  const user = userEvent.setup();
+  const notice = { id: "n1", title: "Maintenance", body: "On Friday", createdAt: "2026-11-20T00:00:00Z" };
+  let unread = 1;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    if (path === "/api/notifications") return Response.json({ items: [notice], unread });
+    if (path === "/api/notifications/seen" && init?.method === "POST" && init.credentials === "include") {
+      unread = 0;
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const client = mountShell(teacher, "/home");
+  try {
+    await user.click(await screen.findByRole("button", { name: "Notifications, 1 unread" }));
+    const panel = await screen.findByRole("dialog", { name: "System notices" });
+    expect(within(panel).getByText("Maintenance")).toBeTruthy();
+    expect(within(panel).getByText("On Friday")).toBeTruthy();
+    await waitFor(() => expect(unread).toBe(0));
+    fireEvent.keyDown(panel, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "System notices" })).toBeNull();
+    expect(await screen.findByRole("button", { name: "Notifications" })).toBeTruthy();
+  } finally {
+    client.clear();
+  }
+});
+
+test("a public feed with a null unread count opens without sending a read request", async () => {
+  const user = userEvent.setup();
+  const fetch = vi.fn(async () => Response.json({ items: [], unread: null }));
+  vi.stubGlobal("fetch", fetch);
+  const client = mountShell(teacher, "/home");
+  try {
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+    const panel = await screen.findByRole("dialog", { name: "System notices" });
+    expect(await within(panel).findByText("No notices yet.")).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith("/api/notifications", expect.objectContaining({ method: "GET" }));
+  } finally {
+    client.clear();
+  }
 });
 
 test("openAccountSheet bumps the external store request", () => {
@@ -160,6 +209,7 @@ test("a logged-out user on an inner route sees the login link instead of the ava
   try {
     expect(await screen.findByRole("link", { name: "Sign in" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Account" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Notifications" })).toBeNull();
   } finally {
     client.clear();
   }

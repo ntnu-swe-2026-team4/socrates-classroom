@@ -118,6 +118,14 @@ export const notificationsOptions = queryOptions({
   queryFn: () => api.notifications(),
 });
 
+export function accountNotificationsOptions(userId: string) {
+  return queryOptions({
+    ...notificationsOptions,
+    queryKey: [...notificationsOptions.queryKey, userId],
+    refetchInterval: 5 * 60 * 1000,
+  });
+}
+
 export const devAccountsOptions = queryOptions({
   queryKey: ["dev-accounts"],
   queryFn: () => api.devAccounts(),
