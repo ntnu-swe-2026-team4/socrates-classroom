@@ -99,7 +99,7 @@ function ClassroomPage() {
               <InviteCard url={data.url} code={data.code} />
               {data.current && !data.current.finished && (
                 <div className="mt-4">
-                  <ActivityInviteCard activityId={data.current.activityId} />
+                  <ActivityInviteCard key={data.current.activityId} activityId={data.current.activityId} />
                 </div>
               )}
             </div>

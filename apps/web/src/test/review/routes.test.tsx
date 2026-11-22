@@ -658,3 +658,125 @@ test("F01c: a signed-in join posts without a name", async () => {
     vi.unstubAllGlobals();
   }
 });
+
+function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<Response> | Response) {
+  const topicA = { id: "topic-a", classroomId: "class-1", title: "Topic A", statement: "Statement A", prompts: [] };
+  const topicB = { id: "topic-b", classroomId: "class-1", title: "Topic B", statement: "Statement B", prompts: [] };
+  let current = {
+    activityId: "activity-a",
+    topicId: topicA.id,
+    topicTitle: topicA.title,
+    topicStatement: topicA.statement,
+    finished: false,
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const json = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (path === "/api/me") return json({ id: "teacher-1", name: "Teacher", isAdmin: false });
+      if (path === "/api/classrooms") return json([{ ...roomSummary("teacher"), current }]);
+      if (path === "/api/classrooms/class-1/topics") return json([topicA, topicB]);
+      if (path === "/api/topics") return json([]);
+      if (path === "/api/classrooms/class-1/activities" && init?.method === "POST") {
+        current = {
+          activityId: "activity-b",
+          topicId: topicB.id,
+          topicTitle: topicB.title,
+          topicStatement: topicB.statement,
+          finished: false,
+        };
+        return json(
+          {
+            classroomId: "class-1",
+            code: "abcdef",
+            url: "http://localhost/join/abcdef",
+            activityId: "activity-b",
+            mode: "live",
+          },
+          201,
+        );
+      }
+      const inviteMatch = path.match(/^\/api\/activities\/([^/]+)\/invites$/);
+      if (inviteMatch?.[1] && init?.method === "POST") return await onInvite(inviteMatch[1]);
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+}
+
+test("#314: starting a new live activity on the classroom page resets the activity invite card", async () => {
+  const inviteCalls: string[] = [];
+  stubClassroomActivitySwitch((activityId) => {
+    inviteCalls.push(activityId);
+    const token = activityId === "activity-a" ? "tok-a" : "tok-b";
+    return new Response(
+      JSON.stringify({
+        token,
+        activityId,
+        url: `/join/a/${token}`,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        expiresAt: null,
+      }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  });
+  const dispose = await mountRoute("/classrooms/class-1");
+  try {
+    expect(await screen.findByRole("heading", { name: "Topic A" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Create an invite link" }));
+    expect(await screen.findByText(/\/join\/a\/tok-a/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Topic B/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
+    expect(await screen.findByRole("heading", { name: "Topic B" })).toBeTruthy();
+
+    expect(screen.queryByText(/\/join\/a\/tok-a/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Create an invite link" }));
+    expect(await screen.findByText(/\/join\/a\/tok-b/)).toBeTruthy();
+    expect(inviteCalls).toEqual(["activity-a", "activity-b"]);
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#314: an in-flight invite creation for the previous activity does not populate the new activity card", async () => {
+  const pending: { resolve: ((response: Response) => void) | null } = { resolve: null };
+  stubClassroomActivitySwitch((activityId) => {
+    if (activityId !== "activity-a") throw new Error(`Unexpected invite activity: ${activityId}`);
+    return new Promise<Response>((resolve) => {
+      pending.resolve = resolve;
+    });
+  });
+  const dispose = await mountRoute("/classrooms/class-1");
+  try {
+    expect(await screen.findByRole("heading", { name: "Topic A" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Create an invite link" }));
+    await waitFor(() => expect(pending.resolve).not.toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: /Topic B/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
+    expect(await screen.findByRole("heading", { name: "Topic B" })).toBeTruthy();
+
+    pending.resolve?.(
+      new Response(
+        JSON.stringify({
+          token: "tok-a",
+          activityId: "activity-a",
+          url: "/join/a/tok-a",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          expiresAt: null,
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(screen.queryByText(/\/join\/a\/tok-a/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Create an invite link" })).toHaveProperty("disabled", false);
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
