@@ -6,6 +6,8 @@ import type {
   ActivitySlots,
   ActivityStarted,
   AdminUser,
+  Axis,
+  ClientConfig,
   ClassroomCreated,
   ClassroomInviteScope,
   ClassroomSummary,
@@ -17,6 +19,7 @@ import type {
   NotificationFeed,
   OAuthProviders,
   Report,
+  ReportAxes,
   SoloThread,
   SoloThreadCreateInput,
   SoloThreadUpdateInput,
@@ -79,6 +82,7 @@ export interface KeyModelInfo {
 export interface Api {
   classroom: typeof classroomApi;
   me(): Promise<User | null>;
+  config(): Promise<ClientConfig>;
   login(email: string, password: string): Promise<User>;
   signup(input: { name: string; email: string; password: string; tosAccepted: boolean }): Promise<User>;
   logout(): Promise<void>;
@@ -99,15 +103,26 @@ export interface Api {
   listClassroomTopics(classroomId: string): Promise<Topic[]>;
   createClassroomTopic(
     classroomId: string,
-    input: { title: string; statement: string; summary?: string; prompts: string[] },
+    input: { title: string; statement: string; summary?: string; prompts: string[]; axes?: Axis[] },
   ): Promise<Topic>;
-  copyTopic(topicId: string, classroomId: string): Promise<Topic>;
-  startActivity(classroomId: string, topicId: string, mode?: ActivityMode): Promise<ActivityStarted>;
+  copyTopic(topicId: string, classroomId: string, axes?: Axis[]): Promise<Topic>;
+  startActivity(
+    classroomId: string,
+    topicId: string,
+    mode?: ActivityMode,
+    reportAxes?: ReportAxes,
+  ): Promise<ActivityStarted>;
   listActivitySlots(activityId: string): Promise<ActivitySlots>;
   createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
-  createTopic(input: { title: string; statement: string; summary?: string; prompts: string[] }): Promise<Topic>;
+  createTopic(input: {
+    title: string;
+    statement: string;
+    summary?: string;
+    prompts: string[];
+    axes?: Axis[];
+  }): Promise<Topic>;
   activityInfo(activityId: string, participantId?: string): Promise<ActivityInfo>;
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
@@ -312,6 +327,9 @@ const classroomApi = {
 };
 
 export const httpApi: Api = {
+  async config() {
+    return unwrap(await client.config.$get());
+  },
   classroom: classroomApi,
   async me() {
     return unwrap(await client.me.$get());
@@ -397,16 +415,16 @@ export const httpApi: Api = {
       }),
     );
   },
-  async copyTopic(topicId, classroomId) {
+  async copyTopic(topicId, classroomId, axes) {
     return unwrap(
       await client.topics[":id"].copy.$post({
         param: { id: topicId },
-        json: TopicCopyInputSchema.parse({ classroomId }),
+        json: TopicCopyInputSchema.parse({ classroomId, axes }),
       }),
     );
   },
-  async startActivity(classroomId, topicId, mode = "live") {
-    const input = ActivityStartInputSchema.parse({ topicId, mode });
+  async startActivity(classroomId, topicId, mode = "live", reportAxes) {
+    const input = ActivityStartInputSchema.parse({ topicId, mode, reportAxes });
     return unwrap(await client.classrooms[":id"].activities.$post({ param: { id: classroomId }, json: input }));
   },
   async listActivitySlots(activityId) {

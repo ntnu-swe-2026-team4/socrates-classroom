@@ -3,6 +3,11 @@ import QRCode from "qrcode";
 import { api, ApiError } from "@/api";
 import { readTermHistory } from "./local";
 
+export const clientConfigOptions = queryOptions({
+  queryKey: ["config"],
+  queryFn: () => api.config(),
+});
+
 export const classroomsOptions = queryOptions({
   queryKey: ["classrooms"],
   queryFn: () => api.listClassrooms(),

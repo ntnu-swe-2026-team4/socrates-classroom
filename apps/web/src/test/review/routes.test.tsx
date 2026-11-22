@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
@@ -241,6 +241,7 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
     title: "Generated topic",
     statement: "A generated dilemma",
     prompts: ["Why?"],
+    axes: [],
   };
   const persisted = { ...generatedTopic, id: "topic-persisted", classroomId: "class-9" };
   const activity = {
@@ -261,6 +262,7 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
       const topicAdded = calls.some((call) => call.path === "/api/classrooms/class-9/topics");
       const responses: Record<string, unknown> = {
         "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
+        "/api/config": { reportAxes: "ai" },
         "/api/topics": [topic],
         "/api/topics/generate": [generatedTopic],
         "/api/classrooms": { classroomId: "class-9", code: "code999", url: "http://localhost/join/code999" },
@@ -286,10 +288,12 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
     const direction = await screen.findByPlaceholderText("Topic direction");
     fireEvent.change(direction, { target: { value: "justice" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Add to topics" }));
-
     fireEvent.click(await screen.findByRole("button", { name: /Generated topic/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to topics" }));
+
+    const activitySection = within(screen.getByRole("region", { name: "Activity" }));
+    fireEvent.click(await activitySection.findByRole("button", { name: /Generated topic/ }));
+    fireEvent.click(activitySection.getByRole("button", { name: "Start activity" }));
     await screen.findByText("Activity ready");
 
     expect(calls.map((call) => call.path)).toEqual([
@@ -299,7 +303,7 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
     ]);
     expect(calls[0].body).toEqual({ name: "My class" });
     expect(calls[1].body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
-    expect(calls[2].body).toMatchObject({ topicId: "topic-persisted", mode: "live" });
+    expect(calls[2].body).toMatchObject({ topicId: "topic-persisted", mode: "live", reportAxes: "ai" });
   } finally {
     dispose();
   }
@@ -755,8 +759,22 @@ test("F01c: a signed-in join posts without a name", async () => {
 });
 
 function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<Response> | Response) {
-  const topicA = { id: "topic-a", classroomId: "class-1", title: "Topic A", statement: "Statement A", prompts: [] };
-  const topicB = { id: "topic-b", classroomId: "class-1", title: "Topic B", statement: "Statement B", prompts: [] };
+  const topicA = {
+    id: "topic-a",
+    classroomId: "class-1",
+    title: "Topic A",
+    statement: "Statement A",
+    prompts: [],
+    axes: [],
+  };
+  const topicB = {
+    id: "topic-b",
+    classroomId: "class-1",
+    title: "Topic B",
+    statement: "Statement B",
+    prompts: [],
+    axes: [],
+  };
   let current = {
     activityId: "activity-a",
     topicId: topicA.id,
@@ -787,6 +805,7 @@ function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<R
       if (path === "/api/classrooms") return json([{ ...roomSummary("teacher"), current }]);
       if (path === "/api/classrooms/class-1/topics") return json([topicA, topicB]);
       if (path === "/api/topics") return json([]);
+      if (path === "/api/config") return json({ reportAxes: "ai" });
       if (path === "/api/classrooms/class-1/members") {
         return json({ items: [], nextCursor: null, teacher: { id: "teacher-1", name: "Teacher" } });
       }

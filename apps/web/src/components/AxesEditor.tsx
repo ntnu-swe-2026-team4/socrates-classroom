@@ -1,0 +1,123 @@
+import { useRef } from "react";
+import { AXES_MAX, TopicAxesInputSchema, type Axis } from "@socrates/shared";
+import { api, type Topic } from "@/api";
+import { Button, Input } from "@/components/ui";
+import { useT } from "@/i18n";
+
+export type AxisDraft = Axis & { key: number };
+let nextDraftKey = 0;
+
+export function draftOf(axis: Axis = { name: "", left: "", right: "" }): AxisDraft {
+  nextDraftKey += 1;
+  return { ...axis, key: nextDraftKey };
+}
+
+export function draftsOf(axes: Axis[]): AxisDraft[] {
+  return axes.length > 0 ? axes.map((axis) => draftOf(axis)) : [draftOf()];
+}
+
+export function axesOf(drafts: AxisDraft[]): Axis[] {
+  return drafts.map((axis) => ({ name: axis.name.trim(), left: axis.left.trim(), right: axis.right.trim() }));
+}
+
+function duplicateNames(drafts: AxisDraft[]): boolean {
+  const names = axesOf(drafts)
+    .map((axis) => axis.name)
+    .filter(Boolean);
+  return new Set(names).size !== names.length;
+}
+
+export function axesValid(drafts: AxisDraft[], optional = false): boolean {
+  return (optional || drafts.length > 0) && TopicAxesInputSchema.safeParse(axesOf(drafts)).success;
+}
+
+export function useTopicWithAxes(classroomId: string): (topic: Topic, axes: Axis[]) => Promise<string> {
+  const saved = useRef(new Map<string, string>());
+  return async (topic, axes) => {
+    if (JSON.stringify(topic.axes) === JSON.stringify(axes)) return topic.id;
+    const key = JSON.stringify([classroomId, topic.id, axes]);
+    const known = saved.current.get(key);
+    if (known) return known;
+    const copy = await api.copyTopic(topic.id, classroomId, axes);
+    saved.current.set(key, copy.id);
+    return copy.id;
+  };
+}
+
+export function AxesEditor({
+  axes,
+  onChange,
+  disabled = false,
+  optional = false,
+}: {
+  axes: AxisDraft[];
+  onChange: (axes: AxisDraft[]) => void;
+  disabled?: boolean;
+  optional?: boolean;
+}) {
+  const t = useT();
+  const edit = (index: number, key: keyof Axis, value: string) =>
+    onChange(axes.map((axis, i) => (i === index ? { ...axis, [key]: value } : axis)));
+  return (
+    <fieldset className="flex flex-col gap-2 border-t border-line pt-4">
+      <legend className="text-[13px] font-medium text-ink">
+        {t(optional ? "setup_axes_label_optional" : "setup_axes_label")}
+      </legend>
+      <p className="text-[12.5px] leading-relaxed text-ink-soft">{t("setup_axes_hint")}</p>
+      {axes.map((axis, index) => (
+        <div key={axis.key} className="flex flex-col gap-2 rounded-xl border border-line p-3">
+          <Input
+            aria-label={`${t("setup_axis_name")} ${index + 1}`}
+            placeholder={t("setup_axis_name")}
+            value={axis.name}
+            maxLength={40}
+            disabled={disabled}
+            onChange={(event) => edit(index, "name", event.target.value)}
+          />
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+            <Input
+              aria-label={`${t("setup_axis_left")} ${index + 1}`}
+              placeholder={t("setup_axis_left")}
+              value={axis.left}
+              maxLength={40}
+              disabled={disabled}
+              onChange={(event) => edit(index, "left", event.target.value)}
+            />
+            <span aria-hidden="true" className="text-ink-faint">
+              ↔
+            </span>
+            <Input
+              aria-label={`${t("setup_axis_right")} ${index + 1}`}
+              placeholder={t("setup_axis_right")}
+              value={axis.right}
+              maxLength={40}
+              disabled={disabled}
+              onChange={(event) => edit(index, "right", event.target.value)}
+            />
+          </div>
+          {axes.length > (optional ? 0 : 1) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              aria-label={`${t("setup_axis_remove")} ${index + 1}`}
+              onClick={() => onChange(axes.filter((_, i) => i !== index))}
+            >
+              {t("setup_axis_remove")}
+            </Button>
+          )}
+        </div>
+      ))}
+      {duplicateNames(axes) && (
+        <p role="alert" className="text-[12.5px] text-flag">
+          {t("setup_axis_duplicate")}
+        </p>
+      )}
+      {axes.length < AXES_MAX && (
+        <Button variant="outline" size="sm" disabled={disabled} onClick={() => onChange([...axes, draftOf()])}>
+          {t("setup_axis_add")}
+        </Button>
+      )}
+    </fieldset>
+  );
+}
