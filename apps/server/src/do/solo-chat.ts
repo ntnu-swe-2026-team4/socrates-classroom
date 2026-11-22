@@ -4,7 +4,7 @@ import { type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } fr
 import { Lifecycle, type LifecycleJobContext } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
-import { SESSION_COOKIE, accountState, lookupSession } from "../auth";
+import { SESSION_COOKIE, accountState, cookieValue, lookupSession } from "../auth";
 import { forkBtw } from "../pi/extensions/btw";
 import { one, run } from "../db/d1";
 import type { Lang } from "@socrates/shared";
@@ -168,12 +168,4 @@ export class SoloChat extends DurableObject<Env> {
       return "revoked";
     }
   }
-}
-
-function cookieValue(header: string, name: string): string | undefined {
-  return header
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${name}=`))
-    ?.slice(name.length + 1);
 }

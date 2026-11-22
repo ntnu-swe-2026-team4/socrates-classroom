@@ -4,7 +4,14 @@ import { type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } fr
 import { Lifecycle, type LifecycleJobContext } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
-import { SESSION_COOKIE, PARTICIPANT_COOKIE, accountState, lookupParticipant, lookupSession } from "../auth";
+import {
+  SESSION_COOKIE,
+  PARTICIPANT_COOKIE,
+  accountState,
+  cookieValue,
+  lookupParticipant,
+  lookupSession,
+} from "../auth";
 import { activityAccess, participantOf } from "../services/members";
 import { forkBtw } from "../pi/extensions/btw";
 import { teacherOfActivity } from "../pi/credentials";
@@ -205,12 +212,4 @@ export class Chat extends DurableObject<Env> {
       return "error";
     }
   }
-}
-
-function cookieValue(header: string, name: string): string | undefined {
-  return header
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${name}=`))
-    ?.slice(name.length + 1);
 }

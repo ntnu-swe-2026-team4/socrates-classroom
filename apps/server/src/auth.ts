@@ -9,6 +9,14 @@ export const PARTICIPANT_COOKIE = "socrates_participant";
 const SESSION_DAYS = 30;
 const PARTICIPANT_DAYS = 7;
 
+export function cookieValue(header: string, name: string): string | undefined {
+  return header
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+}
+
 interface TokenClaims {
   uid: string;
   ver: number;
