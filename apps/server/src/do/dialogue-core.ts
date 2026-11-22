@@ -24,7 +24,7 @@ import { createUsageExtension } from "../pi/extensions/usage";
 import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
 import { buildModels, type ModelsBundle } from "../pi/models";
 import { getRouter } from "../gateway/router";
-import type { TeacherLeg } from "../pi/credentials";
+import { teacherLegsOf } from "../pi/credentials";
 import type { Lang } from "@socrates/shared";
 
 export const STUDENT_LANG_KEY = "studentLang";
@@ -47,7 +47,7 @@ export function failureKey(session: string): string {
 }
 
 export interface DialogueHarnessConfig {
-  teacherOf?: () => Promise<string | null>;
+  credentialOwner: () => Promise<string | null>;
   getLang?: () => Promise<Lang>;
 }
 
@@ -56,11 +56,13 @@ export interface DialogueCore {
   models: ModelsBundle;
   btw: BtwExtension;
   harness: PiHarness;
+  credentialOwner: DialogueHarnessConfig["credentialOwner"];
 }
 
-export function createDialogueCore(env: Env, config: DialogueHarnessConfig = {}): DialogueCore {
+export function createDialogueCore(env: Env, config: DialogueHarnessConfig): DialogueCore {
+  const { credentialOwner } = config;
   const registry = createRegistry();
-  const models = buildModels(env, { teacherOf: config.teacherOf });
+  const models = buildModels(env, { teacherOf: credentialOwner });
   const btw = btwExtension();
 
   const harness = new PiHarness({
@@ -73,7 +75,7 @@ export function createDialogueCore(env: Env, config: DialogueHarnessConfig = {})
         }),
       );
       registry.install(createWebSearchExtension(env.AI));
-      registry.install(createUsageExtension(env, config.teacherOf ?? (async () => null)));
+      registry.install(createUsageExtension(env, credentialOwner));
       registry.install(btw);
 
       const btwName = btw.name;
@@ -107,7 +109,7 @@ export function createDialogueCore(env: Env, config: DialogueHarnessConfig = {})
     registry.install(fauxReplayExtension(models.faux, fauxSocraticScript));
   }
 
-  return { registry, models, btw, harness };
+  return { registry, models, btw, harness, credentialOwner };
 }
 
 export class RunDeadlineTracker {
@@ -214,18 +216,18 @@ export class RunDeadlineTracker {
 
 export async function submitViaRouter(
   env: Env,
-  models: ModelsBundle,
+  { models, credentialOwner }: DialogueCore,
   sessionModels: Map<string, { provider: string; id: string }>,
-  teacherLegs: TeacherLeg[],
   handle: PiSession,
   input: UserInput,
   options: PiSubmitOptions,
   doSubmit: (handle: PiSession, input: UserInput, options: PiSubmitOptions) => Promise<PiReceipt>,
 ): Promise<PiReceipt> {
+  const accountLegs = await teacherLegsOf(env, await credentialOwner());
   const router = getRouter(env);
   const canServe = (entry: { provider: string; model: string }): boolean =>
     models.models.getModel(entry.provider, entry.model) !== undefined;
-  const decision = router.pick("interactive", canServe, teacherLegs);
+  const decision = router.pick("interactive", canServe, accountLegs);
   if (!decision && !models.faux) throw new NoAvailableModelError();
   if (!decision) return doSubmit(handle, input, options);
 

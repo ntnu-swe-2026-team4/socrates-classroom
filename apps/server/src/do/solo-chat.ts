@@ -24,7 +24,7 @@ export class SoloChat extends DurableObject<Env> {
   readonly #sessionModels = new Map<string, { provider: string; id: string }>();
 
   readonly core = createDialogueCore(this.env, {
-    teacherOf: async () => null,
+    credentialOwner: async () => this.#ownerId(),
     getLang: () => this.studentLang(),
   });
 
@@ -84,6 +84,10 @@ export class SoloChat extends DurableObject<Env> {
     if (job.fn === RUN_DEADLINE_JOB) await this.tracker.checkRun(job);
   }
 
+  #ownerId(): string | null {
+    return this.ctx.id.name?.split(":")[0] || null;
+  }
+
   private async studentLang(): Promise<Lang> {
     return (await this.ctx.storage.get<Lang>(STUDENT_LANG_KEY)) ?? "zh";
   }
@@ -103,7 +107,7 @@ export class SoloChat extends DurableObject<Env> {
       }).catch((error) => console.warn("[solo-chat] failed to touch thread updated_at", error));
     }
 
-    return submitViaRouter(this.env, this.core.models, this.#sessionModels, [], handle, input, options, (h, inp, opt) =>
+    return submitViaRouter(this.env, this.core, this.#sessionModels, handle, input, options, (h, inp, opt) =>
       this.tracker.submitWithDeadline(h, inp, opt, (p) => this.ctx.waitUntil(p)),
     );
   }
@@ -113,8 +117,7 @@ export class SoloChat extends DurableObject<Env> {
   }
 
   private async canSubmit(identity: SocketIdentity): Promise<boolean> {
-    const [userId] = (this.ctx.id.name ?? "").split(":");
-    return !!userId && identity.userId === userId;
+    return identity.userId !== null && identity.userId === this.#ownerId();
   }
 
   private async authorize(request: Request): Promise<SocketIdentity | null> {
@@ -134,9 +137,7 @@ export class SoloChat extends DurableObject<Env> {
   }
 
   private async reverify(identity: SocketIdentity): Promise<ReverifyOutcome> {
-    const [userId] = (this.ctx.id.name ?? "").split(":");
-    if (!userId || identity.userId !== userId) return "revoked";
-    if (identity.userId === null) return "revoked";
+    if (identity.userId === null || identity.userId !== this.#ownerId()) return "revoked";
 
     try {
       const state = await accountState(this.env.DB, identity.userId);

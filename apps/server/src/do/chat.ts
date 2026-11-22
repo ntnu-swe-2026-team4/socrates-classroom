@@ -7,7 +7,7 @@ import type { Env } from "../env";
 import { SESSION_COOKIE, PARTICIPANT_COOKIE, accountState, lookupParticipant, lookupSession } from "../auth";
 import { activityAccess, participantOf } from "../services/members";
 import { forkBtw } from "../pi/extensions/btw";
-import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
+import { teacherOfActivity } from "../pi/credentials";
 import { one } from "../db/d1";
 import { ApiError, type Lang } from "@socrates/shared";
 import { normalizeLang } from "../http";
@@ -36,7 +36,7 @@ export class Chat extends DurableObject<Env> {
   readonly #sessionModels = new Map<string, { provider: string; id: string }>();
 
   readonly core = createDialogueCore(this.env, {
-    teacherOf: () => this.teacherId(),
+    credentialOwner: () => this.teacherId(),
     getLang: () => this.studentLang(),
   });
 
@@ -114,10 +114,6 @@ export class Chat extends DurableObject<Env> {
     await this.ctx.storage.put(STUDENT_LANG_KEY, normalizeLang(lang));
   }
 
-  private async teacherLegs(): Promise<TeacherLeg[]> {
-    return teacherLegsOf(this.env, await this.teacherId());
-  }
-
   private async routeSubmit(handle: PiSession, input: UserInput, options: PiSubmitOptions): Promise<PiReceipt> {
     const activityId = this.ctx.id.name?.split(":")[0] ?? "";
     const activity = await one<{ finished_at: string | null }>(
@@ -127,15 +123,8 @@ export class Chat extends DurableObject<Env> {
     );
     if (activity?.finished_at) throw new ActivityFinishedError();
 
-    return submitViaRouter(
-      this.env,
-      this.core.models,
-      this.#sessionModels,
-      await this.teacherLegs(),
-      handle,
-      input,
-      options,
-      (h, inp, opt) => this.tracker.submitWithDeadline(h, inp, opt, (p) => this.ctx.waitUntil(p)),
+    return submitViaRouter(this.env, this.core, this.#sessionModels, handle, input, options, (h, inp, opt) =>
+      this.tracker.submitWithDeadline(h, inp, opt, (p) => this.ctx.waitUntil(p)),
     );
   }
 

@@ -4,13 +4,14 @@ import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "c
 import { routeAgentRequest } from "agents";
 import { ROOT_SESSION } from "agents/harness/pi";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
 import { ROOT_CONVERSATION_ID, type ConversationId } from "@earendil-works/pi-durable";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { inject } from "vitest";
 
 vi.setConfig({ testTimeout: 15_000 });
 import { seedFixture } from "../src/seed";
-import { all, run } from "../src/db/d1";
+import { all, batch, run } from "../src/db/d1";
 import type { Chat } from "../src/do/chat";
 import { BTW_THINKING_LEVEL, PROFILES } from "../src/pi/agents/profiles";
 import { SOCRATES_PROMPTS, socratesExtension } from "../src/pi/extensions/socrates";
@@ -141,46 +142,45 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     socket.close();
   });
 
-  it("a turn on a teacher leg records usage for the teacher's keyed provider", async () => {
-    const teacher = await all<{ id: string }>(env.DB, "SELECT id FROM users WHERE email = 'demo@socrates.tw'");
-    expect(teacher).toHaveLength(1);
-    await run(
-      env.DB,
-      `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
-       VALUES ($uid, 'faux', 'enc', 'xxxx', 0, '2026-11-21T00:00:00.000Z')`,
-      { uid: teacher[0].id },
-    );
-    await run(
-      env.DB,
-      `INSERT INTO teacher_key_models (user_id, provider_id, model, max_concurrency, sort_order, updated_at)
-       VALUES ($uid, 'faux', 'faux-1', NULL, 0, '2026-11-21T00:00:00.000Z')`,
-      { uid: teacher[0].id },
-    );
+  it("routes classroom dialogue through the classroom teacher's gateway when the student has their own gateway", async () => {
+    const [teacher] = await all<{ id: string }>(env.DB, "SELECT id FROM users WHERE email = 'demo@socrates.tw'");
+    const student = await registerStudent(classroomCode, "額度生");
+    const provider = "activity-gateway";
+    const params = { teacher: teacher.id, student: student.userId, provider, now: new Date().toISOString() };
+    await batch(env.DB, [
+      {
+        sql: `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
+              VALUES ($teacher, $provider, 'enc', 'xxxx', 0, $now), ($student, $provider, 'enc', 'xxxx', 0, $now)`,
+        params,
+      },
+      {
+        sql: `INSERT INTO teacher_key_models (user_id, provider_id, model, sort_order, updated_at)
+              VALUES ($teacher, $provider, 'teacher-model', 0, $now), ($student, $provider, 'student-model', 0, $now)`,
+        params,
+      },
+    ]);
 
-    const student = await joinStudent("額度生");
-    const thread = `${activityId}:${student.participantId}`;
-    const socket = await connect(thread, student.cookie);
-    const rx = frames(socket);
-    await rx.until((f) => f.some((m) => m.type === "hello"));
-    socket.send(JSON.stringify({ type: "watch" }));
-    await rx.until((f) => f.some((m) => m.type === "view"));
-    socket.send(JSON.stringify({ type: "submit", id: "s1", input: "正義是什麼？" }));
-    await rx.until((f) => {
-      const view = latestView(f);
-      return view !== undefined && assistantText(view).includes("直覺判斷");
+    const thread = `${activityId}:${await participantIdOf(activityId, student.cookie)}`;
+    const stub = env.Chat.get(env.Chat.idFromName(thread));
+    await runInDurableObject(stub, (instance) => {
+      const faux = fauxProvider({ provider, models: [{ id: "teacher-model" }, { id: "student-model" }] });
+      faux.setResponses([fauxAssistantMessage("Why?")]);
+      (instance as Chat).models.models.setProvider(faux.provider);
     });
-    socket.close();
-
-    let usage: Array<{ provider_id: string; model: string }> = [];
-    for (let i = 0; i < 20 && usage.length === 0; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      usage = await all<{ provider_id: string; model: string }>(
-        env.DB,
-        "SELECT provider_id, model FROM teacher_key_usage WHERE user_id = $uid AND provider_id = 'faux'",
-        { uid: teacher[0].id },
-      );
+    const socket = await connect(thread, student.cookie);
+    try {
+      const rx = frames(socket);
+      await rx.until((f) => f.some((m) => m.type === "hello"));
+      socket.send(JSON.stringify({ type: "submit", id: "s1", input: "正義是什麼？" }));
+      await expect
+        .poll(
+          () => all(env.DB, "SELECT user_id, model FROM teacher_key_usage WHERE provider_id = $provider", { provider }),
+          { timeout: 5000 },
+        )
+        .toEqual([{ user_id: teacher.id, model: "teacher-model" }]);
+    } finally {
+      socket.close();
     }
-    expect(usage).toEqual([{ provider_id: "faux", model: "faux-1" }]);
   });
 
   it("reconnect after disconnect: transcript restored persistently from pi storage", async () => {

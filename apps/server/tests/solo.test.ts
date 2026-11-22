@@ -1,13 +1,16 @@
 import { env } from "cloudflare:workers";
-import { applyD1Migrations } from "cloudflare:test";
+import { applyD1Migrations, runInDurableObject } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { routeAgentRequest } from "agents";
+import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
 import { createApp } from "../src/app";
 import { seedFixture } from "../src/seed";
 import type { ClientMessage, ServerMessage } from "../src/ws/protocol";
 import type { SoloThread } from "@socrates/shared";
-import { all } from "../src/db/d1";
+import { all, batch } from "../src/db/d1";
+import type { SoloChat } from "../src/do/solo-chat";
+import { frames, latestView } from "./helpers";
 
 const migrations = inject("d1Migrations");
 
@@ -247,5 +250,66 @@ describe("Solo chat WebSocket communication", () => {
     expect(ops.ops.length).toBeGreaterThan(0);
 
     socket.close();
+  });
+
+  it("routes solo dialogue through the thread owner's gateway and records usage for that account", async () => {
+    const login = await call("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "student-b@socrates.tw", password: "demo-demo" }),
+    });
+    expect(login.status).toBe(200);
+    const cookie = cookieOf(login);
+    const { id: ownerId } = (await login.json()) as { id: string };
+    const created = await call("/api/solo/threads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({}),
+    });
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as SoloThread;
+    const thread = `${ownerId}:${id}`;
+    const provider = "account-gateway";
+    const params = { owner: ownerId, other: userId, provider, now: new Date().toISOString() };
+    await batch(env.DB, [
+      {
+        sql: `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
+              VALUES ($owner, $provider, 'enc', 'xxxx', 0, $now), ($other, $provider, 'enc', 'xxxx', 0, $now)`,
+        params,
+      },
+      {
+        sql: `INSERT INTO teacher_key_models (user_id, provider_id, model, sort_order, updated_at)
+              VALUES ($owner, $provider, 'owner-model', 0, $now), ($other, $provider, 'other-model', 0, $now)`,
+        params,
+      },
+    ]);
+    const stub = env.SoloChat.get(env.SoloChat.idFromName(thread));
+    await runInDurableObject(stub, (instance) => {
+      const faux = fauxProvider({ provider, models: [{ id: "owner-model" }, { id: "other-model" }] });
+      faux.setResponses([fauxAssistantMessage("Why?")]);
+      (instance as SoloChat).models.models.setProvider(faux.provider);
+    });
+
+    const socket = await connectSolo(thread, cookie);
+    try {
+      const rx = frames(socket);
+      await rx.until((messages) => messages.some((message) => message.type === "hello"));
+      socket.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
+      await rx.until((messages) => messages.some((message) => message.type === "view"));
+      socket.send(JSON.stringify({ type: "submit", id: "gateway", input: "What is justice?" } satisfies ClientMessage));
+      const assistant = (messages: ServerMessage[]) =>
+        latestView(messages)
+          ?.entries.flatMap((entry) => entry.model ?? [])
+          .find((message) => message.role === "assistant");
+      await rx.until((messages) => assistant(messages) !== undefined);
+      expect(assistant(rx.list)).toMatchObject({ provider, model: "owner-model" });
+      await expect
+        .poll(() =>
+          all(env.DB, "SELECT user_id, model FROM teacher_key_usage WHERE provider_id = $provider", { provider }),
+        )
+        .toEqual([{ user_id: ownerId, model: "owner-model" }]);
+    } finally {
+      socket.close();
+    }
   });
 });
