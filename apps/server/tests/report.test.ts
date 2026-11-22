@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { applyD1Migrations, runInDurableObject } from "cloudflare:test";
+import { applyD1Migrations, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { run } from "../src/db/d1";
@@ -142,6 +142,40 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     );
     expect(plan).toEqual({ count: 1, teacher: axes });
   });
+
+  it.each(["teacher", "ai"] as const)(
+    "finishes an empty %s activity with a ready report",
+    async (reportAxes) => {
+      const classroom = await createClassroom(teacherCookie, `空名冊班 ${reportAxes}`);
+      const started = await call(`/api/classrooms/${classroom.classroomId}/activities`, {
+        method: "POST",
+        headers: { Cookie: teacherCookie, "Content-Type": "application/json" },
+        body: JSON.stringify({ topicId: await systemTopicId(teacherCookie), reportAxes }),
+      });
+      expect(started.status).toBe(201);
+      const { activityId } = (await started.json()) as { activityId: string };
+      const finish = await call(`/api/activities/${activityId}/finish`, {
+        method: "POST",
+        headers: { Cookie: teacherCookie, "CF-Connecting-IP": "198.51.100.24" },
+      });
+      expect(finish.status).toBe(204);
+
+      await runDurableObjectAlarm(env.ReportRunner.getByName(activityId));
+      await expect
+        .poll(
+          async () => {
+            const response = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: teacherCookie } });
+            return { status: response.status, body: await response.json() };
+          },
+          { timeout: 10_000 },
+        )
+        .toMatchObject({
+          status: 200,
+          body: { students: [], classReport: { students: [], unstated: [], axes: [], overview: [expect.any(String)] } },
+        });
+    },
+    30_000,
+  );
 
   it("finish → alarm generates → ready; teacher sees the whole class, student sees their own, shape matches §7", async () => {
     let report: Response | null = null;

@@ -180,7 +180,7 @@ export function classroomsRoutes() {
       const input = c.req.valid("json");
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");
-      const reportAxes = reportAxesFor(input.reportAxes);
+      const reportAxes = await reportAxesFor(c.env.DB, input.reportAxes);
       await topicForActivity(c.env.DB, input.topicId, classroom.id, user.id, reportAxes);
       const activityId = await createActivity(c.env.DB, classroom.id, input.topicId, input.mode, reportAxes);
       if (input.mode === "live") await publishClassroom(c.env, classroom.id, "activities");

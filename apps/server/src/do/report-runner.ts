@@ -49,6 +49,12 @@ import { gatewayConfig } from "../gateway/config.gen";
 import { fauxReplayExtension } from "../pi/extensions/faux-replay";
 import { createUsageExtension } from "../pi/extensions/usage";
 
+const EMPTY_CLASS_OVERVIEW: Record<Lang, string> = {
+  zh: "這場活動沒有學生發言。",
+  en: "No students spoke during this activity.",
+  es: "Ningún estudiante intervino en esta actividad.",
+};
+
 export type ReportAlarmPlan =
   | { action: "terminal" }
   | { action: "rearm"; delayMs: number }
@@ -322,8 +328,23 @@ export class ReportRunner extends DurableObject<Env> {
       rendered.set(participant.id, renderTranscript(participant.id, transcripts.get(participant.id), pseudonyms));
     }
 
-    const harness = await this.openHarness();
     const studentAnalyses = new Map<string, StudentAnalysis | null>();
+    const studentIndicators = new Map<string, ThinkingIndicators | null>();
+    if (roster.length === 0) {
+      await this.persist(
+        activityId,
+        activity.title,
+        { students: [], unstated: [], axes: [], overview: [EMPTY_CLASS_OVERVIEW[teacherLang]] },
+        roster,
+        studentAnalyses,
+        studentIndicators,
+        pseudonyms,
+        rendered,
+      );
+      return;
+    }
+
+    const harness = await this.openHarness();
     for (let i = 0; i < roster.length; i += batch) {
       await Promise.all(
         roster.slice(i, i + batch).map(async (participant) => {
@@ -365,7 +386,6 @@ export class ReportRunner extends DurableObject<Env> {
     }
 
     const indicatorsHarness = await this.openHarness(this.indicatorsRegistry);
-    const studentIndicators = new Map<string, ThinkingIndicators | null>();
     for (let i = 0; i < roster.length; i += batch) {
       await Promise.all(
         roster.slice(i, i + batch).map(async (participant) => {

@@ -157,7 +157,7 @@ no queue：busy 時第二發被拒（`ConversationBusy` → error frame），不
 
 `finish` 觸發，alarm 驅動（crash-safe，attempts 上限 3）：
 
-`finish` 依活動建立時儲存的 `activities.report_axes` 選擇 report profile。`teacher` 把活動題目的軸交給 `startReport`，並以題目的軸數為上限。`ai` 與未記錄模式的舊活動走 `class-report`，由模型定軸。
+`finish` 依活動建立時儲存的 `activities.report_axes` 選擇 report profile。`teacher` 把活動題目的軸交給 `startReport`，並以題目的軸數為上限。`ai` 與未記錄模式的舊活動走 `class-report`，由模型定軸。ReportRunner 確認 roster 為空時直接儲存 ready report，跳過模型呼叫。
 
 ```
 startReport → pending 標記 → alarm → generate：
