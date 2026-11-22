@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { activitySlotsOptions, classroomsOptions, teacherActivityOptions } from "@/api/queries";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -89,24 +89,36 @@ function LivePage() {
   );
 }
 
+function parseSlotCount(raw: string, remaining: number): number | null {
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > remaining) return null;
+  return parsed;
+}
+
 function SlotPanel({ activityId, finished }: { activityId: string; finished: boolean }) {
   const t = useT();
   const queryClient = useQueryClient();
-  const [count, setCount] = useState(1);
+  const countHintId = useId();
+  const [countInput, setCountInput] = useState("1");
+  const [badInput, setBadInput] = useState(false);
   const slots = useQuery(activitySlotsOptions(activityId));
   const create = useMutation({
     mutationFn: (n: number) => api.createActivitySlots(activityId, n),
     onSuccess: (data) => {
       queryClient.setQueryData(activitySlotsOptions(activityId).queryKey, data);
-      setCount(1);
+      setCountInput("1");
+      setBadInput(false);
     },
   });
 
   const list = slots.data?.slots ?? [];
   const max = slots.data?.maxSlots ?? ACTIVITY_SLOT_MAX;
   const remaining = Math.max(max - list.length, 0);
-  const planned = Math.min(Math.max(count, 1), Math.max(remaining, 1));
-  const analyses = list.length + (remaining > 0 ? planned : 0);
+  const validCount = badInput ? null : parseSlotCount(countInput, remaining);
+  const countInvalid = remaining > 0 && (badInput || (countInput.trim() !== "" && validCount === null));
+  const analyses = list.length + (validCount ?? 0);
 
   return (
     <section>
@@ -152,29 +164,55 @@ function SlotPanel({ activityId, finished }: { activityId: string; finished: boo
         {finished ? (
           <p className="mt-5 text-[13px] text-ink-faint">{t("live_slots_finished")}</p>
         ) : (
-          <div className="mt-6 flex flex-wrap items-end gap-3">
+          <form
+            noValidate
+            className="mt-6 flex flex-wrap items-end gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (validCount === null || create.isPending || !slots.data) return;
+              create.mutate(validCount);
+            }}
+          >
             <div className="w-36">
               <Field label={t("live_slots_count")}>
                 <Input
                   type="number"
+                  inputMode="numeric"
                   min={1}
                   max={Math.max(remaining, 1)}
-                  value={planned}
+                  step={1}
+                  value={countInput}
                   disabled={remaining === 0 || create.isPending}
-                  onChange={(event) => setCount(Number(event.target.value))}
+                  aria-invalid={countInvalid || undefined}
+                  aria-describedby={countHintId}
+                  onInput={(event) => {
+                    if (create.isError) create.reset();
+                    setBadInput(event.currentTarget.validity.badInput);
+                  }}
+                  onChange={(event) => {
+                    if (create.isError) create.reset();
+                    setCountInput(event.target.value);
+                  }}
                 />
               </Field>
             </div>
-            <Button
-              disabled={remaining === 0 || create.isPending || !slots.data}
-              onClick={() => create.mutate(planned)}
-            >
+            <Button type="submit" disabled={remaining === 0 || create.isPending || !slots.data || validCount === null}>
               {create.isPending ? <Spinner /> : t("live_slots_create")}
             </Button>
-            <p className={cn("text-[12.5px] text-ink-faint", create.isError && "text-flag")}>
-              {create.isError ? t("common_error") : t("live_slots_cost", { n: analyses })}
-            </p>
-          </div>
+            {countInvalid ? (
+              <p id={countHintId} role="alert" className="text-[12.5px] text-flag">
+                {t("live_slots_count_invalid", { max: remaining })}
+              </p>
+            ) : (
+              <p
+                id={countHintId}
+                role={create.isError ? "alert" : undefined}
+                className={cn("text-[12.5px] text-ink-faint", create.isError && "text-flag")}
+              >
+                {create.isError ? t("common_error") : t("live_slots_cost", { n: analyses })}
+              </p>
+            )}
+          </form>
         )}
       </Card>
     </section>

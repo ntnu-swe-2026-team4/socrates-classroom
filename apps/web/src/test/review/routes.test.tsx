@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -778,5 +779,109 @@ test("#314: an in-flight invite creation for the previous activity does not popu
   } finally {
     dispose();
     vi.unstubAllGlobals();
+  }
+});
+
+function stubTestActivitySlots(
+  initialSlots: Array<{ id: string; name: string; rounds: number; lastUtterance: string | null }>,
+) {
+  let slots = [...initialSlots];
+  const createCounts: number[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (path === "/api/activities/activity-1/slots" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { count: number };
+        createCounts.push(body.count);
+        for (let i = 0; i < body.count; i += 1) {
+          const index = slots.length + 1;
+          slots = [...slots, { id: `slot-${index}`, name: `Test ${index}`, rounds: 0, lastUtterance: null }];
+        }
+        return new Response(JSON.stringify({ activityId: "activity-1", mode: "test", maxSlots: 6, slots }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
+        "/api/activities/activity-1": { ...liveActivity, mode: "test" },
+        "/api/classrooms": [roomSummary("teacher")],
+        "/api/activities/activity-1/slots": { activityId: "activity-1", mode: "test", maxSlots: 6, slots },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  return createCounts;
+}
+
+test("#303: t.live test-slot count input can be cleared with Backspace and retyped to submit", async () => {
+  const user = userEvent.setup();
+  const createCounts = stubTestActivitySlots([]);
+  const dispose = await mountRoute("/t/live/activity-1");
+  try {
+    const input = (await screen.findByRole("spinbutton", { name: "How many to add" })) as HTMLInputElement;
+    const submit = screen.getByRole("button", { name: "Add test dialogues" });
+    await waitFor(() => expect(submit).toHaveProperty("disabled", false));
+    expect(input.value).toBe("1");
+
+    await user.click(input);
+    await user.keyboard("{Backspace}");
+    expect(input.value).toBe("");
+    expect(submit).toHaveProperty("disabled", true);
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    await user.keyboard("3");
+    expect(input.value).toBe("3");
+    expect(submit).toHaveProperty("disabled", false);
+    expect(screen.getByText("After adding: 3 student analyses in the report")).toBeTruthy();
+
+    await user.click(submit);
+    await waitFor(() => expect(createCounts).toEqual([3]));
+    await waitFor(() => expect(input.value).toBe("1"));
+    expect(await screen.findByText("Test 3")).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
+
+test("#303: t.live test-slot count input rejects out-of-range and non-integer values with inline guidance", async () => {
+  const user = userEvent.setup();
+  const createCounts = stubTestActivitySlots([
+    { id: "slot-1", name: "Test 1", rounds: 0, lastUtterance: null },
+    { id: "slot-2", name: "Test 2", rounds: 0, lastUtterance: null },
+  ]);
+  const dispose = await mountRoute("/t/live/activity-1");
+  try {
+    const input = (await screen.findByRole("spinbutton", { name: "How many to add" })) as HTMLInputElement;
+    const submit = screen.getByRole("button", { name: "Add test dialogues" });
+    await waitFor(() => expect(submit).toHaveProperty("disabled", false));
+
+    await user.clear(input);
+    await user.type(input, "5");
+    expect(input.value).toBe("5");
+    expect(submit).toHaveProperty("disabled", true);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByRole("alert").textContent).toContain("4");
+
+    await user.clear(input);
+    await user.type(input, "0");
+    expect(input.value).toBe("0");
+    expect(submit).toHaveProperty("disabled", true);
+    expect(screen.getByRole("alert").textContent).toContain("4");
+
+    await user.clear(input);
+    await user.type(input, "1.5");
+    expect(input.value).toBe("1.5");
+    expect(submit).toHaveProperty("disabled", true);
+    expect(screen.getByRole("alert").textContent).toContain("4");
+
+    await user.clear(input);
+    await user.type(input, "2{Enter}");
+    await waitFor(() => expect(createCounts).toEqual([2]));
+    expect(screen.queryByRole("alert")).toBeNull();
+  } finally {
+    dispose();
   }
 });
