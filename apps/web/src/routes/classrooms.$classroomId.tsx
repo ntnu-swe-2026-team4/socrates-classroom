@@ -31,11 +31,18 @@ const channels = {
 } as const;
 
 type Tab = keyof typeof channels;
-const tabs = Object.keys(channels) as Tab[];
+
+const TAB_KEYS = ["topics", "announcements", "board", "members"] as const;
+
+function isTab(value: string): value is Tab {
+  return TAB_KEYS.some((key) => key === value);
+}
+
+const tabs = TAB_KEYS;
 
 export const Route = createFileRoute("/classrooms/$classroomId")({
   validateSearch: (search: Record<string, unknown>): { tab?: Tab } => ({
-    tab: typeof search.tab === "string" && Object.hasOwn(channels, search.tab) ? (search.tab as Tab) : undefined,
+    tab: typeof search.tab === "string" && isTab(search.tab) ? search.tab : undefined,
   }),
   beforeLoad: async ({ context, location }) => {
     const me = await meOf(context.queryClient);

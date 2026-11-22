@@ -113,6 +113,18 @@
 - `student-indicators` profile 與 `submit_student_indicators` 工具（`report-submit-indicators` extension，只裝在這條呼叫用的 registry）：逐生判斷 C1–A2，與論點總結分開呼叫、各自失敗（流程見 `docs/architecture.md` ReportRunner）
 - `TeacherReport.students[].indicators`、`StudentReport.indicators`（形狀見 `docs/api-contract.md` §7）；指標上線前存下的報告回 `null`，不變成 `report_failed`
 
+## 2026-11-22 — TS 靜態保證 step 1b L1：src 層 unsafe type assertion 清零（`refactor/293-step1b-src`，#293）
+
+### Changed
+
+- src 層 146 處 `as` 斷言清零（全庫探針 476→351 @ tip `f0756802`，其餘 tests 層由 1b-L2 承接；探針隨 tree 旋轉，覆核時以當時 tip 標注）；探針覆核與 spike 分層提案見 issue 註解。主要族群落地：
+  - **WS protocol 雙向守衛**（`ws/protocol.ts` 的 `parseClientMessage` 全驗學生端訊框＋`web/src/lib/wsProtocol.ts` 的 `parseServerMessage` shallow 檢查同源 Worker 訊框；`isEntryId`/`entryIdOf` predicate 處理 branded id）
+  - **JWT claims 誠實化**（`openPayload` 回 `unknown`、三種 claims 逐欄位驗證後建構、Google JWKs 逐把 field-validate、8 處 `as BufferSource` 為 legacy 直接移除）
+  - **dialogue hooks**：`WindowedEntry` 改 `Pick<EntryRecord, …>`，pi 自身的 `Message[]` 型別直接流動（role 窄化取代 cast）；`textOfContent` 取代偽造 `Message`；fake socket 走 `canSend` shape predicate（test 的 plain-object fake 因此存活）
+  - **pi/ai seam**：`ai-run.ts` 單一轉換點承接 workers-types 靜態 catalog vs config 模型 id 的型別斷層（`aiRunOf`＋`readChoiceResult`）；`fail()` 參數收斂為 `FailStatus` union（實測 10 個 status 碼）並以 `httpStatusOf` 窄化進 Hono
+  - 其餘：`readViolationType` 供 config 驅動的型別窄化、i18n/stance/DOM/THREE 家族 predicate 化、`transcript()` 的 violations 由源頭窄化為 `ViolationType`
+- **凍結面與 carve-out**：頂層 `nursery.noUnsafeTypeAssertion: "error"` 落地（實證此 rule 不在 recommended preset 也非 types domain 成員，先前的「凍結」其實無 gate——review 勘誤），gate 面以雙向 probe 驗證（governed src 插入 probe → `pnpm lint` 紅 → 移除回綠）。例外 override 兩組：(1) 五個型別系統 seam 檔案（`ai-run.ts`／`api/http.ts`／`useSubscription.ts`／`voiceInput.ts`／`wsProtocol.ts`）——静態型別與 config 驅動模型 id／同源 typed payload／vendor DOM ctor／fake 環境 glue 的終端橋，欄位級守衛已覆蓋全部業務值，shape 同 #283 `noConsole` 先例；(2) tests 目錄（`apps/server/tests/**`／`apps/web/src/test/**`／`apps/web/dev/**`）——`runInDurableObject` 官方 pattern、fake fixture builders、jsdom shim 等測試工程本質 cast，由 1b-L2 以 reader 家族逐檔真清收回。註：Biome 2.6.8 的 suppression 註解引擎對有效壓制誤報 `suppressions/unused`（#5503 家族，已驗證 suppression 確實有效），故不走 biome-ignore＋ratchet 白名單路線，待上游修復後可回收為 suppression 流
+
 ## 2026-11-22 — TS 靜態保證 step 3：suppression ratchet 白名單凍結（`refactor/293-step3-ratchet`，#293）
 
 ### Added

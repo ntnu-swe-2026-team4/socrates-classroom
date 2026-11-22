@@ -2294,13 +2294,16 @@ function readInitial(): Locale {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     const normalized = saved === "zh" ? "zh-TW" : saved;
-    if (normalized && (locales as readonly string[]).includes(normalized)) return normalized as Locale;
+    if (normalized) {
+      const savedLocale = locales.find((locale) => locale === normalized);
+      if (savedLocale !== undefined) return savedLocale;
+    }
   } catch {}
   for (const tag of navigator.languages) {
     try {
       const base = new Intl.Locale(tag.toLowerCase()).language;
-      const match = (locales as readonly string[]).find((l) => l.toLowerCase() === base);
-      if (match) return match as Locale;
+      const match = locales.find((l) => l.toLowerCase() === base);
+      if (match !== undefined) return match;
     } catch {}
   }
   return "zh-TW";

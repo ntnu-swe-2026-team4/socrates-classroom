@@ -31,10 +31,12 @@ export function parseServerMessage(raw: string): ServerMessage | null {
         : null;
     case "view":
       if (!isRecord(parsed.view) || !Array.isArray(parsed.view.entries)) return null;
-      return { type: "view", view: parsed.view as ViewPayload };
+      // same-origin Worker payload — shallow contract check; the deep ConversationView is pi-durable's own serialization
+      return { type: "view", view: parsed.view as unknown as ViewPayload };
     case "ops":
       if (!Array.isArray(parsed.ops)) return null;
-      return { type: "ops", ops: parsed.ops as OpsPayload };
+      // same-origin Worker payload — array shape checked; Op internals are chord's own serialization
+      return { type: "ops", ops: parsed.ops as unknown as OpsPayload };
     case "result":
       return typeof parsed.id === "string"
         ? { type: "result", id: parsed.id, result: parsed.result as ResultPayload }

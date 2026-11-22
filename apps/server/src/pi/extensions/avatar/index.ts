@@ -34,7 +34,7 @@ export const EmotionEntry: Entry<{
 
 const EMOTION_MODEL = gatewayConfig.classifiers.emotion;
 
-export const EMOTION_QUESTION = clefChoicePrompt<Emotion>(EMOTION_RAW);
+export const EMOTION_QUESTION = clefChoicePrompt(EMOTION_RAW, EMOTIONS);
 
 export function createEmotionClassifier(ai: Ai): (text: string) => Promise<EmotionJudgment | null> {
   return (text) => classify(ai, text);

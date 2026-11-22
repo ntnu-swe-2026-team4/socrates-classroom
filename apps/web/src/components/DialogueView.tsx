@@ -10,7 +10,6 @@ import { useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { useElapsed } from "@/hooks/useSubscription";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useT, type MessageKey } from "@/i18n";
-import type { Message } from "@earendil-works/pi-ai";
 
 const VOICE_ERROR_KEY: Record<"denied" | "unsupported" | "failed", MessageKey> = {
   denied: "voice_denied",
@@ -335,7 +334,7 @@ export function DialogueView({
                 if (item.kind !== "entry") return null;
                 const entry = item.entry;
                 if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") return null;
-                const content = textOf((entry.model?.[0] ?? undefined) as Message | undefined);
+                const content = textOf(entry.model?.[0]);
                 if (content === "") return null;
                 return (
                   <Turn key={`e${entry.id}`} speaker={entry.kind === "pi.user" ? "user" : "assistant"} text={content} />

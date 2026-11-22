@@ -65,6 +65,7 @@
         "useReactCompiler": "error",
         "noUselessTypeConversion": "error",
         "noReturnInFinally": "error",
+        "noUnsafeTypeAssertion": "error",
         // Probe-verified 2026-11-21 at tip 736c742: 6/6 findings are false positives — the rule
         // cannot resolve function-typed parameters, narrowed locals, or overload sets, only
         // this.#field reads. Revisit when the nursery inference matures.
@@ -143,6 +144,25 @@
         "rules": {
           "suspicious": {
             "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/server/src/pi/ai-run.ts",
+        "apps/web/src/api/http.ts",
+        "apps/web/src/hooks/useSubscription.ts",
+        "apps/web/src/lib/voiceInput.ts",
+        "apps/web/src/lib/wsProtocol.ts",
+        "apps/server/tests/**",
+        "apps/web/src/test/**",
+        "apps/web/dev/**"
+      ],
+      "linter": {
+        "rules": {
+          "nursery": {
+            "noUnsafeTypeAssertion": "off"
           }
         }
       }

@@ -39,9 +39,7 @@ class ClipLayer {
     this.duration = duration;
     this.fadeIn = fadeIn;
     this.fadeOut = fadeOut;
-    this.interp = (
-      track as unknown as { createInterpolant: () => { evaluate: (t: number) => Float64Array } }
-    ).createInterpolant();
+    this.interp = trackInterpolantOf(track);
     const k = track.values.length / track.times.length;
     this.used = new Array(k).fill(false);
     for (let i = 0; i < track.values.length; i++) if (Math.abs(track.values[i]) > 0.01) this.used[i % k] = true;
@@ -88,6 +86,27 @@ type MorphMesh = THREE.Mesh & {
   morphTargetInfluences: number[];
 };
 
+function isMorphMesh(obj: THREE.Object3D): obj is MorphMesh {
+  if (!(obj instanceof THREE.Mesh)) return false;
+  const dict: unknown = Reflect.get(obj, "morphTargetDictionary");
+  const influences: unknown = Reflect.get(obj, "morphTargetInfluences");
+  return typeof dict === "object" && dict !== null && !Array.isArray(dict) && Array.isArray(influences);
+}
+
+function trackInterpolantOf(track: THREE.KeyframeTrack): { evaluate: (t: number) => Float64Array } {
+  const factory: unknown = Reflect.get(track, "createInterpolant");
+  if (typeof factory !== "function") throw new Error("keyframe track lacks createInterpolant");
+  const interp: unknown = Reflect.apply(factory, track, []);
+  const evaluate: unknown = typeof interp === "object" && interp !== null ? Reflect.get(interp, "evaluate") : undefined;
+  if (typeof evaluate !== "function") throw new Error("keyframe track interpolant lacks evaluate");
+  return {
+    evaluate: (t: number): Float64Array => {
+      const out: unknown = Reflect.apply(evaluate, interp, [t]);
+      return out instanceof Float64Array ? out : new Float64Array();
+    },
+  };
+}
+
 export class Avatar {
   root: THREE.Group;
   meshes: MorphMesh[];
@@ -114,9 +133,8 @@ export class Avatar {
     this.time = 0;
 
     model.traverse((obj: THREE.Object3D) => {
-      const mesh = obj as THREE.Mesh;
-      if (mesh.isMesh && mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
-        this.meshes.push(mesh as MorphMesh);
+      if (isMorphMesh(obj)) {
+        this.meshes.push(obj);
       }
     });
     for (const v of VISEMES) {

@@ -593,7 +593,10 @@ function AgoraStage({ children }: { children?: ReactNode }) {
     if (!board) return;
     const actors = Array.from(board.querySelectorAll<HTMLElement>("[data-actor]"));
     const releases = actors.map((node) => {
-      const figure = FIGURES[node.dataset.figure as FigureKey];
+      const key = node.dataset.figure;
+      const entry = Object.entries(FIGURES).find(([figureKey]) => figureKey === key);
+      if (entry === undefined) return () => {};
+      const figure = entry[1];
       let pointer = -1;
       let grabX = 0;
       let grabY = 0;

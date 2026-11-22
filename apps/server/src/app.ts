@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { ApiError, type ClientConfig } from "@socrates/shared";
 import { localize } from "./messages";
-import { fail, normalizeLang, type AppEnv } from "./http";
+import { fail, httpStatusOf, normalizeLang, type AppEnv } from "./http";
 import { reportAxesPolicyOf } from "./services/settings";
 import { seedFixture } from "./seed";
 import { lookupSession, SESSION_COOKIE } from "./auth";
@@ -77,7 +77,8 @@ export function createApp() {
     .onError((error, c) => {
       const lang = c.get("lang") ?? normalizeLang(c.req.header("Accept-Language"));
       if (error instanceof ApiError) {
-        return c.json({ message: localize(error.code, lang, error.vars), code: error.code }, error.status as never);
+        const status = httpStatusOf(error.status) ?? 500;
+        return c.json({ message: localize(error.code, lang, error.vars), code: error.code }, status);
       }
       if (error instanceof HTTPException && error.status === 400) {
         return c.json({ message: localize("validation", lang), code: "validation" }, 422);

@@ -69,7 +69,7 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
                 : "hidden",
           )}
           onClickCapture={(event) => {
-            if (mobile && (event.target as HTMLElement).closest("a")) setMobileOpen(false);
+            if (mobile && event.target instanceof HTMLElement && event.target.closest("a")) setMobileOpen(false);
           }}
           onKeyDown={(event) => {
             if (mobile && open && event.key === "Escape") setMobileOpen(false);

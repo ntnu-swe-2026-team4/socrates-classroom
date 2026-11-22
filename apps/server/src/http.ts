@@ -35,7 +35,14 @@ export function langOf(c: Ctx): Lang {
   return c.get("lang");
 }
 
-export function fail(status: number, code: ErrorCode, vars: Record<string, string | number> = {}): never {
+export const FAIL_STATUSES = [400, 401, 403, 404, 409, 410, 422, 429, 500, 502] as const;
+export type FailStatus = (typeof FAIL_STATUSES)[number];
+
+export function httpStatusOf(status: number): FailStatus | undefined {
+  return FAIL_STATUSES.find((candidate) => candidate === status);
+}
+
+export function fail(status: FailStatus, code: ErrorCode, vars: Record<string, string | number> = {}): never {
   throw new ApiError(status, code, vars);
 }
 
@@ -93,8 +100,7 @@ export function uniqueViolationColumns(error: unknown): Array<[string, string]> 
     return match[1]
       .split(",")
       .map((pair) => pair.trim().split("."))
-      .filter((parts): parts is [string, string] => parts.length === 2)
-      .map(([table, column]) => [table, column] as [string, string]);
+      .filter((parts): parts is [string, string] => parts.length === 2);
   }
   return [];
 }

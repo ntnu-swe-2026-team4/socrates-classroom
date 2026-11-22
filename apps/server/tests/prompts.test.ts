@@ -138,8 +138,8 @@ describe("prompts (#161): what the report models receive is pinned", () => {
 
   it("a Clef asset reads the same with LF or CRLF line endings, and a criterion may contain a colon", () => {
     const parsed = { instructions: "Pick one.", criteria: { a: "first: with colon", b: "second" } };
-    expect(clefChoicePrompt("Pick one.\n\n- a: first: with colon\n- b: second\n")).toEqual(parsed);
-    expect(clefChoicePrompt("Pick one.\r\n\r\n- a: first: with colon\r\n- b: second\r\n")).toEqual(parsed);
+    expect(clefChoicePrompt("Pick one.\n\n- a: first: with colon\n- b: second\n", ["a", "b"])).toEqual(parsed);
+    expect(clefChoicePrompt("Pick one.\r\n\r\n- a: first: with colon\r\n- b: second\r\n", ["a", "b"])).toEqual(parsed);
   });
 
   it("report prompt assets hold {{lang}} and no other placeholder", () => {

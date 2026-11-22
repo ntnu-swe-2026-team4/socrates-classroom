@@ -74,7 +74,7 @@ export class ApiError extends Error {
 }
 
 function toErrorCode(raw: string | undefined): ErrorCode {
-  return (ERROR_CODES as readonly string[]).includes(raw ?? "") ? (raw as ErrorCode) : "internal_error";
+  return ERROR_CODES.find((code) => code === raw) ?? "internal_error";
 }
 
 export interface KeyProviderInfo {
@@ -184,14 +184,23 @@ type JsonLike = {
 };
 
 async function raiseApiError(res: { statusText: string; json(): Promise<unknown> }): Promise<never> {
-  const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-  throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
+  const parsed: unknown = await res.json().catch(() => null);
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new ApiError("internal_error", res.statusText);
+  }
+  const code = Reflect.get(parsed, "code");
+  const message = Reflect.get(parsed, "message");
+  throw new ApiError(
+    toErrorCode(typeof code === "string" ? code : undefined),
+    typeof message === "string" ? message : res.statusText,
+  );
 }
 
 async function unwrap<R extends JsonLike>(res: R): Promise<Awaited<ReturnType<R["json"]>>> {
-  if (res.status === 204) return undefined as Awaited<ReturnType<R["json"]>>;
+  if (res.status === 204) return undefined as unknown as Awaited<ReturnType<R["json"]>>;
   if (!res.ok) return raiseApiError(res);
-  return res.json() as Promise<Awaited<ReturnType<R["json"]>>>;
+  // same-origin API — R is the Hono-typed response whose json() the generic carries
+  return (await res.json()) as unknown as Awaited<ReturnType<R["json"]>>;
 }
 
 async function playTts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void> {
@@ -199,8 +208,11 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
   const res = await client.tts.$post({ json: input }, { init: { signal } });
   if (!res.ok) return raiseApiError(res);
   const bytes = await res.arrayBuffer();
+  // Safari legacy prefix — same constructor shape under the vendor name
+  const legacyCtor: unknown = Reflect.get(window, "webkitAudioContext");
   const AudioContextCtor =
-    window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    window.AudioContext ??
+    (typeof legacyCtor === "function" ? (legacyCtor as unknown as typeof AudioContext) : undefined);
   const context = new AudioContextCtor();
   if (context.state === "suspended") await context.resume().catch(() => {});
   const source = context.createBufferSource();

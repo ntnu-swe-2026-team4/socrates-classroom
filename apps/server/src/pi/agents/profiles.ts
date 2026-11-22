@@ -6,10 +6,12 @@ import {
   type Registry,
   type Submission,
 } from "@earendil-works/pi-durable";
+import { isJsonValue } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import { LANG_NAMES, type Lang } from "@socrates/shared";
+import type { JsonObject } from "@earendil-works/pi-durable";
 import STUDENT_REPORT_RAW from "../../prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../../prompts/class-report.md?raw";
 import CLASS_REPORT_AXES_RAW from "../../prompts/class-report-axes.md?raw";
@@ -190,7 +192,7 @@ export interface RunProfileOptions {
   submitTool?: string;
 }
 
-function toolCallPayload(entry: { model?: readonly unknown[] }, toolName: string): Record<string, unknown> | null {
+function toolCallPayload(entry: { model?: readonly unknown[] }, toolName: string): JsonObject | null {
   for (const message of entry.model ?? []) {
     if (typeof message !== "object" || message === null) continue;
     if (Reflect.get(message, "role") !== "assistant") continue;
@@ -208,9 +210,9 @@ function toolCallPayload(entry: { model?: readonly unknown[] }, toolName: string
         }
       }
       if (args !== null && typeof args === "object" && !Array.isArray(args)) {
-        const record: Record<string, unknown> = {};
+        const record: JsonObject = {};
         for (const [key, value] of Object.entries(args)) {
-          record[key] = value;
+          if (isJsonValue(value)) record[key] = value;
         }
         return record;
       }
@@ -233,7 +235,7 @@ export async function runProfile(
   input: string,
   teacherLegs?: TeacherLeg[],
   options: RunProfileOptions = {},
-): Promise<{ text: string; payload: Record<string, unknown> | null; conversation: Conversation }> {
+): Promise<{ text: string; payload: JsonObject | null; conversation: Conversation }> {
   const profile = PROFILES[profileName];
   const conversation = await harness.createConversation(
     { ownership: { kind: "ownerless" }, agent: agentChangeFor(profile, options.lang ?? "zh") },
