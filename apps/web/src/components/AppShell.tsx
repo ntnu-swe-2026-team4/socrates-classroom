@@ -29,7 +29,7 @@ const BARE_ROUTES = [/^\/$/, /^\/login\/?$/];
 
 const RAIL_FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vermilion";
 const NAV_BTN = cn(
-  "comic-sink flex w-16 cursor-pointer flex-col items-center gap-1 border-[1.5px] border-transparent py-[9px] text-[11.5px] text-ht-soft hover:border-ht-line hover:bg-ht-hover hover:text-ht-ink",
+  "comic-sink flex w-[76px] cursor-pointer flex-col items-center gap-1 border-[1.5px] border-transparent py-[9px] text-[11.5px] text-ht-soft hover:border-ht-line hover:bg-ht-hover hover:text-ht-ink",
   RAIL_FOCUS,
 );
 const NAV_ACTIVE =
@@ -152,7 +152,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           return (
             <Link key={item.to} to={item.to} className={cn(NAV_BTN, active && NAV_ACTIVE)}>
               <Icon className="size-[19px]" />
-              <span>{t(item.label)}</span>
+              <span className="max-w-full text-center leading-tight wrap-anywhere">{t(item.label)}</span>
             </Link>
           );
         })}
@@ -164,7 +164,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
         <div className="mb-3 flex w-full justify-center">
           <Link to={inAdmin ? "/home" : "/admin/users"} data-rail="site" className={NAV_BTN}>
             {inAdmin ? <Eye className="size-[19px]" /> : <ShieldCheck className="size-[19px]" />}
-            <span className="text-center leading-tight">{t(inAdmin ? "nav_back_to_site" : "nav_manage_site")}</span>
+            <span className="max-w-full text-center leading-tight wrap-anywhere">{t(inAdmin ? "nav_back_to_site" : "nav_manage_site")}</span>
           </Link>
         </div>
       )}
