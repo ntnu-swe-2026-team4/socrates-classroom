@@ -4,6 +4,7 @@ import { gatewayConfig } from "../gateway/config.gen";
 import { fail, nowIso } from "../http";
 
 const REPORT_AXES_KEY = "report_axes";
+export const activeReportAxesPolicy = "ai";
 
 export async function reportAxesPolicyOf(db: Db): Promise<ReportAxesPolicy> {
   const row = await one<{ value: string }>(db, "SELECT value FROM settings WHERE key = $key", {
@@ -22,9 +23,7 @@ export async function setReportAxesPolicy(db: Db, value: ReportAxesPolicy): Prom
   );
 }
 
-export async function reportAxesFor(db: Db, requested?: ReportAxes): Promise<ReportAxes> {
-  const policy = await reportAxesPolicyOf(db);
-  if (policy === "both") return requested ?? "teacher";
-  if (requested !== undefined && requested !== policy) fail(422, "report_axes_not_allowed");
-  return policy;
+export function reportAxesFor(requested?: ReportAxes): ReportAxes {
+  if (requested !== undefined && requested !== activeReportAxesPolicy) fail(422, "report_axes_not_allowed");
+  return activeReportAxesPolicy;
 }
