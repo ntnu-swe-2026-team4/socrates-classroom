@@ -385,7 +385,11 @@ export const httpApi: Api = {
     );
   },
   async deleteTeacherKeyModel(provider, model) {
-    await unwrap(await client.settings.keys[":provider"].models[":model"].$delete({ param: { provider, model } }));
+    await unwrap(
+      await client.settings.keys[":provider"].models[":model"].$delete({
+        param: { provider, model: encodeURIComponent(model) },
+      }),
+    );
   },
   async orderTeacherKeyModels(provider, models) {
     await unwrap(await client.settings.keys[":provider"].models.order.$put({ param: { provider }, json: { models } }));

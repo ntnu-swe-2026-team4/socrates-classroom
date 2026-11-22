@@ -244,6 +244,12 @@ describe("httpApi contract (browser-side actual code)", () => {
     expect(init.method).toBe("DELETE");
   });
 
+  test("teacher key model delete encodes a model id that contains a slash", async () => {
+    handler.mockReturnValue(new Response(null, { status: 204 }));
+    await httpApi.deleteTeacherKeyModel("openrouter", "anthropic/claude-haiku-4.5");
+    expect(handler.mock.calls[0][0]).toBe("/api/settings/keys/openrouter/models/anthropic%2Fclaude-haiku-4.5");
+  });
+
   test("activityInfo serializes the optional participantId without residue", async () => {
     handler.mockImplementation(() =>
       json({
