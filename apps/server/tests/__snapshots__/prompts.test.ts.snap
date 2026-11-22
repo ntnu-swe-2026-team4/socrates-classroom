@@ -29,6 +29,21 @@ exports[`prompts (#161): what the report models receive is pinned > class report
 學生1（1）：契約要守"
 `;
 
+exports[`prompts (#161): what the report models receive is pinned > class report input with an axes plan: the count and the teacher's axes follow the topic 3`] = `
+"## Topic: 代理孕母
+契約應該被遵守嗎？
+
+## Axes: 1 in total; the teacher set 1
+1. "價值取捨": left end "個人自由", right end "共同責任"
+
+## Roster: 1 students in the class
+學生1
+
+## The whole class's conversations
+### 學生1
+學生1（1）：契約要守"
+`;
+
 exports[`prompts (#161): what the report models receive is pinned > class-report instructions in en 1`] = `
 "You are analyzing the whole class's conversations about the same topic, to write a class report for the teacher. From the report the teacher must be able to see: where the class disagrees, where each student stands, and why.
 In the conversations, each of a student's lines is numbered; for example "學生（3）" is their 3rd line.

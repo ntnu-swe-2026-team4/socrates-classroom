@@ -198,6 +198,7 @@ export function activityRoutes() {
         participant: null,
       });
       if (classroom.teacher_id !== user.id) fail(403, "forbidden");
+      const teacherAxes = activity.report_axes === "teacher" ? (await topicOf(c.env.DB, activity.topic_id)).axes : null;
       const finished = await run(
         c.env.DB,
         "UPDATE activities SET finished_at = $at WHERE id = $id AND finished_at IS NULL",
@@ -207,7 +208,10 @@ export function activityRoutes() {
         },
       );
       if (finished.meta.changes && activity.mode === "live") await publishClassroom(c.env, classroom.id, "activities");
-      await c.env.ReportRunner.getByName(activity.id).startReport({ activityId: activity.id });
+      await c.env.ReportRunner.getByName(activity.id).startReport({
+        activityId: activity.id,
+        ...(teacherAxes ? { axes: { count: teacherAxes.length, teacher: teacherAxes } } : {}),
+      });
       return c.body(null, 204);
     })
     .get("/me/reports", guardUser(), validateQuery(ClassroomPageQuerySchema), async (c) => {

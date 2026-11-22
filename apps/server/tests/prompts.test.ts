@@ -58,6 +58,12 @@ describe("prompts (#161): what the report models receive is pinned", () => {
       }),
     ).toMatchSnapshot();
     expect(classReportInput(activity, ["學生1"], conversations, { count: 2, teacher: [] })).toMatchSnapshot();
+    expect(
+      classReportInput(activity, ["學生1"], conversations, {
+        count: 1,
+        teacher: [{ name: "價值取捨", left: "個人自由", right: "共同責任" }],
+      }),
+    ).toMatchSnapshot();
   });
 
   for (const lang of LANGS) {
