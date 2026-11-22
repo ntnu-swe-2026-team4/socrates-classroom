@@ -390,3 +390,48 @@ describe("migration 014: classroom community (#324)", () => {
     expect(await all(env.DB, "PRAGMA foreign_key_check")).toEqual([]);
   });
 });
+
+describe("migration 015: topic axes (#159)", () => {
+  it("adds topics.axes defaulting to [] and backfills system topics plus copied_from copies", async () => {
+    const at = "2026-11-22T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, prompts, created_at)
+       VALUES ('t_sys_trolley', NULL, NULL, NULL, '電車難題：你會拉桿嗎？', '陳述', '["問"]', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, prompts, created_at)
+       VALUES ('t_copy_trolley', 'u_t', 'c1', 't_sys_trolley', '電車難題：你會拉桿嗎？', '陳述', '["問"]', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, prompts, created_at)
+       VALUES ('t_custom_copy', 'u_t', 'c1', 't1', '題目', '陳述', '["問"]', $at)`,
+      { at },
+    );
+
+    const axes = migrations.filter((migration) => migration.name.startsWith("015"));
+    expect(axes).toHaveLength(1);
+    await applyD1Migrations(env.DB, axes);
+
+    const columns = await all<{ name: string }>(env.DB, "PRAGMA table_info(topics)");
+    expect(columns.map((column) => column.name)).toContain("axes");
+
+    const rows = await all<{ id: string; axes: string }>(
+      env.DB,
+      "SELECT id, axes FROM topics WHERE id IN ('t_sys_trolley', 't_copy_trolley', 't1', 't_custom_copy') ORDER BY id",
+    );
+    const expectedTrolley = JSON.stringify([
+      { name: "拉桿的理由", left: "看結果：救多數", right: "看手段：不能親手害人" },
+    ]);
+    expect(rows).toEqual([
+      { id: "t1", axes: "[]" },
+      { id: "t_copy_trolley", axes: expectedTrolley },
+      { id: "t_custom_copy", axes: "[]" },
+      { id: "t_sys_trolley", axes: expectedTrolley },
+    ]);
+  });
+});

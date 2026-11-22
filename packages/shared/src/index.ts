@@ -30,12 +30,21 @@ export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 export const OAuthProvidersSchema = z.object({ providers: z.array(z.enum(OAUTH_PROVIDERS)) });
 export type OAuthProviders = z.infer<typeof OAuthProvidersSchema>;
 
+export const AxisSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  left: z.string().trim().min(1).max(40),
+  right: z.string().trim().min(1).max(40),
+});
+export type Axis = z.infer<typeof AxisSchema>;
+export const AXES_MAX = 3;
+
 export const TopicDraftSchema = z.object({
   id: z.string(),
   title: z.string(),
   statement: z.string(),
   summary: z.string().optional(),
   prompts: z.array(z.string()),
+  axes: z.array(AxisSchema),
 });
 export type TopicDraft = z.infer<typeof TopicDraftSchema>;
 
@@ -271,11 +280,16 @@ export const AdminUserCreateInputSchema = z.object({
   password: z.string().min(8).max(128),
 });
 export const AdminUserUpdateInputSchema = z.object({ disabled: z.boolean() });
+export const TopicAxesInputSchema = z
+  .array(AxisSchema)
+  .max(AXES_MAX)
+  .refine((axes) => new Set(axes.map((axis) => axis.name)).size === axes.length, "axis names must differ");
 export const TopicCreateInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   statement: z.string().trim().min(1).max(2000),
   summary: z.string().trim().max(500).optional(),
   prompts: z.array(z.string().trim().min(1).max(160)).max(6),
+  axes: TopicAxesInputSchema.default([]),
 });
 export const GenerateTopicsInputSchema = z.object({
   direction: z.string().trim().min(1).max(200),
@@ -285,6 +299,7 @@ export const ClassroomCreateInputSchema = z.object({
 });
 export const TopicCopyInputSchema = z.object({
   classroomId: z.string().min(1),
+  axes: TopicAxesInputSchema.optional(),
 });
 export const ActivityStartInputSchema = z.object({
   topicId: z.string().min(1),

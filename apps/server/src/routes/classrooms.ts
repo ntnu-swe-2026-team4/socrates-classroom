@@ -155,7 +155,7 @@ export function classroomsRoutes() {
       const id = newId("t_");
       await run(
         c.env.DB,
-        "INSERT INTO topics (id, owner_id, classroom_id, title, statement, summary, prompts, created_at) VALUES ($id, $uid, $cid, $title, $statement, $summary, $prompts, $at)",
+        "INSERT INTO topics (id, owner_id, classroom_id, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $title, $statement, $summary, $prompts, $axes, $at)",
         {
           id,
           uid: user.id,
@@ -164,6 +164,7 @@ export function classroomsRoutes() {
           statement: input.statement,
           summary: input.summary ?? null,
           prompts: JSON.stringify(input.prompts),
+          axes: JSON.stringify(input.axes),
           at: nowIso(),
         },
       );

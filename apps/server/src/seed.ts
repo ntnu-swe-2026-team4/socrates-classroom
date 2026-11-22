@@ -80,18 +80,21 @@ export const FIXTURE_TOPICS = [
     title: "電車難題：你會拉桿嗎？",
     statement: "一輛失控電車即將撞上五個人；你可以拉桿讓它轉向另一條軌道，但會撞死一個人。你拉嗎？",
     prompts: ["你的直覺是拉還是不拉？為什麼？", "如果那一個人是你的家人呢？", "如果那五個人是罪犯呢？"],
+    axes: [{ name: "拉桿的理由", left: "看結果：救多數", right: "看手段：不能親手害人" }],
   },
   {
     id: "t_fx_surrogate",
     title: "代理孕母的承諾",
     statement: "孕母在契約中同意放棄孩子，生產後卻想留下他。契約應該被遵守嗎？",
     prompts: ["契約成立的前提是什麼？", "身體可以成為契約標的嗎？", "孩子的利益算誰的？"],
+    axes: [{ name: "契約與人情", left: "契約應該被遵守", right: "人情與孩子優先" }],
   },
   {
     id: "t_fx_ai_rights",
     title: "AI 應該有權利嗎？",
     statement: "如果 AI 表現出與人無異的痛苦，我們有義務顧慮它嗎？",
     prompts: ["權利來自什麼？", "表現出痛苦等於擁有痛苦嗎？", "你的判斷依賴後果還是原則？"],
+    axes: [{ name: "權利的來源", left: "看表現：會痛就該顧慮", right: "看本質：表現不等於擁有" }],
   },
 ] as const;
 
@@ -163,8 +166,15 @@ async function ensureTopic(db: Db, topic: (typeof FIXTURE_TOPICS)[number], at: s
   if (existing) return existing.id;
   await run(
     db,
-    "INSERT INTO topics (id, owner_id, title, statement, prompts, created_at) VALUES ($id, NULL, $title, $statement, $prompts, $at)",
-    { id: topic.id, title: topic.title, statement: topic.statement, prompts: JSON.stringify(topic.prompts), at },
+    "INSERT INTO topics (id, owner_id, title, statement, prompts, axes, created_at) VALUES ($id, NULL, $title, $statement, $prompts, $axes, $at)",
+    {
+      id: topic.id,
+      title: topic.title,
+      statement: topic.statement,
+      prompts: JSON.stringify(topic.prompts),
+      axes: JSON.stringify(topic.axes),
+      at,
+    },
   );
   return topic.id;
 }

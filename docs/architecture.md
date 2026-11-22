@@ -190,7 +190,7 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 
 ## 6. 資料層
 
-- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities／教室社群（`migrations/`）。014 教室社群新增 `classroom_announcements`、`classroom_posts`、`classroom_content_requests` 與 `classroom_invites`。pi transcript 是對話與違規的唯一真相，無第二份儲存
+- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities／教室社群（`migrations/`）。014 教室社群新增 `classroom_announcements`、`classroom_posts`、`classroom_content_requests` 與 `classroom_invites`；015（`015_topic_axes.sql`）為 `topics` 新增 `axes` 欄位並 backfill 系統題與 `copied_from` 複本（#159）。pi transcript 是對話與違規的唯一真相，無第二份儲存
 - **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 provider 鏈序（#82）
 - **DO SQLite**：只有 pi 自己的 `pi_*` 表，應用程式不讀寫——agent 狀態與產品資料分離（D2）
 - **保留政策**：AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容（judgment sink 只記 type/source）

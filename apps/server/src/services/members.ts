@@ -1,5 +1,5 @@
 import { getCookie } from "hono/cookie";
-import { ApiError, type ActivityMode, type User } from "@socrates/shared";
+import { ApiError, AxisSchema, type ActivityMode, type User } from "@socrates/shared";
 import type { Db } from "../db/d1";
 import { one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, type ParticipantIdentity } from "../auth";
@@ -31,6 +31,7 @@ export interface TopicRow {
   statement: string;
   summary: string | null;
   prompts: string;
+  axes: string;
 }
 
 export interface MemberRow {
@@ -59,6 +60,9 @@ export function parsePrompts(row: TopicRow) {
     statement: row.statement,
     ...(row.summary ? { summary: row.summary } : {}),
     prompts: JSON.parse(row.prompts) as string[],
+    axes: AxisSchema.array()
+      .catch([])
+      .parse(JSON.parse(row.axes ?? "[]")),
   };
 }
 

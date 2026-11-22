@@ -9,6 +9,7 @@ import type { Env } from "../src/env";
 import { call, classroomWithActivity, cookieOf, must, participantIdOf, registerStudent, speak } from "./helpers";
 
 let teacher: string;
+let classroomId: string;
 let code: string;
 let activityId: string;
 
@@ -26,6 +27,7 @@ beforeAll(async () => {
   teacher = cookieOf(login);
 
   const created = await classroomWithActivity(teacher, "R6 班");
+  classroomId = created.classroomId;
   code = created.code;
   activityId = created.activityId;
 });
@@ -171,6 +173,163 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     const payload = (await res.json()) as { activityId: string; code: string };
     expect(payload.activityId).not.toBe(activityId);
     expect(payload.code).toBe(code);
+  });
+
+  test("topics carry value axes: seeded fixtures, optional default, 1..3 validation, and copy preserve/override", async () => {
+    const seededList = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+      axes: Array<{ name: string; left: string; right: string }>;
+    }>;
+    for (const id of ["t_fx_trolley", "t_fx_surrogate", "t_fx_ai_rights"]) {
+      const fixture = must(
+        seededList.find((entry) => entry.id === id),
+        `seeded fixture ${id}`,
+      );
+      expect(fixture.axes.length).toBeGreaterThan(0);
+    }
+
+    const noAxesRes = await call("/api/topics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ title: "無軸個人題", statement: "未填軸時預設空陣列", prompts: [] }),
+    });
+    expect(noAxesRes.status).toBe(201);
+    const noAxesTopic = (await noAxesRes.json()) as {
+      id: string;
+      axes: Array<{ name: string; left: string; right: string }>;
+    };
+    expect(noAxesTopic.axes).toEqual([]);
+
+    const maxLabel = "a".repeat(40);
+    const threeAxes = [
+      { name: "  契約與人情  ", left: "  契約優先 ", right: " 人情優先  " },
+      { name: maxLabel, left: maxLabel, right: maxLabel },
+      { name: "第三軸", left: "左端", right: "右端" },
+    ];
+    const expectedTrimmed = [
+      { name: "契約與人情", left: "契約優先", right: "人情優先" },
+      { name: maxLabel, left: maxLabel, right: maxLabel },
+      { name: "第三軸", left: "左端", right: "右端" },
+    ];
+    const withAxesRes = await call("/api/topics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ title: "帶軸個人題", statement: "含一至三條軸", prompts: ["為何？"], axes: threeAxes }),
+    });
+    expect(withAxesRes.status).toBe(201);
+    const withAxesTopic = (await withAxesRes.json()) as {
+      id: string;
+      axes: Array<{ name: string; left: string; right: string }>;
+    };
+    expect(withAxesTopic.axes).toEqual(expectedTrimmed);
+
+    const listedAfter = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+      axes: Array<{ name: string; left: string; right: string }>;
+    }>;
+    expect(listedAfter.find((entry) => entry.id === withAxesTopic.id)?.axes).toEqual(expectedTrimmed);
+
+    const classNoAxes = await call(`/api/classrooms/${classroomId}/topics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ title: "無軸班級題", statement: "班級題未填軸", prompts: [] }),
+    });
+    expect(classNoAxes.status).toBe(201);
+    const classNoAxesTopic = (await classNoAxes.json()) as { id: string; axes: unknown[] };
+    expect(classNoAxesTopic.axes).toEqual([]);
+
+    const oneAxis = [{ name: "程序與結果", left: "程序正義", right: "結果效益" }];
+    const classWithAxes = await call(`/api/classrooms/${classroomId}/topics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ title: "帶軸班級題", statement: "班級題帶一條軸", prompts: ["怎麼選？"], axes: oneAxis }),
+    });
+    expect(classWithAxes.status).toBe(201);
+    const classWithAxesTopic = (await classWithAxes.json()) as {
+      id: string;
+      axes: Array<{ name: string; left: string; right: string }>;
+    };
+    expect(classWithAxesTopic.axes).toEqual(oneAxis);
+
+    const classTopics = (await (
+      await call(`/api/classrooms/${classroomId}/topics`, { headers: { Cookie: teacher } })
+    ).json()) as Array<{ id: string; axes: Array<{ name: string; left: string; right: string }> }>;
+    expect(classTopics.find((entry) => entry.id === classWithAxesTopic.id)?.axes).toEqual(oneAxis);
+
+    const invalidAxesCases = [
+      [
+        { name: "軸1", left: "L", right: "R" },
+        { name: "軸2", left: "L", right: "R" },
+        { name: "軸3", left: "L", right: "R" },
+        { name: "軸4", left: "L", right: "R" },
+      ],
+      [{ name: "", left: "L", right: "R" }],
+      [{ name: "   ", left: "L", right: "R" }],
+      [{ name: "軸", left: "   ", right: "R" }],
+      [{ name: "軸", left: "L", right: "" }],
+      [{ name: "a".repeat(41), left: "L", right: "R" }],
+      [{ name: "軸", left: "a".repeat(41), right: "R" }],
+      [{ name: "軸", left: "L", right: "a".repeat(41) }],
+      [
+        { name: "重複軸", left: "A", right: "B" },
+        { name: "重複軸", left: "C", right: "D" },
+      ],
+      [
+        { name: "軸", left: "A", right: "B" },
+        { name: " 軸 ", left: "C", right: "D" },
+      ],
+    ];
+    for (const badAxes of invalidAxesCases) {
+      const badPersonal = await call("/api/topics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({ title: "壞軸", statement: "驗證失敗", prompts: [], axes: badAxes }),
+      });
+      expect(badPersonal.status).toBe(422);
+
+      const badClassroom = await call(`/api/classrooms/${classroomId}/topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({ title: "壞軸班級題", statement: "驗證失敗", prompts: [], axes: badAxes }),
+      });
+      expect(badClassroom.status).toBe(422);
+
+      const badCopy = await call(`/api/topics/${noAxesTopic.id}/copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({ classroomId, axes: badAxes }),
+      });
+      expect(badCopy.status).toBe(422);
+    }
+
+    const copiedWithAxes = await call(`/api/topics/${noAxesTopic.id}/copy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ classroomId, axes: oneAxis }),
+    });
+    expect(copiedWithAxes.status).toBe(201);
+    const copiedTopic = (await copiedWithAxes.json()) as {
+      id: string;
+      axes: Array<{ name: string; left: string; right: string }>;
+    };
+    expect(copiedTopic.axes).toEqual(oneAxis);
+
+    const copiedKeep = await call(`/api/topics/${copiedTopic.id}/copy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ classroomId }),
+    });
+    expect(copiedKeep.status).toBe(201);
+    expect(((await copiedKeep.json()) as { axes: unknown[] }).axes).toEqual(oneAxis);
+
+    const overrideAxes = [{ name: "個人與群體", left: "個人自由", right: "群體福祉" }];
+    const copiedOverride = await call(`/api/topics/${copiedTopic.id}/copy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ classroomId, axes: overrideAxes }),
+    });
+    expect(copiedOverride.status).toBe(201);
+    expect(((await copiedOverride.json()) as { axes: unknown[] }).axes).toEqual(overrideAxes);
   });
 
   test("finish → report semantics (pending → 404 report_pending; late join blocked; rejoin keeps the activity)", async () => {
@@ -596,7 +755,9 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     });
     expect(generated.status).toBe(200);
     expect(generated.headers.get("X-Socrates-Fallback")).toBe("mock");
-    expect(Array.isArray(await generated.json())).toBe(true);
+    const topics = (await generated.json()) as Array<{ axes: unknown[] }>;
+    expect(topics.length).toBeGreaterThan(0);
+    for (const topic of topics) expect(topic.axes).toEqual([]);
   });
 
   test.each([
