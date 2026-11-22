@@ -10,10 +10,11 @@
     "bindings": [
       { "name": "Chat", "class_name": "Chat" },
       { "name": "SoloChat", "class_name": "SoloChat" },
+      { "name": "ClassroomEvents", "class_name": "ClassroomEvents" },
       { "name": "ReportRunner", "class_name": "ReportRunner" }
     ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Chat", "SoloChat", "ReportRunner"] }],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Chat", "SoloChat", "ClassroomEvents", "ReportRunner"] }],
   "vars": {
     // Test-only fixtures sharing names with production secrets; never real credentials.
     "ENVIRONMENT": "dev",

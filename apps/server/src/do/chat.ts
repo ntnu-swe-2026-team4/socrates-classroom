@@ -12,7 +12,7 @@ import {
   lookupParticipant,
   lookupSession,
 } from "../auth";
-import { activityAccess, participantOf } from "../services/members";
+import { participantOf } from "../services/members";
 import { forkBtw } from "../pi/extensions/btw";
 import { teacherOfActivity } from "../pi/credentials";
 import { one } from "../db/d1";
@@ -65,7 +65,7 @@ export class Chat extends DurableObject<Env> {
     (handle, input, options) => this.routeSubmit(handle, input, options),
     (identity) => this.canSubmit(identity),
     () => forkBtw(this.core.harness, this.core.btw),
-    (identity) => this.revalidate(identity),
+    (identity) => this.reverify(identity),
     (session) => this.tracker.recentRunFailure(session),
   );
 
@@ -159,19 +159,13 @@ export class Chat extends DurableObject<Env> {
         participantId,
         version: lookup.session.version,
       };
-      const access = await activityAccess(this.env.DB, activityId, {
-        user: lookup.session.user,
-        participant: null,
-      }).catch(() => null);
-      if (access && (access.isTeacher || access.participant?.id === participantId)) return identity;
-      const ownedHere = await participantOf(this.env.DB, activityId, participantId);
-      return ownedHere?.user_id === lookup.session.user.id ? identity : null;
+      return (await this.activityPermitsThread(activityId, participantId, lookup.session.user.id)) ? identity : null;
     }
     if (lookup.kind !== "missing") return null;
     const held = await lookupParticipant(this.env, cookieValue(cookie, PARTICIPANT_COOKIE));
     if (!held || held.activityId !== activityId || held.participantId !== participantId) return null;
     const participant = await participantOf(this.env.DB, activityId, participantId);
-    if (!participant || participant.user_id !== null) return null;
+    if (participant?.kind !== "guest" || participant.user_id !== null) return null;
     return { userId: null, participantId, version: null };
   }
 
@@ -181,35 +175,32 @@ export class Chat extends DurableObject<Env> {
     try {
       if (identity.userId === null) {
         const participant = await participantOf(this.env.DB, activityId, participantId);
-        return participant && participant.user_id === null ? "member" : "revoked";
+        return participant?.kind === "guest" && participant.user_id === null ? "member" : "revoked";
       }
       const state = await accountState(this.env.DB, identity.userId);
       if (!state || state.disabled || state.version !== identity.version) return "revoked";
-      const participant = await participantOf(this.env.DB, activityId, participantId);
-      if (participant?.user_id === identity.userId) return "member";
-      const access = await activityAccess(this.env.DB, activityId, {
-        user: { id: identity.userId },
-        participant: null,
-      });
-      return access.isTeacher ? "member" : "revoked";
+      return (await this.activityPermitsThread(activityId, participantId, identity.userId)) ? "member" : "revoked";
     } catch (error) {
       return error instanceof ApiError ? "revoked" : "error";
     }
   }
 
-  private async revalidate(identity: SocketIdentity): Promise<ReverifyOutcome> {
-    try {
-      if (identity.userId === null) {
-        const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
-        if (!activityId || !participantId || identity.participantId !== participantId) return "revoked";
-        const participant = await participantOf(this.env.DB, activityId, participantId);
-        return participant && participant.user_id === null ? "member" : "revoked";
-      }
-      const state = await accountState(this.env.DB, identity.userId);
-      if (!state || state.disabled || state.version !== identity.version) return "revoked";
-      return "member";
-    } catch {
-      return "error";
-    }
+  private async activityPermitsThread(activityId: string, participantId: string, userId: string): Promise<boolean> {
+    const matching = await one(
+      this.env.DB,
+      `SELECT 1 FROM activities a JOIN classrooms c ON c.id = a.classroom_id
+       LEFT JOIN activity_participants p ON p.activity_id = a.id AND p.id = $pid
+       WHERE a.id = $aid AND (c.teacher_id = $uid OR (
+         a.mode = 'live' AND p.user_id = $uid AND (p.kind = 'guest' OR EXISTS (
+           SELECT 1 FROM members m WHERE m.classroom_id = c.id AND m.user_id = $uid
+         ))
+       ))`,
+      { aid: activityId, pid: participantId, uid: userId },
+    );
+    return matching !== null;
+  }
+
+  async disconnectMember(userId: string): Promise<void> {
+    await this.sockets.disconnectUser(userId);
   }
 }

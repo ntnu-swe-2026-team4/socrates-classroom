@@ -27,6 +27,7 @@ export default defineConfig(({ mode }) => {
           : { AI: bindings.ai({}) }),
         Chat: bindings.durableObject({ worker: "socrates-classroom", exportName: "Chat" }),
         SoloChat: bindings.durableObject({ worker: "socrates-classroom", exportName: "SoloChat" }),
+        ClassroomEvents: bindings.durableObject({ worker: "socrates-classroom", exportName: "ClassroomEvents" }),
         ReportRunner: bindings.durableObject({ worker: "socrates-classroom", exportName: "ReportRunner" }),
         PUBLIC_BASE_URL: text("PUBLIC_BASE_URL", "https://socrates.g36maid.dev"),
         ENVIRONMENT: bindings.text(local.ENVIRONMENT || (mode === "development" ? "dev" : "production")),
@@ -57,6 +58,7 @@ export default defineConfig(({ mode }) => {
       exports: {
         Chat: exports.durableObject({ storage: "sqlite" }),
         SoloChat: exports.durableObject({ storage: "sqlite" }),
+        ClassroomEvents: exports.durableObject({ storage: "sqlite" }),
         ReportRunner: exports.durableObject({ storage: "sqlite" }),
       },
     },

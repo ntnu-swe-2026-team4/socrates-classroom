@@ -177,6 +177,14 @@ export class ChatSockets {
     }
   }
 
+  async disconnectUser(userId: string): Promise<void> {
+    for (const [socket, identity] of this.#authorized) {
+      if (identity.userId !== userId) continue;
+      this.#refuse(socket);
+      await this.#unwatch(socket);
+    }
+  }
+
   notifyRunFailure(session: string, failureId: string): void {
     for (const socket of this.#authorized.keys()) {
       if (this.#sessionOf(socket) !== session) continue;
@@ -289,7 +297,12 @@ export class ChatSockets {
     }
     const revalidate = this.#revalidate;
     if (revalidate && identity) {
-      if ((await revalidate(identity)) === "revoked") {
+      const outcome = await revalidate(identity);
+      if (outcome === "error") {
+        this.#unavailable(connection);
+        return;
+      }
+      if (outcome === "revoked") {
         this.#refuse(connection);
         return;
       }

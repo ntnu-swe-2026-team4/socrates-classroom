@@ -2,10 +2,11 @@ import { routeAgentRequest } from "agents";
 import { createApp } from "./app";
 import { Chat } from "./do/chat";
 import { SoloChat } from "./do/solo-chat";
+import { ClassroomEvents } from "./do/classroom-events";
 import { ReportRunner } from "./do/report-runner";
 import type { Env } from "./env";
 
-export { Chat, SoloChat, ReportRunner };
+export { Chat, SoloChat, ReportRunner, ClassroomEvents };
 export type { RpcApp } from "./app";
 
 export default {

@@ -8,8 +8,11 @@ import { lookupSession, SESSION_COOKIE } from "./auth";
 import { getCookie } from "hono/cookie";
 import { authRoutes } from "./routes/auth";
 import { joinRoutes } from "./routes/join";
+import { classroomInviteRoutes } from "./routes/classroom-invites";
 import { inviteRoutes } from "./routes/invites";
 import { topicsRoutes } from "./routes/topics";
+import { classroomCommunityRoutes } from "./routes/classroom-community";
+import { communityContentRoutes } from "./routes/community-content";
 import { classroomsRoutes } from "./routes/classrooms";
 import { activityRoutes } from "./routes/activity";
 import { voiceRoutes } from "./routes/voice";
@@ -27,8 +30,11 @@ export function createApi() {
     .route("/", authRoutes())
     .route("/", joinRoutes())
     .route("/", inviteRoutes())
+    .route("/", classroomInviteRoutes())
     .route("/", topicsRoutes())
     .route("/", classroomsRoutes())
+    .route("/", classroomCommunityRoutes())
+    .route("/", communityContentRoutes())
     .route("/", activityRoutes())
     .route("/", voiceRoutes())
     .route("/", lookupRoutes())

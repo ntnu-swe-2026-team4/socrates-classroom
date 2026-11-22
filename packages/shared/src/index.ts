@@ -459,3 +459,12 @@ export class ApiError extends Error {
   }
 }
 export * from "./reports";
+
+export {
+  ClassroomContentInputSchema,
+  ClassroomInviteCreateSchema,
+  ClassroomPageQuerySchema,
+  type ClassroomEvent,
+  type ClassroomEventResource,
+  type ClassroomInviteScope,
+} from "./community";

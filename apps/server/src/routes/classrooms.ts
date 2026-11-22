@@ -7,6 +7,7 @@ import {
   type ClassroomSummary,
   type User,
 } from "@socrates/shared";
+import { publishClassroom } from "../do/classroom-events";
 import { all, batch, one, run, type SqlEntry } from "../db/d1";
 import { fail, guardUser, newId, nowIso, requireUser, validateJson, type AppEnv } from "../http";
 import { classroomAccess, parsePrompts, topicForActivity, type TopicRow } from "../services/members";
@@ -177,6 +178,7 @@ export function classroomsRoutes() {
       if (!isTeacher) fail(403, "forbidden");
       await topicForActivity(c.env.DB, input.topicId, classroom.id, user.id);
       const activityId = await createActivity(c.env.DB, classroom.id, input.topicId, input.mode);
+      if (input.mode === "live") await publishClassroom(c.env, classroom.id, "activities");
       return c.json(
         {
           classroomId: classroom.id,

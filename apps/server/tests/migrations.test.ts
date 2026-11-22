@@ -5,10 +5,11 @@ import { inject } from "vitest";
 import { all, run } from "../src/db/d1";
 
 const migrations = inject("d1Migrations");
+const legacyMigrations = migrations.filter((migration) => migration.name < "014");
 
 describe("migration 011: facebook identity (#207)", () => {
   it("drops the google-only provider CHECK and keeps rows plus cascade", async () => {
-    const base = migrations.filter((migration) => !/^(003|008|010|011)/.test(migration.name));
+    const base = legacyMigrations.filter((migration) => !/^(003|008|010|011)/.test(migration.name));
     const widen = migrations.filter((migration) => migration.name.startsWith("011"));
     expect(widen).toHaveLength(1);
     await applyD1Migrations(env.DB, base);
@@ -50,7 +51,7 @@ describe("migration 011: facebook identity (#207)", () => {
 
 describe("migration 010: retire capability (no-mode, #210)", () => {
   it("drops can_manage_classes and the legacy role column from users", async () => {
-    const base = migrations.filter((migration) => !/^(003|008|010)/.test(migration.name));
+    const base = legacyMigrations.filter((migration) => !/^(003|008|010)/.test(migration.name));
     const retire = migrations.filter((migration) => migration.name.startsWith("010"));
     expect(retire).toHaveLength(1);
     await applyD1Migrations(env.DB, base);
@@ -80,7 +81,7 @@ describe("migration 010: retire capability (no-mode, #210)", () => {
 
 describe("migration 008: teacher key models", () => {
   it("splits the per-provider model into (provider, model) legs with their own max_concurrency", async () => {
-    const legacy = migrations.filter((migration) => !/^(003|008)/.test(migration.name));
+    const legacy = legacyMigrations.filter((migration) => !/^(003|008)/.test(migration.name));
     const split = migrations.filter((migration) => migration.name.startsWith("008"));
     expect(split).toHaveLength(1);
     await applyD1Migrations(env.DB, legacy);
@@ -137,7 +138,7 @@ describe("migration 008: teacher key models", () => {
 });
 describe("migration 009: teacher key usage ledger and quota alerts", () => {
   it("adds a nullable monthly quota to teacher_keys and creates usage/alerts tables keyed to the key row", async () => {
-    const base = migrations.filter((migration) => !/^(003|009)/.test(migration.name));
+    const base = legacyMigrations.filter((migration) => !/^(003|009)/.test(migration.name));
     const usage = migrations.filter((migration) => migration.name.startsWith("009"));
     expect(usage).toHaveLength(1);
     await applyD1Migrations(env.DB, base);
@@ -199,7 +200,7 @@ describe("migration 009: teacher key usage ledger and quota alerts", () => {
 
 describe("migration 003: activity participant backfill", () => {
   it("existing members become member participants and keep their pseudonyms", async () => {
-    const legacy = migrations.filter((migration) => !migration.name.startsWith("003"));
+    const legacy = legacyMigrations.filter((migration) => !migration.name.startsWith("003"));
     const backfill = migrations.filter((migration) => migration.name.startsWith("003"));
     expect(backfill).toHaveLength(1);
     await applyD1Migrations(env.DB, legacy);
@@ -370,5 +371,22 @@ describe("migration 013: solo threads (#281)", () => {
     await run(env.DB, "DELETE FROM users WHERE id = 'u_solo_m'");
     const after = await all<{ id: string }>(env.DB, "SELECT id FROM solo_threads WHERE user_id = 'u_solo_m'");
     expect(after).toEqual([]);
+  });
+});
+
+describe("migration 014: classroom community (#324)", () => {
+  it("preserves existing activity participants when upgrading the schema", async () => {
+    const community = migrations.filter((migration) => migration.name.startsWith("014"));
+    expect(community).toHaveLength(1);
+    await applyD1Migrations(env.DB, community);
+    const participants = await all<{ id: string; user_id: string | null }>(
+      env.DB,
+      "SELECT id, user_id FROM activity_participants WHERE activity_id = 'a1' ORDER BY id",
+    );
+    expect(participants).toEqual([
+      { id: "p_gone", user_id: null },
+      { id: "u_s", user_id: "u_s" },
+    ]);
+    expect(await all(env.DB, "PRAGMA foreign_key_check")).toEqual([]);
   });
 });

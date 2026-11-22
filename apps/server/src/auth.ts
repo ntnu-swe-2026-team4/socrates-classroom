@@ -26,6 +26,7 @@ interface TokenClaims {
 export interface Session {
   user: User;
   version: number;
+  expiresAt: number;
 }
 
 export type SessionLookup =
@@ -217,7 +218,7 @@ export async function lookupSession(env: SessionEnv, token: string | undefined):
   if (!row) return { kind: "missing" };
   if (row.disabled_at !== null) return { kind: "disabled" };
   if (row.session_version !== claims.ver) return { kind: "stale" };
-  return { kind: "ok", session: { user: toUser(row), version: row.session_version } };
+  return { kind: "ok", session: { user: toUser(row), version: row.session_version, expiresAt: claims.exp } };
 }
 
 export interface AccountState {

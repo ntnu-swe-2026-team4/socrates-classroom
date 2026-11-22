@@ -133,23 +133,30 @@ export async function ensureParticipant(
   tosAcceptedAt: string,
   kind: "member" | "guest" = "member",
 ): Promise<ParticipantRow> {
-  const existing = await participantOfUser(db, activityId, user.id);
-  if (existing) {
-    if (kind === "member" && existing.kind === "guest") {
-      await run(db, "UPDATE activity_participants SET kind = 'member' WHERE id = $pid AND user_id = $uid", {
-        pid: existing.id,
-        uid: user.id,
-      });
-      return { ...existing, kind: "member" };
-    }
-    return existing;
-  }
+  const effectiveKind = `CASE WHEN $kind = 'member' OR EXISTS (
+    SELECT 1 FROM activities a JOIN members m ON m.classroom_id = a.classroom_id
+    WHERE a.id = $aid AND m.user_id = $uid
+  ) THEN 'member' ELSE 'guest' END`;
   let candidate = user.name;
   for (let attempt = 1; attempt <= 8; attempt++) {
+    const existing = await participantOfUser(db, activityId, user.id);
+    if (existing) {
+      if (existing.kind !== kind && existing.kind !== "teacher") {
+        const updated = await one<ParticipantRow>(
+          db,
+          `UPDATE activity_participants SET kind = ${effectiveKind}
+           WHERE activity_id = $aid AND id = $pid AND user_id = $uid RETURNING *`,
+          { kind, aid: activityId, pid: existing.id, uid: user.id },
+        );
+        if (updated) return updated;
+      }
+      return existing;
+    }
     const created = await one<ParticipantRow>(
       db,
       `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
-       VALUES ($aid, $pid, $uid, $kind, $name, $tos, $at)
+       SELECT $aid, $pid, $uid, ${effectiveKind}, $name, $tos, $at
+       WHERE NOT EXISTS (SELECT 1 FROM activity_participants WHERE activity_id = $aid AND user_id = $uid)
        ON CONFLICT DO NOTHING RETURNING *`,
       { aid: activityId, pid: newId("p_"), uid: user.id, kind, name: candidate, tos: tosAcceptedAt, at: nowIso() },
     );
@@ -223,11 +230,12 @@ export async function activityAccess(db: Db, activityId: string, accessor: Activ
       cid: classroom.id,
       uid: accessor.user.id,
     });
-    if (!member) fail(403, "forbidden");
+    const participant = await participantOfUser(db, activityId, accessor.user.id);
+    if (!member && participant?.kind !== "guest") fail(403, "forbidden");
     return {
       activity,
       classroom,
-      participant: await participantOfUser(db, activityId, accessor.user.id),
+      participant,
       member,
       isTeacher: false,
       user: accessor.user,
@@ -235,7 +243,9 @@ export async function activityAccess(db: Db, activityId: string, accessor: Activ
   }
   if (accessor.participant && accessor.participant.activityId === activityId) {
     const participant = await participantOf(db, activityId, accessor.participant.participantId);
-    if (participant) return { activity, classroom, participant, member: null, isTeacher: false, user: null };
+    if (participant?.kind === "guest" && participant.user_id === null) {
+      return { activity, classroom, participant, member: null, isTeacher: false, user: null };
+    }
   }
   fail(401, "unauthorized");
 }

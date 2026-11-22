@@ -34,6 +34,8 @@ flowchart TD
         HONO --> VOICE["voice：whisper STT／melotts TTS（AI binding）"]
         HONO --> LOOKUP["lookup：runProfile(lookup)"]
         HONO --> GEN["topics/generate：runProfile(topic-gen)"]
+        HONO -->|"WebSocket upgrade／commit 後 RPC"| EVENTS["ClassroomEvents DO（classroomId）"]
+        EVENTS -->|"驗證當前 membership／session"| DB
         HONO --> FINISH["finish → ReportRunner DO（alarm 驅動）"]
 
         AGENT -->|"thread-per-DO"| CHAT["Chat DO（do/chat.ts）"]
@@ -58,9 +60,11 @@ flowchart TD
 ```
 
 - TTS 保證路徑＝**server-side**（2026-11-04 決策）：預設 server-side，或 client `speechSynthesis` 先試、失敗/無 voice 時 fallback——#68 實作時定。原因：Firefox desktop 49+／Android 62+ 有 API（2026-11-04 查證 caniuse／MDN BCD）但 voices 全來自 OS、無 network voices——Linux 無 speech-dispatcher 時 `getVoices()` 為空、zh-TW voice 視 OS 而定，朗讀體驗不保證均一。server-side TTS candidate＝Workers AI（同 `AI` binding；model 的 ZDR／價格／zh-TW 待查證，見 providers.md 待辦）
-- 圖為 v3 target view：uploads/R2（#87）、教室社群 posts/announcements/calendar/discussions（#85/#89）、題庫分享（#86）、四階段 debate（#84）、EmotionSplitter（#90）已依 v3 移除
+- 圖為 v3 target view：uploads/R2（#87）、題庫分享（#86）、四階段 debate（#84）、EmotionSplitter（#90）已依 v3 移除
 
 非同步面：GitHub Actions 兩條 workflow（見 §8）；`cf previews deploy` 出 PR 預覽。
+
+教室社群以 D1 為資料來源。每間教室的 `ClassroomEvents` DO 用 WebSocket Hibernation API 管理連線，保存 session metadata 並將 D1 commit 後的事件推送至該班當下的成員。事件契約見 [API contract](./api-contract.md#42-教室事件324)。
 
 ## 2. Monorepo 目錄樹
 
@@ -186,7 +190,7 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 
 ## 6. 資料層
 
-- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities（`migrations/`：001 init、002 capabilities、003 activity_participants、004 activity_invites、005 activity_mode、006 topic_classroom、007 user_identities（#124））。pi transcript 是對話與違規的唯一真相，無第二份儲存
+- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities／教室社群（`migrations/`）。014 教室社群新增 `classroom_announcements`、`classroom_posts`、`classroom_content_requests` 與 `classroom_invites`。pi transcript 是對話與違規的唯一真相，無第二份儲存
 - **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 provider 鏈序（#82）
 - **DO SQLite**：只有 pi 自己的 `pi_*` 表，應用程式不讀寫——agent 狀態與產品資料分離（D2）
 - **保留政策**：AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容（judgment sink 只記 type/source）

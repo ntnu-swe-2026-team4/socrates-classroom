@@ -5,6 +5,7 @@ import type { ActivityInfo, ActivitySlot, StudentReport, TeacherReport, Violatio
 import {
   ACTIVITY_SLOT_MAX,
   ActivitySlotCreateInputSchema,
+  ClassroomPageQuerySchema,
   StoredStudentReportsSchema,
   StoredTeacherReportSchema,
 } from "@socrates/shared";
@@ -23,7 +24,17 @@ import {
   type AppEnv,
 } from "../http";
 import type { Env } from "../env";
-import { activityAccess, activityAccessOf, ensureParticipant, participantOf, topicOf } from "../services/members";
+import {
+  activityAccess,
+  activityAccessOf,
+  activityOf,
+  classroomAccess,
+  ensureParticipant,
+  participantOf,
+  topicOf,
+} from "../services/members";
+import { publishClassroom } from "../do/classroom-events";
+import { pageBounds, pageOf } from "../services/pagination";
 
 const SLOT_NAME: Record<"zh" | "en" | "es", string> = { zh: "測試", en: "Test", es: "Prueba" };
 const ActivityQuerySchema = z.object({ participantId: z.string().optional() });
@@ -187,20 +198,77 @@ export function activityRoutes() {
         participant: null,
       });
       if (classroom.teacher_id !== user.id) fail(403, "forbidden");
-      if (!activity.finished_at) {
-        await run(c.env.DB, "UPDATE activities SET finished_at = $at WHERE id = $id", {
+      const finished = await run(
+        c.env.DB,
+        "UPDATE activities SET finished_at = $at WHERE id = $id AND finished_at IS NULL",
+        {
           id: activity.id,
-          at: new Date().toISOString(),
-        });
-      }
+          at: nowIso(),
+        },
+      );
+      if (finished.meta.changes && activity.mode === "live") await publishClassroom(c.env, classroom.id, "activities");
       await c.env.ReportRunner.getByName(activity.id).startReport({ activityId: activity.id });
       return c.body(null, 204);
     })
+    .get("/me/reports", guardUser(), validateQuery(ClassroomPageQuerySchema), async (c) => {
+      const user = requireUser(c);
+      const { limit, at, after } = pageBounds(c.req.valid("query"));
+      const rows = await all<{
+        id: string;
+        classroom_id: string;
+        classroom_name: string;
+        topic_title: string;
+        finished_at: string | null;
+        report_created_at: string;
+      }>(
+        c.env.DB,
+        `SELECT a.id, a.classroom_id, c.name AS classroom_name, t.title AS topic_title, a.finished_at, r.created_at AS report_created_at
+         FROM activity_participants p
+         JOIN activities a ON a.id = p.activity_id
+         JOIN classrooms c ON c.id = a.classroom_id
+         JOIN topics t ON t.id = a.topic_id
+         JOIN reports r ON r.activity_id = a.id
+         WHERE p.user_id = $uid AND a.mode = 'live' AND r.status IN ('partial', 'ready')
+           AND ($at IS NULL OR (r.created_at, a.id) < ($at, $after))
+           AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(r.student_reports) THEN r.student_reports END)
+                       WHERE key = p.id)
+         GROUP BY a.id ORDER BY r.created_at DESC, a.id DESC LIMIT $limit`,
+        { uid: user.id, at, after, limit: limit + 1 },
+      );
+      return c.json(
+        pageOf(
+          rows,
+          limit,
+          (row) => [row.report_created_at, row.id],
+          (row) => ({
+            activityId: row.id,
+            classroomId: row.classroom_id,
+            classroomName: row.classroom_name,
+            topicTitle: row.topic_title,
+            finishedAt: row.finished_at,
+          }),
+        ),
+      );
+    })
     .get("/activities/:id/report", async (c) => {
       c.header("Cache-Control", "no-store");
-      const access = await activityAccessOf(c, c.req.param("id"));
-      const { activity, participant, isTeacher } = access;
-      if (!access.user) fail(403, "forbidden");
+      const activityId = c.req.param("id");
+      const user = c.get("user");
+      if (!user) {
+        await activityAccessOf(c, activityId);
+        fail(403, "forbidden");
+      }
+      const { activity, classroom } = await activityOf(c.env.DB, activityId);
+      const isTeacher = classroom.teacher_id === user.id;
+      if (!isTeacher && activity.mode === "test") fail(403, "forbidden");
+      const owned = isTeacher
+        ? []
+        : await all<{ id: string }>(
+            c.env.DB,
+            "SELECT id FROM activity_participants WHERE activity_id = $aid AND user_id = $uid ORDER BY joined_at, id",
+            { aid: activity.id, uid: user.id },
+          );
+      if (!isTeacher && !owned.length) await classroomAccess(c.env.DB, classroom.id, user);
       const row = await one<{ status: string; teacher_report: string | null; student_reports: string | null }>(
         c.env.DB,
         "SELECT status, teacher_report, student_reports FROM reports WHERE activity_id = $id",
@@ -228,7 +296,7 @@ export function activityRoutes() {
         };
         return c.json(report);
       }
-      const own = participant ? students[participant.id] : undefined;
+      const own = owned.map(({ id }) => students[id]).find((entry) => entry !== undefined);
       if (!own) fail(404, "not_found");
       const report: StudentReport = {
         topicTitle: topic.title,
