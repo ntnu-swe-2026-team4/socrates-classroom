@@ -9,7 +9,7 @@ import { api, ApiError, type User } from "@/api";
 import { StoaField } from "@/components/StoaField";
 import { cn, Spinner } from "@/components/ui";
 import { locales, setLocale, useI18n, useT, type Locale, type MessageKey } from "@/i18n";
-import { OAUTH_PROVIDERS, type OAuthProvider } from "@socrates/shared";
+import { OAUTH_PROVIDERS, type ErrorCode, type OAuthProvider } from "@socrates/shared";
 
 type Mode = "login" | "register";
 
@@ -40,6 +40,18 @@ export const Route = createFileRoute("/login")({
 const ERROR_KEYS: Record<string, MessageKey> = {
   oauth_unavailable: "login_err_oauth_unavailable",
   oauth_failed: "login_err_oauth_failed",
+  oauth_state_invalid: "login_err_oauth_state",
+  oauth_email_unverified: "login_err_oauth_unverified",
+  account_disabled: "login_err_account_disabled",
+};
+
+const SUBMIT_ERROR_KEYS: Partial<Record<ErrorCode, MessageKey>> = {
+  unauthorized: "login_err_credentials",
+  conflict: "login_err_email_taken",
+  email_taken: "login_err_email_taken",
+  validation: "login_err_validation",
+  account_disabled: "login_err_account_disabled",
+  rate_limited: "login_err_rate_limited",
 };
 
 const PROVIDER_LABELS: Record<OAuthProvider, MessageKey> = {
@@ -130,16 +142,7 @@ function LoginPage() {
       queryClient.setQueryData(meQueryOptions.queryKey, user);
       await navigate({ href: user.isAdmin && !search.next ? "/admin" : next });
     } catch (caught) {
-      const code = caught instanceof ApiError ? caught.code : null;
-      setErrorKey(
-        code === "unauthorized"
-          ? "login_err_credentials"
-          : code === "conflict" || code === "email_taken"
-            ? "login_err_email_taken"
-            : code === "validation"
-              ? "login_err_validation"
-              : "common_error",
-      );
+      setErrorKey((caught instanceof ApiError && SUBMIT_ERROR_KEYS[caught.code]) || "common_error");
     } finally {
       setBusy(false);
     }

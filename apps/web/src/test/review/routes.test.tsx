@@ -460,6 +460,68 @@ test("#178: an unconfigured probe disables the buttons and a failed feed hides t
   }
 });
 
+function stubLoginPage(login?: { status: number; code: string }) {
+  stubStoaObservers();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (path === "/api/auth/login" && login) {
+        return new Response(JSON.stringify({ message: login.code, code: login.code }), {
+          status: login.status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const responses: Record<string, unknown> = {
+        "/api/me": null,
+        "/api/auth/providers": { providers: [] },
+        "/api/notifications": { items: [], unread: null },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+}
+
+test.each([
+  ["account_disabled", "This account has been disabled. Please contact an administrator."],
+  ["oauth_state_invalid", "The sign-in timed out. Please try signing in again."],
+  ["oauth_email_unverified", "The email on this third-party account is not verified. Verify it, then sign in again."],
+  ["oauth_failed", "Third-party sign-in failed. Please try again."],
+])("#317: returning to /login with error=%s explains the reason", async (code, message) => {
+  stubLoginPage();
+  const dispose = await mountRoute(`/login?error=${code}`);
+  try {
+    expect((await screen.findByRole("alert")).textContent).toBe(message);
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test.each([
+  [403, "account_disabled", "This account has been disabled. Please contact an administrator."],
+  [429, "rate_limited", "Too many attempts. Please try again later."],
+  [401, "unauthorized", "Wrong email or password."],
+  [500, "internal_error", "Something went wrong"],
+])("#317: a password sign-in rejected with %i %s explains the reason", async (status, code, message) => {
+  stubLoginPage({ status, code });
+  const dispose = await mountRoute("/login");
+  try {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Email" }), { target: { value: "a@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password123" } });
+    const submit = screen
+      .getAllByRole("button", { name: "Sign in" })
+      .find((button) => button.getAttribute("type") === "submit");
+    if (!submit) throw new Error("submit button missing");
+    fireEvent.click(submit);
+    expect((await screen.findByRole("alert")).textContent).toBe(message);
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
 test("#178: a signed-in admin landing on /login is redirected to the admin console", async () => {
   const path = await loadPath("/login", { "/api/me": { id: "admin-1", name: "Admin", isAdmin: true } });
   expect(path).toBe("/admin");
