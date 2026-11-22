@@ -91,7 +91,7 @@ socrates-classroom/
 │       │   │   ├── ledger.ts           # (provider, model, credential) 記帳＋cooldown
 │       │   │   └── router.ts           # traffic class 鏈走訪（teacher legs 前置合併）
 │       │   ├── prompts/            # LLM 組的 prompt 資產（build-time ?raw）
-│       │   │   ├── socrates.md（＋.en／.es）/ class-report.md / class-report-axes.md / student-report.md / assemble.ts
+│       │   │   ├── socrates.md（＋.en／.es）/ class-report.md / class-report-axes.md / student-report.md / student-indicators.md / assemble.ts
 │       │   ├── ws/                 # transport glue（protocol + sockets）
 │       │   ├── auth.ts / auth-crypto.ts  # session＋AES-GCM（byok.ts 併入）
 │       │   ├── db/d1.ts / http.ts / messages.ts / seed.ts / services/
@@ -157,12 +157,13 @@ no queue：busy 時第二發被拒（`ConversationBusy` → error frame），不
 startReport → pending 標記 → alarm → generate：
   transcriptOf（AI：…/學生（n）：… 編號＋假名冪等）
   → Promise.all 平行 per-student studentReport（重試 2；語言＝老師的 users.lang，與 classReport 相同；引用的 turns 須是學生說過的行號，否則視同格式錯誤重試）
+  → Promise.all 平行 per-student studentIndicators（六項思辨力指標，#255；與 studentReport 分開呼叫、各自失敗；重試與行號查核同 studentReport，另查 level 0 不附 turns、1–3 至少附一個；重試後仍失敗 → 該生 indicators＝null）
   → classReport（立場軸/落點/分群；落點由模型給 side＋strength，server 換算 end/at：left→low、right→high，at＝50∓10×strength，middle＝50）
     startReport 帶 axes（{count: 1–3, teacher: 老師的軸}）時改用 class-report-axes：老師的軸依序在前、由 server 填入名稱與兩端（模型交這些軸的落點與 why），模型補的軸寫完整、接在後面，總數不超過 count；老師軸的數量不對、總數超過 count、任一條軸的落點名單不是全班各一次（落點的意義見 api-contract.md §7），都視同格式錯誤；沒帶 axes 時與上一行相同
-  → persist（D1 reports：teacher_report=classReport、student_reports=analysis+violations-from-transcript）
+  → persist（D1 reports：teacher_report=classReport、student_reports=analysis+indicators+violations-from-transcript）
 ```
 
-模型呼叫經 `runProfile("student-report")`／`runProfile("class-report")`（帶 axes 時為 `class-report-axes`）（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片從 pi transcript 抽取（`/transcript` 端點，不落第二份儲存）。
+模型呼叫經 `runProfile("student-report")`／`runProfile("student-indicators")`／`runProfile("class-report")`（帶 axes 時為 `class-report-axes`）（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片從 pi transcript 抽取（`/transcript` 端點，不落第二份儲存）。
 
 ## 5. Gateway（apps/server/src/gateway/）
 

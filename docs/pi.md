@@ -109,6 +109,7 @@ watch 沒有 event cursor；重連以 `watch({ from: newestEntryId + 1 })` 讓 w
 - `lookup`（#76）：查詢，websearch tools，maxTurns 3
 - `topic-gen`（#77）：出題，websearch tools，maxTurns 6
 - `student-report`、`class-report`（#74）：單人與群體報告，`report-submit` 的交件工具，maxTurns 4
+- `student-indicators`（#255）：單人報告的六項思辨力指標，`report-submit-indicators` 的交件工具，maxTurns 4
 - `class-report-axes`（#159）：依老師的軸與軸數產生群體報告，`report-submit-axes` 的交件工具，maxTurns 4
 
 準則：功能升格為 agent（有工具迴圈或長任務）；單發的分類（violation / 情緒）用 oneshot。profile 不寫 model——model 由 gateway 依 traffic class 解析（`apps/server/providers.config.yaml`，#98）。

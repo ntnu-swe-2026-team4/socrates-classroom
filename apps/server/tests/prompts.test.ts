@@ -3,17 +3,18 @@ import { instructionsFor } from "../src/pi/agents/profiles";
 import { SOCRATES_PROMPTS } from "../src/pi/extensions/socrates";
 import { classReportInput, studentReportInput } from "../src/prompts/assemble";
 import { z } from "zod";
-import { ClassReportSubmissionSchema, StudentAnalysisSchema } from "@socrates/shared";
+import { ClassReportSubmissionSchema, StudentAnalysisSchema, ThinkingIndicatorsSchema } from "@socrates/shared";
 import { PlannedClassReportSubmissionSchema } from "../src/pi/extensions/report-submit";
 import STUDENT_REPORT_RAW from "../src/prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../src/prompts/class-report.md?raw";
 import CLASS_REPORT_AXES_RAW from "../src/prompts/class-report-axes.md?raw";
+import STUDENT_INDICATORS_RAW from "../src/prompts/student-indicators.md?raw";
 
 const LANGS = ["zh", "en", "es"] as const;
 const activity = { title: "代理孕母", statement: "契約應該被遵守嗎？" };
 
 describe("prompts (#161): what the report models receive is pinned", () => {
-  for (const name of ["student-report", "class-report", "class-report-axes"] as const) {
+  for (const name of ["student-report", "student-indicators", "class-report", "class-report-axes"] as const) {
     for (const lang of LANGS) {
       it(`${name} instructions in ${lang}`, () => {
         expect(instructionsFor(name, lang)).toMatchSnapshot();
@@ -40,6 +41,10 @@ describe("prompts (#161): what the report models receive is pinned", () => {
     expect(z.toJSONSchema(z.object({ report: StudentAnalysisSchema }))).toMatchSnapshot();
   });
 
+  it("the indicators tool's JSON schema is pinned", () => {
+    expect(z.toJSONSchema(ThinkingIndicatorsSchema)).toMatchSnapshot();
+  });
+
   it("the axes-plan report tool's JSON schema is pinned", () => {
     expect(z.toJSONSchema(PlannedClassReportSubmissionSchema)).toMatchSnapshot();
   });
@@ -63,7 +68,7 @@ describe("prompts (#161): what the report models receive is pinned", () => {
   }
 
   it("report prompt assets hold {{lang}} and no other placeholder", () => {
-    for (const raw of [STUDENT_REPORT_RAW, CLASS_REPORT_RAW, CLASS_REPORT_AXES_RAW]) {
+    for (const raw of [STUDENT_REPORT_RAW, STUDENT_INDICATORS_RAW, CLASS_REPORT_RAW, CLASS_REPORT_AXES_RAW]) {
       expect(raw).toContain("{{lang}}");
       expect(raw.match(/{{[^}]*}}/g)?.filter((placeholder) => placeholder !== "{{lang}}") ?? []).toEqual([]);
     }

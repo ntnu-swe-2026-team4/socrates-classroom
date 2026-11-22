@@ -1,10 +1,16 @@
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { z } from "zod";
-import { ClassReportSchema, ClassReportSubmissionSchema, StudentAnalysisSchema } from "@socrates/shared";
+import {
+  ClassReportSchema,
+  ClassReportSubmissionSchema,
+  StudentAnalysisSchema,
+  ThinkingIndicatorsSchema,
+} from "@socrates/shared";
 
 export const SUBMIT_STUDENT_ANALYSIS = "submit_student_analysis";
 export const SUBMIT_CLASS_REPORT = "submit_class_report";
 export const SUBMIT_CLASS_AXES_REPORT = "submit_class_axes_report";
+export const SUBMIT_STUDENT_INDICATORS = "submit_student_indicators";
 
 export const ReportAxesPlanSchema = z
   .object({
@@ -35,6 +41,7 @@ export type PlannedClassReportSubmission = z.infer<typeof PlannedClassReportSubm
 const studentAnalysisParameters = z.toJSONSchema(z.object({ report: StudentAnalysisSchema }));
 const classReportParameters = z.toJSONSchema(ClassReportSubmissionSchema);
 const classAxesReportParameters = z.toJSONSchema(PlannedClassReportSubmissionSchema);
+const studentIndicatorsParameters = z.toJSONSchema(ThinkingIndicatorsSchema);
 
 const submitStudentAnalysis = defineTool({
   name: SUBMIT_STUDENT_ANALYSIS,
@@ -80,4 +87,21 @@ export const reportSubmitExtension = defineExtension({
 export const reportSubmitAxesExtension = defineExtension({
   name: "report-submit-axes",
   tools: [submitClassAxesReport],
+});
+
+const submitStudentIndicators = defineTool({
+  name: SUBMIT_STUDENT_INDICATORS,
+  description:
+    "Submit one student's six thinking indicators as your final action. The shape is this tool's schema: for each of c1, c2, s1, s2, a1, a2, a level from 0 to 3, the student's line numbers as turns, and one sentence of evidence. Calling it ends the turn; do not also write the indicators as text.",
+  parameters: studentIndicatorsParameters,
+  constrainedSampling: { type: "json_schema", strict: "prefer" },
+  replay: "safe",
+  async execute() {
+    return { control: { terminate: true } };
+  },
+});
+
+export const reportSubmitIndicatorsExtension = defineExtension({
+  name: "report-submit-indicators",
+  tools: [submitStudentIndicators],
 });

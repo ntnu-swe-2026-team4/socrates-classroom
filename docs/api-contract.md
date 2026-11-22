@@ -236,6 +236,12 @@ interface StudentAnalysis {
 } | {
   stated: false; doing: {text; turns};   // 未表態：做了什麼（離題/早退…）
 }
+interface Indicator {
+  level: 0 | 1 | 2 | 3;                          // 0＝這場對話沒有可判斷的證據，不代表能力差
+  turns: number[];                               // level 0 時為空陣列；1–3 時至少一個，都必須是學生說過的行號
+  evidence: string;                              // 一句依據說明（老師的語言）；level 0 時為空字串
+}
+interface ThinkingIndicators { c1: Indicator; c2: Indicator; s1: Indicator; s2: Indicator; a1: Indicator; a2: Indicator }  // 六項思辨力指標（#255）
 interface ClassReport {
   students: {id; summary: {step; turns}[]}[];   // 逐生摘要（cause → result 步驟＋出處行號）；空陣列＝全班未表態
   unstated: string[];                            // 未表態者
@@ -256,6 +262,7 @@ interface TeacherReport {
     participantName: string;                     // 參與者名稱（老師個別頁與學生本人頁顯示；classReport 仍用 pseudonym）
     pseudonym: string;
     analysis: StudentAnalysis | null;            // 論點總結（claim/reasons/tension＋turns 出處）
+    indicators: ThinkingIndicators | null;       // 思辨力指標，與 analysis 分開判斷、各自失敗；null＝沒有對話、重試後仍失敗，或指標上線前的舊報告
     violations: ViolationSlice[];                 // 違規切片（不經 LLM）
     positions: ReportPosition[];                 // 每位學生自己的落點（partial 時為空）
   }>;
@@ -265,6 +272,7 @@ interface StudentReport {
   participantName: string;                       // 本人名稱（學生看不到別人的）
   pseudonym: string;                             // 自己在 classReport 中的定位線索（老師版可對照）
   analysis: StudentAnalysis | null;              // 自己的
+  indicators: ThinkingIndicators | null;         // 自己的（null 的意思同 TeacherReport）
   violations: ViolationSlice[];
   positions: ReportPosition[];                   // 自己在每條軸上的落點
 }
@@ -275,14 +283,13 @@ interface ViolationSlice {
 }
 ```
 
-- **學生不拿 classReport**（設計決策）：學生報告只有自己的 analysis＋violations＋pseudonym；全班視角是老師專屬
+- **學生不拿 classReport**（設計決策）：學生報告只有自己的 analysis＋indicators＋violations＋pseudonym；全班視角是老師專屬
 - **`violations` 的收斂住在報告層**：`transcript()` 回傳 transcript 裡全部的 `app.violation` entry（忠實反映 entry 身分），報告組裝時才依 `turn + type + excerpt` 收斂為一筆、保留先寫入者——同一輪 classifier 與 `report_violation` 工具都回報時，老師看到與分析模型讀到的仍是單筆
 - **報告母體＝有對話的 `activity_participants`**（#132）：沒進活動的班級成員、進了活動但**一句都沒說**的參與者都不產生空報告——本人報告頁 404 `not_found`，classReport 的 roster 也只含真的有對話的人；test 活動（#134）的母體就是它的 `teacher` slot；`student_reports` 的 JSON key 與 WS thread 名的後半段同為 participant id；pseudonym 序號**不依加入順序**（#133）：以 `HMAC(AUTH_SECRET, (activityId, participantId))` 排序後給 1..n，避免老師用報到時序反推訪客身分（既有 pseudonym 存 D1，活動內穩定不變）
 - **`ClassReport.students[].id`／`positions[].id`＝pseudonym**（LLM prompt 餵的就是 pseudonym；嚴禁放 participantId 或 userId——全班互見會洩漏真實 id，#72）
 - transcript 來源：Chat DO RPC（`stub.transcript()`，DO→DO；外部無 request 面）；violations 同源自 `app.violation` entries——**pi transcript 是唯一真相，violations 不落第二份儲存**
 - 逐生分析與 transcript 抓取以 Router budget 批次進行（`budget("batch")`＝鏈上各 leg maxConcurrency 總和；10k 班級的生成時間與供應端限流考量）
 - 立場星圖（#79）不新增契約欄位：前端直接從 `classReport.axes[].positions` 映射——座標＝`at`（0–100 線性對到軸的兩端），每條軸一個維度，學生沒談到的軸沒有 position（前端放在該軸中間、標為空心、不納入分群）；報告依老師的軸與軸數產生時，每位學生在每條軸上都有 position，沒談到的是 `end: "middle"`、`at: 50`。分群在前端做（階層式 Ward，#58），不落儲存
-- hexagon（#78 六角圖）不在本契約——`StudentAnalysis` 沒有可量化的欄位，待思辨力目標定義後更新本節
 
 ## 8. 語音（#69）
 

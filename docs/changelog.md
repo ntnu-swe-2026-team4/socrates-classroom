@@ -2,6 +2,13 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-22 — 單人報告加上六項思辨力指標（`feat/255-thinking-indicators`，#255）
+
+### Added
+
+- `student-indicators` profile 與 `submit_student_indicators` 工具（`report-submit-indicators` extension，只裝在這條呼叫用的 registry）：逐生判斷 C1–A2，與論點總結分開呼叫、各自失敗（流程見 `docs/architecture.md` ReportRunner）
+- `TeacherReport.students[].indicators`、`StudentReport.indicators`（形狀見 `docs/api-contract.md` §7）；指標上線前存下的報告回 `null`，不變成 `report_failed`
+
 ## 2026-11-22 — TS 靜態保證 step 3：suppression ratchet 白名單凍結（`refactor/293-step3-ratchet`，#293）
 
 ### Added

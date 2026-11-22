@@ -47,27 +47,28 @@
 
 ## 活動與報告
 
-| 功能     | 說明                                                                                                                                                                             | 路由 / 頁面                                     |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| 活動詳情 | 教室＋議題＋結束時間                                                                                                                                                             | `GET /api/activities/:id`                       |
-| 即時面板 | `live` 活動的資料源（#73）尚未接線——顯示待上線提示；`test` 活動顯示 slot 列表與開啟對話                                                                                          | `/t/live/:id`                                   |
-| 結束活動 | 老師觸發報告生成（ReportRunner DO，alarm 驅動）                                                                                                                                  | `POST /api/activities/:id/finish`               |
-| 報告輪詢 | 生成中 404 `report_pending`（前端輪詢）；失敗 500 `report_failed`                                                                                                                | `GET /api/activities/:id/report`・`/report/:id` |
-| 角色分流 | 老師見全班（classReport＋每人 analysis）；學生只見自己（analysis＋假名）                                                                                                         | 同上；形狀見 `api-contract.md` §7               |
-| 立場星圖 | 老師的群體報告把 `classReport.axes` 的落點畫成星圖：勾 0–3 條軸，從中間點展開成一條線、平面、立體（可拖曳旋轉）；階層式分群（Ward）自動或指定 2–4 群；點一個點看該生在各軸的想法 | `/report/:id`（群體）；`StanceConstellation`    |
+| 功能       | 說明                                                                                                                                                                             | 路由 / 頁面                                      |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| 活動詳情   | 教室＋議題＋結束時間                                                                                                                                                             | `GET /api/activities/:id`                        |
+| 即時面板   | `live` 活動的資料源（#73）尚未接線——顯示待上線提示；`test` 活動顯示 slot 列表與開啟對話                                                                                          | `/t/live/:id`                                    |
+| 結束活動   | 老師觸發報告生成（ReportRunner DO，alarm 驅動）                                                                                                                                  | `POST /api/activities/:id/finish`                |
+| 報告輪詢   | 生成中 404 `report_pending`（前端輪詢）；失敗 500 `report_failed`                                                                                                                | `GET /api/activities/:id/report`・`/report/:id`  |
+| 角色分流   | 老師見全班（classReport＋每人 analysis＋indicators）；學生只見自己（analysis＋indicators＋假名）                                                                                 | 同上；形狀見 `api-contract.md` §7                |
+| 立場星圖   | 老師的群體報告把 `classReport.axes` 的落點畫成星圖：勾 0–3 條軸，從中間點展開成一條線、平面、立體（可拖曳旋轉）；階層式分群（Ward）自動或指定 2–4 群；點一個點看該生在各軸的想法 | `/report/:id`（群體）；`StanceConstellation`     |
+| 思辨力指標 | 單人報告附六項思辨力指標（C1–A2，各 0–3 級＋行號＋一句依據），與論點總結分開判斷（#255）；畫面待 #78                                                                             | `GET /api/activities/:id/report`（`indicators`） |
 
 ## 對話引擎（Pi Durable）
 
-| 能力             | 說明                                                                                                                                   | 位置                                       |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| Durable 對話     | 每執行緒一個 Chat DO：transcript/admission/retry/恢復存於 DO SQLite（pi_* 表）；no queue（busy 拒絕）                                  | `apps/server/src/do/chat.ts`               |
-| WebSocket        | `session.watch()` → view + chord ops；客戶端 `applyImmutable` 套用；斷線 `onConnectionError` 復原                                      | `apps/server/src/ws/`・`useDialogue`       |
-| 情緒協議         | avatar extension：Clef choice 題 → `app.emotion` entry（機率）；文字零污染（#111）                                                     | `apps/server/src/pi/extensions/avatar/`    |
-| 違規偵測         | judgment extension：逐輪 Clef 分類＋`report_violation` 自報 tool → `app.violation` entry（#71）                                        | `apps/server/src/pi/extensions/judgment/`  |
-| BTW side session | btw extension：root 的 pi fork，只選 `btw`（`prompts/btw.md`）；host 預設 selection 排除 btw，主對話不受影響（#121）                   | `apps/server/src/pi/extensions/btw.ts`     |
-| 網路搜尋         | websearch extension：`web_search`（全網）／`fetch_content`（任意 URL，per-hop SSRF 驗證）／`get_search_content`（分頁＋findText）      | `apps/server/src/pi/extensions/websearch/` |
-| Agent profiles   | socrates／lookup／topic-gen／student-report／class-report／class-report-axes——角色欄位，model 由 gateway 依 traffic class 解析（#113） | `apps/server/src/pi/agents/profiles.ts`    |
-| 供 mock 測試     | pi-ai faux provider（`LLM_PROVIDER=mock`）                                                                                             | `apps/server/src/pi/models.ts`             |
+| 能力             | 說明                                                                                                                                                       | 位置                                       |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Durable 對話     | 每執行緒一個 Chat DO：transcript/admission/retry/恢復存於 DO SQLite（pi_* 表）；no queue（busy 拒絕）                                                      | `apps/server/src/do/chat.ts`               |
+| WebSocket        | `session.watch()` → view + chord ops；客戶端 `applyImmutable` 套用；斷線 `onConnectionError` 復原                                                          | `apps/server/src/ws/`・`useDialogue`       |
+| 情緒協議         | avatar extension：Clef choice 題 → `app.emotion` entry（機率）；文字零污染（#111）                                                                         | `apps/server/src/pi/extensions/avatar/`    |
+| 違規偵測         | judgment extension：逐輪 Clef 分類＋`report_violation` 自報 tool → `app.violation` entry（#71）                                                            | `apps/server/src/pi/extensions/judgment/`  |
+| BTW side session | btw extension：root 的 pi fork，只選 `btw`（`prompts/btw.md`）；host 預設 selection 排除 btw，主對話不受影響（#121）                                       | `apps/server/src/pi/extensions/btw.ts`     |
+| 網路搜尋         | websearch extension：`web_search`（全網）／`fetch_content`（任意 URL，per-hop SSRF 驗證）／`get_search_content`（分頁＋findText）                          | `apps/server/src/pi/extensions/websearch/` |
+| Agent profiles   | socrates／lookup／topic-gen／student-report／student-indicators／class-report／class-report-axes——角色欄位，model 由 gateway 依 traffic class 解析（#113） | `apps/server/src/pi/agents/profiles.ts`    |
+| 供 mock 測試     | pi-ai faux provider（`LLM_PROVIDER=mock`）                                                                                                                 | `apps/server/src/pi/models.ts`             |
 
 詳細：[`pi.md`](./pi.md)
 

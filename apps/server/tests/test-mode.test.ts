@@ -240,7 +240,7 @@ describe("test mode (#134): parallel dialogues and report", () => {
           students: Array<{ participantId: string; pseudonym: string; participantName: string }>;
         };
       },
-      { timeout: 30_000, interval: 500 },
+      { timeout: 60_000, interval: 500 },
     );
     expect(report.classReport).not.toBeNull();
     expect(report.students).toHaveLength(3);
@@ -254,5 +254,5 @@ describe("test mode (#134): parallel dialogues and report", () => {
       current: { activityId: string } | null;
     }>;
     expect(rooms.find((room) => room.id === classroomId)?.current?.activityId).toBe(liveActivityId);
-  }, 60_000);
+  }, 90_000);
 });

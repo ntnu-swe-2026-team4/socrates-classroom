@@ -221,6 +221,7 @@ export function activityRoutes() {
             participantName: own.participantName ?? own.pseudonym,
             pseudonym: own.pseudonym,
             analysis: own.analysis,
+            indicators: own.indicators ?? null,
             violations: own.violations.map((violation) => ({ ...violation, type: violation.type as ViolationType })),
             positions: own.positions ?? [],
           })),
@@ -234,6 +235,7 @@ export function activityRoutes() {
         participantName: own.participantName ?? own.pseudonym,
         pseudonym: own.pseudonym,
         analysis: own.analysis,
+        indicators: own.indicators ?? null,
         violations: own.violations.map((violation) => ({ ...violation, type: violation.type as ViolationType })),
         positions: own.positions ?? [],
       };

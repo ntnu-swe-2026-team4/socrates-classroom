@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { ClassReportSchema, StudentAnalysisSchema, type ClassReport, type StudentAnalysis } from "./reports";
+import {
+  ClassReportSchema,
+  StudentAnalysisSchema,
+  ThinkingIndicatorsSchema,
+  type ClassReport,
+  type StudentAnalysis,
+  type ThinkingIndicators,
+} from "./reports";
 
 export const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -166,6 +173,7 @@ export const StudentReportEntrySchema = z.object({
   participantName: z.string().optional(),
   pseudonym: z.string(),
   analysis: StudentAnalysisSchema.nullable(),
+  indicators: ThinkingIndicatorsSchema.nullable().optional(),
   violations: z.array(ViolationSliceSchema),
   positions: z.array(ReportPositionSchema),
 });
@@ -189,6 +197,7 @@ export interface StudentReportEntry {
   participantName: string;
   pseudonym: string;
   analysis: StudentAnalysis | null;
+  indicators: ThinkingIndicators | null;
   violations: ViolationSlice[];
   positions: ReportPosition[];
 }
@@ -204,6 +213,7 @@ export interface StudentReport {
   participantName: string;
   pseudonym: string;
   analysis: StudentAnalysis | null;
+  indicators: ThinkingIndicators | null;
   violations: ViolationSlice[];
   positions: ReportPosition[];
 }

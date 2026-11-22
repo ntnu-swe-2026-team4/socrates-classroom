@@ -22,9 +22,11 @@ import {
   type PlannedClassReportSubmission,
   type ReportAxesPlan,
   reportSubmitExtension,
+  reportSubmitIndicatorsExtension,
   SUBMIT_CLASS_AXES_REPORT,
   SUBMIT_CLASS_REPORT,
   SUBMIT_STUDENT_ANALYSIS,
+  SUBMIT_STUDENT_INDICATORS,
 } from "../pi/extensions/report-submit";
 import { all, one, run } from "../db/d1";
 import { nowIso } from "../http";
@@ -32,11 +34,13 @@ import { classReportInput, studentReportInput } from "../prompts/assemble";
 import {
   ClassReportSubmissionSchema,
   StudentAnalysisSchema,
+  ThinkingIndicatorsSchema,
   type ClassReport,
   type ClassReportSubmission,
   type Lang,
   type ReportPosition,
   type StudentAnalysis,
+  type ThinkingIndicators,
   type ViolationSlice,
   type ViolationType,
 } from "@socrates/shared";
@@ -101,17 +105,19 @@ export class ReportRunner extends DurableObject<Env> {
   });
   readonly registry = createRegistry();
   readonly axesRegistry = createRegistry();
+  readonly indicatorsRegistry = createRegistry();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.registry.install(reportSubmitExtension);
     this.axesRegistry.install(reportSubmitAxesExtension);
-    for (const registry of [this.registry, this.axesRegistry]) {
+    this.indicatorsRegistry.install(reportSubmitIndicatorsExtension);
+    for (const registry of [this.registry, this.axesRegistry, this.indicatorsRegistry]) {
       registry.install(createUsageExtension(this.env, () => teacherOfActivity(this.env, this.ctx.id.name ?? "")));
     }
     if (this.models.faux) {
       this.models.faux.setResponses([fauxReportScript]);
-      for (const registry of [this.registry, this.axesRegistry]) {
+      for (const registry of [this.registry, this.axesRegistry, this.indicatorsRegistry]) {
         registry.install(fauxReplayExtension(this.models.faux, fauxReportScript));
       }
     }
@@ -358,6 +364,26 @@ export class ReportRunner extends DurableObject<Env> {
       );
     }
 
+    const indicatorsHarness = await this.openHarness(this.indicatorsRegistry);
+    const studentIndicators = new Map<string, ThinkingIndicators | null>();
+    for (let i = 0; i < roster.length; i += batch) {
+      await Promise.all(
+        roster.slice(i, i + batch).map(async (participant) => {
+          studentIndicators.set(
+            participant.id,
+            await this.studentIndicators(
+              indicatorsHarness,
+              activity,
+              rendered.get(participant.id)?.text ?? "",
+              transcripts.get(participant.id)?.turns ?? 0,
+              legs,
+              teacherLang,
+            ),
+          );
+        }),
+      );
+    }
+
     const classRoster = roster.map((p) => pseudonyms.get(p.id) ?? "").filter(Boolean);
     const classInput = classReportInput(
       activity,
@@ -369,12 +395,63 @@ export class ReportRunner extends DurableObject<Env> {
       const classReport = axesPlan
         ? await this.plannedClassReport(axesPlan, classRoster, classInput, legs, teacherLang)
         : await this.openClassReport(harness, classInput, legs, teacherLang);
-      await this.persist(activityId, activity.title, classReport, roster, studentAnalyses, pseudonyms, rendered);
+      await this.persist(
+        activityId,
+        activity.title,
+        classReport,
+        roster,
+        studentAnalyses,
+        studentIndicators,
+        pseudonyms,
+        rendered,
+      );
     } catch (error) {
       console.error("[report] class report failed", error instanceof Error ? error.name : typeof error);
-      await this.persist(activityId, activity.title, null, roster, studentAnalyses, pseudonyms, rendered);
+      await this.persist(
+        activityId,
+        activity.title,
+        null,
+        roster,
+        studentAnalyses,
+        studentIndicators,
+        pseudonyms,
+        rendered,
+      );
       throw error;
     }
+  }
+
+  private async studentIndicators(
+    harness: Harness,
+    activity: { title: string; statement: string },
+    transcript: string,
+    spokenLines: number,
+    legs: TeacherLeg[],
+    lang: Lang,
+  ): Promise<ThinkingIndicators | null> {
+    if (!transcript.trim()) return null;
+    try {
+      for (let attempt = 0; attempt < gatewayConfig.report.studentAttempts; attempt += 1) {
+        const { text, payload } = await this.runAgent(
+          harness,
+          "student-indicators",
+          studentReportInput(activity, transcript),
+          legs,
+          { lang, submitTool: SUBMIT_STUDENT_INDICATORS },
+          this.indicatorsRegistry,
+        );
+        try {
+          const indicators = ThinkingIndicatorsSchema.parse(payloadOf(text, payload));
+          if (!indicatorsCiteSpokenLines(indicators, spokenLines)) throw new Error("report_indicator_turns_invalid");
+          return indicators;
+        } catch (error) {
+          console.error("[report] student indicators parse failed", error instanceof Error ? error.name : typeof error);
+        }
+      }
+    } catch (error) {
+      console.error("[report] student indicators failed", error instanceof Error ? error.name : typeof error);
+    }
+    return null;
   }
 
   private async openClassReport(harness: Harness, input: string, legs: TeacherLeg[], lang: Lang): Promise<ClassReport> {
@@ -410,7 +487,7 @@ export class ReportRunner extends DurableObject<Env> {
 
   private async runAgent(
     harness: Harness,
-    profile: "student-report" | "class-report" | "class-report-axes",
+    profile: "student-report" | "student-indicators" | "class-report" | "class-report-axes",
     input: string,
     legs: TeacherLeg[],
     options: { lang: Lang; submitTool: string },
@@ -459,6 +536,7 @@ export class ReportRunner extends DurableObject<Env> {
     classReport: ClassReport | null,
     roster: Array<{ id: string; display_name: string }>,
     studentAnalyses: Map<string, StudentAnalysis | null>,
+    studentIndicators: Map<string, ThinkingIndicators | null>,
     pseudonyms: Map<string, string>,
     transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
   ): Promise<void> {
@@ -471,6 +549,7 @@ export class ReportRunner extends DurableObject<Env> {
         participantName: participant.display_name,
         pseudonym,
         analysis,
+        indicators: studentIndicators.get(participantId) ?? null,
         violations: transcripts.get(participantId)?.violations ?? [],
         positions: positionsOf(classReport, pseudonym),
       };
@@ -584,6 +663,12 @@ export function citesSpokenLines(analysis: StudentAnalysis, spokenLines: number)
   return cited.every((turn) => turn <= spokenLines);
 }
 
+export function indicatorsCiteSpokenLines(indicators: ThinkingIndicators, spokenLines: number): boolean {
+  return Object.values(indicators).every(({ level, turns }) =>
+    level === 0 ? turns.length === 0 : turns.length > 0 && turns.every((turn) => turn <= spokenLines),
+  );
+}
+
 function payloadOf(text: string, payload: JsonObject | null, key?: string): unknown {
   if (payload !== null) {
     const value = key === undefined ? payload : payload[key];
@@ -613,10 +698,35 @@ const FAUX_CLASS_FAILURE_MARKER = "FORCE-CLASS-REPORT-FAILURE";
 const FAUX_GENERATE_FAILURE_MARKER = "FORCE-REPORT-GENERATE-FAILURE";
 const FAUX_UNSPOKEN_TURN_MARKER = "FORCE-UNSPOKEN-TURN";
 const fauxUnspokenCited = new Set<string>();
+const FAUX_INDICATOR_RETRY_MARKER = "FORCE-INDICATOR-RETRY";
+const FAUX_INDICATOR_FAILURE_MARKER = "FORCE-INDICATOR-FAILURE";
+const fauxIndicatorRetried = new Set<string>();
 
 function fauxReportScript(context: TranscriptContext): AssistantMessage {
   const last = context.messages.filter((message) => message.role !== "system").at(-1);
   const prompt = last?.role === "user" ? textOf(last.content) : "";
+  const offered = context.messages.flatMap((message) =>
+    message.role === "system" ? (message.toolsAdded ?? []).map((tool) => tool.name) : [],
+  );
+  if (offered.includes(SUBMIT_STUDENT_INDICATORS)) {
+    const none = { level: 0, turns: [], evidence: "" };
+    const retryOnce = prompt.includes(FAUX_INDICATOR_RETRY_MARKER) && !fauxIndicatorRetried.has(prompt);
+    if (retryOnce) fauxIndicatorRetried.add(prompt);
+    const invalid = retryOnce || prompt.includes(FAUX_INDICATOR_FAILURE_MARKER);
+    return fauxAssistantMessage(
+      [
+        fauxToolCall(SUBMIT_STUDENT_INDICATORS, {
+          c1: none,
+          c2: none,
+          s1: none,
+          s2: { level: 1, turns: invalid ? [] : [1], evidence: "有給理由但沒有指向特徵" },
+          a1: none,
+          a2: none,
+        }),
+      ],
+      { stopReason: "toolUse" },
+    );
+  }
   if (prompt.includes("## Roster:")) {
     if (prompt.includes(FAUX_CLASS_FAILURE_MARKER)) {
       return fauxAssistantMessage([fauxToolCall(SUBMIT_CLASS_REPORT, { students: "schema-mismatch-on-purpose" })], {
