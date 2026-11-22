@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { ApiError } from "@socrates/shared";
+import { ApiError, type ClientConfig } from "@socrates/shared";
 import { localize } from "./messages";
 import { fail, normalizeLang, type AppEnv } from "./http";
+import { reportAxesPolicyOf } from "./services/settings";
 import { seedFixture } from "./seed";
 import { lookupSession, SESSION_COOKIE } from "./auth";
 import { getCookie } from "hono/cookie";
@@ -27,6 +28,7 @@ import { timingSafeEqual } from "./auth-crypto";
 
 export function createApi() {
   return new Hono<AppEnv>()
+    .get("/config", async (c) => c.json({ reportAxes: await reportAxesPolicyOf(c.env.DB) } satisfies ClientConfig))
     .route("/", authRoutes())
     .route("/", joinRoutes())
     .route("/", inviteRoutes())

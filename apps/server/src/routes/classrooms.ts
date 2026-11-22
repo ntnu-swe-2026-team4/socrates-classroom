@@ -5,12 +5,14 @@ import {
   TopicCreateInputSchema,
   type ActivityMode,
   type ClassroomSummary,
+  type ReportAxes,
   type User,
 } from "@socrates/shared";
 import { publishClassroom } from "../do/classroom-events";
 import { all, batch, one, run, type SqlEntry } from "../db/d1";
 import { fail, guardUser, newId, nowIso, requireUser, validateJson, type AppEnv } from "../http";
 import { classroomAccess, parsePrompts, topicForActivity, type TopicRow } from "../services/members";
+import { reportAxesFor } from "../services/settings";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const CODE_MAX = 256 - (256 % CODE_ALPHABET.length);
@@ -34,12 +36,13 @@ async function createActivity(
   classroomId: string,
   topicId: string,
   mode: ActivityMode,
+  reportAxes: ReportAxes,
 ): Promise<string> {
   const id = newId("a_");
   const queries: SqlEntry[] = [
     {
-      sql: "INSERT INTO activities (id, classroom_id, topic_id, mode, created_at) VALUES ($id, $cid, $tid, $mode, $at)",
-      params: { id, cid: classroomId, tid: topicId, mode, at: nowIso() },
+      sql: "INSERT INTO activities (id, classroom_id, topic_id, mode, report_axes, created_at) VALUES ($id, $cid, $tid, $mode, $axes, $at)",
+      params: { id, cid: classroomId, tid: topicId, mode, axes: reportAxes, at: nowIso() },
     },
   ];
   if (mode === "live") {
@@ -177,8 +180,9 @@ export function classroomsRoutes() {
       const input = c.req.valid("json");
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");
-      await topicForActivity(c.env.DB, input.topicId, classroom.id, user.id);
-      const activityId = await createActivity(c.env.DB, classroom.id, input.topicId, input.mode);
+      const reportAxes = await reportAxesFor(c.env.DB, input.reportAxes);
+      await topicForActivity(c.env.DB, input.topicId, classroom.id, user.id, reportAxes);
+      const activityId = await createActivity(c.env.DB, classroom.id, input.topicId, input.mode, reportAxes);
       if (input.mode === "live") await publishClassroom(c.env, classroom.id, "activities");
       return c.json(
         {

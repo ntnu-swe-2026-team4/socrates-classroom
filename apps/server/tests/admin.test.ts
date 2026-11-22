@@ -3,6 +3,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import type { AdminUser, ClassroomSummary } from "@socrates/shared";
 import { beforeAll, describe, expect, test } from "vitest";
 import { inject } from "vitest";
+import { one } from "../src/db/d1";
 import { FIXTURE_PASSWORD, seedFixture } from "../src/seed";
 import { call, cookieOf } from "./helpers";
 
@@ -169,5 +170,113 @@ describe("admin account management (no-mode, #210)", () => {
     const escalate = await patchUser(admin, "u_fx_student_a", { isAdmin: true });
     expect(escalate.status).toBe(422);
     expect(((await escalate.json()) as { code: string }).code).toBe("validation");
+  });
+});
+
+describe("who decides the report axes (#159): the backend locks one or lets the teacher choose, after deploy", () => {
+  const putSettings = (cookie: string | undefined, body: unknown) =>
+    call("/api/admin/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}) },
+      body: JSON.stringify(body),
+    });
+  const configNow = async () => ((await (await call("/api/config")).json()) as { reportAxes: string }).reportAxes;
+
+  test("only an admin reads or changes it", async () => {
+    expect((await call("/api/admin/settings")).status).toBe(401);
+    expect((await call("/api/admin/settings", { method: "PUT" })).status).toBe(401);
+    const teacher = await login("demo@socrates.tw");
+    expect((await call("/api/admin/settings", { headers: { Cookie: teacher } })).status).toBe(403);
+    expect((await putSettings(teacher, { reportAxes: "ai" })).status).toBe(403);
+    const invalid = await putSettings(admin, { reportAxes: "nobody" });
+    expect(invalid.status).toBe(422);
+    expect(((await invalid.json()) as { code: string }).code).toBe("validation");
+    const read = await call("/api/admin/settings", { headers: { Cookie: admin } });
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual({ reportAxes: "both" });
+  });
+
+  test("both: the teacher chooses per activity; locked: only that one starts; each change applies at once", async () => {
+    const teacher = await login("demo@socrates.tw");
+    const room = await call("/api/classrooms", jsonInit({ name: "決定權班" }, teacher));
+    expect(room.status).toBe(201);
+    const { classroomId } = (await room.json()) as { classroomId: string };
+    const bare = await call(
+      `/api/classrooms/${classroomId}/topics`,
+      jsonInit({ title: "沒軸的題", statement: "要不要軸？", prompts: [] }, teacher),
+    );
+    expect(bare.status).toBe(201);
+    const bareTopicId = ((await bare.json()) as { id: string }).id;
+    const withAxes = await call(
+      `/api/classrooms/${classroomId}/topics`,
+      jsonInit(
+        {
+          title: "有軸的題",
+          statement: "要有軸嗎？",
+          prompts: [],
+          axes: [{ name: "軸一", left: "左", right: "右" }],
+        },
+        teacher,
+      ),
+    );
+    expect(withAxes.status).toBe(201);
+    const withAxesTopicId = ((await withAxes.json()) as { id: string }).id;
+    const start = (topicId: string, reportAxes?: string) =>
+      call(
+        `/api/classrooms/${classroomId}/activities`,
+        jsonInit({ topicId, mode: "test", ...(reportAxes ? { reportAxes } : {}) }, teacher),
+      );
+    const codeOf = async (res: Response) => ((await res.json()) as { code: string }).code;
+    const storedAxesOf = async (res: Response) => {
+      const { activityId } = (await res.json()) as { activityId: string };
+      const row = await one<{ report_axes: string | null }>(
+        env.DB,
+        "SELECT report_axes FROM activities WHERE id = $id",
+        { id: activityId },
+      );
+      return row?.report_axes ?? null;
+    };
+    try {
+      expect(await configNow()).toBe("both");
+      const aiStarted = await start(bareTopicId, "ai");
+      expect(aiStarted.status).toBe(201);
+      expect(await storedAxesOf(aiStarted)).toBe("ai");
+
+      const teacherSet = await start(bareTopicId, "teacher");
+      expect(teacherSet.status).toBe(422);
+      expect(await codeOf(teacherSet)).toBe("topic_axes_required");
+
+      const defaultOmitted = await start(bareTopicId);
+      expect(defaultOmitted.status).toBe(422);
+      expect(await codeOf(defaultOmitted)).toBe("topic_axes_required");
+
+      const teacherDefaultWithAxes = await start(withAxesTopicId);
+      expect(teacherDefaultWithAxes.status).toBe(201);
+      expect(await storedAxesOf(teacherDefaultWithAxes)).toBe("teacher");
+
+      const lockedAi = await putSettings(admin, { reportAxes: "ai" });
+      expect(lockedAi.status).toBe(200);
+      expect(await lockedAi.json()).toEqual({ reportAxes: "ai" });
+      expect(await configNow()).toBe("ai");
+      const aiLockedStarted = await start(bareTopicId);
+      expect(aiLockedStarted.status).toBe(201);
+      expect(await storedAxesOf(aiLockedStarted)).toBe("ai");
+      const refusedTeacher = await start(withAxesTopicId, "teacher");
+      expect(refusedTeacher.status).toBe(422);
+      expect(await codeOf(refusedTeacher)).toBe("report_axes_not_allowed");
+
+      const lockedTeacher = await putSettings(admin, { reportAxes: "teacher" });
+      expect(lockedTeacher.status).toBe(200);
+      expect(await lockedTeacher.json()).toEqual({ reportAxes: "teacher" });
+      expect(await configNow()).toBe("teacher");
+      const refusedAi = await start(withAxesTopicId, "ai");
+      expect(refusedAi.status).toBe(422);
+      expect(await codeOf(refusedAi)).toBe("report_axes_not_allowed");
+      const teacherLockedStarted = await start(withAxesTopicId);
+      expect(teacherLockedStarted.status).toBe(201);
+      expect(await storedAxesOf(teacherLockedStarted)).toBe("teacher");
+    } finally {
+      await putSettings(admin, { reportAxes: "both" });
+    }
   });
 });

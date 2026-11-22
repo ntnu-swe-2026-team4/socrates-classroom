@@ -435,3 +435,33 @@ describe("migration 015: topic axes (#159)", () => {
     ]);
   });
 });
+
+describe("migration 016: settings and activity report_axes (#159)", () => {
+  it("creates settings table and adds nullable activities.report_axes leaving existing rows NULL", async () => {
+    const settingsMigration = migrations.filter((migration) => migration.name.startsWith("016"));
+    expect(settingsMigration).toHaveLength(1);
+    await applyD1Migrations(env.DB, settingsMigration);
+
+    const columns = await all<{ name: string }>(env.DB, "PRAGMA table_info(activities)");
+    expect(columns.map((column) => column.name)).toContain("report_axes");
+
+    const existingActivities = await all<{ id: string; report_axes: string | null }>(
+      env.DB,
+      "SELECT id, report_axes FROM activities WHERE id IN ('a1', 'a2') ORDER BY id",
+    );
+    expect(existingActivities).toEqual([
+      { id: "a1", report_axes: null },
+      { id: "a2", report_axes: null },
+    ]);
+
+    await run(
+      env.DB,
+      "INSERT INTO settings (key, value, updated_at) VALUES ('report_axes', 'ai', '2026-11-22T00:00:00.000Z')",
+    );
+    const saved = await all<{ key: string; value: string }>(
+      env.DB,
+      "SELECT key, value FROM settings WHERE key = 'report_axes'",
+    );
+    expect(saved).toEqual([{ key: "report_axes", value: "ai" }]);
+  });
+});

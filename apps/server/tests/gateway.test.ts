@@ -310,6 +310,7 @@ describe("gateway schema (availability reference validation — typos fail fast 
       alarmBackoffMs: 4000,
       alarmTimeoutMs: 300000,
       pseudonymPrefix: "學生",
+      axes: "both",
     },
     teacherChain: { maxConcurrency: 4 },
     trafficClasses: {},
@@ -355,6 +356,22 @@ describe("gateway schema (availability reference validation — typos fail fast 
       classifiers: { emotion: "@cf/cloudflare/clef-flash" },
     });
     expect(missing.success).toBe(false);
+    const invalidAxes = GatewayConfigSchema.safeParse({
+      ...base,
+      report: { ...base.report, axes: "invalid" },
+      defaults: {
+        availability: [
+          {
+            provider: "workers-ai",
+            model: "@cf/zai-org/glm-4.7-flash",
+            credential: "platform",
+            maxConcurrency: 1,
+            priority: 1,
+          },
+        ],
+      },
+    });
+    expect(invalidAxes.success).toBe(false);
   });
 
   it("valid references → parse passes", async () => {

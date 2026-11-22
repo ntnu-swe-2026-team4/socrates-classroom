@@ -252,13 +252,14 @@ describe("classroom / topic decoupling (#135)", () => {
       jsonInit({ title: "帶軸個人題", statement: "測試軸", prompts: [], axes: TEST_AXES }, teacher),
     );
     expect(withAxesRes.status).toBe(201);
-    expect(((await withAxesRes.json()) as SessionTopic).axes).toEqual(TEST_AXES);
+    const withAxes = (await withAxesRes.json()) as SessionTopic;
+    expect(withAxes.axes).toEqual(TEST_AXES);
 
-    const started = await startActivity(teacher, secondClassroomId, topic.id);
+    const started = await startActivity(teacher, secondClassroomId, withAxes.id);
     expect((await currentOf(secondClassroomId, teacher))?.activityId).toBe(started.activityId);
     const foreign = await call(
       `/api/classrooms/${otherClassroomId}/activities`,
-      jsonInit({ topicId: topic.id }, otherTeacher),
+      jsonInit({ topicId: withAxes.id }, otherTeacher),
     );
     expect(foreign.status).toBe(404);
   });

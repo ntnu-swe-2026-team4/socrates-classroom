@@ -60,7 +60,8 @@ const CONFIG = {
     "alarmAttempts": 3,
     "alarmBackoffMs": 4000,
     "alarmTimeoutMs": 300000,
-    "pseudonymPrefix": "學生"
+    "pseudonymPrefix": "學生",
+    "axes": "both"
   },
   "teacherChain": {
     "maxConcurrency": 4

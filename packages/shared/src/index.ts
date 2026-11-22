@@ -280,6 +280,14 @@ export const AdminUserCreateInputSchema = z.object({
   password: z.string().min(8).max(128),
 });
 export const AdminUserUpdateInputSchema = z.object({ disabled: z.boolean() });
+export const ReportAxesSchema = z.enum(["teacher", "ai"]);
+export type ReportAxes = z.infer<typeof ReportAxesSchema>;
+export const ReportAxesPolicySchema = z.enum(["teacher", "ai", "both"]);
+export type ReportAxesPolicy = z.infer<typeof ReportAxesPolicySchema>;
+export const ClientConfigSchema = z.object({ reportAxes: ReportAxesPolicySchema });
+export type ClientConfig = z.infer<typeof ClientConfigSchema>;
+export const AdminSettingsSchema = z.object({ reportAxes: ReportAxesPolicySchema });
+export type AdminSettings = z.infer<typeof AdminSettingsSchema>;
 export const TopicAxesInputSchema = z
   .array(AxisSchema)
   .max(AXES_MAX)
@@ -304,6 +312,7 @@ export const TopicCopyInputSchema = z.object({
 export const ActivityStartInputSchema = z.object({
   topicId: z.string().min(1),
   mode: ActivityModeSchema.default("live"),
+  reportAxes: ReportAxesSchema.optional(),
 });
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
 
@@ -461,6 +470,8 @@ export const ERROR_CODES = [
   "oauth_failed",
   "email_taken",
   "reset_token_invalid",
+  "topic_axes_required",
+  "report_axes_not_allowed",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

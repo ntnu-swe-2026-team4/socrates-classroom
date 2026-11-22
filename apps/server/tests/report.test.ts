@@ -180,6 +180,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
           title: "重試班題目",
           statement: "契約的界線在哪？FORCE-REPORT-GENERATE-FAILURE",
           prompts: ["請舉例"],
+          axes: [{ name: "契約的界線", left: "契約優先", right: "人情優先" }],
         }),
       })
     ).json()) as { id: string };

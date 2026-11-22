@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { inject } from "vitest";
-import { run } from "../src/db/d1";
+import { one, run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import worker from "../src/index";
 import type { Env } from "../src/env";
@@ -722,7 +722,12 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     const topic = await call("/api/topics", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: account },
-      body: JSON.stringify({ title: "自建題", statement: "自建題描述", prompts: ["你的判斷是什麼？"] }),
+      body: JSON.stringify({
+        title: "自建題",
+        statement: "自建題描述",
+        prompts: ["你的判斷是什麼？"],
+        axes: [{ name: "判斷依據", left: "原則", right: "後果" }],
+      }),
     });
     expect(topic.status).toBe(201);
     const topicId = ((await topic.json()) as { id: string }).id;
@@ -893,6 +898,70 @@ describe("rate limiting + register gate (round-6 restores)", () => {
     });
     expect(registered.status).toBe(409);
     expect(((await registered.json()) as { code?: string }).code).toBe("activity_finished");
+  });
+
+  test("GET /api/config tells the web app who decides the class report's axes (default: both)", async () => {
+    const res = await call("/api/config");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ reportAxes: "both" });
+  });
+
+  test("starting an activity in teacher-axes mode requires topic axes; ai mode allows axisless topics and stores report_axes", async () => {
+    const json = { "Content-Type": "application/json", Cookie: teacher };
+    const bareRes = await call(`/api/classrooms/${classroomId}/topics`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ title: "無軸活動題", statement: "未設軸", prompts: [] }),
+    });
+    expect(bareRes.status).toBe(201);
+    const bareTopic = (await bareRes.json()) as { id: string };
+
+    const blocked = await call(`/api/classrooms/${classroomId}/activities`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ topicId: bareTopic.id, mode: "test" }),
+    });
+    expect(blocked.status).toBe(422);
+    expect(((await blocked.json()) as { code: string }).code).toBe("topic_axes_required");
+
+    const aiStarted = await call(`/api/classrooms/${classroomId}/activities`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ topicId: bareTopic.id, mode: "test", reportAxes: "ai" }),
+    });
+    expect(aiStarted.status).toBe(201);
+    const aiPayload = (await aiStarted.json()) as { activityId: string };
+    const aiRow = await one<{ report_axes: string | null }>(
+      env.DB,
+      "SELECT report_axes FROM activities WHERE id = $id",
+      { id: aiPayload.activityId },
+    );
+    expect(aiRow?.report_axes).toBe("ai");
+
+    const copied = await call(`/api/topics/${bareTopic.id}/copy`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({
+        classroomId,
+        axes: [{ name: "契約與人情", left: "契約優先", right: "人情優先" }],
+      }),
+    });
+    expect(copied.status).toBe(201);
+    const copy = (await copied.json()) as { id: string };
+
+    const teacherStarted = await call(`/api/classrooms/${classroomId}/activities`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ topicId: copy.id, mode: "test" }),
+    });
+    expect(teacherStarted.status).toBe(201);
+    const teacherPayload = (await teacherStarted.json()) as { activityId: string };
+    const teacherRow = await one<{ report_axes: string | null }>(
+      env.DB,
+      "SELECT report_axes FROM activities WHERE id = $id",
+      { id: teacherPayload.activityId },
+    );
+    expect(teacherRow?.report_axes).toBe("teacher");
   });
 });
 
