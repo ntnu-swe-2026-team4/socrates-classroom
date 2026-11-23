@@ -77,8 +77,8 @@ function HomePage() {
         <section className="grid gap-4 sm:grid-cols-2">
           <Link to="/classrooms">
             <Card className="h-full p-5 transition-colors hover:border-ember-deep">
-              <b className="block font-serif text-4xl font-medium text-ember">{roomList.length}</b>
-              <span className="mt-1 block text-sm">{t("home_stat_classrooms")}</span>
+              <span className="block text-sm">{t("home_stat_classrooms")}</span>
+              <b className="mt-1 block font-serif text-4xl font-medium text-ember">{roomList.length}</b>
               <span className="text-xs text-ink-faint">
                 {canManage ? t("home_stat_students", { n: students }) : t("home_stat_running", { n: running.length })}
               </span>
@@ -86,8 +86,8 @@ function HomePage() {
           </Link>
           <Link to="/chat">
             <Card className="h-full p-5 transition-colors hover:border-ember-deep">
-              <b className="block font-serif text-4xl font-medium text-ember">{chatList.length}</b>
-              <span className="mt-1 block text-sm">{t("home_stat_chats")}</span>
+              <span className="block text-sm">{t("home_stat_chats")}</span>
+              <b className="mt-1 block font-serif text-4xl font-medium text-ember">{chatList.length}</b>
               <span className="mt-1 block truncate text-xs text-ink-faint">
                 {chatList[0]?.title ?? t("chat_empty")}
               </span>
