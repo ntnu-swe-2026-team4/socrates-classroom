@@ -68,6 +68,10 @@ async function signup(m: Mailbox, email: string, password: string, lang = "zh-TW
   return { id: user.id, cookie: cookieOf(res) };
 }
 
+function resetMails(m: Mailbox): SentEmail[] {
+  return m.sent.filter((mail) => mail.text.includes("/reset-password#token="));
+}
+
 function tokenOf(mail: SentEmail): string {
   const match = must(/#token=([A-Za-z0-9_\-.]+)/.exec(mail.text), "reset token");
   return match[1];
@@ -114,10 +118,11 @@ describe("password reset (#230)", () => {
     const res = await m.post("/api/auth/password/forgot", { email: email.toUpperCase() });
 
     expect(res.status).toBe(204);
-    expect(m.sent).toHaveLength(1);
-    expect(m.sent[0].to).toBe(email);
-    expect(m.sent[0].from).toBe("noreply@socrates.test");
-    expect(m.sent[0].text).toContain(`${BASE}/reset-password#token=`);
+    const mails = resetMails(m);
+    expect(mails).toHaveLength(1);
+    expect(mails[0].to).toBe(email);
+    expect(mails[0].from).toBe("noreply@socrates.test");
+    expect(mails[0].text).toContain(`${BASE}/reset-password#token=`);
   });
 
   test("forgot for unknown, passwordless and disabled accounts → 204 and no mail", async () => {
@@ -140,7 +145,7 @@ describe("password reset (#230)", () => {
       const res = await m.post("/api/auth/password/forgot", { email });
       expect(res.status).toBe(204);
     }
-    expect(m.sent).toHaveLength(0);
+    expect(resetMails(m)).toHaveLength(0);
   });
 
   test("reset → 204, old password 401, new password 200; reusing the link → 400 reset_token_invalid", async () => {
@@ -287,7 +292,7 @@ describe("password reset (#230)", () => {
       await requestLink(m, email);
     }
 
-    const subjects = m.sent.map((mail) => mail.subject);
+    const subjects = resetMails(m).map((mail) => mail.subject);
     expect(subjects.every((subject) => subject.length > 0)).toBe(true);
     expect(new Set(subjects).size).toBe(3);
   });

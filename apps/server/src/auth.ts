@@ -43,16 +43,25 @@ export interface SessionEnv {
 interface UserRow {
   id: string;
   name: string;
+  email: string | null;
+  email_verified_at: string | null;
   is_admin: number;
   disabled_at: string | null;
   session_version: number;
 }
 
-export function toUser(row: { id: string; name: string; is_admin: number }): User {
+export function toUser(row: {
+  id: string;
+  name: string;
+  email: string | null;
+  email_verified_at: string | null;
+  is_admin: number;
+}): User {
   return {
     id: row.id,
     name: row.name,
     isAdmin: row.is_admin === 1,
+    emailVerified: row.email === null || row.email_verified_at !== null,
   };
 }
 
@@ -116,7 +125,7 @@ export async function openPayload<T>(
   }
 }
 
-export type AccountTokenPurpose = "password_reset";
+export type AccountTokenPurpose = "password_reset" | "email_verify";
 
 interface AccountTokenClaims {
   purpose: AccountTokenPurpose;
@@ -130,6 +139,10 @@ function purposeSecret(ctx: { env: { AUTH_SECRET?: string } }, purpose: AccountT
 
 export function passwordResetBinding(passwordHash: string, email: string | null): string {
   return `${passwordHash}\n${email ?? ""}`;
+}
+
+export function emailVerifyBinding(email: string): string {
+  return `email_verify\n${email}`;
 }
 
 export async function sealAccountToken(
@@ -212,7 +225,7 @@ export async function lookupSession(env: SessionEnv, token: string | undefined):
   if (!claims) return { kind: "missing" };
   const row = await one<UserRow>(
     env.DB,
-    "SELECT id, name, is_admin, disabled_at, session_version FROM users WHERE id = $id",
+    "SELECT id, name, email, email_verified_at, is_admin, disabled_at, session_version FROM users WHERE id = $id",
     { id: claims.uid },
   );
   if (!row) return { kind: "missing" };

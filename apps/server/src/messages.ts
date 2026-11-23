@@ -121,6 +121,16 @@ const M: Record<ErrorCode, Entry> = {
     en: "This password reset link is invalid or has expired. Please request a new one.",
     es: "Este enlace para restablecer la contraseña no es válido o ha caducado. Solicita uno nuevo.",
   },
+  verify_token_invalid: {
+    zh: "驗證信箱的連結無效或已過期。",
+    en: "This email verification link is invalid or has expired.",
+    es: "Este enlace de verificación no es válido o ha caducado.",
+  },
+  email_not_set: {
+    zh: "這個帳號沒有 email，不需要驗證。",
+    en: "This account has no email to verify.",
+    es: "Esta cuenta no tiene un correo que verificar.",
+  },
   topic_axes_required: {
     zh: "這個題目還沒有價值軸，請先設定 1 到 3 條。",
     en: "This topic has no value axes yet. Set 1 to 3 first.",
