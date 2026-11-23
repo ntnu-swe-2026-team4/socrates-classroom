@@ -43,15 +43,21 @@ function calendarEventOf(row: CalendarEventRow): CalendarEvent {
   };
 }
 
-function cursorBounds(cursor: string | undefined, from: string, to: string) {
-  if (!cursor) return { lastStart: null, lastId: null };
+function decodeCursor(cursor: string): unknown {
   try {
-    const [cursorFrom, cursorTo, lastStart, lastId] = CalendarCursorSchema.parse(JSON.parse(atob(cursor)));
-    if (cursorFrom !== from || cursorTo !== to) fail(422, "validation");
-    return { lastStart, lastId };
+    return JSON.parse(atob(cursor));
   } catch {
     fail(422, "validation");
   }
+}
+
+function cursorBounds(cursor: string | undefined, from: string, to: string) {
+  if (!cursor) return { lastStart: null, lastId: null };
+  const parsed = CalendarCursorSchema.safeParse(decodeCursor(cursor));
+  if (!parsed.success) fail(422, "validation");
+  const [cursorFrom, cursorTo, lastStart, lastId] = parsed.data;
+  if (cursorFrom !== from || cursorTo !== to) fail(422, "validation");
+  return { lastStart, lastId };
 }
 
 async function requireTeacher(db: D1Database, classroomId: string, user: { id: string }) {

@@ -200,6 +200,18 @@ it("rejects invalid event times and calendar ranges", async () => {
   expect((await request(calendarPath(classroomId, "2026-11-01T00:00:00Z", "2027-01-04T00:00:00Z"), owner)).status).toBe(
     422,
   );
+  expect(
+    (await request(calendarPath(classroomId, "2026-11-23T00:00:00Z", "2026-11-24T00:00:00Z", { cursor: "@@" }), owner))
+      .status,
+  ).toBe(422);
+  expect(
+    (
+      await request(
+        calendarPath(classroomId, "2026-11-23T00:00:00Z", "2026-11-24T00:00:00Z", { cursor: btoa("not json") }),
+        owner,
+      )
+    ).status,
+  ).toBe(422);
 });
 
 it("notifies classroom members after calendar changes", async () => {
