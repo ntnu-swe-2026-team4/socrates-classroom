@@ -448,6 +448,44 @@ test("#181: a failing identity check on /home redirects to login instead of erro
   expect(path).toBe("/login");
 });
 
+test("the home page lists the signed-in user's own chats next to their classrooms", async () => {
+  const responses: Record<string, unknown> = {
+    "/api/me": { id: "user-1", name: "Rui", isAdmin: false },
+    "/api/classrooms": [],
+    "/api/solo/threads": [
+      {
+        id: "chat-2",
+        title: "What is courage?",
+        createdAt: "2026-11-02T00:00:00.000Z",
+        updatedAt: "2026-11-03T00:00:00.000Z",
+      },
+      {
+        id: "chat-1",
+        title: "Is lying ever right?",
+        createdAt: "2026-11-01T00:00:00.000Z",
+        updatedAt: "2026-11-01T00:00:00.000Z",
+      },
+    ],
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input instanceof Request ? input.url : input), "http://localhost").pathname;
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/home");
+  try {
+    const recent = await screen.findByRole("link", { name: /Is lying ever right\?/ });
+    expect(recent.getAttribute("href")).toBe("/chat/chat-1");
+    expect(screen.getAllByText("What is courage?")).toHaveLength(2);
+    expect(screen.getByText("2")).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
+
 function stubStoaObservers() {
   vi.stubGlobal("matchMedia", (query: string) => ({
     matches: false,
