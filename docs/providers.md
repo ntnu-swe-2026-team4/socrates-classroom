@@ -407,7 +407,7 @@ pnpm --filter @socrates/server run gen-config
 ### Admin BYOK（平台池 keyed 腿，#354；母單 #353）
 
 - **定位**：三層 provider chain 的中間層（teacher BYOK → **admin BYOK** → YAML binding 保底）。admin BYOK 讓平台池有 runtime 可編輯的 keyed 腿——provider 溢位／模型下架／額度水位可在面板內快速反應，不必等 YAML 發版（glm-5.3-flash 2026-11-20 410 下架事件暴露的反應速度問題）。
-- **儲存與 CRUD**：`admin_keys` 表（migration 017）——D1 AES-GCM（金鑰 `BYOK_ENC_KEY`）、last4-only 回傳、`sort_order` 鏈序、`max_concurrency`（1–100，NULL＝不限）與 `monthly_quota_usd`（NULL＝無額度）；model 腳位 `admin_key_models` 同 teacher keys 語意。REST 家族 `/api/admin/keys`（requireAdmin，401/403 測試覆蓋）見 [`api-contract.md`](./api-contract.md) §9.3。
+- **儲存與 CRUD**：`admin_keys` 表（migration 022）——D1 AES-GCM（金鑰 `BYOK_ENC_KEY`）、last4-only 回傳、`sort_order` 鏈序、`max_concurrency`（1–100，NULL＝不限）與 `monthly_quota_usd`（NULL＝無額度）；model 腳位 `admin_key_models` 同 teacher keys 語意。REST 家族 `/api/admin/keys`（requireAdmin，401/403 測試覆蓋）見 [`api-contract.md`](./api-contract.md) §9.3。
 - **一 provider 一把 key**（`UNIQUE(provider_id)`）：pi 的 credential store 以 provider id 解析 key，同 provider 第二把 enabled key 無法被歸因區分（會共享一個實際 key 卻各記各的帳）——擴容靠加 provider，不靠同 provider 堆 key。credential class `admin:<keyId>`，ledger 以 `(provider, model, credential)` 記帳，與 teacher credential 天然分離（cooldown 不互踩——#355 以測試釘住）。
 - **額度警示**：60/80/100% 水位與 teacher keys 共用同一套 claim/lease/re-arm 機制（`gateway/quota-alerts.ts`，自 #146 的 usage 實作抽出）；`recordAdminUsage` 記入 `admin_key_usage`（cost/tokens，不存對話內容），警示寄 `ADMIN_ALERT_EMAIL`（zh）。
 - **分層邊界**：本層只做儲存與 CRUD。腿進 chain（teacher → admin → binding 的排序與 cooldown 歸屬）屬 #355；usage gate 的 credential 歸因修正屬 #356（在 355/356 落地前，admin key 不會被任何流量選中）；ZDR 核可閘門（未過 checklist 只能 disabled）屬 #357——**在其落地前，此層建立的 key 不服務任何學生流量，ZDR 承諾不受影響**。
