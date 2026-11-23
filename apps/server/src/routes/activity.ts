@@ -125,8 +125,9 @@ export function activityRoutes() {
       if (!snapshot.finishedAt) {
         const pending = snapshot.students.filter((student) => student.status === "unknown");
         if (pending.length) {
+          const count = Math.min(pending.length, LIVE_BACKFILL_PER_POLL);
           const offset = (Math.floor(Date.now() / 5000) * LIVE_BACKFILL_PER_POLL) % pending.length;
-          const selected = pending.slice(offset, offset + LIVE_BACKFILL_PER_POLL);
+          const selected = Array.from({ length: count }, (_, index) => pending[(offset + index) % pending.length]);
           c.executionCtx.waitUntil(
             Promise.allSettled(
               selected.map(({ id }) => c.env.Chat.getByName(`${activity.id}:${id}`).scheduleLiveProgress()),

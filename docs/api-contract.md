@@ -278,7 +278,7 @@ type ServerMessage =
 
 ### 6.2 即時面板（#73）
 
-`GET /api/activities/:id/live` → `ActivityLive`。只有該班 owner 的登入 session 可讀取。未登入回 401 `unauthorized`，非 owner 回 403 `forbidden`，活動不存在回 404 `not_found`，`test` 活動回 409 `conflict`。回應採用 `Cache-Control: private, no-store`。
+`GET /api/activities/:id/live` → `ActivityLive`。只有該班 owner 的登入 session 可讀取。未登入回 401 `unauthorized`，帳號停用回 403 `account_disabled`，非 owner 回 403 `forbidden`，活動不存在回 404 `not_found`，`test` 活動回 409 `conflict`。回應採用 `Cache-Control: private, no-store`。
 
 | 欄位         | 語意                                                                             |
 | ------------ | -------------------------------------------------------------------------------- |

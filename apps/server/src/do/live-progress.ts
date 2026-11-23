@@ -52,12 +52,16 @@ export class LiveProgressProjection {
     const [activityId, participantId] = this.state.id.name?.split(":") ?? [];
     if (!activityId || !participantId) return false;
     const pi = await this.pi();
-    const inspection = await pi.inspect(BACKGROUND_CONTEXT);
-    const rootBusy =
-      inspection.submissions.some(({ conversationId }) => conversationId === ROOT_CONVERSATION_ID) ||
-      inspection.tasks.some(
-        ({ record, state }) => record.conversationId === ROOT_CONVERSATION_ID && state.kind !== "blocked",
+    const isRootBusy = async () => {
+      const inspection = await pi.inspect(BACKGROUND_CONTEXT);
+      return (
+        inspection.submissions.some(({ conversationId }) => conversationId === ROOT_CONVERSATION_ID) ||
+        inspection.tasks.some(
+          ({ record, state }) => record.conversationId === ROOT_CONVERSATION_ID && state.kind !== "blocked",
+        )
       );
+    };
+    const rootBusy = await isRootBusy();
     const root = await pi.conversation(ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT);
     const published = this.state.storage.kv.get<LiveProgress>(LIVE_PROGRESS_KEY);
     const scanning = this.state.storage.kv.get<LiveProgress>(LIVE_PROGRESS_SCAN_KEY);
@@ -86,6 +90,6 @@ export class LiveProgressProjection {
         if (scanning) this.state.storage.kv.delete(LIVE_PROGRESS_SCAN_KEY);
       });
     }
-    return this.#admissions > 0 || rootBusy;
+    return this.#admissions > 0 || rootBusy || (await isRootBusy());
   }
 }
