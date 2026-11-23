@@ -190,6 +190,7 @@ startReport → pending 標記 → alarm → generate：
 - **lease**：reserve 帶 10 分鐘 lease（`report.alarmTimeoutMs` 5 分鐘的兩倍——比任何一次 LLM call 都長）；DO alarm sweeper 收割過期未釋放的 slot，caller 崩潰不會永久吃掉額度。settle 以 lease 為鍵，重複 settle 是 no-op。
 - **fail-open**：DO 不可用（binding 缺失或 RPC 失敗）時照常路由、不計帳、log 一次——限額是保護性上限不是安全邊界，可用性優先；此時 `budget()` 回 0，report-runner 退化為固定 8 併發的 batch。
 - **狀態在記憶體**：計數與 lease 不落地，instance 重啟等同歸零（限額變鬆、不會卡死）；cooldown 也跟著消失，代價是多挨一次供應商 429。
+- **binding**：`RoutingLedger`（`cloudflare.config.ts` 的 export＋sqlite storage；`wrangler.vitest.jsonc` 同步，測試直接打真 DO）。選 DO 而非 KV／D1：記帳要的是單點序列化（check-and-increment）與 alarm，兩者都是 DO 的原生能力，KV 最終一致、D1 每次寫入都是一次 round-trip 且無 alarm 可依附
 
 ## 5. Gateway（apps/server/src/gateway/）
 
