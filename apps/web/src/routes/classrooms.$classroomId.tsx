@@ -1,5 +1,5 @@
-import { useCallback } from "react";
-import type { ClassroomSummary } from "@socrates/shared";
+import { useCallback, useState } from "react";
+import type { ClassroomSummary, Topic } from "@socrates/shared";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import {
@@ -88,6 +88,7 @@ function ClassroomView({
   const navigate = useNavigate();
   const client = useQueryClient();
   const teacher = room.role === "teacher";
+  const [scheduledTopic, setScheduledTopic] = useState<Topic | null>(null);
   const connect = useCallback(
     (node: HTMLDivElement | null) => {
       if (node) return subscribeToClassroom(client, room.id);
@@ -173,7 +174,19 @@ function ClassroomView({
               <CurrentTopic room={room} />
               <ActivityHistory room={room} />
               {teacher && <NewActivity room={room} />}
-              {teacher && <Topics room={room} />}
+              {teacher && (
+                <Topics
+                  room={room}
+                  onSchedule={(topic) => {
+                    setScheduledTopic(topic);
+                    void navigate({
+                      to: "/classrooms/$classroomId",
+                      params: { classroomId: room.id },
+                      search: { tab: "calendar" },
+                    });
+                  }}
+                />
+              )}
             </div>
           )}
           {tab === "announcements" && (
@@ -182,7 +195,14 @@ function ClassroomView({
           {tab === "board" && (
             <ClassroomFeed key={tab} id={room.id} viewerId={viewerId} teacher={teacher} kind="posts" />
           )}
-          {tab === "calendar" && <ClassroomCalendar id={room.id} teacher={teacher} />}
+          {tab === "calendar" && (
+            <ClassroomCalendar
+              id={room.id}
+              teacher={teacher}
+              scheduledTopic={teacher ? scheduledTopic : null}
+              onScheduleClosed={() => setScheduledTopic(null)}
+            />
+          )}
           {tab === "members" && (
             <ClassroomPeople
               id={room.id}
@@ -320,7 +340,7 @@ function CurrentTopic({ room }: { room: ClassroomSummary }) {
   );
 }
 
-function Topics({ room }: { room: ClassroomSummary }) {
+function Topics({ room, onSchedule }: { room: ClassroomSummary; onSchedule: (topic: Topic) => void }) {
   const t = useT();
   const topics = useClassroomTopics(room.id);
   return (
@@ -335,6 +355,9 @@ function Topics({ room }: { room: ClassroomSummary }) {
               <li key={topic.id} className="rounded-xl bg-paper-deep p-3">
                 <b className="block font-serif text-[15px] font-medium text-ink">{topic.title}</b>
                 <span className="mt-0.5 block text-[13px] leading-relaxed text-ink-soft">{topic.statement}</span>
+                <Button variant="outline" size="sm" className="mt-2" onClick={() => onSchedule(topic)}>
+                  {t("calendar_schedule_discussion")}
+                </Button>
               </li>
             ))}
           </ul>

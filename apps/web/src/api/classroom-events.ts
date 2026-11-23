@@ -44,6 +44,8 @@ export function subscribeToClassroom(client: QueryClient, id: string) {
           void client.invalidateQueries({ queryKey: options(id).queryKey });
       } else if (event?.type === "classroom.changed" && event.resource && Object.hasOwn(optionsFor, event.resource)) {
         void client.invalidateQueries({ queryKey: optionsFor[event.resource](id).queryKey });
+        if (event.resource === "activities")
+          void client.invalidateQueries({ queryKey: classroomCalendarScopeOptions(id).queryKey });
         if (event.resource === "members" || event.resource === "activities") void refreshSummary();
       }
     });

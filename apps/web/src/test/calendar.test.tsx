@@ -36,6 +36,8 @@ test("events are grouped by local day and ordered by start time", () => {
   const event = (id: string, startsAt: string) => ({
     id,
     classroomId: "room",
+    topicId: null,
+    activity: null,
     title: id,
     startsAt,
     note: "",
@@ -57,6 +59,8 @@ test("an event crossing midnight appears only on the local days it overlaps", ()
   const event = {
     id: "overnight",
     classroomId: "room",
+    topicId: null,
+    activity: null,
     title: "Trip",
     startsAt,
     endsAt,
@@ -75,6 +79,8 @@ function calendarServer(initial: string[] = []) {
     title,
     startsAt,
     classroomId: "room",
+    topicId: null,
+    activity: null,
     note: "",
     endsAt: null,
     createdAt: startsAt,
@@ -183,6 +189,8 @@ test("a calendar socket update refreshes the visible month", async () => {
           {
             id: "updated",
             classroomId: "room",
+            topicId: null,
+            activity: null,
             title: "After update",
             startsAt,
             endsAt: null,

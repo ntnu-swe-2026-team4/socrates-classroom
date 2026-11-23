@@ -9,11 +9,14 @@ import {
 import { all, one, run } from "../db/d1";
 import { publishClassroom } from "../do/classroom-events";
 import { fail, guardUser, newId, nowIso, requireUser, validateJson, validateQuery, type AppEnv } from "../http";
-import { classroomAccess } from "../services/members";
+import { classroomAccess, topicForActivity } from "../services/members";
 
 interface CalendarEventRow {
   id: string;
   classroom_id: string;
+  topic_id: string | null;
+  activity_id: string | null;
+  finished_at?: string | null;
   title: string;
   starts_at: string;
   ends_at: string | null;
@@ -28,12 +31,14 @@ const CalendarCursorSchema = z.tuple([
   z.iso.datetime(),
   z.string().min(1).max(128),
 ]);
-const columns = "id, classroom_id, title, starts_at, ends_at, note, created_at, updated_at";
+const columns = "id, classroom_id, topic_id, activity_id, title, starts_at, ends_at, note, created_at, updated_at";
 
 function calendarEventOf(row: CalendarEventRow): CalendarEvent {
   return {
     id: row.id,
     classroomId: row.classroom_id,
+    topicId: row.topic_id,
+    activity: row.activity_id ? { id: row.activity_id, finishedAt: row.finished_at ?? null } : null,
     title: row.title,
     startsAt: row.starts_at,
     endsAt: row.ends_at,
@@ -78,11 +83,12 @@ export function classroomCalendarRoutes() {
       const limit = query.limit ?? 100;
       const rows = await all<CalendarEventRow>(
         c.env.DB,
-        `SELECT ${columns} FROM classroom_calendar_events
-         WHERE classroom_id = $cid AND starts_at < $to
-           AND ((ends_at IS NULL AND starts_at >= $from) OR ends_at > $from)
-           AND ($lastStart IS NULL OR (starts_at, id) > ($lastStart, $lastId))
-         ORDER BY starts_at, id LIMIT $limit`,
+        `SELECT e.*, a.finished_at FROM classroom_calendar_events e
+         LEFT JOIN activities a ON a.id = e.activity_id AND a.classroom_id = e.classroom_id
+         WHERE e.classroom_id = $cid AND e.starts_at < $to
+           AND ((e.ends_at IS NULL AND e.starts_at >= $from) OR e.ends_at > $from)
+           AND ($lastStart IS NULL OR (e.starts_at, e.id) > ($lastStart, $lastId))
+         ORDER BY e.starts_at, e.id LIMIT $limit`,
         { cid: classroomId, from, to, lastStart, lastId, limit: limit + 1 },
       );
       const last = rows.length > limit ? rows[limit - 1] : undefined;
@@ -95,10 +101,13 @@ export function classroomCalendarRoutes() {
       const classroomId = c.req.param("id");
       await requireTeacher(c.env.DB, classroomId, requireUser(c));
       const input = c.req.valid("json");
+      if (input.topicId) await topicForActivity(c.env.DB, input.topicId, classroomId, requireUser(c).id);
       const at = nowIso();
       const row: CalendarEventRow = {
         id: newId("cal_"),
         classroom_id: classroomId,
+        topic_id: input.topicId ?? null,
+        activity_id: null,
         title: input.title,
         starts_at: new Date(input.startsAt).toISOString(),
         ends_at: input.endsAt ? new Date(input.endsAt).toISOString() : null,
@@ -109,10 +118,11 @@ export function classroomCalendarRoutes() {
       await run(
         c.env.DB,
         `INSERT INTO classroom_calendar_events (${columns})
-         VALUES ($id, $cid, $title, $startsAt, $endsAt, $note, $createdAt, $updatedAt)`,
+         VALUES ($id, $cid, $topicId, NULL, $title, $startsAt, $endsAt, $note, $createdAt, $updatedAt)`,
         {
           id: row.id,
           cid: row.classroom_id,
+          topicId: row.topic_id,
           title: row.title,
           startsAt: row.starts_at,
           endsAt: row.ends_at,
@@ -141,7 +151,7 @@ export function classroomCalendarRoutes() {
              ends_at = CASE WHEN $replaceEnd = 1 THEN $endsAt ELSE ends_at END,
              note = COALESCE($note, note),
              updated_at = $updatedAt
-         WHERE classroom_id = $cid AND id = $id
+         WHERE classroom_id = $cid AND id = $id AND activity_id IS NULL
            AND (CASE WHEN $replaceEnd = 1 THEN $endsAt ELSE ends_at END IS NULL
              OR CASE WHEN $replaceEnd = 1 THEN $endsAt ELSE ends_at END > COALESCE($startsAt, starts_at))
          RETURNING ${columns}`,
@@ -172,12 +182,21 @@ export function classroomCalendarRoutes() {
     .delete("/classrooms/:id/calendar-events/:eventId", guardUser(), async (c) => {
       const classroomId = c.req.param("id");
       await requireTeacher(c.env.DB, classroomId, requireUser(c));
+      const params = { cid: classroomId, id: c.req.param("eventId") };
       const deleted = await run(
         c.env.DB,
-        "DELETE FROM classroom_calendar_events WHERE classroom_id = $cid AND id = $id",
-        { cid: classroomId, id: c.req.param("eventId") },
+        "DELETE FROM classroom_calendar_events WHERE classroom_id = $cid AND id = $id AND activity_id IS NULL",
+        params,
       );
-      if (!deleted.meta.changes) fail(404, "not_found");
+      if (!deleted.meta.changes) {
+        const existing = await one(
+          c.env.DB,
+          "SELECT id FROM classroom_calendar_events WHERE classroom_id = $cid AND id = $id",
+          params,
+        );
+        if (existing) fail(409, "conflict");
+        fail(404, "not_found");
+      }
       await publishClassroom(c.env, classroomId, "calendar");
       return c.body(null, 204);
     });

@@ -18,6 +18,12 @@
 - migration 018：`activities.engagement_to_class`／`engagement_to_student`（預設 0：只有老師的單人報告看得到）
 - 報告頁：老師的勾選列、單人認真度面板、群體報告的假名認真度表；學生本人的報告在老師開放時顯示
 
+## 2026-11-23 — 從教室行事曆開始討論（`feat/348-scheduled-discussions`，#348）
+
+### Added
+
+- 老師可以從議題排定討論，再從原事件開始；學生可加入已開始的討論，活動結束後可回事件查看報告。
+
 ## 2026-11-23 — 教室行事曆週視圖與編輯（`feat/348-calendar-controls`，#348）
 
 ### Added
