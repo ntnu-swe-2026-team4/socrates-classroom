@@ -39,6 +39,8 @@
 | `GET /me`、`logout`、`stt`、`tts`、`lookup`                                                                 | —                                             | ✅                                                                 |
 | `GET /topics`、`POST /topics`、`topics/generate`、`POST /classrooms`、`POST /classrooms/:id/activities`     | —                                             | ✅（無 mode，#210）                                                |
 | `GET /classrooms/:id/topics`（#135）                                                                        | —                                             | 需該班成員                                                         |
+| `GET /classrooms/:id/calendar-events`（#348）                                                               | —                                             | 需該班 owner 或成員                                                |
+| `POST /classrooms/:id/calendar-events`、`PATCH/DELETE /classrooms/:id/calendar-events/:eventId`（#348）     | —                                             | 需該班 owner                                                       |
 | `POST /classrooms/:id/topics`、`POST /topics/:id/copy`（#135）                                              | —                                             | 需目標班 owner                                                     |
 | `POST /activities/:id/invites`（#133）                                                                      | —                                             | 需該班 owner                                                       |
 | `GET/PUT/DELETE /settings/keys/:provider`、`PUT /settings/keys/order`（#82 teacher keys）                   | —                                             | ✅（per-user BYOK，#210）                                          |
@@ -184,7 +186,22 @@ interface User {
 
 ### 4.2 教室事件（#324）
 
-`GET /api/classrooms/:id/events` 以相同 origin 與有效登入 session 升級 WebSocket。owner 與成員在連線成功後收到 `{"type":"ready"}`。D1 commit 後推播 `{"type":"classroom.changed","resource":"announcements"|"posts"|"members"|"activities"}`。推播採 best effort，權威狀態由 REST 讀取，重連後重新同步。移除成員回收該人的連線權限，推播前重驗當下的 membership 與 session。test 活動不送班級事件。
+`GET /api/classrooms/:id/events` 以相同 origin 與有效登入 session 升級 WebSocket。owner 與成員在連線成功後收到 `{"type":"ready"}`。D1 commit 後推播 `{"type":"classroom.changed","resource":"announcements"|"posts"|"members"|"activities"|"calendar"}`。推播採 best effort，權威狀態由 REST 讀取，重連後重新同步。移除成員回收該人的連線權限，推播前重驗當下的 membership 與 session。test 活動不送班級事件。
+
+### 4.3 教室行事曆（#348）
+
+行事曆事件屬於單一教室，與 §4.1 的 `activities` 分開儲存。`activities` 是已啟動的對話及其報告來源；行事曆是老師建立的排程，不會開啟對話、改動 `current_activity_id`，也不會自動將對話活動列入行事曆。`GET C/activities` 的形狀與語意維持不變。此處的 `calendar-events` REST 路徑與 §4.2 的 `/events` WebSocket 分開。
+
+| Operation                                        | 契約                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET C/calendar-events?from=&to=&limit=&cursor=` | owner 與成員可讀；未登入 401、非成員 403、未知教室 404。`from`／`to` REQUIRED，為帶時區的 ISO 8601 時間；區間為 `[from, to)`，長度 MUST 大於 0 且不超過 62 天。回 `{items: CalendarEvent[], nextCursor}`；依 `startsAt, id` 由早到晚排序。事件時間區間與查詢區間相交時回傳；無 `endsAt` 的事件以 `startsAt` 落在區間內判定。`limit` 預設 100、上限 100，`cursor` MUST 搭配原本的 `from`／`to` 使用。無效 query 回 422 `validation`。 |
+| `POST C/calendar-events`                         | owner 專屬；`{title, startsAt, endsAt?, note?}` → `CalendarEvent`（201）。`title` trim 後 1–120 字，`note` trim 後 0–1,000 字且預設 `""`；`startsAt` REQUIRED，`endsAt` 可省略或為 `null`。有 `endsAt` 時 MUST 晚於 `startsAt`。無效輸入回 422 `validation`。                                                                                                                                                                        |
+| `PATCH C/calendar-events/:eventId`               | owner 專屬；可更新上述任一欄位，body MUST 至少包含一欄；`endsAt: null` 清除結束時間。以更新後的完整事件驗證時間先後，回更新後 `CalendarEvent`（200）。事件不存在或不屬於該班回 404 `not_found`。                                                                                                                                                                                                                                     |
+| `DELETE C/calendar-events/:eventId`              | owner 專屬；成功回 204。事件不存在或不屬於該班回 404 `not_found`。                                                                                                                                                                                                                                                                                                                                                                   |
+
+`CalendarEvent` 為 `{id, classroomId, title, startsAt, endsAt, note, createdAt, updatedAt}`。輸入時間 MAY 使用 UTC offset；server 將時間正規化為 UTC ISO 8601（`Z`）後儲存與回傳，`endsAt` 缺省時回 `null`。寫入 D1 成功後推播 §4.2 的 `calendar` 事件；REST 仍是權威資料來源。
+
+排序一律以 `startsAt` 為準：跨日事件的 `startsAt` 早於查詢區間時，會排在該頁所有窗內起始事件之前——月視圖整頁拉取時長跨度事件出現在最前面，屬預期結果。時間欄位存的是 `toISOString()` 的正規化格式（`.000Z`），`starts_at`／`ends_at` 的先後比較因此等價於字串比較；新增的寫入路徑 MUST 沿用同一個正規化，否則 CHECK 與 `PATCH` 的時間先後驗證會失真。
 
 ## 5. 對話（WebSocket，核心；R7）
 
