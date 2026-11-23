@@ -285,6 +285,13 @@ const classroomApi = {
   async createCalendarEvent(id: string, json: InferRequestType<typeof calendarEvents.$post>["json"]) {
     return unwrap(await calendarEvents.$post({ param: { id }, json }));
   },
+  async updateCalendarEvent(
+    id: string,
+    eventId: string,
+    json: InferRequestType<(typeof calendarEvents)[":eventId"]["$patch"]>["json"],
+  ) {
+    return unwrap(await calendarEvents[":eventId"].$patch({ param: { id, eventId }, json }));
+  },
   async deleteCalendarEvent(id: string, eventId: string) {
     await unwrap(await calendarEvents[":eventId"].$delete({ param: { id, eventId } }));
   },

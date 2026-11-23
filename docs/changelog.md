@@ -18,6 +18,16 @@
 - migration 018：`activities.engagement_to_class`／`engagement_to_student`（預設 0：只有老師的單人報告看得到）
 - 報告頁：老師的勾選列、單人認真度面板、群體報告的假名認真度表；學生本人的報告在老師開放時顯示
 
+## 2026-11-23 — 教室行事曆週視圖與編輯（`feat/348-calendar-controls`，#348）
+
+### Added
+
+- 教室行事曆提供月／週視圖。老師可編輯排程並選填結束時間，成員可看見橫跨多天的事件。
+
+### Fixed
+
+- 行事曆 API 的 `PATCH` 在 D1 內套用變更欄位。兩筆同時修改不同欄位的請求會保留各自的更新。
+
 ## 2026-11-23 — 教室行事曆接線（`feat/348-calendar-integration`，#348）
 
 ### Changed

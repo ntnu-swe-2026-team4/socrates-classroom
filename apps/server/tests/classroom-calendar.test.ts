@@ -144,6 +144,21 @@ it("updates and deletes only an event in its classroom", async () => {
   ).toMatchObject({ items: [] });
 });
 
+it("preserves edits to different fields from concurrent requests", async () => {
+  const { classroomId } = await createClassroom(owner, "Concurrent editing");
+  const event = await createEvent(classroomId, { title: "Presentation", startsAt: "2026-11-26T09:00:00Z" });
+  const path = `/classrooms/${classroomId}/calendar-events/${event.id}`;
+  const results = await Promise.all([
+    request(path, owner, "PATCH", { title: "Updated presentation" }),
+    request(path, owner, "PATCH", { note: "Room 2" }),
+  ]);
+  expect(results.map((response) => response.status)).toEqual([200, 200]);
+  const calendar = calendarPath(classroomId, "2026-11-26T00:00:00Z", "2026-11-27T00:00:00Z");
+  expect(await (await request(calendar, owner)).json()).toMatchObject({
+    items: [{ id: event.id, title: "Updated presentation", note: "Room 2" }],
+  });
+});
+
 it("queries overlapping events in start order with a range-bound cursor", async () => {
   const { classroomId } = await createClassroom(owner, "Calendar paging");
   const later = await createEvent(classroomId, { title: "Later", startsAt: "2026-11-23T12:00:00Z" });
