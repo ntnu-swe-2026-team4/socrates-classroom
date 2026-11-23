@@ -90,6 +90,21 @@ export const ThinkingIndicatorsSchema = z.object({
 
 export type ThinkingIndicators = z.infer<typeof ThinkingIndicatorsSchema>;
 
+export const EngagementSchema = z.object({
+  substance: IndicatorSchema,
+  uptake: IndicatorSchema,
+  focus: IndicatorSchema,
+});
+
+export type Engagement = z.infer<typeof EngagementSchema>;
+
+export const EngagementVisibilitySchema = z.object({
+  classReport: z.boolean(),
+  student: z.boolean(),
+});
+
+export type EngagementVisibility = z.infer<typeof EngagementVisibilitySchema>;
+
 export const TopicGenSchema = z.object({
   topics: z
     .array(

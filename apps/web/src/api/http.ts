@@ -15,6 +15,7 @@ import type {
   ClassroomInviteScope,
   ClassroomSummary,
   DevAccounts,
+  EngagementVisibility,
   InviteInfo,
   InviteJoined,
   JoinInfo,
@@ -41,6 +42,7 @@ import {
   AdminUserUpdateInputSchema,
   ClassroomCreateInputSchema,
   DevLoginInputSchema,
+  EngagementVisibilitySchema,
   ERROR_CODES,
   GenerateTopicsInputSchema,
   JoinInputSchema,
@@ -135,6 +137,7 @@ export interface Api {
   activityLive(activityId: string, signal?: AbortSignal): Promise<ActivityLive>;
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
+  setEngagementVisibility(activityId: string, visibility: EngagementVisibility): Promise<EngagementVisibility>;
   listSoloThreads(): Promise<SoloThread[]>;
   getSoloThread(id: string): Promise<SoloThread>;
   createSoloThread(input: SoloThreadCreateInput): Promise<SoloThread>;
@@ -472,6 +475,14 @@ export const httpApi: Api = {
   },
   async report(activityId) {
     return unwrap(await client.activities[":id"].report.$get({ param: { id: activityId } }));
+  },
+  async setEngagementVisibility(activityId, visibility) {
+    return unwrap(
+      await client.activities[":id"]["engagement-visibility"].$put({
+        param: { id: activityId },
+        json: EngagementVisibilitySchema.parse(visibility),
+      }),
+    );
   },
   async listSoloThreads() {
     return unwrap(await client.solo.threads.$get());

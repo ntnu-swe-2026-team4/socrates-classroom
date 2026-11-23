@@ -46,6 +46,7 @@
 | `GET/POST /admin/users`、`PATCH /admin/users/:id`、`GET/PUT /admin/settings`、`GET /admin/overview`（#185） | —                                             | ❌ 401／403 `forbidden`                                            |
 | `GET /activities/:id`                                                                                       | 需本人 participant cookie                     | 教室成員、owner 或此活動的登入訪客                                 |
 | `GET /activities/:id/report`                                                                                | —                                             | 本人 participant、班級 owner；未產生個人報告的現有成員可查生成狀態 |
+| `PUT /activities/:id/engagement-visibility`（#267）                                                         | —                                             | 需該班 owner                                                       |
 | `GET/POST /activities/:id/slots`（#134）                                                                    | —                                             | 需該班 owner                                                       |
 | **WS** `/agents/chat/:name`（watch/entries/abort）                                                          | 僅本人 participant thread                     | 本人 participant thread，或該班 owner 可觀察自己帶的班級           |
 | **WS** `submit` op                                                                                          | 僅本人 participant thread                     | 僅本人 participant thread                                          |
@@ -300,10 +301,11 @@ type ServerMessage =
 
 ## 7. 活動結束與報告（#74/#78/#79/#72）
 
-| Operation                                                           | 說明                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/activities/:id/finish` → `204`                           | 老師結束活動 → ReportRunner DO `startReport`（alarm 驅動，非同步）。冪等；老師專屬                                                                                                                                                                                                                                                                                                                                                                               |
-| `GET /api/activities/:id/report` → `TeacherReport \| StudentReport` | 生成中 404 `report_pending`（前端輪詢至 200）；失敗 500 `report_failed`（重打 `finish` 可重觸發）；**partial**＝群體生成失敗（第一次失敗即落 partial；重試不存在於 alarm 迴圈）但個別報告已存——200 回應，`classReport: null`、`positions: []`（重打 `finish` 可重觸發全量；alarm 層的重試耗盡才是 `failed`）。**角色分流**：老師見全班＋個人；帳號可讀本人 participant 的報告（含離班後），無 classReport；學生的報告不存在（無 transcript 等）→ 404 `not_found` |
+| Operation                                                                                       | 說明                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/activities/:id/finish` → `204`                                                       | 老師結束活動 → ReportRunner DO `startReport`（alarm 驅動，非同步）。冪等；老師專屬                                                                                                                                                                                                                                                                                                                                                                               |
+| `GET /api/activities/:id/report` → `TeacherReport \| StudentReport`                             | 生成中 404 `report_pending`（前端輪詢至 200）；失敗 500 `report_failed`（重打 `finish` 可重觸發）；**partial**＝群體生成失敗（第一次失敗即落 partial；重試不存在於 alarm 迴圈）但個別報告已存——200 回應，`classReport: null`、`positions: []`（重打 `finish` 可重觸發全量；alarm 層的重試耗盡才是 `failed`）。**角色分流**：老師見全班＋個人；帳號可讀本人 participant 的報告（含離班後），無 classReport；學生的報告不存在（無 transcript 等）→ 404 `not_found` |
+| `PUT /api/activities/:id/engagement-visibility` `EngagementVisibility` → `EngagementVisibility` | 老師設定認真度（`engagement`）除了老師的單人報告之外還顯示在哪裡（#267）：`classReport`＝群體報告（以 pseudonym 列出），`student`＝學生本人的報告。兩者都 MUST 帶（缺欄位 422 `validation`）；預設皆 `false`；隨時可改、可在報告生成前後設定，讀取報告時才套用（不重新生成）。老師專屬（非 owner 403 `forbidden`），test 活動同樣可設                                                                                                                            |
 
 **報告形狀（#74，PR #109 的分析為核心；`pseudonym` 生成一次存 D1，活動內穩定；#72 全去識別化）**：
 
@@ -320,6 +322,8 @@ interface Indicator {
   evidence: string;                              // 一句依據說明（老師的語言）；內容只由 prompt 要求，server 不檢查（level 0 時要求空字串）
 }
 interface ThinkingIndicators { c1: Indicator; c2: Indicator; s1: Indicator; s2: Indicator; a1: Indicator; a2: Indicator }  // 六項思辨力指標（#255）
+interface Engagement { substance: Indicator; uptake: Indicator; focus: Indicator }  // 認真度（#267）：實質發言／回應追問／切題，判斷原則與 Indicator 規則同 ThinkingIndicators
+interface EngagementVisibility { classReport: boolean; student: boolean }  // 認真度另外顯示在群體報告／學生本人報告；預設皆 false
 interface ClassReport {
   students: {id; summary: {step; turns}[]}[];   // 逐生摘要（cause → result 步驟＋出處行號）；空陣列＝全班未表態
   unstated: string[];                            // 未表態者
@@ -335,12 +339,14 @@ interface ReportPosition {                       // 單人落點：從 classRepo
 interface TeacherReport {
   topicTitle: string;
   classReport: ClassReport | null;               // null＝partial（群體生成失敗，個別報告仍可用）
+  engagementVisibility: EngagementVisibility;    // 老師的勾選狀態；classReport＝true 時群體報告頁以 pseudonym 列出全班認真度
   students: Array<{                              // array 保序（joined_at）；只列真的有對話的參與者
     participantId: string;                       // 活動 participant id——僅老師可見（真實身分在 members／users）
     participantName: string;                     // 參與者名稱（老師個別頁與學生本人頁顯示；classReport 仍用 pseudonym）
     pseudonym: string;
     analysis: StudentAnalysis | null;            // 論點總結（claim/reasons/tension＋turns 出處）
     indicators: ThinkingIndicators | null;       // 思辨力指標，與 analysis 分開判斷、各自失敗；null＝沒有對話、重試後仍失敗，或指標上線前的舊報告
+    engagement: Engagement | null;               // 認真度，老師一律看得到；與 analysis、indicators 分開判斷、各自失敗；null 的意思同 indicators
     violations: ViolationSlice[];                 // 違規切片（不經 LLM）
     positions: ReportPosition[];                 // 每位學生自己的落點（partial 時為空）
   }>;
@@ -351,6 +357,7 @@ interface StudentReport {
   pseudonym: string;                             // 自己在 classReport 中的定位線索（老師版可對照）
   analysis: StudentAnalysis | null;              // 自己的
   indicators: ThinkingIndicators | null;         // 自己的（null 的意思同 TeacherReport）
+  engagement: Engagement | null;                 // 自己的；老師未勾 engagementVisibility.student 時一律 null（與失敗不區分）
   violations: ViolationSlice[];
   positions: ReportPosition[];                   // 自己在每條軸上的落點
 }
@@ -361,7 +368,8 @@ interface ViolationSlice {
 }
 ```
 
-- **學生不拿 classReport**（設計決策）：學生報告只有自己的 analysis＋indicators＋violations＋pseudonym；全班視角是老師專屬
+- **學生不拿 classReport**（設計決策）：學生報告只有自己的 analysis＋indicators＋violations＋pseudonym（＋老師開放時的 engagement）；全班視角是老師專屬
+- **認真度（#267）**：三個維度沿用 #255 的判斷原則——只看學生自己說的話、附和 AI 或只挑 AI 給的選項不算、level 0＝這場對話看不出來（不是對學生態度的評價）、不評判立場；等級與行號的查核和重試與 `indicators` 相同。可見性是讀取時套用的老師設定（`activities.engagement_to_class`／`engagement_to_student`），學生版在 server 端就把 `engagement` 換成 `null`，不靠前端隱藏；群體報告的開關只影響老師的群體報告頁（資料老師本來就有），讓投影到全班時預設不露出認真度
 - **`violations` 的收斂住在報告層**：`transcript()` 回傳 transcript 裡全部的 `app.violation` entry（忠實反映 entry 身分），報告組裝時才依 `turn + type + excerpt` 收斂為一筆、保留先寫入者——同一輪 classifier 與 `report_violation` 工具都回報時，老師看到與分析模型讀到的仍是單筆
 - **報告母體＝有對話的 `activity_participants`**（#132）：沒進活動的班級成員、進了活動但**一句都沒說**的參與者都不產生空報告——本人報告頁 404 `not_found`，classReport 的 roster 也只含真的有對話的人；test 活動（#134）的母體就是它的 `teacher` slot；`student_reports` 的 JSON key 與 WS thread 名的後半段同為 participant id；pseudonym 序號**不依加入順序**（#133）：以 `HMAC(AUTH_SECRET, (activityId, participantId))` 排序後給 1..n，避免老師用報到時序反推訪客身分（既有 pseudonym 存 D1，活動內穩定不變）
 - 報告母體為空時，兩種設軸模式均直接生成可讀的群體報告。`classReport.students`、`unstated`、`axes` 與個別報告 `students` 皆為空陣列，`overview` 以老師的語言說明無人發言。

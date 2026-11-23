@@ -161,6 +161,18 @@ describe("httpApi contract (browser-side actual code)", () => {
     expect(init.method).toBe("POST");
   });
 
+  test("setEngagementVisibility: PUT both flags and read back the saved visibility", async () => {
+    handler.mockReturnValue(json({ classReport: true, student: false }));
+    await expect(httpApi.setEngagementVisibility("a_1", { classReport: true, student: false })).resolves.toEqual({
+      classReport: true,
+      student: false,
+    });
+    const [path, init] = handler.mock.calls[0];
+    expect(path).toBe("/api/activities/a_1/engagement-visibility");
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(init.body as string)).toEqual({ classReport: true, student: false });
+  });
+
   test("login and logout announce the session change for cross-tab sync", async () => {
     handler.mockImplementation((path) => {
       if (path === "/api/auth/login") return json({ id: "u1", name: "小明", isAdmin: false });

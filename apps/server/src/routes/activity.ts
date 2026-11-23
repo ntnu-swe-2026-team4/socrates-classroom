@@ -1,11 +1,19 @@
 import { Hono } from "hono";
 import type { ZodType } from "zod";
 import { z } from "zod";
-import type { ActivityInfo, ActivitySlot, StudentReport, TeacherReport, ViolationType } from "@socrates/shared";
+import type {
+  ActivityInfo,
+  ActivitySlot,
+  EngagementVisibility,
+  StudentReport,
+  TeacherReport,
+  ViolationType,
+} from "@socrates/shared";
 import {
   ACTIVITY_SLOT_MAX,
   ActivitySlotCreateInputSchema,
   ClassroomPageQuerySchema,
+  EngagementVisibilitySchema,
   StoredStudentReportsSchema,
   StoredTeacherReportSchema,
 } from "@socrates/shared";
@@ -25,6 +33,7 @@ import {
 } from "../http";
 import type { Env } from "../env";
 import {
+  type ActivityRow,
   activityAccess,
   activityAccessOf,
   activityOf,
@@ -50,6 +59,10 @@ function storedReport<T>(raw: string | null, schema: ZodType<T>): T | undefined 
   } catch {
     return undefined;
   }
+}
+
+function engagementVisibilityOf(activity: ActivityRow): EngagementVisibility {
+  return { classReport: activity.engagement_to_class === 1, student: activity.engagement_to_student === 1 };
 }
 
 interface SlotRow {
@@ -239,6 +252,22 @@ export function activityRoutes() {
       });
       return c.body(null, 204);
     })
+    .put("/activities/:id/engagement-visibility", guardUser(), validateJson(EngagementVisibilitySchema), async (c) => {
+      const user = requireUser(c);
+      const visibility = c.req.valid("json");
+      const { activity, classroom } = await activityAccess(c.env.DB, c.req.param("id"), {
+        user,
+        participant: null,
+      });
+      if (classroom.teacher_id !== user.id) fail(403, "forbidden");
+      await run(
+        c.env.DB,
+        "UPDATE activities SET engagement_to_class = $cls, engagement_to_student = $stu WHERE id = $id",
+        { id: activity.id, cls: visibility.classReport ? 1 : 0, stu: visibility.student ? 1 : 0 },
+      );
+      const payload: EngagementVisibility = visibility;
+      return c.json(payload);
+    })
     .get("/me/reports", guardUser(), validateQuery(ClassroomPageQuerySchema), async (c) => {
       const user = requireUser(c);
       const { limit, at, after } = pageBounds(c.req.valid("query"));
@@ -313,12 +342,14 @@ export function activityRoutes() {
         const report: TeacherReport = {
           topicTitle: topic.title,
           classReport: stored?.classReport ?? null,
+          engagementVisibility: engagementVisibilityOf(activity),
           students: Object.entries(students).map(([participantId, own]) => ({
             participantId,
             participantName: own.participantName ?? own.pseudonym,
             pseudonym: own.pseudonym,
             analysis: own.analysis,
             indicators: own.indicators ?? null,
+            engagement: own.engagement ?? null,
             violations: own.violations.map((violation) => ({ ...violation, type: violation.type as ViolationType })),
             positions: own.positions ?? [],
           })),
@@ -333,6 +364,7 @@ export function activityRoutes() {
         pseudonym: own.pseudonym,
         analysis: own.analysis,
         indicators: own.indicators ?? null,
+        engagement: engagementVisibilityOf(activity).student ? (own.engagement ?? null) : null,
         violations: own.violations.map((violation) => ({ ...violation, type: violation.type as ViolationType })),
         positions: own.positions ?? [],
       };

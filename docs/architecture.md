@@ -95,7 +95,7 @@ socrates-classroom/
 │       │   │   ├── ledger.ts           # (provider, model, credential) 記帳＋cooldown
 │       │   │   └── router.ts           # traffic class 鏈走訪（teacher legs 前置合併）
 │       │   ├── prompts/            # LLM 組的 prompt 資產（build-time ?raw）；規範見 #161 留言〈Prompt 規範〉
-│       │   │   ├── socrates.md（＋.en／.es）/ btw.md / lookup.md / topic-gen.md / class-report.md / class-report-axes.md / student-report.md / student-indicators.md
+│       │   │   ├── socrates.md（＋.en／.es）/ btw.md / lookup.md / topic-gen.md / class-report.md / class-report-axes.md / student-report.md / student-indicators.md / student-engagement.md
 │       │   │   ├── violation-classify.md / violation-classify-topic.md / emotion-classify.md  # Clef choice 題：第一段 instructions，其後每行 `- choice: criterion`（`pi/clef-prompt.ts` 解析）
 │       │   │   └── assemble.ts     # 輸入的外框（topicBlock／section／報告、lookup、topic-gen 輸入／web-content 外框／report_violation 回覆）
 │       │   ├── ws/                 # transport glue（protocol + sockets）
@@ -166,12 +166,13 @@ startReport → pending 標記 → alarm → generate：
   transcriptOf（AI：…/學生（n）：… 編號＋假名冪等）
   → Promise.all 平行 per-student studentReport（重試 2；語言＝老師的 users.lang，與 classReport 相同；引用的 turns 須是學生說過的行號，否則視同格式錯誤重試）
   → Promise.all 平行 per-student studentIndicators（六項思辨力指標，#255；與 studentReport 分開呼叫、各自失敗；重試與行號查核同 studentReport，另查 level 0 不附 turns、1–3 至少附一個；重試後仍失敗 → 該生 indicators＝null）
+  → Promise.all 平行 per-student studentEngagement（認真度三維度，#267；與 studentIndicators 是兩次呼叫，但共用同一套呼叫流程、行號查核與重試，各自失敗 → 該生 engagement＝null）
   → classReport（立場軸/落點/分群；落點由模型給 side＋strength，server 換算 end/at：left→low、right→high，at＝50∓10×strength，middle＝50）
     startReport 帶 axes（{count: 1–3, teacher: 老師的軸}）時改用 class-report-axes：老師的軸依序在前、由 server 填入名稱與兩端（模型交這些軸的落點與 why），模型補的軸寫完整、接在後面，總數不超過 count；老師軸的數量不對、總數超過 count、任一條軸的落點名單不是全班各一次（落點的意義見 api-contract.md §7），都視同格式錯誤；沒帶 axes 時與上一行相同
-  → persist（D1 reports：teacher_report=classReport、student_reports=analysis+indicators+violations-from-transcript）
+  → persist（D1 reports：teacher_report=classReport、student_reports=analysis+indicators+engagement+violations-from-transcript）
 ```
 
-模型呼叫經 `runProfile("student-report")`／`runProfile("student-indicators")`／`runProfile("class-report")`（帶 axes 時為 `class-report-axes`）（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片從 pi transcript 抽取（`/transcript` 端點，不落第二份儲存）。
+模型呼叫經 `runProfile("student-report")`／`runProfile("student-indicators")`／`runProfile("student-engagement")`／`runProfile("class-report")`（帶 axes 時為 `class-report-axes`）（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片從 pi transcript 抽取（`/transcript` 端點，不落第二份儲存）。
 
 ## 5. Gateway（apps/server/src/gateway/）
 
@@ -195,7 +196,7 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 ## 6. 資料層
 
 - **開活動的 transaction**：Worker 先確認題目權限與設軸 policy，再以同一個 D1 batch 寫入所有必要的變更。D1 回傳成功後才發送 classroom 事件。活動 API 的題目 snapshot 規則見 [api-contract.md §4.1](api-contract.md)。
-- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities／教室社群／settings（`migrations/`）。014 教室社群新增 `classroom_announcements`、`classroom_posts`、`classroom_content_requests` 與 `classroom_invites`；015（`015_topic_axes.sql`）為 `topics` 新增 `axes` 欄位並 backfill 系統題與 `copied_from` 複本（#159）；016（`016_settings.sql`）新增 `settings` key-value 表（deploy 後管理員可調整的執行期設定，未設定時 fallback 至 `providers.config.yaml`）與 `activities.report_axes`（開活動當下快照鎖定之設軸模式 `teacher`／`ai`，既有活動為 `NULL`）。pi transcript 是對話與違規的唯一真相，無第二份儲存
+- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities／教室社群／settings（`migrations/`）。014 教室社群新增 `classroom_announcements`、`classroom_posts`、`classroom_content_requests` 與 `classroom_invites`；015（`015_topic_axes.sql`）為 `topics` 新增 `axes` 欄位並 backfill 系統題與 `copied_from` 複本（#159）；016（`016_settings.sql`）新增 `settings` key-value 表（deploy 後管理員可調整的執行期設定，未設定時 fallback 至 `providers.config.yaml`）與 `activities.report_axes`（開活動當下快照鎖定之設軸模式 `teacher`／`ai`，既有活動為 `NULL`）；018（`018_engagement_visibility.sql`）為 `activities` 新增 `engagement_to_class`／`engagement_to_student`（老師的認真度可見性勾選，預設 0，#267）。pi transcript 是對話與違規的唯一真相，無第二份儲存
 - **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 provider 鏈序（#82）
 - **DO SQLite**：只有 pi 自己的 `pi_*` 表，應用程式不讀寫——agent 狀態與產品資料分離（D2）
 - **保留政策**：AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容（judgment sink 只記 type/source）
@@ -303,7 +304,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ### 13.1 D9 judgment plane（one-shot gateway）
 
-v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78）、群體立場星圖（#79）、認真度——全部是 judgment plane 對 transcripts 的加工。generation plane 採集，judgment plane 加工；教學目標（C1/C2/S1/S2/A1/A2）的 proxy indicators 全部由 judgment 層量測。
+v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78）、群體立場星圖（#79）、認真度（#267，`student-engagement`）——全部是 judgment plane 對 transcripts 的加工。generation plane 採集，judgment plane 加工；教學目標（C1/C2/S1/S2/A1/A2）的 proxy indicators 全部由 judgment 層量測。
 
 - gateway＝**stateless function**（isolate 內直呼，不經 DO）：輸入＝transcript 片段＋prompt 題型；輸出＝structured choice／評分。題型：逐輪 violation choice（#71）、intent 分類（#76）、report 分析（#74）、表情 choice（#90 之後）
 - 逐輪 judgment 走 async：turn commit → enqueue（D10）→ judgment → violations 批次寫入 → publish 到 event layer → 面板；latency budget ≤30s，不擋對話主迴圈

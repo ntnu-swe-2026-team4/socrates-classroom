@@ -19,6 +19,8 @@ export interface ActivityRow {
   topic_id: string;
   mode: ActivityMode;
   report_axes: ReportAxes | null;
+  engagement_to_class: 0 | 1;
+  engagement_to_student: 0 | 1;
   created_at: string;
   finished_at: string | null;
 }

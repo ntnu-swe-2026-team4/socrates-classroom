@@ -3,6 +3,7 @@ import { createRegistry, Harness, type Registry } from "@earendil-works/pi-durab
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import type { JsonObject } from "@earendil-works/pi-durable";
+import type { ZodType } from "zod";
 import {
   fauxAssistantMessage,
   fauxToolCall,
@@ -21,11 +22,13 @@ import {
   reportSubmitAxesExtension,
   type PlannedClassReportSubmission,
   type ReportAxesPlan,
+  reportSubmitEngagementExtension,
   reportSubmitExtension,
   reportSubmitIndicatorsExtension,
   SUBMIT_CLASS_AXES_REPORT,
   SUBMIT_CLASS_REPORT,
   SUBMIT_STUDENT_ANALYSIS,
+  SUBMIT_STUDENT_ENGAGEMENT,
   SUBMIT_STUDENT_INDICATORS,
 } from "../pi/extensions/report-submit";
 import { all, one, run } from "../db/d1";
@@ -33,10 +36,13 @@ import { nowIso } from "../http";
 import { classReportInput, studentReportInput } from "../prompts/assemble";
 import {
   ClassReportSubmissionSchema,
+  EngagementSchema,
   StudentAnalysisSchema,
   ThinkingIndicatorsSchema,
   type ClassReport,
   type ClassReportSubmission,
+  type Engagement,
+  type Indicator,
   type Lang,
   type ReportPosition,
   type StudentAnalysis,
@@ -59,6 +65,32 @@ export type ReportAlarmPlan =
   | { action: "terminal" }
   | { action: "rearm"; delayMs: number }
   | { action: "generate"; backoffMs: number };
+
+type LeveledProfile = "student-indicators" | "student-engagement";
+
+interface LeveledJudgment<T extends Record<string, Indicator>> {
+  profile: LeveledProfile;
+  submitTool: string;
+  schema: ZodType<T>;
+}
+
+const INDICATORS_JUDGMENT: LeveledJudgment<ThinkingIndicators> = {
+  profile: "student-indicators",
+  submitTool: SUBMIT_STUDENT_INDICATORS,
+  schema: ThinkingIndicatorsSchema,
+};
+
+const ENGAGEMENT_JUDGMENT: LeveledJudgment<Engagement> = {
+  profile: "student-engagement",
+  submitTool: SUBMIT_STUDENT_ENGAGEMENT,
+  schema: EngagementSchema,
+};
+
+interface StudentJudgments {
+  analyses: Map<string, StudentAnalysis | null>;
+  indicators: Map<string, ThinkingIndicators | null>;
+  engagement: Map<string, Engagement | null>;
+}
 
 interface RawTranscript {
   messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
@@ -112,18 +144,21 @@ export class ReportRunner extends DurableObject<Env> {
   readonly registry = createRegistry();
   readonly axesRegistry = createRegistry();
   readonly indicatorsRegistry = createRegistry();
+  readonly engagementRegistry = createRegistry();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.registry.install(reportSubmitExtension);
     this.axesRegistry.install(reportSubmitAxesExtension);
     this.indicatorsRegistry.install(reportSubmitIndicatorsExtension);
-    for (const registry of [this.registry, this.axesRegistry, this.indicatorsRegistry]) {
+    this.engagementRegistry.install(reportSubmitEngagementExtension);
+    const registries = [this.registry, this.axesRegistry, this.indicatorsRegistry, this.engagementRegistry];
+    for (const registry of registries) {
       registry.install(createUsageExtension(this.env, () => teacherOfActivity(this.env, this.ctx.id.name ?? "")));
     }
     if (this.models.faux) {
       this.models.faux.setResponses([fauxReportScript]);
-      for (const registry of [this.registry, this.axesRegistry, this.indicatorsRegistry]) {
+      for (const registry of registries) {
         registry.install(fauxReplayExtension(this.models.faux, fauxReportScript));
       }
     }
@@ -328,16 +363,14 @@ export class ReportRunner extends DurableObject<Env> {
       rendered.set(participant.id, renderTranscript(participant.id, transcripts.get(participant.id), pseudonyms));
     }
 
-    const studentAnalyses = new Map<string, StudentAnalysis | null>();
-    const studentIndicators = new Map<string, ThinkingIndicators | null>();
+    const judgments: StudentJudgments = { analyses: new Map(), indicators: new Map(), engagement: new Map() };
     if (roster.length === 0) {
       await this.persist(
         activityId,
         activity.title,
         { students: [], unstated: [], axes: [], overview: [EMPTY_CLASS_OVERVIEW[teacherLang]] },
         roster,
-        studentAnalyses,
-        studentIndicators,
+        judgments,
         pseudonyms,
         rendered,
       );
@@ -350,7 +383,7 @@ export class ReportRunner extends DurableObject<Env> {
         roster.slice(i, i + batch).map(async (participant) => {
           const transcript = rendered.get(participant.id)?.text ?? "";
           if (!transcript.trim()) {
-            studentAnalyses.set(participant.id, null);
+            judgments.analyses.set(participant.id, null);
             return;
           }
           try {
@@ -367,42 +400,52 @@ export class ReportRunner extends DurableObject<Env> {
                 if (!citesSpokenLines(analysis, transcripts.get(participant.id)?.turns ?? 0)) {
                   throw new Error("report_turn_not_spoken");
                 }
-                studentAnalyses.set(participant.id, analysis);
+                judgments.analyses.set(participant.id, analysis);
                 break;
               } catch (error) {
                 console.error(
                   "[report] student analysis parse failed",
                   error instanceof Error ? error.name : typeof error,
                 );
-                if (attempt === report.studentAttempts - 1) studentAnalyses.set(participant.id, null);
+                if (attempt === report.studentAttempts - 1) judgments.analyses.set(participant.id, null);
               }
             }
           } catch (error) {
             console.error("[report] student analysis failed", error instanceof Error ? error.name : typeof error);
-            studentAnalyses.set(participant.id, null);
+            judgments.analyses.set(participant.id, null);
           }
         }),
       );
     }
 
-    const indicatorsHarness = await this.openHarness(this.indicatorsRegistry);
-    for (let i = 0; i < roster.length; i += batch) {
-      await Promise.all(
-        roster.slice(i, i + batch).map(async (participant) => {
-          studentIndicators.set(
-            participant.id,
-            await this.studentIndicators(
-              indicatorsHarness,
-              activity,
-              rendered.get(participant.id)?.text ?? "",
-              transcripts.get(participant.id)?.turns ?? 0,
-              legs,
-              teacherLang,
-            ),
-          );
-        }),
-      );
-    }
+    const judge = async <T extends Record<string, Indicator>>(
+      judgment: LeveledJudgment<T>,
+      registry: Registry,
+      results: Map<string, T | null>,
+    ) => {
+      const judgmentHarness = await this.openHarness(registry);
+      for (let i = 0; i < roster.length; i += batch) {
+        await Promise.all(
+          roster.slice(i, i + batch).map(async (participant) => {
+            results.set(
+              participant.id,
+              await this.studentJudgment(
+                judgment,
+                judgmentHarness,
+                registry,
+                activity,
+                rendered.get(participant.id)?.text ?? "",
+                transcripts.get(participant.id)?.turns ?? 0,
+                legs,
+                teacherLang,
+              ),
+            );
+          }),
+        );
+      }
+    };
+    await judge(INDICATORS_JUDGMENT, this.indicatorsRegistry, judgments.indicators);
+    await judge(ENGAGEMENT_JUDGMENT, this.engagementRegistry, judgments.engagement);
 
     const classRoster = roster.map((p) => pseudonyms.get(p.id) ?? "").filter(Boolean);
     const classInput = classReportInput(
@@ -415,61 +458,48 @@ export class ReportRunner extends DurableObject<Env> {
       const classReport = axesPlan
         ? await this.plannedClassReport(axesPlan, classRoster, classInput, legs, teacherLang)
         : await this.openClassReport(harness, classInput, legs, teacherLang);
-      await this.persist(
-        activityId,
-        activity.title,
-        classReport,
-        roster,
-        studentAnalyses,
-        studentIndicators,
-        pseudonyms,
-        rendered,
-      );
+      await this.persist(activityId, activity.title, classReport, roster, judgments, pseudonyms, rendered);
     } catch (error) {
       console.error("[report] class report failed", error instanceof Error ? error.name : typeof error);
-      await this.persist(
-        activityId,
-        activity.title,
-        null,
-        roster,
-        studentAnalyses,
-        studentIndicators,
-        pseudonyms,
-        rendered,
-      );
+      await this.persist(activityId, activity.title, null, roster, judgments, pseudonyms, rendered);
       throw error;
     }
   }
 
-  private async studentIndicators(
+  private async studentJudgment<T extends Record<string, Indicator>>(
+    judgment: LeveledJudgment<T>,
     harness: Harness,
+    registry: Registry,
     activity: { title: string; statement: string },
     transcript: string,
     spokenLines: number,
     legs: TeacherLeg[],
     lang: Lang,
-  ): Promise<ThinkingIndicators | null> {
+  ): Promise<T | null> {
     if (!transcript.trim()) return null;
     try {
       for (let attempt = 0; attempt < gatewayConfig.report.studentAttempts; attempt += 1) {
         const { text, payload } = await this.runAgent(
           harness,
-          "student-indicators",
+          judgment.profile,
           studentReportInput(activity, transcript),
           legs,
-          { lang, submitTool: SUBMIT_STUDENT_INDICATORS },
-          this.indicatorsRegistry,
+          { lang, submitTool: judgment.submitTool },
+          registry,
         );
         try {
-          const indicators = ThinkingIndicatorsSchema.parse(payloadOf(text, payload));
-          if (!indicatorsCiteSpokenLines(indicators, spokenLines)) throw new Error("report_indicator_turns_invalid");
-          return indicators;
+          const judged = judgment.schema.parse(payloadOf(text, payload));
+          if (!indicatorsCiteSpokenLines(judged, spokenLines)) throw new Error("report_indicator_turns_invalid");
+          return judged;
         } catch (error) {
-          console.error("[report] student indicators parse failed", error instanceof Error ? error.name : typeof error);
+          console.error(
+            `[report] ${judgment.profile} parse failed`,
+            error instanceof Error ? error.name : typeof error,
+          );
         }
       }
     } catch (error) {
-      console.error("[report] student indicators failed", error instanceof Error ? error.name : typeof error);
+      console.error(`[report] ${judgment.profile} failed`, error instanceof Error ? error.name : typeof error);
     }
     return null;
   }
@@ -507,7 +537,7 @@ export class ReportRunner extends DurableObject<Env> {
 
   private async runAgent(
     harness: Harness,
-    profile: "student-report" | "student-indicators" | "class-report" | "class-report-axes",
+    profile: "student-report" | LeveledProfile | "class-report" | "class-report-axes",
     input: string,
     legs: TeacherLeg[],
     options: { lang: Lang; submitTool: string },
@@ -555,21 +585,20 @@ export class ReportRunner extends DurableObject<Env> {
     topicTitle: string,
     classReport: ClassReport | null,
     roster: Array<{ id: string; display_name: string }>,
-    studentAnalyses: Map<string, StudentAnalysis | null>,
-    studentIndicators: Map<string, ThinkingIndicators | null>,
+    judgments: StudentJudgments,
     pseudonyms: Map<string, string>,
     transcripts: Map<string, { text: string; violations: ViolationSlice[] }>,
   ): Promise<void> {
     const students: Record<string, unknown> = {};
     for (const participant of roster) {
       const participantId = participant.id;
-      const analysis = studentAnalyses.get(participantId) ?? null;
       const pseudonym = pseudonyms.get(participantId) ?? participantId;
       students[participantId] = {
         participantName: participant.display_name,
         pseudonym,
-        analysis,
-        indicators: studentIndicators.get(participantId) ?? null,
+        analysis: judgments.analyses.get(participantId) ?? null,
+        indicators: judgments.indicators.get(participantId) ?? null,
+        engagement: judgments.engagement.get(participantId) ?? null,
         violations: transcripts.get(participantId)?.violations ?? [],
         positions: positionsOf(classReport, pseudonym),
       };
@@ -683,7 +712,7 @@ export function citesSpokenLines(analysis: StudentAnalysis, spokenLines: number)
   return cited.every((turn) => turn <= spokenLines);
 }
 
-export function indicatorsCiteSpokenLines(indicators: ThinkingIndicators, spokenLines: number): boolean {
+export function indicatorsCiteSpokenLines(indicators: Record<string, Indicator>, spokenLines: number): boolean {
   return Object.values(indicators).every(({ level, turns }) =>
     level === 0 ? turns.length === 0 : turns.length > 0 && turns.every((turn) => turn <= spokenLines),
   );
@@ -721,6 +750,9 @@ const fauxUnspokenCited = new Set<string>();
 const FAUX_INDICATOR_RETRY_MARKER = "FORCE-INDICATOR-RETRY";
 const FAUX_INDICATOR_FAILURE_MARKER = "FORCE-INDICATOR-FAILURE";
 const fauxIndicatorRetried = new Set<string>();
+const FAUX_ENGAGEMENT_RETRY_MARKER = "FORCE-ENGAGEMENT-RETRY";
+const FAUX_ENGAGEMENT_FAILURE_MARKER = "FORCE-ENGAGEMENT-FAILURE";
+const fauxEngagementRetried = new Set<string>();
 
 function fauxReportScript(context: TranscriptContext): AssistantMessage {
   const last = context.messages.filter((message) => message.role !== "system").at(-1);
@@ -742,6 +774,21 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
           s2: { level: 1, turns: invalid ? [] : [1], evidence: "有給理由但沒有指向特徵" },
           a1: none,
           a2: none,
+        }),
+      ],
+      { stopReason: "toolUse" },
+    );
+  }
+  if (offered.includes(SUBMIT_STUDENT_ENGAGEMENT)) {
+    const retryOnce = prompt.includes(FAUX_ENGAGEMENT_RETRY_MARKER) && !fauxEngagementRetried.has(prompt);
+    if (retryOnce) fauxEngagementRetried.add(prompt);
+    const invalid = retryOnce || prompt.includes(FAUX_ENGAGEMENT_FAILURE_MARKER);
+    return fauxAssistantMessage(
+      [
+        fauxToolCall(SUBMIT_STUDENT_ENGAGEMENT, {
+          substance: { level: 2, turns: [1], evidence: "有說出自己的理由，但很簡短" },
+          uptake: { level: 0, turns: invalid ? [1] : [], evidence: "" },
+          focus: { level: 3, turns: [1], evidence: "發言都扣著題目" },
         }),
       ],
       { stopReason: "toolUse" },

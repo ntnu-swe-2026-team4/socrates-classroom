@@ -1,9 +1,12 @@
 import { z } from "zod";
 import {
   ClassReportSchema,
+  EngagementSchema,
   StudentAnalysisSchema,
   ThinkingIndicatorsSchema,
   type ClassReport,
+  type Engagement,
+  type EngagementVisibility,
   type StudentAnalysis,
   type ThinkingIndicators,
 } from "./reports";
@@ -196,6 +199,7 @@ export const StudentReportEntrySchema = z.object({
   pseudonym: z.string(),
   analysis: StudentAnalysisSchema.nullable(),
   indicators: ThinkingIndicatorsSchema.nullable().optional(),
+  engagement: EngagementSchema.nullable().optional(),
   violations: z.array(ViolationSliceSchema),
   positions: z.array(ReportPositionSchema),
 });
@@ -220,6 +224,7 @@ export interface StudentReportEntry {
   pseudonym: string;
   analysis: StudentAnalysis | null;
   indicators: ThinkingIndicators | null;
+  engagement: Engagement | null;
   violations: ViolationSlice[];
   positions: ReportPosition[];
 }
@@ -227,6 +232,7 @@ export interface StudentReportEntry {
 export interface TeacherReport {
   topicTitle: string;
   classReport: ClassReport | null;
+  engagementVisibility: EngagementVisibility;
   students: StudentReportEntry[];
 }
 
@@ -236,6 +242,7 @@ export interface StudentReport {
   pseudonym: string;
   analysis: StudentAnalysis | null;
   indicators: ThinkingIndicators | null;
+  engagement: Engagement | null;
   violations: ViolationSlice[];
   positions: ReportPosition[];
 }

@@ -465,3 +465,20 @@ describe("migration 016: settings and activity report_axes (#159)", () => {
     expect(saved).toEqual([{ key: "report_axes", value: "ai" }]);
   });
 });
+
+describe("migration 018: engagement visibility (#267)", () => {
+  it("adds both engagement visibility flags to activities, off for existing rows", async () => {
+    const visibilityMigration = migrations.filter((migration) => migration.name.startsWith("018"));
+    expect(visibilityMigration).toHaveLength(1);
+    await applyD1Migrations(env.DB, visibilityMigration);
+
+    const existingActivities = await all<{ id: string; engagement_to_class: number; engagement_to_student: number }>(
+      env.DB,
+      "SELECT id, engagement_to_class, engagement_to_student FROM activities WHERE id IN ('a1', 'a2') ORDER BY id",
+    );
+    expect(existingActivities).toEqual([
+      { id: "a1", engagement_to_class: 0, engagement_to_student: 0 },
+      { id: "a2", engagement_to_class: 0, engagement_to_student: 0 },
+    ]);
+  });
+});

@@ -1326,6 +1326,7 @@ test("#316: a loaded report does not fetch activity or classroom lists for the f
           pseudonym: "Student",
           analysis: null,
           indicators: null,
+          engagement: null,
           violations: [],
           positions: [],
         });
@@ -1337,6 +1338,152 @@ test("#316: a loaded report does not fetch activity or classroom lists for the f
   try {
     expect(await screen.findByRole("heading", { name: "Class report" })).toBeTruthy();
     expect(screen.getByText(topic.title)).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
+
+const engagementFixture = {
+  substance: { level: 2, turns: [1, 3], evidence: "Gives short reasons of their own" },
+  uptake: { level: 0, turns: [], evidence: "" },
+  focus: { level: 3, turns: [2], evidence: "Every line is about the topic" },
+};
+
+function stubTeacherReport(visibility: { classReport: boolean; student: boolean }, saveFails = false) {
+  const puts: unknown[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const json = (body: unknown) =>
+        new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+      if (path === "/api/me") return json({ id: "teacher-1", name: "Teacher", isAdmin: false });
+      if (path === "/api/activities/activity-1/engagement-visibility" && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body));
+        puts.push(body);
+        if (saveFails) {
+          return new Response(JSON.stringify({ error: { code: "internal", message: "boom" } }), { status: 500 });
+        }
+        return json(body);
+      }
+      if (path === "/api/activities/activity-1/report") {
+        return json({
+          topicTitle: topic.title,
+          classReport: null,
+          engagementVisibility: visibility,
+          students: [
+            {
+              participantId: "p1",
+              participantName: "Ana",
+              pseudonym: "S1",
+              analysis: null,
+              indicators: null,
+              engagement: engagementFixture,
+              violations: [],
+              positions: [],
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+  return puts;
+}
+
+test("#267: the teacher toggles engagement sharing; both options start off", async () => {
+  const puts = stubTeacherReport({ classReport: false, student: false });
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    const own = await screen.findByRole("checkbox", { name: "Each student's own report" });
+    const group = screen.getByRole("checkbox", { name: "The group report" });
+    expect((own as HTMLInputElement).checked).toBe(false);
+    expect((group as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByRole("table")).toBeNull();
+    fireEvent.click(own);
+    await waitFor(() => expect(puts).toEqual([{ classReport: false, student: true }]));
+    await waitFor(() => expect((own as HTMLInputElement).checked).toBe(true));
+  } finally {
+    dispose();
+  }
+});
+
+test("#267: a failed save shows an alert and the checkbox goes back to the stored value", async () => {
+  const puts = stubTeacherReport({ classReport: false, student: false }, true);
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    const group = await screen.findByRole("checkbox", { name: "The group report" });
+    fireEvent.click(group);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(puts).toEqual([{ classReport: true, student: false }]);
+    expect((group as HTMLInputElement).checked).toBe(false);
+  } finally {
+    dispose();
+  }
+});
+
+test("#267: the group view lists engagement by pseudonym only when shared there", async () => {
+  stubTeacherReport({ classReport: true, student: false });
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    const table = await screen.findByRole("table");
+    expect(within(table).getByRole("rowheader", { name: "S1" })).toBeTruthy();
+    expect(within(table).queryByText("Ana")).toBeNull();
+    expect(
+      within(table)
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["2/3", "0/3", "3/3"]);
+  } finally {
+    dispose();
+  }
+});
+
+test("#267: the teacher's individual view always shows the student's engagement with lines", async () => {
+  stubTeacherReport({ classReport: false, student: false });
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    fireEvent.click(await screen.findByRole("tab", { name: "Individual" }));
+    expect(await screen.findByRole("heading", { name: "Engagement" })).toBeTruthy();
+    expect(screen.getByText("Gives short reasons of their own")).toBeTruthy();
+    expect(screen.getByText("Line 1、3")).toBeTruthy();
+    expect(screen.getByText("Not seen in this conversation")).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
+
+test.each([
+  [engagementFixture, true],
+  [null, false],
+])("#267: a student's own report shows engagement only when the server sends it", async (engagement, shown) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const json = (body: unknown) =>
+        new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+      if (path === "/api/me") return json({ id: "student-1", name: "Student", isAdmin: false });
+      if (path === "/api/activities/activity-1/report") {
+        return json({
+          topicTitle: topic.title,
+          participantName: "Student",
+          pseudonym: "S1",
+          analysis: null,
+          indicators: null,
+          engagement,
+          violations: [],
+          positions: [],
+        });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    expect(await screen.findByRole("heading", { name: "Class report" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Engagement" }) !== null).toBe(shown);
+    expect(screen.queryByRole("checkbox")).toBeNull();
   } finally {
     dispose();
   }

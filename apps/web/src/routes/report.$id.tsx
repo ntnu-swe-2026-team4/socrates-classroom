@@ -1,12 +1,21 @@
 import { useState } from "react";
 import { activityOptions, classroomsOptions, reportOptions } from "@/api/queries";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { ApiError, type ReportPosition, type StudentAnalysis, type ViolationSlice } from "@/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ApiError,
+  api,
+  type Engagement,
+  type EngagementVisibility,
+  type Report,
+  type ReportPosition,
+  type StudentAnalysis,
+  type ViolationSlice,
+} from "@/api";
 import { meOf } from "@/api/me";
 import { StanceConstellation } from "@/components/StanceConstellation";
-import { Segmented, Spinner, cn } from "@/components/ui";
-import { useT } from "@/i18n";
+import { Checkbox, Segmented, Spinner, cn } from "@/components/ui";
+import { type MessageKey, useT } from "@/i18n";
 
 export const Route = createFileRoute("/report/$id")({
   beforeLoad: async ({ context, location }) => {
@@ -15,6 +24,12 @@ export const Route = createFileRoute("/report/$id")({
   },
   component: ReportPage,
 });
+
+const ENGAGEMENT_DIMENSIONS = [
+  ["substance", "report_engagement_substance"],
+  ["uptake", "report_engagement_uptake"],
+  ["focus", "report_engagement_focus"],
+] as const satisfies ReadonlyArray<readonly [keyof Engagement, MessageKey]>;
 
 function ReportPage() {
   const t = useT();
@@ -98,11 +113,14 @@ function ReportPage() {
         )}
       </div>
 
+      {isTeacherView && <EngagementSharing activityId={id} visibility={data.engagementVisibility} />}
+
       {!isTeacherView && (
         <section className="mt-6 flex flex-col gap-6">
           <p className="text-[14px] text-ink-soft">{person.participantName}</p>
           <Positions positions={person.positions} />
           <Analysis analysis={person.analysis} violations={person.violations} />
+          {person.engagement && <EngagementPanel engagement={person.engagement} />}
         </section>
       )}
 
@@ -154,6 +172,11 @@ function ReportPage() {
               <p className="text-[14px] text-ink-soft">{t("report_partial")}</p>
             </div>
           )}
+          {data.engagementVisibility.classReport && (
+            <ClassEngagement
+              rows={data.students.map((student) => ({ pseudonym: student.pseudonym, engagement: student.engagement }))}
+            />
+          )}
         </section>
       )}
 
@@ -181,8 +204,125 @@ function ReportPage() {
           </div>
           <Positions positions={person.positions} />
           <Analysis analysis={person.analysis} violations={person.violations} />
+          <EngagementPanel engagement={person.engagement} />
         </section>
       )}
+    </div>
+  );
+}
+
+function EngagementSharing({ activityId, visibility }: { activityId: string; visibility: EngagementVisibility }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const save = useMutation({
+    mutationFn: (next: EngagementVisibility) => api.setEngagementVisibility(activityId, next),
+    onSuccess: (saved) =>
+      queryClient.setQueryData<Report>(reportOptions(activityId).queryKey, (report) =>
+        report && "students" in report ? { ...report, engagementVisibility: saved } : report,
+      ),
+  });
+  const shown = save.isPending && save.variables ? save.variables : visibility;
+  const toggle = (patch: Partial<EngagementVisibility>) => {
+    if (!save.isPending) save.mutate({ ...shown, ...patch });
+  };
+  return (
+    <fieldset
+      aria-busy={save.isPending}
+      className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-line bg-card px-4 py-3"
+    >
+      <legend className="sr-only">{t("report_engagement_share")}</legend>
+      <span aria-hidden className="text-[13px] font-medium text-ink">
+        {t("report_engagement_share")}
+      </span>
+      <Checkbox
+        label={t("report_engagement_share_class")}
+        checked={shown.classReport}
+        onCheckedChange={(classReport) => toggle({ classReport })}
+      />
+      <Checkbox
+        label={t("report_engagement_share_student")}
+        checked={shown.student}
+        onCheckedChange={(student) => toggle({ student })}
+      />
+      {save.isError && (
+        <p role="alert" className="text-[13px] text-flag">
+          {t("report_engagement_share_failed")}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
+function EngagementPanel({ engagement }: { engagement: Engagement | null }) {
+  const t = useT();
+  if (!engagement) return null;
+  return (
+    <div className="flex max-w-2xl flex-col gap-3">
+      <div>
+        <h2 className="font-serif text-lg font-semibold text-ink">{t("report_engagement")}</h2>
+        <p className="mt-1 text-[12.5px] text-ink-faint">{t("report_engagement_hint")}</p>
+      </div>
+      <ul className="flex flex-col gap-2">
+        {ENGAGEMENT_DIMENSIONS.map(([key, label]) => {
+          const { level, turns, evidence } = engagement[key];
+          return (
+            <li key={key} className="rounded-2xl border border-line bg-card px-4 py-3">
+              <p className="flex items-baseline justify-between gap-3 text-[13px] font-medium text-moss">
+                <span>{t(label)}</span>
+                <span className="tabular-nums text-ink">{t("report_engagement_level", { level })}</span>
+              </p>
+              <p className="mt-1 text-[14px] text-ink">{level === 0 ? t("report_engagement_unseen") : evidence}</p>
+              {turns.length > 0 && (
+                <p className="mt-0.5 text-[12.5px] text-ink-faint">
+                  {t("report_turn_ref", { turns: turns.join("、") })}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function ClassEngagement({ rows }: { rows: Array<{ pseudonym: string; engagement: Engagement | null }> }) {
+  const t = useT();
+  const judged = rows.filter((row): row is { pseudonym: string; engagement: Engagement } => row.engagement !== null);
+  if (judged.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="font-serif text-lg font-semibold text-ink">{t("report_engagement")}</h2>
+      <p className="text-[12.5px] text-ink-faint">{t("report_engagement_hint")}</p>
+      <div className="overflow-x-auto rounded-2xl border border-line bg-card">
+        <table className="w-full text-left text-[13.5px]">
+          <thead>
+            <tr className="border-b border-line text-ink-faint">
+              <th scope="col" className="px-4 py-2 font-medium">
+                <span className="sr-only">{t("report_engagement_pseudonym")}</span>
+              </th>
+              {ENGAGEMENT_DIMENSIONS.map(([key, label]) => (
+                <th key={key} scope="col" className="px-4 py-2 font-medium">
+                  {t(label)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {judged.map(({ pseudonym, engagement }) => (
+              <tr key={pseudonym} className="border-b border-line last:border-0">
+                <th scope="row" className="px-4 py-2 font-medium text-ink">
+                  {pseudonym}
+                </th>
+                {ENGAGEMENT_DIMENSIONS.map(([key]) => (
+                  <td key={key} className="px-4 py-2 tabular-nums text-ink-soft">
+                    {t("report_engagement_level", { level: engagement[key].level })}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

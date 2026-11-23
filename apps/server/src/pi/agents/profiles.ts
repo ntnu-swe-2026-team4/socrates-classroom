@@ -14,6 +14,7 @@ import STUDENT_REPORT_RAW from "../../prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../../prompts/class-report.md?raw";
 import CLASS_REPORT_AXES_RAW from "../../prompts/class-report-axes.md?raw";
 import STUDENT_INDICATORS_RAW from "../../prompts/student-indicators.md?raw";
+import STUDENT_ENGAGEMENT_RAW from "../../prompts/student-engagement.md?raw";
 import LOOKUP_RAW from "../../prompts/lookup.md?raw";
 import TOPIC_GEN_RAW from "../../prompts/topic-gen.md?raw";
 import type { Env } from "../../env";
@@ -27,6 +28,7 @@ import type { SettleKind } from "../../gateway/ledger";
 import { teacherLegsOf, type TeacherLeg } from "../credentials";
 import {
   reportSubmitAxesExtension,
+  reportSubmitEngagementExtension,
   reportSubmitExtension,
   reportSubmitIndicatorsExtension,
 } from "../extensions/report-submit";
@@ -38,6 +40,7 @@ export type ProfileName =
   | "topic-gen"
   | "student-report"
   | "student-indicators"
+  | "student-engagement"
   | "class-report"
   | "class-report-axes"
   | "lookup";
@@ -90,6 +93,14 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     trafficClass: "batch",
     thinkingLevel: "high",
   },
+  "student-engagement": {
+    name: "student-engagement",
+    instructions: instructionsOf(STUDENT_ENGAGEMENT_RAW),
+    extensions: ["report-submit-engagement"],
+    maxTurns: 4,
+    trafficClass: "batch",
+    thinkingLevel: "high",
+  },
   "class-report": {
     name: "class-report",
     instructions: instructionsOf(CLASS_REPORT_RAW),
@@ -133,6 +144,7 @@ export function profileRegistry(profile: AgentProfile, env: Env): Registry {
   if (profile.extensions.includes("report-submit")) registry.install(reportSubmitExtension);
   if (profile.extensions.includes("report-submit-axes")) registry.install(reportSubmitAxesExtension);
   if (profile.extensions.includes("report-submit-indicators")) registry.install(reportSubmitIndicatorsExtension);
+  if (profile.extensions.includes("report-submit-engagement")) registry.install(reportSubmitEngagementExtension);
   return registry;
 }
 

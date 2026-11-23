@@ -2,6 +2,15 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-23 — 教師報告加上學生認真度（`feat/267-engagement`，#267）
+
+### Added
+
+- `student-engagement` profile 與 `submit_student_engagement` 工具（`report-submit-engagement` extension，只裝在這條呼叫用的 registry）：逐生判斷實質發言／回應追問／切題，與思辨力指標分開呼叫，共用同一套呼叫流程、行號查核與重試，各自失敗（流程見 `docs/architecture.md` ReportRunner）
+- `TeacherReport.students[].engagement`、`TeacherReport.engagementVisibility`、`StudentReport.engagement`，以及 `PUT /api/activities/:id/engagement-visibility`（形狀見 `docs/api-contract.md` §7）；認真度上線前存下的報告回 `null`
+- migration 018：`activities.engagement_to_class`／`engagement_to_student`（預設 0：只有老師的單人報告看得到）
+- 報告頁：老師的勾選列、單人認真度面板、群體報告的假名認真度表；學生本人的報告在老師開放時顯示
+
 ## 2026-11-23 — prompt 整理：送進模型的文字收進 `prompts/`（`refactor/161-prompt-ssot`，#161）
 
 ### Changed
