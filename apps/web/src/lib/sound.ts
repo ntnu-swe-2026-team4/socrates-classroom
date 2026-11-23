@@ -56,7 +56,7 @@ export function playSound(name: SoundName, volume = 0.5): void {
 
   const instance = base.cloneNode() as HTMLAudioElement;
   instance.volume = Math.max(0, Math.min(1, volume));
-  instance.play().catch(() => {});
+  instance.play()?.catch(() => {});
 }
 
 // ==========================================
@@ -85,10 +85,10 @@ export function playBgm(volume = 0.25): void {
 
   bgmAudio
     .play()
-    .then(() => {
+    ?.then(() => {
       pendingBgmVolume = null;
     })
-    .catch(() => {
+    ?.catch(() => {
       pendingBgmVolume = volume;
     });
 }
@@ -155,7 +155,7 @@ export function playNarration(name: SoundName, volume = 0.85): void {
     walkAudio.loop = true;
     walkAudio.volume = 0.9;
     currentAmbience = walkAudio;
-    walkAudio.play().catch(() => {});
+    walkAudio.play()?.catch(() => {});
   }
 
   if (name === "comic5") {
@@ -163,7 +163,7 @@ export function playNarration(name: SoundName, volume = 0.85): void {
     whisperAudio.loop = true;
     whisperAudio.volume = 0.6;
     currentAmbience = whisperAudio;
-    whisperAudio.play().catch(() => {});
+    whisperAudio.play()?.catch(() => {});
   }
 
   const src = SOUND_EFFECTS[name];
@@ -172,7 +172,7 @@ export function playNarration(name: SoundName, volume = 0.85): void {
   const audio = new Audio(src);
   audio.volume = Math.max(0, Math.min(1, volume));
   currentNarration = audio;
-  audio.play().catch(() => {
+  audio.play()?.catch(() => {
     pendingNarration = { name, volume };
   });
 }
@@ -207,7 +207,7 @@ export function startHoldSound(name: SoundName, volume = 0.65): void {
   audio.loop = true;
   audio.volume = Math.max(0, Math.min(1, volume));
   holdAudio = audio;
-  audio.play().catch(() => {});
+  audio.play()?.catch(() => {});
 }
 
 export function stopHoldSound(): void {
