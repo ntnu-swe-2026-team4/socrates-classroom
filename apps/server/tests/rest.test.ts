@@ -428,6 +428,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       last4: "zzzz",
       maxConcurrency: 6,
     });
+    expect(field(againBody, "monthlyQuotaUsd")).toBeNull();
 
     const keep = await call("/api/settings/keys/openrouter", {
       method: "PUT",
@@ -461,6 +462,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       provider: str(keylessBody, "provider"),
       maxConcurrency: optNum(keylessBody, "maxConcurrency"),
     }).toEqual({ provider: "openrouter", maxConcurrency: 3 });
+    expect(field(keylessBody, "monthlyQuotaUsd")).toBeNull();
     const keylessClear = await call("/api/settings/keys/openrouter", {
       method: "PUT",
       headers: { "Content-Type": "application/json", Cookie: teacher },

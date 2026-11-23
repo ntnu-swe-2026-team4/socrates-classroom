@@ -234,7 +234,9 @@ describe("classroom / topic decoupling (#135)", () => {
   it("personal topics from POST /topics stay usable by their owner only", async () => {
     const created = await call("/api/topics", jsonInit({ title: "個人題", statement: "舊路徑", prompts: [] }, teacher));
     expect(created.status).toBe(201);
-    const topicId = str(await created.json(), "id");
+    const topicJson = await created.json();
+    expect(field(topicJson, "classroomId")).toBeNull();
+    const topicId = str(topicJson, "id");
 
     const started = await startActivity(teacher, secondClassroomId, topicId);
     expect((await currentOf(secondClassroomId, teacher))?.activityId).toBe(started.activityId);
