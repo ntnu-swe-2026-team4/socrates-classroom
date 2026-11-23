@@ -1,12 +1,13 @@
 import { defineExtension, GenerationTask, hook } from "@earendil-works/pi-durable";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { Env } from "../../env";
-import { recordTeacherUsage } from "../../gateway/usage";
+import type { DecidedCredential } from "../credentials";
+import { recordKeyedUsage } from "../../gateway/usage";
 
-export function createUsageExtension(env: Env, teacherOf: () => Promise<string | null>) {
+export function createUsageExtension(env: Env, decided: () => DecidedCredential | null) {
   const record = async (message: AssistantMessage): Promise<void> => {
     try {
-      await recordTeacherUsage(env, await teacherOf(), {
+      await recordKeyedUsage(env, decided(), {
         provider: message.provider,
         model: message.model,
         usage: message.usage,

@@ -14,7 +14,7 @@ import type { Env } from "../env";
 import { secretOf } from "../auth";
 import { buildModels } from "../pi/models";
 import { runProfile } from "../pi/agents/profiles";
-import { keyedLegsOf, teacherOfActivity, type KeyedLeg } from "../pi/credentials";
+import { keyedLegsOf, teacherOfActivity, type DecidedCredential, type KeyedLeg } from "../pi/credentials";
 import {
   PlannedClassReportSubmissionSchema,
   ReportAxesPlanSchema,
@@ -136,8 +136,10 @@ export function reportAlarmPlan(input: {
 
 export class ReportRunner extends DurableObject<Env> {
   #inFlight: Promise<void> | null = null;
+  readonly #decidedCredential: { current: DecidedCredential | null } = { current: null };
   readonly models = buildModels(this.env, {
     teacherOf: () => teacherOfActivity(this.env, this.ctx.id.name ?? ""),
+    keyedOf: () => this.#decidedCredential.current,
   });
   readonly registry = createRegistry();
   readonly axesRegistry = createRegistry();
@@ -152,7 +154,7 @@ export class ReportRunner extends DurableObject<Env> {
     this.engagementRegistry.install(reportSubmitEngagementExtension);
     const registries = [this.registry, this.axesRegistry, this.indicatorsRegistry, this.engagementRegistry];
     for (const registry of registries) {
-      registry.install(createUsageExtension(this.env, () => teacherOfActivity(this.env, this.ctx.id.name ?? "")));
+      registry.install(createUsageExtension(this.env, () => this.#decidedCredential.current));
     }
     if (this.models.faux) {
       this.models.faux.setResponses([fauxReportScript]);
@@ -541,7 +543,14 @@ export class ReportRunner extends DurableObject<Env> {
     options: { lang: Lang; submitTool: string },
     registry: Registry = this.registry,
   ): Promise<{ text: string; payload: JsonObject | null }> {
-    return runProfile(harness, { models: this.models, registry, env: this.env }, profile, input, legs, options);
+    return runProfile(
+      harness,
+      { models: this.models, registry, env: this.env, decidedCredential: this.#decidedCredential },
+      profile,
+      input,
+      legs,
+      options,
+    );
   }
 
   private async teacherLanguage(): Promise<Lang> {
