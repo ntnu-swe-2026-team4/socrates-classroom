@@ -59,11 +59,10 @@ export function workersAuthContext(env: Env): {
   env(name: string): Promise<string | undefined>;
   fileExists(path: string): Promise<boolean>;
 } {
-  const record = env as unknown as Record<string, unknown>;
   return {
     env: async (name) => {
       if (!PROVIDER_ENV_NAMES.has(name)) return undefined;
-      const value = record[name];
+      const value: unknown = Reflect.get(env, name);
       return typeof value === "string" ? value : undefined;
     },
     fileExists: async () => false,

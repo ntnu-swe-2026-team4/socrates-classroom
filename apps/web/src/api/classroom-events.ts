@@ -17,6 +17,20 @@ const optionsFor = {
   posts: classroomPostsOptions,
 } satisfies Record<ClassroomEventResource, (id: string) => { queryKey: readonly unknown[] }>;
 
+function isClassroomEvent(value: unknown): value is Partial<ClassroomEvent> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  return typeof Reflect.get(value, "type") === "string";
+}
+
+function classroomEventOf(data: string): Partial<ClassroomEvent> | null {
+  try {
+    const parsed: unknown = JSON.parse(data);
+    return isClassroomEvent(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export function subscribeToClassroom(client: QueryClient, id: string) {
   const url = new URL(`/api/classrooms/${encodeURIComponent(id)}/events`, window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
@@ -30,13 +44,9 @@ export function subscribeToClassroom(client: QueryClient, id: string) {
   function connect() {
     socket = new WebSocket(url.toString());
     socket.addEventListener("message", (message) => {
-      let event: Partial<ClassroomEvent> | null;
-      try {
-        if (typeof message.data !== "string") return;
-        event = JSON.parse(message.data) as Partial<ClassroomEvent> | null;
-      } catch {
-        return;
-      }
+      if (typeof message.data !== "string") return;
+      const event = classroomEventOf(message.data);
+      if (event === null) return;
       if (event?.type === "ready") {
         attempts = 0;
         void refreshSummary();

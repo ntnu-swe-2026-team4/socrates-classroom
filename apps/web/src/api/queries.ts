@@ -23,7 +23,7 @@ export const topicsOptions = queryOptions({
 export function classroomTopicsOptions(classroomId: string | null) {
   return queryOptions({
     queryKey: ["classroomTopics", classroomId],
-    queryFn: () => api.listClassroomTopics(classroomId as string),
+    queryFn: () => api.listClassroomTopics(classroomId ?? ""),
     enabled: classroomId !== null,
   });
 }

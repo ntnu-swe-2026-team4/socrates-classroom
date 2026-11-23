@@ -194,7 +194,7 @@ export class Router {
         if (leg.def.kind === "binding" && !this.#env.AI) return false;
         if (leg.def.kind === "openai-completions") {
           if (!leg.model) return false;
-          if (leg.def.baseUrlEnv && !this.#env[leg.def.baseUrlEnv as keyof Env]) return false;
+          if (leg.def.baseUrlEnv && !Reflect.get(this.#env, leg.def.baseUrlEnv)) return false;
         }
         return true;
       })

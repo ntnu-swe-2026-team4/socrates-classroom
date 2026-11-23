@@ -122,11 +122,19 @@ test("a session signal from another tab re-queries me", async () => {
   }
 });
 
+function stubWindowLocation(location: unknown): void {
+  Object.defineProperty(window, "location", {
+    value: location,
+    writable: true,
+    configurable: true,
+  });
+}
+
 test("a re-check that changes identity reloads the page", async () => {
   const original = window.location;
   const reload = vi.fn();
   Reflect.deleteProperty(window, "location");
-  (window as unknown as { location: unknown }).location = { ...original, reload };
+  stubWindowLocation({ ...original, reload });
   try {
     calls.me.mockResolvedValue({ id: "u2", name: "Someone Else", isAdmin: false });
     const client = mountShell();
@@ -135,7 +143,7 @@ test("a re-check that changes identity reloads the page", async () => {
     client.clear();
   } finally {
     Reflect.deleteProperty(window, "location");
-    (window as unknown as { location: unknown }).location = original;
+    stubWindowLocation(original);
   }
 });
 

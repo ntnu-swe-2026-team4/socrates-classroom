@@ -1,8 +1,9 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { type EntryId, type Harness, ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
+import { type Harness, ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
 import type { LifecycleJobOutcome, LifecycleJobs } from "agents/lifecycle";
 import type { Db } from "../db/d1";
 import { appendLiveEntries, type LiveProgress, saveLiveProgress } from "../services/activity-live";
+import { entryIdOf } from "../ws/protocol";
 
 export const LIVE_PROGRESS_JOB = "activity-live-progress";
 const LIVE_PROGRESS_KEY = "activity-live-progress";
@@ -67,7 +68,7 @@ export class LiveProgressProjection {
     const scanning = this.state.storage.kv.get<LiveProgress>(LIVE_PROGRESS_SCAN_KEY);
     const previous = scanning ?? published ?? { lastEntryId: 0, rounds: 0, lastActiveAt: null, flags: [] };
     const page = await root?.entries(
-      { order: "ascending", minEntryId: (previous.lastEntryId + 1) as EntryId },
+      { order: "ascending", minEntryId: entryIdOf(previous.lastEntryId + 1) },
       LIVE_PROGRESS_PAGE_SIZE,
       undefined,
       BACKGROUND_CONTEXT,

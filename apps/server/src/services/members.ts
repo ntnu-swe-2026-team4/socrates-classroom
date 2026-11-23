@@ -64,7 +64,7 @@ export function parsePrompts(row: TopicRow) {
     title: row.title,
     statement: row.statement,
     ...(row.summary ? { summary: row.summary } : {}),
-    prompts: JSON.parse(row.prompts) as string[],
+    prompts: readPrompts(row.prompts),
     axes: AxisSchema.array()
       .catch([])
       .parse(JSON.parse(row.axes ?? "[]")),
@@ -122,14 +122,14 @@ export async function createOrGetTopic(db: Db, input: TopicInsertInput): Promise
     axes: serializeAxes(input.axes),
     at: nowIso(),
   };
-  const [inserted, found] = await batch(db, [
+  const [inserted, found] = await batch<TopicRow>(db, [
     {
       sql: `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $axes, $at) ON CONFLICT ${conflictTarget} DO NOTHING`,
       params,
     },
     { sql: classroom ? FIND_CLASSROOM_TOPIC : FIND_PERSONAL_TOPIC, params },
   ]);
-  const row = (found?.results?.[0] ?? null) as TopicRow | null;
+  const row = found?.results?.[0] ?? null;
   if (!row) fail(500, "internal_error");
   return { row, created: (inserted?.meta.changes ?? 0) > 0 };
 }
@@ -167,6 +167,12 @@ export async function deleteClassroomTopic(db: Db, classroomId: string, topicId:
   if (!row) fail(404, "not_found");
   if (row.deleted_at !== null) return;
   await run(db, "UPDATE topics SET deleted_at = $at WHERE id = $id", { id: topicId, at: nowIso() });
+}
+
+function readPrompts(raw: string): string[] {
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((prompt): prompt is string => typeof prompt === "string");
 }
 
 export async function activityOf(

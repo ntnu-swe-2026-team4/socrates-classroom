@@ -569,7 +569,7 @@ describe("useDialogue (session callbacks)", () => {
     act(() => {
       expect(result.current.send("問題")).toBe(true);
     });
-    emit({ type: "error", code: "ActivityFinished" } as ServerMessage);
+    emit({ type: "error", message: "activity finished", code: "ActivityFinished" } satisfies ServerMessage);
     expect(onActivityFinished).toHaveBeenCalledTimes(1);
     expect(result.current.error?.code).toBe("ActivityFinished");
   });

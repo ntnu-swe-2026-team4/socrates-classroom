@@ -1,8 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
-import { createRegistry, Harness, type Registry } from "@earendil-works/pi-durable";
+import { createRegistry, Harness, type JsonObject, type Registry } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
-import type { JsonObject } from "@earendil-works/pi-durable";
 import type { ZodType } from "zod";
 import {
   fauxAssistantMessage,
@@ -48,7 +47,6 @@ import {
   type StudentAnalysis,
   type ThinkingIndicators,
   type ViolationSlice,
-  type ViolationType,
 } from "@socrates/shared";
 import { getRouter } from "../gateway/router";
 import { gatewayConfig } from "../gateway/config.gen";
@@ -573,7 +571,7 @@ export class ReportRunner extends DurableObject<Env> {
       violations: collapseViolations(
         data.violations.map((violation) => ({
           turn: violation.turn,
-          type: violation.type as ViolationType,
+          type: violation.type,
           excerpt: violation.excerpt,
         })),
       ),
@@ -736,10 +734,15 @@ function payloadOf(text: string, payload: JsonObject | null, key?: string): unkn
 
 function textOf(content: string | readonly unknown[]): string {
   if (typeof content === "string") return content;
-  return (content as Array<{ type: string; text?: string }>)
-    .filter((part) => part.type === "text")
-    .map((part) => part.text ?? "")
-    .join("");
+  const parts: string[] = [];
+  for (const part of content) {
+    if (typeof part !== "object" || part === null) continue;
+    const text = Reflect.get(part, "text");
+    if (Reflect.get(part, "type") === "text" && typeof text === "string") {
+      parts.push(text);
+    }
+  }
+  return parts.join("");
 }
 
 const AXES_PLAN_KEY = "axesPlan";

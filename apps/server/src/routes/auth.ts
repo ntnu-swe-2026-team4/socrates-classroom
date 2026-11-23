@@ -59,6 +59,7 @@ import {
   type OAuthPending,
   type OAuthProfile,
   type OAuthProvider,
+  readOAuthPending,
 } from "../oauth";
 
 const OAUTH_COOKIE = "socrates_oauth";
@@ -273,7 +274,7 @@ export function authRoutes() {
       await enforceIpLimit(c, "oauth", 30);
       const provider = c.req.param("provider");
       if (!isOAuthProvider(provider)) fail(404, "not_found");
-      const pending = await openPayload<OAuthPending>({ env: c.env }, getCookie(c, OAUTH_COOKIE));
+      const pending = readOAuthPending(await openPayload({ env: c.env }, getCookie(c, OAUTH_COOKIE)));
       deleteCookie(c, OAUTH_COOKIE, { path: OAUTH_COOKIE_PATH, secure: true });
       const state = c.req.query("state");
       const code = c.req.query("code");

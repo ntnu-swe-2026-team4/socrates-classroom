@@ -1,4 +1,5 @@
 import { createRegistry, Harness, type EntryRecord, type Registry, type UserInput } from "@earendil-works/pi-durable";
+import { VIOLATION_TYPES, type ViolationType } from "@socrates/shared";
 import {
   fauxAssistantMessage,
   fauxText,
@@ -44,6 +45,14 @@ export interface RunFailure {
 
 export function failureKey(session: string): string {
   return `dialogue-run-failure:${session}`;
+}
+
+function dialogueRunOf(payload: unknown): DialogueRun | null {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return null;
+  const session = Reflect.get(payload, "session");
+  const operationId = Reflect.get(payload, "operationId");
+  if (typeof session !== "string" || typeof operationId !== "string") return null;
+  return { session, operationId };
 }
 
 export interface DialogueHarnessConfig {
@@ -143,7 +152,7 @@ export class RunDeadlineTracker {
   runDeadlineJobs(session: string): LifecycleJob[] {
     return this.lifecycle.jobs
       .list()
-      .filter((job) => job.fn === RUN_DEADLINE_JOB && (job.payload as DialogueRun).session === session);
+      .filter((job) => job.fn === RUN_DEADLINE_JOB && dialogueRunOf(job.payload)?.session === session);
   }
 
   recentRunFailure(session: string): string | undefined {
@@ -167,7 +176,9 @@ export class RunDeadlineTracker {
   }
 
   private async settleRun(job: LifecycleJob): Promise<void> {
-    const { session, operationId } = job.payload as DialogueRun;
+    const run = dialogueRunOf(job.payload);
+    if (run === null) return;
+    const { session, operationId } = run;
     const handle = this.#harness.session(session);
     const wait = new AbortController();
     const timer = setTimeout(() => wait.abort(), Math.max(1_000, job.time - Date.now()));
@@ -269,7 +280,12 @@ export function fauxSocraticScript(context: TranscriptContext): AssistantMessage
   }
   const preamble = context.messages
     .filter((message) => message.role === "system")
-    .map((message) => (message as { sections?: Record<string, string> }).sections?.preamble);
+    .map((message) => {
+      const sections: unknown = Reflect.get(message, "sections");
+      if (typeof sections !== "object" || sections === null || Array.isArray(sections)) return undefined;
+      const preamble: unknown = Reflect.get(sections, "preamble");
+      return typeof preamble === "string" ? preamble : undefined;
+    });
   if (preamble.includes(SOCRATES_PROMPTS.en)) {
     return fauxAssistantMessage([fauxText(`You said "${said}". What is your first judgment, and why?`)]);
   }
@@ -286,7 +302,7 @@ function textOf(content: Message["content"]): string {
 
 export interface TranscriptReadout {
   messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
-  violations: Array<{ turn: number; type: string; excerpt: string }>;
+  violations: Array<{ turn: number; type: ViolationType; excerpt: string }>;
 }
 
 function entryText(entry: { model?: readonly Message[] }): string {
@@ -295,7 +311,7 @@ function entryText(entry: { model?: readonly Message[] }): string {
 
 export function readTranscript(items: readonly EntryRecord[]): TranscriptReadout {
   const messages: Array<{ role: "user" | "assistant"; turn: number; text: string }> = [];
-  const violations: Array<{ turn: number; type: string; excerpt: string }> = [];
+  const violations: Array<{ turn: number; type: ViolationType; excerpt: string }> = [];
   let turn = 0;
   for (const entry of items) {
     if (entry.kind === "pi.user") {
@@ -304,8 +320,18 @@ export function readTranscript(items: readonly EntryRecord[]): TranscriptReadout
     } else if (entry.kind === "pi.assistant") {
       messages.push({ role: "assistant", turn, text: entryText(entry) });
     } else if (entry.kind === "app.violation") {
-      const data = entry.data as { type?: string; excerpt?: string };
-      violations.push({ turn, type: data.type ?? "other", excerpt: data.excerpt ?? "" });
+      const data = entry.data;
+      const type =
+        typeof data === "object" && data !== null && !Array.isArray(data) ? Reflect.get(data, "type") : undefined;
+      const excerpt =
+        typeof data === "object" && data !== null && !Array.isArray(data) ? Reflect.get(data, "excerpt") : undefined;
+      const violationType =
+        typeof type === "string" ? VIOLATION_TYPES.find((candidate) => candidate === type) : undefined;
+      violations.push({
+        turn,
+        type: violationType ?? "other",
+        excerpt: typeof excerpt === "string" ? excerpt : "",
+      });
     }
   }
   return { messages, violations };

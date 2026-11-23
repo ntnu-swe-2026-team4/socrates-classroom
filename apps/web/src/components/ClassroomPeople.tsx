@@ -14,7 +14,7 @@ import { QrBlock, absoluteUrl } from "@/components/QrBlock";
 import { Button, ConfirmDialog, Field } from "@/components/ui";
 import { useNow } from "@/hooks/useSubscription";
 import { useFormatDate, useT } from "@/i18n";
-import { inviteScopeLabels } from "@/lib/classroomInvite";
+import { inviteScopeLabels, isClassroomInviteScope } from "@/lib/classroomInvite";
 
 const selectStyle =
   "h-10 min-w-0 rounded-lg border border-line-strong bg-paper px-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-ember/60";
@@ -207,7 +207,8 @@ function ClassroomInvites({ id }: { id: string }) {
               disabled={create.isPending}
               onChange={(event) => {
                 create.reset();
-                setScope(event.target.value as ClassroomInviteScope);
+                const next: unknown = event.target.value;
+                if (typeof next === "string" && isClassroomInviteScope(next)) setScope(next);
               }}
             >
               <option value="classroom">{t(inviteScopeLabels.classroom)}</option>
