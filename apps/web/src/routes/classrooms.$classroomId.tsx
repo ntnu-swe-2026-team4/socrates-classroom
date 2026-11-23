@@ -32,7 +32,7 @@ const channels = {
 
 type Tab = keyof typeof channels;
 
-const TAB_KEYS = ["topics", "announcements", "board", "members"] as const;
+const TAB_KEYS = ["topics", "announcements", "board", "calendar", "members"] as const;
 
 function isTab(value: string): value is Tab {
   return TAB_KEYS.some((key) => key === value);
