@@ -7,6 +7,7 @@ const PITCH = 12;
 const RADIUS = 1.45;
 const LEVELS = 16;
 const FRAME_MS = 50;
+const OPACITY = 0.4;
 
 interface Dot {
   x: number;
@@ -67,7 +68,7 @@ export function DotField({ className }: { className?: string }) {
       ctx.clearRect(0, 0, width, height);
       buckets.forEach((bucket, level) => {
         if (!bucket.length) return;
-        ctx.globalAlpha = (gain * level) / (2 * (LEVELS - 1));
+        ctx.globalAlpha = (OPACITY * gain * level) / (2 * (LEVELS - 1));
         ctx.beginPath();
         for (const dot of bucket) {
           ctx.moveTo(dot.x + RADIUS, dot.y);

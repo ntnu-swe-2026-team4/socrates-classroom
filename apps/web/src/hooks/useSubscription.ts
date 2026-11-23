@@ -26,6 +26,22 @@ export function useDomEvent<E extends Event>(
   useSyncExternalStore(subscribe, returnZero, returnZero);
 }
 
+export function useTimeout(ms: number | null, fire: () => void): void {
+  const latest = useRef(fire);
+  useLayoutEffect(() => {
+    latest.current = fire;
+  });
+  const subscribe = useCallback(
+    (_notify: () => void) => {
+      if (ms === null) return () => {};
+      const id = setTimeout(() => latest.current(), ms);
+      return () => clearTimeout(id);
+    },
+    [ms],
+  );
+  useSyncExternalStore(subscribe, returnZero, returnZero);
+}
+
 export function useOnUnmount(cleanup: () => void): void {
   const latest = useRef(cleanup);
   useLayoutEffect(() => {

@@ -3,7 +3,7 @@ import { keyProviderModelsOptions, keyProvidersOptions, teacherKeysOptions } fro
 import type { TeacherKeyStatus } from "@socrates/shared";
 import { useCallback, useMemo, useState } from "react";
 import { api } from "@/api";
-import { Card, cn, ConfirmDialog } from "@/components/ui";
+import { Card, cn, ConfirmDialog, POPUP_SURFACE } from "@/components/ui";
 import { useT } from "@/i18n";
 import { focusNextIn, focusRestoreOnUnmount } from "@/lib/focus";
 import { providerIcon, providerKind, type ProviderKind } from "@/lib/providers";
@@ -247,7 +247,10 @@ function ProviderSheet({
           else if (query) setQuery("");
           else onClose();
         }}
-        className="flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-card shadow-lg"
+        className={cn(
+          POPUP_SURFACE,
+          "flex max-h-full w-full max-w-2xl flex-col overflow-hidden border border-line bg-card",
+        )}
       >
         <div className="flex items-center gap-3 border-b border-line px-4 py-3">
           {picked ? (

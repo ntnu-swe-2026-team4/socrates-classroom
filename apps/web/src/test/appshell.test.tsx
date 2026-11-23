@@ -192,6 +192,15 @@ test("inner routes render inside the halftone theme wrapper", () => {
   }
 });
 
+test("the dev accounts page renders inside the halftone theme wrapper", () => {
+  const client = mountShell(teacher, "/dev/accounts");
+  try {
+    expect(document.querySelector("main")?.className).toContain("ht-theme");
+  } finally {
+    client.clear();
+  }
+});
+
 test("the mobile menu button opens the drawer with the rail inside a dialog", async () => {
   calls.me.mockResolvedValue({ ...teacher });
   const client = mountShell();

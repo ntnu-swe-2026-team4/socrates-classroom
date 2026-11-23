@@ -145,7 +145,7 @@ function ClassroomCard({ room }: { room: ClassroomSummary }) {
     <Link
       to="/classrooms/$classroomId"
       params={{ classroomId: room.id }}
-      className="group flex flex-col overflow-hidden rounded-3xl border border-line bg-card transition-all hover:-translate-y-0.5 hover:border-ember-deep hover:shadow-md"
+      className="group flex flex-col overflow-hidden comic-lift rounded-3xl border border-line bg-card hover:border-ember-deep"
     >
       <div className="bg-gradient-to-br from-ember-wash via-ember-wash/60 to-transparent px-5 pt-5 pb-4">
         <h3 className="truncate font-serif text-[19px] leading-snug text-ink">{room.name}</h3>

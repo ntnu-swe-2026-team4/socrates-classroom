@@ -229,7 +229,7 @@ export function DialogueView({
   return (
     <div className="flex min-h-0 flex-1">
       <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line pr-3 pl-14 md:pl-2">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-paper pr-3 pl-14 md:pl-2">
           <SidebarToggle />
           <div className="min-w-0 flex-1 pl-1">
             <h1 className="truncate text-[14.5px] font-medium text-ink">{title}</h1>
