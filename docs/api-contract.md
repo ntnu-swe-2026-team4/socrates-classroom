@@ -62,7 +62,7 @@
 interface User {
   id: string;
   name: string;
-  isAdmin: boolean; // 帳號層：/admin/users（僅 seed 建立，API 不可授予）；無 mode/capability 欄位（#210）
+  isAdmin: boolean; // 帳號層：/admin console（僅 seed 建立，API 不可授予）；無 mode/capability 欄位（#210）
 }
 ```
 
@@ -394,7 +394,7 @@ interface ViolationSlice {
 | `PUT /api/admin/settings` `{reportAxes}` → `AdminSettings`             | 更新設定並回傳 `{reportAxes}`（自然鍵冪等）。變更立即生效，僅影響之後開啟的新活動（不回溯既有 `activities.report_axes`）                                                                              |
 
 - 停用帳號的 WS：連線上的下一則 frame 被 1008 關閉，重連亦被拒（§5.1）
-- 對應頁面 `/admin/users`（`apps/web/src/routes/admin.users.tsx`）：列表、建立、停用／復用（#210：能力調整已退役）
+- 對應頁面 `/admin?tab=users`（`apps/web/src/routes/admin.tsx`，#185 tabbed console）：列表、建立、停用／復用（#210：能力調整已退役）；總覽 tab 消費 `GET /admin/overview`，通知 tab 發 `POST /admin/notifications`（§9.2）
 
 ### 9.2 通知與公告（#158 拍板，#239）
 
