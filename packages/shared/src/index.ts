@@ -478,6 +478,9 @@ export const AdminKeyStatusSchema = z.object({
   monthTokens: z.number(),
   sortOrder: z.number(),
   updatedAt: z.string(),
+  zdrStatus: z.enum(["unverified", "approved"]),
+  zdrRetentionSource: z.string().nullable(),
+  zdrVerifiedAt: z.string().nullable(),
   models: z.array(
     z.object({
       model: z.string(),
@@ -494,6 +497,9 @@ export const AdminKeyEchoSchema = z.object({
   last4: z.string().optional(),
   maxConcurrency: z.number().int().min(1).max(100).nullable(),
   monthlyQuotaUsd: z.number().positive().nullable(),
+  zdrStatus: z.enum(["unverified", "approved"]).optional(),
+  zdrRetentionSource: z.string().optional(),
+  zdrVerifiedAt: z.string().optional(),
 });
 export type AdminKeyEcho = z.infer<typeof AdminKeyEchoSchema>;
 
@@ -533,6 +539,11 @@ export const AdminKeyModelInputSchema = z.object({
 export const AdminKeyModelOrderInputSchema = z.object({ models: z.array(z.string().min(1).max(200)).max(200) });
 
 export const AdminKeyOrderInputSchema = z.object({ keys: z.array(z.string()).max(50) });
+
+export const AdminKeyZdrInputSchema = z.object({
+  retentionSource: z.string().url().max(500),
+  verifiedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
 
 export const AdminActionSchema = z.object({
   id: z.number().int(),
@@ -578,6 +589,7 @@ export const ERROR_CODES = [
   "report_pending",
   "report_failed",
   "byok_provider_invalid",
+  "zdr_model_unverified",
   "oauth_unavailable",
   "oauth_state_invalid",
   "oauth_email_unverified",

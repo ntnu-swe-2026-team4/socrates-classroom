@@ -91,6 +91,11 @@ const M: Record<ErrorCode, Entry> = {
     en: "This provider is not supported.",
     es: "Este proveedor no es compatible.",
   },
+  zdr_model_unverified: {
+    zh: "這些模型未通過零保留（0-day retention）查證，無法核可：{models}",
+    en: "These models are not verified for zero data retention and cannot be approved: {models}",
+    es: "Estos modelos no tienen verificada la retención cero y no se pueden aprobar: {models}",
+  },
   email_taken: {
     zh: "這個信箱已經註冊過了，請直接登入。",
     en: "This email is already registered. Please sign in instead.",

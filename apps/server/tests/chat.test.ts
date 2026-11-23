@@ -246,8 +246,8 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     const enc = await encryptKey(env, "sk-or-v1-adminattr");
     await batch(env.DB, [
       {
-        sql: `INSERT INTO admin_keys (id, provider_id, key_enc, last4, sort_order, updated_at, monthly_quota_usd)
-              VALUES ('ak_attr', $provider, $enc, 'attr', 0, $now, 5)`,
+        sql: `INSERT INTO admin_keys (id, provider_id, key_enc, last4, sort_order, updated_at, monthly_quota_usd, zdr_status)
+              VALUES ('ak_attr', $provider, $enc, 'attr', 0, $now, 5, 'approved')`,
         params: { provider, enc, now },
       },
       {
