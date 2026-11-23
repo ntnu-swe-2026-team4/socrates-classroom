@@ -2,6 +2,23 @@ import type { LedgerKey } from "./gateway-schema";
 
 export type SettleKind = "ok" | "error";
 
+export interface LedgerCandidate {
+  key: LedgerKey;
+  maxConcurrency: number;
+  providerMaxConcurrency?: number | null;
+}
+
+export interface LedgerReservation {
+  index: number;
+  lease: string;
+}
+
+/**
+ * Twice the report alarm timeout (providers.config.yaml `report.alarmTimeoutMs` = 5 min), the
+ * longest single LLM call the gateway admits: the sweeper must never reclaim a live slot.
+ */
+export const LEDGER_LEASE_TTL_MS = 600_000;
+
 interface LedgerEntry {
   requests: number;
   failures: number;

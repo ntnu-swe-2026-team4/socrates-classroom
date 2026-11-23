@@ -24,11 +24,13 @@ export const UserSchema = z.object({
   id: z.string(),
   name: z.string(),
   isAdmin: z.boolean(),
+  emailVerified: z.boolean(),
 });
 export type User = z.infer<typeof UserSchema>;
 
 export const OAUTH_PROVIDERS = ["google", "facebook"] as const;
 export const PASSWORD_RESET_TTL_MINUTES = 30;
+export const EMAIL_VERIFY_TTL_HOURS = 24;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 export const OAuthProvidersSchema = z.object({ providers: z.array(z.enum(OAUTH_PROVIDERS)) });
 export type OAuthProviders = z.infer<typeof OAuthProvidersSchema>;
@@ -273,6 +275,7 @@ export const PasswordResetInputSchema = z.object({
   token: z.string().max(2048),
   password: z.string().min(8).max(128),
 });
+export const EmailVerifyInputSchema = z.object({ token: z.string().max(2048) });
 export const JoinInputSchema = z.object({
   code: z.string().min(4).max(32),
   name: z.string().trim().max(80).optional(),
@@ -339,6 +342,7 @@ export const TopicCopyInputSchema = z.object({
 export const ActivityStartInputSchema = z.object({
   topicId: z.string().min(1),
   mode: ActivityModeSchema.default("live"),
+  calendarEventId: z.string().min(1).optional(),
   reportAxes: ReportAxesSchema.optional(),
   topicAxes: TopicAxesInputSchema.optional(),
 });
@@ -498,6 +502,8 @@ export const ERROR_CODES = [
   "oauth_failed",
   "email_taken",
   "reset_token_invalid",
+  "verify_token_invalid",
+  "email_not_set",
   "topic_axes_required",
   "report_axes_not_allowed",
 ] as const;
@@ -515,10 +521,15 @@ export class ApiError extends Error {
 export * from "./reports";
 
 export {
+  CalendarEventCreateInputSchema,
+  CalendarEventPageQuerySchema,
+  CalendarEventSchema,
+  CalendarEventUpdateInputSchema,
   ClassroomContentInputSchema,
   ClassroomInviteCreateSchema,
   ClassroomPageQuerySchema,
   type ClassroomEvent,
   type ClassroomEventResource,
   type ClassroomInviteScope,
+  type CalendarEvent,
 } from "./community";

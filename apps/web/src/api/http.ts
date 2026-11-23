@@ -1,4 +1,4 @@
-import { hc } from "hono/client";
+import { hc, type InferRequestType } from "hono/client";
 import type {
   ActivityInfo,
   ActivityInvite,
@@ -42,6 +42,7 @@ import {
   AdminUserUpdateInputSchema,
   ClassroomCreateInputSchema,
   DevLoginInputSchema,
+  EmailVerifyInputSchema,
   EngagementVisibilitySchema,
   ERROR_CODES,
   GenerateTopicsInputSchema,
@@ -95,6 +96,7 @@ export interface Api {
   logout(): Promise<void>;
   requestPasswordReset(email: string): Promise<void>;
   resetPassword(token: string, password: string): Promise<void>;
+  verifyEmail(token: string): Promise<void>;
   authProviders(): Promise<OAuthProviders>;
   notifications(): Promise<NotificationFeed>;
   markNotificationsSeen(): Promise<void>;
@@ -121,6 +123,7 @@ export interface Api {
     mode?: ActivityMode,
     reportAxes?: ReportAxes,
     topicAxes?: Axis[],
+    calendarEventId?: string,
   ): Promise<ActivityStarted>;
   listActivitySlots(activityId: string): Promise<ActivitySlots>;
   createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
@@ -271,6 +274,7 @@ type ScopedInviteInput =
   | { scope: Exclude<ClassroomInviteScope, "classroom">; activityId: string };
 
 const classroom = client.classrooms[":id"];
+const calendarEvents = classroom["calendar-events"];
 const scopedInvite = client["classroom-invites"][":token"];
 
 function idempotencyHeaders(key: string) {
@@ -278,6 +282,22 @@ function idempotencyHeaders(key: string) {
 }
 
 const classroomApi = {
+  async calendar(id: string, query: { from: string; to: string; cursor?: string }, signal: AbortSignal) {
+    return unwrap(await calendarEvents.$get({ param: { id }, query }, { init: { signal } }));
+  },
+  async createCalendarEvent(id: string, json: InferRequestType<typeof calendarEvents.$post>["json"]) {
+    return unwrap(await calendarEvents.$post({ param: { id }, json }));
+  },
+  async updateCalendarEvent(
+    id: string,
+    eventId: string,
+    json: InferRequestType<(typeof calendarEvents)[":eventId"]["$patch"]>["json"],
+  ) {
+    return unwrap(await calendarEvents[":eventId"].$patch({ param: { id, eventId }, json }));
+  },
+  async deleteCalendarEvent(id: string, eventId: string) {
+    await unwrap(await calendarEvents[":eventId"].$delete({ param: { id, eventId } }));
+  },
   async announcements(id: string, cursor?: string) {
     return unwrap(await classroom.announcements.$get({ param: { id }, query: { cursor } }));
   },
@@ -367,6 +387,9 @@ export const httpApi: Api = {
   async resetPassword(token, password) {
     await unwrap(await client.auth.password.reset.$post({ json: PasswordResetInputSchema.parse({ token, password }) }));
   },
+  async verifyEmail(token) {
+    await unwrap(await client.auth.email.verify.$post({ json: EmailVerifyInputSchema.parse({ token }) }));
+  },
   async authProviders() {
     return unwrap(await client.auth.providers.$get());
   },
@@ -441,8 +464,8 @@ export const httpApi: Api = {
       }),
     );
   },
-  async startActivity(classroomId, topicId, mode = "live", reportAxes, topicAxes) {
-    const input = ActivityStartInputSchema.parse({ topicId, mode, reportAxes, topicAxes });
+  async startActivity(classroomId, topicId, mode = "live", reportAxes, topicAxes, calendarEventId) {
+    const input = ActivityStartInputSchema.parse({ topicId, mode, reportAxes, topicAxes, calendarEventId });
     return unwrap(await client.classrooms[":id"].activities.$post({ param: { id: classroomId }, json: input }));
   },
   async listActivitySlots(activityId) {

@@ -33,7 +33,7 @@ vi.mock("@/lib/socrates/scene", () => ({
   createSocratesScene: () => ({ setSpeaking: vi.fn(), setExpression: vi.fn(), dispose: vi.fn() }),
 }));
 
-const teacher: User = { id: "u1", name: "Teacher", isAdmin: false };
+const teacher: User = { id: "u1", name: "Teacher", isAdmin: false, emailVerified: true };
 
 function mountShell(user: User | null = teacher, pathname = calls.pathname, page: ReactNode = <p>page</p>) {
   calls.pathname = pathname;
@@ -151,7 +151,7 @@ test("a re-check that only changes admin rights updates the cache without reload
 });
 
 test("the rail lists home and classrooms, and admins get the manage-site link", () => {
-  const client = mountShell({ id: "u1", name: "Admin", isAdmin: true });
+  const client = mountShell({ id: "u1", name: "Admin", isAdmin: true, emailVerified: true });
   try {
     expect(screen.getByRole("link", { name: "Home" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Classrooms" })).toBeTruthy();

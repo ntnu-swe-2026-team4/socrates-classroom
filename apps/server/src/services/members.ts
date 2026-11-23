@@ -1,9 +1,10 @@
 import { getCookie } from "hono/cookie";
 import { ApiError, AxisSchema, type ActivityMode, type Axis, type ReportAxes, type User } from "@socrates/shared";
 import type { Db, SqlEntry } from "../db/d1";
-import { one, run } from "../db/d1";
+import { batch, one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, type ParticipantIdentity } from "../auth";
 import { fail, newId, nowIso, type Ctx } from "../http";
+import { topicVisibleTo } from "./topic-visibility";
 
 export interface ClassroomRow {
   id: string;
@@ -35,6 +36,7 @@ export interface TopicRow {
   summary: string | null;
   prompts: string;
   axes: string;
+  deleted_at: string | null;
 }
 
 export interface MemberRow {
@@ -69,13 +71,80 @@ export function parsePrompts(row: TopicRow) {
   };
 }
 
+export function serializeAxes(axes: Axis[]): string {
+  return JSON.stringify(axes.map(({ name, left, right }) => ({ name, left, right })));
+}
+
+const FIND_CLASSROOM_TOPIC =
+  "SELECT * FROM topics WHERE classroom_id = $cid AND title = $title AND statement = $statement AND axes = $axes AND deleted_at IS NULL ORDER BY created_at, id LIMIT 1";
+const FIND_PERSONAL_TOPIC =
+  "SELECT * FROM topics WHERE classroom_id IS NULL AND owner_id = $uid AND title = $title AND statement = $statement AND axes = $axes AND deleted_at IS NULL ORDER BY created_at, id LIMIT 1";
+
+export interface TopicInsertInput {
+  id: string;
+  ownerId: string;
+  classroomId: string | null;
+  copiedFrom?: string | null;
+  title: string;
+  statement: string;
+  summary?: string | null;
+  prompts: string[];
+  axes: Axis[];
+}
+
+export function findClassroomTopicByContent(
+  db: Db,
+  classroomId: string,
+  input: { title: string; statement: string; axes: Axis[] },
+): Promise<TopicRow | null> {
+  return one<TopicRow>(db, FIND_CLASSROOM_TOPIC, {
+    cid: classroomId,
+    title: input.title,
+    statement: input.statement,
+    axes: serializeAxes(input.axes),
+  });
+}
+
+export async function createOrGetTopic(db: Db, input: TopicInsertInput): Promise<{ row: TopicRow; created: boolean }> {
+  const classroom = input.classroomId !== null;
+  const conflictTarget = classroom
+    ? "(classroom_id, title, statement, axes) WHERE classroom_id IS NOT NULL AND deleted_at IS NULL"
+    : "(owner_id, title, statement, axes) WHERE classroom_id IS NULL AND owner_id IS NOT NULL AND deleted_at IS NULL";
+  const params = {
+    id: input.id,
+    uid: input.ownerId,
+    cid: input.classroomId,
+    from: input.copiedFrom ?? null,
+    title: input.title,
+    statement: input.statement,
+    summary: input.summary ?? null,
+    prompts: JSON.stringify(input.prompts),
+    axes: serializeAxes(input.axes),
+    at: nowIso(),
+  };
+  const [inserted, found] = await batch(db, [
+    {
+      sql: `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $axes, $at) ON CONFLICT ${conflictTarget} DO NOTHING`,
+      params,
+    },
+    { sql: classroom ? FIND_CLASSROOM_TOPIC : FIND_PERSONAL_TOPIC, params },
+  ]);
+  const row = (found?.results?.[0] ?? null) as TopicRow | null;
+  if (!row) fail(500, "internal_error");
+  return { row, created: (inserted?.meta.changes ?? 0) > 0 };
+}
+
 export function topicCopyInsert(
   source: TopicRow,
   input: { id: string; userId: string; classroomId: string; axes?: Axis[] },
+  condition?: SqlEntry,
 ): SqlEntry {
   return {
-    sql: "INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $axes, $at)",
+    sql: `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, axes, created_at)
+      SELECT $id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $axes, $at ${condition ? `WHERE ${condition.sql}` : "WHERE 1"}
+      ON CONFLICT (classroom_id, title, statement, axes) WHERE classroom_id IS NOT NULL AND deleted_at IS NULL DO NOTHING`,
     params: {
+      ...condition?.params,
       id: input.id,
       uid: input.userId,
       cid: input.classroomId,
@@ -84,10 +153,20 @@ export function topicCopyInsert(
       statement: source.statement,
       summary: source.summary,
       prompts: source.prompts,
-      axes: input.axes ? JSON.stringify(input.axes) : source.axes,
+      axes: input.axes ? serializeAxes(input.axes) : source.axes,
       at: nowIso(),
     },
   };
+}
+
+export async function deleteClassroomTopic(db: Db, classroomId: string, topicId: string): Promise<void> {
+  const row = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id AND classroom_id = $cid", {
+    id: topicId,
+    cid: classroomId,
+  });
+  if (!row) fail(404, "not_found");
+  if (row.deleted_at !== null) return;
+  await run(db, "UPDATE topics SET deleted_at = $at WHERE id = $id", { id: topicId, at: nowIso() });
 }
 
 export async function activityOf(
@@ -134,8 +213,7 @@ export async function topicForActivity(
 ): Promise<TopicRow> {
   const topic = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id", { id: topicId });
   if (!topic) fail(404, "not_found");
-  const systemOrOwn = topic.classroom_id === null && (topic.owner_id === null || topic.owner_id === userId);
-  if (topic.classroom_id !== classroomId && !systemOrOwn) fail(404, "not_found");
+  if (!topicVisibleTo(topic, { userId, classroomId })) fail(404, "not_found");
   return topic;
 }
 

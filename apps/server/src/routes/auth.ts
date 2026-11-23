@@ -2,7 +2,9 @@ import { publishClassroom } from "../do/classroom-events";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
+  EMAIL_VERIFY_TTL_HOURS,
   PASSWORD_RESET_TTL_MINUTES,
+  EmailVerifyInputSchema,
   LoginInputSchema,
   PasswordForgotInputSchema,
   PasswordResetInputSchema,
@@ -15,6 +17,7 @@ import {
 import { batch, one, run } from "../db/d1";
 import {
   DUMMY_HASH,
+  emailVerifyBinding,
   endSession,
   hashPassword,
   openPayload,
@@ -27,7 +30,7 @@ import {
   verifyAccountToken,
   verifyPassword,
 } from "../auth";
-import { sendPasswordResetEmail } from "../mail";
+import { sendEmailVerificationEmail, sendPasswordResetEmail } from "../mail";
 import {
   enforceIpLimit,
   fail,
@@ -35,6 +38,7 @@ import {
   newId,
   nowIso,
   rateLimit,
+  requireUser,
   validateJson,
   uniqueViolationColumns,
   type AppEnv,
@@ -74,9 +78,44 @@ interface UserRow {
   id: string;
   name: string;
   email: string | null;
+  email_verified_at: string | null;
   password_hash: string | null;
   is_admin: number;
   disabled_at: string | null;
+}
+
+interface VerifyAccount {
+  id: string;
+  email: string;
+  lang: Lang;
+}
+
+function publicBase(c: Ctx): string {
+  return c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
+}
+
+async function sendVerificationMail(c: Ctx, account: VerifyAccount): Promise<void> {
+  const token = await sealAccountToken(
+    { env: c.env },
+    "email_verify",
+    account.id,
+    emailVerifyBinding(account.email),
+    EMAIL_VERIFY_TTL_HOURS * 3_600_000,
+  );
+  await sendEmailVerificationEmail(c.env, {
+    to: account.email,
+    lang: account.lang,
+    link: `${publicBase(c)}/verify-email#token=${token}`,
+    hours: EMAIL_VERIFY_TTL_HOURS,
+  });
+}
+
+function queueVerificationMail(c: Ctx, account: VerifyAccount): void {
+  c.executionCtx.waitUntil(
+    sendVerificationMail(c, account).catch((error: unknown) => {
+      console.warn("[auth] email verification mail failed:", error instanceof Error ? error.message : typeof error);
+    }),
+  );
 }
 
 export function authRoutes() {
@@ -144,7 +183,8 @@ export function authRoutes() {
         fail(409, "conflict");
       }
       await publishClassroom(c.env, classroom.id, "members");
-      const user = { id, name: input.name, isAdmin: false };
+      queueVerificationMail(c, { id, email: input.email, lang: langOf(c) });
+      const user: User = { id, name: input.name, isAdmin: false, emailVerified: false };
       await ensureParticipant(c.env.DB, classroom.current_activity_id, user, at);
       await startSession(c, user);
       return c.json(user);
@@ -166,9 +206,46 @@ export function authRoutes() {
         if (pairs.some(([table, column]) => table === "users" && column === "email")) fail(409, "email_taken");
         throw error;
       }
-      const user: User = { id, name: input.name, isAdmin: false };
+      const user: User = { id, name: input.name, isAdmin: false, emailVerified: false };
+      queueVerificationMail(c, { id, email: input.email, lang: langOf(c) });
       await startSession(c, user);
       return c.json(user);
+    })
+    .post("/auth/email/verify", rateLimit("email-verify", 30), validateJson(EmailVerifyInputSchema), async (c) => {
+      const input = c.req.valid("json");
+      const claims = readAccountToken(input.token, "email_verify");
+      const row = claims
+        ? await one<{ id: string; email: string | null; email_verified_at: string | null; disabled_at: string | null }>(
+            c.env.DB,
+            "SELECT id, email, email_verified_at, disabled_at FROM users WHERE id = $id",
+            { id: claims.uid },
+          )
+        : null;
+      if (!row || row.email === null || row.disabled_at !== null) fail(400, "verify_token_invalid");
+      if (!(await verifyAccountToken({ env: c.env }, "email_verify", input.token, emailVerifyBinding(row.email)))) {
+        fail(400, "verify_token_invalid");
+      }
+      if (row.email_verified_at === null) {
+        await run(
+          c.env.DB,
+          "UPDATE users SET email_verified_at = $at WHERE id = $id AND email = $email AND email_verified_at IS NULL",
+          { id: row.id, email: row.email, at: nowIso() },
+        );
+      }
+      return c.body(null, 204);
+    })
+    .post("/auth/email/verify/resend", rateLimit("email-verify-resend", 5), async (c) => {
+      const user = requireUser(c);
+      const row = await one<{ email: string | null; lang: Lang; email_verified_at: string | null }>(
+        c.env.DB,
+        "SELECT email, lang, email_verified_at FROM users WHERE id = $id",
+        { id: user.id },
+      );
+      if (!row?.email) fail(409, "email_not_set");
+      if (row.email_verified_at === null) {
+        queueVerificationMail(c, { id: user.id, email: row.email, lang: row.lang });
+      }
+      return c.body(null, 204);
     })
     .get("/auth/oauth/:provider/start", async (c) => {
       await enforceIpLimit(c, "oauth", 30);
@@ -323,13 +400,9 @@ function oauthFailure(c: Ctx, code: ErrorCode): Response {
 
 async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthProfile): Promise<User | null> {
   const findSql =
-    "SELECT u.id, u.name, u.is_admin, u.disabled_at FROM user_identities i JOIN users u ON u.id = i.user_id WHERE i.provider = $provider AND i.provider_user_id = $subject";
+    "SELECT u.id, u.name, u.email, u.email_verified_at, u.is_admin, u.disabled_at FROM user_identities i JOIN users u ON u.id = i.user_id WHERE i.provider = $provider AND i.provider_user_id = $subject";
   const key = { provider, subject: profile.subject };
-  const existing = await one<{ id: string; name: string; is_admin: number; disabled_at: string | null }>(
-    c.env.DB,
-    findSql,
-    key,
-  );
+  const existing = await one<OAuthUserRow>(c.env.DB, findSql, key);
   if (existing) {
     if (existing.disabled_at !== null) return null;
     return toUser(existing);
@@ -349,13 +422,18 @@ async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthPr
     ]);
   } catch (error) {
     if (!uniqueViolationColumns(error).some(([table]) => table === "user_identities")) throw error;
-    const raced = await one<{ id: string; name: string; is_admin: number; disabled_at: string | null }>(
-      c.env.DB,
-      findSql,
-      key,
-    );
+    const raced = await one<OAuthUserRow>(c.env.DB, findSql, key);
     if (!raced || raced.disabled_at !== null) return null;
     return toUser(raced);
   }
-  return { id, name: profile.name, isAdmin: false };
+  return { id, name: profile.name, isAdmin: false, emailVerified: true };
+}
+
+interface OAuthUserRow {
+  id: string;
+  name: string;
+  email: string | null;
+  email_verified_at: string | null;
+  is_admin: number;
+  disabled_at: string | null;
 }

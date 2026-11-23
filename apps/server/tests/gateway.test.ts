@@ -1,8 +1,36 @@
-import { must } from "./helpers";
-import { describe, expect, it, inject } from "vitest";
+import { must, scopedEnv } from "./helpers";
+import { afterEach, describe, expect, it, inject } from "vitest";
+import { env } from "cloudflare:workers";
+import {
+  evictAllDurableObjects,
+  listDurableObjectIds,
+  runDurableObjectAlarm,
+  runInDurableObject,
+} from "cloudflare:test";
 import { GatewayLedger } from "../src/gateway/ledger";
 import { run } from "../src/db/d1";
 import type { Env } from "../src/env";
+import type { LedgerKey } from "../src/gateway/gateway-schema";
+
+const fakeAi = { run: async () => ({}), toMarkdown: async () => ({ format: "markdown", markdown: "" }) };
+
+const ledgerEnv = (overrides: Record<string, unknown> = {}): Env =>
+  scopedEnv({ AI: fakeAi, ...overrides } as unknown as Partial<Env>);
+
+const ledgerShard = (name: string) => {
+  const namespace = must(env.RoutingLedger, "RoutingLedger binding");
+  return namespace.get(namespace.idFromName(name));
+};
+
+afterEach(async () => {
+  const namespace = must(env.RoutingLedger, "RoutingLedger binding");
+  for (const id of await listDurableObjectIds(namespace)) {
+    await runInDurableObject(namespace.get(id), async (_instance, state) => {
+      await state.storage.deleteAll();
+    });
+  }
+  await evictAllDurableObjects();
+});
 
 describe("gateway ledger (pi has no structured error state → records ok/error only; consecutive errors trigger cooldown)", () => {
   const key = { provider: "dgx-spark", model: "GLM-5.3-Flash", credential: "platform" };
@@ -56,7 +84,7 @@ describe("router chain walk (config-driven, cooldown-filtered)", () => {
     const { Router } = await import("../src/gateway/router");
     const env = { LLM_PROVIDER: "mock" } as never;
     const router = new Router(env);
-    expect(router.pick("interactive")).toBeNull();
+    await expect(router.pick("interactive")).resolves.toBeNull();
   });
 
   it("config: workers-ai is one provider with two model entries, priority ordering correct", async () => {
@@ -70,17 +98,17 @@ describe("router chain walk (config-driven, cooldown-filtered)", () => {
   });
 
   it("ledger unit = (provider, model, credential) — same provider, different models, accounted separately", async () => {
-    const { Router } = await import("../src/gateway/router");
     const { ledgerKey } = await import("../src/gateway/gateway-schema");
-    const router = new Router({ AI: {} } as never);
     const cfg = (await import("../src/gateway/config.gen")).gatewayConfig;
     const def = cfg.providers["workers-ai"];
-    const flash = ledgerKey(cfg.defaults.availability[0], def);
-    const free = ledgerKey(cfg.defaults.availability[1], def);
-    router.ledger.record(flash);
-    router.ledger.record(flash);
-    expect(router.ledger.status(flash).requests).toBe(2);
-    expect(router.ledger.status(free).requests).toBe(0);
+    const flash = ledgerKey({ ...cfg.defaults.availability[0], credential: "teacher:t_unit_models" }, def);
+    const free = ledgerKey({ ...cfg.defaults.availability[1], credential: "teacher:t_unit_models" }, def);
+    const stub = ledgerShard("teacher:t_unit_models");
+    const only = (key: LedgerKey) => [{ key, maxConcurrency: 1 }];
+    expect(await stub.reserve(only(flash))).not.toBeNull();
+    expect(await stub.reserve(only(flash))).toBeNull();
+    expect(await stub.reserve(only(free))).not.toBeNull();
+    expect(await stub.admit(only(flash))).toEqual([false]);
   });
 });
 
@@ -193,29 +221,29 @@ describe("provider aggregate cap (#152 follow-up: teacher_keys.max_concurrency b
 
   it("chain skips a provider's legs once their combined in-flight hits the provider cap; null cap never binds", async () => {
     const { Router } = await import("../src/gateway/router");
-    const router = new Router({ AI: {} } as never);
+    const router = new Router(ledgerEnv());
 
     const capped = legs(2);
-    expect(router.pick("interactive", own, capped)).not.toBeNull();
-    expect(router.pick("interactive", own, capped)).not.toBeNull();
-    expect(router.pick("interactive", own, capped)).toBeNull();
+    expect(await router.pick("interactive", own, capped)).not.toBeNull();
+    expect(await router.pick("interactive", own, capped)).not.toBeNull();
+    expect(await router.pick("interactive", own, capped)).toBeNull();
 
     const uncapped = legs(null);
-    expect(router.pick("interactive", own, uncapped)).not.toBeNull();
-    expect(router.pick("interactive", own, uncapped)).not.toBeNull();
-    expect(router.pick("interactive", own, uncapped)).not.toBeNull();
-    expect(router.pick("interactive", own, uncapped)).not.toBeNull();
+    expect(await router.pick("interactive", own, uncapped)).not.toBeNull();
+    expect(await router.pick("interactive", own, uncapped)).not.toBeNull();
+    expect(await router.pick("interactive", own, uncapped)).not.toBeNull();
+    expect(await router.pick("interactive", own, uncapped)).not.toBeNull();
   });
 
   it("budget = sum over providers of min(sum of legs, provider cap)", async () => {
     const { Router } = await import("../src/gateway/router");
-    const router = new Router({ AI: {} } as never);
+    const router = new Router(ledgerEnv());
     const capped = legs(2);
     const other = [
       { provider: "deepseek", model: "glm-4.6", credential: "teacher:t_cap", maxConcurrency: 2, priority: 2 },
     ];
-    expect(router.budget("interactive", [...capped, ...other], own)).toBe(4);
-    expect(router.budget("interactive", [...legs(null), ...other], own)).toBe(10);
+    expect(await router.budget("interactive", [...capped, ...other], own)).toBe(4);
+    expect(await router.budget("interactive", [...legs(null), ...other], own)).toBe(10);
   });
 });
 
@@ -230,45 +258,40 @@ describe("teacher legs (#82: teacher keys first, platform chain as fallback)", (
 
   it("teacher leg precedes the platform chain; canServe rejection falls through to the platform chain", async () => {
     const { Router } = await import("../src/gateway/router");
-    const router = new Router({ AI: {}, DGX_BASE_URL: "http://spark:8888/v1" } as never);
-    const chain = router.chain("interactive", undefined, [teacherLeg]);
+    const router = new Router(ledgerEnv({ DGX_BASE_URL: "http://spark:8888/v1" }));
+    const chain = await router.chain("interactive", undefined, [teacherLeg]);
     expect(chain[0]).toMatchObject({ provider: "openrouter", credential: "teacher:u_teacher" });
     expect(chain[1].provider).toBe("workers-ai");
 
-    const blocked = router.chain("interactive", () => false, [teacherLeg]);
+    const blocked = await router.chain("interactive", () => false, [teacherLeg]);
     expect(blocked.every((e) => e.credential !== "teacher:u_teacher")).toBe(true);
   });
 
-  it("cooldown filters Router.chain: a leg with five straight failures is evicted and returns after ok", async () => {
+  it("cooldown filters Router.chain: a leg with five straight failures is evicted, the next leg takes over", async () => {
     const { Router } = await import("../src/gateway/router");
-    const router = new Router({ AI: {} } as never);
-    const decision = must(router.pick("interactive"), "interactive decision");
+    const router = new Router(ledgerEnv());
+    const failed = [];
     for (let i = 0; i < 5; i += 1) {
-      router.ledger.record(decision.key);
-      router.settle(decision, "error");
+      const decision = must(await router.pick("interactive"), "interactive decision");
+      failed.push(decision);
+      await router.settle(decision, "error");
     }
-    expect(
-      router.chain("interactive").some((e) => e.provider === decision.entry.provider && e.model === decision.model),
-    ).toBe(false);
-    router.ledger.record(decision.key);
-    router.settle(decision, "ok");
-    expect(
-      router.chain("interactive").some((e) => e.provider === decision.entry.provider && e.model === decision.model),
-    ).toBe(true);
+    const cooled = failed[0];
+    const chain = await router.chain("interactive");
+    expect(chain.some((e) => e.provider === cooled.entry.provider && e.model === cooled.model)).toBe(false);
+    expect(chain.length).toBeGreaterThan(0);
   });
 
   it("teacher leg is accounted independently: its cooldown does not affect the platform chain", async () => {
     const { Router } = await import("../src/gateway/router");
-    const router = new Router({ AI: {} } as never);
-    const decision = must(router.pick("interactive", undefined, [teacherLeg]), "interactive teacher decision");
-    expect(decision.key.credential).toBe("teacher:u_teacher");
+    const router = new Router(ledgerEnv());
     for (let i = 0; i < 5; i += 1) {
-      router.ledger.record(decision.key);
-      router.settle(decision, "error");
+      const decision = must(await router.pick("interactive", undefined, [teacherLeg]), "interactive teacher decision");
+      expect(decision.key.credential).toBe("teacher:u_teacher");
+      await router.settle(decision, "error");
     }
-    expect(router.ledger.inCooldown(decision.key)).toBe(true);
-    const platform = router.pick("interactive", undefined, [teacherLeg]);
-    expect(platform?.key.credential).toBe("platform");
+    const platform = must(await router.pick("interactive", undefined, [teacherLeg]), "fallback decision");
+    expect(platform.key.credential).toBe("platform");
   });
 });
 
@@ -394,55 +417,144 @@ describe("gateway schema (availability reference validation — typos fail fast 
   });
 });
 
-describe("Router.withRoute (admission → settle lifecycle; ConversationBusy must not leak inFlight)", () => {
-  const key = { provider: "dgx-spark", model: "GLM-5.3-Flash", credential: "platform" };
-  const decision = {
-    entry: {
-      provider: "dgx-spark",
-      model: "GLM-5.3-Flash",
-      credential: "platform",
-      maxConcurrency: 4,
-      priority: 1,
+describe("Router.withRoute (reservation → verdict lifecycle; ConversationBusy must not leak the slot)", () => {
+  const legs = (maxConcurrency: number) => [
+    {
+      provider: "openrouter",
+      model: "z-ai/glm-5.3-flash",
+      credential: "teacher:t_withroute",
+      maxConcurrency,
+      priority: 0,
     },
-    model: "GLM-5.3-Flash",
-    key,
-  };
+  ];
+  const own = (entry: { provider: string }) => entry.provider === "openrouter";
 
-  it("ConversationBusy releases the inFlight slot without recording a failure", async () => {
+  it("ConversationBusy releases the slot without recording a failure", async () => {
     const { Router } = await import("../src/gateway/router");
-    const router = new Router({} as never);
-    router.ledger.begin(key);
-    const busy = new Error("conversation busy");
-    busy.name = "ConversationBusy";
-    await expect(router.withRoute(decision, () => Promise.reject(busy))).rejects.toThrow();
-    expect(router.ledger.inFlight(key)).toBe(0);
-    for (let i = 0; i < 5; i += 1) router.ledger.record(key);
-    expect(router.ledger.inCooldown(key)).toBe(false);
+    const router = new Router(ledgerEnv());
+    for (let i = 0; i < 6; i += 1) {
+      const decision = must(await router.pick("interactive", own, legs(1)), "interactive decision");
+      const busy = new Error("conversation busy");
+      busy.name = "ConversationBusy";
+      await expect(router.withRoute(decision, () => Promise.reject(busy))).rejects.toThrow();
+    }
+    expect(await router.pick("interactive", own, legs(1))).not.toBeNull();
   });
 
-  it("a real failure settles as error (inFlight released, failure recorded)", async () => {
+  it("a real failure settles as error: five straight failures cool the leg down", async () => {
     const { Router } = await import("../src/gateway/router");
-    const router = new Router({} as never);
-    router.ledger.begin(key);
-    await expect(router.withRoute(decision, () => Promise.reject(new Error("boom")))).rejects.toThrow();
-    expect(router.ledger.inFlight(key)).toBe(0);
-    for (let i = 0; i < 5; i += 1) router.ledger.record(key);
-    router.ledger.settle(key, "error");
-    for (let i = 0; i < 4; i += 1) {
-      router.ledger.record(key);
-      router.ledger.settle(key, "error");
+    const router = new Router(ledgerEnv());
+    for (let i = 0; i < 5; i += 1) {
+      const decision = must(await router.pick("interactive", own, legs(1)), "interactive decision");
+      await expect(router.withRoute(decision, () => Promise.reject(new Error("boom")))).rejects.toThrow();
     }
-    expect(router.ledger.inCooldown(key)).toBe(true);
+    await expect(router.chain("interactive", own, legs(1))).resolves.toEqual([]);
   });
 
   it("success path leaves the slot to the caller's settle", async () => {
     const { Router } = await import("../src/gateway/router");
-    const router = new Router({} as never);
-    router.ledger.begin(key);
+    const router = new Router(ledgerEnv());
+    const decision = must(await router.pick("interactive", own, legs(1)), "interactive decision");
     await expect(router.withRoute(decision, () => Promise.resolve("receipt"))).resolves.toBe("receipt");
-    expect(router.ledger.inFlight(key)).toBe(1);
-    router.settle(decision, "ok");
-    expect(router.ledger.inFlight(key)).toBe(0);
+    expect(await router.pick("interactive", own, legs(1))).toBeNull();
+    await router.settle(decision, "ok");
+    expect(await router.pick("interactive", own, legs(1))).not.toBeNull();
+  });
+});
+
+describe("RoutingLedger DO (real DO: limits and cooldowns are exact across isolates)", () => {
+  const leg = (model: string, maxConcurrency: number, providerMaxConcurrency: number | null = null) => [
+    {
+      provider: "openrouter",
+      model,
+      credential: "teacher:t_fleet",
+      maxConcurrency,
+      priority: 0,
+      providerMaxConcurrency,
+    },
+  ];
+  const twoLegs = (maxConcurrency: number, providerMaxConcurrency: number | null = null) => [
+    ...leg("z-ai/glm-4.7-flash", maxConcurrency, providerMaxConcurrency),
+    { ...leg("z-ai/glm-5.3-flash", maxConcurrency, providerMaxConcurrency)[0], priority: 1 },
+  ];
+  const own = (entry: { provider: string }) => entry.provider === "openrouter";
+
+  it("two Router instances (= two isolates) cannot overshoot one leg's maxConcurrency", async () => {
+    const { Router } = await import("../src/gateway/router");
+    const isolateA = new Router(ledgerEnv());
+    const isolateB = new Router(ledgerEnv());
+    const legs = leg("z-ai/glm-4.7-flash", 2);
+    expect(await isolateA.pick("interactive", own, legs)).not.toBeNull();
+    expect(await isolateB.pick("interactive", own, legs)).not.toBeNull();
+    expect(await isolateA.pick("interactive", own, legs)).toBeNull();
+    expect(await isolateB.pick("interactive", own, legs)).toBeNull();
+  });
+
+  it("the per-provider cap spans both legs and both isolates", async () => {
+    const { Router } = await import("../src/gateway/router");
+    const isolateA = new Router(ledgerEnv());
+    const isolateB = new Router(ledgerEnv());
+    expect(await isolateA.pick("interactive", own, twoLegs(4, 2))).not.toBeNull();
+    expect(await isolateB.pick("interactive", own, twoLegs(4, 2))).not.toBeNull();
+    expect(await isolateA.pick("interactive", own, twoLegs(4, 2))).toBeNull();
+    expect(await isolateB.pick("interactive", own, twoLegs(4, 2))).toBeNull();
+  });
+
+  it("cooldown learned in one isolate filters the chain in another", async () => {
+    const { Router } = await import("../src/gateway/router");
+    const isolateA = new Router(ledgerEnv());
+    const isolateB = new Router(ledgerEnv());
+    for (let i = 0; i < 5; i += 1) {
+      const decision = must(await isolateA.pick("interactive", own, twoLegs(4)), "teacher decision");
+      await isolateA.settle(decision, "error");
+    }
+    const chain = await isolateB.chain("interactive", own, twoLegs(4));
+    expect(chain.map((entry) => entry.model)).toEqual(["z-ai/glm-5.3-flash"]);
+  });
+
+  it("an expired lease is reclaimed by the alarm sweeper after a caller crash", async () => {
+    const key = { provider: "openrouter", model: "z-ai/glm-5.3-flash", credential: "teacher:t_crash" };
+    const candidate = [{ key, maxConcurrency: 1 }];
+    const stub = ledgerShard("teacher:t_crash");
+    expect(await stub.reserve(candidate, 50)).not.toBeNull();
+    expect(await stub.reserve(candidate, 50)).toBeNull();
+    expect((await stub.status(key)).inFlight).toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await runDurableObjectAlarm(stub);
+    expect((await stub.status(key)).inFlight).toBe(0);
+    expect((await stub.status(key)).leases).toBe(0);
+    expect(await stub.reserve(candidate, 50)).not.toBeNull();
+  });
+
+  it("fail-open: an unreachable ledger routes unaccounted instead of failing", async () => {
+    const { Router } = await import("../src/gateway/router");
+    const down = () => Promise.reject(new Error("ledger down"));
+    const broken = { idFromName: (name: string) => name, get: () => ({ admit: down, reserve: down }) };
+    const router = new Router(ledgerEnv({ RoutingLedger: broken }));
+    const legs = leg("z-ai/glm-4.7-flash", 1);
+    const decision = must(await router.pick("interactive", own, legs), "fail-open decision");
+    expect(decision.lease).toBeNull();
+    expect(await router.pick("interactive", own, legs)).not.toBeNull();
+    await expect(router.settle(decision, "error")).resolves.toBeUndefined();
+    await expect(router.chain("interactive", own, legs)).resolves.toHaveLength(1);
+  });
+
+  it("fail-open: budget degrades to 0 (report-runner falls back to its fixed batch) and settle failures are swallowed", async () => {
+    const { Router } = await import("../src/gateway/router");
+    const broken = {
+      idFromName: (name: string) => name,
+      get: () => ({
+        admit: () => Promise.reject(new Error("ledger down")),
+        reserve: () => Promise.resolve({ index: 0, lease: "l1" }),
+        settle: () => Promise.reject(new Error("ledger down")),
+      }),
+    };
+    const router = new Router(ledgerEnv({ RoutingLedger: broken }));
+    const legs = leg("z-ai/glm-4.7-flash", 1);
+    await expect(router.budget("batch", legs, own)).resolves.toBe(0);
+    const decision = must(await router.pick("batch", own, legs), "batch decision");
+    expect(decision.lease).toBe("l1");
+    await expect(router.settle(decision, "error")).resolves.toBeUndefined();
   });
 });
 
@@ -472,7 +584,7 @@ describe("AI-only production registry (F1 regression: YAML provider id vs create
     const router = new Router(env);
     const canServe = (entry: { provider: string; model: string }): boolean =>
       models.getModel(entry.provider, entry.model) !== undefined;
-    const decision = must(router.pick("interactive", canServe), "interactive unserved decision");
+    const decision = must(await router.pick("interactive", canServe), "interactive unserved decision");
     expect(decision.entry.provider).toBe("workers-ai");
     expect(decision.model).toBe("@cf/zai-org/glm-5.3-flash");
     expect(fallback).toBeDefined();

@@ -2,12 +2,46 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-23 — per-IP 限流改走跨 isolate 的 RateLimiter DO（`feat/157-rate-limiter-do`，#157）
+
+### Changed
+
+- `apps/server/src/http.ts` 的 `enforceIpLimit` 不再用 module-level `ipHits`（`Map<string, number[]>`，每 isolate 各一份、滿 10k 條目還得掃表驅逐）：改呼叫 `RateLimiter` DO（`idFromName("<scope>:<ip>")`，單一 actor 序列化 60 秒 sliding window；同 region 個位數 ms）。任一 IP 對任一 scope 的放行量不再隨 isolate 數放大
+- 計數只存 DO 記憶體、不落 storage（DO 只在 idle 時 evict，而 idle 期間窗口本來就會過期；同時不把 IP 位址持久化）；DO 不可用時 fail-open（放行 + `console.warn`），與 `#196` RoutingLedger 同一取捨
+- 對外介面不變：`enforceIpLimit`／`rateLimit`／guard 順序、`429 rate_limited` envelope、無 `CF-Connecting-IP` 一律放行
+- 新 binding `RateLimiter`（`cloudflare.config.ts`、`env.ts`、`index.ts`、`wrangler.vitest.jsonc` 的 migration `v2`）
+- `tests/rate-limit.test.ts`：real DO 的跨 caller 共用計數、scope／IP 隔離、窗口過期、HTTP 路徑經 DO、DO 不可用 fail-open
+- CF Rate Limiting binding 不採用（per-location、approximate，解不掉跨 isolate 分散繞過）；`#103` 收斂為登入後身分的 per-user 限流，per-account 失敗鎖定拆為 `#393`
+
+## 2026-11-23 — email 註冊後的驗證信（`feat/259-email-verify`，#259）
+
+### Added
+
+- `signup`／`register` 建立 email 帳號後寄三語驗證信（語言依 `users.lang`），連結指向 `/verify-email#token=`；未驗證**不封鎖**任何功能，只是提示（模型語意見 `docs/accounts.md` §8）
+- `POST /api/auth/email/verify`（免登入，寫入 `users.email_verified_at`）與 `POST /api/auth/email/verify/resend`（需登入、已驗證不寄、per-IP 限流）；`User` 新增 `emailVerified`（契約見 `docs/api-contract.md` §2.3）
+- migration 021：`users.email_verified_at`；驗證 token 沿用 #230 的帳號 token，新增用途 `email_verify`（與 `password_reset` 互不通用，綁定 `users.email`，TTL 24 小時）
+- `/verify-email` 頁面與三語文案；dev fixture 帳號視為已驗證
+
 ## 2026-11-23 — 六角圖對接單人報告思辨力指標（`feat/78-thinking-hexagon`，#78）
 
 ### Changed
 
 - `ThinkingHexagon` 與 `lib/thinking.ts` 改接 `TeacherReport.students[].indicators`／`StudentReport.indicators`（#255）：移除 `sampleThinking` 示意資料與提示列，`indicatorsToGoals` 直接將 `c1..a2` 轉成六條軸；`indicators` 為 `null` 時不顯示六角圖
 - 級數對齊後端 0–3 級（未觀察到／初步／部分／達成，三語 i18n），圖上改為四層同心框、右側方塊為三格，並顯示每項的 `evidence` 與 `turns`
+
+## 2026-11-23 — 議題生命週期：dedup 與 soft delete（`feat/383-topic-lifecycle`，#383）
+
+### Added
+
+- 題目身分：同池同 `(…, title, statement, axes)` 即同一題，靠 partial unique index `topics_classroom_content`／`topics_personal_content` 保證；`POST /api/topics`、`POST /api/classrooms/:id/topics`、`POST /api/topics/:id/copy` 對已存在內容回 200 及既有題目（新內容仍 201），既有列的 `prompts`／`summary`／`copied_from` 不覆寫
+- `DELETE /api/classrooms/:id/topics/:topicId` → 204：soft delete（`topics.deleted_at`），題目離開所有清單、不能再開新活動，既有活動與歷史頁（`join`／`report`／`live`／班級 `current`）照舊渲染；冪等，刪除後可用同內容重建
+- 開活動時改軸的 snapshot 與 `POST /topics/:id/copy` 都走「建立或取回」，同內容同軸不再重複建列
+- migration 020：`topics.deleted_at`、`topics.axes` 正規化、既有重複列合併（去重先於 index，`activities.topic_id` 與 `topics.copied_from` 重指到保留列）
+
+### Changed
+
+- `GET /api/topics`、`GET /api/classrooms/:id/topics` 皆排除已刪除題目；`POST /api/topics` 仍為 legacy 入口（web 端無呼叫者）
+- 契約見 `docs/api-contract.md` §4，schema 見 `docs/architecture.md`
 
 ## 2026-11-23 — 教師報告加上學生認真度（`feat/267-engagement`，#267）
 
@@ -17,6 +51,50 @@
 - `TeacherReport.students[].engagement`、`TeacherReport.engagementVisibility`、`StudentReport.engagement`，以及 `PUT /api/activities/:id/engagement-visibility`（形狀見 `docs/api-contract.md` §7）；認真度上線前存下的報告回 `null`
 - migration 018：`activities.engagement_to_class`／`engagement_to_student`（預設 0：只有老師的單人報告看得到）
 - 報告頁：老師的勾選列、單人認真度面板、群體報告的假名認真度表；學生本人的報告在老師開放時顯示
+
+## 2026-11-23 — 從教室行事曆開始討論（`feat/348-scheduled-discussions`，#348）
+
+### Added
+
+- 老師可以從議題排定討論，再從原事件開始；學生可加入已開始的討論，活動結束後可回事件查看報告。
+
+## 2026-11-23 — 教室行事曆週視圖與編輯（`feat/348-calendar-controls`，#348）
+
+### Added
+
+- 教室行事曆提供月／週視圖。老師可編輯排程並選填結束時間，成員可看見橫跨多天的事件。
+
+### Fixed
+
+- 行事曆 API 的 `PATCH` 在 D1 內套用變更欄位。兩筆同時修改不同欄位的請求會保留各自的更新。
+
+## 2026-11-23 — 教室行事曆接線（`feat/348-calendar-integration`，#348）
+
+### Changed
+
+- 教室行事曆使用 `calendar-events` API 儲存與讀取排程，老師建立或刪除的事件會同步給教室成員。
+- 月曆依瀏覽器的時區查詢月份區間，自動讀取所有 cursor pages，跨日事件出現在與排程區間重疊的日期。
+
+## 2026-11-23 — 教室行事曆前端（mock）（`feat/348-classroom-calendar`，#348）
+
+### Added
+
+- 教室內頁新增「行事曆」分頁（`ClassroomCalendar`）：週一起始的月曆、上／下個月與「今天」、點日期列出當天事件；老師可新增（標題、日期、時間、說明）與刪除事件，學生唯讀
+- `lib/calendar.ts`：`monthDays`／`eventsByDay`／`dayKey` 純函式，以及暫時的 `mockCalendar`（`localStorage`，每間教室一份）；查詢走 `classroomCalendarOptions`（key `["classroom", id, "calendar"]`），後端端點定案後只需替換 `queryFn` 與兩個 mutation
+- i18n：`room_tab_calendar` 與 `calendar_*` 共 13 個 key（zh-TW／en／es）
+## 2026-11-23 — topic 可見性收斂為單一定義（`refactor/382-topic-visibility`，#382）
+
+### Added
+
+- `apps/server/src/services/topic-visibility.ts`：`topicScope()` 是 `(owner_id, classroom_id)` 二維狀態機（`(NULL, NULL)`＝system、`(uid, NULL)`＝personal、`(*, cid)`＝classroom）的唯一定義；對外兩個消費形狀——列表查詢走 `topicPoolSql(scopes, subject)`（scope 集合 → SQL fragment ＋ `$named` params）、單列授權走 `topicVisibleTo()`／`copyableTopic()`
+- `apps/server/tests/topic-visibility.test.ts`：狀態機 truth table ＋ 防漂移斷言（`topicPoolSql` 選出的列集合必須等於 `topicVisibleTo` 接受的列集合）；`copyableTopic` 的 404 邊界另測
+
+### Changed
+
+- 四個呼叫點改為消費它，不再各自拼 WHERE 或手寫判斷：`GET /topics`（`routes/topics.ts`）、`GET /classrooms/:id/topics`（`routes/classrooms.ts`）、`POST /topics/:id/copy` 的來源檢查（11 行縮為 1 行）、`topicForActivity`（`services/members.ts`）
+- 行為零變更：`GET /topics` 的 predicate 由 `classroom_id IS NULL AND (owner_id IS NULL OR owner_id = $uid)` 改寫為等價的兩個 scope 條件 OR；copy 的 403（目標班級非我帶）先於 404（來源不可讀）不變；API 契約、回應形狀、D1 schema 皆未動，既有 `topics.test.ts`／`rest.test.ts`／`chat.test.ts` 零改動即綠
+- `docs/architecture.md` §3 新增「topic 可見性」段：定義所在、「呼叫點不得各自重寫 WHERE」的約束，以及 `topicVisibleTo`／`copyableTopic` 兩個 classroom standing 的差異（前者「來源班級＝目標班級」、後者「來源班級是我帶的」）
+- 未納入本單：`seed.ts:163` 的 system-pool dedup lookup 仍手寫 `owner_id IS NULL`，屬 #383（dedup index＋upsert＋backfill）範圍
 
 ## 2026-11-23 — prompt 整理：送進模型的文字收進 `prompts/`（`refactor/161-prompt-ssot`，#161）
 

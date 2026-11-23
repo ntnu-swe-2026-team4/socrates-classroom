@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
-import { one, run } from "../src/db/d1";
+import { all, one, run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import { call, cookieOf, createClassroom, must, startActivity, systemTopicId } from "./helpers";
 
@@ -262,5 +262,191 @@ describe("classroom / topic decoupling (#135)", () => {
       jsonInit({ topicId: withAxes.id }, otherTeacher),
     );
     expect(foreign.status).toBe(404);
+  });
+});
+
+describe("topic lifecycle (#383)", () => {
+  let lifecycleId: string;
+  let copyTargetId: string;
+
+  const postTopic = (classroom: string, cookie: string, body: unknown) =>
+    call(`/api/classrooms/${classroom}/topics`, jsonInit(body, cookie));
+  const removeTopic = (classroom: string, topicId: string, cookie: string) =>
+    call(`/api/classrooms/${classroom}/topics/${topicId}`, { method: "DELETE", headers: { Cookie: cookie } });
+  const countTopics = async (classroom: string, title: string) => {
+    const [row] = await all<{ n: number }>(
+      env.DB,
+      "SELECT COUNT(*) AS n FROM topics WHERE classroom_id = $cid AND title = $title",
+      { cid: classroom, title },
+    );
+    return Number(row?.n);
+  };
+
+  beforeAll(async () => {
+    lifecycleId = (await createClassroom(teacher, "生命週期班")).classroomId;
+    copyTargetId = (await createClassroom(teacher, "複製目標班")).classroomId;
+  });
+
+  it("creating the same content twice keeps one row: 201 then 200 with the first topic", async () => {
+    const first = await postTopic(lifecycleId, teacher, {
+      title: "重複題",
+      statement: "同一個題目",
+      prompts: ["第一版提問"],
+      axes: TEST_AXES,
+    });
+    expect(first.status).toBe(201);
+    const created = (await first.json()) as SessionTopic & { prompts: string[] };
+
+    const again = await postTopic(lifecycleId, teacher, {
+      title: "  重複題  ",
+      statement: " 同一個題目 ",
+      prompts: ["第二版提問"],
+      axes: TEST_AXES,
+    });
+    expect(again.status).toBe(200);
+    const existing = (await again.json()) as SessionTopic & { prompts: string[] };
+    expect(existing.id).toBe(created.id);
+    expect(existing.prompts).toEqual(["第一版提問"]);
+    expect(await countTopics(lifecycleId, "重複題")).toBe(1);
+  });
+
+  it("axes belong to the identity and are compared in canonical key order", async () => {
+    const plain = await postTopic(lifecycleId, teacher, { title: "軸題", statement: "同文不同軸", prompts: [] });
+    expect(plain.status).toBe(201);
+
+    const withAxes = await postTopic(lifecycleId, teacher, {
+      title: "軸題",
+      statement: "同文不同軸",
+      prompts: [],
+      axes: TEST_AXES,
+    });
+    expect(withAxes.status).toBe(201);
+    const axed = (await withAxes.json()) as SessionTopic;
+
+    const reorderedKeys = await postTopic(lifecycleId, teacher, {
+      title: "軸題",
+      statement: "同文不同軸",
+      prompts: [],
+      axes: TEST_AXES.map(({ name, left, right }) => ({ right, name, left })),
+    });
+    expect(reorderedKeys.status).toBe(200);
+    expect(((await reorderedKeys.json()) as SessionTopic).id).toBe(axed.id);
+    expect(await countTopics(lifecycleId, "軸題")).toBe(2);
+  });
+
+  it("concurrent identical creates still produce a single row", async () => {
+    const body = { title: "併發題", statement: "同時建立", prompts: ["問"] };
+    const responses = await Promise.all([1, 2, 3].map(() => postTopic(lifecycleId, teacher, body)));
+    expect(responses.map((res) => res.status).sort()).toEqual([200, 200, 201]);
+    const ids = new Set(await Promise.all(responses.map(async (res) => ((await res.json()) as SessionTopic).id)));
+    expect(ids.size).toBe(1);
+    expect(await countTopics(lifecycleId, "併發題")).toBe(1);
+  });
+
+  it("copying the same source into one classroom resolves to a single snapshot", async () => {
+    const source = await postTopic(copyTargetId, teacher, { title: "來源題", statement: "要被複製", prompts: [] });
+    expect(source.status).toBe(201);
+    const sourceTopic = (await source.json()) as SessionTopic;
+
+    const first = await call(`/api/topics/${sourceTopic.id}/copy`, jsonInit({ classroomId: lifecycleId }, teacher));
+    expect(first.status).toBe(201);
+    const copy = (await first.json()) as SessionTopic;
+
+    const second = await call(`/api/topics/${sourceTopic.id}/copy`, jsonInit({ classroomId: lifecycleId }, teacher));
+    expect(second.status).toBe(200);
+    expect(((await second.json()) as SessionTopic).id).toBe(copy.id);
+    expect(await countTopics(lifecycleId, "來源題")).toBe(1);
+  });
+
+  it("delete hides the topic from lists while activity history keeps rendering it", async () => {
+    const created = await postTopic(lifecycleId, teacher, {
+      title: "待刪題",
+      statement: "刪掉之後歷史頁仍要可讀",
+      prompts: [],
+    });
+    expect(created.status).toBe(201);
+    const topic = (await created.json()) as SessionTopic;
+    const started = await startActivity(teacher, lifecycleId, topic.id);
+
+    expect((await removeTopic(lifecycleId, topic.id, teacher)).status).toBe(204);
+    expect((await removeTopic(lifecycleId, topic.id, teacher)).status).toBe(204);
+    expect((await topicsOf(lifecycleId, teacher)).some((row) => row.id === topic.id)).toBe(false);
+
+    const activity = await call(`/api/activities/${started.activityId}`, { headers: { Cookie: teacher } });
+    expect(activity.status).toBe(200);
+    expect(((await activity.json()) as { topic: { id: string; title: string } }).topic).toMatchObject({
+      id: topic.id,
+      title: "待刪題",
+    });
+
+    const rooms = (await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+      current: { topicTitle: string } | null;
+    }>;
+    expect(rooms.find((room) => room.id === lifecycleId)?.current?.topicTitle).toBe("待刪題");
+
+    const restarted = await call(`/api/classrooms/${lifecycleId}/activities`, jsonInit({ topicId: topic.id }, teacher));
+    expect(restarted.status).toBe(404);
+
+    const linked = await one<{ topic_id: string }>(env.DB, "SELECT topic_id FROM activities WHERE id = $id", {
+      id: started.activityId,
+    });
+    expect(linked?.topic_id).toBe(topic.id);
+  });
+
+  it("deleting frees the content for a fresh topic", async () => {
+    const body = { title: "回收題", statement: "刪除後可重建", prompts: [] };
+    const created = await postTopic(lifecycleId, teacher, body);
+    expect(created.status).toBe(201);
+    const topic = (await created.json()) as SessionTopic;
+
+    expect((await removeTopic(lifecycleId, topic.id, teacher)).status).toBe(204);
+
+    const recreated = await postTopic(lifecycleId, teacher, body);
+    expect(recreated.status).toBe(201);
+    expect(((await recreated.json()) as SessionTopic).id).not.toBe(topic.id);
+  });
+
+  it("concurrent activity starts with the same edited axes converge on one snapshot", async () => {
+    const { classroomId: racyId } = await createClassroom(teacher, "併發開課班");
+    const created = await postTopic(racyId, teacher, { title: "併發開課題", statement: "同時改軸", prompts: [] });
+    expect(created.status).toBe(201);
+    const topic = (await created.json()) as SessionTopic;
+    const start = () =>
+      call(
+        `/api/classrooms/${racyId}/activities`,
+        jsonInit({ topicId: topic.id, reportAxes: "teacher", topicAxes: OVERRIDE_AXES }, teacher),
+      );
+
+    const responses = await Promise.all([start(), start()]);
+    expect(responses.map((res) => res.status)).toEqual([201, 201]);
+    const snapshots = await all<{ id: string }>(
+      env.DB,
+      "SELECT id FROM topics WHERE classroom_id = $cid AND title = $title AND axes = $axes",
+      { cid: racyId, title: "併發開課題", axes: JSON.stringify(OVERRIDE_AXES) },
+    );
+    expect(snapshots).toHaveLength(1);
+    const activities = await all<{ topic_id: string }>(
+      env.DB,
+      "SELECT topic_id FROM activities WHERE classroom_id = $cid",
+      { cid: racyId },
+    );
+    expect(activities).toHaveLength(2);
+    expect(new Set(activities.map((row) => row.topic_id))).toEqual(new Set([snapshots[0]?.id]));
+  });
+
+  it("delete needs the classroom owner and a topic of that classroom", async () => {
+    const created = await postTopic(lifecycleId, teacher, {
+      title: "權限題",
+      statement: "只有 owner 能刪",
+      prompts: [],
+    });
+    expect(created.status).toBe(201);
+    const topic = (await created.json()) as SessionTopic;
+
+    expect((await removeTopic(otherClassroomId, topic.id, otherTeacher)).status).toBe(404);
+    expect((await removeTopic(lifecycleId, topic.id, otherTeacher)).status).toBe(403);
+    expect((await removeTopic(lifecycleId, "t_missing", teacher)).status).toBe(404);
+    expect((await removeTopic(lifecycleId, topic.id, teacher)).status).toBe(204);
   });
 });

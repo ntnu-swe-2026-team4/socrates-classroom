@@ -98,6 +98,12 @@ flowchart LR
 
 - 活動邀請連結要有 QR code 的連結方式。
 
+- **email 驗證（#259）**：`users.email`「屬於帳號本人」這個假設由 `users.email_verified_at` 表達，註冊（`signup`／`register`）後寄驗證信，使用者點連結證明信箱是自己的。API 形狀與 token 細節見 [`api-contract.md`](./api-contract.md) §2.3，本節只定模型語意：
+  - **未驗證的帳號 MUST 照常登入、入班、對話與使用教師功能**；前端只提示可以驗證。理由：班級窗口註冊（`POST /auth/register`）是學生入班的唯一入口，若要求先收信才能用，入班就依賴寄信即時送達——寄信有上線前提（見 [`architecture.md`](./architecture.md) §3）也可能延遲或進垃圾信匣，一出問題學生就完全進不去。訪客入場（`/join`，不建帳號）不受影響
+  - `User.emailVerified` 的語意是「這個帳號沒有待驗證的 email」：`users.email` 為 NULL 的 SSO 帳號（Google／Facebook）與已驗證的 email 帳號都是 `true`；SSO 帳號要補 email 走 #138 的綁定流程，改 email 走 #234
+  - 驗證狀態**不是授權**：它不改變任何端點的存取判斷，只是讓「寄到 `users.email` 的信（重設密碼 #230、額度警示 #200）屬於本人」這件事可被檢查
+  - 驗證信與重設信共用 `mail.ts`、共用帳號 token（用途金鑰分離：`email_verify` 與 `password_reset` 的 token 不能互用）
+
 ## 9. 目前不處理
 
 - 不安全但容易事後修改，因此不處理：班級邀請碼（在仍稱作「教室」的時期）是六碼，是否複雜度過低？（原「帳號密碼都由老師處理是否不安全？」一項隨 §1 窗口拍板而消失，教師不再持有初始密碼）
@@ -108,6 +114,6 @@ flowchart LR
 
 實作分階段進行；功能存在性清單的 SSOT 是 [`feature.md`](./feature.md)，此處只記模型落地：
 
-- **已上 main**：班級邀請註冊（`POST /auth/register`）、訪客與 activity participants（#132/#133）、測試模式（#134）、自行註冊與 Google OAuth（#124）、email 帳號的密碼找回（#230，§1「email 是註冊加找回」的找回半邊）；capability 模型（`can_manage_classes`，#131/#142）——**已退役**（#210，無 mode 定稿 §7）：建立類端點開放給所有登入 user，`users.can_manage_classes` 與 legacy `users.role` 欄位移除，`PATCH /admin/users/:id` 僅剩停用
+- **已上 main**：班級邀請註冊（`POST /auth/register`）、訪客與 activity participants（#132/#133）、測試模式（#134）、自行註冊與 Google OAuth（#124）、email 帳號的密碼找回（#230，§1「email 是註冊加找回」的找回半邊）、email 驗證（#259——`users.email_verified_at`＋`POST /auth/email/verify`＋`/verify-email`，§8）；capability 模型（`can_manage_classes`，#131/#142）——**已退役**（#210，無 mode 定稿 §7）：建立類端點開放給所有登入 user，`users.can_manage_classes` 與 legacy `users.role` 欄位移除，`PATCH /admin/users/:id` 僅剩停用
 - **已結案**：user↔teacher mode toggle（#208——未 merge 即 close，被無 mode 定稿取代）
 - **計畫中**：SSO 擴充 Facebook 與 authProviders 探測（#207——Apple 拍板退場，見 §7）；teacher 端建立 student（#206——原範圍已被窗口拍板推翻，待重劃或關閉）
