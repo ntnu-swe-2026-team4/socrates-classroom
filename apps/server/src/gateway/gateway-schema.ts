@@ -77,6 +77,9 @@ export const GatewayConfigSchema = z
     teacherChain: z.object({
       maxConcurrency: z.number().int().min(1).max(100),
     }),
+    adminChain: z.object({
+      maxConcurrency: z.number().int().min(1).max(100),
+    }),
     defaults: z.object({ availability: z.array(AvailabilityEntrySchema) }),
     trafficClasses: z.record(z.string(), TrafficClassSchema),
   })

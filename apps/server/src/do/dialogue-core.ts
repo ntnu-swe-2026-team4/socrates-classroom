@@ -25,7 +25,7 @@ import { createUsageExtension } from "../pi/extensions/usage";
 import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
 import { buildModels, type ModelsBundle } from "../pi/models";
 import { getRouter } from "../gateway/router";
-import { teacherLegsOf } from "../pi/credentials";
+import { keyedLegsOf } from "../pi/credentials";
 import type { Lang } from "@socrates/shared";
 
 export const STUDENT_LANG_KEY = "studentLang";
@@ -239,7 +239,7 @@ export async function submitViaRouter(
   options: PiSubmitOptions,
   doSubmit: (handle: PiSession, input: UserInput, options: PiSubmitOptions) => Promise<PiReceipt>,
 ): Promise<PiReceipt> {
-  const accountLegs = await teacherLegsOf(env, await credentialOwner());
+  const accountLegs = await keyedLegsOf(env, await credentialOwner());
   const router = getRouter(env);
   const canServe = (entry: { provider: string; model: string }): boolean =>
     models.models.getModel(entry.provider, entry.model) !== undefined;

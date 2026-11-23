@@ -66,6 +66,9 @@ const CONFIG = {
   "teacherChain": {
     "maxConcurrency": 4
   },
+  "adminChain": {
+    "maxConcurrency": 4
+  },
   "defaults": {
     "availability": [
       {

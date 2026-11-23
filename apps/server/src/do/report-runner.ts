@@ -14,7 +14,7 @@ import type { Env } from "../env";
 import { secretOf } from "../auth";
 import { buildModels } from "../pi/models";
 import { runProfile } from "../pi/agents/profiles";
-import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
+import { keyedLegsOf, teacherOfActivity, type KeyedLeg } from "../pi/credentials";
 import {
   PlannedClassReportSubmissionSchema,
   ReportAxesPlanSchema,
@@ -303,7 +303,7 @@ export class ReportRunner extends DurableObject<Env> {
       { aid: activityId },
     );
 
-    const legs = await this.teacherLegs();
+    const legs = await this.keyedLegs();
     const batch = await this.batchSize(participants.length, legs);
     const transcripts = new Map<string, RawTranscript>();
     for (let i = 0; i < participants.length; i += batch) {
@@ -471,7 +471,7 @@ export class ReportRunner extends DurableObject<Env> {
     activity: { title: string; statement: string },
     transcript: string,
     spokenLines: number,
-    legs: TeacherLeg[],
+    legs: KeyedLeg[],
     lang: Lang,
   ): Promise<T | null> {
     if (!transcript.trim()) return null;
@@ -502,7 +502,7 @@ export class ReportRunner extends DurableObject<Env> {
     return null;
   }
 
-  private async openClassReport(harness: Harness, input: string, legs: TeacherLeg[], lang: Lang): Promise<ClassReport> {
+  private async openClassReport(harness: Harness, input: string, legs: KeyedLeg[], lang: Lang): Promise<ClassReport> {
     const { text, payload } = await this.runAgent(harness, "class-report", input, legs, {
       lang,
       submitTool: SUBMIT_CLASS_REPORT,
@@ -514,7 +514,7 @@ export class ReportRunner extends DurableObject<Env> {
     plan: ReportAxesPlan,
     roster: string[],
     input: string,
-    legs: TeacherLeg[],
+    legs: KeyedLeg[],
     lang: Lang,
   ): Promise<ClassReport> {
     const harness = await this.openHarness(this.axesRegistry);
@@ -537,7 +537,7 @@ export class ReportRunner extends DurableObject<Env> {
     harness: Harness,
     profile: "student-report" | LeveledProfile | "class-report" | "class-report-axes",
     input: string,
-    legs: TeacherLeg[],
+    legs: KeyedLeg[],
     options: { lang: Lang; submitTool: string },
     registry: Registry = this.registry,
   ): Promise<{ text: string; payload: JsonObject | null }> {
@@ -553,13 +553,13 @@ export class ReportRunner extends DurableObject<Env> {
     return row?.lang ?? "zh";
   }
 
-  private async batchSize(participantCount: number, legs: TeacherLeg[]): Promise<number> {
+  private async batchSize(participantCount: number, legs: KeyedLeg[]): Promise<number> {
     const budget = await getRouter(this.env).budget("batch", legs);
     return budget > 0 ? Math.min(budget, participantCount) : Math.min(8, participantCount);
   }
 
-  private async teacherLegs(): Promise<TeacherLeg[]> {
-    return teacherLegsOf(this.env, await teacherOfActivity(this.env, this.ctx.id.name ?? ""));
+  private async keyedLegs(): Promise<KeyedLeg[]> {
+    return keyedLegsOf(this.env, await teacherOfActivity(this.env, this.ctx.id.name ?? ""));
   }
 
   private async transcriptOf(activityId: string, participantId: string): Promise<RawTranscript> {

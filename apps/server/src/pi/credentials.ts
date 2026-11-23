@@ -112,7 +112,7 @@ export async function teacherOfActivity(env: Env, activityId: string): Promise<s
   return row?.teacher_id ?? null;
 }
 
-export interface TeacherLeg {
+export interface KeyedLeg {
   provider: string;
   model: string;
   credential: string;
@@ -128,7 +128,7 @@ export interface TeacherLegRow {
   provider_max_concurrency: number | null;
 }
 
-export async function teacherLegsOf(env: Env, teacherId: string | null): Promise<TeacherLeg[]> {
+export async function teacherLegsOf(env: Env, teacherId: string | null): Promise<KeyedLeg[]> {
   const fallbackConcurrency = gatewayConfig.teacherChain.maxConcurrency;
   if (!teacherId) return [];
   const rows = await all<TeacherLegRow>(
@@ -148,4 +148,51 @@ export async function teacherLegsOf(env: Env, teacherId: string | null): Promise
     providerMaxConcurrency: row.provider_max_concurrency,
     priority: 0,
   }));
+}
+
+interface AdminLegRow {
+  admin_key_id: string;
+  provider_id: string;
+  model: string;
+  max_concurrency: number | null;
+  provider_max_concurrency: number | null;
+  monthly_quota_usd: number | null;
+  month_spend: number;
+}
+
+/**
+ * Admin BYOK legs of the platform pool. A key whose monthly quota is already
+ * spent skips the chain until the UTC month window resets — the prepay
+ * exposure cap of the middle tier (#355 拍板: skip, not manual disable).
+ */
+export async function adminLegsOf(env: Env): Promise<KeyedLeg[]> {
+  const fallbackConcurrency = gatewayConfig.adminChain.maxConcurrency;
+  const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
+  const rows = await all<AdminLegRow>(
+    env.DB,
+    `SELECT m.admin_key_id, m.model, m.max_concurrency, k.provider_id,
+            k.max_concurrency AS provider_max_concurrency, k.monthly_quota_usd,
+            (SELECT COALESCE(SUM(cost_usd), 0) FROM admin_key_usage u
+             WHERE u.admin_key_id = k.id AND u.created_at >= $start) AS month_spend
+     FROM admin_key_models m
+     JOIN admin_keys k ON k.id = m.admin_key_id
+     ORDER BY k.sort_order, m.sort_order`,
+    { start: monthStart },
+  );
+  return rows
+    .filter(
+      (row) => row.monthly_quota_usd === null || row.monthly_quota_usd <= 0 || row.month_spend < row.monthly_quota_usd,
+    )
+    .map((row) => ({
+      provider: row.provider_id,
+      model: row.model,
+      credential: `admin:${row.admin_key_id}`,
+      maxConcurrency: row.max_concurrency ?? fallbackConcurrency,
+      providerMaxConcurrency: row.provider_max_concurrency,
+      priority: 0,
+    }));
+}
+
+export async function keyedLegsOf(env: Env, teacherId: string | null): Promise<KeyedLeg[]> {
+  return [...(await teacherLegsOf(env, teacherId)), ...(await adminLegsOf(env))];
 }
