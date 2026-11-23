@@ -1232,12 +1232,147 @@ test.each([
   "/classrooms",
   "/classrooms/room-1?tab=members",
   "/settings?section=keys",
-  "/admin/users",
+  "/admin",
+  "/admin?tab=users",
   "/t/live/activity-1",
 ])("#318: a signed-out visit to %s goes to login carrying the address to return to", async (url) => {
   const location = await loadLocation(url, { "/api/me": null });
   expect(location.pathname).toBe("/login");
   expect(location.search).toMatchObject({ next: url });
+});
+
+test("#185: the console redirects non-admins away from /admin", async () => {
+  const path = await loadPath("/admin", { "/api/me": { id: "student-1", name: "Student", isAdmin: false } });
+  expect(path).toBe("/classrooms");
+});
+
+test("#185: the overview tab shows account-level counts", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "admin-1", name: "Admin", isAdmin: true },
+        "/api/admin/overview": { users: 12, classrooms: 3, runningActivities: 2 },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/admin");
+  try {
+    const statOf = (label: string) => {
+      const card = screen.getByText(label).closest("[data-stat]") as HTMLElement;
+      return within(card).getByText(/^[0-9]+$/).textContent;
+    };
+    expect(await screen.findByText("Registered accounts")).toBeTruthy();
+    expect(statOf("Registered accounts")).toBe("12");
+    expect(statOf("Classrooms")).toBe("3");
+    expect(statOf("Activities running")).toBe("2");
+    expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+const adminUserFixture = {
+  id: "u-a",
+  name: "Lin",
+  email: "lin@socrates.tw",
+  isAdmin: false,
+  disabled: false,
+  createdAt: "2026-01-01T00:00:00.000Z",
+};
+
+test("#185: the users tab creates an account and disables one behind a confirmation", async () => {
+  const calls: Array<{ path: string; body: unknown }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (init?.method === "POST" || init?.method === "PATCH") {
+        calls.push({ path, body: JSON.parse(String(init.body)) });
+      }
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "admin-1", name: "Admin", isAdmin: true },
+        "/api/admin/users": [adminUserFixture],
+      };
+      if (init?.method === "POST" && path === "/api/admin/users") {
+        return new Response(
+          JSON.stringify({ ...adminUserFixture, id: "u-new", name: "New User", email: "new@socrates.tw" }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (init?.method === "PATCH" && path === "/api/admin/users/u-a") {
+        return new Response(JSON.stringify({ ...adminUserFixture, disabled: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/admin?tab=users");
+  try {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Name" }), { target: { value: "New User" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "new@socrates.tw" } });
+    fireEvent.change(screen.getByLabelText("Initial password"), { target: { value: "abcdefgh" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByText("Created New User")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Disable" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Disable" }));
+    await waitFor(() => expect(calls.length).toBe(2));
+
+    expect(calls.map((call) => call.path)).toEqual(["/api/admin/users", "/api/admin/users/u-a"]);
+    expect(calls[0].body).toEqual({ name: "New User", email: "new@socrates.tw", password: "abcdefgh" });
+    expect(calls[1].body).toEqual({ disabled: true });
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#185: the notify tab posts an announcement to the feed", async () => {
+  const calls: Array<{ path: string; body: unknown }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (init?.method === "POST") calls.push({ path, body: JSON.parse(String(init.body)) });
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "admin-1", name: "Admin", isAdmin: true },
+        "/api/notifications": { items: [], unread: 0 },
+      };
+      if (init?.method === "POST" && path === "/api/admin/notifications") {
+        return new Response(
+          JSON.stringify({ id: "n_1", title: "Maintenance", body: "Tonight", createdAt: "2026-01-01T00:00:00.000Z" }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/admin?tab=notify");
+  try {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Title" }), { target: { value: "Maintenance" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Message (optional)" }), {
+      target: { value: "Tonight" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send notice" }));
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(calls[0]).toMatchObject({
+      path: "/api/admin/notifications",
+      body: { title: "Maintenance", body: "Tonight" },
+    });
+    expect((screen.getByRole("textbox", { name: "Title" }) as HTMLInputElement).value).toBe("");
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
 });
 
 test("#318: signing in with a return address lands back on that page", async () => {

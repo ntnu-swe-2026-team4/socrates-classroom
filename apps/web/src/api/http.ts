@@ -5,7 +5,9 @@ import type {
   ActivityMode,
   ActivitySlots,
   ActivityStarted,
+  AdminOverview,
   AdminUser,
+  Notification,
   Axis,
   ClientConfig,
   ClassroomCreated,
@@ -42,6 +44,7 @@ import {
   JoinInputSchema,
   LoginInputSchema,
   LookupInputSchema,
+  NotificationInputSchema,
   PasswordForgotInputSchema,
   PasswordResetInputSchema,
   SignupInputSchema,
@@ -91,6 +94,8 @@ export interface Api {
   authProviders(): Promise<OAuthProviders>;
   notifications(): Promise<NotificationFeed>;
   markNotificationsSeen(): Promise<void>;
+  adminOverview(): Promise<AdminOverview>;
+  postAdminNotification(input: { title: string; body: string }): Promise<Notification>;
   joinByCode(code: string): Promise<JoinInfo>;
   joinAsGuest(code: string, input: { name?: string; tosAccepted: boolean }): Promise<JoinResult>;
   createActivityInvite(activityId: string): Promise<ActivityInvite>;
@@ -364,6 +369,12 @@ export const httpApi: Api = {
   },
   async markNotificationsSeen() {
     await unwrap(await client.notifications.seen.$post());
+  },
+  async adminOverview() {
+    return unwrap(await client.admin.overview.$get());
+  },
+  async postAdminNotification(input) {
+    return unwrap(await client.admin.notifications.$post({ json: NotificationInputSchema.parse(input) }));
   },
   async joinByCode(code) {
     return unwrap(await client.join[":code"].$get({ param: { code } }));

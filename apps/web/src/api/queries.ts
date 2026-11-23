@@ -112,6 +112,11 @@ export const adminUsersOptions = queryOptions({
   queryFn: () => api.listAdminUsers(),
 });
 
+export const adminOverviewOptions = queryOptions({
+  queryKey: ["admin-overview"],
+  queryFn: () => api.adminOverview(),
+});
+
 export const authProvidersOptions = queryOptions({
   queryKey: ["authProviders"],
   queryFn: () => api.authProviders(),
