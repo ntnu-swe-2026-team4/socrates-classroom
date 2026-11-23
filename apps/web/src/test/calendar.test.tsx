@@ -90,6 +90,13 @@ function calendarServer(initial: string[] = []) {
       events.push(event);
       return Response.json(event, { status: 201 });
     }
+    if (url.pathname === `${path}/0` && init?.method === "PATCH") {
+      const body = JSON.parse(String(init.body));
+      const [previous, ...remaining] = events;
+      const event = { ...previous, ...body };
+      events = [event, ...remaining];
+      return Response.json(event);
+    }
     if (url.pathname.startsWith(`${path}/`) && init?.method === "DELETE") {
       events = events.filter((event) => event.id !== url.pathname.slice(path.length + 1));
       return new Response(null, { status: 204 });
@@ -149,6 +156,7 @@ test("a student sees every page for the current local month", async () => {
   }
   expect(screen.queryByRole("button", { name: "New event" })).toBeNull();
   expect(screen.queryByRole("button", { name: /Delete/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Edit/ })).toBeNull();
 });
 
 test("a calendar socket update refreshes the visible month", async () => {
@@ -194,4 +202,39 @@ test("a calendar socket update refreshes the visible month", async () => {
   } finally {
     unsubscribe();
   }
+});
+
+test("week view fetches seven local days starting Monday", async () => {
+  const fetch = calendarServer(["Class trip"]);
+  mount(false);
+  await screen.findAllByText("Class trip");
+  fireEvent.click(screen.getByRole("button", { name: "Week" }));
+  await screen.findAllByText("Class trip");
+  const today = new Date();
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
+  const followingMonday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7);
+  const [weeklyRequest] = fetch.mock.calls.slice(-1);
+  const query = new URL(String(weeklyRequest[0]), "http://localhost").searchParams;
+  expect(query.get("from")).toBe(monday.toISOString());
+  expect(query.get("to")).toBe(followingMonday.toISOString());
+  fireEvent.click(screen.getByRole("button", { name: "Next week" }));
+  await waitFor(() => {
+    const [request] = fetch.mock.calls.slice(-1);
+    expect(new URL(String(request[0]), "http://localhost").searchParams.get("from")).toBe(
+      followingMonday.toISOString(),
+    );
+  });
+  await waitFor(() => expect(screen.queryByText("Class trip")).toBeNull());
+});
+
+test("editing an event patches only fields the teacher changed", async () => {
+  const fetch = calendarServer(["Class trip"]);
+  mount(true);
+  fireEvent.click(await screen.findByRole("button", { name: /Edit · Class trip/ }));
+  expect(screen.getByLabelText<HTMLInputElement>("Event title").value).toBe("Class trip");
+  fireEvent.change(screen.getByLabelText("Event title"), { target: { value: "Museum trip" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await screen.findAllByText("Museum trip");
+  const request = fetch.mock.calls.find(([, init]) => init?.method === "PATCH");
+  expect(JSON.parse(String(request?.[1]?.body))).toEqual({ title: "Museum trip" });
 });

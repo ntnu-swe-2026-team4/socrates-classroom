@@ -6,6 +6,21 @@ export function dayKey(date: Date): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
+export function shiftDay(date: Date, offset: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + offset);
+}
+
+export function weekStart(date: Date): Date {
+  return shiftDay(date, -((date.getDay() + 6) % 7));
+}
+
+export function localDateTime(value: string): string {
+  const date = new Date(value);
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${dayKey(date)}T${hour}:${minute}`;
+}
+
 export function monthDays(year: number, month: number): Date[] {
   const lead = (new Date(year, month, 1).getDay() + 6) % 7;
   const length = Math.ceil((lead + new Date(year, month + 1, 0).getDate()) / 7) * 7;

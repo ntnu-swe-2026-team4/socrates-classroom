@@ -242,9 +242,9 @@ export function classroomCalendarScopeOptions(id: string) {
   return queryOptions({ queryKey: ["classroom", id, "calendar"] });
 }
 
-export function classroomCalendarOptions(id: string, year: number, month: number) {
-  const from = new Date(year, month, 1).toISOString();
-  const to = new Date(year, month + 1, 1).toISOString();
+export function classroomCalendarOptions(id: string, rangeStart: Date, rangeEnd: Date) {
+  const from = rangeStart.toISOString();
+  const to = rangeEnd.toISOString();
 
   return queryOptions({
     queryKey: [...classroomCalendarScopeOptions(id).queryKey, from, to],
