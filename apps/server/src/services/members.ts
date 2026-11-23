@@ -72,10 +72,13 @@ export function parsePrompts(row: TopicRow) {
 export function topicCopyInsert(
   source: TopicRow,
   input: { id: string; userId: string; classroomId: string; axes?: Axis[] },
+  condition?: SqlEntry,
 ): SqlEntry {
   return {
-    sql: "INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $axes, $at)",
+    sql: `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, axes, created_at)
+      SELECT $id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $axes, $at ${condition ? `WHERE ${condition.sql}` : ""}`,
     params: {
+      ...condition?.params,
       id: input.id,
       uid: input.userId,
       cid: input.classroomId,

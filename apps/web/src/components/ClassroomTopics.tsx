@@ -283,10 +283,12 @@ export function StartActivity({
   classroomId,
   onStarted,
   allowTest,
+  scheduled,
 }: {
   classroomId: string;
   onStarted: (started: ActivityStarted) => void;
   allowTest: boolean;
+  scheduled?: { id: string; topicId: string };
 }) {
   const t = useT();
   const queryClient = useQueryClient();
@@ -295,7 +297,7 @@ export function StartActivity({
   const config = useQuery(clientConfigOptions);
   const [picked, setPicked] = useState<string | null>(null);
   const [testMode, setTestMode] = useState(false);
-  const [axes, setAxes] = useState<AxisDraft[]>([]);
+  const [editedAxes, setAxes] = useState<AxisDraft[] | null>(null);
   const [chosen, setChosen] = useState<ReportAxes>("teacher");
   const reportAxesName = useId();
   const policy = config.data?.reportAxes;
@@ -304,7 +306,8 @@ export function StartActivity({
   const own = classroomTopics.data ?? [];
   const shared = (systemTopics.data ?? []).filter((topic) => topic.classroomId === null);
   const topics = [...own, ...shared];
-  const pickedTopic = topics.find(({ id }) => id === picked);
+  const pickedTopic = topics.find(({ id }) => id === (scheduled?.topicId ?? picked));
+  const axes = editedAxes ?? draftsOf(pickedTopic?.axes ?? []);
   const start = useMutation({
     mutationFn: (input: { topic: Topic; mode: ActivityMode; reportAxes: ReportAxes; axes: AxisDraft[] }) => {
       const edited = axesOf(input.axes);
@@ -312,7 +315,7 @@ export function StartActivity({
         input.reportAxes === "teacher" && JSON.stringify(edited) !== JSON.stringify(input.topic.axes)
           ? edited
           : undefined;
-      return api.startActivity(classroomId, input.topic.id, input.mode, input.reportAxes, topicAxes);
+      return api.startActivity(classroomId, input.topic.id, input.mode, input.reportAxes, topicAxes, scheduled?.id);
     },
     onSuccess: async (started) => {
       setPicked(null);
@@ -328,6 +331,7 @@ export function StartActivity({
   });
   const policyChanged = isAxesPolicyError(start.error);
   const needsPolicyRefresh = policyChanged && (config.isError || config.isFetching);
+  const classroomBusy = scheduled && start.error instanceof ApiError && start.error.code === "conflict";
   const pick = (topicId: string) => {
     if (topicId === picked || start.isPending) return;
     setPicked(topicId);
@@ -344,13 +348,19 @@ export function StartActivity({
 
   return (
     <Card className="flex flex-col gap-4 p-5">
-      <p className="text-[13px] leading-relaxed text-ink-soft">{t("setup_activity_hint")}</p>
-      {own.length === 0 ? (
-        <p className="text-[13px] text-ink-faint">{t("setup_topics_empty")}</p>
+      {scheduled ? (
+        <p className="font-medium text-ink">{pickedTopic?.title ?? t("common_error")}</p>
       ) : (
-        <TopicPicker topics={own} picked={picked} onPick={pick} disabled={start.isPending} />
+        <>
+          <p className="text-[13px] leading-relaxed text-ink-soft">{t("setup_activity_hint")}</p>
+          {own.length === 0 ? (
+            <p className="text-[13px] text-ink-faint">{t("setup_topics_empty")}</p>
+          ) : (
+            <TopicPicker topics={own} picked={picked} onPick={pick} disabled={start.isPending} />
+          )}
+          <SystemTopicList topics={shared.slice(0, 6)} picked={picked} onPick={pick} disabled={start.isPending} />
+        </>
       )}
-      <SystemTopicList topics={shared.slice(0, 6)} picked={picked} onPick={pick} disabled={start.isPending} />
       {policy === "both" && (
         <fieldset disabled={start.isPending} className="flex flex-col gap-2 sm:flex-row sm:gap-4">
           <legend className="mb-2 text-[13px] font-medium text-ink">{t("setup_axes_mode")}</legend>
@@ -390,7 +400,9 @@ export function StartActivity({
       <div className="flex items-center justify-between gap-3">
         {start.isError ? (
           <p role="alert" className="text-[12.5px] text-flag">
-            {t(policyChanged ? "setup_axes_policy_changed" : "common_error")}
+            {t(
+              classroomBusy ? "calendar_classroom_busy" : policyChanged ? "setup_axes_policy_changed" : "common_error",
+            )}
             {policyChanged && !needsPolicyRefresh && policy && policy !== "both" && (
               <span className="block text-ink-soft">
                 {t("setup_axes_mode")} · {t(policy === "teacher" ? "setup_axes_mode_teacher" : "setup_axes_mode_ai")}

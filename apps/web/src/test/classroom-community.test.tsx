@@ -47,8 +47,8 @@ function mount(
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
     if (url.pathname === "/api/me") return Response.json(user);
-    if (url.pathname === "/api/classrooms") return Response.json([room]);
-    if (url.pathname === "/api/classrooms/room/activities") return Response.json(page([]));
+    if (url.pathname === "/api/classrooms") return respond(url, init) ?? Response.json([room]);
+    if (url.pathname === "/api/classrooms/room/activities") return respond(url, init) ?? Response.json(page([]));
     return respond(url, init) ?? Response.json({ code: "not_found" }, { status: 404 });
   });
   vi.stubGlobal("fetch", fetch);
@@ -166,5 +166,87 @@ test("shows personal reports from the classroom index", async () => {
   });
   fireEvent.click(await screen.findByRole("button", { name: "My reports" }));
   const report = await screen.findByRole("link", { name: /Previous report/ });
+  expect(report.getAttribute("href")).toBe("/report/activity");
+});
+
+test("a teacher schedules a topic and starts the scheduled discussion from its calendar event", async () => {
+  const topic = {
+    id: "ethics",
+    classroomId: "room",
+    title: "Privacy debate",
+    statement: "Is tracking justified?",
+    prompts: [],
+    axes: [],
+  };
+  let event: Record<string, unknown> | undefined;
+  const { fetch } = mount("/classrooms/room", (url, init) => {
+    if (url.pathname === "/api/classrooms") return Response.json([{ ...room, role: "teacher" }]);
+    if (url.pathname === "/api/config") return Response.json({ reportAxes: "ai" });
+    if (url.pathname === "/api/topics") return Response.json([]);
+    if (url.pathname.endsWith("/topics")) return Response.json([topic]);
+    if (url.pathname.endsWith("/calendar-events")) {
+      if (init?.method === "POST") {
+        const input = JSON.parse(String(init.body));
+        event = { ...input, id: "event", classroomId: "room", activity: null, endsAt: null };
+        return Response.json(event, { status: 201 });
+      }
+      return Response.json(page(event ? [event] : []));
+    }
+    if (url.pathname.endsWith("/activities") && init?.method === "POST") {
+      event = { ...event, activity: { id: "activity", finishedAt: null } };
+      return Response.json(
+        { activityId: "activity", classroomId: "room", mode: "live", code: "code", url: "/join/code" },
+        { status: 201 },
+      );
+    }
+  });
+  fireEvent.click(await screen.findByRole("button", { name: "Schedule discussion" }));
+  const title = await screen.findByLabelText<HTMLInputElement>("Event title");
+  expect(title.value).toBe("Privacy debate");
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Start discussion" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Start activity" }));
+  const dashboard = await screen.findByRole("link", { name: "Live dashboard" });
+  expect(dashboard.getAttribute("href")).toBe("/t/live/activity");
+  const starts = fetch.mock.calls.filter(
+    ([url, init]) => String(url).endsWith("/activities") && init?.method === "POST",
+  );
+  expect(JSON.parse(String(starts[0][1]?.body))).toMatchObject({
+    topicId: "ethics",
+    calendarEventId: "event",
+    mode: "live",
+  });
+});
+
+test("a student uses the same calendar event to join and later find the report", async () => {
+  const startsAt = new Date().toISOString();
+  let finishedAt: string | null = null;
+  mount("/classrooms/room?tab=calendar", (url) => {
+    if (url.pathname.endsWith("/calendar-events"))
+      return Response.json(
+        page([
+          {
+            id: "event",
+            title: "Privacy debate",
+            startsAt,
+            endsAt: null,
+            note: "",
+            topicId: "ethics",
+            activity: { id: "activity", finishedAt },
+          },
+        ]),
+      );
+  });
+  const join = await screen.findByRole("link", { name: "Join the discussion" });
+  expect(join.getAttribute("href")).toBe("/dialogue?activityId=activity");
+  finishedAt = new Date().toISOString();
+  act(() =>
+    sockets[0]?.dispatchEvent(
+      new MessageEvent("message", {
+        data: JSON.stringify({ type: "classroom.changed", resource: "activities" }),
+      }),
+    ),
+  );
+  const report = await screen.findByRole("link", { name: "View report" });
   expect(report.getAttribute("href")).toBe("/report/activity");
 });

@@ -259,3 +259,68 @@ it("notifies classroom members after calendar changes", async () => {
   expect(await changed).toEqual({ type: "classroom.changed", resource: "calendar" });
   socket.close();
 });
+it("starts a scheduled discussion once and keeps its report on the same event", async () => {
+  const { classroomId } = await createClassroom(owner, "Scheduled discussion");
+  const eventPath = `/classrooms/${classroomId}/calendar-events`;
+  const startPath = `/classrooms/${classroomId}/activities`;
+  const created = await request(eventPath, owner, "POST", {
+    title: "Debate seminar",
+    startsAt: "2026-11-27T09:00:00Z",
+    topicId,
+  });
+  expect(created.status).toBe(201);
+  const { id } = (await created.json()) as CalendarEvent;
+  const range = calendarPath(classroomId, "2026-11-27T00:00:00Z", "2026-11-28T00:00:00Z");
+  expect(await (await request(range, owner)).json()).toMatchObject({
+    items: [{ id, topicId, activity: null }],
+  });
+  expect(await (await request(startPath, owner)).json()).toMatchObject({ items: [] });
+
+  const signup = await request("/auth/signup", "", "POST", {
+    name: "Calendar student",
+    email: "calendar-scheduled@socrates.tw",
+    password: "student-pass-1",
+    tosAccepted: true,
+  });
+  expect(signup.status).toBe(200);
+  const student = cookieOf(signup);
+  const invite = await request(`/classrooms/${classroomId}/invites`, owner, "POST", { scope: "classroom" });
+  expect(invite.status).toBe(201);
+  const { token } = (await invite.json()) as { token: string };
+  expect((await request(`/classroom-invites/${token}/join`, student, "POST", { tosAccepted: true })).status).toBe(200);
+  const input = { topicId, calendarEventId: id };
+  expect((await request(startPath, student, "POST", input)).status).toBe(403);
+  expect((await request(startPath, owner, "POST", { ...input, mode: "test" })).status).toBe(422);
+  const responses = await Promise.all([
+    request(startPath, owner, "POST", input),
+    request(startPath, owner, "POST", input),
+  ]);
+  expect(responses.map((response) => response.status).sort()).toEqual([200, 201]);
+  const activities = await Promise.all(
+    responses.map(async (response) => (await response.json()) as { activityId: string }),
+  );
+  const activityId = activities[0].activityId;
+  expect(activities[1].activityId).toBe(activityId);
+  expect(await (await request(startPath, owner)).json()).toMatchObject({ items: [{ id: activityId }] });
+  expect(await (await request(range, student)).json()).toMatchObject({
+    items: [{ id, topicId, activity: { id: activityId, finishedAt: null } }],
+  });
+  expect((await request(`/activities/${activityId}`, student)).status).toBe(200);
+  expect((await request(`${eventPath}/${id}`, owner, "DELETE")).status).toBe(409);
+  expect((await request(`/activities/${activityId}/finish`, owner, "POST")).status).toBe(204);
+  expect(await (await request(range, student)).json()).toMatchObject({
+    items: [{ id, activity: { id: activityId, finishedAt: expect.any(String) } }],
+  });
+});
+
+it("preserves the current live discussion when another is scheduled to start", async () => {
+  const { classroomId, activityId } = await classroomWithActivity(owner, "Calendar with a live discussion", topicId);
+  const event = await createEvent(classroomId, { title: "Next debate", startsAt: "2026-12-03T10:00:00Z", topicId });
+  const path = `/classrooms/${classroomId}/activities`;
+  const start = await request(path, owner, "POST", { topicId, calendarEventId: event.id });
+  expect(start.status).toBe(409);
+  const history = (await (await request(path, owner)).json()) as { items: { id: string }[] };
+  expect(history.items.map((activity) => activity.id)).toEqual([activityId]);
+  const classrooms = (await (await request("/classrooms", owner)).json()) as { id: string; current: unknown }[];
+  expect(classrooms.find((room) => room.id === classroomId)?.current).toMatchObject({ activityId });
+});

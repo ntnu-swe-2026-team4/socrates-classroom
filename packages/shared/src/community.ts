@@ -19,6 +19,7 @@ const CalendarEventFieldsSchema = z.object({
 export const CalendarEventCreateInputSchema = CalendarEventFieldsSchema.extend({
   endsAt: CalendarDateTimeSchema.nullable().optional(),
   note: z.string().trim().max(1000).optional(),
+  topicId: z.string().min(1).optional(),
 }).refine((event) => event.endsAt == null || Date.parse(event.endsAt) > Date.parse(event.startsAt));
 
 export const CalendarEventUpdateInputSchema = CalendarEventFieldsSchema.partial().refine(
@@ -40,6 +41,8 @@ export const CalendarEventPageQuerySchema = z
 export const CalendarEventSchema = CalendarEventFieldsSchema.extend({
   id: z.string(),
   classroomId: z.string(),
+  topicId: z.string().nullable(),
+  activity: z.object({ id: z.string(), finishedAt: CalendarDateTimeSchema.nullable() }).nullable(),
   createdAt: CalendarDateTimeSchema,
   updatedAt: CalendarDateTimeSchema,
 });

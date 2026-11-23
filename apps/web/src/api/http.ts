@@ -121,6 +121,7 @@ export interface Api {
     mode?: ActivityMode,
     reportAxes?: ReportAxes,
     topicAxes?: Axis[],
+    calendarEventId?: string,
   ): Promise<ActivityStarted>;
   listActivitySlots(activityId: string): Promise<ActivitySlots>;
   createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
@@ -458,8 +459,8 @@ export const httpApi: Api = {
       }),
     );
   },
-  async startActivity(classroomId, topicId, mode = "live", reportAxes, topicAxes) {
-    const input = ActivityStartInputSchema.parse({ topicId, mode, reportAxes, topicAxes });
+  async startActivity(classroomId, topicId, mode = "live", reportAxes, topicAxes, calendarEventId) {
+    const input = ActivityStartInputSchema.parse({ topicId, mode, reportAxes, topicAxes, calendarEventId });
     return unwrap(await client.classrooms[":id"].activities.$post({ param: { id: classroomId }, json: input }));
   },
   async listActivitySlots(activityId) {

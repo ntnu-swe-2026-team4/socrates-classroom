@@ -1,11 +1,13 @@
-import type { CalendarEvent } from "@socrates/shared";
+import type { CalendarEvent, Topic } from "@socrates/shared";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "@/api";
-import { classroomCalendarOptions, classroomCalendarScopeOptions } from "@/api/queries";
+import { classroomActivitiesOptions, classroomCalendarOptions, classroomCalendarScopeOptions } from "@/api/queries";
 import { EmptyPanel, PanelState } from "@/components/ClassroomCommunity";
-import { Button, Card, ConfirmDialog, Field, FormDialog, Input, cn } from "@/components/ui";
+import { StartActivity } from "@/components/ClassroomTopics";
+import { Button, Card, ConfirmDialog, Field, FormDialog, Input, buttonStyles, cn } from "@/components/ui";
 import { useI18n, useT } from "@/i18n";
 import { dayKey, eventsByDay, localDateTime, monthDays, shiftDay, weekStart } from "@/lib/calendar";
 
@@ -14,17 +16,28 @@ const WEEKDAYS = Array.from({ length: 7 }, (_, index) => new Date(2024, 0, MONDA
 const FIELD =
   "w-full rounded-lg border border-line-strong bg-paper px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-ink";
 
-export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolean }) {
+export function ClassroomCalendar({
+  id,
+  teacher,
+  scheduledTopic,
+  onScheduleClosed,
+}: {
+  id: string;
+  teacher: boolean;
+  scheduledTopic?: Topic | null;
+  onScheduleClosed?: () => void;
+}) {
   const t = useT();
   const { locale } = useI18n();
   const client = useQueryClient();
   const today = new Date();
   const [view, setView] = useState<"month" | "week">("month");
   const [selected, setSelected] = useState(dayKey(today));
-  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(Boolean(scheduledTopic));
+  const [starting, setStarting] = useState<string | null>(null);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [removing, setRemoving] = useState<CalendarEvent | null>(null);
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(scheduledTopic?.title.slice(0, 120) ?? "");
   const [date, setDate] = useState(selected);
   const [time, setTime] = useState("09:00");
   const [end, setEnd] = useState("");
@@ -37,6 +50,10 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
   const rangeEnd = weekly ? shiftDay(rangeStart, 7) : new Date(year, month + 1, 1);
   const events = useQuery(classroomCalendarOptions(id, rangeStart, rangeEnd));
   const refresh = () => client.invalidateQueries({ queryKey: classroomCalendarScopeOptions(id).queryKey });
+  const closeEditor = () => {
+    setEditorOpen(false);
+    onScheduleClosed?.();
+  };
   const localStart = `${date}T${time}`;
   const originalStart = editing ? localDateTime(editing.startsAt) : "";
   const originalEnd = editing?.endsAt ? localDateTime(editing.endsAt) : "";
@@ -63,13 +80,14 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
         title: title.trim(),
         startsAt: new Date(startMillis).toISOString(),
         ...(end && { endsAt: new Date(endMillis).toISOString() }),
+        ...(scheduledTopic && { topicId: scheduledTopic.id }),
         note: note.trim(),
       });
     },
     onSuccess: async (event) => {
       await refresh();
       setSelected(dayKey(new Date(event.startsAt)));
-      setEditorOpen(false);
+      closeEditor();
     },
   });
   const remove = useMutation({
@@ -223,7 +241,7 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
               <ul className="space-y-2">
                 {selectedEvents.map((event) => (
                   <li key={event.id}>
-                    <Card className="flex items-start gap-3 p-4">
+                    <Card className="flex flex-wrap items-start gap-3 p-4">
                       <time dateTime={event.startsAt} className="shrink-0 pt-0.5 text-xs text-ink-soft tabular-nums">
                         {new Date(event.startsAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}
                       </time>
@@ -235,30 +253,57 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
                           </p>
                         )}
                       </div>
-                      {teacher && (
-                        <div className="flex flex-wrap gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`${t("calendar_edit")} · ${event.title}`}
-                            onClick={() => openEditor(event)}
-                          >
-                            <Pencil className="size-4" aria-hidden />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`${t("room_delete")} · ${event.title}`}
-                            onClick={() => {
-                              remove.reset();
-                              setRemoving(event);
-                            }}
-                          >
-                            <Trash2 className="size-4" aria-hidden />
-                          </Button>
-                        </div>
+                      {event.activity ? (
+                        <CalendarActivityLink activity={event.activity} teacher={teacher} />
+                      ) : (
+                        teacher && (
+                          <div className="flex flex-wrap gap-1">
+                            {event.topicId && (
+                              <Button variant="outline" size="sm" onClick={() => setStarting(event.id)}>
+                                {t("calendar_start_discussion")}
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`${t("calendar_edit")} · ${event.title}`}
+                              onClick={() => openEditor(event)}
+                            >
+                              <Pencil className="size-4" aria-hidden />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`${t("room_delete")} · ${event.title}`}
+                              onClick={() => {
+                                remove.reset();
+                                setRemoving(event);
+                              }}
+                            >
+                              <Trash2 className="size-4" aria-hidden />
+                            </Button>
+                          </div>
+                        )
                       )}
                     </Card>
+                    {teacher && event.id === starting && event.topicId && !event.activity && (
+                      <div className="mt-2 space-y-2">
+                        <StartActivity
+                          key={event.id}
+                          classroomId={id}
+                          allowTest={false}
+                          scheduled={{ id: event.id, topicId: event.topicId }}
+                          onStarted={() => {
+                            setStarting(null);
+                            void refresh();
+                            void client.invalidateQueries({ queryKey: classroomActivitiesOptions(id).queryKey });
+                          }}
+                        />
+                        <Button variant="ghost" size="sm" onClick={() => setStarting(null)}>
+                          {t("common_cancel")}
+                        </Button>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -269,14 +314,14 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
 
       <FormDialog
         open={editorOpen}
-        title={t(editing ? "calendar_edit_event" : "calendar_add")}
+        title={t(editing ? "calendar_edit_event" : scheduledTopic ? "calendar_schedule_discussion" : "calendar_add")}
         submitLabel={t("common_save")}
         cancelLabel={t("common_cancel")}
         canSubmit={Boolean(title.trim() && Number.isFinite(startMillis) && !badEnd && changed)}
         submitting={save.isPending}
         onSubmit={() => save.mutate()}
         onCancel={() => {
-          if (!save.isPending) setEditorOpen(false);
+          if (!save.isPending) closeEditor();
         }}
       >
         <Field label={t("calendar_event_title")}>
@@ -343,5 +388,35 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
         }}
       />
     </div>
+  );
+}
+
+function CalendarActivityLink({
+  activity,
+  teacher,
+}: {
+  activity: NonNullable<CalendarEvent["activity"]>;
+  teacher: boolean;
+}) {
+  const t = useT();
+  const className = buttonStyles({ variant: "outline", size: "sm" });
+  if (activity.finishedAt) {
+    return (
+      <Link to="/report/$id" params={{ id: activity.id }} className={className}>
+        {t("classroom_view_report")}
+      </Link>
+    );
+  }
+  if (teacher) {
+    return (
+      <Link to="/t/live/$id" params={{ id: activity.id }} className={className}>
+        {t("nav_live")}
+      </Link>
+    );
+  }
+  return (
+    <Link to="/dialogue" search={{ activityId: activity.id }} className={className}>
+      {t("classroom_enter")}
+    </Link>
   );
 }

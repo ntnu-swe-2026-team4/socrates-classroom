@@ -339,6 +339,7 @@ export const TopicCopyInputSchema = z.object({
 export const ActivityStartInputSchema = z.object({
   topicId: z.string().min(1),
   mode: ActivityModeSchema.default("live"),
+  calendarEventId: z.string().min(1).optional(),
   reportAxes: ReportAxesSchema.optional(),
   topicAxes: TopicAxesInputSchema.optional(),
 });
