@@ -89,7 +89,7 @@ function useSessionSync() {
 
 function SoundToggleButton({ className = RAIL_SQUARE_BTN }: { className?: string }) {
   const { enabled, setEnabled, play } = useSound();
-  const label = enabled ? "關閉介面音效" : "開啟介面音效";
+  const label = enabled ? t("sound_off") : t("sound_on");
 
   return (
     <button
@@ -97,10 +97,12 @@ function SoundToggleButton({ className = RAIL_SQUARE_BTN }: { className?: string
       data-sound-toggle="true"
       onClick={() => {
         const next = !enabled;
-        setEnabled(next);
         if (next) {
-          play("click");
+          setEnabled(true);
+          play("toggleOn");
         } else {
+          play("toggleOff");
+          setEnabled(false);
           stopAllSounds();
         }
       }}

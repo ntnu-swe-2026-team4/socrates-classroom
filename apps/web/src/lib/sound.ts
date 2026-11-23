@@ -4,9 +4,10 @@ export const SOUND_EFFECTS = {
   click: "/sounds/tap_01.mp3",
   tap2: "/sounds/tap_02.mp3",
   swipe: "/sounds/swipe_01.mp3",
+  toggleOn: "/sounds/toggle_on.mp3",
+  toggleOff: "/sounds/toggle_off.mp3",
   turnPage: "/sounds/turn_page.mp3",
   comic1: "/sounds/comic_1.mp3",
-  //comic2: "/sounds/commic_2.mp3",
   comic3: "/sounds/comic_2_3.mp3",
   comic_band: "/sounds/comic_band.mp3",
   comic4: "/sounds/comic_4.mp3",
@@ -25,9 +26,9 @@ export const UX_SOUND_STORAGE_KEY = "socrates:ux-sound";
 export function isUxSoundEnabled(): boolean {
   try {
     const value = localStorage.getItem(UX_SOUND_STORAGE_KEY);
-    return value === null ? true : value === "1";
+    return value === null ? false : value === "1"; // ⬅️ 改為預設靜音 (false)
   } catch {
-    return true;
+    return false;
   }
 }
 
