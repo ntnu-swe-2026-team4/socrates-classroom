@@ -13,6 +13,7 @@ import { LANG_NAMES, type Lang } from "@socrates/shared";
 import STUDENT_REPORT_RAW from "../../prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../../prompts/class-report.md?raw";
 import CLASS_REPORT_AXES_RAW from "../../prompts/class-report-axes.md?raw";
+import STUDENT_INDICATORS_RAW from "../../prompts/student-indicators.md?raw";
 import LOOKUP_RAW from "../../prompts/lookup.md?raw";
 import TOPIC_GEN_RAW from "../../prompts/topic-gen.md?raw";
 import type { Env } from "../../env";
@@ -24,11 +25,22 @@ import { createWebSearchExtension } from "../extensions/websearch";
 import { getRouter, type TrafficClass } from "../../gateway/router";
 import type { SettleKind } from "../../gateway/ledger";
 import { teacherLegsOf, type TeacherLeg } from "../credentials";
-import { reportSubmitAxesExtension, reportSubmitExtension } from "../extensions/report-submit";
+import {
+  reportSubmitAxesExtension,
+  reportSubmitExtension,
+  reportSubmitIndicatorsExtension,
+} from "../extensions/report-submit";
 import { createUsageExtension } from "../extensions/usage";
 import type { JsonObject } from "@earendil-works/pi-durable";
 
-export type ProfileName = "socrates" | "topic-gen" | "student-report" | "class-report" | "class-report-axes" | "lookup";
+export type ProfileName =
+  | "socrates"
+  | "topic-gen"
+  | "student-report"
+  | "student-indicators"
+  | "class-report"
+  | "class-report-axes"
+  | "lookup";
 
 const LANG_PLACEHOLDER = "{{lang}}";
 
@@ -66,6 +78,14 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     name: "student-report",
     instructions: instructionsOf(STUDENT_REPORT_RAW),
     extensions: ["report-submit"],
+    maxTurns: 4,
+    trafficClass: "batch",
+    thinkingLevel: "high",
+  },
+  "student-indicators": {
+    name: "student-indicators",
+    instructions: instructionsOf(STUDENT_INDICATORS_RAW),
+    extensions: ["report-submit-indicators"],
     maxTurns: 4,
     trafficClass: "batch",
     thinkingLevel: "high",
@@ -112,6 +132,7 @@ export function profileRegistry(profile: AgentProfile, env: Env): Registry {
   if (profile.extensions.includes("websearch")) registry.install(createWebSearchExtension(env.AI));
   if (profile.extensions.includes("report-submit")) registry.install(reportSubmitExtension);
   if (profile.extensions.includes("report-submit-axes")) registry.install(reportSubmitAxesExtension);
+  if (profile.extensions.includes("report-submit-indicators")) registry.install(reportSubmitIndicatorsExtension);
   return registry;
 }
 

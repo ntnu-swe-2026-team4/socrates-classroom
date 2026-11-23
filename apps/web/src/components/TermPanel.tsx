@@ -207,7 +207,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
                   onClick={() => setStack((prev) => prev.slice(0, -1))}
                   className="mt-3 ml-1.5 self-start rounded-full border border-line px-3 py-1 text-[12.5px] text-ink-soft hover:border-ember hover:text-ember"
                 >
-                  {t("term_back_to")}「{stack[stack.length - 2]!.term}」
+                  {t("term_back_to")}「{stack[stack.length - 2].term}」
                 </button>
               )}
             </div>

@@ -75,7 +75,7 @@ describe("bounded read-aloud (unified char budget)", () => {
   it("caps read-aloud at the unified budget and cuts at a sentence end", async () => {
     tts.mockResolvedValue(undefined);
     await speak("dialogue", "答。".repeat(2100));
-    const sent = tts.mock.calls[0]![0] as string;
+    const sent = tts.mock.calls[0][0] as string;
     expect(sent.length).toBeLessThanOrEqual(TTS_MAX_CHARS);
     expect(sent.length).toBeGreaterThan(2000);
     expect(sent.endsWith("。")).toBe(true);

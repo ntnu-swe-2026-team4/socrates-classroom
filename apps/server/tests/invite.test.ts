@@ -13,6 +13,7 @@ import {
   frames,
   joinGuest,
   participantIdOf,
+  must,
   registerStudent,
   speak,
 } from "./helpers";
@@ -46,7 +47,7 @@ async function connect(thread: string, cookie: string): Promise<WebSocket> {
     env,
   );
   expect(response?.status).toBe(101);
-  const socket = response!.webSocket as WebSocket;
+  const socket = must(response?.webSocket, "chat websocket");
   socket.accept();
   return socket;
 }
@@ -385,7 +386,7 @@ describe("activity invites", () => {
         expect(res.status).toBe(200);
         return (await res.json()) as { students: Array<{ participantId: string; pseudonym: string }> };
       },
-      { timeout: 30_000, interval: 500 },
+      { timeout: 60_000, interval: 500 },
     );
 
     const ranks = await pseudonymRanks(env.AUTH_SECRET ?? "", created.activityId, participants);
@@ -393,7 +394,7 @@ describe("activity invites", () => {
     const actual = Object.fromEntries(report.students.map((s) => [s.participantId, s.pseudonym]));
     expect(actual).toEqual(expected);
     expect(new Set(report.students.map((s) => s.pseudonym)).size).toBe(participants.length);
-  }, 40_000);
+  }, 70_000);
 
   it("guest participants never see a report, even before the activity closes", async () => {
     const { token } = await createInvite();

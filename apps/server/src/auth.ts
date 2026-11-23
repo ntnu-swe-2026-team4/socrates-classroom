@@ -9,6 +9,14 @@ export const PARTICIPANT_COOKIE = "socrates_participant";
 const SESSION_DAYS = 30;
 const PARTICIPANT_DAYS = 7;
 
+export function cookieValue(header: string, name: string): string | undefined {
+  return header
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+}
+
 interface TokenClaims {
   uid: string;
   ver: number;
@@ -18,6 +26,7 @@ interface TokenClaims {
 export interface Session {
   user: User;
   version: number;
+  expiresAt: number;
 }
 
 export type SessionLookup =
@@ -188,7 +197,7 @@ async function tokenClaims(
     const a = fromB64url(sig);
     const b = fromB64url(expected);
     let diff = 0;
-    for (let i = 0; i < a.length; i += 1) diff |= a[i]! ^ b[i]!;
+    for (let i = 0; i < a.length; i += 1) diff |= a[i] ^ b[i];
     if (diff !== 0) return null;
     const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as TokenClaims;
     if (claims.exp < Date.now()) return null;
@@ -209,7 +218,7 @@ export async function lookupSession(env: SessionEnv, token: string | undefined):
   if (!row) return { kind: "missing" };
   if (row.disabled_at !== null) return { kind: "disabled" };
   if (row.session_version !== claims.ver) return { kind: "stale" };
-  return { kind: "ok", session: { user: toUser(row), version: row.session_version } };
+  return { kind: "ok", session: { user: toUser(row), version: row.session_version, expiresAt: claims.exp } };
 }
 
 export interface AccountState {
@@ -283,7 +292,7 @@ export async function lookupParticipant(
     const a = fromB64url(sig);
     const b = fromB64url(expected);
     let diff = 0;
-    for (let i = 0; i < a.length; i += 1) diff |= a[i]! ^ b[i]!;
+    for (let i = 0; i < a.length; i += 1) diff |= a[i] ^ b[i];
     if (diff !== 0) return null;
     const claims = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as ParticipantClaims;
     if (claims.exp < Date.now()) return null;

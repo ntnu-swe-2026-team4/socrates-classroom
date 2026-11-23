@@ -4,16 +4,18 @@ import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "c
 import { routeAgentRequest } from "agents";
 import { ROOT_SESSION } from "agents/harness/pi";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
 import { ROOT_CONVERSATION_ID, type ConversationId } from "@earendil-works/pi-durable";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { inject } from "vitest";
 
 vi.setConfig({ testTimeout: 15_000 });
 import { seedFixture } from "../src/seed";
-import { all, run } from "../src/db/d1";
+import { all, batch, one, run } from "../src/db/d1";
 import type { Chat } from "../src/do/chat";
 import { BTW_THINKING_LEVEL, PROFILES } from "../src/pi/agents/profiles";
 import { SOCRATES_PROMPTS, socratesExtension } from "../src/pi/extensions/socrates";
+import { topicBlock, type Topic } from "../src/prompts/assemble";
 import {
   assistantText,
   call,
@@ -22,6 +24,7 @@ import {
   frames,
   joinGuest,
   latestView,
+  must,
   participantIdOf,
   registerStudent,
 } from "./helpers";
@@ -43,12 +46,28 @@ async function connect(thread: string, cookie?: string, lang?: string): Promise<
     env,
   );
   expect(response?.status).toBe(101);
-  const socket = response!.webSocket as WebSocket;
+  const socket = must(response?.webSocket, "chat websocket");
   socket.accept();
   return socket;
 }
 
 const migrations = inject("d1Migrations");
+
+async function activityTopic(): Promise<Topic> {
+  const topic = await one<Topic>(
+    env.DB,
+    "SELECT t.title, t.statement FROM activities a JOIN topics t ON t.id = a.topic_id WHERE a.id = $id",
+    { id: activityId },
+  );
+  return must(topic, "activity topic");
+}
+
+async function sessionContext(thread: string, session: string): Promise<string> {
+  const stub = env.Chat.get(env.Chat.idFromName(thread)) as unknown as DurableObjectStub<Chat>;
+  return runInDurableObject(stub, async (instance) =>
+    JSON.stringify(await instance.harness.session(session).messages()),
+  );
+}
 
 beforeAll(async () => {
   await applyD1Migrations(env.DB, migrations);
@@ -68,10 +87,46 @@ beforeAll(async () => {
 describe("chat core (real DO + real WebSocket + faux model)", () => {
   it("Socrates' prompt is the one written in the student's language", async () => {
     for (const lang of ["zh", "en", "es"] as const) {
-      const render = socratesExtension(() => lang).sections![0]!.render as () => Promise<string>;
+      const sections = socratesExtension(() => lang).sections;
+      const render = must(sections?.[0], "socrates section").render as () => Promise<string>;
       expect(await render()).toBe(SOCRATES_PROMPTS[lang]);
     }
     expect(new Set(Object.values(SOCRATES_PROMPTS)).size).toBe(3);
+  });
+
+  it("the topic section renders the activity's topic block, and nothing without a topic", async () => {
+    const topic = { title: "代理孕母", statement: "契約應該被遵守嗎？" };
+    const withTopic = must(
+      socratesExtension(
+        () => "zh",
+        async () => topic,
+      ).sections?.[1],
+      "socrates topic section",
+    );
+    expect(withTopic.key).toBe("topic");
+    expect(await (withTopic.render as () => Promise<string | undefined>)()).toBe(
+      topicBlock(topic.title, topic.statement),
+    );
+    const without = must(socratesExtension(() => "zh").sections?.[1], "socrates topic section without topic");
+    expect(await (without.render as () => Promise<string | undefined>)()).toBeUndefined();
+  });
+
+  it("Socrates' run context carries the activity's topic (#162)", async () => {
+    const student = await joinStudent("辯題生");
+    const thread = `${activityId}:${student.participantId}`;
+    const socket = await connect(thread, student.cookie);
+    const rx = frames(socket);
+    await rx.until((f) => f.some((m) => m.type === "hello"));
+    socket.send(JSON.stringify({ type: "watch" }));
+    await rx.until((f) => f.some((m) => m.type === "view"));
+    socket.send(JSON.stringify({ type: "submit", id: "s1", input: "我同意" }));
+    await rx.until((f) => latestView(f)?.entries.some((entry) => entry.kind === "pi.assistant") === true);
+    socket.close();
+
+    const topic = await activityTopic();
+    expect(await sessionContext(thread, ROOT_SESSION)).toContain(
+      JSON.stringify(topicBlock(topic.title, topic.statement)).slice(1, -1),
+    );
   });
 
   it("a student connected with ?lang=en is answered through the English prompt", async () => {
@@ -131,7 +186,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
       return view !== undefined && assistantText(view).includes("正義是什麼");
     });
 
-    const view = latestView(rx.list)!;
+    const view = must(latestView(rx.list), "latest view");
     const roles = view.entries.map((entry) => entry.model?.[0]?.role ?? entry.kind);
     expect(roles).toContain("user");
     expect(roles).toContain("assistant");
@@ -139,46 +194,45 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     socket.close();
   });
 
-  it("a turn on a teacher leg records usage for the teacher's keyed provider", async () => {
-    const teacher = await all<{ id: string }>(env.DB, "SELECT id FROM users WHERE email = 'demo@socrates.tw'");
-    expect(teacher).toHaveLength(1);
-    await run(
-      env.DB,
-      `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
-       VALUES ($uid, 'faux', 'enc', 'xxxx', 0, '2026-11-21T00:00:00.000Z')`,
-      { uid: teacher[0].id },
-    );
-    await run(
-      env.DB,
-      `INSERT INTO teacher_key_models (user_id, provider_id, model, max_concurrency, sort_order, updated_at)
-       VALUES ($uid, 'faux', 'faux-1', NULL, 0, '2026-11-21T00:00:00.000Z')`,
-      { uid: teacher[0].id },
-    );
+  it("routes classroom dialogue through the classroom teacher's gateway when the student has their own gateway", async () => {
+    const [teacher] = await all<{ id: string }>(env.DB, "SELECT id FROM users WHERE email = 'demo@socrates.tw'");
+    const student = await registerStudent(classroomCode, "額度生");
+    const provider = "activity-gateway";
+    const params = { teacher: teacher.id, student: student.userId, provider, now: new Date().toISOString() };
+    await batch(env.DB, [
+      {
+        sql: `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
+              VALUES ($teacher, $provider, 'enc', 'xxxx', 0, $now), ($student, $provider, 'enc', 'xxxx', 0, $now)`,
+        params,
+      },
+      {
+        sql: `INSERT INTO teacher_key_models (user_id, provider_id, model, sort_order, updated_at)
+              VALUES ($teacher, $provider, 'teacher-model', 0, $now), ($student, $provider, 'student-model', 0, $now)`,
+        params,
+      },
+    ]);
 
-    const student = await joinStudent("額度生");
-    const thread = `${activityId}:${student.participantId}`;
-    const socket = await connect(thread, student.cookie);
-    const rx = frames(socket);
-    await rx.until((f) => f.some((m) => m.type === "hello"));
-    socket.send(JSON.stringify({ type: "watch" }));
-    await rx.until((f) => f.some((m) => m.type === "view"));
-    socket.send(JSON.stringify({ type: "submit", id: "s1", input: "正義是什麼？" }));
-    await rx.until((f) => {
-      const view = latestView(f);
-      return view !== undefined && assistantText(view).includes("直覺判斷");
+    const thread = `${activityId}:${await participantIdOf(activityId, student.cookie)}`;
+    const stub = env.Chat.get(env.Chat.idFromName(thread));
+    await runInDurableObject(stub, (instance) => {
+      const faux = fauxProvider({ provider, models: [{ id: "teacher-model" }, { id: "student-model" }] });
+      faux.setResponses([fauxAssistantMessage("Why?")]);
+      (instance as Chat).models.models.setProvider(faux.provider);
     });
-    socket.close();
-
-    let usage: Array<{ provider_id: string; model: string }> = [];
-    for (let i = 0; i < 20 && usage.length === 0; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      usage = await all<{ provider_id: string; model: string }>(
-        env.DB,
-        "SELECT provider_id, model FROM teacher_key_usage WHERE user_id = $uid AND provider_id = 'faux'",
-        { uid: teacher[0].id },
-      );
+    const socket = await connect(thread, student.cookie);
+    try {
+      const rx = frames(socket);
+      await rx.until((f) => f.some((m) => m.type === "hello"));
+      socket.send(JSON.stringify({ type: "submit", id: "s1", input: "正義是什麼？" }));
+      await expect
+        .poll(
+          () => all(env.DB, "SELECT user_id, model FROM teacher_key_usage WHERE provider_id = $provider", { provider }),
+          { timeout: 5000 },
+        )
+        .toEqual([{ user_id: teacher.id, model: "teacher-model" }]);
+    } finally {
+      socket.close();
     }
-    expect(usage).toEqual([{ provider_id: "faux", model: "faux-1" }]);
   });
 
   it("reconnect after disconnect: transcript restored persistently from pi storage", async () => {
@@ -203,7 +257,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     await rx2.until((f) => f.some((m) => m.type === "hello"));
     again.send(JSON.stringify({ type: "watch" }));
     await rx2.until((f) => f.some((m) => m.type === "view"));
-    const view = latestView(rx2.list)!;
+    const view = must(latestView(rx2.list), "latest view");
     expect(assistantText(view)).toContain("第一個問題");
     again.close();
   });
@@ -635,6 +689,10 @@ describe("btw side session (#121): a fork of the root that never writes back", (
       return view !== undefined && view.entries.filter((entry) => entry.kind === "pi.assistant").length >= 2;
     });
     expect(userTexts(latestView(side.rx.list))).toContain("電車難題是什麼");
+    const topic = await activityTopic();
+    expect(await sessionContext(thread, session)).toContain(
+      JSON.stringify(topicBlock(topic.title, topic.statement)).slice(1, -1),
+    );
 
     expect(userTexts(latestView(main.rx.list))).not.toContain("電車難題是什麼");
     expect(await rootUserTexts(thread)).toEqual(["主對話第一句"]);

@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { one, run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
-import { call, cookieOf, createClassroom, startActivity, systemTopicId } from "./helpers";
+import { call, cookieOf, createClassroom, must, startActivity, systemTopicId } from "./helpers";
 
 let teacher: string;
 let otherTeacher: string;
@@ -34,7 +34,11 @@ interface SessionTopic {
   classroomId: string | null;
   title: string;
   statement: string;
+  axes: Array<{ name: string; left: string; right: string }>;
 }
+
+const TEST_AXES = [{ name: "契約與人情", left: "契約優先", right: "人情優先" }];
+const OVERRIDE_AXES = [{ name: "公平與效率", left: "公平優先", right: "效率優先" }];
 
 async function topicsOf(classroom: string, cookie: string): Promise<SessionTopic[]> {
   const res = await call(`/api/classrooms/${classroom}/topics`, { headers: { Cookie: cookie } });
@@ -42,10 +46,16 @@ async function topicsOf(classroom: string, cookie: string): Promise<SessionTopic
   return (await res.json()) as SessionTopic[];
 }
 
-async function createTopic(classroom: string, cookie: string, title: string, statement: string) {
+async function createTopic(
+  classroom: string,
+  cookie: string,
+  title: string,
+  statement: string,
+  axes?: typeof TEST_AXES,
+) {
   const res = await call(
     `/api/classrooms/${classroom}/topics`,
-    jsonInit({ title, statement, prompts: ["你的判斷是什麼？"] }, cookie),
+    jsonInit({ title, statement, prompts: ["你的判斷是什麼？"], ...(axes ? { axes } : {}) }, cookie),
   );
   return res;
 }
@@ -88,19 +98,23 @@ describe("classroom / topic decoupling (#135)", () => {
     );
     expect(Number(activity?.n)).toBe(0);
 
-    const code = (await one<{ join_code: string }>(env.DB, "SELECT join_code FROM classrooms WHERE id = $id", {
-      id: classroomId,
-    }))!;
+    const code = must(
+      await one<{ join_code: string }>(env.DB, "SELECT join_code FROM classrooms WHERE id = $id", {
+        id: classroomId,
+      }),
+      "classroom join_code row",
+    );
     const preview = await call(`/api/join/${code.join_code}`);
     expect(preview.status).toBe(404);
     expect(((await preview.json()) as { code: string }).code).toBe("join_code_invalid");
   });
 
   it("topics created inside a classroom belong to it and stay out of the personal pool", async () => {
-    const created = await createTopic(classroomId, teacher, "班級題", "只有這一班看得到");
+    const created = await createTopic(classroomId, teacher, "班級題", "只有這一班看得到", TEST_AXES);
     expect(created.status).toBe(201);
     const topic = (await created.json()) as SessionTopic;
     expect(topic.classroomId).toBe(classroomId);
+    expect(topic.axes).toEqual(TEST_AXES);
 
     const list = await topicsOf(classroomId, teacher);
     expect(list.map((row) => row.id)).toEqual([topic.id]);
@@ -140,10 +154,10 @@ describe("classroom / topic decoupling (#135)", () => {
 
   it("an activity starts from a classroom topic and becomes current; a test activity never does", async () => {
     const [topic] = await topicsOf(classroomId, teacher);
-    const live = await startActivity(teacher, classroomId, topic!.id);
+    const live = await startActivity(teacher, classroomId, topic.id);
     expect((await currentOf(classroomId, teacher))?.activityId).toBe(live.activityId);
 
-    await startActivity(teacher, classroomId, topic!.id, "test");
+    await startActivity(teacher, classroomId, topic.id, "test");
     expect((await currentOf(classroomId, teacher))?.activityId).toBe(live.activityId);
 
     const systemAcrossClasses = await startActivity(otherTeacher, otherClassroomId, systemTopic);
@@ -153,47 +167,67 @@ describe("classroom / topic decoupling (#135)", () => {
 
   it("copying a topic into another classroom makes an independent snapshot", async () => {
     const [source] = await topicsOf(classroomId, teacher);
-    const copied = await call(`/api/topics/${source!.id}/copy`, jsonInit({ classroomId: secondClassroomId }, teacher));
+    const copied = await call(`/api/topics/${source.id}/copy`, jsonInit({ classroomId: secondClassroomId }, teacher));
     expect(copied.status).toBe(201);
     const copy = (await copied.json()) as SessionTopic;
-    expect(copy.id).not.toBe(source!.id);
+    expect(copy.id).not.toBe(source.id);
     expect(copy.classroomId).toBe(secondClassroomId);
-    expect(copy.title).toBe(source!.title);
-    expect(copy.statement).toBe(source!.statement);
+    expect(copy.title).toBe(source.title);
+    expect(copy.statement).toBe(source.statement);
+    expect(copy.axes).toEqual(source.axes);
 
     const provenance = await one<{ copied_from: string | null }>(
       env.DB,
       "SELECT copied_from FROM topics WHERE id = $id",
       { id: copy.id },
     );
-    expect(provenance?.copied_from).toBe(source!.id);
+    expect(provenance?.copied_from).toBe(source.id);
 
-    const original = source!.statement;
+    const original = source.statement;
     await run(env.DB, "UPDATE topics SET statement = $statement WHERE id = $id", {
       statement: "來源被改過了",
-      id: source!.id,
+      id: source.id,
     });
     const [after] = await topicsOf(secondClassroomId, teacher);
-    expect(after!.statement).toBe(original);
+    expect(after.statement).toBe(original);
 
     const target = await topicsOf(secondClassroomId, teacher);
     expect(target.map((row) => row.id)).toEqual([copy.id]);
     const origin = await topicsOf(classroomId, teacher);
     expect(origin.find((row) => row.id === copy.id)).toBeUndefined();
-    expect(origin[0]!.statement).toBe("來源被改過了");
+    expect(origin[0].statement).toBe("來源被改過了");
+
+    const overriddenRes = await call(
+      `/api/topics/${source.id}/copy`,
+      jsonInit({ classroomId: secondClassroomId, axes: OVERRIDE_AXES }, teacher),
+    );
+    expect(overriddenRes.status).toBe(201);
+    const overridden = (await overriddenRes.json()) as SessionTopic;
+    expect(overridden.axes).toEqual(OVERRIDE_AXES);
+    const overriddenProvenance = await one<{ copied_from: string | null }>(
+      env.DB,
+      "SELECT copied_from FROM topics WHERE id = $id",
+      { id: overridden.id },
+    );
+    expect(overriddenProvenance?.copied_from).toBe(source.id);
   });
 
   it("copy needs ownership of both sides and a readable source", async () => {
     const [source] = await topicsOf(classroomId, teacher);
-    const foreign = await call(`/api/topics/${source!.id}/copy`, jsonInit({ classroomId: otherClassroomId }, teacher));
+    const foreign = await call(`/api/topics/${source.id}/copy`, jsonInit({ classroomId: otherClassroomId }, teacher));
     expect(foreign.status).toBe(403);
 
     const stolen = await call(
-      `/api/topics/${source!.id}/copy`,
+      `/api/topics/${source.id}/copy`,
       jsonInit({ classroomId: otherClassroomId }, otherTeacher),
     );
     expect(stolen.status).toBe(404);
 
+    const systemList = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as SessionTopic[];
+    const sourceSystem = must(
+      systemList.find((row) => row.id === systemTopic),
+      "system topic",
+    );
     const systemCopy = await call(
       `/api/topics/${systemTopic}/copy`,
       jsonInit({ classroomId: secondClassroomId }, teacher),
@@ -202,6 +236,8 @@ describe("classroom / topic decoupling (#135)", () => {
     const copy = (await systemCopy.json()) as SessionTopic;
     expect(copy.classroomId).toBe(secondClassroomId);
     expect(copy.id).not.toBe(systemTopic);
+    expect(copy.axes.length).toBeGreaterThan(0);
+    expect(copy.axes).toEqual(sourceSystem.axes);
   });
 
   it("personal topics from POST /topics stay usable by their owner only", async () => {
@@ -209,12 +245,21 @@ describe("classroom / topic decoupling (#135)", () => {
     expect(created.status).toBe(201);
     const topic = (await created.json()) as SessionTopic;
     expect(topic.classroomId).toBeNull();
+    expect(topic.axes).toEqual([]);
 
-    const started = await startActivity(teacher, secondClassroomId, topic.id);
+    const withAxesRes = await call(
+      "/api/topics",
+      jsonInit({ title: "帶軸個人題", statement: "測試軸", prompts: [], axes: TEST_AXES }, teacher),
+    );
+    expect(withAxesRes.status).toBe(201);
+    const withAxes = (await withAxesRes.json()) as SessionTopic;
+    expect(withAxes.axes).toEqual(TEST_AXES);
+
+    const started = await startActivity(teacher, secondClassroomId, withAxes.id);
     expect((await currentOf(secondClassroomId, teacher))?.activityId).toBe(started.activityId);
     const foreign = await call(
       `/api/classrooms/${otherClassroomId}/activities`,
-      jsonInit({ topicId: topic.id }, otherTeacher),
+      jsonInit({ topicId: withAxes.id }, otherTeacher),
     );
     expect(foreign.status).toBe(404);
   });

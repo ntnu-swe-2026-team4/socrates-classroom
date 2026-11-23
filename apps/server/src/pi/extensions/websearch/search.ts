@@ -17,8 +17,12 @@ interface WebsearchResponse {
 
 export function createWebSearch(ai: Ai) {
   return async (query: string, numResults = 5): Promise<SearchOutcome> => {
+    const websearch = (ai as unknown as { websearch?: (req: unknown) => Promise<Response> }).websearch;
+    if (typeof websearch !== "function") {
+      return { hits: [], error: "websearch_binding_missing" };
+    }
     try {
-      const response = await (ai as unknown as { websearch?: (req: unknown) => Promise<Response> }).websearch!({
+      const response = await websearch({
         gatewayId: "default",
         query,
         provider: "ceramic",

@@ -1,22 +1,39 @@
-import { useRef, useState } from "react";
+import { Suspense, lazy, useRef, useState } from "react";
 import { classroomsOptions } from "@/api/queries";
 import { useAccountSheetRequest } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, GraduationCap, Home, LogIn, LogOut, Menu, Moon, Settings, ShieldCheck, Sun } from "lucide-react";
+import {
+  Eye,
+  GraduationCap,
+  Home,
+  LogIn,
+  LogOut,
+  Menu,
+  MessageCircle,
+  Moon,
+  Settings,
+  ShieldCheck,
+  Sun,
+} from "lucide-react";
 import { api, type User } from "@/api";
 import { meQueryOptions } from "@/api/me";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
+import { NotificationBell } from "@/components/Notifications";
 import { Initial, TrapDialog, cn } from "@/components/ui";
 import { useDomEvent } from "@/hooks/useSubscription";
 import { useI18n } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
 
+const SocratesCompanion = lazy(() =>
+  import("@/components/SocratesCompanion").then((module) => ({ default: module.SocratesCompanion })),
+);
+
 const BARE_ROUTES = [/^\/$/, /^\/login\/?$/];
 
 const RAIL_FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vermilion";
 const NAV_BTN = cn(
-  "comic-sink flex w-16 cursor-pointer flex-col items-center gap-1 border-[1.5px] border-transparent py-[9px] text-[11.5px] text-ht-soft hover:border-ht-line hover:bg-ht-hover hover:text-ht-ink",
+  "comic-sink flex w-[76px] cursor-pointer flex-col items-center gap-1 border-[1.5px] border-transparent py-[9px] text-[11.5px] text-ht-soft hover:border-ht-line hover:bg-ht-hover hover:text-ht-ink",
   RAIL_FOCUS,
 );
 const NAV_ACTIVE =
@@ -28,6 +45,7 @@ const RAIL_SQUARE_BTN = cn(
 
 const NAV = [
   { to: "/home", label: "nav_home", icon: Home, match: ["/home"] },
+  { to: "/chat", label: "nav_chat", icon: MessageCircle, match: ["/chat"] },
   {
     to: "/classrooms",
     label: "nav_classrooms",
@@ -36,7 +54,7 @@ const NAV = [
   },
 ] as const;
 
-const HALFTONE_MATCH = ["/home", "/classrooms", "/dialogue", "/admin", "/t/", "/report", "/settings", "/join"];
+const HALFTONE_MATCH = ["/home", "/chat", "/classrooms", "/dialogue", "/admin", "/t/", "/report", "/settings", "/join"];
 
 function useSessionSync() {
   const queryClient = useQueryClient();
@@ -132,12 +150,13 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
 
       <div className="flex flex-col items-center gap-1.5">
         {NAV.map((item) => {
+          if (item.to === "/chat" && !me.data) return null;
           const active = item.match.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
           const Icon = item.icon;
           return (
             <Link key={item.to} to={item.to} className={cn(NAV_BTN, active && NAV_ACTIVE)}>
               <Icon className="size-[19px]" />
-              <span>{t(item.label)}</span>
+              <span className="max-w-full text-center leading-tight wrap-anywhere">{t(item.label)}</span>
             </Link>
           );
         })}
@@ -149,11 +168,14 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
         <div className="mb-3 flex w-full justify-center">
           <Link to={inAdmin ? "/home" : "/admin/users"} data-rail="site" className={NAV_BTN}>
             {inAdmin ? <Eye className="size-[19px]" /> : <ShieldCheck className="size-[19px]" />}
-            <span className="text-center leading-tight">{t(inAdmin ? "nav_back_to_site" : "nav_manage_site")}</span>
+            <span className="max-w-full text-center leading-tight wrap-anywhere">
+              {t(inAdmin ? "nav_back_to_site" : "nav_manage_site")}
+            </span>
           </Link>
         </div>
       )}
       <div className="mb-3.5 flex flex-col items-center gap-2 pt-3">
+        {me.data && <NotificationBell key={me.data.id} userId={me.data.id} className={RAIL_SQUARE_BTN} />}
         <button type="button" onClick={toggleTheme} aria-label={themeTip} title={themeTip} className={RAIL_SQUARE_BTN}>
           {theme === "dark" ? <Moon className="size-[17px]" /> : <Sun className="size-[17px]" />}
         </button>
@@ -222,6 +244,10 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           {children}
         </main>
       </div>
+
+      <Suspense fallback={null}>
+        <SocratesCompanion />
+      </Suspense>
 
       {accountOpen && (
         <TrapDialog

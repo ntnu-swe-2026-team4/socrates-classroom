@@ -248,7 +248,7 @@ JSON 可解析且通過 schema：`glm-5.3` low 100%、`glm-5.3` high 100%、`glm
 
 ---
 
-1. **學生流量（平台鏈）**：`providers.config.yaml` 的 availability 鏈（workers-ai ×2，2026-11-10 起 dgx-spark 暫時移除）；平台 credential 的段落全部 ZDR（Workers AI＝官方 ZDR），這是平台能保證的部分。
+1. **Platform chain** 使用 `providers.config.yaml` 的 availability（workers-ai ×2，2026-11-10 起 dgx-spark 暫時移除）。平台 credential 的流量受 ZDR 政策約束。
 2. **Teacher keys**（2026-11-09 定案）：老師可存**任意 pi builtin provider** 的 key＋自選 model；其教室流量**老師鏈在前、平台鏈墊後**。provider×model 是無窮空間，平台不逐一審查——資料責任由 **ToS 移轉**給教師（設定頁有責任條款文案）；平台僅保證 fallback 到的平台鏈 ZDR。
 3. **平台鏈模型白名單**（可進 fallback 的）：GLM-5.3-Flash、GLM-5.3、GLM-5.2、Kimi／Qwen／MiniMax／MiMo 等 0-day retention 模型。禁入：Muse Spark、Iceman（會訓練）、Grok／GPT Luna／Claude Haiku（30 天）。
 4. **開發流量**：Coding Plan 優先（額度大、離峰五折），任何 provider 皆可。
@@ -395,14 +395,14 @@ pnpm --filter @socrates/server run gen-config
 
 ### Teacher keys（老師自帶 key）
 
-- **設定入口**：老師登入 → `/settings` → Teacher keys 卡片 →「＋ 新增 provider」sheet（Vendors／Relays／Platform 分組磁磚，已加的顯示 ✓）→ 貼 key；一 provider 一把 key，providers 拖曳排序（`teacher_keys.sort_order`＝teacher legs 鏈序，老師鏈在前、平台鏈墊後）
+- **設定入口**在登入後的 `/settings` API keys 區塊。每個 provider 可設定一把 key，拖曳更新 `teacher_keys.sort_order`。各對話模式的 credential owner 見 [Gateway](./architecture.md#5-gatewayappsserversrcgateway)。
 - **Model legs**：每個 provider row 內新增多個 model leg（每 (provider, model) 一條，`teacher_key_models`），各自的 `max_concurrency`（NULL＝跟隨 `teacherChain.maxConcurrency` 預設 4）與 leg 內 `sort_order`；provider 層另有總併發上限 `teacher_keys.max_concurrency`（1–100，NULL＝不限）——同一把 key 的所有腳位 in-flight 合計達上限即整個 provider 讓位給下一腿／平台鏈（magpie 無此層，見下方對照）；API 形狀見 [`api-contract.md`](./api-contract.md) §9
 - **併發限額語意**：ledger 以 `(provider, model, credential)` 記帳，provider 總額以 `(provider, credential)` 合計；`Router` 是 isolate 內共享（module-level `WeakMap<Env, Router>`），故**所有限額與 cooldown 皆為 per-isolate best-effort**——同一老師的流量跨 isolate 時可能各自放行至上限（overshoot ×isolate 數），cooldown 也各 isolate 獨立學習。10k users 規模下為已知缺口，精確化設計見 [roadmap](./roadmap.md) 的 RoutingLedger DO 條目
 - **magpie 對照**（2026-11-20 查證）：magpie 的 concurrency 是 provider／account 層 lane——同 lane 的所有 model 共用一個額度（`provider.LaneLimit`），**沒有 per-model 上限**；它同樣沒有 provider 總量上限，社群已在 [magpie#4582](https://github.com/yetone/magpie/issues/4582)（open）提出 provider-wide cap 請求。本專案的 per-leg＋per-provider 雙層同時涵蓋兩種粒度：per-leg 對應「單 key 多 model、各 model 限額不同」的供應商（轉售商／coding plan 常見），per-provider 對應「看出口 IP／整個訂閱總量」的供應商——之後若有人想「照 magpie 改回 provider 層」，先讀這段
 - **額度與警示**（#146）：每個 provider row 可設**每月額度**（`teacher_keys.monthly_quota_usd`，USD，NULL＝無額度）；row 顯示本月累計 cost 與 tokens。老師鏈每個 terminal response 由 `usage` extension（pi `afterResponse` hook）記入 `teacher_key_usage`——cost 取 pi `Usage.cost.total`（供應商有回報＝billed，否則 catalog 估計），tokens 一併記錄，**不存對話內容**。有設額度時每次記帳後 inline 檢查水位（LiteLLM/Portkey 同款；usage 只隨流量成長，故無需 cron）：60/80/100% 各自以 `INSERT OR IGNORE` 原子佔位（PK＝`(user, provider, window, threshold)`，UTC 月曆 window，同月同水位只通知一次、跨月自動重置），寄 email 給老師（其 lang）與管理員（`ADMIN_ALERT_EMAIL`，zh）；announce 階段（收件人查詢或寄送）失敗 → 刪除佔位重臂（下輪重試）。佔位帶 60s claim lease（`claimed_at`；`sent_at` NULL＝pending，announce 成功才寫入）：claim 後 isolate 被逐出／死亡的孤兒 pending 佔位，會在 lease 過期後被下一輪水位檢查原子偷走重寄（`UPDATE … WHERE sent_at IS NULL AND claimed_at ≤ cutoff`）；代價是 lease 過期與 in-flight 寄送重疊時可能重複寄一次（email send 秒級、TTL 60s，實務踩不到）。email 走 Workers `send_email` binding（`ALERT_FROM_EMAIL` 須為 zone 驗證位址）；binding 缺失（本機 dev）→ log-only fail-open，佔位照記避免洗 log。記帳 gate 只看 `(user, provider)` 在 `teacher_keys` 有無 row＋provider id 比對，credential 來源不參與；今日平台腿皆 binding-kind／keyless（workers-ai、dgx）不會撞 teacher provider id——若日後 `defaults.availability` 加入 openai-completions 類平台腿，須先將 router decision 的 credential 傳進 usage sink 做 gate，否則平台花費會誤記老師額度並觸發老師警示。`teacher_key_usage` FK 綁 `users` 而非 `teacher_keys`：刪 key 再重貼同 provider，當月已累計 spend 照算進新額度窗口（同一個 provider 帳號，刻意如此）。btw side session（`forkBtw` 的 registry 只帶 `btw` extension）不經 usage hook，若走 teacher leg 不記帳——量小，已知缺口。平台自營 pool 的停損額度（#63）不在此範圍
 - **圖示**：設定頁 provider 圖示 vendored 自 yetone/magpie（MIT），一個 pi provider id 一檔（`apps/web/src/assets/providers/`）；UI 互動仿 magpie Providers 頁。`radius` 沒有專屬圖示——它是 NVIDIA 的 relay 服務，刻意共用 `nvidia.svg` 並歸類 relay，非 bug
 - **儲存**：D1 AES-GCM（金鑰 `BYOK_ENC_KEY`）；明文永不回傳（只回 last4）
-- **責任**：老師鏈流量 ToS 移轉給教師（平台僅保證平台鏈 ZDR）；學生無 BYOK 入口（#82）
+- **責任**由設定 API key 的帳戶依設定頁條款承擔。ZDR 適用於 platform chain。
 
 ### 上游失敗碼（#221 拍板，2026-11-21）
 

@@ -20,28 +20,8 @@ jobs:
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 26
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Lint + Typecheck + Test (final gate before deploy)
-        run: |
-          pnpm lint
-          pnpm typecheck
-          pnpm test
-      - name: YAML lint (yamllint)
-        run: |
-          pip install "yamllint==1.38.0"
-          yamllint .
-      - name: Config drift (regen config.gen.ts and diff)
-        run: |
-          pnpm --filter @socrates/server run gen-config
-          git diff --exit-code -- apps/server/src/gateway/config.gen.ts
-      - name: cf build (client + worker, built once)
-        run: pnpm exec cf build
-        working-directory: apps/web
+      - name: Shared gate (install / lint / yamllint / config-drift / typecheck / test / cf build)
+        uses: ./.github/actions/gate
       - name: D1 migrations
         run: pnpm exec cf d1 migrations apply $D1_DATABASE_ID --dir ../server/migrations
         working-directory: apps/web

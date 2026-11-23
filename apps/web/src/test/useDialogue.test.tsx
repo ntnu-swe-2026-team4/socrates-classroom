@@ -27,7 +27,11 @@ vi.mock("agents/react", () => ({
       readyState: WebSocket.OPEN,
       OPEN: WebSocket.OPEN,
       addEventListener: (type: string, notify: () => void) => {
-        const set = listeners.get(type) ?? listeners.set(type, new Set()).get(type)!;
+        let set = listeners.get(type);
+        if (set === undefined) {
+          set = new Set();
+          listeners.set(type, set);
+        }
         set.add(notify);
       },
       removeEventListener: (type: string, notify: () => void) => {
@@ -117,7 +121,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
 
   it("main flow: result=admission does not complete; the assistant entry landing moves speaking → idle", async () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
-    expect(JSON.parse(agent.sent[0]!)).toMatchObject({ type: "watch" });
+    expect(JSON.parse(agent.sent[0])).toMatchObject({ type: "watch" });
 
     emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答")]));
 
@@ -153,7 +157,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     expect(result.current.messages.at(-1)).toEqual({ id: "e4", role: "assistant", text: "你的直覺" });
     await waitFor(() => expect(result.current.phase).toBe("idle"));
     expect(tts).toHaveBeenCalledTimes(1);
-    expect(tts.mock.calls[0]![0]).toBe("你的直覺");
+    expect(tts.mock.calls[0][0]).toBe("你的直覺");
   });
 
   it("F2: a tool-round assistant entry does not complete pending, speak, or unlock input", async () => {
@@ -217,7 +221,8 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
       .find((frame) => frame.type === "entries");
     expect(op).toMatchObject({ type: "entries", query: { maxEntryId: 3 } });
 
-    emit({ type: "result", id: op!.id!, result: { items: [userEntry(0, "更早")] } } as unknown as ServerMessage);
+    if (op?.id === undefined) throw new Error("entries frame missing id");
+    emit({ type: "result", id: op.id, result: { items: [userEntry(0, "更早")] } } as unknown as ServerMessage);
     await waitFor(() => expect(result.current.messages[0]).toEqual({ id: "e0", role: "user", text: "更早" }));
     expect(result.current.canLoadEarlier).toBe(false);
   });
@@ -243,7 +248,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     act(() => result.current.send("第一問"));
     emit(opsFrame([userEntry(1, "第一問"), assistantEntry(2, "第一答")]));
     expect(result.current.phase).toBe("speaking");
-    const firstSignal = tts.mock.calls[0]![2] as AbortSignal;
+    const firstSignal = tts.mock.calls[0][2] as AbortSignal;
 
     act(() => result.current.send("第二問"));
     expect(firstSignal.aborted).toBe(true);
@@ -297,7 +302,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     act(() => result.current.send("孤兒 run 的問題"));
     emit(viewFrame([userEntry(1, "孤兒 run 的問題"), assistantEntry(2, "孤兒的答案")]));
     expect(result.current.phase).toBe("speaking");
-    expect(tts.mock.calls[0]![0]).toBe("孤兒的答案");
+    expect(tts.mock.calls[0][0]).toBe("孤兒的答案");
   });
 
   it("run failure broadcast: id-less error clears pending; ignored when none is pending", () => {
@@ -374,11 +379,11 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     act(() => result.current.send("被打拒的問題"));
     const submitted = agent.sent.filter((raw) => raw.includes("submit"));
     expect(submitted).toHaveLength(1);
-    emit({ type: "error", id: JSON.parse(submitted[0]!).id, message: "ConversationBusy" });
+    emit({ type: "error", id: JSON.parse(submitted[0]).id, message: "ConversationBusy" });
     act(() => result.current.retryLast());
     const resent = agent.sent.filter((raw) => raw.includes("submit"));
     expect(resent).toHaveLength(2);
-    expect(JSON.parse(resent[1]!)).toMatchObject({ input: "被打拒的問題" });
+    expect(JSON.parse(resent[1])).toMatchObject({ input: "被打拒的問題" });
   });
 
   it("retryLast: cleared after a successful answer — no stale input remains", () => {
@@ -400,7 +405,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     expect(result.current.phase).toBe("thinking");
     emit(opsFrame([userEntry(3, "長對話中的問題"), assistantEntry(4, "跨過 splice 的回答")]));
     expect(result.current.phase).toBe("speaking");
-    expect(tts.mock.calls[0]![0]).toBe("跨過 splice 的回答");
+    expect(tts.mock.calls[0][0]).toBe("跨過 splice 的回答");
   });
 
   it("sliding window: a view past the baseline keeps waiting for the missing turn", () => {
@@ -479,7 +484,7 @@ describe("useDialogue (autoSend: queued first question)", () => {
         .map((raw) => JSON.parse(raw) as { type: string; input?: string })
         .filter((frame) => frame.type === "submit");
     expect(submits()).toHaveLength(1);
-    expect(submits()[0]!.input).toBe("什麼是正義？");
+    expect(submits()[0].input).toBe("什麼是正義？");
     expect(result.current.pending).toBe(true);
     expect(onAutoSent).toHaveBeenCalledTimes(1);
 
@@ -543,7 +548,7 @@ describe("useDialogue (autoSend: queued first question)", () => {
       releaseTts?.();
     });
     await waitFor(() => expect(submits()).toHaveLength(2));
-    expect(submits()[1]!.input).toBe("第二題");
+    expect(submits()[1].input).toBe("第二題");
   });
 });
 

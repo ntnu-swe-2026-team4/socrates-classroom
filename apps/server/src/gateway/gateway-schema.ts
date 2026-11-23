@@ -72,6 +72,7 @@ export const GatewayConfigSchema = z
       alarmBackoffMs: z.number().int().min(0),
       alarmTimeoutMs: z.number().int().min(1000),
       pseudonymPrefix: z.string().min(1),
+      axes: z.enum(["teacher", "ai", "both"]),
     }),
     teacherChain: z.object({
       maxConcurrency: z.number().int().min(1).max(100),

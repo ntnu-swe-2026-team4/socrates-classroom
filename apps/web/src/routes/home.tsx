@@ -1,3 +1,4 @@
+import { takeClassroomInvite } from "@/lib/classroomInvite";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { classroomsOptions } from "@/api/queries";
 import { useQuery } from "@tanstack/react-query";
@@ -8,9 +9,11 @@ import { Button, Card, PageHeader } from "@/components/ui";
 import { useT, type MessageKey } from "@/i18n";
 
 export const Route = createFileRoute("/home")({
-  beforeLoad: async ({ context }) => {
+  beforeLoad: async ({ context, preload }) => {
     const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
+    const invite = preload ? undefined : takeClassroomInvite();
+    if (invite) throw redirect({ href: invite, replace: true });
   },
   component: HomePage,
 });

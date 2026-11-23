@@ -1,7 +1,12 @@
-import { queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import { api, ApiError } from "@/api";
 import { readTermHistory } from "./local";
+
+export const clientConfigOptions = queryOptions({
+  queryKey: ["config"],
+  queryFn: () => api.config(),
+});
 
 export const classroomsOptions = queryOptions({
   queryKey: ["classrooms"],
@@ -41,6 +46,21 @@ export function activitySlotsOptions(activityId: string) {
   return queryOptions({
     queryKey: ["activity-slots", activityId],
     queryFn: () => api.listActivitySlots(activityId),
+  });
+}
+
+export function soloThreadsOptions(userId: string) {
+  return queryOptions({
+    queryKey: ["soloThreads", userId],
+    queryFn: () => api.listSoloThreads(),
+  });
+}
+
+export function soloThreadOptions(userId: string, id: string) {
+  return queryOptions({
+    queryKey: [...soloThreadsOptions(userId).queryKey, id],
+    queryFn: () => api.getSoloThread(id),
+    retry: (failureCount, error) => failureCount < 1 && !(error instanceof ApiError && error.code === "not_found"),
   });
 }
 
@@ -103,6 +123,14 @@ export const notificationsOptions = queryOptions({
   queryFn: () => api.notifications(),
 });
 
+export function accountNotificationsOptions(userId: string) {
+  return queryOptions({
+    ...notificationsOptions,
+    queryKey: [...notificationsOptions.queryKey, userId],
+    refetchInterval: 5 * 60 * 1000,
+  });
+}
+
 export const devAccountsOptions = queryOptions({
   queryKey: ["dev-accounts"],
   queryFn: () => api.devAccounts(),
@@ -125,5 +153,76 @@ export function qrOptions(url: string, size: number) {
         color: { dark: "#17181c", light: "#ffffff" },
       }),
     staleTime: Infinity,
+  });
+}
+
+const classroomPage = {
+  initialPageParam: "",
+  getNextPageParam: (page: { nextCursor: string | null }) => page.nextCursor ?? undefined,
+  retry: (attempt: number, error: Error) =>
+    attempt < 2 && !(error instanceof ApiError && ["forbidden", "unauthorized", "not_found"].includes(error.code)),
+};
+
+export function classroomAnnouncementsOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "announcements"],
+    queryFn: ({ pageParam }) => api.classroom.announcements(id, pageParam || undefined),
+  });
+}
+
+export function classroomPostsOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "posts"],
+    queryFn: ({ pageParam }) => api.classroom.posts(id, pageParam || undefined),
+  });
+}
+
+export function classroomRepliesOptions(id: string, postId: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: [...classroomPostsOptions(id).queryKey, postId],
+    queryFn: ({ pageParam }) => api.classroom.replies(id, postId, pageParam || undefined),
+  });
+}
+
+export function classroomMembersOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "members"],
+    queryFn: ({ pageParam }) => api.classroom.members(id, pageParam || undefined),
+  });
+}
+
+export function classroomActivitiesOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "activities"],
+    queryFn: ({ pageParam }) => api.classroom.activities(id, pageParam || undefined),
+  });
+}
+
+export function classroomInvitesOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "invites"],
+    queryFn: ({ pageParam }) => api.classroom.invites(id, pageParam || undefined),
+  });
+}
+
+export function scopedInviteOptions(token: string) {
+  return queryOptions({
+    queryKey: ["scopedInvite", token],
+    queryFn: () => api.classroom.previewInvite(token),
+    retry: false,
+  });
+}
+
+export function myReportsOptions(userId: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["myReports", userId],
+    queryFn: ({ pageParam }) => api.classroom.myReports(pageParam || undefined),
   });
 }

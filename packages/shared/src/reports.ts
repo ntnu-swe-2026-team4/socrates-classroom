@@ -71,6 +71,25 @@ export const StudentAnalysisSchema = z.union([
 
 export type StudentAnalysis = z.infer<typeof StudentAnalysisSchema>;
 
+export const IndicatorSchema = z.object({
+  level: z.literal([0, 1, 2, 3]),
+  turns: z.array(z.number().int().min(1)),
+  evidence: z.string(),
+});
+
+export type Indicator = z.infer<typeof IndicatorSchema>;
+
+export const ThinkingIndicatorsSchema = z.object({
+  c1: IndicatorSchema,
+  c2: IndicatorSchema,
+  s1: IndicatorSchema,
+  s2: IndicatorSchema,
+  a1: IndicatorSchema,
+  a2: IndicatorSchema,
+});
+
+export type ThinkingIndicators = z.infer<typeof ThinkingIndicatorsSchema>;
+
 export const TopicGenSchema = z.object({
   topics: z
     .array(

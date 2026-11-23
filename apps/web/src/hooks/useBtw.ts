@@ -4,17 +4,21 @@ import { applyImmutable } from "@earendil-works/chord/delta";
 import type { Message } from "@earendil-works/pi-ai";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
-import { answered, intermediateAssistant, liveTextOf, textOf, type DialogueMessage } from "@/hooks/useDialogue";
+import {
+  answered,
+  dialogueName,
+  intermediateAssistant,
+  liveTextOf,
+  textOf,
+  type DialogueAgent,
+  type DialogueMessage,
+} from "@/hooks/useDialogue";
 
 export type BtwPhase = "idle" | "thinking" | "streaming";
 
 interface StoredSession {
   session: string;
   forkHead: number;
-}
-
-function storageKey(activityId: string, participantId: string): string {
-  return `btw:${activityId}:${participantId}`;
 }
 
 function readStored(key: string): StoredSession | null {
@@ -39,8 +43,9 @@ function writeStored(key: string, value: StoredSession | null): void {
   }
 }
 
-export function useBtw(activityId: string, participantId: string, enabled: boolean) {
-  const key = storageKey(activityId, participantId);
+export function useBtw(threadId: string, userId: string, enabled: boolean, agent: DialogueAgent = "chat") {
+  const name = dialogueName(agent, threadId, userId);
+  const key = agent === "solo-chat" ? `btw:solo-chat:${name}` : `btw:${name}`;
   const [view, setView] = useState<ConversationView | null>(null);
   const [phase, setPhase] = useState<BtwPhase>("idle");
   const [error, setError] = useState<{ code: string } | null>(null);
@@ -59,15 +64,14 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
   function open(socket: { send: (data: string) => void }, fresh: boolean) {
     const id = crypto.randomUUID();
     openIdRef.current = id;
-    freshRef.current = fresh || sessionRef.current === null;
+    const existing = sessionRef.current;
+    freshRef.current = fresh || existing === null;
     setBound(false);
-    socket.send(
-      JSON.stringify({
-        type: "btw",
-        id,
-        ...(freshRef.current ? {} : { session: sessionRef.current! }),
-      } satisfies ClientMessage),
-    );
+    if (existing === null || fresh) {
+      socket.send(JSON.stringify({ type: "btw", id } satisfies ClientMessage));
+      return;
+    }
+    socket.send(JSON.stringify({ type: "btw", id, session: existing } satisfies ClientMessage));
   }
 
   function finishPending(failure?: string) {
@@ -169,8 +173,8 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
   }
 
   const socket = useAgent({
-    agent: "chat",
-    name: `${activityId}:${participantId}`,
+    agent,
+    name,
     query: { lang: document.documentElement.lang || "zh-TW" },
     enabled,
     onOpen: (event) => open(event.target as WebSocket, false),

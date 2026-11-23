@@ -15,4 +15,10 @@ describe("GET /health (#215)", () => {
     const production = await callWith({ ENVIRONMENT: "production" }, "/health");
     expect(await production.text()).toBe('{"ok":true}');
   });
+
+  test("callWith overrides stay scoped to their own request (#292)", async () => {
+    await callWith({ AUTH_SECRET: "", BYOK_ENC_KEY: "" }, "/health");
+    const after = (await (await call("/health")).json()) as { ok: boolean; warnings?: string[] };
+    expect(after).toEqual({ ok: true, warnings: [] });
+  });
 });

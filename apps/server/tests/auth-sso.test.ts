@@ -11,7 +11,7 @@ import {
   oauthProviders,
   resetGoogleKeyCache,
 } from "../src/oauth";
-import { call, classroomWithActivity, cookieOf } from "./helpers";
+import { call, classroomWithActivity, cookieOf, must } from "./helpers";
 import { one, run } from "../src/db/d1";
 
 const migrations = inject("d1Migrations");
@@ -58,7 +58,7 @@ async function idToken(claims: Record<string, unknown>, key = signingKey, kid = 
 function cookieNamed(res: Response, name: string): string | undefined {
   return res.headers
     .getSetCookie()
-    .map((line) => line.split(";")[0]!)
+    .map((line) => line.split(";")[0])
     .find((pair) => pair.startsWith(`${name}=`) && pair.length > name.length + 1);
 }
 
@@ -72,10 +72,15 @@ interface Started {
 async function start(): Promise<Started> {
   const res = await call("/api/auth/oauth/google/start", { redirect: "manual" });
   expect(res.status).toBe(302);
-  const url = new URL(res.headers.get("Location")!);
+  const url = new URL(must(res.headers.get("Location"), "Location header"));
   const cookie = cookieNamed(res, "socrates_oauth");
   expect(cookie).toBeDefined();
-  return { cookie: cookie!, state: url.searchParams.get("state")!, nonce: url.searchParams.get("nonce")!, url };
+  return {
+    cookie: must(cookie, "socrates_oauth cookie"),
+    state: must(url.searchParams.get("state"), "oauth state"),
+    nonce: must(url.searchParams.get("nonce"), "oauth nonce"),
+    url,
+  };
 }
 
 async function mockGoogle(claims: (nonce: string) => Record<string, unknown>, nonce: string, key = signingKey) {
@@ -248,13 +253,13 @@ describe("Google OAuth", () => {
     const first = await googleLogin("g-100");
     expect(first.status).toBe(302);
     expect(first.headers.get("Location")).toBe("/home");
-    const session = cookieNamed(first, "socrates_session")!;
+    const session = must(cookieNamed(first, "socrates_session"), "socrates_session cookie");
     const user = await me(session);
     expect(user?.isAdmin).toBe(false);
     expect(user?.name).toBe("Google g-100");
 
     const second = await googleLogin("g-100");
-    const again = await me(cookieNamed(second, "socrates_session")!);
+    const again = await me(must(cookieNamed(second, "socrates_session"), "socrates_session cookie"));
     expect(again?.id).toBe(user?.id);
   });
 
@@ -278,7 +283,7 @@ describe("Google OAuth", () => {
     });
     const emailUser = (await signup.json()) as { id: string };
     const google = await googleLogin("g-200");
-    const googleUser = await me(cookieNamed(google, "socrates_session")!);
+    const googleUser = await me(must(cookieNamed(google, "socrates_session"), "socrates_session cookie"));
     expect(googleUser?.id).toBeDefined();
     expect(googleUser?.id).not.toBe(emailUser.id);
 
@@ -383,10 +388,14 @@ describe("Facebook OAuth (#207)", () => {
   async function fbStart(): Promise<FbStarted> {
     const res = await call("/api/auth/oauth/facebook/start", { redirect: "manual" });
     expect(res.status).toBe(302);
-    const url = new URL(res.headers.get("Location")!);
+    const url = new URL(must(res.headers.get("Location"), "Location header"));
     const cookie = cookieNamed(res, "socrates_oauth");
     expect(cookie).toBeDefined();
-    return { cookie: cookie!, state: url.searchParams.get("state")!, url };
+    return {
+      cookie: must(cookie, "socrates_oauth cookie"),
+      state: must(url.searchParams.get("state"), "oauth state"),
+      url,
+    };
   }
 
   function mockFacebook(profile: Record<string, unknown>) {
@@ -435,7 +444,9 @@ describe("Facebook OAuth (#207)", () => {
     expect(started.url.searchParams.get("client_id")).toBe(FB_APP_ID);
     expect(started.url.searchParams.get("response_type")).toBe("code");
     expect(started.url.searchParams.get("scope")).toBe("email");
-    expect(started.url.searchParams.get("redirect_uri")!.endsWith("/api/auth/oauth/facebook/callback")).toBe(true);
+    expect(
+      must(started.url.searchParams.get("redirect_uri"), "redirect_uri").endsWith("/api/auth/oauth/facebook/callback"),
+    ).toBe(true);
     expect(started.state.length).toBeGreaterThan(0);
   });
 
@@ -443,12 +454,12 @@ describe("Facebook OAuth (#207)", () => {
     const first = await fbLogin({ id: "fb-100", name: "林書豪", email: "fb100@example.com" });
     expect(first.status).toBe(302);
     expect(first.headers.get("Location")).toBe("/home");
-    const session = cookieNamed(first, "socrates_session")!;
+    const session = must(cookieNamed(first, "socrates_session"), "socrates_session cookie");
     const user = await me(session);
     expect(user?.name).toBe("林書豪");
 
     const second = await fbLogin({ id: "fb-100", name: "林書豪", email: "fb100@example.com" });
-    const again = await me(cookieNamed(second, "socrates_session")!);
+    const again = await me(must(cookieNamed(second, "socrates_session"), "socrates_session cookie"));
     expect(again?.id).toBe(user?.id);
   });
 

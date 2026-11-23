@@ -1,7 +1,14 @@
 import { Hono } from "hono";
-import { AdminUserCreateInputSchema, AdminUserUpdateInputSchema, type AdminUser } from "@socrates/shared";
+import {
+  AdminSettingsSchema,
+  AdminUserCreateInputSchema,
+  AdminUserUpdateInputSchema,
+  type AdminSettings,
+  type AdminUser,
+} from "@socrates/shared";
 import { all, one, run } from "../db/d1";
 import { hashPassword } from "../auth";
+import { reportAxesPolicyOf, setReportAxesPolicy } from "../services/settings";
 import {
   fail,
   guardAdmin,
@@ -106,5 +113,13 @@ export function adminRoutes() {
       const updated = await loadAdminUser(c.env.DB, target.id);
       if (!updated) fail(500, "internal_error");
       return c.json(updated);
+    })
+    .get("/admin/settings", guardAdmin(), async (c) =>
+      c.json({ reportAxes: await reportAxesPolicyOf(c.env.DB) } satisfies AdminSettings),
+    )
+    .put("/admin/settings", guardAdmin(), validateJson(AdminSettingsSchema), async (c) => {
+      const input = c.req.valid("json");
+      await setReportAxesPolicy(c.env.DB, input.reportAxes);
+      return c.json({ reportAxes: await reportAxesPolicyOf(c.env.DB) } satisfies AdminSettings);
     });
 }

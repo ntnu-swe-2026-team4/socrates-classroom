@@ -25,7 +25,11 @@ vi.mock("agents/react", () => ({
       readyState: WebSocket.OPEN,
       OPEN: WebSocket.OPEN,
       addEventListener: (type: string, notify: () => void) => {
-        const set = listeners.get(type) ?? listeners.set(type, new Set()).get(type)!;
+        let set = listeners.get(type);
+        if (set === undefined) {
+          set = new Set();
+          listeners.set(type, set);
+        }
         set.add(notify);
       },
       removeEventListener: (type: string, notify: () => void) => {

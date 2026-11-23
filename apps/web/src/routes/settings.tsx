@@ -17,9 +17,9 @@ export const Route = createFileRoute("/settings")({
   validateSearch: (search: Record<string, unknown>): { section?: Section } => ({
     section: SECTIONS.find((item) => item.id === search.section && item.id !== "general")?.id,
   }),
-  beforeLoad: async ({ context }) => {
+  beforeLoad: async ({ context, location }) => {
     const me = await meOf(context.queryClient);
-    if (!me) throw redirect({ to: "/home" });
+    if (!me) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
   },
   component: SettingsPage,
 });
@@ -30,7 +30,7 @@ function SettingsPage() {
   const navigate = useNavigate();
   const wanted = Route.useSearch().section ?? "general";
   const section = SECTIONS.some((item) => item.id === wanted) ? wanted : "general";
-  const current = SECTIONS.find((item) => item.id === section) ?? SECTIONS[0]!;
+  const current = SECTIONS.find((item) => item.id === section) ?? SECTIONS[0];
   const hasOwnHeading = section === "keys";
 
   return (

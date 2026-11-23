@@ -5,7 +5,7 @@ import { SidebarToggle, useSidebarOverlay } from "@/components/ChatLayout";
 import { SocratesWindow } from "@/components/SocratesCompanion";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { cn } from "@/components/ui";
-import { textOf, useDialogue } from "@/hooks/useDialogue";
+import { textOf, useDialogue, type DialogueAgent } from "@/hooks/useDialogue";
 import { useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { useElapsed } from "@/hooks/useSubscription";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
@@ -29,12 +29,15 @@ const VEIL_MASK = "linear-gradient(to bottom, transparent, black 5rem)";
 export interface DialogueViewProps {
   threadId: string;
   userId: string;
+  agent?: DialogueAgent;
   title: string;
   subtitle?: ReactNode;
   statement?: string;
   prompts?: string[];
   autoSend?: string;
-  onAutoSent?: () => void;
+  autoSendOperationId?: string;
+  onAutoSent?: (receipt?: { accepted: boolean }) => void;
+  onSubmitReceipt?: () => void;
   onActivityFinished?: () => void;
   onFirstSend?: (text: string) => void;
   openTerm?: string;
@@ -46,12 +49,15 @@ export interface DialogueViewProps {
 export function DialogueView({
   threadId,
   userId,
+  agent,
   title,
   subtitle,
   statement,
   prompts = [],
   autoSend,
+  autoSendOperationId,
   onAutoSent,
+  onSubmitReceipt,
   onActivityFinished,
   onFirstSend,
   openTerm,
@@ -77,8 +83,11 @@ export function DialogueView({
     replay,
     interrupt,
   } = useDialogue(threadId, userId, {
+    agent,
     autoSend,
+    autoSendOperationId,
     onAutoSent,
+    onSubmitReceipt,
     onActivityFinished,
     onDisconnect: () => void voice.stop(),
   });
@@ -224,7 +233,7 @@ export function DialogueView({
           <SidebarToggle />
           <div className="min-w-0 flex-1 pl-1">
             <h1 className="truncate text-[14.5px] font-medium text-ink">{title}</h1>
-            {subtitle && <p className="truncate text-[11.5px] text-ink-faint">{subtitle}</p>}
+            {subtitle && <p className="truncate text-[11.5px] text-ink-soft">{subtitle}</p>}
           </div>
           {status && <span className="state-shimmer hidden text-[12px] sm:inline">{status}</span>}
           {busy && (
@@ -240,6 +249,7 @@ export function DialogueView({
           <button
             type="button"
             onClick={() => togglePanel("btw")}
+            aria-label={t("btw_panel")}
             aria-pressed={sidePanel === "btw"}
             title={t("btw_slash_hint")}
             className={cn(
@@ -255,6 +265,7 @@ export function DialogueView({
           <button
             type="button"
             onClick={() => togglePanel("term")}
+            aria-label={t("term_panel")}
             aria-pressed={panelOpen}
             title={t("term_panel")}
             className={cn(
@@ -521,8 +532,9 @@ export function DialogueView({
         ref={btwRef}
         open={sidePanel === "btw"}
         onClose={() => setSidePanel(null)}
-        activityId={threadId}
-        participantId={userId}
+        threadId={threadId}
+        userId={userId}
+        agent={agent}
       />
     </div>
   );

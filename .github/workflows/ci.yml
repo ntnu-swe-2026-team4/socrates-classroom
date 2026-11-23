@@ -20,29 +20,8 @@ jobs:
       CF_SEND_TELEMETRY: "false"
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 26
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Lint (Biome)
-        run: pnpm lint
-      - name: YAML lint (yamllint)
-        run: |
-          pip install "yamllint==1.38.0"
-          yamllint .
-      - name: Config drift (regen config.gen.ts and diff)
-        run: |
-          pnpm --filter @socrates/server run gen-config
-          git diff --exit-code -- apps/server/src/gateway/config.gen.ts
-      - name: Typecheck
-        run: pnpm typecheck
-      - name: "Test (server: workerd real runtime, LLM_PROVIDER=mock / web: vitest)"
-        run: pnpm test
-      - name: cf build (client + worker into Build Output)
-        run: pnpm exec cf build
-        working-directory: apps/web
+      - name: Shared gate (install / lint / yamllint / config-drift / typecheck / test / cf build)
+        uses: ./.github/actions/gate
       - name: cf deploy dry-run and required secret warning (no credentials needed, fork-PR safe)
         run: |
           pnpm exec node dev/check-secret-drift.ts .cloudflare/output/v0/workers/default/worker.config.json

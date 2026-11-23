@@ -2,13 +2,24 @@ import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { inject } from "vitest";
-import { run } from "../src/db/d1";
+import { one, run } from "../src/db/d1";
+import { setReportAxesPolicy } from "../src/services/settings";
 import { seedFixture } from "../src/seed";
 import worker from "../src/index";
 import type { Env } from "../src/env";
-import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
+import {
+  call,
+  classroomWithActivity,
+  cookieOf,
+  createClassroom,
+  must,
+  participantIdOf,
+  registerStudent,
+  speak,
+} from "./helpers";
 
 let teacher: string;
+let classroomId: string;
 let code: string;
 let activityId: string;
 
@@ -26,6 +37,7 @@ beforeAll(async () => {
   teacher = cookieOf(login);
 
   const created = await classroomWithActivity(teacher, "R6 班");
+  classroomId = created.classroomId;
   code = created.code;
   activityId = created.activityId;
 });
@@ -117,10 +129,12 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       code: string | null;
       current: { activityId: string } | null;
     }>;
-    const own = teacherList.find((entry) => entry.current?.activityId === activityId);
-    expect(own).toBeDefined();
-    expect(own!.role).toBe("teacher");
-    expect(own!.code).not.toBeNull();
+    const own = must(
+      teacherList.find((entry) => entry.current?.activityId === activityId),
+      "teacher classroom entry",
+    );
+    expect(own.role).toBe("teacher");
+    expect(own.code).not.toBeNull();
 
     const joined = await registerStudent(code, "R6生C");
     const student = joined.cookie;
@@ -131,12 +145,14 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       memberCount: number;
       current: { activityId: string } | null;
     }>;
-    const member = studentList.find((entry) => entry.current?.activityId === activityId);
-    expect(member).toBeDefined();
-    expect(member!.role).toBe("student");
-    expect(member!.code).toBeNull();
-    expect(member!.teacherName).toBeTruthy();
-    expect(member!.memberCount).toBeGreaterThan(0);
+    const member = must(
+      studentList.find((entry) => entry.current?.activityId === activityId),
+      "student classroom entry",
+    );
+    expect(member.role).toBe("student");
+    expect(member.code).toBeNull();
+    expect(member.teacherName).toBeTruthy();
+    expect(member.memberCount).toBeGreaterThan(0);
   });
 
   test("startActivity — reopens an activity ({topicId} contract shape; same code yields a new activityId)", async () => {
@@ -146,7 +162,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     const restarted = await call("/api/classrooms/c_missing/activities", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ topicId: topics[0]!.id }),
+      body: JSON.stringify({ topicId: topics[0].id }),
     });
     expect(restarted.status).toBe(404);
 
@@ -154,16 +170,176 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       id: string;
       current: { activityId: string } | null;
     }>;
-    const own = classrooms.find((entry) => entry.current?.activityId === activityId);
-    const res = await call(`/api/classrooms/${own!.id}/activities`, {
+    const own = must(
+      classrooms.find((entry) => entry.current?.activityId === activityId),
+      "teacher classroom entry",
+    );
+    const res = await call(`/api/classrooms/${own.id}/activities`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: teacher },
-      body: JSON.stringify({ topicId: topics[0]!.id }),
+      body: JSON.stringify({ topicId: topics[0].id }),
     });
     expect(res.status).toBe(201);
     const payload = (await res.json()) as { activityId: string; code: string };
     expect(payload.activityId).not.toBe(activityId);
     expect(payload.code).toBe(code);
+  });
+
+  test("topics carry value axes: seeded fixtures, optional default, 1..3 validation, and copy preserve/override", async () => {
+    const seededList = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+      axes: Array<{ name: string; left: string; right: string }>;
+    }>;
+    for (const id of ["t_fx_trolley", "t_fx_surrogate", "t_fx_ai_rights"]) {
+      const fixture = must(
+        seededList.find((entry) => entry.id === id),
+        `seeded fixture ${id}`,
+      );
+      expect(fixture.axes.length).toBeGreaterThan(0);
+    }
+
+    const noAxesRes = await call("/api/topics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ title: "無軸個人題", statement: "未填軸時預設空陣列", prompts: [] }),
+    });
+    expect(noAxesRes.status).toBe(201);
+    const noAxesTopic = (await noAxesRes.json()) as {
+      id: string;
+      axes: Array<{ name: string; left: string; right: string }>;
+    };
+    expect(noAxesTopic.axes).toEqual([]);
+
+    const maxLabel = "a".repeat(40);
+    const threeAxes = [
+      { name: "  契約與人情  ", left: "  契約優先 ", right: " 人情優先  " },
+      { name: maxLabel, left: maxLabel, right: maxLabel },
+      { name: "第三軸", left: "左端", right: "右端" },
+    ];
+    const expectedTrimmed = [
+      { name: "契約與人情", left: "契約優先", right: "人情優先" },
+      { name: maxLabel, left: maxLabel, right: maxLabel },
+      { name: "第三軸", left: "左端", right: "右端" },
+    ];
+    const withAxesRes = await call("/api/topics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ title: "帶軸個人題", statement: "含一至三條軸", prompts: ["為何？"], axes: threeAxes }),
+    });
+    expect(withAxesRes.status).toBe(201);
+    const withAxesTopic = (await withAxesRes.json()) as {
+      id: string;
+      axes: Array<{ name: string; left: string; right: string }>;
+    };
+    expect(withAxesTopic.axes).toEqual(expectedTrimmed);
+
+    const listedAfter = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{
+      id: string;
+      axes: Array<{ name: string; left: string; right: string }>;
+    }>;
+    expect(listedAfter.find((entry) => entry.id === withAxesTopic.id)?.axes).toEqual(expectedTrimmed);
+
+    const classNoAxes = await call(`/api/classrooms/${classroomId}/topics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ title: "無軸班級題", statement: "班級題未填軸", prompts: [] }),
+    });
+    expect(classNoAxes.status).toBe(201);
+    const classNoAxesTopic = (await classNoAxes.json()) as { id: string; axes: unknown[] };
+    expect(classNoAxesTopic.axes).toEqual([]);
+
+    const oneAxis = [{ name: "程序與結果", left: "程序正義", right: "結果效益" }];
+    const classWithAxes = await call(`/api/classrooms/${classroomId}/topics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ title: "帶軸班級題", statement: "班級題帶一條軸", prompts: ["怎麼選？"], axes: oneAxis }),
+    });
+    expect(classWithAxes.status).toBe(201);
+    const classWithAxesTopic = (await classWithAxes.json()) as {
+      id: string;
+      axes: Array<{ name: string; left: string; right: string }>;
+    };
+    expect(classWithAxesTopic.axes).toEqual(oneAxis);
+
+    const classTopics = (await (
+      await call(`/api/classrooms/${classroomId}/topics`, { headers: { Cookie: teacher } })
+    ).json()) as Array<{ id: string; axes: Array<{ name: string; left: string; right: string }> }>;
+    expect(classTopics.find((entry) => entry.id === classWithAxesTopic.id)?.axes).toEqual(oneAxis);
+
+    const invalidAxesCases = [
+      [
+        { name: "軸1", left: "L", right: "R" },
+        { name: "軸2", left: "L", right: "R" },
+        { name: "軸3", left: "L", right: "R" },
+        { name: "軸4", left: "L", right: "R" },
+      ],
+      [{ name: "", left: "L", right: "R" }],
+      [{ name: "   ", left: "L", right: "R" }],
+      [{ name: "軸", left: "   ", right: "R" }],
+      [{ name: "軸", left: "L", right: "" }],
+      [{ name: "a".repeat(41), left: "L", right: "R" }],
+      [{ name: "軸", left: "a".repeat(41), right: "R" }],
+      [{ name: "軸", left: "L", right: "a".repeat(41) }],
+      [
+        { name: "重複軸", left: "A", right: "B" },
+        { name: "重複軸", left: "C", right: "D" },
+      ],
+      [
+        { name: "軸", left: "A", right: "B" },
+        { name: " 軸 ", left: "C", right: "D" },
+      ],
+    ];
+    for (const badAxes of invalidAxesCases) {
+      const badPersonal = await call("/api/topics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({ title: "壞軸", statement: "驗證失敗", prompts: [], axes: badAxes }),
+      });
+      expect(badPersonal.status).toBe(422);
+
+      const badClassroom = await call(`/api/classrooms/${classroomId}/topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({ title: "壞軸班級題", statement: "驗證失敗", prompts: [], axes: badAxes }),
+      });
+      expect(badClassroom.status).toBe(422);
+
+      const badCopy = await call(`/api/topics/${noAxesTopic.id}/copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: teacher },
+        body: JSON.stringify({ classroomId, axes: badAxes }),
+      });
+      expect(badCopy.status).toBe(422);
+    }
+
+    const copiedWithAxes = await call(`/api/topics/${noAxesTopic.id}/copy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ classroomId, axes: oneAxis }),
+    });
+    expect(copiedWithAxes.status).toBe(201);
+    const copiedTopic = (await copiedWithAxes.json()) as {
+      id: string;
+      axes: Array<{ name: string; left: string; right: string }>;
+    };
+    expect(copiedTopic.axes).toEqual(oneAxis);
+
+    const copiedKeep = await call(`/api/topics/${copiedTopic.id}/copy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ classroomId }),
+    });
+    expect(copiedKeep.status).toBe(201);
+    expect(((await copiedKeep.json()) as { axes: unknown[] }).axes).toEqual(oneAxis);
+
+    const overrideAxes = [{ name: "個人與群體", left: "個人自由", right: "群體福祉" }];
+    const copiedOverride = await call(`/api/topics/${copiedTopic.id}/copy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: teacher },
+      body: JSON.stringify({ classroomId, axes: overrideAxes }),
+    });
+    expect(copiedOverride.status).toBe(201);
+    expect(((await copiedOverride.json()) as { axes: unknown[] }).axes).toEqual(overrideAxes);
   });
 
   test("finish → report semantics (pending → 404 report_pending; late join blocked; rejoin keeps the activity)", async () => {
@@ -556,7 +732,12 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     const topic = await call("/api/topics", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: account },
-      body: JSON.stringify({ title: "自建題", statement: "自建題描述", prompts: ["你的判斷是什麼？"] }),
+      body: JSON.stringify({
+        title: "自建題",
+        statement: "自建題描述",
+        prompts: ["你的判斷是什麼？"],
+        axes: [{ name: "判斷依據", left: "原則", right: "後果" }],
+      }),
     });
     expect(topic.status).toBe(201);
     const topicId = ((await topic.json()) as { id: string }).id;
@@ -589,7 +770,9 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     });
     expect(generated.status).toBe(200);
     expect(generated.headers.get("X-Socrates-Fallback")).toBe("mock");
-    expect(Array.isArray(await generated.json())).toBe(true);
+    const topics = (await generated.json()) as Array<{ axes: unknown[] }>;
+    expect(topics.length).toBeGreaterThan(0);
+    for (const topic of topics) expect(topic.axes).toEqual([]);
   });
 
   test.each([
@@ -641,7 +824,7 @@ describe("report (#74: finish → pending → ready → GET)", () => {
       id: string;
       title: string;
     }>;
-    const created = await classroomWithActivity(teacher, "Report 班", topic!.id);
+    const created = await classroomWithActivity(teacher, "Report 班", topic.id);
     const student = (await registerStudent(created.code, "報告生")).cookie;
     await speak(
       `${created.activityId}:${await participantIdOf(created.activityId, student)}`,
@@ -669,7 +852,7 @@ describe("report (#74: finish → pending → ready → GET)", () => {
       },
       { timeout: 60_000, interval: 500 },
     );
-    expect(settled.topicTitle).toBe(topic!.title);
+    expect(settled.topicTitle).toBe(topic.title);
     expect(Array.isArray(settled.students)).toBe(true);
 
     const asStudent = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: student } });
@@ -725,6 +908,155 @@ describe("rate limiting + register gate (round-6 restores)", () => {
     });
     expect(registered.status).toBe(409);
     expect(((await registered.json()) as { code?: string }).code).toBe("activity_finished");
+  });
+
+  test("GET /api/config tells the web app who decides the class report's axes (default: both)", async () => {
+    const res = await call("/api/config");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ reportAxes: "both" });
+  });
+
+  test("starting an activity in teacher-axes mode requires topic axes; legacy starts still accept axisless topics and store ai mode", async () => {
+    const json = { "Content-Type": "application/json", Cookie: teacher };
+    const bareRes = await call(`/api/classrooms/${classroomId}/topics`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ title: "無軸活動題", statement: "未設軸", prompts: [] }),
+    });
+    expect(bareRes.status).toBe(201);
+    const bareTopic = (await bareRes.json()) as { id: string };
+
+    const blocked = await call(`/api/classrooms/${classroomId}/activities`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ topicId: bareTopic.id, mode: "test", reportAxes: "teacher" }),
+    });
+    expect(blocked.status).toBe(422);
+    expect(((await blocked.json()) as { code: string }).code).toBe("topic_axes_required");
+
+    const aiStarted = await call(`/api/classrooms/${classroomId}/activities`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ topicId: bareTopic.id, mode: "test" }),
+    });
+    expect(aiStarted.status).toBe(201);
+    const aiPayload = (await aiStarted.json()) as { activityId: string };
+    const aiRow = await one<{ report_axes: string | null }>(
+      env.DB,
+      "SELECT report_axes FROM activities WHERE id = $id",
+      { id: aiPayload.activityId },
+    );
+    expect(aiRow?.report_axes).toBe("ai");
+
+    const copied = await call(`/api/topics/${bareTopic.id}/copy`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({
+        classroomId,
+        axes: [{ name: "契約與人情", left: "契約優先", right: "人情優先" }],
+      }),
+    });
+    expect(copied.status).toBe(201);
+    const copy = (await copied.json()) as { id: string };
+
+    const teacherStarted = await call(`/api/classrooms/${classroomId}/activities`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ topicId: copy.id, mode: "test", reportAxes: "teacher" }),
+    });
+    expect(teacherStarted.status).toBe(201);
+    const teacherPayload = (await teacherStarted.json()) as { activityId: string };
+    const teacherRow = await one<{ report_axes: string | null }>(
+      env.DB,
+      "SELECT report_axes FROM activities WHERE id = $id",
+      { id: teacherPayload.activityId },
+    );
+    expect(teacherRow?.report_axes).toBe("teacher");
+  });
+});
+
+describe("starting with edited topic axes", () => {
+  const topicAxes = [{ name: "Justice", left: "Rules", right: "Outcomes" }];
+
+  async function setupAxesClassroom(name: string) {
+    const { classroomId } = await createClassroom(teacher, name);
+    const json = { "Content-Type": "application/json", Cookie: teacher };
+    const seed = await call(`/api/classrooms/${classroomId}/topics`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ title: "A topic", statement: "A statement", prompts: [] }),
+    });
+    expect(seed.status).toBe(201);
+    const { id: topicId } = (await seed.json()) as { id: string };
+    const start = (id = topicId) =>
+      call(`/api/classrooms/${classroomId}/activities`, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ topicId: id, reportAxes: "teacher", topicAxes }),
+      });
+    const state = () =>
+      one(
+        env.DB,
+        `SELECT current_activity_id,
+        (SELECT COUNT(*) FROM topics WHERE classroom_id = $id) AS topics,
+        (SELECT COUNT(*) FROM activities WHERE classroom_id = $id) AS activities
+        FROM classrooms WHERE id = $id`,
+        { id: classroomId },
+      );
+    return { topicId, start, state };
+  }
+
+  test("starting with edited topic axes saves a snapshot and reuses it when unchanged", async () => {
+    const { topicId, start, state } = await setupAxesClassroom("Atomic axes success");
+    const started = await start();
+    expect(started.status).toBe(201);
+    const { activityId } = (await started.json()) as { activityId: string };
+    const snapshot = await one<{ id: string; copied_from: string; axes: string; title: string; statement: string }>(
+      env.DB,
+      "SELECT t.* FROM activities a JOIN topics t ON a.topic_id = t.id WHERE a.id = $id",
+      { id: activityId },
+    );
+    expect(snapshot).toMatchObject({
+      copied_from: topicId,
+      axes: JSON.stringify(topicAxes),
+      title: "A topic",
+      statement: "A statement",
+    });
+    expect(await one(env.DB, "SELECT axes FROM topics WHERE id = $id", { id: topicId })).toEqual({ axes: "[]" });
+    expect(await state()).toEqual({ topics: 2, activities: 1, current_activity_id: activityId });
+
+    expect((await start(must(snapshot, "copied topic").id)).status).toBe(201);
+    expect(await state()).toMatchObject({ topics: 2, activities: 2 });
+  });
+
+  test("starting with edited topic axes after an AI policy lock writes nothing", async () => {
+    const { start, state } = await setupAxesClassroom("Atomic axes policy lock");
+    await setReportAxesPolicy(env.DB, "ai");
+    try {
+      const denied = await start();
+      expect(denied.status).toBe(422);
+      expect(await denied.json()).toMatchObject({ code: "report_axes_not_allowed" });
+      expect(await state()).toEqual({ topics: 1, activities: 0, current_activity_id: null });
+    } finally {
+      await setReportAxesPolicy(env.DB, "both");
+    }
+  });
+
+  test("starting with edited topic axes rolls back both inserts if the live pointer update fails", async () => {
+    const { start, state } = await setupAxesClassroom("Atomic axes rollback");
+    await run(
+      env.DB,
+      `CREATE TRIGGER abort_live_axes_start
+      BEFORE UPDATE OF current_activity_id ON classrooms
+      WHEN NEW.name = 'Atomic axes rollback'
+      BEGIN SELECT RAISE(ABORT, 'test live activity pointer write failed'); END`,
+    );
+    try {
+      expect((await start()).status).toBe(500);
+      expect(await state()).toEqual({ topics: 1, activities: 0, current_activity_id: null });
+    } finally {
+      await run(env.DB, "DROP TRIGGER abort_live_axes_start");
+    }
   });
 });
 

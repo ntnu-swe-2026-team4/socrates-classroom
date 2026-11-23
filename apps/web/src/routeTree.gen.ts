@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ChatRouteImport } from './routes/chat'
 import { Route as DialogueRouteImport } from './routes/dialogue'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as HomeRouteImport } from './routes/home'
@@ -18,6 +19,8 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
+import { Route as ChatIndexRouteImport } from './routes/chat.index'
+import { Route as ChatChatIdRouteImport } from './routes/chat.$chatId'
 import { Route as ClassroomsIndexRouteImport } from './routes/classrooms.index'
 import { Route as ClassroomsClassroomIdRouteImport } from './routes/classrooms.$classroomId'
 import { Route as DevAccountsRouteImport } from './routes/dev.accounts'
@@ -26,11 +29,17 @@ import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as ReportIdRouteImport } from './routes/report.$id'
 import { Route as TSetupRouteImport } from './routes/t.setup'
 import { Route as JoinATokenRouteImport } from './routes/join.a.$token'
+import { Route as JoinITokenRouteImport } from './routes/join.i.$token'
 import { Route as TLiveIdRouteImport } from './routes/t.live.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatRoute = ChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DialogueRoute = DialogueRouteImport.update({
@@ -73,6 +82,16 @@ const AdminUsersRoute = AdminUsersRouteImport.update({
   path: '/admin/users',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChatIndexRoute = ChatIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatChatIdRoute = ChatChatIdRouteImport.update({
+  id: '/$chatId',
+  path: '/$chatId',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ClassroomsIndexRoute = ClassroomsIndexRouteImport.update({
   id: '/classrooms/',
   path: '/classrooms/',
@@ -113,6 +132,11 @@ const JoinATokenRoute = JoinATokenRouteImport.update({
   path: '/a/$token',
   getParentRoute: () => JoinRoute,
 } as any)
+const JoinITokenRoute = JoinITokenRouteImport.update({
+  id: '/i/$token',
+  path: '/i/$token',
+  getParentRoute: () => JoinRoute,
+} as any)
 const TLiveIdRoute = TLiveIdRouteImport.update({
   id: '/t/live/$id',
   path: '/t/live/$id',
@@ -121,6 +145,7 @@ const TLiveIdRoute = TLiveIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRouteWithChildren
   '/dialogue': typeof DialogueRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/home': typeof HomeRoute
@@ -129,14 +154,17 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/chat/$chatId': typeof ChatChatIdRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/dev/accounts': typeof DevAccountsRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
   '/t/setup': typeof TSetupRoute
+  '/chat/': typeof ChatIndexRoute
   '/classrooms/': typeof ClassroomsIndexRoute
   '/join/': typeof JoinIndexRoute
   '/join/a/$token': typeof JoinATokenRoute
+  '/join/i/$token': typeof JoinITokenRoute
   '/t/live/$id': typeof TLiveIdRoute
 }
 export interface FileRoutesByTo {
@@ -148,19 +176,23 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/chat/$chatId': typeof ChatChatIdRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/dev/accounts': typeof DevAccountsRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
   '/t/setup': typeof TSetupRoute
+  '/chat': typeof ChatIndexRoute
   '/classrooms': typeof ClassroomsIndexRoute
   '/join': typeof JoinIndexRoute
   '/join/a/$token': typeof JoinATokenRoute
+  '/join/i/$token': typeof JoinITokenRoute
   '/t/live/$id': typeof TLiveIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/chat': typeof ChatRouteWithChildren
   '/dialogue': typeof DialogueRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/home': typeof HomeRoute
@@ -169,20 +201,24 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/chat/$chatId': typeof ChatChatIdRoute
   '/classrooms/$classroomId': typeof ClassroomsClassroomIdRoute
   '/dev/accounts': typeof DevAccountsRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
   '/t/setup': typeof TSetupRoute
+  '/chat/': typeof ChatIndexRoute
   '/classrooms/': typeof ClassroomsIndexRoute
   '/join/': typeof JoinIndexRoute
   '/join/a/$token': typeof JoinATokenRoute
+  '/join/i/$token': typeof JoinITokenRoute
   '/t/live/$id': typeof TLiveIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/chat'
     | '/dialogue'
     | '/forgot-password'
     | '/home'
@@ -191,14 +227,17 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/settings'
     | '/admin/users'
+    | '/chat/$chatId'
     | '/classrooms/$classroomId'
     | '/dev/accounts'
     | '/join/$code'
     | '/report/$id'
     | '/t/setup'
+    | '/chat/'
     | '/classrooms/'
     | '/join/'
     | '/join/a/$token'
+    | '/join/i/$token'
     | '/t/live/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -210,18 +249,22 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/settings'
     | '/admin/users'
+    | '/chat/$chatId'
     | '/classrooms/$classroomId'
     | '/dev/accounts'
     | '/join/$code'
     | '/report/$id'
     | '/t/setup'
+    | '/chat'
     | '/classrooms'
     | '/join'
     | '/join/a/$token'
+    | '/join/i/$token'
     | '/t/live/$id'
   id:
     | '__root__'
     | '/'
+    | '/chat'
     | '/dialogue'
     | '/forgot-password'
     | '/home'
@@ -230,19 +273,23 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/settings'
     | '/admin/users'
+    | '/chat/$chatId'
     | '/classrooms/$classroomId'
     | '/dev/accounts'
     | '/join/$code'
     | '/report/$id'
     | '/t/setup'
+    | '/chat/'
     | '/classrooms/'
     | '/join/'
     | '/join/a/$token'
+    | '/join/i/$token'
     | '/t/live/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ChatRoute: typeof ChatRouteWithChildren
   DialogueRoute: typeof DialogueRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   HomeRoute: typeof HomeRoute
@@ -266,6 +313,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat': {
+      id: '/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dialogue': {
@@ -324,6 +378,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/chat/': {
+      id: '/chat/'
+      path: '/'
+      fullPath: '/chat/'
+      preLoaderRoute: typeof ChatIndexRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/chat/$chatId': {
+      id: '/chat/$chatId'
+      path: '/$chatId'
+      fullPath: '/chat/$chatId'
+      preLoaderRoute: typeof ChatChatIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/classrooms/': {
       id: '/classrooms/'
       path: '/classrooms'
@@ -380,6 +448,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JoinATokenRouteImport
       parentRoute: typeof JoinRoute
     }
+    '/join/i/$token': {
+      id: '/join/i/$token'
+      path: '/i/$token'
+      fullPath: '/join/i/$token'
+      preLoaderRoute: typeof JoinITokenRouteImport
+      parentRoute: typeof JoinRoute
+    }
     '/t/live/$id': {
       id: '/t/live/$id'
       path: '/t/live/$id'
@@ -390,22 +465,37 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ChatRouteChildren {
+  ChatChatIdRoute: typeof ChatChatIdRoute
+  ChatIndexRoute: typeof ChatIndexRoute
+}
+
+const ChatRouteChildren: ChatRouteChildren = {
+  ChatChatIdRoute: ChatChatIdRoute,
+  ChatIndexRoute: ChatIndexRoute,
+}
+
+const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
+
 interface JoinRouteChildren {
   JoinCodeRoute: typeof JoinCodeRoute
   JoinIndexRoute: typeof JoinIndexRoute
   JoinATokenRoute: typeof JoinATokenRoute
+  JoinITokenRoute: typeof JoinITokenRoute
 }
 
 const JoinRouteChildren: JoinRouteChildren = {
   JoinCodeRoute: JoinCodeRoute,
   JoinIndexRoute: JoinIndexRoute,
   JoinATokenRoute: JoinATokenRoute,
+  JoinITokenRoute: JoinITokenRoute,
 }
 
 const JoinRouteWithChildren = JoinRoute._addFileChildren(JoinRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ChatRoute: ChatRouteWithChildren,
   DialogueRoute: DialogueRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   HomeRoute: HomeRoute,

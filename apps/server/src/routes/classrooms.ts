@@ -5,11 +5,14 @@ import {
   TopicCreateInputSchema,
   type ActivityMode,
   type ClassroomSummary,
+  type ReportAxes,
   type User,
 } from "@socrates/shared";
+import { publishClassroom } from "../do/classroom-events";
 import { all, batch, one, run, type SqlEntry } from "../db/d1";
 import { fail, guardUser, newId, nowIso, requireUser, validateJson, type AppEnv } from "../http";
-import { classroomAccess, parsePrompts, topicForActivity, type TopicRow } from "../services/members";
+import { classroomAccess, parsePrompts, topicCopyInsert, topicForActivity, type TopicRow } from "../services/members";
+import { reportAxesFor } from "../services/settings";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const CODE_MAX = 256 - (256 % CODE_ALPHABET.length);
@@ -19,7 +22,7 @@ function newCode(): string {
   while (code.length < 6) {
     const [byte] = crypto.getRandomValues(new Uint8Array(1));
     if (byte === undefined || byte >= CODE_MAX) continue;
-    code += CODE_ALPHABET[byte % CODE_ALPHABET.length]!;
+    code += CODE_ALPHABET[byte % CODE_ALPHABET.length];
   }
   return code;
 }
@@ -33,14 +36,15 @@ async function createActivity(
   classroomId: string,
   topicId: string,
   mode: ActivityMode,
+  reportAxes: ReportAxes,
+  copy?: SqlEntry,
 ): Promise<string> {
   const id = newId("a_");
-  const queries: SqlEntry[] = [
-    {
-      sql: "INSERT INTO activities (id, classroom_id, topic_id, mode, created_at) VALUES ($id, $cid, $tid, $mode, $at)",
-      params: { id, cid: classroomId, tid: topicId, mode, at: nowIso() },
-    },
-  ];
+  const queries: SqlEntry[] = copy ? [copy] : [];
+  queries.push({
+    sql: "INSERT INTO activities (id, classroom_id, topic_id, mode, report_axes, created_at) VALUES ($id, $cid, $tid, $mode, $axes, $at)",
+    params: { id, cid: classroomId, tid: topicId, mode, axes: reportAxes, at: nowIso() },
+  });
   if (mode === "live") {
     queries.push({
       sql: "UPDATE classrooms SET current_activity_id = $aid WHERE id = $cid",
@@ -154,7 +158,7 @@ export function classroomsRoutes() {
       const id = newId("t_");
       await run(
         c.env.DB,
-        "INSERT INTO topics (id, owner_id, classroom_id, title, statement, summary, prompts, created_at) VALUES ($id, $uid, $cid, $title, $statement, $summary, $prompts, $at)",
+        "INSERT INTO topics (id, owner_id, classroom_id, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $title, $statement, $summary, $prompts, $axes, $at)",
         {
           id,
           uid: user.id,
@@ -163,6 +167,7 @@ export function classroomsRoutes() {
           statement: input.statement,
           summary: input.summary ?? null,
           prompts: JSON.stringify(input.prompts),
+          axes: JSON.stringify(input.axes),
           at: nowIso(),
         },
       );
@@ -175,8 +180,26 @@ export function classroomsRoutes() {
       const input = c.req.valid("json");
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");
-      await topicForActivity(c.env.DB, input.topicId, classroom.id, user.id);
-      const activityId = await createActivity(c.env.DB, classroom.id, input.topicId, input.mode);
+      const topic = await topicForActivity(c.env.DB, input.topicId, classroom.id, user.id);
+      const reportAxes = await reportAxesFor(c.env.DB, input.reportAxes);
+      if (input.topicAxes && reportAxes !== "teacher") fail(422, "report_axes_not_allowed");
+
+      const originalAxes = reportAxes === "teacher" ? parsePrompts(topic).axes : [];
+      if (reportAxes === "teacher" && (input.topicAxes ?? originalAxes).length === 0) fail(422, "topic_axes_required");
+
+      let topicId = topic.id;
+      let copy: SqlEntry | undefined;
+      if (input.topicAxes && JSON.stringify(input.topicAxes) !== JSON.stringify(originalAxes)) {
+        topicId = newId("t_");
+        copy = topicCopyInsert(topic, {
+          id: topicId,
+          userId: user.id,
+          classroomId: classroom.id,
+          axes: input.topicAxes,
+        });
+      }
+      const activityId = await createActivity(c.env.DB, classroom.id, topicId, input.mode, reportAxes, copy);
+      if (input.mode === "live") await publishClassroom(c.env, classroom.id, "activities");
       return c.json(
         {
           classroomId: classroom.id,

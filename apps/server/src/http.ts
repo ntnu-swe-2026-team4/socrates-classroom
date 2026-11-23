@@ -90,7 +90,7 @@ export function uniqueViolationColumns(error: unknown): Array<[string, string]> 
     const normalized = message.replace(/^D1_ERROR:\s*/, "");
     const match = normalized.match(/^UNIQUE constraint failed: (.+?)(?:: SQLITE_CONSTRAINT\b.*)?$/);
     if (!match) continue;
-    return match[1]!
+    return match[1]
       .split(",")
       .map((pair) => pair.trim().split("."))
       .filter((parts): parts is [string, string] => parts.length === 2)

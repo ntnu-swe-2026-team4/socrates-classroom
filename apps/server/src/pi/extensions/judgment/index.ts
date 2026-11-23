@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-durable";
 import type { Ai } from "@cloudflare/workers-types";
 import type { ViolationType } from "@socrates/shared";
+import type { TopicSource } from "../socrates";
 import { createClefViolationClassifier, type ViolationJudgment } from "./classify";
 import { createReportViolationTool } from "./tool";
 
@@ -23,7 +24,11 @@ export const ViolationEntry: Entry<{ [key: string]: never }> = defineEntry("app.
 
 type ViolationSink = (violation: ViolationData) => Promise<void>;
 
-export function createJudgmentExtension(ai: Ai | undefined, reportViolation: ViolationSink) {
+export function createJudgmentExtension(
+  ai: Ai | undefined,
+  reportViolation: ViolationSink,
+  topicOf: TopicSource = async () => null,
+) {
   const sink = reportViolation;
   const classifier = ai ? createClefViolationClassifier(ai) : null;
   const ViolationTask = defineTask<{ latest: string }, { phase: "classify" }, null>({
@@ -42,18 +47,20 @@ export function createJudgmentExtension(ai: Ai | undefined, reportViolation: Vio
           await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
           return;
         }
-        const judgment: ViolationJudgment | null = await judge(task.input.latest);
+        const judgment: ViolationJudgment | null = await judge(task.input.latest, await topicOf());
         if (judgment && judgment.type !== "on_topic") {
-          const handle = (await runtime.conversation(runtime.conversationId, context))!;
+          const handle = await runtime.conversation(runtime.conversationId, context);
           const data: ViolationData = {
             type: judgment.type,
             probability: judgment.probability,
             excerpt: task.input.latest.slice(0, 200),
             source: "classifier",
           };
-          await runtime.commit(async (tx) => {
-            await handle.submit(tx, { type: "write", entry: { kind: "app.violation", data: data as never } });
-          }, context);
+          if (handle) {
+            await runtime.commit(async (tx) => {
+              await handle.submit(tx, { type: "write", entry: { kind: "app.violation", data: data as never } });
+            }, context);
+          }
         }
         await runtime.memo("judgment", JSON.stringify(judgment), context);
         await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);

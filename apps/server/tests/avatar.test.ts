@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import { seedFixture } from "../src/seed";
-import { call, classroomWithActivity, cookieOf, frames, latestView, participantIdOf } from "./helpers";
+import { call, classroomWithActivity, cookieOf, frames, latestView, must, participantIdOf } from "./helpers";
 
 let thread: string;
 let cookie: string;
@@ -18,7 +18,7 @@ async function connect(name: string): Promise<WebSocket> {
     env,
   );
   expect(response?.status).toBe(101);
-  const socket = response!.webSocket as WebSocket;
+  const socket = must(response?.webSocket, "avatar websocket");
   socket.accept();
   return socket;
 }
@@ -72,7 +72,7 @@ describe("avatar extension (emotion via app.emotion entry, zero text pollution)"
       return view?.entries.some((entry) => entry.kind === "pi.assistant") ?? false;
     });
 
-    const view = latestView(rx.list)!;
+    const view = must(latestView(rx.list), "latest view");
     expect(answerOf(view)).not.toMatch(/\[(happy|angry|confused|neutral|Happy|Confused|Angry|Neutral)\]/);
     expect(socket.readyState).toBe(WebSocket.OPEN);
     socket.close();

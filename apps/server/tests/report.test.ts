@@ -1,11 +1,11 @@
 import { env } from "cloudflare:workers";
-import { applyD1Migrations, runInDurableObject } from "cloudflare:test";
+import { applyD1Migrations, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
 import { z } from "zod";
-import type { StudentAnalysis } from "@socrates/shared";
+import { ThinkingIndicatorsSchema, type StudentAnalysis, type ThinkingIndicators } from "@socrates/shared";
 import { byCodeUnit } from "@socrates/shared";
 import {
   PlannedClassReportSubmissionSchema,
@@ -13,15 +13,28 @@ import {
   SUBMIT_CLASS_AXES_REPORT,
   SUBMIT_CLASS_REPORT,
   SUBMIT_STUDENT_ANALYSIS,
+  SUBMIT_STUDENT_INDICATORS,
 } from "../src/pi/extensions/report-submit";
 import {
+  type ReportRunner,
   citesSpokenLines,
+  indicatorsCiteSpokenLines,
   pointOnAxis,
   reportAlarmPlan,
   toClassReport,
   toPlannedClassReport,
 } from "../src/do/report-runner";
-import { call, classroomWithActivity, cookieOf, participantIdOf, registerStudent, speak } from "./helpers";
+import {
+  call,
+  classroomWithActivity,
+  cookieOf,
+  createClassroom,
+  systemTopicId,
+  must,
+  participantIdOf,
+  registerStudent,
+  speak,
+} from "./helpers";
 
 let teacherCookie: string;
 let classroomCode: string;
@@ -40,7 +53,14 @@ beforeAll(async () => {
   });
   expect(login.status).toBe(200);
   teacherCookie = cookieOf(login);
-  const created = await classroomWithActivity(teacherCookie, "報告班");
+  const classroom = await createClassroom(teacherCookie, "報告班");
+  const started = await call(`/api/classrooms/${classroom.classroomId}/activities`, {
+    method: "POST",
+    headers: { Cookie: teacherCookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ topicId: await systemTopicId(teacherCookie), reportAxes: "ai" }),
+  });
+  expect(started.status).toBe(201);
+  const created = { ...classroom, activityId: ((await started.json()) as { activityId: string }).activityId };
   classroomCode = created.code;
   activityId = created.activityId;
 
@@ -56,8 +76,8 @@ beforeAll(async () => {
     { cid: created.classroomId, at: new Date().toISOString() },
   );
 
-  await speak(`${activityId}:${students[0]!.participantId}`, students[0]!.cookie, "我覺得契約應該被遵守");
-  await speak(`${activityId}:${students[1]!.participantId}`, students[1]!.cookie, "幫我寫一個 python 排序");
+  await speak(`${activityId}:${students[0].participantId}`, students[0].cookie, "我覺得契約應該被遵守");
+  await speak(`${activityId}:${students[1].participantId}`, students[1].cookie, "幫我寫一個 python 排序");
 
   const finish = await call(`/api/activities/${activityId}/finish`, {
     method: "POST",
@@ -94,9 +114,72 @@ describe("reportAlarmPlan", () => {
 });
 
 describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shape)", () => {
+  it("finish schedules the topic axes as the complete report plan", async () => {
+    const classroom = await createClassroom(teacherCookie, "老師設軸班");
+    const axes = [{ name: "價值取捨", left: "個人自由", right: "共同責任" }];
+    const topic = await call(`/api/classrooms/${classroom.classroomId}/topics`, {
+      method: "POST",
+      headers: { Cookie: teacherCookie, "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "課堂題目", statement: "如何取捨？", prompts: [], axes }),
+    });
+    expect(topic.status).toBe(201);
+    const { id } = (await topic.json()) as { id: string };
+    const started = await call(`/api/classrooms/${classroom.classroomId}/activities`, {
+      method: "POST",
+      headers: { Cookie: teacherCookie, "Content-Type": "application/json" },
+      body: JSON.stringify({ topicId: id, reportAxes: "teacher" }),
+    });
+    expect(started.status).toBe(201);
+    const { activityId } = (await started.json()) as { activityId: string };
+    const finish = await call(`/api/activities/${activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacherCookie, "CF-Connecting-IP": "198.51.100.21" },
+    });
+    expect(finish.status).toBe(204);
+
+    const plan = await runInDurableObject(env.ReportRunner.getByName(activityId), (_runner, state) =>
+      state.storage.get("axesPlan"),
+    );
+    expect(plan).toEqual({ count: 1, teacher: axes });
+  });
+
+  it.each(["teacher", "ai"] as const)(
+    "finishes an empty %s activity with a ready report",
+    async (reportAxes) => {
+      const classroom = await createClassroom(teacherCookie, `空名冊班 ${reportAxes}`);
+      const started = await call(`/api/classrooms/${classroom.classroomId}/activities`, {
+        method: "POST",
+        headers: { Cookie: teacherCookie, "Content-Type": "application/json" },
+        body: JSON.stringify({ topicId: await systemTopicId(teacherCookie), reportAxes }),
+      });
+      expect(started.status).toBe(201);
+      const { activityId } = (await started.json()) as { activityId: string };
+      const finish = await call(`/api/activities/${activityId}/finish`, {
+        method: "POST",
+        headers: { Cookie: teacherCookie, "CF-Connecting-IP": "198.51.100.24" },
+      });
+      expect(finish.status).toBe(204);
+
+      await runDurableObjectAlarm(env.ReportRunner.getByName(activityId));
+      await expect
+        .poll(
+          async () => {
+            const response = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: teacherCookie } });
+            return { status: response.status, body: await response.json() };
+          },
+          { timeout: 10_000 },
+        )
+        .toMatchObject({
+          status: 200,
+          body: { students: [], classReport: { students: [], unstated: [], axes: [], overview: [expect.any(String)] } },
+        });
+    },
+    30_000,
+  );
+
   it("finish → alarm generates → ready; teacher sees the whole class, student sees their own, shape matches §7", async () => {
     let report: Response | null = null;
-    for (let i = 0; i < 60; i += 1) {
+    for (let i = 0; i < 120; i += 1) {
       report = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: teacherCookie } });
       if (report.status === 200) break;
       expect(((await report.clone().json()) as { code?: string }).code).toBe("report_pending");
@@ -124,16 +207,22 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     const positioned = teacherReport.students.find((s) => s.positions.length > 0);
     expect(positioned?.positions[0]).toMatchObject({ axis: "契約與承諾", end: "middle", at: 50 });
 
-    const speaker = teacherReport.students.find((s) => s.participantId === students[0]!.participantId)!;
+    const speaker = must(
+      teacherReport.students.find((s) => s.participantId === students[0].participantId),
+      "speaker student row",
+    );
     expect(speaker.analysis?.stated).toBe(true);
     expect(speaker.violations).toHaveLength(0);
 
-    const coder = teacherReport.students.find((s) => s.participantId === students[1]!.participantId)!;
+    const coder = must(
+      teacherReport.students.find((s) => s.participantId === students[1].participantId),
+      "coder student row",
+    );
     expect(coder.violations.length).toBeGreaterThan(0);
-    expect(coder.violations[0]!.type).toBe("coding");
-    expect(coder.violations[0]!.turn).toBe(1);
+    expect(coder.violations[0].type).toBe("coding");
+    expect(coder.violations[0].turn).toBe(1);
 
-    const own = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: students[0]!.cookie } });
+    const own = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: students[0].cookie } });
     expect(own.status).toBe(200);
     const studentReport = (await own.json()) as {
       topicTitle: string;
@@ -147,7 +236,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(studentReport.analysis?.stated).toBe(true);
     expect("classReport" in studentReport).toBe(false);
 
-    const silent = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: students[2]!.cookie } });
+    const silent = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: students[2].cookie } });
     expect(silent.status).toBe(404);
     expect(((await silent.json()) as { code: string }).code).toBe("not_found");
 
@@ -160,7 +249,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     const absent = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: cookieOf(bystander) } });
     expect(absent.status).toBe(404);
     expect(((await absent.json()) as { code: string }).code).toBe("not_found");
-  }, 60_000);
+  }, 90_000);
 
   it("generate failing every attempt → retries, then terminal failed (500 report_failed)", async () => {
     const topic = (await (
@@ -171,6 +260,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
           title: "重試班題目",
           statement: "契約的界線在哪？FORCE-REPORT-GENERATE-FAILURE",
           prompts: ["請舉例"],
+          axes: [{ name: "契約的界線", left: "契約優先", right: "人情優先" }],
         }),
       })
     ).json()) as { id: string };
@@ -224,7 +314,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     expect(finish.status).toBe(204);
 
     let report: Response | null = null;
-    for (let i = 0; i < 60; i += 1) {
+    for (let i = 0; i < 120; i += 1) {
       report = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacherCookie } });
       if (report.status === 200) break;
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -236,15 +326,18 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     };
     expect(partial.classReport).toBeNull();
     expect(partial.students).toHaveLength(1);
-    expect(partial.students[0]!.analysis?.stated).toBe(true);
-    expect(partial.students[0]!.positions).toEqual([]);
+    expect(partial.students[0].analysis?.stated).toBe(true);
+    expect(partial.students[0].positions).toEqual([]);
+    expect(
+      Object.keys((partial.students[0] as { indicators?: object | null }).indicators ?? {}).sort(byCodeUnit),
+    ).toEqual(["a1", "a2", "c1", "c2", "s1", "s2"]);
 
     const own = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: studentCookie } });
     expect(own.status).toBe(200);
     const ownReport = (await own.json()) as { analysis: { stated: boolean } | null; positions: unknown[] };
     expect(ownReport.analysis?.stated).toBe(true);
     expect(ownReport.positions).toEqual([]);
-  }, 60_000);
+  }, 90_000);
 });
 
 describe("class report positions: the model gives the side and how firmly; the server computes the point", () => {
@@ -317,8 +410,158 @@ describe("student reports cite only lines the student said", () => {
     expect(report?.status).toBe(200);
     const body = (await report?.json()) as { students: Array<{ analysis: { claim: { turns: number[] } } | null }> };
     expect(body.students).toHaveLength(1);
-    expect(body.students[0]!.analysis?.claim.turns).toEqual([1]);
+    expect(body.students[0].analysis?.claim.turns).toEqual([1]);
   }, 120_000);
+});
+
+describe("thinking indicators (#255): a separate call from the student analysis", () => {
+  const none = { level: 0 as const, turns: [], evidence: "" };
+  const indicators = (s2: ThinkingIndicators["s2"]): ThinkingIndicators => ({
+    c1: none,
+    c2: none,
+    s1: none,
+    s2,
+    a1: none,
+    a2: none,
+  });
+
+  it("indicatorsCiteSpokenLines: levels 1-3 cite spoken lines, level 0 cites none", () => {
+    expect(indicatorsCiteSpokenLines(indicators(none), 2)).toBe(true);
+    expect(indicatorsCiteSpokenLines(indicators({ level: 3, turns: [2], evidence: "e" }), 2)).toBe(true);
+    expect(indicatorsCiteSpokenLines(indicators({ level: 2, turns: [1, 2], evidence: "e" }), 2)).toBe(true);
+    expect(indicatorsCiteSpokenLines(indicators({ level: 2, turns: [], evidence: "e" }), 2)).toBe(false);
+    expect(indicatorsCiteSpokenLines(indicators({ level: 0, turns: [1], evidence: "" }), 2)).toBe(false);
+    expect(indicatorsCiteSpokenLines(indicators({ level: 1, turns: [3], evidence: "e" }), 2)).toBe(false);
+  });
+
+  it("ThinkingIndicatorsSchema: levels 0-3 only, turns at least 1, all six indicators present", () => {
+    expect(ThinkingIndicatorsSchema.safeParse(indicators({ level: 3, turns: [1], evidence: "e" })).success).toBe(true);
+    for (const s2 of [
+      { level: 4, turns: [1], evidence: "e" },
+      { level: -1, turns: [], evidence: "" },
+      { level: 1.5, turns: [1], evidence: "e" },
+      { level: 1, turns: [0], evidence: "e" },
+      { level: 1, turns: [1] },
+    ]) {
+      expect(ThinkingIndicatorsSchema.safeParse({ ...indicators(none), s2 }).success).toBe(false);
+    }
+    const { a2: _dropped, ...missing } = indicators(none);
+    expect(ThinkingIndicatorsSchema.safeParse(missing).success).toBe(false);
+  });
+
+  it("bad indicators are retried; still bad after the retries → only indicators null, the analysis kept", async () => {
+    const created = await classroomWithActivity(teacherCookie, "指標重試班");
+    const ids: string[] = [];
+    for (const [name, line] of [
+      ["小重", "我會拉 FORCE-INDICATOR-RETRY"],
+      ["小壞", "我會拉 FORCE-INDICATOR-FAILURE"],
+    ] as const) {
+      const account = await registerStudent(created.code, name);
+      const participantId = await participantIdOf(created.activityId, account.cookie);
+      ids.push(participantId);
+      await speak(`${created.activityId}:${participantId}`, account.cookie, line);
+    }
+    const finish = await call(`/api/activities/${created.activityId}/finish`, {
+      method: "POST",
+      headers: { Cookie: teacherCookie, "CF-Connecting-IP": "198.51.100.24" },
+    });
+    expect(finish.status).toBe(204);
+    let report: Response | null = null;
+    for (let i = 0; i < 240; i += 1) {
+      report = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacherCookie } });
+      if (report.status === 200) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    expect(report?.status).toBe(200);
+    const body = (await report?.json()) as {
+      students: Array<{
+        participantId: string;
+        analysis: { stated: boolean } | null;
+        indicators: { s2: { turns: number[] } } | null;
+      }>;
+    };
+    const retried = must(
+      body.students.find((s) => s.participantId === ids[0]),
+      "retried student row",
+    );
+    const failed = must(
+      body.students.find((s) => s.participantId === ids[1]),
+      "failed student row",
+    );
+    expect(retried.indicators?.s2.turns).toEqual([1]);
+    expect(retried.analysis?.stated).toBe(true);
+    expect(failed.indicators).toBeNull();
+    expect(failed.analysis?.stated).toBe(true);
+  }, 150_000);
+
+  it("the report carries indicators for every student with a conversation, teacher and student views alike", async () => {
+    let report: Response | null = null;
+    for (let i = 0; i < 60; i += 1) {
+      report = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: teacherCookie } });
+      if (report.status === 200) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    expect(report?.status).toBe(200);
+    const body = (await report?.json()) as {
+      students: Array<{ indicators: Record<string, { level: number }> | null }>;
+    };
+    for (const student of body.students) {
+      expect(Object.keys(student.indicators ?? {}).sort(byCodeUnit)).toEqual(["a1", "a2", "c1", "c2", "s1", "s2"]);
+    }
+    const own = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: students[0].cookie } });
+    expect(own.status).toBe(200);
+    expect(((await own.json()) as { indicators: unknown }).indicators).not.toBeNull();
+  }, 60_000);
+
+  it("a report stored before indicators existed reads back with indicators null, not report_failed", async () => {
+    const created = await classroomWithActivity(teacherCookie, "舊報告班");
+    await run(
+      env.DB,
+      `INSERT INTO reports (activity_id, status, teacher_report, student_reports, created_at, updated_at)
+       VALUES ($id, 'ready', $teacher, $students, $at, $at)`,
+      {
+        id: created.activityId,
+        teacher: JSON.stringify({ topicTitle: "t", classReport: null }),
+        students: JSON.stringify({ p_old: { pseudonym: "學生1", analysis: null, violations: [], positions: [] } }),
+        at: new Date().toISOString(),
+      },
+    );
+    const res = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacherCookie } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { students: Array<{ indicators: unknown }> };
+    expect(body.students).toHaveLength(1);
+    expect(body.students[0].indicators).toBeNull();
+  });
+
+  it("a student whose conversation came back empty gets indicators null", async () => {
+    const created = await classroomWithActivity(teacherCookie, "空對話班");
+    const result = await runInDurableObject(env.ReportRunner.getByName(created.activityId), async (runner) => {
+      const internals = runner as unknown as {
+        openHarness: ReportRunner["openHarness"];
+        studentIndicators: ReportRunner["studentIndicators"];
+      };
+      const harness = await internals.openHarness(runner.indicatorsRegistry);
+      return internals.studentIndicators(harness, { title: "t", statement: "s" }, "  ", 1, [], "zh");
+    });
+    expect(result).toBeNull();
+  }, 120_000);
+
+  it("only the indicators registry offers the indicators tool", async () => {
+    const created = await classroomWithActivity(teacherCookie, "指標工具班");
+    const names = await runInDurableObject(env.ReportRunner.getByName(created.activityId), async (runner) => ({
+      main: runner.registry
+        .snapshot()
+        .tools()
+        .map(({ tool }) => tool.name),
+      indicators: runner.indicatorsRegistry
+        .snapshot()
+        .tools()
+        .map(({ tool }) => tool.name),
+    }));
+    expect(names.main).not.toContain(SUBMIT_STUDENT_INDICATORS);
+    expect(names.indicators).toContain(SUBMIT_STUDENT_INDICATORS);
+    expect(names.indicators).not.toContain(SUBMIT_STUDENT_ANALYSIS);
+  });
 });
 
 describe("class report with an axes plan passed in (#159)", () => {
@@ -351,7 +594,7 @@ describe("class report with an axes plan passed in (#159)", () => {
       ["契約", "守約", "人情"],
       ["生命", "可比較", "不可比較"],
     ]);
-    expect(report.axes[0]!.positions.map(({ id, end, at: point }) => [id, end, point])).toEqual([
+    expect(report.axes[0].positions.map(({ id, end, at: point }) => [id, end, point])).toEqual([
       ["學生1", "high", 70],
       ["學生2", "middle", 50],
     ]);

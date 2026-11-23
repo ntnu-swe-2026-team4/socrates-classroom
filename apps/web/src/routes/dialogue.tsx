@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
 import { readActivityId } from "@/api/local";
+import { ChatLayout } from "@/components/ChatLayout";
 import { DialogueView } from "@/components/DialogueView";
 import { useT } from "@/i18n";
 
@@ -40,26 +41,28 @@ function DialoguePage() {
   const participantId = activityQuery.data?.participantId ?? "";
 
   return (
-    <DialogueView
-      key={`${activityId}:${participantId}`}
-      threadId={activityId}
-      userId={participantId}
-      title={topic?.title ?? t("dlg_title")}
-      subtitle={topic?.title ? t("dlg_topic_eyebrow") : t("dlg_title")}
-      statement={topic?.statement}
-      prompts={topic?.prompts}
-      closedNotice={
-        activityQuery.isError ? t("common_error") : activityQuery.data?.finishedAt ? t("dlg_err_finished") : undefined
-      }
-      autoSend={q}
-      onActivityFinished={activityRefetch}
-      onAutoSent={() =>
-        void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, q: undefined }), replace: true })
-      }
-      openTerm={term}
-      onTermOpened={() =>
-        void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, term: undefined }), replace: true })
-      }
-    />
+    <ChatLayout>
+      <DialogueView
+        key={`${activityId}:${participantId}`}
+        threadId={activityId}
+        userId={participantId}
+        title={topic?.title ?? t("dlg_title")}
+        subtitle={topic?.title ? t("dlg_topic_eyebrow") : t("dlg_title")}
+        statement={topic?.statement}
+        prompts={topic?.prompts}
+        closedNotice={
+          activityQuery.isError ? t("common_error") : activityQuery.data?.finishedAt ? t("dlg_err_finished") : undefined
+        }
+        autoSend={q}
+        onActivityFinished={activityRefetch}
+        onAutoSent={() =>
+          void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, q: undefined }), replace: true })
+        }
+        openTerm={term}
+        onTermOpened={() =>
+          void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, term: undefined }), replace: true })
+        }
+      />
+    </ChatLayout>
   );
 }

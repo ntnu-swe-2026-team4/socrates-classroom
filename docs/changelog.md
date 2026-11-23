@@ -2,6 +2,65 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-22 — 單人報告加上六項思辨力指標（`feat/255-thinking-indicators`，#255）
+
+### Added
+
+- `student-indicators` profile 與 `submit_student_indicators` 工具（`report-submit-indicators` extension，只裝在這條呼叫用的 registry）：逐生判斷 C1–A2，與論點總結分開呼叫、各自失敗（流程見 `docs/architecture.md` ReportRunner）
+- `TeacherReport.students[].indicators`、`StudentReport.indicators`（形狀見 `docs/api-contract.md` §7）；指標上線前存下的報告回 `null`，不變成 `report_failed`
+
+## 2026-11-22 — TS 靜態保證 step 3：suppression ratchet 白名單凍結（`refactor/293-step3-ratchet`，#293）
+
+### Added
+
+- Ratchet test `apps/web/src/test/review/lint-suppressions.test.ts`：walker 掃全 repo lintable 檔，捕捉 `biome-ignore(-all|-start|-end) lint/<group>/<rule>` 並核對 `(file, rule)` 白名單三態斷言（未列新增→紅、白名單 stale→紅、總數/內容逐條相等→綠）——新增抑制 MUST 改白名單；已插兩隻 negative probe 實證（server 測試檔加抑制→紅、移除 ui.tsx 既有抑制→紅）
+- 現存 10 條 `biome-ignore`（5 個 web 檔：DialogueView、ProviderKeys、StanceConstellation×3、ui×3、report.$id）固化為初始白名單
+
+## 2026-11-22 — TS 靜態保證 step 2 L3：noNonNullAssertion 全域凍結 error（`refactor/293-non-null-l3-freeze`，#293）
+
+### Changed
+
+- `style.noNonNullAssertion` 從 `off` 直接翻全域 `error`，L1 引入的 src-scoped override 隨之退役（此時全庫探針為零，凍結不帶任何豁免面）——任何新 `!`（含 tests）即 CI 阻斷；已插 probe 實證測試檔會被擋
+- #293 step 2 至此全部落地：L1 清 src 84 處、L2 清 tests 185 處、本層凍結——總量 269→0，規則以 error 級永久凍結
+
+## 2026-11-22 — TS 靜態保證 step 2 L2：tests 層 non-null assertion 清零（`refactor/293-non-null-l2-tests`，#293）
+
+### Added
+
+- `apps/server/tests/helpers.ts` 新增 `must<T>(value, what)`：fixture 窄化 helper——`.find()`／`router.pick()`／`one()`／`headers.get()` 這些「期望存在」的站點統一收斂成 guard-throw，取代「expect(x).toBeTruthy() + x!」反模式（expect 驗證不等於窄化），失敗訊息固定為 `fixture missing: <what>`
+
+### Changed
+
+- tests 層 185 處 `!` 清零：103 處為 baseline 冗贊斷言（mock.calls / 陣列 index / destructure 元素）；82 處以顯式窄化取代——server 側以 `must()` 統一（websocket 升級、find fixtures、regex token、rate-limit 回應），web 側以局部 guard（fake socket 的 listeners get-or-create、`sessionStorage.getItem`、entries frame id、`.at(-1)` mock 取樣），`helpers.ts` 的 joinActivity/participantIdOf 升級為回傳非 optional 型別
+- 全庫 `style.noNonNullAssertion` 探針歸零（src @ L1、tests @ 本層）；規則仍在 src-scoped error 凍結，L3 移除豁免翻全域
+
+## 2026-11-22 — CI 閘門收斂共用 composite action（`chore/ci-gate-action`）
+
+### Changed
+
+- ci.yml 與 deploy.yml 重複的六個步驟（install / lint / yamllint / config-drift / typecheck / test / build）收斂到 `.github/actions/gate` composite action——兩個 workflow 引用同一份，新增檢查只需改一處；也移除了兩份手抄清單已經出現的順序不一致
+- 兩個 workflow 僅保留各自的差異段：ci 的 secret-drift check ＋ dry-run、deploy 的 D1 migrations ＋ deploy；job id `ci` 不變（branch protection required check 綁在此名）
+
+## 2026-11-22 — TS 靜態保證 step 2 L1：src 層 non-null assertion 清零（`refactor/293-non-null-l1-src`，#293）
+
+### Changed
+
+- src 層 84 處 `!` 清零：75 處為 baseline 冗贊斷言（現行 tsconfig 下 typed-array / string index / regex group / 守衛後陣列元素本就非 nullable，`!` 編譯後擦除、移除零行為差，含 StoaField 的 40 處動畫迴圈）；9 處以顯式窄化取代——pi `runtime.conversation()` 回傳 `ConversationHandle | undefined`（undefined＝invocation scope 已結束）改為守衛後靜默跳過寫入，websearch binding 缺失回 `websearch_binding_missing`，DOM root 缺失即 throw，錯誤 frame 與 resume session 兩處改為局部變數關聯窄化
+- `biome.jsonc` overrides：src globs（`apps/*/src/**`、`packages/*/src/**`，排除 test 目錄）凍 `style.noNonNullAssertion: error`——新增 src 違規即 CI 阻斷；tests 層豁免為暫時手段，L2（tests 清零）落地後移除
+- 探針覆核：issue #293 記錄的 116 處在今日 tip 為全庫 269（src 84、tests 185）——以今日數字為準
+
+## 2026-11-21 — 對話引擎注入辯題（`fix/162-topic-grounding`，#162）
+
+### Fixed
+
+- 蘇格拉底收得到活動的辯題：Chat DO 從 D1 載入 activity 的 topic，`socrates` extension 新增 `topic` section（`topicBlock()` 輸出，與報告 agent 收到的格式一致）；三語 `socrates*.md` 說明 Topic 段的位置，並要求即使辯題是其他語言仍以介面語言回覆
+- btw 側欄同樣收得到辯題：`btw` extension 自帶 `topic` section；`btw.md` 指向 Topic 段
+- judgment 分類器的 `on_topic` 改以該活動辯題為準（辯題及其延伸的哲學討論）；與辯題無關的哲學話題記為 `other`，無 topic 時退回原本的泛哲學定義
+
+### Notes
+
+- 不改 WS protocol、API 契約與 PiHarness settings；`report_violation` tool description 與分類器文字搬遷留給 #161，socrates prompt 重寫留給 #75
+
 ## 2026-11-21 — 群體報告可依老師的軸與軸數產生（`feat/159-report-axes`，#159）
 
 ### Added

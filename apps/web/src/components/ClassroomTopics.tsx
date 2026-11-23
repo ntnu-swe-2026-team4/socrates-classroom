@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { classroomTopicsOptions, classroomsOptions, topicsOptions } from "@/api/queries";
+import { useId, useState } from "react";
+import { classroomTopicsOptions, classroomsOptions, clientConfigOptions, topicsOptions } from "@/api/queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActivityMode, ActivityStarted, ClassroomSummary, Topic } from "@socrates/shared";
-import { api } from "@/api";
+import type { ActivityMode, ActivityStarted, ClassroomSummary, ReportAxes, Topic } from "@socrates/shared";
+import { ApiError, api } from "@/api";
+import { AxesEditor, axesOf, axesValid, draftsOf, type AxisDraft } from "./AxesEditor";
 import { Button, Card, Checkbox, Field, Input, Segmented, Spinner, cn } from "@/components/ui";
 import { useT } from "@/i18n";
 
@@ -40,7 +41,11 @@ export function TopicPicker({
           )}
         >
           <b className="font-serif text-[15px] font-medium text-ink">{topic.title}</b>
-          <span className="mt-0.5 text-[13px] leading-relaxed text-ink-soft">{topic.statement}</span>
+          <span
+            className={cn("mt-0.5 text-[13px] leading-relaxed", picked === topic.id ? "text-ink" : "text-ink-soft")}
+          >
+            {topic.statement}
+          </span>
         </button>
       ))}
     </div>
@@ -51,17 +56,19 @@ export function SystemTopicList({
   topics,
   picked,
   onPick,
+  disabled,
 }: {
   topics: Topic[];
   picked: string | null;
   onPick: (topicId: string) => void;
+  disabled?: boolean;
 }) {
   const t = useT();
   if (topics.length === 0) return null;
   return (
     <div className="flex flex-col gap-1.5">
       <p className="px-1 text-xs text-ink-soft">{t("setup_topic_system")}</p>
-      <TopicPicker topics={topics} picked={picked} onPick={onPick} />
+      <TopicPicker topics={topics} picked={picked} onPick={onPick} disabled={disabled} />
     </div>
   );
 }
@@ -73,23 +80,43 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
   const [title, setTitle] = useState("");
   const [statement, setStatement] = useState("");
   const [direction, setDirection] = useState("");
+  const [candidateId, setCandidateId] = useState<string | null>(null);
+  const [customAxes, setCustomAxes] = useState<AxisDraft[]>([]);
+  const [generatedAxes, setGeneratedAxes] = useState<AxisDraft[]>([]);
+  const config = useQuery(clientConfigOptions);
+  const policy = config.data?.reportAxes;
+  const axes = source === "custom" ? customAxes : generatedAxes;
+  const setAxes = source === "custom" ? setCustomAxes : setGeneratedAxes;
   const generated = useMutation({ mutationFn: () => api.generateTopics(direction) });
+  const candidate = generated.data?.find(({ id }) => id === candidateId);
   const create = useMutation({
     mutationFn: (input: { title: string; statement: string; prompts: string[] }) =>
-      api.createClassroomTopic(classroomId, input),
+      api.createClassroomTopic(classroomId, { ...input, axes: policy === "ai" ? [] : axesOf(axes) }),
     onSuccess: async () => {
-      setTitle("");
-      setStatement("");
+      if (source === "custom") {
+        setTitle("");
+        setStatement("");
+        setCustomAxes([]);
+      } else {
+        setCandidateId(null);
+        setGeneratedAxes([]);
+      }
       await invalidateTopics(queryClient, classroomId);
     },
   });
+  const canSave = policy !== undefined && (policy === "ai" || axesValid(axes, policy === "both")) && !create.isPending;
+  const editor = (policy === "teacher" || policy === "both") && (
+    <AxesEditor axes={axes} onChange={setAxes} disabled={create.isPending} optional={policy === "both"} />
+  );
 
   return (
     <div className="flex flex-col gap-4">
       <Segmented
         label={t("classroom_add_topic")}
         value={source}
-        onChange={(value) => setSource(value)}
+        onChange={(value) => {
+          if (!create.isPending) setSource(value);
+        }}
         items={[
           { value: "custom", label: t("setup_topic_custom") },
           { value: "ai", label: t("setup_topic_ai") },
@@ -104,9 +131,10 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
           <Field label={t("setup_topic_statement")}>
             <Input value={statement} maxLength={2000} onChange={(event) => setStatement(event.target.value)} />
           </Field>
+          {editor}
           <Button
             className="self-start"
-            disabled={!title.trim() || !statement.trim() || create.isPending}
+            disabled={!title.trim() || !statement.trim() || !canSave}
             onClick={() => create.mutate({ title: title.trim(), statement: statement.trim(), prompts: [] })}
           >
             {create.isPending ? <Spinner /> : t("setup_topic_add")}
@@ -122,23 +150,35 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
             />
             <Button
               variant="outline"
-              disabled={!direction.trim() || generated.isPending}
-              onClick={() => generated.mutate()}
+              disabled={!direction.trim() || generated.isPending || create.isPending}
+              onClick={() => {
+                setCandidateId(null);
+                setGeneratedAxes([]);
+                generated.mutate();
+              }}
             >
               {generated.isPending ? <Spinner /> : t("setup_topic_generate")}
             </Button>
           </div>
           {generated.isError && <p className="text-[13px] text-flag">{t("common_error")}</p>}
-          {(generated.data ?? []).map((candidate) => (
-            <div key={candidate.id} className="flex items-start gap-3 rounded-xl bg-paper-deep p-3">
-              <span className="min-w-0 flex-1">
-                <b className="block font-serif text-[15px] font-medium text-ink">{candidate.title}</b>
-                <span className="mt-0.5 block text-[13px] leading-relaxed text-ink-soft">{candidate.statement}</span>
-              </span>
+          {generated.data && (
+            <TopicPicker
+              topics={generated.data.map((draft) => ({ ...draft, classroomId: null }))}
+              picked={candidateId}
+              disabled={create.isPending || generated.isPending}
+              onPick={(id) => {
+                if (id === candidateId) return;
+                setCandidateId(id);
+                setGeneratedAxes([]);
+              }}
+            />
+          )}
+          {candidate && (
+            <>
+              {editor}
               <Button
-                size="sm"
-                variant="outline"
-                disabled={create.isPending}
+                className="self-start"
+                disabled={!canSave}
                 onClick={() =>
                   create.mutate({
                     title: candidate.title,
@@ -147,13 +187,18 @@ export function AddTopic({ classroomId }: { classroomId: string }) {
                   })
                 }
               >
-                {t("setup_topic_add")}
+                {create.isPending ? <Spinner /> : t("setup_topic_add")}
               </Button>
-            </div>
-          ))}
+            </>
+          )}
         </div>
       )}
       {create.isError && <p className="text-[13px] text-flag">{t("common_error")}</p>}
+      {config.isError && !policy && (
+        <Button variant="outline" className="self-start" onClick={() => void config.refetch()}>
+          {t("room_retry")}
+        </Button>
+      )}
     </div>
   );
 }
@@ -230,6 +275,10 @@ export function CopyTopic({ classroomId }: { classroomId: string }) {
   );
 }
 
+function isAxesPolicyError(error: unknown): boolean {
+  return error != null && error instanceof ApiError && error.code === "report_axes_not_allowed";
+}
+
 export function StartActivity({
   classroomId,
   onStarted,
@@ -243,21 +292,49 @@ export function StartActivity({
   const queryClient = useQueryClient();
   const classroomTopics = useClassroomTopics(classroomId);
   const systemTopics = useQuery(topicsOptions);
+  const config = useQuery(clientConfigOptions);
   const [picked, setPicked] = useState<string | null>(null);
   const [testMode, setTestMode] = useState(false);
-  const start = useMutation({
-    mutationFn: ({ topicId, mode }: { topicId: string; mode: ActivityMode }) =>
-      api.startActivity(classroomId, topicId, mode),
-    onSuccess: async (started) => {
-      setPicked(null);
-      await queryClient.invalidateQueries({ queryKey: classroomsOptions.queryKey });
-      onStarted(started);
-    },
-  });
+  const [axes, setAxes] = useState<AxisDraft[]>([]);
+  const [chosen, setChosen] = useState<ReportAxes>("teacher");
+  const reportAxesName = useId();
+  const policy = config.data?.reportAxes;
+  const reportAxes = policy === "both" ? chosen : policy;
+  const teacherAxes = reportAxes === "teacher";
   const own = classroomTopics.data ?? [];
   const shared = (systemTopics.data ?? []).filter((topic) => topic.classroomId === null);
+  const topics = [...own, ...shared];
+  const pickedTopic = topics.find(({ id }) => id === picked);
+  const start = useMutation({
+    mutationFn: (input: { topic: Topic; mode: ActivityMode; reportAxes: ReportAxes; axes: AxisDraft[] }) => {
+      const edited = axesOf(input.axes);
+      const topicAxes =
+        input.reportAxes === "teacher" && JSON.stringify(edited) !== JSON.stringify(input.topic.axes)
+          ? edited
+          : undefined;
+      return api.startActivity(classroomId, input.topic.id, input.mode, input.reportAxes, topicAxes);
+    },
+    onSuccess: async (started) => {
+      setPicked(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: classroomsOptions.queryKey }),
+        invalidateTopics(queryClient, classroomId),
+      ]);
+      onStarted(started);
+    },
+    onError: async (error) => {
+      if (isAxesPolicyError(error)) await config.refetch();
+    },
+  });
+  const policyChanged = isAxesPolicyError(start.error);
+  const needsPolicyRefresh = policyChanged && (config.isError || config.isFetching);
+  const pick = (topicId: string) => {
+    if (topicId === picked || start.isPending) return;
+    setPicked(topicId);
+    setAxes(draftsOf(topics.find(({ id }) => id === topicId)?.axes ?? []));
+  };
 
-  if (classroomTopics.isPending || systemTopics.isPending) {
+  if (classroomTopics.isPending || systemTopics.isPending || config.isPending) {
     return (
       <div className="flex justify-center py-6">
         <Spinner />
@@ -271,9 +348,37 @@ export function StartActivity({
       {own.length === 0 ? (
         <p className="text-[13px] text-ink-faint">{t("setup_topics_empty")}</p>
       ) : (
-        <TopicPicker topics={own} picked={picked} onPick={setPicked} />
+        <TopicPicker topics={own} picked={picked} onPick={pick} disabled={start.isPending} />
       )}
-      <SystemTopicList topics={shared.slice(0, 6)} picked={picked} onPick={setPicked} />
+      <SystemTopicList topics={shared.slice(0, 6)} picked={picked} onPick={pick} disabled={start.isPending} />
+      {policy === "both" && (
+        <fieldset disabled={start.isPending} className="flex flex-col gap-2 sm:flex-row sm:gap-4">
+          <legend className="mb-2 text-[13px] font-medium text-ink">{t("setup_axes_mode")}</legend>
+          {(["teacher", "ai"] as const).map((mode) => (
+            <label key={mode} className="flex items-center gap-2 text-[13px] text-ink">
+              <input
+                type="radio"
+                name={reportAxesName}
+                checked={chosen === mode}
+                onChange={() => setChosen(mode)}
+                className="accent-ember"
+              />
+              {t(mode === "teacher" ? "setup_axes_mode_teacher" : "setup_axes_mode_ai")}
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {pickedTopic && teacherAxes && <AxesEditor axes={axes} onChange={setAxes} disabled={start.isPending} />}
+      {config.isError && (!policy || policyChanged) && (
+        <Button
+          variant="outline"
+          className="self-start"
+          disabled={config.isFetching}
+          onClick={() => void config.refetch()}
+        >
+          {t("room_retry")}
+        </Button>
+      )}
       {allowTest && (
         <div>
           <Checkbox label={t("classroom_mode_test")} checked={testMode} onCheckedChange={setTestMode} />
@@ -283,10 +388,26 @@ export function StartActivity({
         </div>
       )}
       <div className="flex items-center justify-between gap-3">
-        {start.isError ? <p className="text-[12.5px] text-flag">{t("common_error")}</p> : <span />}
+        {start.isError ? (
+          <p role="alert" className="text-[12.5px] text-flag">
+            {t(policyChanged ? "setup_axes_policy_changed" : "common_error")}
+            {policyChanged && !needsPolicyRefresh && policy && policy !== "both" && (
+              <span className="block text-ink-soft">
+                {t("setup_axes_mode")} · {t(policy === "teacher" ? "setup_axes_mode_teacher" : "setup_axes_mode_ai")}
+              </span>
+            )}
+          </p>
+        ) : (
+          <span />
+        )}
         <Button
-          disabled={!picked || start.isPending}
-          onClick={() => picked && start.mutate({ topicId: picked, mode: testMode ? "test" : "live" })}
+          disabled={
+            !pickedTopic || !reportAxes || start.isPending || needsPolicyRefresh || (teacherAxes && !axesValid(axes))
+          }
+          onClick={() => {
+            if (pickedTopic && reportAxes)
+              start.mutate({ topic: pickedTopic, mode: testMode ? "test" : "live", reportAxes, axes });
+          }}
         >
           {start.isPending ? <Spinner /> : testMode ? t("classroom_start_test") : t("setup_activity_start")}
         </Button>

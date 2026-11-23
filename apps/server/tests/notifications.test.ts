@@ -74,7 +74,7 @@ describe("notifications feed and read watermark (#239)", () => {
     await compose(admin, `排序公告 ${Date.now()}`);
     const body = await feed();
     expect(body.items.length).toBe(before + 1);
-    expect(body.items[0]!.createdAt >= body.items[body.items.length - 1]!.createdAt).toBe(true);
+    expect(body.items[0].createdAt >= body.items[body.items.length - 1].createdAt).toBe(true);
   });
 
   test("unread counts only items newer than the watermark; seen marks it idempotently", async () => {

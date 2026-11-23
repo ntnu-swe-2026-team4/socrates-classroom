@@ -5,10 +5,11 @@ import { inject } from "vitest";
 import { all, run } from "../src/db/d1";
 
 const migrations = inject("d1Migrations");
+const legacyMigrations = migrations.filter((migration) => migration.name < "014");
 
 describe("migration 011: facebook identity (#207)", () => {
   it("drops the google-only provider CHECK and keeps rows plus cascade", async () => {
-    const base = migrations.filter((migration) => !/^(003|008|010|011)/.test(migration.name));
+    const base = legacyMigrations.filter((migration) => !/^(003|008|010|011)/.test(migration.name));
     const widen = migrations.filter((migration) => migration.name.startsWith("011"));
     expect(widen).toHaveLength(1);
     await applyD1Migrations(env.DB, base);
@@ -50,7 +51,7 @@ describe("migration 011: facebook identity (#207)", () => {
 
 describe("migration 010: retire capability (no-mode, #210)", () => {
   it("drops can_manage_classes and the legacy role column from users", async () => {
-    const base = migrations.filter((migration) => !/^(003|008|010)/.test(migration.name));
+    const base = legacyMigrations.filter((migration) => !/^(003|008|010)/.test(migration.name));
     const retire = migrations.filter((migration) => migration.name.startsWith("010"));
     expect(retire).toHaveLength(1);
     await applyD1Migrations(env.DB, base);
@@ -80,7 +81,7 @@ describe("migration 010: retire capability (no-mode, #210)", () => {
 
 describe("migration 008: teacher key models", () => {
   it("splits the per-provider model into (provider, model) legs with their own max_concurrency", async () => {
-    const legacy = migrations.filter((migration) => !/^(003|008)/.test(migration.name));
+    const legacy = legacyMigrations.filter((migration) => !/^(003|008)/.test(migration.name));
     const split = migrations.filter((migration) => migration.name.startsWith("008"));
     expect(split).toHaveLength(1);
     await applyD1Migrations(env.DB, legacy);
@@ -137,7 +138,7 @@ describe("migration 008: teacher key models", () => {
 });
 describe("migration 009: teacher key usage ledger and quota alerts", () => {
   it("adds a nullable monthly quota to teacher_keys and creates usage/alerts tables keyed to the key row", async () => {
-    const base = migrations.filter((migration) => !/^(003|009)/.test(migration.name));
+    const base = legacyMigrations.filter((migration) => !/^(003|009)/.test(migration.name));
     const usage = migrations.filter((migration) => migration.name.startsWith("009"));
     expect(usage).toHaveLength(1);
     await applyD1Migrations(env.DB, base);
@@ -199,7 +200,7 @@ describe("migration 009: teacher key usage ledger and quota alerts", () => {
 
 describe("migration 003: activity participant backfill", () => {
   it("existing members become member participants and keep their pseudonyms", async () => {
-    const legacy = migrations.filter((migration) => !migration.name.startsWith("003"));
+    const legacy = legacyMigrations.filter((migration) => !migration.name.startsWith("003"));
     const backfill = migrations.filter((migration) => migration.name.startsWith("003"));
     expect(backfill).toHaveLength(1);
     await applyD1Migrations(env.DB, legacy);
@@ -340,5 +341,127 @@ describe("migration 007: user identities", () => {
       "SELECT provider FROM user_identities WHERE user_id = 'u_oid'",
     );
     expect(identities).toEqual([]);
+  });
+});
+
+describe("migration 013: solo threads (#281)", () => {
+  it("creates solo_threads table with user foreign key cascade", async () => {
+    expect(migrations.some((migration) => migration.name === "013_solo_threads.sql")).toBe(true);
+
+    const at = "2026-11-22T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_solo_m', '單人使用者', 'solo_m@example.com', 'x', 'zh', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO solo_threads (id, user_id, title, created_at, updated_at)
+       VALUES ('solo_m1', 'u_solo_m', '測試題目', $at, $at)`,
+      { at },
+    );
+
+    const threads = await all<{ id: string; title: string }>(
+      env.DB,
+      "SELECT id, title FROM solo_threads WHERE user_id = 'u_solo_m'",
+    );
+    expect(threads).toEqual([{ id: "solo_m1", title: "測試題目" }]);
+
+    await run(env.DB, "DELETE FROM users WHERE id = 'u_solo_m'");
+    const after = await all<{ id: string }>(env.DB, "SELECT id FROM solo_threads WHERE user_id = 'u_solo_m'");
+    expect(after).toEqual([]);
+  });
+});
+
+describe("migration 014: classroom community (#324)", () => {
+  it("preserves existing activity participants when upgrading the schema", async () => {
+    const community = migrations.filter((migration) => migration.name.startsWith("014"));
+    expect(community).toHaveLength(1);
+    await applyD1Migrations(env.DB, community);
+    const participants = await all<{ id: string; user_id: string | null }>(
+      env.DB,
+      "SELECT id, user_id FROM activity_participants WHERE activity_id = 'a1' ORDER BY id",
+    );
+    expect(participants).toEqual([
+      { id: "p_gone", user_id: null },
+      { id: "u_s", user_id: "u_s" },
+    ]);
+    expect(await all(env.DB, "PRAGMA foreign_key_check")).toEqual([]);
+  });
+});
+
+describe("migration 015: topic axes (#159)", () => {
+  it("adds topics.axes defaulting to [] and backfills system topics plus copied_from copies", async () => {
+    const at = "2026-11-22T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, prompts, created_at)
+       VALUES ('t_sys_trolley', NULL, NULL, NULL, '電車難題：你會拉桿嗎？', '陳述', '["問"]', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, prompts, created_at)
+       VALUES ('t_copy_trolley', 'u_t', 'c1', 't_sys_trolley', '電車難題：你會拉桿嗎？', '陳述', '["問"]', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, prompts, created_at)
+       VALUES ('t_custom_copy', 'u_t', 'c1', 't1', '題目', '陳述', '["問"]', $at)`,
+      { at },
+    );
+
+    const axes = migrations.filter((migration) => migration.name.startsWith("015"));
+    expect(axes).toHaveLength(1);
+    await applyD1Migrations(env.DB, axes);
+
+    const columns = await all<{ name: string }>(env.DB, "PRAGMA table_info(topics)");
+    expect(columns.map((column) => column.name)).toContain("axes");
+
+    const rows = await all<{ id: string; axes: string }>(
+      env.DB,
+      "SELECT id, axes FROM topics WHERE id IN ('t_sys_trolley', 't_copy_trolley', 't1', 't_custom_copy') ORDER BY id",
+    );
+    const expectedTrolley = JSON.stringify([
+      { name: "拉桿的理由", left: "看結果：救多數", right: "看手段：不能親手害人" },
+    ]);
+    expect(rows).toEqual([
+      { id: "t1", axes: "[]" },
+      { id: "t_copy_trolley", axes: expectedTrolley },
+      { id: "t_custom_copy", axes: "[]" },
+      { id: "t_sys_trolley", axes: expectedTrolley },
+    ]);
+  });
+});
+
+describe("migration 016: settings and activity report_axes (#159)", () => {
+  it("creates settings table and adds nullable activities.report_axes leaving existing rows NULL", async () => {
+    const settingsMigration = migrations.filter((migration) => migration.name.startsWith("016"));
+    expect(settingsMigration).toHaveLength(1);
+    await applyD1Migrations(env.DB, settingsMigration);
+
+    const columns = await all<{ name: string }>(env.DB, "PRAGMA table_info(activities)");
+    expect(columns.map((column) => column.name)).toContain("report_axes");
+
+    const existingActivities = await all<{ id: string; report_axes: string | null }>(
+      env.DB,
+      "SELECT id, report_axes FROM activities WHERE id IN ('a1', 'a2') ORDER BY id",
+    );
+    expect(existingActivities).toEqual([
+      { id: "a1", report_axes: null },
+      { id: "a2", report_axes: null },
+    ]);
+
+    await run(
+      env.DB,
+      "INSERT INTO settings (key, value, updated_at) VALUES ('report_axes', 'ai', '2026-11-22T00:00:00.000Z')",
+    );
+    const saved = await all<{ key: string; value: string }>(
+      env.DB,
+      "SELECT key, value FROM settings WHERE key = 'report_axes'",
+    );
+    expect(saved).toEqual([{ key: "report_axes", value: "ai" }]);
   });
 });
