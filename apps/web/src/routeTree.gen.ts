@@ -27,7 +27,6 @@ import { Route as DevAccountsRouteImport } from './routes/dev.accounts'
 import { Route as JoinIndexRouteImport } from './routes/join.index'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as ReportIdRouteImport } from './routes/report.$id'
-import { Route as TSetupRouteImport } from './routes/t.setup'
 import { Route as JoinATokenRouteImport } from './routes/join.a.$token'
 import { Route as JoinITokenRouteImport } from './routes/join.i.$token'
 import { Route as TLiveIdRouteImport } from './routes/t.live.$id'
@@ -122,11 +121,6 @@ const ReportIdRoute = ReportIdRouteImport.update({
   path: '/report/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TSetupRoute = TSetupRouteImport.update({
-  id: '/t/setup',
-  path: '/t/setup',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const JoinATokenRoute = JoinATokenRouteImport.update({
   id: '/a/$token',
   path: '/a/$token',
@@ -159,7 +153,6 @@ export interface FileRoutesByFullPath {
   '/dev/accounts': typeof DevAccountsRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
-  '/t/setup': typeof TSetupRoute
   '/chat/': typeof ChatIndexRoute
   '/classrooms/': typeof ClassroomsIndexRoute
   '/join/': typeof JoinIndexRoute
@@ -181,7 +174,6 @@ export interface FileRoutesByTo {
   '/dev/accounts': typeof DevAccountsRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
-  '/t/setup': typeof TSetupRoute
   '/chat': typeof ChatIndexRoute
   '/classrooms': typeof ClassroomsIndexRoute
   '/join': typeof JoinIndexRoute
@@ -206,7 +198,6 @@ export interface FileRoutesById {
   '/dev/accounts': typeof DevAccountsRoute
   '/join/$code': typeof JoinCodeRoute
   '/report/$id': typeof ReportIdRoute
-  '/t/setup': typeof TSetupRoute
   '/chat/': typeof ChatIndexRoute
   '/classrooms/': typeof ClassroomsIndexRoute
   '/join/': typeof JoinIndexRoute
@@ -232,7 +223,6 @@ export interface FileRouteTypes {
     | '/dev/accounts'
     | '/join/$code'
     | '/report/$id'
-    | '/t/setup'
     | '/chat/'
     | '/classrooms/'
     | '/join/'
@@ -254,7 +244,6 @@ export interface FileRouteTypes {
     | '/dev/accounts'
     | '/join/$code'
     | '/report/$id'
-    | '/t/setup'
     | '/chat'
     | '/classrooms'
     | '/join'
@@ -278,7 +267,6 @@ export interface FileRouteTypes {
     | '/dev/accounts'
     | '/join/$code'
     | '/report/$id'
-    | '/t/setup'
     | '/chat/'
     | '/classrooms/'
     | '/join/'
@@ -301,7 +289,6 @@ export interface RootRouteChildren {
   ClassroomsClassroomIdRoute: typeof ClassroomsClassroomIdRoute
   DevAccountsRoute: typeof DevAccountsRoute
   ReportIdRoute: typeof ReportIdRoute
-  TSetupRoute: typeof TSetupRoute
   ClassroomsIndexRoute: typeof ClassroomsIndexRoute
   TLiveIdRoute: typeof TLiveIdRoute
 }
@@ -434,13 +421,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/t/setup': {
-      id: '/t/setup'
-      path: '/t/setup'
-      fullPath: '/t/setup'
-      preLoaderRoute: typeof TSetupRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/join/a/$token': {
       id: '/join/a/$token'
       path: '/a/$token'
@@ -507,7 +487,6 @@ const rootRouteChildren: RootRouteChildren = {
   ClassroomsClassroomIdRoute: ClassroomsClassroomIdRoute,
   DevAccountsRoute: DevAccountsRoute,
   ReportIdRoute: ReportIdRoute,
-  TSetupRoute: TSetupRoute,
   ClassroomsIndexRoute: ClassroomsIndexRoute,
   TLiveIdRoute: TLiveIdRoute,
 }

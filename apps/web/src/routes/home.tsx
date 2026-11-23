@@ -52,7 +52,7 @@ function HomePage() {
             <h2 className="mt-1 font-serif text-3xl">{t("home_question")}</h2>
             <div className="mt-4">
               {canManage ? (
-                <Link to="/t/setup">
+                <Link to="/classrooms">
                   <Button>{t("home_open_classroom")}</Button>
                 </Link>
               ) : (

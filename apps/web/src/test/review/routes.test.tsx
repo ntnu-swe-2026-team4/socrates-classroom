@@ -235,7 +235,60 @@ test("#90: an emotion already in the loaded history does not replay an expressio
   }
 });
 
-test("t.setup: create classroom → add an AI topic → start the activity", async () => {
+test("#185: a signed-in teacher creates a classroom inline from the index and lands on its page", async () => {
+  const created: Array<{ path: string; body: unknown }> = [];
+  let createdRoom = false;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (path === "/api/classrooms" && init?.method === "POST") {
+        created.push({ path, body: JSON.parse(String(init.body)) });
+        createdRoom = true;
+        return new Response(
+          JSON.stringify({ classroomId: "class-9", code: "code999", url: "http://localhost/join/code999" }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const room = {
+        id: "class-9",
+        name: "My class",
+        role: "teacher",
+        teacherName: "Teacher",
+        memberCount: 1,
+        code: "code999",
+        url: "http://localhost/join/code999",
+        current: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      };
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
+        "/api/classrooms": createdRoom ? [room] : [],
+        "/api/classrooms/class-9/activities": { items: [], nextCursor: null },
+        "/api/classrooms/class-9/topics": [],
+        "/api/config": { reportAxes: "ai" },
+        "/api/topics": [],
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/classrooms");
+  try {
+    fireEvent.click(await screen.findByRole("button", { name: "New class" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Classroom name" }), {
+      target: { value: "My class" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create classroom" }));
+    expect(await screen.findByRole("heading", { name: "My class" })).toBeTruthy();
+    expect(created.map((call) => call.body)).toEqual([{ name: "My class" }]);
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#185: the classroom page covers the retired wizard flow: AI topic → start the activity", async () => {
   const generatedTopic = {
     id: "gen_123_0",
     title: "Generated topic",
@@ -263,12 +316,30 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
       const responses: Record<string, unknown> = {
         "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
         "/api/config": { reportAxes: "ai" },
-        "/api/topics": [topic],
+        "/api/topics": [],
         "/api/topics/generate": [generatedTopic],
-        "/api/classrooms": { classroomId: "class-9", code: "code999", url: "http://localhost/join/code999" },
+        "/api/classrooms": [
+          {
+            id: "class-9",
+            name: "Class 9",
+            role: "teacher",
+            teacherName: "Teacher",
+            memberCount: 3,
+            code: "code999",
+            url: "http://localhost/join/code999",
+            current: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+        "/api/classrooms/class-9/activities": { items: [], nextCursor: null },
         "/api/classrooms/class-9/topics": topicAdded ? [persisted] : [],
-        "/api/classrooms/class-9/activities": activity,
       };
+      if (init?.method === "POST" && path === "/api/classrooms/class-9/activities") {
+        return new Response(JSON.stringify(activity), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
       return new Response(JSON.stringify(responses[path]), {
         status: init?.method === "POST" && path !== "/api/topics/generate" ? 201 : 200,
@@ -276,14 +347,8 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
       });
     }),
   );
-  const dispose = await mountRoute("/t/setup");
+  const dispose = await mountRoute("/classrooms/class-9");
   try {
-    fireEvent.change(await screen.findByRole("textbox", { name: "Classroom name" }), {
-      target: { value: "My class" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Create classroom" }));
-    await screen.findByText(/Classroom created/);
-
     fireEvent.click(await screen.findByRole("tab", { name: "AI generate" }));
     const direction = await screen.findByPlaceholderText("Topic direction");
     fireEvent.change(direction, { target: { value: "justice" } });
@@ -291,21 +356,22 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
     fireEvent.click(await screen.findByRole("button", { name: /Generated topic/ }));
     fireEvent.click(screen.getByRole("button", { name: "Add to topics" }));
 
-    const activitySection = within(screen.getByRole("region", { name: "Activity" }));
+    const startSection = screen.getByRole("button", { name: "Start activity" }).closest("section");
+    expect(startSection).not.toBeNull();
+    const activitySection = within(startSection as HTMLElement);
     fireEvent.click(await activitySection.findByRole("button", { name: /Generated topic/ }));
     fireEvent.click(activitySection.getByRole("button", { name: "Start activity" }));
-    await screen.findByText("Activity ready");
+    await waitFor(() => expect(calls.length).toBe(2));
 
     expect(calls.map((call) => call.path)).toEqual([
-      "/api/classrooms",
       "/api/classrooms/class-9/topics",
       "/api/classrooms/class-9/activities",
     ]);
-    expect(calls[0].body).toEqual({ name: "My class" });
-    expect(calls[1].body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
-    expect(calls[2].body).toMatchObject({ topicId: "topic-persisted", mode: "live", reportAxes: "ai" });
+    expect(calls[0].body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
+    expect(calls[1].body).toMatchObject({ topicId: "topic-persisted", mode: "live", reportAxes: "ai" });
   } finally {
     dispose();
+    vi.unstubAllGlobals();
   }
 });
 
@@ -1168,7 +1234,6 @@ test.each([
   "/settings?section=keys",
   "/admin/users",
   "/t/live/activity-1",
-  "/t/setup",
 ])("#318: a signed-out visit to %s goes to login carrying the address to return to", async (url) => {
   const location = await loadLocation(url, { "/api/me": null });
   expect(location.pathname).toBe("/login");

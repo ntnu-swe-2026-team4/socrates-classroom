@@ -1,14 +1,15 @@
 import { useId, useState } from "react";
 import { classroomsOptions, myReportsOptions } from "@/api/queries";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChartNoAxesColumn, ChevronDown, Plus, Users } from "lucide-react";
 import type { ClassroomSummary } from "@socrates/shared";
 
 import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
+import { api, ApiError } from "@/api";
 import { EmptyPanel, LoadMore, PanelState } from "@/components/ClassroomCommunity";
-import { Button, Input, PageHeader, cn } from "@/components/ui";
+import { Button, Field, FormDialog, Input, PageHeader, cn } from "@/components/ui";
 import { useFormatDate, useT } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
 
@@ -23,11 +24,24 @@ export const Route = createFileRoute("/classrooms/")({
 function ClassroomsPage() {
   const t = useT();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const me = useQuery(meQueryOptions);
   const classrooms = useQuery(classroomsOptions);
   const [code, setCode] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
   const canManage = Boolean(me.data);
   const list = classrooms.data ?? [];
+
+  const create = useMutation({
+    mutationFn: () => api.createClassroom(name.trim()),
+    onSuccess: async (created) => {
+      setName("");
+      setCreating(false);
+      await queryClient.invalidateQueries({ queryKey: classroomsOptions.queryKey });
+      void navigate({ to: "/classrooms/$classroomId", params: { classroomId: created.classroomId } });
+    },
+  });
 
   function join() {
     const normalized = normalizeJoinCode(code);
@@ -65,7 +79,13 @@ function ClassroomsPage() {
               </Button>
             </form>
             {canManage && (
-              <Button onClick={() => void navigate({ to: "/t/setup" })}>
+              <Button
+                onClick={() => {
+                  create.reset();
+                  setName("");
+                  setCreating(true);
+                }}
+              >
                 <Plus className="size-4" />
                 {t("nav_setup")}
               </Button>
@@ -91,6 +111,30 @@ function ClassroomsPage() {
         )}
         {me.data && <PersonalReports key={me.data.id} userId={me.data.id} />}
       </div>
+      <FormDialog
+        open={creating}
+        title={t("setup_title")}
+        submitLabel={t("setup_create")}
+        cancelLabel={t("common_cancel")}
+        canSubmit={Boolean(name.trim())}
+        submitting={create.isPending}
+        onSubmit={() => create.mutate()}
+        onCancel={() => setCreating(false)}
+      >
+        <Field label={t("setup_class_label")}>
+          <Input
+            value={name}
+            placeholder={t("setup_class_placeholder")}
+            maxLength={80}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </Field>
+        {create.isError && (
+          <p role="alert" className="text-[13px] text-flag">
+            {create.error instanceof ApiError ? create.error.message : t("common_error")}
+          </p>
+        )}
+      </FormDialog>
     </div>
   );
 }
