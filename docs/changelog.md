@@ -2,6 +2,14 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-24 — provider 排序互動整個改照 magpie `dragRows`（`refactor/403-magpie-sorter`，#403）
+
+### Changed
+
+- teacher／admin × key／model 四個清單的排序互動統一：拖曳把手（pointer capture、4px 縱向門檻、拖曳列跟隨指標、鄰列讓位、lift 陰影）＋鍵盤 Alt+↑↓ 移一格、Alt+Shift+↑↓ 送頂／送底；model 列由 ↑/↓ 按鈕改為與 key 列相同的把手，全部共用新 hook `useSortableOrder`（兩個元件共刪約 180 行重複排序邏輯）
+- 存檔樂觀更新、失敗回滾到 server 順序並顯示錯誤；序號計數器防止較舊的 in-flight 存檔回滾或覆寫較新的移動。API 形狀不變（`order*` 端點照舊收完整 id 陣列）
+- 拖曳幾何只吃指標位移（不混用視埠與 layout 座標），清單捲動時仍「列跟隨指標」；`noUncheckedIndexedAccess`（#293 step 4）下以每列 `offsetTop`／`offsetHeight` 快照窄化
+
 ## 2026-11-24 — 平台鏈主力切 glm-5.3、class-report 改 low、推論走 AI Gateway（`feat/401-platform-glm-5.3`，#401）
 
 ### Changed

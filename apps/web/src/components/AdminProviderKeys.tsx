@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import { GripVertical, ShieldCheck } from "lucide-react";
 import type { AdminKeyStatus, AdminTeacherKeyStatus } from "@socrates/shared";
 import { api, ApiError } from "@/api";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/api/queries";
 import { ProviderIcon } from "@/components/ProviderKeys";
 import { Button, Card, ConfirmDialog, Field, FormDialog, Input, SectionTitle, Spinner, cn } from "@/components/ui";
+import { useSortableOrder, type SortHandleProps } from "@/hooks/useSortableOrder";
 import { useFormatDate, useT } from "@/i18n";
 import { focusNextIn, focusRestoreOnUnmount } from "@/lib/focus";
 import { providerKind, type ProviderKind } from "@/lib/providers";
@@ -44,8 +45,6 @@ function AdminKeysSection() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: adminKeysOptions.queryKey });
 
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [armed, setArmed] = useState<string | null>(null);
-  const [dragId, setDragId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [zdrFor, setZdrFor] = useState<AdminKeyStatus | null>(null);
@@ -66,41 +65,17 @@ function AdminKeysSection() {
     },
   });
 
-  const run = async (action: () => Promise<void>) => {
-    setError(null);
-    try {
-      await action();
-      await invalidate();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
   const list = keys.data ?? [];
 
-  const move = (id: string, delta: -1 | 1) =>
-    run(async () => {
-      const ids = list.map((entry) => entry.id);
-      const from = ids.indexOf(id);
-      const to = from + delta;
-      if (from < 0 || to < 0 || to >= ids.length) return;
-      ids.splice(to, 0, ...ids.splice(from, 1));
+  const sort = useSortableOrder({
+    ids: list.map((entry) => entry.id),
+    save: async (ids) => {
       await api.orderAdminKeys(ids);
-    });
-
-  const dropOn = (target: string) =>
-    run(async () => {
-      const source = dragId;
-      setDragId(null);
-      setArmed(null);
-      if (!source || source === target) return;
-      const ids = list.map((entry) => entry.id);
-      const from = ids.indexOf(source);
-      const to = ids.indexOf(target);
-      if (from < 0 || to < 0) return;
-      ids.splice(to, 0, ...ids.splice(from, 1));
-      await api.orderAdminKeys(ids);
-    });
+      await invalidate();
+    },
+    onError: setError,
+  });
+  const byId = useMemo(() => new Map(list.map((entry) => [entry.id, entry])), [list]);
 
   return (
     <section>
@@ -135,31 +110,25 @@ function AdminKeysSection() {
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {list.map((entry) => (
-              <AdminKeyRow
-                key={entry.id}
-                entry={entry}
-                expanded={expanded === entry.id}
-                armed={armed === entry.id}
-                dragging={dragId === entry.id}
-                dragActive={dragId !== null}
-                onToggle={() => setExpanded(expanded === entry.id ? null : entry.id)}
-                onArm={(on) => setArmed(on ? entry.id : null)}
-                onDragStart={() => setDragId(entry.id)}
-                onDragEnd={() => {
-                  setDragId(null);
-                  setArmed(null);
-                }}
-                onDrop={() => dropOn(entry.id)}
-                onStep={(delta) => move(entry.id, delta)}
-                onZdr={(target) => {
-                  approveZdr.reset();
-                  setRetentionSource(target.zdrRetentionSource ?? "");
-                  setZdrFor(target);
-                }}
-                onError={setError}
-              />
-            ))}
+            {sort.order.map((id) => {
+              const entry = byId.get(id);
+              if (!entry) return null;
+              return (
+                <AdminKeyRow
+                  key={entry.id}
+                  entry={entry}
+                  expanded={expanded === entry.id}
+                  handleProps={sort.handleProps}
+                  onToggle={() => setExpanded(expanded === entry.id ? null : entry.id)}
+                  onZdr={(target) => {
+                    approveZdr.reset();
+                    setRetentionSource(target.zdrRetentionSource ?? "");
+                    setZdrFor(target);
+                  }}
+                  onError={setError}
+                />
+              );
+            })}
           </ul>
         )}
         {keys.data && keys.data.length === 0 ? (
@@ -215,29 +184,15 @@ function AdminKeysSection() {
 function AdminKeyRow({
   entry,
   expanded,
-  armed,
-  dragging,
-  dragActive,
+  handleProps,
   onToggle,
-  onArm,
-  onDragStart,
-  onDragEnd,
-  onDrop,
-  onStep,
   onZdr,
   onError,
 }: {
   entry: AdminKeyStatus;
   expanded: boolean;
-  armed: boolean;
-  dragging: boolean;
-  dragActive: boolean;
+  handleProps: SortHandleProps;
   onToggle: () => void;
-  onArm: (on: boolean) => void;
-  onDragStart: () => void;
-  onDragEnd: () => void;
-  onDrop: () => void;
-  onStep: (delta: -1 | 1) => void;
   onZdr: (entry: AdminKeyStatus) => void;
   onError: (message: string) => void;
 }) {
@@ -245,33 +200,16 @@ function AdminKeyRow({
   return (
     <li
       data-provider={entry.provider}
-      className={cn("flex flex-col overflow-hidden rounded-xl border border-line bg-paper", dragging && "opacity-50")}
-      onDragOver={(event) => {
-        if (dragActive) event.preventDefault();
-      }}
-      onDrop={onDrop}
+      data-sort-id={entry.id}
+      className="flex flex-col overflow-hidden rounded-xl border border-line bg-paper"
     >
       <div className="flex items-center gap-3 px-3 py-2">
         <button
           type="button"
-          draggable={armed}
-          onDragStart={onDragStart}
-          onDragEnd={onDragEnd}
-          onPointerDown={() => onArm(true)}
-          onPointerUp={() => onArm(false)}
-          onKeyDown={(event) => {
-            if (event.altKey && event.key === "ArrowUp") {
-              event.preventDefault();
-              onStep(-1);
-            }
-            if (event.altKey && event.key === "ArrowDown") {
-              event.preventDefault();
-              onStep(1);
-            }
-          }}
+          {...handleProps}
           aria-label={`${t("settings_keys_drag")} ${entry.provider}`}
           title={t("settings_keys_drag")}
-          className="cursor-grab rounded-md p-1 text-ink-faint hover:text-ink active:cursor-grabbing"
+          className="cursor-grab touch-none rounded-md p-1 text-ink-faint hover:text-ink active:cursor-grabbing"
         >
           <ProviderIcon id={entry.provider} className="h-6 w-6" />
         </button>
@@ -339,6 +277,16 @@ function AdminKeyEditor({
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: adminKeysOptions.queryKey });
 
+  const sort = useSortableOrder({
+    ids: entry.models.map((leg) => leg.model),
+    save: async (models) => {
+      await api.orderAdminKeyModels(entry.id, models);
+      await refresh();
+    },
+    onError,
+  });
+  const byModel = useMemo(() => new Map(entry.models.map((leg) => [leg.model, leg])), [entry.models]);
+
   const catalog = models.data ?? [];
   const owned = new Set(entry.models.map((leg) => leg.model));
   const results =
@@ -404,15 +352,6 @@ function AdminKeyEditor({
       setQuotaDraft("");
     });
 
-  const reorder = (index: number, delta: -1 | 1) =>
-    run(async () => {
-      const ids = entry.models.map((leg) => leg.model);
-      const to = index + delta;
-      if (to < 0 || to >= ids.length) return;
-      ids.splice(to, 0, ...ids.splice(index, 1));
-      await api.orderAdminKeyModels(entry.id, ids);
-    });
-
   const replaceKey = () =>
     run(async () => {
       if (!keyDraft) return;
@@ -440,97 +379,91 @@ function AdminKeyEditor({
       ) : null}
 
       <ul className="flex flex-col gap-1">
-        {entry.models.map((leg, index) => (
-          <li
-            key={leg.model}
-            className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-paper px-2.5 py-1.5"
-          >
-            <span className="flex items-center gap-1">
+        {sort.order.map((model) => {
+          const leg = byModel.get(model);
+          if (!leg) return null;
+          return (
+            <li
+              key={leg.model}
+              data-sort-id={leg.model}
+              className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-paper px-2.5 py-1.5"
+            >
               <button
                 type="button"
-                onClick={() => reorder(index, -1)}
-                disabled={index === 0}
-                aria-label={t("settings_keys_up")}
-                className="cursor-pointer rounded-md px-1 text-ink-faint hover:text-ink disabled:opacity-30"
+                {...sort.handleProps}
+                aria-label={`${t("settings_keys_drag")} ${leg.model}`}
+                title={t("settings_keys_drag")}
+                className="cursor-grab touch-none rounded-md p-1 text-ink-faint hover:text-ink active:cursor-grabbing"
               >
-                ↑
+                <GripVertical className="size-4" aria-hidden />
               </button>
-              <button
-                type="button"
-                onClick={() => reorder(index, 1)}
-                disabled={index === entry.models.length - 1}
-                aria-label={t("settings_keys_down")}
-                className="cursor-pointer rounded-md px-1 text-ink-faint hover:text-ink disabled:opacity-30"
-              >
-                ↓
-              </button>
-            </span>
-            <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink">{leg.model}</span>
-            {editingLimit === leg.model ? (
-              <span className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={limitDraft}
-                  onChange={(event) => setLimitDraft(event.target.value)}
-                  placeholder={t("settings_keys_concurrency_default")}
-                  aria-label={t("settings_keys_edit_concurrency")}
-                  className="w-20 rounded-md border border-line-strong bg-paper px-2 py-1 text-[13px] text-ink"
-                />
-                <button
-                  type="button"
-                  onClick={() => saveLimit(leg.model)}
-                  aria-label={t("settings_keys_concurrency_save")}
-                  className="cursor-pointer rounded-full bg-ember px-2.5 py-1 text-[12px] font-semibold text-on-ember"
-                >
-                  ✓
-                </button>
+              <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink">{leg.model}</span>
+              {editingLimit === leg.model ? (
+                <span className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={limitDraft}
+                    onChange={(event) => setLimitDraft(event.target.value)}
+                    placeholder={t("settings_keys_concurrency_default")}
+                    aria-label={t("settings_keys_edit_concurrency")}
+                    className="w-20 rounded-md border border-line-strong bg-paper px-2 py-1 text-[13px] text-ink"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => saveLimit(leg.model)}
+                    aria-label={t("settings_keys_concurrency_save")}
+                    className="cursor-pointer rounded-full bg-ember px-2.5 py-1 text-[12px] font-semibold text-on-ember"
+                  >
+                    ✓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingLimit(null);
+                      setLimitDraft("");
+                      setLimitError(false);
+                    }}
+                    aria-label={t("settings_keys_cancel")}
+                    className="cursor-pointer rounded-md px-1.5 py-1 text-[12px] text-ink-faint hover:text-ink"
+                  >
+                    ✕
+                  </button>
+                  {limitError ? (
+                    <span role="alert" className="text-[11px] text-flag">
+                      {t("settings_keys_limit_invalid")}
+                    </span>
+                  ) : null}
+                </span>
+              ) : (
                 <button
                   type="button"
                   onClick={() => {
-                    setEditingLimit(null);
-                    setLimitDraft("");
+                    setEditingLimit(leg.model);
+                    setLimitDraft(leg.maxConcurrency === null ? "" : String(leg.maxConcurrency));
                     setLimitError(false);
                   }}
-                  aria-label={t("settings_keys_cancel")}
-                  className="cursor-pointer rounded-md px-1.5 py-1 text-[12px] text-ink-faint hover:text-ink"
+                  aria-label={`${t("settings_keys_edit_concurrency")} ${leg.model}`}
+                  title={t("settings_keys_edit_concurrency")}
+                  className="cursor-pointer rounded-full border border-line bg-paper-deep px-2.5 py-0.5 text-[12px] text-ink-soft hover:text-ink"
                 >
-                  ✕
+                  {leg.maxConcurrency === null
+                    ? t("settings_keys_concurrency_default")
+                    : t("settings_keys_concurrency", { n: leg.maxConcurrency })}
                 </button>
-                {limitError ? (
-                  <span role="alert" className="text-[11px] text-flag">
-                    {t("settings_keys_limit_invalid")}
-                  </span>
-                ) : null}
-              </span>
-            ) : (
+              )}
               <button
                 type="button"
-                onClick={() => {
-                  setEditingLimit(leg.model);
-                  setLimitDraft(leg.maxConcurrency === null ? "" : String(leg.maxConcurrency));
-                  setLimitError(false);
-                }}
-                aria-label={`${t("settings_keys_edit_concurrency")} ${leg.model}`}
-                title={t("settings_keys_edit_concurrency")}
-                className="cursor-pointer rounded-full border border-line bg-paper-deep px-2.5 py-0.5 text-[12px] text-ink-soft hover:text-ink"
+                onClick={() => setConfirmTarget({ kind: "model", model: leg.model })}
+                aria-label={`${t("settings_keys_remove_model")} ${leg.model}`}
+                className="cursor-pointer rounded-md px-1.5 py-1 text-ink-faint hover:text-flag"
               >
-                {leg.maxConcurrency === null
-                  ? t("settings_keys_concurrency_default")
-                  : t("settings_keys_concurrency", { n: leg.maxConcurrency })}
+                ✕
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setConfirmTarget({ kind: "model", model: leg.model })}
-              aria-label={`${t("settings_keys_remove_model")} ${leg.model}`}
-              className="cursor-pointer rounded-md px-1.5 py-1 text-ink-faint hover:text-flag"
-            >
-              ✕
-            </button>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
 
       <div className="flex flex-col gap-1.5">
