@@ -156,7 +156,7 @@ export class VoiceInputController {
       if (hasRecognition && capturedFinal) {
         this.cb.onFinal(capturedFinal);
       } else if (chunks.length > 0) {
-        const blob = new Blob(chunks, { type: chunks[0].type });
+        const blob = new Blob(chunks, { type: chunks[0]?.type });
         try {
           const text = await this.env.stt(blob);
           this.cb.onFinal(text);
@@ -268,8 +268,8 @@ export class VoiceInputController {
           let interimText = "";
           for (let i = event.resultIndex; i < event.results.length; i++) {
             const result = event.results[i];
-            const transcript = result[0].transcript;
-            if (result.isFinal) s.finalText += transcript;
+            const transcript = result?.[0]?.transcript ?? "";
+            if (result?.isFinal) s.finalText += transcript;
             else interimText += transcript;
           }
           s.liveText = (s.finalText + interimText).trim();

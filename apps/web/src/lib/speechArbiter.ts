@@ -27,8 +27,11 @@ function boundedSpeech(text: string, maxChars: number): string {
   if (capped.length === text.length) return capped;
   let cut = -1;
   for (let index = 0; index < capped.length; index += 1) {
-    const at = SENTENCE_END.indexOf(capped[index]);
-    if (at >= 0 && (SENTENCE_END[at] === "\n" || capped[index + 1] === undefined || capped[index + 1] === " ")) {
+    const ch = capped[index];
+    if (ch === undefined) continue;
+    const at = SENTENCE_END.indexOf(ch);
+    const next = capped[index + 1];
+    if (at >= 0 && (SENTENCE_END[at] === "\n" || next === undefined || next === " ")) {
       cut = index;
     }
   }

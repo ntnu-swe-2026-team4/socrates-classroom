@@ -15,7 +15,8 @@ export function clefChoicePrompt(asset: string, keys: readonly string[]): ClefCh
   const parsed = new Map<string, string>();
   for (const line of start === -1 ? [] : lines.slice(start)) {
     const match = CRITERION.exec(line);
-    if (match) parsed.set(match[1], match[2]);
+    const key = match?.[1];
+    if (match && key !== undefined) parsed.set(key, match[2] ?? "");
   }
   const missing = keys.filter((key) => !parsed.has(key));
   if (missing.length > 0) throw new Error(`clef prompt criteria missing keys: ${missing.join(", ")}`);

@@ -123,7 +123,7 @@ function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [errorKey, setErrorKey] = useState<MessageKey | null>(
-    search.error && ERROR_KEYS[search.error] ? ERROR_KEYS[search.error] : null,
+    search.error && ERROR_KEYS[search.error] ? (ERROR_KEYS[search.error] ?? null) : null,
   );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

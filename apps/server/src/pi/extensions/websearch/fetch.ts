@@ -15,9 +15,10 @@ function expandIpv6(host: string): number[] | null {
   if (!host.includes(":")) return null;
   let text = host.toLowerCase();
   const v4tail = text.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-  if (v4tail) {
-    const [a = 0, b = 0, c = 0, d = 0] = v4tail[1].split(".").map(Number);
-    text = `${text.slice(0, -v4tail[1].length)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  const v4 = v4tail?.[1];
+  if (v4 !== undefined) {
+    const [a = 0, b = 0, c = 0, d = 0] = v4.split(".").map(Number);
+    text = `${text.slice(0, -v4.length)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
   }
   const halves = text.split("::");
   if (halves.length > 2) return null;
@@ -50,15 +51,16 @@ function isPrivateIp(host: string): boolean {
   const groups = expandIpv6(bare);
   // WHATWG normalization leaves no unparseable IPv6 on this path
   if (!groups) return false;
+  const g = (index: number): number => groups[index] ?? 0;
   if (groups.every((group) => group === 0)) return true;
-  if (groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1) return true;
-  if (groups[0] >= 0xfe80 && groups[0] <= 0xfebf) return true;
-  if (groups[0] >= 0xfc00 && groups[0] <= 0xfdff) return true;
-  if (groups[0] >= 0xff00) return true;
-  if (groups[0] === 0x0064 && groups[1] === 0xff9b) return true;
-  if (groups[0] === 0x2002) return true;
+  if (groups.slice(0, 7).every((group) => group === 0) && g(7) === 1) return true;
+  if (g(0) >= 0xfe80 && g(0) <= 0xfebf) return true;
+  if (g(0) >= 0xfc00 && g(0) <= 0xfdff) return true;
+  if (g(0) >= 0xff00) return true;
+  if (g(0) === 0x0064 && g(1) === 0xff9b) return true;
+  if (g(0) === 0x2002) return true;
   if (groups.slice(0, 6).every((group) => group === 0)) {
-    return isPrivateIpv4(groups[6] >> 8, groups[6] & 0xff) || isPrivateIpv4(groups[7] >> 8, groups[7] & 0xff);
+    return isPrivateIpv4(g(6) >> 8, g(6) & 0xff) || isPrivateIpv4(g(7) >> 8, g(7) & 0xff);
   }
   const ffff = groups.indexOf(0xffff);
   if (ffff !== -1 && ffff <= 5) {
@@ -67,7 +69,9 @@ function isPrivateIp(host: string): boolean {
     const ipv4 = rest.slice(-2);
     const middle = rest.slice(0, -2);
     if (before.every((group) => group === 0) && middle.every((group) => group === 0)) {
-      return isPrivateIpv4(ipv4[0] >> 8, ipv4[0] & 0xff) || isPrivateIpv4(ipv4[1] >> 8, ipv4[1] & 0xff);
+      const a = ipv4[0] ?? 0;
+      const b = ipv4[1] ?? 0;
+      return isPrivateIpv4(a >> 8, a & 0xff) || isPrivateIpv4(b >> 8, b & 0xff);
     }
   }
   return false;

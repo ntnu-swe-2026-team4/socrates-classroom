@@ -211,12 +211,7 @@ async function tokenClaims(
     const [payload, sig] = token.split(".");
     if (!payload || !sig) return null;
     const expected = await sign(payload, secretOf(ctx));
-    if (expected.length !== sig.length) return null;
-    const a = fromB64url(sig);
-    const b = fromB64url(expected);
-    let diff = 0;
-    for (let i = 0; i < a.length; i += 1) diff |= a[i] ^ b[i];
-    if (diff !== 0) return null;
+    if (!timingSafeEqual(expected, sig)) return null;
     const decoded: unknown = JSON.parse(new TextDecoder().decode(fromB64url(payload)));
     if (!isRecord(decoded)) return null;
     if (typeof decoded.uid !== "string" || typeof decoded.ver !== "number" || typeof decoded.exp !== "number") {
@@ -311,12 +306,7 @@ export async function lookupParticipant(
     const [payload, sig] = token.split(".");
     if (!payload || !sig) return null;
     const expected = await sign(payload, secretOf({ env }));
-    if (expected.length !== sig.length) return null;
-    const a = fromB64url(sig);
-    const b = fromB64url(expected);
-    let diff = 0;
-    for (let i = 0; i < a.length; i += 1) diff |= a[i] ^ b[i];
-    if (diff !== 0) return null;
+    if (!timingSafeEqual(expected, sig)) return null;
     const decoded: unknown = JSON.parse(new TextDecoder().decode(fromB64url(payload)));
     if (!isRecord(decoded)) return null;
     if (typeof decoded.aid !== "string" || typeof decoded.pid !== "string" || typeof decoded.exp !== "number") {
