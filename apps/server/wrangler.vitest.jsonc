@@ -11,10 +11,14 @@
       { "name": "Chat", "class_name": "Chat" },
       { "name": "SoloChat", "class_name": "SoloChat" },
       { "name": "ClassroomEvents", "class_name": "ClassroomEvents" },
-      { "name": "ReportRunner", "class_name": "ReportRunner" }
+      { "name": "ReportRunner", "class_name": "ReportRunner" },
+      { "name": "RateLimiter", "class_name": "RateLimiter" }
     ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Chat", "SoloChat", "ClassroomEvents", "ReportRunner"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Chat", "SoloChat", "ClassroomEvents", "ReportRunner"] },
+    { "tag": "v2", "new_sqlite_classes": ["RateLimiter"] }
+  ],
   "vars": {
     // Test-only fixtures sharing names with production secrets; never real credentials.
     "ENVIRONMENT": "dev",

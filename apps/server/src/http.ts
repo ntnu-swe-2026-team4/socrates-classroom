@@ -108,45 +108,17 @@ export function requireAdmin(c: Ctx): User {
 export async function enforceIpLimit(c: Ctx, scope: string, limit = 30): Promise<void> {
   const ip = c.req.header("CF-Connecting-IP");
   if (!ip) return;
-  if (!(await allowIp(ip, scope, limit))) fail(429, "rate_limited");
+  if (!(await allowIp(c, ip, scope, limit))) fail(429, "rate_limited");
 }
 
-const ipHits = new Map<string, number[]>();
-const IP_TRACK_MAX = 10_000;
+const RATE_LIMIT_WINDOW_MS = 60_000;
 
-async function allowIp(ip: string, scope: string, limit: number): Promise<boolean> {
-  const key = `${scope}:${ip}`;
-  const now = Date.now();
-  const window = 60_000;
-  const hits = (ipHits.get(key) ?? []).filter((t) => now - t < window);
-  while (ipHits.size >= IP_TRACK_MAX) {
-    let reclaimed = false;
-    for (const [k, v] of ipHits) {
-      if (v.every((t) => now - t >= window)) {
-        ipHits.delete(k);
-        reclaimed = true;
-        if (ipHits.size < IP_TRACK_MAX) break;
-      }
-    }
-    if (!reclaimed) {
-      let oldestKey: string | null = null;
-      let oldestAt = Number.POSITIVE_INFINITY;
-      for (const [k, v] of ipHits) {
-        const at = v[0] ?? Number.POSITIVE_INFINITY;
-        if (at < oldestAt) {
-          oldestAt = at;
-          oldestKey = k;
-        }
-      }
-      if (oldestKey === null) break;
-      ipHits.delete(oldestKey);
-    }
+async function allowIp(c: Ctx, ip: string, scope: string, limit: number): Promise<boolean> {
+  try {
+    const limiter = c.env.RateLimiter.get(c.env.RateLimiter.idFromName(`${scope}:${ip}`));
+    return await limiter.allow(limit, RATE_LIMIT_WINDOW_MS);
+  } catch (error) {
+    console.warn("[rate-limit] unavailable, allowing request", error instanceof Error ? error.message : error);
+    return true;
   }
-  if (hits.length >= limit) {
-    ipHits.set(key, hits);
-    return false;
-  }
-  hits.push(now);
-  ipHits.set(key, hits);
-  return true;
 }

@@ -47,15 +47,15 @@ cf --version
 
 `apps/web/cloudflare.config.ts`——TypeScript 設定，取代 `wrangler.jsonc`。本專案使用的鍵：
 
-| 鍵                                 | 本專案值                                                                                                          |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `worker.entrypoint`                | `../server/src/index.ts`（Worker 原始碼在 apps/server）                                                           |
-| `worker.compatibilityDate / Flags` | `2026-11-01` / `nodejs_compat`                                                                                    |
-| `worker.env.DB`                    | `bindings.d1({ name: "socrates", id: <固定 UUID> })`                                                              |
-| `worker.env.AI`                    | `bindings.ai({})`（dev 設 `CF_REMOTE_AI=true` 時 `dev.remote: true`）                                             |
-| `worker.env.Chat / ReportRunner`   | `bindings.durableObject({ worker, exportName })`                                                                  |
-| `worker.exports`                   | `exports.durableObject({ storage: "sqlite" })`——**取代 wrangler 的 migrations**                                   |
-| `worker.env.*`（text/secret）      | vars 與 secrets 宣告（dev：`.dev.vars` 存在時整檔優先，否則 `loadEnv` 讀 `.env.local` override——見下方 §Secrets） |
+| 鍵                                                                          | 本專案值                                                                                                          |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `worker.entrypoint`                                                         | `../server/src/index.ts`（Worker 原始碼在 apps/server）                                                           |
+| `worker.compatibilityDate / Flags`                                          | `2026-11-01` / `nodejs_compat`                                                                                    |
+| `worker.env.DB`                                                             | `bindings.d1({ name: "socrates", id: <固定 UUID> })`                                                              |
+| `worker.env.AI`                                                             | `bindings.ai({})`（dev 設 `CF_REMOTE_AI=true` 時 `dev.remote: true`）                                             |
+| `worker.env.Chat / SoloChat / ClassroomEvents / ReportRunner / RateLimiter` | `bindings.durableObject({ worker, exportName })`                                                                  |
+| `worker.exports`                                                            | `exports.durableObject({ storage: "sqlite" })`——**取代 wrangler 的 migrations**                                   |
+| `worker.env.*`（text/secret）                                               | vars 與 secrets 宣告（dev：`.dev.vars` 存在時整檔優先，否則 `loadEnv` 讀 `.env.local` override——見下方 §Secrets） |
 
 注意：
 
