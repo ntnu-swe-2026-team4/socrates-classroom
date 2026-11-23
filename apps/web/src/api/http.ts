@@ -42,6 +42,7 @@ import {
   AdminUserUpdateInputSchema,
   ClassroomCreateInputSchema,
   DevLoginInputSchema,
+  EmailVerifyInputSchema,
   EngagementVisibilitySchema,
   ERROR_CODES,
   GenerateTopicsInputSchema,
@@ -95,6 +96,7 @@ export interface Api {
   logout(): Promise<void>;
   requestPasswordReset(email: string): Promise<void>;
   resetPassword(token: string, password: string): Promise<void>;
+  verifyEmail(token: string): Promise<void>;
   authProviders(): Promise<OAuthProviders>;
   notifications(): Promise<NotificationFeed>;
   markNotificationsSeen(): Promise<void>;
@@ -384,6 +386,9 @@ export const httpApi: Api = {
   },
   async resetPassword(token, password) {
     await unwrap(await client.auth.password.reset.$post({ json: PasswordResetInputSchema.parse({ token, password }) }));
+  },
+  async verifyEmail(token) {
+    await unwrap(await client.auth.email.verify.$post({ json: EmailVerifyInputSchema.parse({ token }) }));
   },
   async authProviders() {
     return unwrap(await client.auth.providers.$get());
