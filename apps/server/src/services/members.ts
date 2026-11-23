@@ -4,6 +4,7 @@ import type { Db, SqlEntry } from "../db/d1";
 import { one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, type ParticipantIdentity } from "../auth";
 import { fail, newId, nowIso, type Ctx } from "../http";
+import { topicVisibleTo } from "./topic-visibility";
 
 export interface ClassroomRow {
   id: string;
@@ -137,8 +138,7 @@ export async function topicForActivity(
 ): Promise<TopicRow> {
   const topic = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id", { id: topicId });
   if (!topic) fail(404, "not_found");
-  const systemOrOwn = topic.classroom_id === null && (topic.owner_id === null || topic.owner_id === userId);
-  if (topic.classroom_id !== classroomId && !systemOrOwn) fail(404, "not_found");
+  if (!topicVisibleTo(topic, { userId, classroomId })) fail(404, "not_found");
   return topic;
 }
 
