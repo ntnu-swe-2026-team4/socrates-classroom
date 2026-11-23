@@ -66,6 +66,8 @@ flowchart TD
 
 教室社群以 D1 為資料來源。每間教室的 `ClassroomEvents` DO 用 WebSocket Hibernation API 管理連線，保存 session metadata 並將 D1 commit 後的事件推送至該班當下的成員。事件契約見 [API contract](./api-contract.md#42-教室事件324)。
 
+教室行事曆使用獨立的 `classroom_calendar_events` D1 表。`activities` 在開啟對話時才建立，並承載 participant、transcript 與 report 的關係；預定事件可以在對話開始前存在，且可編輯或刪除，因此不共用 `activities` 表。兩種資料不自動同步，REST 契約見 [教室行事曆](./api-contract.md#43-教室行事曆348)。此設計以 Moodle 的 course event 為 UX 參考；考慮過替 `activities` 增加排程欄位，但那會讓預定事件承擔對話生命週期語意，因此不採用。
+
 ## 2. Monorepo 目錄樹
 
 ```

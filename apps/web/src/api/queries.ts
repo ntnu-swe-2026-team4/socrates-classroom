@@ -237,6 +237,10 @@ export function classroomActivitiesOptions(id: string) {
   });
 }
 
+export function classroomCalendarOptions(id: string) {
+  return queryOptions({ queryKey: ["classroom", id, "calendar"] });
+}
+
 export function classroomInvitesOptions(id: string) {
   return infiniteQueryOptions({
     ...classroomPage,

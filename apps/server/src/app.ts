@@ -13,6 +13,7 @@ import { classroomInviteRoutes } from "./routes/classroom-invites";
 import { inviteRoutes } from "./routes/invites";
 import { topicsRoutes } from "./routes/topics";
 import { classroomCommunityRoutes } from "./routes/classroom-community";
+import { classroomCalendarRoutes } from "./routes/classroom-calendar";
 import { communityContentRoutes } from "./routes/community-content";
 import { classroomsRoutes } from "./routes/classrooms";
 import { activityRoutes } from "./routes/activity";
@@ -36,6 +37,7 @@ export function createApi() {
     .route("/", topicsRoutes())
     .route("/", classroomsRoutes())
     .route("/", classroomCommunityRoutes())
+    .route("/", classroomCalendarRoutes())
     .route("/", communityContentRoutes())
     .route("/", activityRoutes())
     .route("/", voiceRoutes())

@@ -515,10 +515,15 @@ export class ApiError extends Error {
 export * from "./reports";
 
 export {
+  CalendarEventCreateInputSchema,
+  CalendarEventPageQuerySchema,
+  CalendarEventSchema,
+  CalendarEventUpdateInputSchema,
   ClassroomContentInputSchema,
   ClassroomInviteCreateSchema,
   ClassroomPageQuerySchema,
   type ClassroomEvent,
   type ClassroomEventResource,
   type ClassroomInviteScope,
+  type CalendarEvent,
 } from "./community";
