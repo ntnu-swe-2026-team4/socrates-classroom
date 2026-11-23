@@ -1,4 +1,4 @@
-import { hc } from "hono/client";
+import { hc, type InferRequestType } from "hono/client";
 import type {
   ActivityInfo,
   ActivityInvite,
@@ -271,6 +271,7 @@ type ScopedInviteInput =
   | { scope: Exclude<ClassroomInviteScope, "classroom">; activityId: string };
 
 const classroom = client.classrooms[":id"];
+const calendarEvents = classroom["calendar-events"];
 const scopedInvite = client["classroom-invites"][":token"];
 
 function idempotencyHeaders(key: string) {
@@ -278,6 +279,15 @@ function idempotencyHeaders(key: string) {
 }
 
 const classroomApi = {
+  async calendar(id: string, query: { from: string; to: string; cursor?: string }, signal: AbortSignal) {
+    return unwrap(await calendarEvents.$get({ param: { id }, query }, { init: { signal } }));
+  },
+  async createCalendarEvent(id: string, json: InferRequestType<typeof calendarEvents.$post>["json"]) {
+    return unwrap(await calendarEvents.$post({ param: { id }, json }));
+  },
+  async deleteCalendarEvent(id: string, eventId: string) {
+    await unwrap(await calendarEvents[":eventId"].$delete({ param: { id, eventId } }));
+  },
   async announcements(id: string, cursor?: string) {
     return unwrap(await classroom.announcements.$get({ param: { id }, query: { cursor } }));
   },
