@@ -11,7 +11,17 @@ import {
 import { publishClassroom } from "../do/classroom-events";
 import { all, batch, one, run, type SqlEntry } from "../db/d1";
 import { fail, guardUser, newId, nowIso, requireUser, validateJson, type AppEnv } from "../http";
-import { classroomAccess, parsePrompts, topicCopyInsert, topicForActivity, type TopicRow } from "../services/members";
+import {
+  classroomAccess,
+  createOrGetTopic,
+  deleteClassroomTopic,
+  findClassroomTopicByContent,
+  parsePrompts,
+  serializeAxes,
+  topicCopyInsert,
+  topicForActivity,
+  type TopicRow,
+} from "../services/members";
 import { reportAxesFor } from "../services/settings";
 import { topicPoolSql } from "../services/topic-visibility";
 
@@ -193,25 +203,24 @@ export function classroomsRoutes() {
       const input = c.req.valid("json");
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");
-      const id = newId("t_");
-      await run(
-        c.env.DB,
-        "INSERT INTO topics (id, owner_id, classroom_id, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $title, $statement, $summary, $prompts, $axes, $at)",
-        {
-          id,
-          uid: user.id,
-          cid: classroom.id,
-          title: input.title,
-          statement: input.statement,
-          summary: input.summary ?? null,
-          prompts: JSON.stringify(input.prompts),
-          axes: JSON.stringify(input.axes),
-          at: nowIso(),
-        },
-      );
-      const row = await one<TopicRow>(c.env.DB, "SELECT * FROM topics WHERE id = $id", { id });
-      if (!row) fail(500, "internal_error");
-      return c.json(parsePrompts(row), 201);
+      const { row, created } = await createOrGetTopic(c.env.DB, {
+        id: newId("t_"),
+        ownerId: user.id,
+        classroomId: classroom.id,
+        title: input.title,
+        statement: input.statement,
+        summary: input.summary,
+        prompts: input.prompts,
+        axes: input.axes,
+      });
+      return c.json(parsePrompts(row), created ? 201 : 200);
+    })
+    .delete("/classrooms/:id/topics/:topicId", guardUser(), async (c) => {
+      const user = requireUser(c);
+      const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
+      if (!isTeacher) fail(403, "forbidden");
+      await deleteClassroomTopic(c.env.DB, classroom.id, c.req.param("topicId"));
+      return c.body(null, 204);
     })
     .post("/classrooms/:id/activities", guardUser(), validateJson(ActivityStartInputSchema), async (c) => {
       const user = requireUser(c);
@@ -237,30 +246,43 @@ export function classroomsRoutes() {
       const originalAxes = reportAxes === "teacher" ? parsePrompts(topic).axes : [];
       if (reportAxes === "teacher" && (input.topicAxes ?? originalAxes).length === 0) fail(422, "topic_axes_required");
 
+      const scheduled = eventId && condition ? { eventId, condition } : undefined;
+      const snapshotAxes =
+        input.topicAxes && serializeAxes(input.topicAxes) !== serializeAxes(originalAxes) ? input.topicAxes : undefined;
+      const snapshotKey = snapshotAxes
+        ? { title: topic.title, statement: topic.statement, axes: snapshotAxes }
+        : undefined;
       let topicId = topic.id;
       let copy: SqlEntry | undefined;
-      if (input.topicAxes && JSON.stringify(input.topicAxes) !== JSON.stringify(originalAxes)) {
-        topicId = newId("t_");
-        copy = topicCopyInsert(
-          topic,
-          {
-            id: topicId,
-            userId: user.id,
-            classroomId: classroom.id,
-            axes: input.topicAxes,
-          },
-          condition,
+      if (snapshotKey) {
+        const snapshot = await findClassroomTopicByContent(c.env.DB, classroom.id, snapshotKey);
+        topicId = snapshot?.id ?? newId("t_");
+        if (!snapshot) {
+          copy = topicCopyInsert(
+            topic,
+            { id: topicId, userId: user.id, classroomId: classroom.id, axes: snapshotAxes },
+            condition,
+          );
+        }
+      }
+      let activityId: string | null;
+      try {
+        activityId = await createActivity(c.env.DB, classroom.id, topicId, input.mode, reportAxes, copy, scheduled);
+      } catch (error) {
+        if (!copy || !snapshotKey) throw error;
+        const winner = await findClassroomTopicByContent(c.env.DB, classroom.id, snapshotKey);
+        if (!winner || winner.id === topicId) throw error;
+        topicId = winner.id;
+        activityId = await createActivity(
+          c.env.DB,
+          classroom.id,
+          topicId,
+          input.mode,
+          reportAxes,
+          undefined,
+          scheduled,
         );
       }
-      const activityId = await createActivity(
-        c.env.DB,
-        classroom.id,
-        topicId,
-        input.mode,
-        reportAxes,
-        copy,
-        eventId && condition ? { eventId, condition } : undefined,
-      );
       if (!activityId) {
         if (!eventId) fail(500, "internal_error");
         const current = await scheduledEvent(c.env.DB, classroom.id, eventId, input.topicId);

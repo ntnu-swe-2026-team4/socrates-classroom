@@ -7,6 +7,7 @@ export type TopicScope = "system" | "personal" | "classroom";
 export interface TopicIdentity {
   owner_id: string | null;
   classroom_id: string | null;
+  deleted_at: string | null;
 }
 
 export interface TopicSubject {
@@ -20,9 +21,15 @@ export function topicScope(topic: TopicIdentity): TopicScope {
 }
 
 const scopeSql: Record<TopicScope, (subject: TopicSubject) => SqlEntry> = {
-  system: () => ({ sql: "classroom_id IS NULL AND owner_id IS NULL" }),
-  personal: (subject) => ({ sql: "classroom_id IS NULL AND owner_id = $uid", params: { uid: subject.userId } }),
-  classroom: (subject) => ({ sql: "classroom_id = $cid", params: { cid: subject.classroomId ?? null } }),
+  system: () => ({ sql: "classroom_id IS NULL AND owner_id IS NULL AND deleted_at IS NULL" }),
+  personal: (subject) => ({
+    sql: "classroom_id IS NULL AND owner_id = $uid AND deleted_at IS NULL",
+    params: { uid: subject.userId },
+  }),
+  classroom: (subject) => ({
+    sql: "classroom_id = $cid AND deleted_at IS NULL",
+    params: { cid: subject.classroomId ?? null },
+  }),
 };
 
 export function topicPoolSql(scopes: readonly TopicScope[], subject: TopicSubject): SqlEntry {
@@ -33,6 +40,7 @@ export function topicPoolSql(scopes: readonly TopicScope[], subject: TopicSubjec
 }
 
 export function topicVisibleTo(topic: TopicIdentity, subject: TopicSubject): boolean {
+  if (topic.deleted_at !== null) return false;
   const scope = topicScope(topic);
   if (scope === "system") return true;
   if (scope === "personal") return topic.owner_id === subject.userId;
@@ -41,7 +49,7 @@ export function topicVisibleTo(topic: TopicIdentity, subject: TopicSubject): boo
 
 export async function copyableTopic<T extends TopicIdentity>(db: Db, topicId: string, userId: string): Promise<T> {
   const topic = await one<T>(db, "SELECT * FROM topics WHERE id = $id", { id: topicId });
-  if (!topic) fail(404, "not_found");
+  if (!topic || topic.deleted_at !== null) fail(404, "not_found");
   if (topicScope(topic) === "classroom") {
     const classroom = await one<{ teacher_id: string }>(db, "SELECT teacher_id FROM classrooms WHERE id = $cid", {
       cid: topic.classroom_id,

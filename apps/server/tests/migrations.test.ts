@@ -482,3 +482,72 @@ describe("migration 018: engagement visibility (#267)", () => {
     ]);
   });
 });
+
+describe("migration 020: topic lifecycle (#383)", () => {
+  it("merges duplicate topics, repoints activities and copies, then rejects new duplicates", async () => {
+    const at = "2026-11-01T00:00:00.000Z";
+    const later = "2026-11-02T00:00:00.000Z";
+    const canonicalAxes = JSON.stringify([{ name: "軸", left: "左", right: "右" }]);
+    const scrambledAxes = JSON.stringify([{ right: "右", left: "左", name: "軸" }]);
+
+    const insertTopic = (
+      id: string,
+      ownerId: string | null,
+      classroomId: string | null,
+      copiedFrom: string | null,
+      title: string,
+      axes: string,
+      createdAt: string,
+    ) =>
+      run(
+        env.DB,
+        `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, prompts, axes, created_at)
+         VALUES ($id, $owner, $cid, $from, $title, '同一題', '["問"]', $axes, $at)`,
+        { id, owner: ownerId, cid: classroomId, from: copiedFrom, title, axes, at: createdAt },
+      );
+
+    await insertTopic("t19_keep", "u_t", "c1", null, "重複題", scrambledAxes, at);
+    await insertTopic("t19_dup", "u_t", "c1", null, "重複題", canonicalAxes, later);
+    await insertTopic("t19_other_axes", "u_t", "c1", null, "重複題", "[]", later);
+    await insertTopic("t19_copy", "u_t", "c1", "t19_dup", "複本題", "[]", later);
+    await insertTopic("t19_personal_keep", "u_t", null, null, "個人重複", "[]", at);
+    await insertTopic("t19_personal_dup", "u_t", null, null, "個人重複", "[]", later);
+    await run(
+      env.DB,
+      "INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ('a19', 'c1', 't19_dup', $at)",
+      { at },
+    );
+
+    const lifecycle = migrations.filter((migration) => migration.name.startsWith("020"));
+    expect(lifecycle).toHaveLength(1);
+    await applyD1Migrations(env.DB, lifecycle);
+
+    const columns = await all<{ name: string }>(env.DB, "PRAGMA table_info(topics)");
+    expect(columns.map((column) => column.name)).toContain("deleted_at");
+
+    const survivors = await all<{ id: string; axes: string; copied_from: string | null; deleted_at: string | null }>(
+      env.DB,
+      "SELECT id, axes, copied_from, deleted_at FROM topics WHERE id LIKE 't19_%' ORDER BY id",
+    );
+    expect(survivors).toEqual([
+      { id: "t19_copy", axes: "[]", copied_from: "t19_keep", deleted_at: null },
+      { id: "t19_keep", axes: canonicalAxes, copied_from: null, deleted_at: null },
+      { id: "t19_other_axes", axes: "[]", copied_from: null, deleted_at: null },
+      { id: "t19_personal_keep", axes: "[]", copied_from: null, deleted_at: null },
+    ]);
+
+    expect(await all(env.DB, "SELECT topic_id FROM activities WHERE id = 'a19'")).toEqual([{ topic_id: "t19_keep" }]);
+    expect(await all(env.DB, "PRAGMA foreign_key_check")).toEqual([]);
+
+    await expect(insertTopic("t19_dup_again", "u_t", "c1", null, "重複題", canonicalAxes, later)).rejects.toThrow();
+
+    await run(env.DB, "UPDATE topics SET deleted_at = $at WHERE id = 't19_keep'", { at: later });
+    await insertTopic("t19_after_delete", "u_t", "c1", null, "重複題", canonicalAxes, later);
+    const live = await all<{ id: string }>(
+      env.DB,
+      "SELECT id FROM topics WHERE title = '重複題' AND axes = $axes AND deleted_at IS NULL ORDER BY id",
+      { axes: canonicalAxes },
+    );
+    expect(live).toEqual([{ id: "t19_after_delete" }]);
+  });
+});
