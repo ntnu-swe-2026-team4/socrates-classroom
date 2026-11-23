@@ -7,8 +7,8 @@ stubElementLayout();
 
 function panel(): HTMLElement {
   const node = document.querySelector('[role="dialog"]');
-  expect(node).toBeInstanceOf(HTMLElement);
-  return node as HTMLElement;
+  if (!(node instanceof HTMLElement)) throw new Error("trap dialog not rendered");
+  return node;
 }
 
 afterEach(cleanup);

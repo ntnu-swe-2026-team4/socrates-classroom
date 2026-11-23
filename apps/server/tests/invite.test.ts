@@ -10,12 +10,16 @@ import {
   call,
   classroomWithActivity,
   cookieOf,
+  field,
   frames,
   joinGuest,
+  optStr,
   participantIdOf,
   must,
   registerStudent,
+  rows,
   speak,
+  str,
 } from "./helpers";
 
 let teacherCookie: string;
@@ -28,7 +32,8 @@ const migrations = inject("d1Migrations");
 async function createInvite(activity = activityId): Promise<{ token: string; url: string }> {
   const res = await call(`/api/activities/${activity}/invites`, { method: "POST", headers: { Cookie: teacherCookie } });
   expect(res.status).toBe(200);
-  return (await res.json()) as { token: string; url: string };
+  const created = await res.json();
+  return { token: str(created, "token"), url: str(created, "url") };
 }
 
 async function joinInvite(token: string, name?: string): Promise<Response> {
@@ -96,14 +101,16 @@ describe("activity invites", () => {
     const { token } = await createInvite();
     const preview = await call(`/api/invites/${token}`);
     expect(preview.status).toBe(200);
-    const body = (await preview.json()) as { activityId: string; classroomName: string; topic: { title: string } };
-    expect(body.activityId).toBe(activityId);
-    expect(body.classroomName).toBe("邀請班");
-    expect(body.topic.title.length).toBeGreaterThan(0);
+    const previewBody = await preview.json();
+    expect(str(previewBody, "activityId")).toBe(activityId);
+    expect(str(previewBody, "classroomName")).toBe("邀請班");
+    const topic: unknown = field(previewBody, "topic");
+    const title = str(topic, "title");
+    expect(title.length).toBeGreaterThan(0);
 
     const missing = await call("/api/invites/not-a-real-token");
     expect(missing.status).toBe(404);
-    expect(((await missing.json()) as { code: string }).code).toBe("invite_invalid");
+    expect(str(await missing.json(), "code")).toBe("invite_invalid");
   });
 
   it("anonymous guest joins without creating a user or a roster member", async () => {
@@ -113,9 +120,10 @@ describe("activity invites", () => {
 
     const res = await joinInvite(token, "無痕訪客");
     expect(res.status).toBe(200);
-    const joined = (await res.json()) as { activityId: string; participantId: string; kind: string };
-    expect(joined.activityId).toBe(activityId);
-    expect(joined.kind).toBe("guest");
+    const joinedBody = await res.json();
+    const joinedId = str(joinedBody, "participantId");
+    expect(str(joinedBody, "activityId")).toBe(activityId);
+    expect(str(joinedBody, "kind")).toBe("guest");
     const cookie = cookieOf(res);
     expect(cookie.startsWith("socrates_participant=")).toBe(true);
 
@@ -125,7 +133,7 @@ describe("activity invites", () => {
     const participant = await one<{ user_id: string | null; kind: string; display_name: string }>(
       env.DB,
       "SELECT user_id, kind, display_name FROM activity_participants WHERE activity_id = $aid AND id = $pid",
-      { aid: activityId, pid: joined.participantId },
+      { aid: activityId, pid: joinedId },
     );
     expect(participant).toEqual({ user_id: null, kind: "guest", display_name: "無痕訪客" });
 
@@ -134,21 +142,21 @@ describe("activity invites", () => {
 
     const info = await call(`/api/activities/${activityId}`, { headers: { Cookie: cookie } });
     expect(info.status).toBe(200);
-    expect(((await info.json()) as { participantId: string }).participantId).toBe(joined.participantId);
+    expect(str(await info.json(), "participantId")).toBe(joinedId);
 
     const repeated = await joinInvite(token, "另一個名字");
-    expect(((await repeated.json()) as { participantId: string }).participantId).not.toBe(joined.participantId);
+    expect(str(await repeated.json(), "participantId")).not.toBe(joinedId);
     expect(repeated.status).toBe(200);
 
     const clash = await joinInvite(token, "無痕訪客");
     expect(clash.status).toBe(409);
-    expect(((await clash.json()) as { code: string }).code).toBe("name_taken");
+    expect(str(await clash.json(), "code")).toBe("name_taken");
   });
 
   it("reopening the link with the same participant cookie resumes the same participant", async () => {
     const { token } = await createInvite();
     const first = await joinInvite(token, "回訪訪客");
-    const joined = (await first.json()) as { participantId: string };
+    const firstId = str(await first.json(), "participantId");
     const cookie = cookieOf(first);
 
     const again = await call(`/api/invites/${token}/join`, {
@@ -157,16 +165,16 @@ describe("activity invites", () => {
       body: JSON.stringify({ tosAccepted: true }),
     });
     expect(again.status).toBe(200);
-    expect(((await again.json()) as { participantId: string }).participantId).toBe(joined.participantId);
+    expect(str(await again.json(), "participantId")).toBe(firstId);
   });
 
   it("guest with a participant cookie can converse, but cannot take another participant's slot", async () => {
     const { token } = await createInvite();
     const res = await joinInvite(token, "對話訪客");
-    const joined = (await res.json()) as { participantId: string };
+    const joinedId = str(await res.json(), "participantId");
     const cookie = cookieOf(res);
 
-    await speak(`${activityId}:${joined.participantId}`, cookie, "自由是什麼？");
+    await speak(`${activityId}:${joinedId}`, cookie, "自由是什麼？");
 
     const other = await joinGuest(classroomCode, "另一位訪客");
     const socket = await connect(`${activityId}:${other.participantId}`, cookie);
@@ -176,7 +184,7 @@ describe("activity invites", () => {
     expect(rx.list.some((m) => m.type === "hello")).toBe(false);
     socket.close();
 
-    const forged = await connect(`${activityId}:${joined.participantId}`, other.cookie);
+    const forged = await connect(`${activityId}:${joinedId}`, other.cookie);
     const forgedRx = frames(forged);
     forged.send(JSON.stringify({ type: "watch" }));
     await forgedRx.until((f) => f.length > 0 || forged.readyState === WebSocket.CLOSED);
@@ -195,36 +203,35 @@ describe("activity invites", () => {
       body: JSON.stringify({ tosAccepted: true }),
     });
     expect(res.status).toBe(200);
-    const joined = (await res.json()) as { participantId: string; kind: string };
-    expect(joined.kind).toBe("guest");
+    const joinedBody = await res.json();
+    const joinedId = str(joinedBody, "participantId");
+    expect(str(joinedBody, "kind")).toBe("guest");
 
     const participant = await one<{ user_id: string | null; kind: string }>(
       env.DB,
       "SELECT user_id, kind FROM activity_participants WHERE activity_id = $aid AND id = $pid",
-      { aid: activityId, pid: joined.participantId },
+      { aid: activityId, pid: joinedId },
     );
     expect(participant).toEqual({ user_id: account.userId, kind: "guest" });
 
     const browserCookie = `${account.cookie}; ${cookieOf(res)}`;
     const info = await call(`/api/activities/${activityId}`, { headers: { Cookie: browserCookie } });
     expect(info.status).toBe(200);
-    expect(((await info.json()) as { participantId: string }).participantId).toBe(joined.participantId);
+    expect(str(await info.json(), "participantId")).toBe(joinedId);
 
     const me = await call("/api/me", { headers: { Cookie: account.cookie } });
     expect(me.status).toBe(200);
-    expect(((await me.json()) as { id: string }).id).toBe(account.userId);
+    expect(str(await me.json(), "id")).toBe(account.userId);
 
-    const classrooms = (await (
-      await call("/api/classrooms", { headers: { Cookie: account.cookie } })
-    ).json()) as Array<{ id: string }>;
-    expect(classrooms.some((entry) => entry.id === classroomId)).toBe(false);
+    const classrooms = rows(await (await call("/api/classrooms", { headers: { Cookie: account.cookie } })).json());
+    expect(classrooms.some((entry) => str(entry, "id") === classroomId)).toBe(false);
 
     const members = await all<{ user_id: string }>(env.DB, "SELECT user_id FROM members WHERE classroom_id = $cid", {
       cid: classroomId,
     });
     expect(members.some((entry) => entry.user_id === account.userId)).toBe(false);
 
-    await speak(`${activityId}:${joined.participantId}`, browserCookie, "這樣算參與嗎？");
+    await speak(`${activityId}:${joinedId}`, browserCookie, "這樣算參與嗎？");
   }, 20_000);
 
   it("a member reclaims their display_name from a squatting guest", async () => {
@@ -237,16 +244,17 @@ describe("activity invites", () => {
       body: JSON.stringify({ code: classroomCode, name: "搶名學生", tosAccepted: true }),
     });
     expect(res.status).toBe(200);
-    const joined = (await res.json()) as { participantId: string; kind: string };
-    expect(joined.kind).toBe("member");
-    expect(joined.participantId).not.toBe(squatter.participantId);
+    const joinedBody = await res.json();
+    const joinedId = str(joinedBody, "participantId");
+    expect(str(joinedBody, "kind")).toBe("member");
+    expect(joinedId).not.toBe(squatter.participantId);
 
     const rows = await all<{ id: string; user_id: string | null; kind: string; display_name: string }>(
       env.DB,
       "SELECT id, user_id, kind, display_name FROM activity_participants WHERE activity_id = $aid",
       { aid: activityId },
     );
-    const member = rows.find((row) => row.id === joined.participantId);
+    const member = rows.find((row) => row.id === joinedId);
     const guest = rows.find((row) => row.id === squatter.participantId);
     expect(member).toMatchObject({ user_id: account.userId, kind: "member", display_name: "搶名學生" });
     expect(guest).toMatchObject({ user_id: null, kind: "guest", display_name: "搶名學生（訪客）" });
@@ -265,7 +273,7 @@ describe("activity invites", () => {
       body: JSON.stringify({ tosAccepted: true }),
     });
     expect(firstRes.status).toBe(200);
-    expect(((await firstRes.json()) as { displayName: string }).displayName).toBe("同名學生");
+    expect(str(await firstRes.json(), "displayName")).toBe("同名學生");
 
     const secondRes = await call(`/api/invites/${token}/join`, {
       method: "POST",
@@ -273,7 +281,7 @@ describe("activity invites", () => {
       body: JSON.stringify({ tosAccepted: true }),
     });
     expect(secondRes.status).toBe(200);
-    expect(((await secondRes.json()) as { displayName: string }).displayName).toBe("同名學生 2");
+    expect(str(await secondRes.json(), "displayName")).toBe("同名學生 2");
   });
 
   it("an invite-joined participant upgrades to member kind once the account joins the roster", async () => {
@@ -287,8 +295,9 @@ describe("activity invites", () => {
       body: JSON.stringify({ tosAccepted: true }),
     });
     expect(inviteRes.status).toBe(200);
-    const invited = (await inviteRes.json()) as { participantId: string; kind: string };
-    expect(invited.kind).toBe("guest");
+    const invitedBody = await inviteRes.json();
+    const invitedId = str(invitedBody, "participantId");
+    expect(str(invitedBody, "kind")).toBe("guest");
 
     const joinRes = await call("/api/join", {
       method: "POST",
@@ -296,14 +305,14 @@ describe("activity invites", () => {
       body: JSON.stringify({ code: classroomCode, name: "升級學生", tosAccepted: true }),
     });
     expect(joinRes.status).toBe(200);
-    const joined = (await joinRes.json()) as { participantId: string; kind: string };
-    expect(joined.kind).toBe("member");
-    expect(joined.participantId).toBe(invited.participantId);
+    const joinedBody = await joinRes.json();
+    expect(str(joinedBody, "kind")).toBe("member");
+    expect(str(joinedBody, "participantId")).toBe(invitedId);
 
     const participant = await one<{ kind: string }>(
       env.DB,
       "SELECT kind FROM activity_participants WHERE activity_id = $aid AND id = $pid",
-      { aid: activityId, pid: invited.participantId },
+      { aid: activityId, pid: invitedId },
     );
     expect(participant).toEqual({ kind: "member" });
   });
@@ -329,10 +338,10 @@ describe("activity invites", () => {
     ] as const) {
       const preview = await call(`/api/invites/${token}`);
       expect(preview.status).toBe(410);
-      expect(((await preview.json()) as { code: string }).code).toBe(code);
+      expect(str(await preview.json(), "code")).toBe(code);
       const join = await joinInvite(token, "遲到的人");
       expect(join.status).toBe(410);
-      expect(((await join.json()) as { code: string }).code).toBe(code);
+      expect(str(await join.json(), "code")).toBe(code);
     }
   });
 
@@ -347,11 +356,11 @@ describe("activity invites", () => {
 
     const preview = await call(`/api/invites/${token}`);
     expect(preview.status).toBe(200);
-    expect(((await preview.json()) as { finishedAt: string | null }).finishedAt).not.toBeNull();
+    expect(optStr(await preview.json(), "finishedAt")).not.toBeNull();
 
     const res = await joinInvite(token, "太晚來的訪客");
     expect(res.status).toBe(409);
-    expect(((await res.json()) as { code: string }).code).toBe("activity_finished");
+    expect(str(await res.json(), "code")).toBe("activity_finished");
   });
 
   it("pseudonym serials follow an HMAC of (activity, participant), not the join order", async () => {
@@ -369,9 +378,9 @@ describe("activity invites", () => {
     for (const name of ["甲", "乙", "丙"]) {
       const res = await joinInvite(token, name);
       expect(res.status).toBe(200);
-      const joined = (await res.json()) as { participantId: string };
-      participants.push(joined.participantId);
-      await speak(`${created.activityId}:${joined.participantId}`, cookieOf(res), `我是${name}，這題怎麼看？`);
+      const joinedId = str(await res.json(), "participantId");
+      participants.push(joinedId);
+      await speak(`${created.activityId}:${joinedId}`, cookieOf(res), `我是${name}，這題怎麼看？`);
     }
 
     const finish = await call(`/api/activities/${created.activityId}/finish`, {
@@ -384,16 +393,21 @@ describe("activity invites", () => {
       async () => {
         const res = await call(`/api/activities/${created.activityId}/report`, { headers: { Cookie: teacherCookie } });
         expect(res.status).toBe(200);
-        return (await res.json()) as { students: Array<{ participantId: string; pseudonym: string }> };
+        const reportBody = await res.json();
+        const students: unknown = field(reportBody, "students");
+        if (!Array.isArray(students)) throw new Error("report students is not an array");
+        return students;
       },
       { timeout: 60_000, interval: 500 },
     );
 
     const ranks = await pseudonymRanks(env.AUTH_SECRET ?? "", created.activityId, participants);
     const expected = Object.fromEntries(participants.map((id) => [id, `學生${ranks.get(id)}`]));
-    const actual = Object.fromEntries(report.students.map((s) => [s.participantId, s.pseudonym]));
+    const actual = Object.fromEntries(
+      report.map((student) => [str(student, "participantId"), str(student, "pseudonym")]),
+    );
     expect(actual).toEqual(expected);
-    expect(new Set(report.students.map((s) => s.pseudonym)).size).toBe(participants.length);
+    expect(new Set(report.map((student) => str(student, "pseudonym"))).size).toBe(participants.length);
   }, 70_000);
 
   it("guest participants never see a report, even before the activity closes", async () => {

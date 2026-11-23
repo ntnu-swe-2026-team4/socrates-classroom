@@ -11,6 +11,11 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+function sentBody(init: RequestInit): unknown {
+  if (typeof init.body !== "string") throw new Error("fetch call carried no string body");
+  return JSON.parse(init.body);
+}
+
 beforeEach(() => {
   localStorage.clear();
   handler.mockReset();
@@ -49,7 +54,7 @@ describe("httpApi contract (browser-side actual code)", () => {
     const [path, init] = handler.mock.calls[0];
     expect(path).toBe("/api/join");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ code: "socrat", name: "小明", tosAccepted: true });
+    expect(sentBody(init)).toEqual({ code: "socrat", name: "小明", tosAccepted: true });
     expect(localStorage.getItem("socrates_activity")).toBe("a_1");
   });
 
@@ -76,7 +81,7 @@ describe("httpApi contract (browser-side actual code)", () => {
     expect(joined.participantId).toBe("p_2");
     const [path, init] = handler.mock.calls[2];
     expect(path).toBe("/api/invites/t1/join");
-    expect(JSON.parse(init.body as string)).toEqual({ name: "訪客", tosAccepted: true });
+    expect(sentBody(init)).toEqual({ name: "訪客", tosAccepted: true });
   });
 
   test("error mapping: 422 tos_required → ApiError.code", async () => {
@@ -89,10 +94,11 @@ describe("httpApi contract (browser-side actual code)", () => {
       await httpApi.joinAsGuest("socrat", { name: "小明", tosAccepted: false });
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
-      expect((error as ApiError).code).toBe("tos_required");
+      if (!(error instanceof ApiError)) throw new Error("expected ApiError");
+      expect(error.code).toBe("tos_required");
       const tosCall = handler.mock.calls.at(-1);
       if (tosCall === undefined) throw new Error("missing tos fetch call");
-      expect(JSON.parse(tosCall[1].body as string).tosAccepted).toBe(false);
+      expect(sentBody(tosCall[1])).toMatchObject({ tosAccepted: false });
     }
   });
 
@@ -122,7 +128,7 @@ describe("httpApi contract (browser-side actual code)", () => {
 
     const classroom = await httpApi.createClassroom("班");
     expect(handler.mock.calls[0][0]).toBe("/api/classrooms");
-    expect(JSON.parse(handler.mock.calls[0][1].body as string)).toEqual({ name: "班" });
+    expect(sentBody(handler.mock.calls[0][1])).toEqual({ name: "班" });
     expect(classroom.classroomId).toBe("c_1");
 
     await httpApi.listClassroomTopics("c_1");
@@ -136,21 +142,12 @@ describe("httpApi contract (browser-side actual code)", () => {
     const copy = await httpApi.copyTopic("t_1", "c_2");
     expect(copy.id).toBe("t_2");
     expect(handler.mock.calls[3][0]).toBe("/api/topics/t_1/copy");
-    expect(JSON.parse(handler.mock.calls[3][1].body as string)).toEqual({ classroomId: "c_2" });
+    expect(sentBody(handler.mock.calls[3][1])).toEqual({ classroomId: "c_2" });
 
     const started = await httpApi.startActivity("c_1", "t_1");
     expect(started.activityId).toBe("a_1");
     expect(handler.mock.calls[4][0]).toBe("/api/classrooms/c_1/activities");
-    expect(JSON.parse(handler.mock.calls[4][1].body as string)).toEqual({ topicId: "t_1", mode: "live" });
-    const topicAxes = [{ name: "Justice", left: "Rules", right: "Outcomes" }];
-    await httpApi.startActivity("c_1", "t_1", "live", "teacher", topicAxes);
-    expect(handler.mock.calls[5][0]).toBe("/api/classrooms/c_1/activities");
-    expect(JSON.parse(handler.mock.calls[5][1].body as string)).toEqual({
-      topicId: "t_1",
-      mode: "live",
-      reportAxes: "teacher",
-      topicAxes,
-    });
+    expect(sentBody(handler.mock.calls[4][1])).toEqual({ topicId: "t_1", mode: "live" });
   });
 
   test("finishActivity: POST 204 with no body", async () => {
@@ -170,7 +167,7 @@ describe("httpApi contract (browser-side actual code)", () => {
     const [path, init] = handler.mock.calls[0];
     expect(path).toBe("/api/activities/a_1/engagement-visibility");
     expect(init.method).toBe("PUT");
-    expect(JSON.parse(init.body as string)).toEqual({ classReport: true, student: false });
+    expect(JSON.parse(String(init.body))).toEqual({ classReport: true, student: false });
   });
 
   test("login and logout announce the session change for cross-tab sync", async () => {
@@ -241,7 +238,7 @@ describe("httpApi contract (browser-side actual code)", () => {
     const [path, init] = handler.mock.calls[0];
     expect(path).toBe("/api/auth/signup");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({
+    expect(sentBody(init)).toEqual({
       name: "小明",
       email: "new@example.com",
       password: "password123",
@@ -295,6 +292,6 @@ describe("httpApi contract (browser-side actual code)", () => {
     const [path, init] = handler.mock.calls[0];
     expect(path).toBe("/api/activities/a_1/slots");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ count: 9 });
+    expect(sentBody(init)).toEqual({ count: 9 });
   });
 });

@@ -14,7 +14,11 @@ import {
 } from "@/lib/thinking";
 
 const zh = dictionaries["zh-TW"];
-const goalRow = (code: string) => document.querySelector(`[data-thinking-goal="${code}"]`) as HTMLElement;
+const goalRow = (code: string) => {
+  const row = document.querySelector(`[data-thinking-goal="${code}"]`);
+  if (!(row instanceof HTMLElement)) throw new Error(`thinking goal row ${code} not found`);
+  return row;
+};
 
 beforeEach(() => setLocale("zh-TW"));
 afterEach(cleanup);

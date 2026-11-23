@@ -9,7 +9,7 @@ type AgentOptions = {
   onMessage?: (event: { data: unknown }) => void;
 };
 
-const agent = vi.hoisted(() => ({ options: null as AgentOptions | null, sent: [] as string[] }));
+const agent = vi.hoisted((): { options: AgentOptions | null; sent: string[] } => ({ options: null, sent: [] }));
 
 vi.mock("agents/react", () => ({
   useAgent: (options: AgentOptions) => {

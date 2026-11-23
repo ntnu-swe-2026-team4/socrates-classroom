@@ -113,6 +113,15 @@
 - `student-indicators` profile 與 `submit_student_indicators` 工具（`report-submit-indicators` extension，只裝在這條呼叫用的 registry）：逐生判斷 C1–A2，與論點總結分開呼叫、各自失敗（流程見 `docs/architecture.md` ReportRunner）
 - `TeacherReport.students[].indicators`、`StudentReport.indicators`（形狀見 `docs/api-contract.md` §7）；指標上線前存下的報告回 `null`，不變成 `report_failed`
 
+## 2026-11-24 — TS 靜態保證 step 1b L2：tests 層 unsafe type assertion 真清收回（`refactor/293-step1b-tests`，#293）
+
+### Changed
+
+- tests 層 cast 真清：`apps/server/tests/**` 與 `apps/web/src/test/**` 共 229 處 `as` 斷言退役（探針 @ tip `3bfb75c0`：tests 目錄 236→7，殘留 7 處全在 carve-out 的兩個 helpers 檔）；`biome.jsonc` 的 tests 目錄 override 收窄回 `tests/helpers.ts` 兩檔——收回屬實，carve 面僅剩測試工程本質 cast（`runInDurableObject` 官方 pattern、fake fixture builders、jsdom shim、helpers 自身的 `undefined as never`／worker／registry glue）
+- reader 家族承接斷言：`apps/server/tests/helpers.ts`（`str`／`optStr`／`num`／`optNum`／`bool`／`field`／`rows`）與 `apps/web/src/test/helpers.ts`（新檔）——`Reflect` 讀取、fail-fast 帶欄名（缺欄或型別不符即擲錯，取代 cast 後靜默 `undefined` 傳染）；`admin.test` 改走 shared zod schema（`AdminUserSchema`／`ClassroomSummarySchema`），斷言從「宣稱合約」升級為「驗證合約」
+- 附帶 src 小改動（測試轉換的必要支撐）：`ws/protocol.ts` 新增 server 端 `parseServerMessage`（`ServerMessage` 五個 variant 對應守衛，與 #309 的 web 端同名函式對稱）與 `conversationIdOf`（runtime safe-integer 驗證取代裸 cast）；`activity-live.ts` 空列時 `finishedAt` 回 `null`（`noUncheckedIndexedAccess` 窄化，語意不變）
+- 回應 null 契約的斷言在 cast 退役時一度失守（value 隨 cast 一起被丟掉的 value-loss 模式），本層補回：teacher key echo 的 `monthlyQuotaUsd === null`（`PUT /api/settings/keys/openrouter` 的 rekey 與 keyless 兩處）與 personal topic 的 `classroomId === null`；測試轉換一律單次 `.json()` 讀取、按欄取值
+
 ## 2026-11-22 — TS 靜態保證 step 1b L1：src 層 unsafe type assertion 清零（`refactor/293-step1b-src`，#293）
 
 ### Changed

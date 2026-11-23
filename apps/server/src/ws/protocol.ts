@@ -1,5 +1,6 @@
 import type { Op } from "@earendil-works/chord/delta";
 import type {
+  ConversationId,
   ConversationView,
   EntryId,
   EntryQuery,
@@ -64,6 +65,12 @@ export function entryIdOf(value: number): EntryId {
   return value;
 }
 
+export function conversationIdOf(value: string): ConversationId {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) throw new Error(`invalid conversation id: ${value}`);
+  return parsed as ConversationId;
+}
+
 function optionalEntryId(value: unknown): EntryId | undefined {
   return isEntryId(value) ? value : undefined;
 }
@@ -114,6 +121,57 @@ export function parseClientMessage(raw: string): ClientMessage | null {
         },
       };
     }
+    default:
+      return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function optionalString(source: Record<string, unknown>, key: string): string | undefined {
+  const value = source[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+export function parseServerMessage(raw: string): ServerMessage | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+  switch (parsed.type) {
+    case "hello":
+      return Array.isArray(parsed.tools)
+        ? {
+            type: "hello",
+            tools: parsed.tools.map((tool) => ({ name: String(tool.name), description: String(tool.description) })),
+          }
+        : null;
+    case "view":
+      if (!isRecord(parsed.view) || !Array.isArray(parsed.view.entries)) return null;
+      // same-origin payload — shallow contract check; the deep ConversationView is pi-durable's own serialization
+      return { type: "view", view: parsed.view } as unknown as ServerMessage;
+    case "ops":
+      if (!Array.isArray(parsed.ops)) return null;
+      // same-origin payload — array shape checked; Op internals are chord's own serialization
+      return { type: "ops", ops: parsed.ops } as unknown as ServerMessage;
+    case "result":
+      return typeof parsed.id === "string"
+        ? ({ type: "result", id: parsed.id, result: parsed.result } as unknown as ServerMessage)
+        : null;
+    case "error":
+      return typeof parsed.message === "string"
+        ? {
+            type: "error",
+            id: optionalString(parsed, "id"),
+            message: parsed.message,
+            code: optionalString(parsed, "code"),
+          }
+        : null;
     default:
       return null;
   }

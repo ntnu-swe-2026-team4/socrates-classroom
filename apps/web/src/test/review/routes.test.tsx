@@ -11,7 +11,9 @@ import { onExpression } from "@/lib/companion";
 
 vi.mock("@/components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
 
-const agent = vi.hoisted(() => ({ options: null as null | { onMessage?: (event: { data: unknown }) => void } }));
+const agent = vi.hoisted((): { options: null | { onMessage?: (event: { data: unknown }) => void } } => ({
+  options: null,
+}));
 vi.mock("agents/react", () => ({
   useAgent: (options: { enabled?: boolean; onMessage?: (event: { data: unknown }) => void }) => {
     if (options.enabled !== false) agent.options = options;
@@ -357,8 +359,8 @@ test("#185: the classroom page covers the retired wizard flow: AI topic → star
     fireEvent.click(screen.getByRole("button", { name: "Add to topics" }));
 
     const startSection = screen.getByRole("button", { name: "Start activity" }).closest("section");
-    expect(startSection).not.toBeNull();
-    const activitySection = within(startSection as HTMLElement);
+    if (!(startSection instanceof HTMLElement)) throw new Error("start activity section not found");
+    const activitySection = within(startSection);
     fireEvent.click(await activitySection.findByRole("button", { name: /Generated topic/ }));
     fireEvent.click(activitySection.getByRole("button", { name: "Start activity" }));
     await waitFor(() => expect(calls.length).toBe(2));
@@ -813,7 +815,7 @@ test("#243 review: a signed-in join still reaches home when fetching the activit
 });
 
 test("F01c: a signed-in join posts without a name", async () => {
-  let joinBody: Record<string, unknown> | null = null;
+  let joinBody: object | null = null;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -833,7 +835,8 @@ test("F01c: a signed-in join posts without a name", async () => {
         },
       };
       if (path === "/api/join" && init?.method === "POST") {
-        joinBody = JSON.parse(init.body as string);
+        const body: unknown = JSON.parse(String(init.body));
+        if (typeof body === "object" && body !== null) joinBody = body;
         return new Response(
           JSON.stringify({ user: me, activityId: "activity-1", participantId: "p_2", kind: "member" }),
           { headers: { "Content-Type": "application/json" } },
@@ -949,9 +952,13 @@ function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<R
         );
       }
       if (path === "/api/classrooms/class-1/invites" && init?.method === "POST") {
-        const body = JSON.parse(String(init.body)) as { activityId?: string };
-        if (!body.activityId) throw new Error("Expected activityId in classroom invite payload");
-        return await onInvite(body.activityId);
+        const parsed: unknown = JSON.parse(String(init.body));
+        const activityId: unknown =
+          typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, "activityId") : undefined;
+        if (typeof activityId !== "string" || activityId.length === 0) {
+          throw new Error("Expected activityId in classroom invite payload");
+        }
+        return await onInvite(activityId);
       }
       throw new Error(`Unexpected request: ${path}`);
     }),
@@ -1188,9 +1195,11 @@ function stubTestActivitySlots(
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = new URL(String(input), "http://localhost").pathname;
       if (path === "/api/activities/activity-1/slots" && init?.method === "POST") {
-        const body = JSON.parse(String(init.body)) as { count: number };
-        createCounts.push(body.count);
-        for (let i = 0; i < body.count; i += 1) {
+        const parsed: unknown = JSON.parse(String(init.body));
+        const count: unknown = typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, "count") : undefined;
+        if (typeof count !== "number") throw new Error("Expected numeric count in slot create payload");
+        createCounts.push(count);
+        for (let i = 0; i < count; i += 1) {
           const index = slots.length + 1;
           slots = [...slots, { id: `slot-${index}`, name: `Test ${index}`, rounds: 0, lastUtterance: null }];
         }
@@ -1217,7 +1226,9 @@ test("#303: t.live test-slot count input can be cleared with Backspace and retyp
   const createCounts = stubTestActivitySlots([]);
   const dispose = await mountRoute("/t/live/activity-1");
   try {
-    const input = (await screen.findByRole("spinbutton", { name: "How many to add" })) as HTMLInputElement;
+    const found = await screen.findByRole("spinbutton", { name: "How many to add" });
+    if (!(found instanceof HTMLInputElement)) throw new Error("slot count control is not an input");
+    const input = found;
     const submit = screen.getByRole("button", { name: "Add test dialogues" });
     await waitFor(() => expect(submit).toHaveProperty("disabled", false));
     expect(input.value).toBe("1");
@@ -1250,7 +1261,9 @@ test("#303: t.live test-slot count input rejects out-of-range and non-integer va
   ]);
   const dispose = await mountRoute("/t/live/activity-1");
   try {
-    const input = (await screen.findByRole("spinbutton", { name: "How many to add" })) as HTMLInputElement;
+    const found = await screen.findByRole("spinbutton", { name: "How many to add" });
+    if (!(found instanceof HTMLInputElement)) throw new Error("slot count control is not an input");
+    const input = found;
     const submit = screen.getByRole("button", { name: "Add test dialogues" });
     await waitFor(() => expect(submit).toHaveProperty("disabled", false));
 
@@ -1433,14 +1446,19 @@ test("#267: the teacher toggles engagement sharing; both options start off", asy
   const puts = stubTeacherReport({ classReport: false, student: false });
   const dispose = await mountRoute("/report/activity-1");
   try {
-    const own = await screen.findByRole("checkbox", { name: "Each student's own report" });
-    const group = screen.getByRole("checkbox", { name: "The group report" });
-    expect((own as HTMLInputElement).checked).toBe(false);
-    expect((group as HTMLInputElement).checked).toBe(false);
+    const findOwn = await screen.findByRole("checkbox", { name: "Each student's own report" });
+    const findGroup = screen.getByRole("checkbox", { name: "The group report" });
+    if (!(findOwn instanceof HTMLInputElement) || !(findGroup instanceof HTMLInputElement)) {
+      throw new Error("engagement visibility controls are not checkboxes");
+    }
+    const own = findOwn;
+    const group = findGroup;
+    expect(own.checked).toBe(false);
+    expect(group.checked).toBe(false);
     expect(screen.queryByRole("table")).toBeNull();
     fireEvent.click(own);
     await waitFor(() => expect(puts).toEqual([{ classReport: false, student: true }]));
-    await waitFor(() => expect((own as HTMLInputElement).checked).toBe(true));
+    await waitFor(() => expect(own.checked).toBe(true));
   } finally {
     dispose();
   }
@@ -1450,11 +1468,13 @@ test("#267: a failed save shows an alert and the checkbox goes back to the store
   const puts = stubTeacherReport({ classReport: false, student: false }, true);
   const dispose = await mountRoute("/report/activity-1");
   try {
-    const group = await screen.findByRole("checkbox", { name: "The group report" });
+    const found = await screen.findByRole("checkbox", { name: "The group report" });
+    if (!(found instanceof HTMLInputElement)) throw new Error("group report control is not a checkbox");
+    const group = found;
     fireEvent.click(group);
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(puts).toEqual([{ classReport: true, student: false }]);
-    expect((group as HTMLInputElement).checked).toBe(false);
+    expect(group.checked).toBe(false);
   } finally {
     dispose();
   }
@@ -1562,7 +1582,8 @@ test("#185: the overview tab shows account-level counts", async () => {
   const dispose = await mountRoute("/admin");
   try {
     const statOf = (label: string) => {
-      const card = screen.getByText(label).closest("[data-stat]") as HTMLElement;
+      const card = screen.getByText(label).closest("[data-stat]");
+      if (!(card instanceof HTMLElement)) throw new Error(`stat card for ${label} not found`);
       return within(card).getByText(/^[0-9]+$/).textContent;
     };
     expect(await screen.findByText("Registered accounts")).toBeTruthy();
@@ -1668,7 +1689,9 @@ test("#185: the notify tab posts an announcement to the feed", async () => {
       path: "/api/admin/notifications",
       body: { title: "Maintenance", body: "Tonight" },
     });
-    expect((screen.getByRole("textbox", { name: "Title" }) as HTMLInputElement).value).toBe("");
+    const titleBox = screen.getByRole("textbox", { name: "Title" });
+    if (!(titleBox instanceof HTMLInputElement)) throw new Error("title control is not an input");
+    expect(titleBox.value).toBe("");
   } finally {
     dispose();
     vi.unstubAllGlobals();

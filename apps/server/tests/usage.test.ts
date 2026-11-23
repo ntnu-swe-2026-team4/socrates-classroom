@@ -86,15 +86,15 @@ describe("teacher usage recording and quota alerts", () => {
           sent.push(message);
           return { messageId: "m1" };
         },
-      } as never,
+      },
       ALERT_FROM_EMAIL: "noreply@socrates.g36maid.dev",
       ADMIN_ALERT_EMAIL: "admin@socrates.g36maid.dev",
-    } as unknown as Env;
+    };
   }
 
   it("records usage for a teacher's keyed provider and ignores everything else", async () => {
     await seedTeacher("u_qa1", null, "qa1@example.com");
-    const bare = env as unknown as Env;
+    const bare = env;
     await recordTeacherUsage(bare, "u_qa1", sample("openrouter", 0.004));
     await recordTeacherUsage(bare, "u_qa1", sample("workers-ai", 9));
 
@@ -142,8 +142,7 @@ describe("teacher usage recording and quota alerts", () => {
 
   it("keeps the claim but skips the email path when the binding is absent", async () => {
     await seedTeacher("u_qa4", 0.1, "qa4@example.com");
-    const withoutBinding = { ...env } as unknown as Env;
-    delete withoutBinding.SEND_EMAIL;
+    const { SEND_EMAIL: _omitted, ...withoutBinding } = env;
 
     await expect(recordTeacherUsage(withoutBinding, "u_qa4", sample("openrouter", 0.06))).resolves.toBeUndefined();
     expect(await alertedThresholds("u_qa4")).toEqual([60]);
@@ -156,7 +155,7 @@ describe("teacher usage recording and quota alerts", () => {
       send: async () => {
         throw new Error("E_RATE_LIMIT_EXCEEDED");
       },
-    } as never;
+    };
 
     await expect(recordTeacherUsage(failing, "u_qa5", sample("openrouter", 0.06))).resolves.toBeUndefined();
     expect(await alertedThresholds("u_qa5")).toEqual([]);
@@ -182,7 +181,7 @@ describe("teacher usage recording and quota alerts", () => {
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
-    const broken = { ...mailEnv(sent), DB: brokenUsersDb } as unknown as Env;
+    const broken: Env = { ...mailEnv(sent), DB: brokenUsersDb };
 
     await expect(recordTeacherUsage(broken, "u_qa6", sample("openrouter", 0.06))).resolves.toBeUndefined();
     expect(await alertedThresholds("u_qa6")).toEqual([]);
@@ -240,7 +239,7 @@ describe("teacher usage recording and quota alerts", () => {
       send: async () => {
         throw new Error("E_RATE_LIMIT_EXCEEDED");
       },
-    } as never;
+    };
 
     await expect(recordTeacherUsage(failing, "u_qa9", sample("openrouter", 0.06))).resolves.toBeUndefined();
     expect(await alertedThresholds("u_qa9")).toEqual([]);

@@ -1,10 +1,9 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, inject, test } from "vitest";
-import worker from "../src/index";
 import { one, run } from "../src/db/d1";
 import { type AccountTokenPurpose, hashPassword, passwordResetBinding, sealAccountToken } from "../src/auth";
-import { cookieOf, must, scopedEnv } from "./helpers";
+import { cookieOf, must, scopedEnv, str, workerFetch } from "./helpers";
 
 interface SentEmail {
   to: string;
@@ -38,10 +37,8 @@ function mailbox(delivery: Delivery = "delivered") {
   });
   const request = async (path: string, init: RequestInit = {}): Promise<Response> => {
     const pending: Promise<unknown>[] = [];
-    const res = await (
-      worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }
-    ).fetch(new Request(`http://worker.test${path}`, init), scoped, {
-      waitUntil: (promise: Promise<unknown>) => pending.push(promise),
+    const res = await workerFetch(scoped, new Request(`http://worker.test${path}`, init), (promise) => {
+      pending.push(promise);
     });
     await Promise.all(pending);
     return res;
@@ -64,8 +61,8 @@ async function signup(m: Mailbox, email: string, password: string, lang = "zh-TW
     { "Accept-Language": lang },
   );
   expect(res.status).toBe(200);
-  const user = (await res.json()) as { id: string };
-  return { id: user.id, cookie: cookieOf(res) };
+  const user = await res.json();
+  return { id: str(user, "id"), cookie: cookieOf(res) };
 }
 
 function resetMails(m: Mailbox): SentEmail[] {
@@ -73,8 +70,9 @@ function resetMails(m: Mailbox): SentEmail[] {
 }
 
 function tokenOf(mail: SentEmail): string {
-  const match = must(/#token=([A-Za-z0-9_\-.]+)/.exec(mail.text), "reset token");
-  return match[1];
+  const token = must(/#token=([A-Za-z0-9_\-.]+)/.exec(mail.text), "reset token")[1];
+  if (token === undefined) throw new Error("reset token group missing");
+  return token;
 }
 
 async function requestLink(m: Mailbox, email: string): Promise<string> {
@@ -88,7 +86,7 @@ async function requestLink(m: Mailbox, email: string): Promise<string> {
 const reset = (m: Mailbox, token: string, password: string) => m.post("/api/auth/password/reset", { token, password });
 
 async function codeOf(res: Response): Promise<string> {
-  return ((await res.json()) as { code: string }).code;
+  return str(await res.json(), "code");
 }
 
 async function loginStatus(m: Mailbox, email: string, password: string): Promise<number> {
@@ -105,8 +103,8 @@ async function bindingOf(id: string): Promise<string> {
   return passwordResetBinding(record.password_hash, record.email);
 }
 
-async function sealedToken(purpose: string, uid: string, ttlMs: number): Promise<string> {
-  return sealAccountToken({ env }, purpose as AccountTokenPurpose, uid, await bindingOf(uid), ttlMs);
+async function sealedToken(purpose: AccountTokenPurpose, uid: string, ttlMs: number): Promise<string> {
+  return sealAccountToken({ env }, purpose, uid, await bindingOf(uid), ttlMs);
 }
 
 describe("password reset (#230)", () => {
@@ -120,9 +118,9 @@ describe("password reset (#230)", () => {
     expect(res.status).toBe(204);
     const mails = resetMails(m);
     expect(mails).toHaveLength(1);
-    expect(mails[0].to).toBe(email);
-    expect(mails[0].from).toBe("noreply@socrates.test");
-    expect(mails[0].text).toContain(`${BASE}/reset-password#token=`);
+    expect(must(mails[0], "reset mail").to).toBe(email);
+    expect(must(mails[0], "reset mail").from).toBe("noreply@socrates.test");
+    expect(must(mails[0], "reset mail").text).toContain(`${BASE}/reset-password#token=`);
   });
 
   test("forgot for unknown, passwordless and disabled accounts → 204 and no mail", async () => {
@@ -217,8 +215,8 @@ describe("password reset (#230)", () => {
     const attacker = freshEmail();
     await signup(m, attacker, "old-password-1");
     const token = await requestLink(m, attacker);
-    const [payload, signature] = token.split(".") as [string, string];
-    const decoded = JSON.parse(atob(payload.replaceAll("-", "+").replaceAll("_", "/"))) as Record<string, unknown>;
+    const [payload = "", signature = ""] = token.split(".");
+    const decoded: Record<string, unknown> = JSON.parse(atob(payload.replaceAll("-", "+").replaceAll("_", "/")));
     const forged = btoa(JSON.stringify({ ...decoded, uid: victimAccount.id }))
       .replaceAll("+", "-")
       .replaceAll("/", "_")

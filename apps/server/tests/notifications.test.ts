@@ -3,6 +3,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, test } from "vitest";
 import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
+import { NotificationFeedSchema, NotificationSchema, type NotificationFeed } from "@socrates/shared";
 import { call, cookieOf } from "./helpers";
 
 const migrations = inject("d1Migrations");
@@ -27,17 +28,10 @@ async function compose(admin: string, title: string, body = "維護公告內文"
   });
 }
 
-interface FeedItem {
-  id: string;
-  title: string;
-  body: string;
-  createdAt: string;
-}
-
-async function feed(cookie?: string): Promise<{ items: FeedItem[]; unread: number | null }> {
+async function feed(cookie?: string): Promise<NotificationFeed> {
   const res = await call("/api/notifications", ...(cookie ? [{ headers: { Cookie: cookie } }] : []));
   expect(res.status).toBe(200);
-  return (await res.json()) as { items: FeedItem[]; unread: number | null };
+  return NotificationFeedSchema.parse(await res.json());
 }
 
 let admin: string;
@@ -54,7 +48,7 @@ describe("notifications feed and read watermark (#239)", () => {
   test("admin composes an announcement; non-admin and anonymous are rejected", async () => {
     const created = await compose(admin, "期中維護公告");
     expect(created.status).toBe(201);
-    const row = (await created.json()) as FeedItem;
+    const row = NotificationSchema.parse(await created.json());
     expect(row.title).toBe("期中維護公告");
     expect(row.id).toBeTruthy();
     expect(row.createdAt).toBeTruthy();
