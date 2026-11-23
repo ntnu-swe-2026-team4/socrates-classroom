@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import {
   AdminKeyCreateInputSchema,
+  AdminTeacherKeyDisableInputSchema,
   AdminKeyModelEchoSchema,
   AdminKeyModelInputSchema,
   AdminKeyModelOrderInputSchema,
@@ -8,9 +9,11 @@ import {
   AdminKeyUpdateInputSchema,
   AdminKeyZdrInputSchema,
   type AdminKeyStatus,
+  type AdminTeacherKeyStatus,
 } from "@socrates/shared";
 import { all, batch, one } from "../db/d1";
 import { adminActionEntry } from "../services/audit";
+import { gatewayConfig } from "../gateway/config.gen";
 import { keyableProvider, keyableProviders } from "../pi/keyable-providers";
 import { encryptKey } from "../auth-crypto";
 import {
@@ -55,6 +58,136 @@ async function loadAdminKey(db: D1Database, id: string): Promise<AdminKeyRow | n
 
 export function adminKeyRoutes() {
   return new Hono<AppEnv>()
+    .get("/admin/teacher-keys", async (c) => {
+      requireAdmin(c);
+      const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
+      const rows = await all<{
+        user_id: string;
+        user_name: string;
+        user_email: string | null;
+        provider_id: string;
+        last4: string;
+        disabled_by: string | null;
+        disabled_at: string | null;
+        monthly_quota_usd: number | null;
+        updated_at: string;
+      }>(
+        c.env.DB,
+        `SELECT k.user_id, u.name AS user_name, u.email AS user_email, k.provider_id, k.last4,
+                k.disabled_by, k.disabled_at, k.monthly_quota_usd, k.updated_at
+         FROM teacher_keys k JOIN users u ON u.id = k.user_id
+         ORDER BY u.name, k.provider_id`,
+      );
+      const usage = await all<{ user_id: string; provider_id: string; cost: number; tokens: number }>(
+        c.env.DB,
+        "SELECT user_id, provider_id, COALESCE(SUM(cost_usd), 0) AS cost, COALESCE(SUM(total_tokens), 0) AS tokens FROM teacher_key_usage WHERE created_at >= $start GROUP BY user_id, provider_id",
+        { start: monthStart },
+      );
+      const usageKey = (userId: string, providerId: string) => `${userId}|${providerId}`;
+      const usageMap = new Map(usage.map((row) => [usageKey(row.user_id, row.provider_id), row]));
+      const legs = await all<{ user_id: string; provider_id: string; model: string; sort_order: number }>(
+        c.env.DB,
+        "SELECT user_id, provider_id, model, sort_order FROM teacher_key_models ORDER BY sort_order",
+      );
+      const legMap = new Map<string, Array<{ model: string; sortOrder: number }>>();
+      for (const leg of legs) {
+        const key = usageKey(leg.user_id, leg.provider_id);
+        const list = legMap.get(key) ?? [];
+        list.push({ model: leg.model, sortOrder: leg.sort_order });
+        legMap.set(key, list);
+      }
+      return c.json(
+        rows.map(
+          (row): AdminTeacherKeyStatus => ({
+            userId: row.user_id,
+            userName: row.user_name,
+            userEmail: row.user_email,
+            provider: row.provider_id,
+            last4: row.last4,
+            disabled: row.disabled_by !== null,
+            disabledAt: row.disabled_at,
+            monthlyQuotaUsd: row.monthly_quota_usd,
+            monthCostUsd: usageMap.get(usageKey(row.user_id, row.provider_id))?.cost ?? 0,
+            monthTokens: usageMap.get(usageKey(row.user_id, row.provider_id))?.tokens ?? 0,
+            updatedAt: row.updated_at,
+            models: legMap.get(usageKey(row.user_id, row.provider_id)) ?? [],
+          }),
+        ),
+      );
+    })
+    .patch(
+      "/admin/teacher-keys/:userId/:provider",
+      guardAdmin(),
+      validateJson(AdminTeacherKeyDisableInputSchema),
+      async (c) => {
+        const actor = requireAdmin(c);
+        const userId = c.req.param("userId");
+        const provider = c.req.param("provider");
+        const input = c.req.valid("json");
+        const target = await one<{ last4: string; disabled_by: string | null }>(
+          c.env.DB,
+          "SELECT last4, disabled_by FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
+          { uid: userId, pid: provider },
+        );
+        if (!target) fail(404, "not_found");
+        if (input.disabled) {
+          await batch(c.env.DB, [
+            {
+              sql: "UPDATE teacher_keys SET disabled_by = $actor, disabled_at = $at WHERE user_id = $uid AND provider_id = $pid",
+              params: { actor: actor.id, at: nowIso(), uid: userId, pid: provider },
+            },
+            adminActionEntry({
+              actorId: actor.id,
+              action: "teacher_key.disable",
+              target: `teacher_key:${userId}/${provider}`,
+              before: { last4: target.last4, disabled: target.disabled_by !== null },
+              after: { last4: target.last4, disabled: true },
+            }),
+          ]);
+        } else {
+          await batch(c.env.DB, [
+            {
+              sql: "UPDATE teacher_keys SET disabled_by = NULL, disabled_at = NULL WHERE user_id = $uid AND provider_id = $pid",
+              params: { uid: userId, pid: provider },
+            },
+            adminActionEntry({
+              actorId: actor.id,
+              action: "teacher_key.enable",
+              target: `teacher_key:${userId}/${provider}`,
+              before: { last4: target.last4, disabled: target.disabled_by !== null },
+              after: { last4: target.last4, disabled: false },
+            }),
+          ]);
+        }
+        const updated = await one<{ disabled_by: string | null; disabled_at: string | null }>(
+          c.env.DB,
+          "SELECT disabled_by, disabled_at FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
+          { uid: userId, pid: provider },
+        );
+        if (!updated) fail(500, "internal_error");
+        return c.json({
+          userId,
+          provider,
+          disabled: updated.disabled_by !== null,
+          disabledAt: updated.disabled_at,
+        });
+      },
+    )
+    .get("/admin/platform-chain", async (c) => {
+      requireAdmin(c);
+      return c.json({
+        mode: "static" as const,
+        legs: [...gatewayConfig.defaults.availability]
+          .sort((a, b) => a.priority - b.priority)
+          .map((entry) => ({
+            provider: entry.provider,
+            model: entry.model ?? entry.provider,
+            credential: entry.credential,
+            maxConcurrency: entry.maxConcurrency,
+            priority: entry.priority,
+          })),
+      });
+    })
     .get("/admin/keys", async (c) => {
       requireAdmin(c);
       const keys = await all<AdminKeyRow>(

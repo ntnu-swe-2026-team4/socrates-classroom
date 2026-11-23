@@ -453,6 +453,38 @@ export const TeacherKeyStatusSchema = z.object({
 });
 export type TeacherKeyStatus = z.infer<typeof TeacherKeyStatusSchema>;
 
+export const AdminTeacherKeyStatusSchema = z.object({
+  userId: z.string(),
+  userName: z.string(),
+  userEmail: z.string().nullable(),
+  provider: z.string(),
+  last4: z.string(),
+  disabled: z.boolean(),
+  disabledAt: z.string().nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+  monthCostUsd: z.number(),
+  monthTokens: z.number(),
+  updatedAt: z.string(),
+  models: z.array(z.object({ model: z.string(), sortOrder: z.number() })),
+});
+export type AdminTeacherKeyStatus = z.infer<typeof AdminTeacherKeyStatusSchema>;
+
+export const AdminProviderChainSchema = z.object({
+  mode: z.literal("static"),
+  legs: z.array(
+    z.object({
+      provider: z.string(),
+      model: z.string(),
+      credential: z.string(),
+      maxConcurrency: z.number().int().min(0),
+      priority: z.number().int(),
+    }),
+  ),
+});
+export type AdminProviderChain = z.infer<typeof AdminProviderChainSchema>;
+
+export const AdminTeacherKeyDisableInputSchema = z.object({ disabled: z.boolean() });
+
 export const TeacherKeyEchoSchema = z.object({
   provider: z.string(),
   last4: z.string().optional(),
@@ -498,8 +530,8 @@ export const AdminKeyEchoSchema = z.object({
   maxConcurrency: z.number().int().min(1).max(100).nullable(),
   monthlyQuotaUsd: z.number().positive().nullable(),
   zdrStatus: z.enum(["unverified", "approved"]).optional(),
-  zdrRetentionSource: z.string().optional(),
-  zdrVerifiedAt: z.string().optional(),
+  zdrRetentionSource: z.string().nullable().optional(),
+  zdrVerifiedAt: z.string().nullable().optional(),
 });
 export type AdminKeyEcho = z.infer<typeof AdminKeyEchoSchema>;
 
