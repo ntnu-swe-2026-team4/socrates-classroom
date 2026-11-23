@@ -329,8 +329,10 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
       headers: { "Content-Type": "application/json", Cookie: teacher },
       body: JSON.stringify({ classroomId }),
     });
-    expect(copiedKeep.status).toBe(201);
-    expect(((await copiedKeep.json()) as { axes: unknown[] }).axes).toEqual(oneAxis);
+    expect(copiedKeep.status).toBe(200);
+    const kept = (await copiedKeep.json()) as { id: string; axes: unknown[] };
+    expect(kept.id).toBe(copiedTopic.id);
+    expect(kept.axes).toEqual(oneAxis);
 
     const overrideAxes = [{ name: "個人與群體", left: "個人自由", right: "群體福祉" }];
     const copiedOverride = await call(`/api/topics/${copiedTopic.id}/copy`, {

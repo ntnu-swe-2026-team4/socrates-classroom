@@ -20,6 +20,20 @@
 - `ThinkingHexagon` 與 `lib/thinking.ts` 改接 `TeacherReport.students[].indicators`／`StudentReport.indicators`（#255）：移除 `sampleThinking` 示意資料與提示列，`indicatorsToGoals` 直接將 `c1..a2` 轉成六條軸；`indicators` 為 `null` 時不顯示六角圖
 - 級數對齊後端 0–3 級（未觀察到／初步／部分／達成，三語 i18n），圖上改為四層同心框、右側方塊為三格，並顯示每項的 `evidence` 與 `turns`
 
+## 2026-11-23 — 議題生命週期：dedup 與 soft delete（`feat/383-topic-lifecycle`，#383）
+
+### Added
+
+- 題目身分：同池同 `(…, title, statement, axes)` 即同一題，靠 partial unique index `topics_classroom_content`／`topics_personal_content` 保證；`POST /api/topics`、`POST /api/classrooms/:id/topics`、`POST /api/topics/:id/copy` 對已存在內容回 200 及既有題目（新內容仍 201），既有列的 `prompts`／`summary`／`copied_from` 不覆寫
+- `DELETE /api/classrooms/:id/topics/:topicId` → 204：soft delete（`topics.deleted_at`），題目離開所有清單、不能再開新活動，既有活動與歷史頁（`join`／`report`／`live`／班級 `current`）照舊渲染；冪等，刪除後可用同內容重建
+- 開活動時改軸的 snapshot 與 `POST /topics/:id/copy` 都走「建立或取回」，同內容同軸不再重複建列
+- migration 020：`topics.deleted_at`、`topics.axes` 正規化、既有重複列合併（去重先於 index，`activities.topic_id` 與 `topics.copied_from` 重指到保留列）
+
+### Changed
+
+- `GET /api/topics`、`GET /api/classrooms/:id/topics` 皆排除已刪除題目；`POST /api/topics` 仍為 legacy 入口（web 端無呼叫者）
+- 契約見 `docs/api-contract.md` §4，schema 見 `docs/architecture.md`
+
 ## 2026-11-23 — 教師報告加上學生認真度（`feat/267-engagement`，#267）
 
 ### Added

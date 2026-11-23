@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { all, run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
+import { must } from "./helpers";
 import {
   copyableTopic,
   type TopicIdentity,
@@ -24,12 +25,16 @@ interface Row extends TopicIdentity {
   id: string;
 }
 
+const DELETED_AT = "2026-11-23T00:00:00.000Z";
+
 const ROWS: Row[] = [
-  { id: "t_v_system", owner_id: null, classroom_id: null },
-  { id: "t_v_personal_lin", owner_id: LIN, classroom_id: null },
-  { id: "t_v_personal_chen", owner_id: CHEN, classroom_id: null },
-  { id: "t_v_class_lin", owner_id: LIN, classroom_id: LIN_CLASS },
-  { id: "t_v_class_chen", owner_id: CHEN, classroom_id: CHEN_CLASS },
+  { id: "t_v_system", owner_id: null, classroom_id: null, deleted_at: null },
+  { id: "t_v_personal_lin", owner_id: LIN, classroom_id: null, deleted_at: null },
+  { id: "t_v_personal_chen", owner_id: CHEN, classroom_id: null, deleted_at: null },
+  { id: "t_v_class_lin", owner_id: LIN, classroom_id: LIN_CLASS, deleted_at: null },
+  { id: "t_v_class_chen", owner_id: CHEN, classroom_id: CHEN_CLASS, deleted_at: null },
+  { id: "t_v_deleted_class_lin", owner_id: LIN, classroom_id: LIN_CLASS, deleted_at: DELETED_AT },
+  { id: "t_v_deleted_personal_lin", owner_id: LIN, classroom_id: null, deleted_at: DELETED_AT },
 ];
 
 beforeAll(async () => {
@@ -48,7 +53,7 @@ beforeAll(async () => {
   for (const row of ROWS) {
     await run(
       env.DB,
-      "INSERT INTO topics (id, owner_id, classroom_id, title, statement, prompts, axes, created_at) VALUES ($id, $uid, $cid, $title, $statement, $prompts, $axes, $at)",
+      "INSERT INTO topics (id, owner_id, classroom_id, title, statement, prompts, axes, deleted_at, created_at) VALUES ($id, $uid, $cid, $title, $statement, $prompts, $axes, $deleted, $at)",
       {
         id: row.id,
         uid: row.owner_id,
@@ -57,6 +62,7 @@ beforeAll(async () => {
         statement: row.id,
         prompts: "[]",
         axes: "[]",
+        deleted: row.deleted_at,
         at: new Date().toISOString(),
       },
     );
@@ -84,10 +90,20 @@ function predicateIds(scopes: readonly TopicScope[], subject: { userId: string; 
 
 describe("topic visibility: the (owner_id, classroom_id) state machine lives in one place", () => {
   it("classifies every identity into exactly one pool", () => {
-    expect(topicScope({ owner_id: null, classroom_id: null })).toBe("system");
-    expect(topicScope({ owner_id: LIN, classroom_id: null })).toBe("personal");
-    expect(topicScope({ owner_id: null, classroom_id: LIN_CLASS })).toBe("classroom");
-    expect(topicScope({ owner_id: LIN, classroom_id: LIN_CLASS })).toBe("classroom");
+    expect(topicScope({ owner_id: null, classroom_id: null, deleted_at: null })).toBe("system");
+    expect(topicScope({ owner_id: LIN, classroom_id: null, deleted_at: null })).toBe("personal");
+    expect(topicScope({ owner_id: null, classroom_id: LIN_CLASS, deleted_at: null })).toBe("classroom");
+    expect(topicScope({ owner_id: LIN, classroom_id: LIN_CLASS, deleted_at: null })).toBe("classroom");
+  });
+
+  it("a soft-deleted topic is visible to nobody and in no pool", async () => {
+    const deleted = must(
+      ROWS.find((row) => row.id === "t_v_deleted_class_lin"),
+      "deleted topic row",
+    );
+    expect(topicVisibleTo(deleted, { userId: LIN, classroomId: LIN_CLASS })).toBe(false);
+    expect(await poolIds(["classroom"], { userId: LIN, classroomId: LIN_CLASS })).toEqual(["t_v_class_lin"]);
+    expect(await poolIds(["system", "personal"], { userId: LIN })).toEqual(["t_v_personal_lin", "t_v_system"]);
   });
 
   it("a system topic is readable by anyone, a personal topic only by its owner", () => {
@@ -125,8 +141,8 @@ describe("copyableTopic: the copy source guard", () => {
     }
   });
 
-  it("rejects another teacher's personal topic, another teacher's classroom topic, and unknown ids", async () => {
-    for (const id of ["t_v_personal_chen", "t_v_class_chen", "t_v_missing"]) {
+  it("rejects another teacher's personal topic, another teacher's classroom topic, unknown ids, and deleted topics", async () => {
+    for (const id of ["t_v_personal_chen", "t_v_class_chen", "t_v_missing", "t_v_deleted_class_lin"]) {
       await expect(copyableTopic<Row>(env.DB, id, LIN)).rejects.toMatchObject({ status: 404, code: "not_found" });
     }
   });
