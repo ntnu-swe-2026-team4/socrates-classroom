@@ -2,6 +2,7 @@ import { hc } from "hono/client";
 import type {
   ActivityInfo,
   ActivityInvite,
+  ActivityLive,
   ActivityMode,
   ActivitySlots,
   ActivityStarted,
@@ -34,6 +35,7 @@ import type {
   User,
 } from "@socrates/shared";
 import {
+  ActivityLiveSchema,
   ActivityStartInputSchema,
   AdminUserCreateInputSchema,
   AdminUserUpdateInputSchema,
@@ -130,6 +132,7 @@ export interface Api {
     axes?: Axis[];
   }): Promise<Topic>;
   activityInfo(activityId: string, participantId?: string): Promise<ActivityInfo>;
+  activityLive(activityId: string, signal?: AbortSignal): Promise<ActivityLive>;
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
   listSoloThreads(): Promise<SoloThread[]>;
@@ -459,6 +462,10 @@ export const httpApi: Api = {
   tts: playTts,
   async activityInfo(activityId, participantId) {
     return unwrap(await client.activities[":id"].$get({ param: { id: activityId }, query: { participantId } }));
+  },
+  async activityLive(activityId, signal) {
+    const response = await client.activities[":id"].live.$get({ param: { id: activityId } }, { init: { signal } });
+    return ActivityLiveSchema.parse(await unwrap(response));
   },
   async finishActivity(activityId) {
     await unwrap(await client.activities[":id"].finish.$post({ param: { id: activityId } }));

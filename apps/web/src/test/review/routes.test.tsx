@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
+import { activityLiveOptions } from "@/api/queries";
 import { setLocale } from "@/i18n";
 import { onExpression } from "@/lib/companion";
 
@@ -139,8 +140,7 @@ async function loadPath(url: string, responses: Record<string, unknown>, statuse
   return (await loadLocation(url, responses, statuses)).pathname;
 }
 
-async function mountRoute(url: string) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+async function mountRoute(url: string, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: [url] }),
@@ -1022,6 +1022,115 @@ test("#314: an in-flight invite creation for the previous activity does not popu
   } finally {
     dispose();
     vi.unstubAllGlobals();
+  }
+});
+
+test("#182: prioritizes flags, pages a large roster, and searches all students", async () => {
+  const user = userEvent.setup();
+  const asOf = "2026-11-23T01:00:00.000Z";
+  const students = Array.from({ length: 1000 }, (_, index) => ({
+    id: String(index),
+    name: `Student ${String(index).padStart(4, "0")}`,
+    status: index === 999 ? "active" : "not_started",
+    rounds: index === 999 ? 2 : 0,
+    lastActiveAt: index === 999 ? asOf : null,
+    flags: index === 999 ? [{ id: "1", type: "coding" }] : [],
+  }));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
+        "/api/activities/activity-1": liveActivity,
+        "/api/classrooms": [roomSummary("teacher")],
+        "/api/activities/activity-1/live": { activityId: "activity-1", asOf, finishedAt: null, students },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return Response.json(responses[path]);
+    }),
+  );
+  const dispose = await mountRoute("/t/live/activity-1");
+  try {
+    const table = await screen.findByRole("table", { name: "Live student roster" });
+    const firstPage = within(table).getAllByRole("row");
+    expect(firstPage).toHaveLength(51);
+    expect(firstPage[1].textContent).toContain("Student 0999");
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    expect(within(table).queryByText("Student 0999")).toBeNull();
+    await user.type(screen.getByRole("searchbox", { name: "Search students" }), "0842");
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    expect(within(table).getByText("Student 0842")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Finish & view report" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "End this activity?" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test("#182: announces only new flags and hides the roster after permission is revoked", async () => {
+  const user = userEvent.setup();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } });
+  const options = activityLiveOptions("activity-1");
+  const asOf = "2026-11-23T01:00:00.000Z";
+  let flag = "1";
+  let responseStatus = 200;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (path === "/api/activities/activity-1/live" && responseStatus !== 200) {
+        return Response.json(
+          { code: responseStatus === 403 ? "forbidden" : "internal_error" },
+          { status: responseStatus },
+        );
+      }
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
+        "/api/activities/activity-1": liveActivity,
+        "/api/classrooms": [roomSummary("teacher")],
+        "/api/activities/activity-1/live": {
+          activityId: "activity-1",
+          asOf,
+          finishedAt: null,
+          students: [
+            {
+              id: "student",
+              name: "Student",
+              status: "active",
+              rounds: 1,
+              lastActiveAt: asOf,
+              flags: [{ id: flag, type: "coding" }],
+            },
+          ],
+        },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return Response.json(responses[path]);
+    }),
+  );
+  const dispose = await mountRoute("/t/live/activity-1", client);
+  try {
+    expect(await screen.findByRole("rowheader", { name: "Student" })).toBeTruthy();
+    expect(screen.queryByText("New flags: 1")).toBeNull();
+    flag = "2";
+    await act(() => client.refetchQueries({ queryKey: options.queryKey }));
+    expect(await screen.findByText("New flags: 1")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    await act(() => client.refetchQueries({ queryKey: options.queryKey }));
+    expect(screen.queryByText("New flags: 1")).toBeNull();
+    responseStatus = 500;
+    await act(() => client.refetchQueries({ queryKey: options.queryKey }));
+    expect(await screen.findByText(/Updates unavailable/)).toBeTruthy();
+    expect(screen.getByRole("rowheader", { name: "Student" })).toBeTruthy();
+    responseStatus = 403;
+    await act(() => client.refetchQueries({ queryKey: options.queryKey }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.queryByRole("rowheader", { name: "Student" })).toBeNull();
+  } finally {
+    dispose();
   }
 });
 

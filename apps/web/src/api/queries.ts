@@ -42,6 +42,35 @@ export function teacherActivityOptions(activityId: string) {
   });
 }
 
+export function liveActivityUnavailable(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.code === "unauthorized" ||
+      error.code === "forbidden" ||
+      error.code === "account_disabled" ||
+      error.code === "not_found" ||
+      error.code === "conflict")
+  );
+}
+
+export function activityLiveOptions(activityId: string) {
+  return queryOptions({
+    queryKey: ["activity-live", activityId],
+    queryFn: ({ signal }) => api.activityLive(activityId, signal),
+    gcTime: 0,
+    retry: (count, error) => count < 1 && !liveActivityUnavailable(error),
+    refetchInterval: ({ state }) => {
+      if (state.data?.finishedAt || liveActivityUnavailable(state.error)) return false;
+      return state.error ? 15_000 : 5_000;
+    },
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: ({ state }) =>
+      state.data?.finishedAt || liveActivityUnavailable(state.error) ? false : "always",
+    refetchOnReconnect: ({ state }) =>
+      state.data?.finishedAt || liveActivityUnavailable(state.error) ? false : "always",
+  });
+}
+
 export function activitySlotsOptions(activityId: string) {
   return queryOptions({
     queryKey: ["activity-slots", activityId],
