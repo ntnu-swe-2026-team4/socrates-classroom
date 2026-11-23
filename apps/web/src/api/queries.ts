@@ -137,6 +137,14 @@ export function keyProviderModelsOptions(provider: string) {
   });
 }
 
+export function adminKeyProviderModelsOptions(provider: string) {
+  return queryOptions({
+    queryKey: ["adminKeyProviderModels", provider],
+    queryFn: () => api.adminKeyProviderModels(provider),
+    staleTime: Infinity,
+  });
+}
+
 export const adminUsersOptions = queryOptions({
   queryKey: ["admin-users"],
   queryFn: () => api.listAdminUsers(),

@@ -417,7 +417,7 @@ pnpm --filter @socrates/server run gen-config
 - **動作稽核（#359）**：admin keys 的每個寫入（create／update／delete／model 腳位）與其稽核列以同一 D1 `batch()` 提交（`admin_actions` 表；摘要 last4-only，MUST NOT 含 key 素材）；查詢端點 `GET /api/admin/actions`（requireAdmin）。ZDR 核可（#357）與代管停用（#360）為後續寫入者。
 - **credential 解析與記帳歸因（#356）**：pi 的 credential store 改為 `keyedCredentialStore`——依當輪 decided credential 服務對應池的 key，無 decision 或 provider 不符時解析為 undefined（誠實失敗，不偷用平台 env）；usage 依同一 slot 記帳。slot 是 per-DO/core 共享的可變槽，競態後果與已知缺口見下段。
 - **YAML 退守為災難保底**：build-time 不可變＋CI drift check 保留、不經 admin UI（binding 腿無 key、免費 neurons；D1 credential 層整層故障時對話與 judgment 仍有保底）。
-- **Provider 管理 UI（#360）**：`/admin?tab=providers`（`AdminProviderKeys`）三區塊——平台池 admin keys CRUD＋ZDR 核可流程、Teacher keys 全員總覽（唯讀＋代管停用：`teacher_keys.disabled_by`，停用腿即刻退出該老師 chain、老師端設定保留）、YAML 鏈靜態唯讀視圖（`GET /api/admin/platform-chain`；修改仍走 YAML PR，health/cooldown 資料源待 #80）。key 素材全程不出現在 UI（last4-only）。
+- **Provider 管理 UI（#360，#390 重構）**：`/admin?tab=providers`（`AdminProviderKeys`）仿 magpie Providers 頁的 provider row 互動（與 teacher 設定頁同款骨架：icon 把手拖曳排序＋上下步進＋展開收合）三區塊——平台池 admin keys（全互動：CRUD、key/腿排序、model legs 行內編輯、quota、ZDR 核可流程；key 順序即 `adminLegsOf` 鏈序）、Teacher keys 全員總覽（同款 row 外觀，唯讀＋代管停用：`teacher_keys.disabled_by`，停用腿即刻退出該老師 chain、老師端設定保留）、YAML 鏈靜態唯讀視圖（`GET /api/admin/platform-chain`；修改仍走 YAML PR，health/cooldown 資料源待 #80）。key 素材全程不出現在 UI（last4-only）。
 
 ### 上游失敗碼（#221 拍板，2026-11-21）
 

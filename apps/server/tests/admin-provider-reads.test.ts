@@ -1,10 +1,10 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
-import type { AdminProviderChain, AdminTeacherKeyStatus } from "@socrates/shared";
+import { AdminProviderChainSchema, AdminTeacherKeyStatusSchema, TeacherKeyStatusSchema } from "@socrates/shared";
 import { beforeAll, describe, expect, test } from "vitest";
 import { inject } from "vitest";
 import { FIXTURE_PASSWORD, seedFixture } from "../src/seed";
-import { call, cookieOf } from "./helpers";
+import { call, cookieOf, str } from "./helpers";
 
 const migrations = inject("d1Migrations");
 
@@ -61,11 +61,11 @@ describe("provider management reads for the admin console (#360)", () => {
     expect(anonymous.status).toBe(401);
     const denied = await call("/api/admin/teacher-keys", { headers: { Cookie: student } });
     expect(denied.status).toBe(403);
-    expect(((await denied.json()) as { code: string }).code).toBe("forbidden");
+    expect(str(await denied.json(), "code")).toBe("forbidden");
 
     const res = await call("/api/admin/teacher-keys", { headers: { Cookie: admin } });
     expect(res.status).toBe(200);
-    const rows = (await res.json()) as AdminTeacherKeyStatus[];
+    const rows = AdminTeacherKeyStatusSchema.array().parse(await res.json());
     const entry = rows.find((row) => row.userId === "u_fx_lin" && row.provider === "openrouter");
     expect(entry).toBeTruthy();
     expect(entry?.userName).toBeTruthy();
@@ -75,9 +75,9 @@ describe("provider management reads for the admin console (#360)", () => {
   });
 
   test("teacher key survey can disable a teacher's key (managed suspension)", async () => {
-    const survey = (await (
-      await call("/api/admin/teacher-keys", { headers: { Cookie: admin } })
-    ).json()) as AdminTeacherKeyStatus[];
+    const survey = AdminTeacherKeyStatusSchema.array().parse(
+      await (await call("/api/admin/teacher-keys", { headers: { Cookie: admin } })).json(),
+    );
     const entry = survey.find((row) => row.userId === "u_fx_lin" && row.provider === "openrouter");
     if (!entry) throw new Error("seeded teacher key missing");
 
@@ -87,13 +87,17 @@ describe("provider management reads for the admin console (#360)", () => {
       body: JSON.stringify({ disabled: true }),
     });
     expect(disabled.status).toBe(200);
-    const after = (await (
-      await call("/api/admin/teacher-keys", { headers: { Cookie: admin } })
-    ).json()) as AdminTeacherKeyStatus[];
+    const { teacherLegsOf } = await import("../src/pi/credentials");
+    const legsOfProvider = async () =>
+      (await teacherLegsOf(env, entry.userId)).filter((leg) => leg.provider === entry.provider);
+    expect(await legsOfProvider()).toHaveLength(0);
+    const after = AdminTeacherKeyStatusSchema.array().parse(
+      await (await call("/api/admin/teacher-keys", { headers: { Cookie: admin } })).json(),
+    );
     expect(after.find((row) => row.userId === entry.userId && row.provider === entry.provider)?.disabled).toBe(true);
 
     const teacherSelf = await call("/api/settings/keys", { headers: { Cookie: teacher } });
-    const selfKeys = (await teacherSelf.json()) as Array<{ provider: string }>;
+    const selfKeys = TeacherKeyStatusSchema.array().parse(await teacherSelf.json());
     expect(selfKeys.some((row) => row.provider === entry.provider)).toBe(true);
 
     const restore = await call(`/api/admin/teacher-keys/${entry.userId}/${entry.provider}`, {
@@ -102,6 +106,7 @@ describe("provider management reads for the admin console (#360)", () => {
       body: JSON.stringify({ disabled: false }),
     });
     expect(restore.status).toBe(200);
+    expect(await legsOfProvider()).toHaveLength(1);
 
     const forbidden = await call(`/api/admin/teacher-keys/u_fx_lin/openrouter`, {
       method: "PATCH",
@@ -114,7 +119,7 @@ describe("provider management reads for the admin console (#360)", () => {
   test("the YAML platform chain is a read-only static view", async () => {
     const res = await call("/api/admin/platform-chain", { headers: { Cookie: admin } });
     expect(res.status).toBe(200);
-    const chain = (await res.json()) as AdminProviderChain;
+    const chain = AdminProviderChainSchema.parse(await res.json());
     expect(chain.mode).toBe("static");
     expect(chain.legs.length).toBeGreaterThan(0);
     expect(chain.legs[0]).toMatchObject({ provider: "workers-ai", credential: "platform" });

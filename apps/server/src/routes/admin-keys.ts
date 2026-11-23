@@ -118,6 +118,7 @@ export function adminKeyRoutes() {
     .patch(
       "/admin/teacher-keys/:userId/:provider",
       guardAdmin(),
+      rateLimit("admin-teacher-key-toggle", 30),
       validateJson(AdminTeacherKeyDisableInputSchema),
       async (c) => {
         const actor = requireAdmin(c);
@@ -130,6 +131,20 @@ export function adminKeyRoutes() {
           { uid: userId, pid: provider },
         );
         if (!target) fail(404, "not_found");
+        if ((target.disabled_by !== null) === input.disabled) {
+          const unchanged = await one<{ disabled_by: string | null; disabled_at: string | null }>(
+            c.env.DB,
+            "SELECT disabled_by, disabled_at FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
+            { uid: userId, pid: provider },
+          );
+          if (!unchanged) fail(500, "internal_error");
+          return c.json({
+            userId,
+            provider,
+            disabled: unchanged.disabled_by !== null,
+            disabledAt: unchanged.disabled_at,
+          });
+        }
         if (input.disabled) {
           await batch(c.env.DB, [
             {
@@ -303,23 +318,29 @@ export function adminKeyRoutes() {
       },
     )
     .put("/admin/keys/order", guardAdmin(), validateJson(AdminKeyOrderInputSchema), async (c) => {
-      requireAdmin(c);
+      const actor = requireAdmin(c);
       const input = c.req.valid("json");
-      const owned = await all<{ id: string }>(c.env.DB, "SELECT id FROM admin_keys");
+      const owned = await all<{ id: string; sort_order: number }>(c.env.DB, "SELECT id, sort_order FROM admin_keys");
       const ownedIds = new Set(owned.map((row) => row.id));
       if (input.keys.some((id) => !ownedIds.has(id))) fail(422, "validation");
       const ordered = new Set(input.keys);
       let unlisted = 0;
-      await batch(
-        c.env.DB,
-        owned.map((row) => {
+      await batch(c.env.DB, [
+        ...owned.map((row) => {
           const order = ordered.has(row.id) ? input.keys.indexOf(row.id) : input.keys.length + unlisted++;
           return {
             sql: "UPDATE admin_keys SET sort_order = $order, updated_at = $at WHERE id = $id",
             params: { order, at: nowIso(), id: row.id },
           };
         }),
-      );
+        adminActionEntry({
+          actorId: actor.id,
+          action: "admin_key.order",
+          target: "admin_keys",
+          before: { order: Object.fromEntries(owned.map((row) => [row.id, row.sort_order])) },
+          after: { keys: input.keys },
+        }),
+      ]);
       return c.json({ keys: input.keys });
     })
     .put(
@@ -399,29 +420,35 @@ export function adminKeyRoutes() {
       return c.body(null, 204);
     })
     .put("/admin/keys/:id/models/order", guardAdmin(), validateJson(AdminKeyModelOrderInputSchema), async (c) => {
-      requireAdmin(c);
+      const actor = requireAdmin(c);
       const key = await loadAdminKey(c.env.DB, c.req.param("id"));
       if (!key) fail(404, "not_found");
       const input = c.req.valid("json");
-      const owned = await all<{ model: string }>(
+      const owned = await all<{ model: string; sort_order: number }>(
         c.env.DB,
-        "SELECT model FROM admin_key_models WHERE admin_key_id = $id",
+        "SELECT model, sort_order FROM admin_key_models WHERE admin_key_id = $id",
         { id: key.id },
       );
       const ownedModels = new Set(owned.map((row) => row.model));
       if (input.models.some((model) => !ownedModels.has(model))) fail(422, "validation");
       const ordered = new Set(input.models);
       let unlisted = 0;
-      await batch(
-        c.env.DB,
-        owned.map((row) => {
+      await batch(c.env.DB, [
+        ...owned.map((row) => {
           const order = ordered.has(row.model) ? input.models.indexOf(row.model) : input.models.length + unlisted++;
           return {
             sql: "UPDATE admin_key_models SET sort_order = $order, updated_at = $at WHERE admin_key_id = $id AND model = $model",
             params: { order, at: nowIso(), id: key.id, model: row.model },
           };
         }),
-      );
+        adminActionEntry({
+          actorId: actor.id,
+          action: "admin_key_model.order",
+          target: `admin_key:${key.id}`,
+          before: { order: Object.fromEntries(owned.map((row) => [row.model, row.sort_order])) },
+          after: { models: input.models },
+        }),
+      ]);
       return c.json({ models: input.models });
     })
     .put("/admin/keys/:id/models", guardAdmin(), validateJson(AdminKeyModelInputSchema), async (c) => {

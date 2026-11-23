@@ -1671,6 +1671,7 @@ test("#185: the users tab creates an account and disables one behind a confirmat
 
 test("#360: the providers tab shows the pool, teacher survey, and the static YAML chain", async () => {
   let zdrApproved = false;
+  const calls: Array<{ path: string; body: unknown }> = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1691,10 +1692,9 @@ test("#360: the providers tab shows the pool, teacher survey, and the static YAM
           { headers: { "Content-Type": "application/json" } },
         );
       }
-      if (init?.method === "PATCH" && path === "/api/admin/teacher-keys/u_fx_lin/openrouter") {
-        return new Response(JSON.stringify({ disabled: true }), {
-          headers: { "Content-Type": "application/json" },
-        });
+      if (init?.method === "PUT" && (path === "/api/admin/keys/order" || path === "/api/admin/keys/ak_1/models")) {
+        calls.push({ path, body: JSON.parse(String(init.body)) });
+        return new Response(JSON.stringify({ id: "ak_1" }), { headers: { "Content-Type": "application/json" } });
       }
       const responses: Record<string, unknown> = {
         "/api/me": { id: "admin-1", name: "Admin", isAdmin: true },
@@ -1716,8 +1716,26 @@ test("#360: the providers tab shows the pool, teacher survey, and the static YAM
             zdrVerifiedAt: zdrApproved ? "2026-11-23" : null,
             models: [{ model: "@cf/zai-org/glm-5.3-flash", maxConcurrency: null, sortOrder: 0 }],
           },
+          {
+            id: "ak_2",
+            provider: "openrouter",
+            last4: "rou2",
+            maxConcurrency: null,
+            monthlyQuotaUsd: null,
+            monthCostUsd: 0,
+            monthTokens: 0,
+            sortOrder: 1,
+            updatedAt: "2026-11-23T00:00:00.000Z",
+            zdrStatus: "unverified",
+            zdrRetentionSource: null,
+            zdrVerifiedAt: null,
+            models: [],
+          },
         ],
         "/api/admin/keys/providers": [{ id: "cloudflare-workers-ai", name: "Cloudflare Workers AI" }],
+        "/api/admin/keys/providers/cloudflare-workers-ai/models": [
+          { id: "@cf/zai-org/glm-4.7-flash", name: "GLM 4.7 Flash" },
+        ],
         "/api/admin/teacher-keys": [
           {
             userId: "u_fx_lin",
@@ -1754,24 +1772,48 @@ test("#360: the providers tab shows the pool, teacher survey, and the static YAM
   const dispose = await mountRoute("/admin?tab=providers");
   try {
     expect(await screen.findByText("Platform pool admin keys")).toBeTruthy();
-    const poolRow = (await screen.findByText("····tok3")).closest("li") as HTMLElement;
+    const poolRow = must((await screen.findByText("····tok3")).closest("li"), "pool row");
     expect(within(poolRow).getByText("cloudflare-workers-ai")).toBeTruthy();
     expect(within(poolRow).getByText("ZDR unverified")).toBeTruthy();
 
     expect(screen.getByText("Teacher keys survey")).toBeTruthy();
-    const teacherRow = screen.getByText("林老師").closest("li") as HTMLElement;
+    const teacherRow = must(screen.getByText("林老師").closest("li"), "teacher row");
     expect(within(teacherRow).getByText("····teac")).toBeTruthy();
 
     expect(screen.getByText("YAML platform chain (read-only)")).toBeTruthy();
     expect(screen.getByText("@cf/zai-org/glm-5.3-flash")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Approve ZDR" }));
+    fireEvent.click(within(poolRow).getByRole("button", { name: "Approve ZDR" }));
     const zdrDialog = await screen.findByRole("dialog");
     fireEvent.change(within(zdrDialog).getByRole("textbox", { name: "Official retention statement URL" }), {
       target: { value: "https://developers.cloudflare.com/workers-ai/platform/data-usage/" },
     });
     fireEvent.click(within(zdrDialog).getByRole("button", { name: "Approve ZDR" }));
     expect(await screen.findByText("ZDR approved")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /^cloudflare-workers-ai/ }));
+    expect(await screen.findByText("Add model leg")).toBeTruthy();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search models…" }), {
+      target: { value: "4.7" },
+    });
+    fireEvent.click(await screen.findByText("@cf/zai-org/glm-4.7-flash"));
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        path: "/api/admin/keys/ak_1/models",
+        body: { model: "@cf/zai-org/glm-4.7-flash" },
+      }),
+    );
+
+    const openrouterHandle = screen.getByRole("button", {
+      name: "Drag to reorder — the higher one is tried first openrouter",
+    });
+    fireEvent.keyDown(openrouterHandle, { altKey: true, key: "ArrowUp" });
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        path: "/api/admin/keys/order",
+        body: { keys: ["ak_2", "ak_1"] },
+      }),
+    );
   } finally {
     dispose();
     vi.unstubAllGlobals();

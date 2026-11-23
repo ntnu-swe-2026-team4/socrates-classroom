@@ -123,6 +123,8 @@ export interface Api {
   ): Promise<AdminKeyEcho>;
   deleteAdminKey(id: string): Promise<void>;
   orderAdminKeys(keys: string[]): Promise<void>;
+  orderAdminKeyModels(id: string, models: string[]): Promise<void>;
+  adminKeyProviderModels(provider: string): Promise<KeyModelInfo[]>;
   putAdminKeyModel(id: string, model: string, maxConcurrency?: number | null): Promise<AdminKeyModelEcho>;
   deleteAdminKeyModel(id: string, model: string): Promise<void>;
   approveAdminKeyZdr(id: string, input: { retentionSource: string; verifiedAt: string }): Promise<AdminKeyEcho>;
@@ -460,6 +462,12 @@ export const httpApi: Api = {
   },
   async orderAdminKeys(keys) {
     await unwrap(await client.admin.keys.order.$put({ json: { keys } }));
+  },
+  async orderAdminKeyModels(id, models) {
+    await unwrap(await client.admin.keys[":id"].models.order.$put({ param: { id }, json: { models } }));
+  },
+  async adminKeyProviderModels(provider) {
+    return unwrap(await client.admin.keys.providers[":provider"].models.$get({ param: { provider } }));
   },
   async putAdminKeyModel(id, model, maxConcurrency) {
     return unwrap(

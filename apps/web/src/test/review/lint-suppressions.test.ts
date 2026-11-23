@@ -9,6 +9,8 @@ const SKIP_DIRS = new Set(["node_modules", "dist", ".cloudflare", ".git", "publi
 const LINTABLE_EXTENSIONS = /\.(ts|tsx|js|jsx|css|json|jsonc|yml|yaml)$/;
 
 const WHITELIST_PATHS: ReadonlyArray<readonly [string, string]> = [
+  ["apps/web/src/components/AdminProviderKeys.tsx", "lint/a11y/useKeyWithClickEvents"],
+  ["apps/web/src/components/AdminProviderKeys.tsx", "lint/a11y/noStaticElementInteractions"],
   ["apps/web/src/components/DialogueView.tsx", "lint/correctness/useExhaustiveDependencies"],
   ["apps/web/src/components/ProviderKeys.tsx", "lint/a11y/useKeyWithClickEvents"],
   ["apps/web/src/components/ProviderKeys.tsx", "lint/a11y/noStaticElementInteractions"],
