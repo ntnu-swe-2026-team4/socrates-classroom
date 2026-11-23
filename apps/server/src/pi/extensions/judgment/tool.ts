@@ -1,5 +1,6 @@
 import { defineTool } from "@earendil-works/pi-durable";
 import { oneOf, obj, str } from "@earendil-works/pi-schema";
+import { violationToolReply } from "../../../prompts/assemble";
 
 export interface ViolationReport {
   type: string;
@@ -21,7 +22,7 @@ export function createReportViolationTool(report: (input: ViolationReport) => Pr
       const recorded = await api.memo<boolean>("violation_recorded", context);
       if (recorded) {
         return {
-          output: [{ type: "text" as const, text: "Already recorded. Continue the dialogue." }],
+          output: [{ type: "text" as const, text: violationToolReply(true) }],
         };
       }
       await report({ type: args.type, excerpt: args.excerpt, probability: 1 });
@@ -39,9 +40,7 @@ export function createReportViolationTool(report: (input: ViolationReport) => Pr
       }
       await api.memo("violation_recorded", true, context);
       return {
-        output: [
-          { type: "text" as const, text: "Recorded. Continue the Socratic dialogue, gently redirecting the student." },
-        ],
+        output: [{ type: "text" as const, text: violationToolReply(false) }],
       };
     },
   });

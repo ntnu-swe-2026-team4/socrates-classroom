@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { LookupInputSchema, LANG_NAMES, type Lang } from "@socrates/shared";
-import { fail, guardUser, rateLimit, validateJson, type AppEnv } from "../http";
+import { LookupInputSchema } from "@socrates/shared";
+import { fail, guardUser, langOf, rateLimit, validateJson, type AppEnv } from "../http";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 
 function mockMarkdown(term: string, lang: string): string {
@@ -27,12 +27,9 @@ export function lookupRoutes() {
       let markdown = "";
       try {
         const { harness, runtime } = await openProfileHarness(c.env, "lookup");
-        const { text } = await runProfile(
-          harness,
-          runtime,
-          "lookup",
-          `${input.term}\n\nWrite in ${LANG_NAMES[c.get("lang") as Lang]}.`,
-        );
+        const { text } = await runProfile(harness, runtime, "lookup", input.term, undefined, {
+          lang: langOf(c),
+        });
         markdown = text.trim();
       } catch (error) {
         console.error("[lookup] pipeline failed", error instanceof Error ? error.name : typeof error);

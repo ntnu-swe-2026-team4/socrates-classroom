@@ -2,7 +2,8 @@ import BTW_RAW from "../../prompts/btw.md?raw";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Extension } from "@earendil-works/pi-durable";
 import type { PiHarness } from "agents/harness/pi";
-import { BTW_THINKING_LEVEL } from "../agents/profiles";
+import type { Lang } from "@socrates/shared";
+import { BTW_THINKING_LEVEL, withLang } from "../agents/profiles";
 import { topicSection, type TopicSource } from "./socrates";
 
 export class NothingToForkError extends Error {
@@ -12,10 +13,17 @@ export class NothingToForkError extends Error {
   }
 }
 
-export function btwExtension(topicOf: TopicSource = async () => null): Extension {
+export function btwInstructions(lang: Lang): string {
+  return withLang(BTW_RAW.trim(), lang);
+}
+
+export function btwExtension(
+  langOf: () => Lang | Promise<Lang> = () => "zh",
+  topicOf: TopicSource = async () => null,
+): Extension {
   return {
     name: "btw",
-    sections: [{ key: "btw", render: () => BTW_RAW.trim(), tag: false }, topicSection(topicOf)],
+    sections: [{ key: "btw", render: async () => btwInstructions(await langOf()), tag: false }, topicSection(topicOf)],
   };
 }
 

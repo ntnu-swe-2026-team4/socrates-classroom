@@ -94,8 +94,10 @@ socrates-classroom/
 │       │   │   ├── config.gen.ts       # build-time 產出（scripts/gen-config.mjs）
 │       │   │   ├── ledger.ts           # (provider, model, credential) 記帳＋cooldown
 │       │   │   └── router.ts           # traffic class 鏈走訪（teacher legs 前置合併）
-│       │   ├── prompts/            # LLM 組的 prompt 資產（build-time ?raw）
-│       │   │   ├── socrates.md（＋.en／.es）/ class-report.md / class-report-axes.md / student-report.md / student-indicators.md / assemble.ts
+│       │   ├── prompts/            # LLM 組的 prompt 資產（build-time ?raw）；規範見 #161 留言〈Prompt 規範〉
+│       │   │   ├── socrates.md（＋.en／.es）/ btw.md / lookup.md / topic-gen.md / class-report.md / class-report-axes.md / student-report.md / student-indicators.md
+│       │   │   ├── violation-classify.md / violation-classify-topic.md / emotion-classify.md  # Clef choice 題：第一段 instructions，其後每行 `- choice: criterion`（`pi/clef-prompt.ts` 解析）
+│       │   │   └── assemble.ts     # 輸入的所有外框（topicBlock／section／報告與 topic-gen 輸入／web-content 外框／report_violation 回覆）
 │       │   ├── ws/                 # transport glue（protocol + sockets）
 │       │   ├── auth.ts / auth-crypto.ts  # session＋AES-GCM（byok.ts 併入）
 │       │   ├── db/d1.ts / http.ts / messages.ts / seed.ts / services/
@@ -115,7 +117,7 @@ socrates-classroom/
 
 ## 3. Worker 分層（apps/server）
 
-**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、`SEND_EMAIL`、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。
+**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、`SEND_EMAIL`、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。送進模型的字串只由三種東西組成：`prompts/` 的 md、`assemble.ts` 的函式、資料本身；tool 的 description 與參數說明例外，跟著 tool 的程式碼（#161）。
 
 **寄信（`SEND_EMAIL`，`send_email` binding）**：額度提醒信（#146）與密碼重設信（#230）共用，寄件人為 `ALERT_FROM_EMAIL`，模板在 `mail.ts`。Cloudflare Email Service 在 sending domain 完成 onboarding 之前，只能寄給帳號內已驗證的收件地址；寄給任意收件人需要 onboard sending domain，且需要 Workers Paid（[Send bindings](https://developers.cloudflare.com/email-service/configuration/send-bindings/)、[Pricing](https://developers.cloudflare.com/email-service/platform/pricing/)，2026-11-21 查證）。production 是否已滿足這兩項，repo 內無紀錄。
 

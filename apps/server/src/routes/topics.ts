@@ -3,7 +3,6 @@ import {
   GenerateTopicsInputSchema,
   TopicCopyInputSchema,
   TopicCreateInputSchema,
-  LANG_NAMES,
   TopicGenSchema,
   ApiError,
   type TopicDraft,
@@ -12,6 +11,7 @@ import { all, one, run } from "../db/d1";
 import { fail, guardUser, langOf, newId, nowIso, rateLimit, requireUser, validateJson, type AppEnv } from "../http";
 import { classroomAccess, parsePrompts, topicCopyInsert, type TopicRow } from "../services/members";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
+import { topicGenInput } from "../prompts/assemble";
 
 function mockTopics(direction: string) {
   return {
@@ -102,8 +102,9 @@ export function topicsRoutes() {
           harness,
           runtime,
           "topic-gen",
-          `Direction: ${input.direction}\n\nWrite in ${LANG_NAMES[langOf(c)]}.`,
+          topicGenInput(input.direction),
           await teacherLegs,
+          { lang: langOf(c) },
         );
         const parsed = TopicGenSchema.safeParse(JSON.parse(text));
         if (!parsed.success) throw new Error("schema_mismatch");

@@ -64,7 +64,7 @@ export function createDialogueCore(env: Env, config: DialogueHarnessConfig): Dia
   const { credentialOwner } = config;
   const registry = createRegistry();
   const models = buildModels(env, { teacherOf: credentialOwner });
-  const btw = btwExtension(config.getTopic);
+  const btw = btwExtension(config.getLang, config.getTopic);
 
   const harness = new PiHarness({
     harness: ({ storage, context, onWake }) => {
