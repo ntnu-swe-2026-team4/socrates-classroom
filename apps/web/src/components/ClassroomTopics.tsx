@@ -315,7 +315,9 @@ export function StartActivity({
         input.reportAxes === "teacher" && JSON.stringify(edited) !== JSON.stringify(input.topic.axes)
           ? edited
           : undefined;
-      return api.startActivity(classroomId, input.topic.id, input.mode, input.reportAxes, topicAxes, scheduled?.id);
+      return scheduled
+        ? api.startActivity(classroomId, input.topic.id, input.mode, input.reportAxes, topicAxes, scheduled.id)
+        : api.startActivity(classroomId, input.topic.id, input.mode, input.reportAxes, topicAxes);
     },
     onSuccess: async (started) => {
       setPicked(null);
