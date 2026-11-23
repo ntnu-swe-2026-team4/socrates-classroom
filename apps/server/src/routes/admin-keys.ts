@@ -12,7 +12,6 @@ import {
 import { all, batch, one } from "../db/d1";
 import { adminActionEntry } from "../services/audit";
 import { keyableProvider, keyableProviders } from "../pi/keyable-providers";
-import { zdrBlockedModels } from "../gateway/zdr";
 import { encryptKey } from "../auth-crypto";
 import {
   fail,
@@ -337,56 +336,60 @@ export function adminKeyRoutes() {
       });
       return c.json(payload);
     })
-    .post("/admin/keys/:id/zdr", guardAdmin(), validateJson(AdminKeyZdrInputSchema), async (c) => {
-      const actor = requireAdmin(c);
-      const key = await loadAdminKey(c.env.DB, c.req.param("id"));
-      if (!key) fail(404, "not_found");
-      const input = c.req.valid("json");
-      const legs = await all<{ model: string }>(
-        c.env.DB,
-        "SELECT model FROM admin_key_models WHERE admin_key_id = $id ORDER BY sort_order",
-        { id: key.id },
-      );
-      if (legs.length === 0) fail(422, "validation");
-      const models = legs.map((leg) => leg.model);
-      const blocked = zdrBlockedModels(key.provider_id, models);
-      if (blocked.length > 0) fail(422, "zdr_model_unverified", { models: blocked.join(", ") });
-      await batch(c.env.DB, [
-        {
-          sql: `UPDATE admin_keys SET zdr_status = 'approved', zdr_retention_source = $source, zdr_verified_at = $verified, updated_at = $at
+    .post(
+      "/admin/keys/:id/zdr",
+      guardAdmin(),
+      rateLimit("admin-zdr-approve", 30),
+      validateJson(AdminKeyZdrInputSchema),
+      async (c) => {
+        const actor = requireAdmin(c);
+        const key = await loadAdminKey(c.env.DB, c.req.param("id"));
+        if (!key) fail(404, "not_found");
+        const input = c.req.valid("json");
+        const legs = await all<{ model: string }>(
+          c.env.DB,
+          "SELECT model FROM admin_key_models WHERE admin_key_id = $id ORDER BY sort_order",
+          { id: key.id },
+        );
+        if (legs.length === 0) fail(422, "validation");
+        const models = legs.map((leg) => leg.model);
+        await batch(c.env.DB, [
+          {
+            sql: `UPDATE admin_keys SET zdr_status = 'approved', zdr_retention_source = $source, zdr_verified_at = $verified, updated_at = $at
               WHERE id = $id`,
-          params: { source: input.retentionSource, verified: input.verifiedAt, at: nowIso(), id: key.id },
-        },
-        adminActionEntry({
-          actorId: actor.id,
-          action: "admin_key.zdr_approve",
-          target: `admin_key:${key.id}`,
-          before: {
-            zdrStatus: key.zdr_status,
-            zdrRetentionSource: key.zdr_retention_source,
-            zdrVerifiedAt: key.zdr_verified_at,
+            params: { source: input.retentionSource, verified: input.verifiedAt, at: nowIso(), id: key.id },
           },
-          after: {
-            zdrStatus: "approved",
-            zdrRetentionSource: input.retentionSource,
-            zdrVerifiedAt: input.verifiedAt,
-            models,
-          },
-        }),
-      ]);
-      const approved = await loadAdminKey(c.env.DB, key.id);
-      if (!approved) fail(500, "internal_error");
-      return c.json({
-        id: approved.id,
-        provider: approved.provider_id,
-        last4: approved.last4,
-        maxConcurrency: approved.max_concurrency,
-        monthlyQuotaUsd: approved.monthly_quota_usd,
-        zdrStatus: approved.zdr_status,
-        zdrRetentionSource: approved.zdr_retention_source,
-        zdrVerifiedAt: approved.zdr_verified_at,
-      });
-    })
+          adminActionEntry({
+            actorId: actor.id,
+            action: "admin_key.zdr_approve",
+            target: `admin_key:${key.id}`,
+            before: {
+              zdrStatus: key.zdr_status,
+              zdrRetentionSource: key.zdr_retention_source,
+              zdrVerifiedAt: key.zdr_verified_at,
+            },
+            after: {
+              zdrStatus: "approved",
+              zdrRetentionSource: input.retentionSource,
+              zdrVerifiedAt: input.verifiedAt,
+              models,
+            },
+          }),
+        ]);
+        const approved = await loadAdminKey(c.env.DB, key.id);
+        if (!approved) fail(500, "internal_error");
+        return c.json({
+          id: approved.id,
+          provider: approved.provider_id,
+          last4: approved.last4,
+          maxConcurrency: approved.max_concurrency,
+          monthlyQuotaUsd: approved.monthly_quota_usd,
+          zdrStatus: approved.zdr_status,
+          zdrRetentionSource: approved.zdr_retention_source,
+          zdrVerifiedAt: approved.zdr_verified_at,
+        });
+      },
+    )
     .delete("/admin/keys/:id/models/:model", guardAdmin(), async (c) => {
       const actor = requireAdmin(c);
       const key = await loadAdminKey(c.env.DB, c.req.param("id"));

@@ -542,7 +542,12 @@ export const AdminKeyOrderInputSchema = z.object({ keys: z.array(z.string()).max
 
 export const AdminKeyZdrInputSchema = z.object({
   retentionSource: z.string().url().max(500),
-  verifiedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  verifiedAt: z
+    .string()
+    .date()
+    .refine((value) => value <= new Date().toISOString().slice(0, 10), {
+      message: "verifiedAt must not be in the future",
+    }),
 });
 
 export const AdminActionSchema = z.object({
@@ -589,7 +594,6 @@ export const ERROR_CODES = [
   "report_pending",
   "report_failed",
   "byok_provider_invalid",
-  "zdr_model_unverified",
   "oauth_unavailable",
   "oauth_state_invalid",
   "oauth_email_unverified",
