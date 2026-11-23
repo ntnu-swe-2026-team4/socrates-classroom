@@ -306,7 +306,7 @@ export class ReportRunner extends DurableObject<Env> {
     );
 
     const legs = await this.teacherLegs();
-    const batch = this.batchSize(participants.length, legs);
+    const batch = await this.batchSize(participants.length, legs);
     const transcripts = new Map<string, RawTranscript>();
     for (let i = 0; i < participants.length; i += batch) {
       await Promise.all(
@@ -555,8 +555,8 @@ export class ReportRunner extends DurableObject<Env> {
     return row?.lang ?? "zh";
   }
 
-  private batchSize(participantCount: number, legs: TeacherLeg[]): number {
-    const budget = getRouter(this.env).budget("batch", legs);
+  private async batchSize(participantCount: number, legs: TeacherLeg[]): Promise<number> {
+    const budget = await getRouter(this.env).budget("batch", legs);
     return budget > 0 ? Math.min(budget, participantCount) : Math.min(8, participantCount);
   }
 

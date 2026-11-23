@@ -28,6 +28,7 @@ export interface Env {
   ReportRunner: DurableObjectNamespace<import("./do/report-runner").ReportRunner>;
   RateLimiter: DurableObjectNamespace<import("./do/rate-limiter").RateLimiter>;
   ClassroomEvents: DurableObjectNamespace<import("./do/classroom-events").ClassroomEvents>;
+  RoutingLedger?: DurableObjectNamespace<import("./do/routing-ledger").RoutingLedger>;
   AI?: Ai;
   PUBLIC_BASE_URL?: string;
   ENVIRONMENT?: string;

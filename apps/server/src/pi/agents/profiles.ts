@@ -237,7 +237,7 @@ export async function runProfile(
   const router = getRouter(runtime.env);
   const canServe = (entry: { provider: string; model: string }): boolean =>
     runtime.models.models.getModel(entry.provider, entry.model) !== undefined;
-  const decision = router.pick(profile.trafficClass, canServe, teacherLegs);
+  const decision = await router.pick(profile.trafficClass, canServe, teacherLegs);
   if (!decision && !runtime.models.faux) throw new NoAvailableModelError();
   let kind: SettleKind = "error";
   try {
@@ -277,6 +277,6 @@ export async function runProfile(
     kind = "ok";
     return { text, payload: null, conversation };
   } finally {
-    if (decision) router.settle(decision, kind);
+    if (decision) await router.settle(decision, kind);
   }
 }

@@ -146,7 +146,7 @@ export interface Db {
 
 ## 4. Durable Objects（apps/server/src/do/）
 
-五個 DO（Chat／SoloChat／ClassroomEvents／ReportRunner／RateLimiter），職責分離：
+六個 DO（Chat／SoloChat／ClassroomEvents／ReportRunner／RateLimiter／RoutingLedger），職責分離：
 
 ### Chat（do/chat.ts）——thread 級
 
@@ -182,16 +182,25 @@ startReport → pending 標記 → alarm → generate：
 
 `idFromName("<scope>:<ip>")` 一 key 一個 instance，單一 actor 序列化 60 秒 sliding window 計數；`http.ts` 的 `enforceIpLimit` 每次請求一次 RPC `allow(limit, windowMs)`（同 region 個位數 ms）。計數只存 DO 記憶體、不落 storage：DO 只在 idle 時 evict，而 idle 期間窗口本來就會過期，同時避免 IP 位址持久化。DO 不可用時 caller fail-open（放行 + `console.warn`）——限流是保護性上限而非硬安全邊界（同 #196 RoutingLedger 的取捨）。per-account 失敗鎖定是獨立缺口（#393）。
 
+### RoutingLedger（do/routing-ledger.ts）——credential 級
+
+以 credential 為 shard key（`teacher:<id>` 一個老師一個 instance、platform pool 一個固定 instance），把 teacher 鏈與平台鏈的 in-flight／cooldown 從 isolate 內存搬到單點記帳（#196）：同一老師的 Chat DOs＋ReportRunner 散在多個 isolate 時，限額仍是 vendor 真正看到的那一份（先前 per-isolate 各自放行，overshoot ×isolate 數）。
+
+- **協定**：`Router` 保留 env 相依判斷（`AI` binding、`baseUrlEnv`、`canServe`、build-time config），排序後的 candidate 清單一次 RPC 交給 DO——`reserve(candidates)` 原子 check-and-increment 回傳選中者＋lease；`admit(candidates)` 是 `chain()`／`budget()` 用的唯讀版本；跑完 `settle(lease, ok|error)` 釋放並記成敗（cooldown 住 DO 內），`ConversationBusy` 走 `release(lease)`（不記失敗）。候選跨 shard 時依 priority 順序逐段 RPC：teacher 鏈吃滿才落到平台鏈。
+- **lease**：reserve 帶 10 分鐘 lease（`report.alarmTimeoutMs` 5 分鐘的兩倍——比任何一次 LLM call 都長）；DO alarm sweeper 收割過期未釋放的 slot，caller 崩潰不會永久吃掉額度。settle 以 lease 為鍵，重複 settle 是 no-op。
+- **fail-open**：DO 不可用（binding 缺失或 RPC 失敗）時照常路由、不計帳、log 一次——限額是保護性上限不是安全邊界，可用性優先；此時 `budget()` 回 0，report-runner 退化為固定 8 併發的 batch。
+- **狀態在記憶體**：計數與 lease 不落地，instance 重啟等同歸零（限額變鬆、不會卡死）；cooldown 也跟著消失，代價是多挨一次供應商 429。
+
 ## 5. Gateway（apps/server/src/gateway/）
 
 provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點**：`providers.config.yaml`（build-time 編譯成 zod 驗證的 `config.gen.ts`）。
 
-| 檔案                | 職責                                                                                                                                      |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `gateway-schema.ts` | YAML 的 zod schema：provider 實例（endpoint+model）×credential 分離；classifiers；availability（priority/maxConcurrency）；trafficClasses |
-| `config.gen.ts`     | `scripts/gen-config.mjs` 產出（Workers 無檔案系統）                                                                                       |
-| `ledger.ts`         | (provider, model, credential) 記帳＋cooldown（pi 無結構化錯誤狀態→只記 ok/error；連續 5 error 開 60s、ok 重置、過期自然回無 probe）       |
-| `router.ts`         | traffic class 鏈走訪（priority 排序＋cooldown/maxConcurrency 過濾、teacher legs 前置）→ pick；isolate 生命週期（getRouter WeakMap）       |
+| 檔案                | 職責                                                                                                                                                                             |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gateway-schema.ts` | YAML 的 zod schema：provider 實例（endpoint+model）×credential 分離；classifiers；availability（priority/maxConcurrency）；trafficClasses                                        |
+| `config.gen.ts`     | `scripts/gen-config.mjs` 產出（Workers 無檔案系統）                                                                                                                              |
+| `ledger.ts`         | (provider, model, credential) 記帳＋cooldown 的狀態機（pi 無結構化錯誤狀態→只記 ok/error；連續 5 error 開 60s、ok 重置、過期自然回無 probe）；instances 由 RoutingLedger DO 持有 |
+| `router.ts`         | traffic class 鏈走訪（priority 排序＋teacher legs 前置）→ candidate；交由 DO 做 reserve/admit（限額與 cooldown 過濾），依 credential 選 shard，DO 不可用時 fail-open             |
 
 **請求層 vs 決策層**：fallback legs 的試錯、retry 退避由 pi 原生（`streamWithFallback`／`settings.retry`）；gateway 只決定「誰該拿到哪條 legs、誰的錢、記誰的帳」。調查過 LiteLLM Router／pi-router／pi-fallback-provider（#98 留言，2026-11-06）——結論：不引入，pi 原生＋三個小件已涵蓋。
 
@@ -248,19 +257,19 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 9. 測試策略（vitest-pool-workers）
 
-| 檔案                        | 內容                                                                              |
-| --------------------------- | --------------------------------------------------------------------------------- |
-| `tests/chat.test.ts`        | 主流程（WS 升級→hello→watch→submit→回答）、evict 重連恢復、ConversationBusy       |
-| `tests/avatar.test.ts`      | 情緒 entry 形狀、文字零污染                                                       |
-| `tests/judgment.test.ts`    | tool 註冊、agent 自報 entry                                                       |
-| `tests/websearch.test.ts`   | 三 tool 註冊、SSRF 矩陣、cache、store/find/slice                                  |
-| `tests/profiles.test.ts`    | profile 表零 model hardcode、真 prompt 資產接線、runProfile 全路徑                |
-| `tests/gateway.test.ts`     | cooldown 語意矩陣、config 形狀、分開記帳                                          |
-| `tests/rest.test.ts`        | 真 Worker 入口：seed guard/ToS join/歷史/finish→report/授權矩陣/teacher keys CRUD |
-| `tests/report.test.ts`      | 報告管線端到端：ready/partial 形狀（§7）、pseudonym integrity、IDOR               |
-| `tests/auth-crypto.test.ts` | AES-GCM/HKDF 加密、版本前綴、timing-safe 比對                                     |
-| `tests/d1.test.ts`          | `$named` 轉 positional——字串常數內 `$` 不替換                                     |
-| `tests/helpers.ts`          | 共享 WS 測試原語：frames/latestView/assistantText                                 |
+| 檔案                        | 內容                                                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `tests/chat.test.ts`        | 主流程（WS 升級→hello→watch→submit→回答）、evict 重連恢復、ConversationBusy                                              |
+| `tests/avatar.test.ts`      | 情緒 entry 形狀、文字零污染                                                                                              |
+| `tests/judgment.test.ts`    | tool 註冊、agent 自報 entry                                                                                              |
+| `tests/websearch.test.ts`   | 三 tool 註冊、SSRF 矩陣、cache、store/find/slice                                                                         |
+| `tests/profiles.test.ts`    | profile 表零 model hardcode、真 prompt 資產接線、runProfile 全路徑                                                       |
+| `tests/gateway.test.ts`     | cooldown 語意矩陣、config 形狀、分開記帳；真 RoutingLedger DO：跨 isolate 限額精確、cooldown 全局、lease 收割、fail-open |
+| `tests/rest.test.ts`        | 真 Worker 入口：seed guard/ToS join/歷史/finish→report/授權矩陣/teacher keys CRUD                                        |
+| `tests/report.test.ts`      | 報告管線端到端：ready/partial 形狀（§7）、pseudonym integrity、IDOR                                                      |
+| `tests/auth-crypto.test.ts` | AES-GCM/HKDF 加密、版本前綴、timing-safe 比對                                                                            |
+| `tests/d1.test.ts`          | `$named` 轉 positional——字串常數內 `$` 不替換                                                                            |
+| `tests/helpers.ts`          | 共享 WS 測試原語：frames/latestView/assistantText                                                                        |
 
 原則：真 DO＋真 WebSocket＋faux model（無 fetch 攔截、無 mock DO）；斷言只驗形狀不驗內容。web 端另有 vitest（jsdom）＋review overlay。
 
@@ -356,16 +365,16 @@ v3 的 ActivityEvents DO 已退役。對話改用 Chat DO 的 WebSocket hibernat
 
 ### 13.6 與 v3 實作的 gap（2026-11-06 web-next 重建後的狀態）
 
-| #   | 變更                                           | 狀態                                                       |
-| --- | ---------------------------------------------- | ---------------------------------------------------------- |
-| 1   | signed cookie 取代 sessions 表 hot read        | ✅ 已做（auth.ts）                                         |
-| 2   | dialogue-save 同步寫 → Queues projection       | 未做（現為同步 batch，10k 前可接受）                       |
-| 3   | violations／usage event stream → Queues＋batch | 未做（judgment 走 entry＋D1）                              |
-| 4   | 報告生成 → Workflows 編排                      | 部分：ReportRunner DO alarm（crash-safe）；Workflows 待評  |
-| 5   | ActivityEvents → WS hibernation＋ring buffer   | 改道：#73 採用 D1 projection 與 polling（§13.5）           |
-| 6   | pool.ts → gateway（config／ledger／cooldown）  | ✅ 已做（§5）；Coordinator DO 未建（ledger 在 isolate 內） |
-| 7   | agents 0.33＋pi 1.5                            | ✅ 已做                                                    |
-| 8   | AE data point＋cron rollup                     | 未做（#80/#81/#63，本輪不做）                              |
+| #   | 變更                                           | 狀態                                                      |
+| --- | ---------------------------------------------- | --------------------------------------------------------- |
+| 1   | signed cookie 取代 sessions 表 hot read        | ✅ 已做（auth.ts）                                        |
+| 2   | dialogue-save 同步寫 → Queues projection       | 未做（現為同步 batch，10k 前可接受）                      |
+| 3   | violations／usage event stream → Queues＋batch | 未做（judgment 走 entry＋D1）                             |
+| 4   | 報告生成 → Workflows 編排                      | 部分：ReportRunner DO alarm（crash-safe）；Workflows 待評 |
+| 5   | ActivityEvents → WS hibernation＋ring buffer   | 改道：#73 採用 D1 projection 與 polling（§13.5）          |
+| 6   | pool.ts → gateway（config／ledger／cooldown）  | ✅ 已做（§5）；ledger 已搬進 RoutingLedger DO（#196、§4） |
+| 7   | agents 0.33＋pi 1.5                            | ✅ 已做                                                   |
+| 8   | AE data point＋cron rollup                     | 未做（#80/#81/#63，本輪不做）                             |
 
 新 bindings（ask-first）：Queues、Workflows、Analytics Engine。Rate Limiting binding 不採用：它是 per-location、approximate，解不掉跨 isolate 分散繞過；per-IP 限流改走 `RateLimiter` DO（#157），#103 收斂為登入後身分的 per-user 限流。
 
