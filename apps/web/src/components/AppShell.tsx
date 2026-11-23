@@ -166,7 +166,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
 
       {me.data?.isAdmin && (
         <div className="mb-3 flex w-full justify-center">
-          <Link to={inAdmin ? "/home" : "/admin/users"} data-rail="site" className={NAV_BTN}>
+          <Link to={inAdmin ? "/home" : "/admin"} data-rail="site" className={NAV_BTN}>
             {inAdmin ? <Eye className="size-[19px]" /> : <ShieldCheck className="size-[19px]" />}
             <span className="max-w-full text-center leading-tight wrap-anywhere">
               {t(inAdmin ? "nav_back_to_site" : "nav_manage_site")}
