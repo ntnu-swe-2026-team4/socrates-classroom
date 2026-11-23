@@ -34,7 +34,7 @@ test("S01: successful logout removes private reports from the shared client", as
   setLocale("en");
   calls.navigate.mockClear();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
-  const teacher: User = { id: "teacher-1", isAdmin: false, name: "Teacher" };
+  const teacher: User = { id: "teacher-1", isAdmin: false, name: "Teacher", emailVerified: true };
   client.setQueryData(meQueryOptions.queryKey, teacher);
   const reportSeed = {
     topicTitle: "Topic",

@@ -45,7 +45,7 @@ const secondThread: SoloThread = {
 
 function mountChat(
   path: string,
-  user: User | null = { id: "u_1", name: "Socrates", isAdmin: false },
+  user: User | null = { id: "u_1", name: "Socrates", isAdmin: false, emailVerified: true },
   initialThreads?: SoloThread[],
   onDeleteRequest?: (id: string) => Promise<void> | void,
 ) {
@@ -182,7 +182,7 @@ test("disables actions only on the thread currently being deleted", async () => 
   let releaseDelete: (() => void) | null = null;
   mountChat(
     `/chat/${thread.id}`,
-    { id: "u_1", name: "Socrates", isAdmin: false },
+    { id: "u_1", name: "Socrates", isAdmin: false, emailVerified: true },
     [thread, secondThread],
     () =>
       new Promise<void>((resolve) => {
