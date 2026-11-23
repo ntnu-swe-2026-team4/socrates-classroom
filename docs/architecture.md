@@ -123,7 +123,7 @@ socrates-classroom/
 
 **topic 可見性（`services/topic-visibility.ts`）**：topic 的身份是 `(owner_id, classroom_id)` 二維狀態機——`(NULL, NULL)`＝system、`(uid, NULL)`＝personal、`(*, cid)`＝classroom。這份定義只存在一處（`topicScope`），對外兩個消費形狀：列表查詢走 `topicPoolSql`（scope 集合 → SQL fragment ＋ `$named` params）、單列授權走 `topicVisibleTo` ／ `copyableTopic`。四個呼叫點（`GET /topics`、`GET /classrooms/:id/topics`、`POST /topics/:id/copy` 的來源檢查、`topicForActivity`）都消費它，不各自重寫 WHERE；`tests/topic-visibility.test.ts` 以 truth table 鎖住狀態機，並斷言 SQL fragment 與 `topicVisibleTo` 選出的集合一致（#382）。
 
-**寄信（`SEND_EMAIL`，`send_email` binding）**：額度提醒信（#146）與密碼重設信（#230）共用，寄件人為 `ALERT_FROM_EMAIL`，模板在 `mail.ts`。Cloudflare Email Service 在 sending domain 完成 onboarding 之前，只能寄給帳號內已驗證的收件地址；寄給任意收件人需要 onboard sending domain，且需要 Workers Paid（[Send bindings](https://developers.cloudflare.com/email-service/configuration/send-bindings/)、[Pricing](https://developers.cloudflare.com/email-service/platform/pricing/)，2026-11-21 查證）。production 是否已滿足這兩項，repo 內無紀錄。
+**寄信（`SEND_EMAIL`，`send_email` binding）**：額度提醒信（#146）、密碼重設信（#230）與 email 驗證信（#259）共用，寄件人為 `ALERT_FROM_EMAIL`，模板在 `mail.ts`。Cloudflare Email Service 在 sending domain 完成 onboarding 之前，只能寄給帳號內已驗證的收件地址；寄給任意收件人需要 onboard sending domain，且需要 Workers Paid（[Send bindings](https://developers.cloudflare.com/email-service/configuration/send-bindings/)、[Pricing](https://developers.cloudflare.com/email-service/platform/pricing/)，2026-11-21 查證）。production 是否已滿足這兩項，repo 內無紀錄。
 
 **Worker 入口（index.ts）**：`/api/*` → Hono（傳入 `ExecutionContext`，路由可用 `c.executionCtx.waitUntil` 在回應後執行背景工作）；`/agents/*` → `routeAgentRequest`（WebSocket）；其餘 → static assets。
 

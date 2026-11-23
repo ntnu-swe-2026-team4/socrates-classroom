@@ -13,6 +13,15 @@
 - `tests/rate-limit.test.ts`：real DO 的跨 caller 共用計數、scope／IP 隔離、窗口過期、HTTP 路徑經 DO、DO 不可用 fail-open
 - CF Rate Limiting binding 不採用（per-location、approximate，解不掉跨 isolate 分散繞過）；`#103` 收斂為登入後身分的 per-user 限流，per-account 失敗鎖定拆為 `#393`
 
+## 2026-11-23 — email 註冊後的驗證信（`feat/259-email-verify`，#259）
+
+### Added
+
+- `signup`／`register` 建立 email 帳號後寄三語驗證信（語言依 `users.lang`），連結指向 `/verify-email#token=`；未驗證**不封鎖**任何功能，只是提示（模型語意見 `docs/accounts.md` §8）
+- `POST /api/auth/email/verify`（免登入，寫入 `users.email_verified_at`）與 `POST /api/auth/email/verify/resend`（需登入、已驗證不寄、per-IP 限流）；`User` 新增 `emailVerified`（契約見 `docs/api-contract.md` §2.3）
+- migration 021：`users.email_verified_at`；驗證 token 沿用 #230 的帳號 token，新增用途 `email_verify`（與 `password_reset` 互不通用，綁定 `users.email`，TTL 24 小時）
+- `/verify-email` 頁面與三語文案；dev fixture 帳號視為已驗證
+
 ## 2026-11-23 — 六角圖對接單人報告思辨力指標（`feat/78-thinking-hexagon`，#78）
 
 ### Changed

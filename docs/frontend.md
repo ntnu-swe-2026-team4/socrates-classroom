@@ -43,6 +43,10 @@ flowchart LR
     subgraph recovery[密碼找回]
         M["/forgot-password　申請重設信"] -->|"信中連結"| N["/reset-password　設定新密碼"]
     end
+    subgraph verify[Email 驗證]
+        R["/verify-email　驗證信箱"] -->|"成功後"| J
+    end
+    C -.->|"註冊後寄驗證信"| R
     N --> C
 ```
 
@@ -65,6 +69,7 @@ flowchart LR
 | 15  | `/chat`                           | 提問                         | 登入帳戶（rail）                   | 首問 composer、建議問題與對話歷史                                                                                                                                                         | #186                 |
 | 16  | `/chat/:chatId`                   | 單人對話                     | thread 擁有者                      | 共用 DialogueView 和 BTW，歷史側欄提供搜尋、改名與刪除                                                                                                                                    | #186                 |
 | 17  | `/join/i/:token`                  | 教室邀請                     | 受邀者                             | 預覽邀請。需要帳號時可登入或註冊，明確接受後導向該班或活動                                                                                                                                | #187                 |
+| 18  | `/verify-email`                   | 驗證信箱                     | 收到驗證信的使用者                 | 從 `#token=` 讀 token 後自動送出；成功後從網址移除 token 並提供回教室連結，token 無效或過期時提示並引導登入                                                                               | #259                 |
 
 單人對話的 `StartChat` 建立 thread 後以 history state 傳遞首問與 `operationId`。`DialogueView` 收到 WebSocket view 後送出首問，收到 `accepted: true` 的 submission receipt 後清除 history state；若被拒絕則保留 state 供重試。若在 receipt 前斷線，重連後沿用相同 `operationId`。REST 和 WebSocket 契約見 [API contract](./api-contract.md#55-單人自由提問對話solo-chat281)。
 
