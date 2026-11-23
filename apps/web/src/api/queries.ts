@@ -147,6 +147,22 @@ export const adminOverviewOptions = queryOptions({
   queryFn: () => api.adminOverview(),
 });
 
+export const adminKeysOptions = queryOptions({
+  queryKey: ["admin-keys"],
+  queryFn: () => api.listAdminKeys(),
+});
+
+export const adminTeacherKeysOptions = queryOptions({
+  queryKey: ["admin-teacher-keys"],
+  queryFn: () => api.adminTeacherKeys(),
+});
+
+export const adminPlatformChainOptions = queryOptions({
+  queryKey: ["admin-platform-chain"],
+  queryFn: () => api.adminPlatformChain(),
+  staleTime: Infinity,
+});
+
 export const authProvidersOptions = queryOptions({
   queryKey: ["authProviders"],
   queryFn: () => api.authProviders(),

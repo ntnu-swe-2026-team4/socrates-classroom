@@ -1669,7 +1669,116 @@ test("#185: the users tab creates an account and disables one behind a confirmat
   }
 });
 
-test("#185: the notify tab posts an announcement to the feed", async () => {
+test("#360: the providers tab shows the pool, teacher survey, and the static YAML chain", async () => {
+  let zdrApproved = false;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (init?.method === "POST" && path === "/api/admin/keys/ak_1/zdr") {
+        zdrApproved = true;
+        return new Response(
+          JSON.stringify({
+            id: "ak_1",
+            provider: "cloudflare-workers-ai",
+            last4: "tok3",
+            maxConcurrency: null,
+            monthlyQuotaUsd: null,
+            zdrStatus: "approved",
+            zdrRetentionSource: "https://developers.cloudflare.com/workers-ai/platform/data-usage/",
+            zdrVerifiedAt: "2026-11-23",
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (init?.method === "PATCH" && path === "/api/admin/teacher-keys/u_fx_lin/openrouter") {
+        return new Response(JSON.stringify({ disabled: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "admin-1", name: "Admin", isAdmin: true },
+        "/api/admin/keys": [
+          {
+            id: "ak_1",
+            provider: "cloudflare-workers-ai",
+            last4: "tok3",
+            maxConcurrency: null,
+            monthlyQuotaUsd: 20,
+            monthCostUsd: 3.5,
+            monthTokens: 12000,
+            sortOrder: 0,
+            updatedAt: "2026-11-23T00:00:00.000Z",
+            zdrStatus: zdrApproved ? "approved" : "unverified",
+            zdrRetentionSource: zdrApproved
+              ? "https://developers.cloudflare.com/workers-ai/platform/data-usage/"
+              : null,
+            zdrVerifiedAt: zdrApproved ? "2026-11-23" : null,
+            models: [{ model: "@cf/zai-org/glm-5.3-flash", maxConcurrency: null, sortOrder: 0 }],
+          },
+        ],
+        "/api/admin/keys/providers": [{ id: "cloudflare-workers-ai", name: "Cloudflare Workers AI" }],
+        "/api/admin/teacher-keys": [
+          {
+            userId: "u_fx_lin",
+            userName: "林老師",
+            userEmail: "lin@socrates.tw",
+            provider: "openrouter",
+            last4: "teac",
+            disabled: false,
+            disabledAt: null,
+            monthlyQuotaUsd: 10,
+            monthCostUsd: 7.9,
+            monthTokens: 40000,
+            updatedAt: "2026-11-22T00:00:00.000Z",
+            models: [{ model: "z-ai/glm-5.3-flash", sortOrder: 0 }],
+          },
+        ],
+        "/api/admin/platform-chain": {
+          mode: "static",
+          legs: [
+            {
+              provider: "workers-ai",
+              model: "@cf/zai-org/glm-5.3-flash",
+              credential: "platform",
+              maxConcurrency: 20,
+              priority: 1,
+            },
+          ],
+        },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/admin?tab=providers");
+  try {
+    expect(await screen.findByText("Platform pool admin keys")).toBeTruthy();
+    const poolRow = (await screen.findByText("····tok3")).closest("li") as HTMLElement;
+    expect(within(poolRow).getByText("cloudflare-workers-ai")).toBeTruthy();
+    expect(within(poolRow).getByText("ZDR unverified")).toBeTruthy();
+
+    expect(screen.getByText("Teacher keys survey")).toBeTruthy();
+    const teacherRow = screen.getByText("林老師").closest("li") as HTMLElement;
+    expect(within(teacherRow).getByText("····teac")).toBeTruthy();
+
+    expect(screen.getByText("YAML platform chain (read-only)")).toBeTruthy();
+    expect(screen.getByText("@cf/zai-org/glm-5.3-flash")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve ZDR" }));
+    const zdrDialog = await screen.findByRole("dialog");
+    fireEvent.change(within(zdrDialog).getByRole("textbox", { name: "Official retention statement URL" }), {
+      target: { value: "https://developers.cloudflare.com/workers-ai/platform/data-usage/" },
+    });
+    fireEvent.click(within(zdrDialog).getByRole("button", { name: "Approve ZDR" }));
+    expect(await screen.findByText("ZDR approved")).toBeTruthy();
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#360: the notify tab posts an announcement to the feed", async () => {
   const calls: Array<{ path: string; body: unknown }> = [];
   vi.stubGlobal(
     "fetch",

@@ -6,8 +6,14 @@ import type {
   ActivityMode,
   ActivitySlots,
   ActivityStarted,
+  AdminAction,
   AdminOverview,
+  AdminProviderChain,
+  AdminTeacherKeyStatus,
   AdminUser,
+  AdminKeyStatus,
+  AdminKeyEcho,
+  AdminKeyModelEcho,
   Notification,
   Axis,
   ClientConfig,
@@ -49,6 +55,8 @@ import {
   JoinInputSchema,
   LoginInputSchema,
   LookupInputSchema,
+  AdminKeyCreateInputSchema,
+  AdminKeyUpdateInputSchema,
   NotificationInputSchema,
   PasswordForgotInputSchema,
   PasswordResetInputSchema,
@@ -101,6 +109,26 @@ export interface Api {
   notifications(): Promise<NotificationFeed>;
   markNotificationsSeen(): Promise<void>;
   adminOverview(): Promise<AdminOverview>;
+  adminActions(cursor?: number): Promise<{ items: AdminAction[]; nextCursor: number | null }>;
+  listAdminKeys(): Promise<AdminKeyStatus[]>;
+  createAdminKey(input: {
+    provider: string;
+    key: string;
+    maxConcurrency?: number | null;
+    monthlyQuotaUsd?: number | null;
+  }): Promise<AdminKeyEcho>;
+  updateAdminKey(
+    id: string,
+    input: { key?: string; maxConcurrency?: number | null; monthlyQuotaUsd?: number | null },
+  ): Promise<AdminKeyEcho>;
+  deleteAdminKey(id: string): Promise<void>;
+  orderAdminKeys(keys: string[]): Promise<void>;
+  putAdminKeyModel(id: string, model: string, maxConcurrency?: number | null): Promise<AdminKeyModelEcho>;
+  deleteAdminKeyModel(id: string, model: string): Promise<void>;
+  approveAdminKeyZdr(id: string, input: { retentionSource: string; verifiedAt: string }): Promise<AdminKeyEcho>;
+  adminTeacherKeys(): Promise<AdminTeacherKeyStatus[]>;
+  setAdminTeacherKeyDisabled(userId: string, provider: string, disabled: boolean): Promise<void>;
+  adminPlatformChain(): Promise<AdminProviderChain>;
   postAdminNotification(input: { title: string; body: string }): Promise<Notification>;
   joinByCode(code: string): Promise<JoinInfo>;
   joinAsGuest(code: string, input: { name?: string; tosAccepted: boolean }): Promise<JoinResult>;
@@ -413,6 +441,57 @@ export const httpApi: Api = {
   },
   async adminOverview() {
     return unwrap(await client.admin.overview.$get());
+  },
+  async adminActions(cursor) {
+    const query = cursor === undefined ? {} : { cursor: String(cursor) };
+    return unwrap(await client.admin.actions.$get({ query }));
+  },
+  async listAdminKeys() {
+    return unwrap(await client.admin.keys.$get());
+  },
+  async createAdminKey(input) {
+    return unwrap(await client.admin.keys.$post({ json: AdminKeyCreateInputSchema.parse(input) }));
+  },
+  async updateAdminKey(id, input) {
+    return unwrap(await client.admin.keys[":id"].$put({ param: { id }, json: AdminKeyUpdateInputSchema.parse(input) }));
+  },
+  async deleteAdminKey(id) {
+    await unwrap(await client.admin.keys[":id"].$delete({ param: { id } }));
+  },
+  async orderAdminKeys(keys) {
+    await unwrap(await client.admin.keys.order.$put({ json: { keys } }));
+  },
+  async putAdminKeyModel(id, model, maxConcurrency) {
+    return unwrap(
+      await client.admin.keys[":id"].models.$put({
+        param: { id },
+        json: maxConcurrency === undefined ? { model } : { model, maxConcurrency },
+      }),
+    );
+  },
+  async deleteAdminKeyModel(id, model) {
+    await unwrap(
+      await client.admin.keys[":id"].models[":model"].$delete({
+        param: { id, model: encodeURIComponent(model) },
+      }),
+    );
+  },
+  async approveAdminKeyZdr(id, input) {
+    return unwrap(await client.admin.keys[":id"].zdr.$post({ param: { id }, json: input }));
+  },
+  async adminTeacherKeys() {
+    return unwrap(await client.admin["teacher-keys"].$get());
+  },
+  async setAdminTeacherKeyDisabled(userId, provider, disabled) {
+    await unwrap(
+      await client.admin["teacher-keys"][":userId"][":provider"].$patch({
+        param: { userId, provider },
+        json: { disabled },
+      }),
+    );
+  },
+  async adminPlatformChain() {
+    return unwrap(await client.admin["platform-chain"].$get());
   },
   async postAdminNotification(input) {
     return unwrap(await client.admin.notifications.$post({ json: NotificationInputSchema.parse(input) }));
