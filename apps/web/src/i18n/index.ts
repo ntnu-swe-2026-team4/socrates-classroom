@@ -612,7 +612,6 @@ const messages = {
     calendar_day_empty: "這一天沒有事件。",
     calendar_count: "{n} 個事件",
     calendar_delete_confirm: "確定要刪除這個事件嗎？",
-    calendar_mock_notice: "行事曆目前是示意版本：事件只存在這台裝置的瀏覽器裡，其他成員看不到。",
     room_teacher_badge: "老師",
     room_delete: "刪除",
     room_send: "送出",
@@ -1351,8 +1350,6 @@ const messages = {
     calendar_day_empty: "No events on this day.",
     calendar_count: "{n} events",
     calendar_delete_confirm: "Delete this event?",
-    calendar_mock_notice:
-      "The calendar is a preview: events are saved only in this browser and other members cannot see them.",
     room_teacher_badge: "Teacher",
     room_delete: "Delete",
     room_send: "Send",
@@ -2105,8 +2102,6 @@ const messages = {
     calendar_day_empty: "No hay eventos este día.",
     calendar_count: "{n} eventos",
     calendar_delete_confirm: "¿Eliminar este evento?",
-    calendar_mock_notice:
-      "El calendario es una vista previa: los eventos solo se guardan en este navegador y los demás miembros no pueden verlos.",
     room_teacher_badge: "Docente",
     room_delete: "Eliminar",
     room_send: "Enviar",

@@ -3,7 +3,7 @@ import type { ClassroomEvent, ClassroomEventResource } from "@socrates/shared";
 import {
   classroomActivitiesOptions,
   classroomAnnouncementsOptions,
-  classroomCalendarOptions,
+  classroomCalendarScopeOptions,
   classroomMembersOptions,
   classroomPostsOptions,
   classroomsOptions,
@@ -12,7 +12,7 @@ import {
 const optionsFor = {
   activities: classroomActivitiesOptions,
   announcements: classroomAnnouncementsOptions,
-  calendar: classroomCalendarOptions,
+  calendar: classroomCalendarScopeOptions,
   members: classroomMembersOptions,
   posts: classroomPostsOptions,
 } satisfies Record<ClassroomEventResource, (id: string) => { queryKey: readonly unknown[] }>;

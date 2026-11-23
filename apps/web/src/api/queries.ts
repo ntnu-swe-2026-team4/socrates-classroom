@@ -1,7 +1,7 @@
+import type { CalendarEvent } from "@socrates/shared";
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import { api, ApiError } from "@/api";
-import { mockCalendar } from "@/lib/calendar";
 import { readTermHistory } from "./local";
 
 export const clientConfigOptions = queryOptions({
@@ -238,10 +238,27 @@ export function classroomActivitiesOptions(id: string) {
   });
 }
 
-export function classroomCalendarOptions(id: string) {
+export function classroomCalendarScopeOptions(id: string) {
+  return queryOptions({ queryKey: ["classroom", id, "calendar"] });
+}
+
+export function classroomCalendarOptions(id: string, year: number, month: number) {
+  const from = new Date(year, month, 1).toISOString();
+  const to = new Date(year, month + 1, 1).toISOString();
+
   return queryOptions({
-    queryKey: ["classroom", id, "calendar"],
-    queryFn: () => mockCalendar.list(id),
+    queryKey: [...classroomCalendarScopeOptions(id).queryKey, from, to],
+    retry: classroomPage.retry,
+    queryFn: async ({ signal }) => {
+      const events: CalendarEvent[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await api.classroom.calendar(id, { from, to, cursor }, signal);
+        for (const event of page.items) events.push(event);
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return events;
+    },
   });
 }
 

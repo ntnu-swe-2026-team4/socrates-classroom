@@ -1,11 +1,13 @@
+import type { CalendarEvent } from "@socrates/shared";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
-import { classroomCalendarOptions } from "@/api/queries";
+import { api } from "@/api";
+import { classroomCalendarOptions, classroomCalendarScopeOptions } from "@/api/queries";
 import { EmptyPanel, PanelState } from "@/components/ClassroomCommunity";
 import { Button, Card, ConfirmDialog, Field, FormDialog, Input, cn } from "@/components/ui";
 import { useI18n, useT } from "@/i18n";
-import { dayKey, eventsByDay, mockCalendar, monthDays, type CalendarEvent } from "@/lib/calendar";
+import { dayKey, eventsByDay, monthDays } from "@/lib/calendar";
 
 const MONDAY = new Date(2024, 0, 1);
 const WEEKDAYS = Array.from({ length: 7 }, (_, index) => new Date(2024, 0, MONDAY.getDate() + index));
@@ -25,12 +27,12 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
   const [date, setDate] = useState(selected);
   const [time, setTime] = useState("09:00");
   const [note, setNote] = useState("");
-  const options = classroomCalendarOptions(id);
+  const options = classroomCalendarOptions(id, cursor.year, cursor.month);
   const events = useQuery(options);
-  const refresh = () => client.invalidateQueries({ queryKey: options.queryKey });
+  const refresh = () => client.invalidateQueries({ queryKey: classroomCalendarScopeOptions(id).queryKey });
   const create = useMutation({
     mutationFn: () =>
-      mockCalendar.create(id, {
+      api.classroom.createCalendarEvent(id, {
         title: title.trim(),
         startsAt: new Date(`${date}T${time}`).toISOString(),
         note: note.trim(),
@@ -44,18 +46,18 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
     },
   });
   const remove = useMutation({
-    mutationFn: (event: CalendarEvent) => mockCalendar.remove(id, event.id),
+    mutationFn: (event: CalendarEvent) => api.classroom.deleteCalendarEvent(id, event.id),
     onSuccess: async () => {
       await refresh();
       setRemoving(null);
     },
   });
 
-  if (events.isPending || events.isError) {
-    return <PanelState pending={events.isPending} error={events.isError} retry={() => void events.refetch()} />;
-  }
-
-  const days = eventsByDay(events.data);
+  const visibleDays = monthDays(cursor.year, cursor.month);
+  const days = eventsByDay(
+    events.data ?? [],
+    visibleDays.filter((day) => day.getMonth() === cursor.month),
+  );
   const monthLabel = new Date(cursor.year, cursor.month, 1).toLocaleDateString(locale, {
     year: "numeric",
     month: "long",
@@ -65,8 +67,10 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
   const shift = (step: number) => {
     const next = new Date(cursor.year, cursor.month + step, 1);
     setCursor({ year: next.getFullYear(), month: next.getMonth() });
+    setSelected(dayKey(next));
   };
   const openAdd = () => {
+    create.reset();
     setTitle("");
     setNote("");
     setDate(selected);
@@ -76,9 +80,6 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
 
   return (
     <div className="space-y-4">
-      <p className="rounded-lg border border-dashed border-line-strong px-3 py-2 text-[12.5px] leading-relaxed text-ink-soft">
-        {t("calendar_mock_notice")}
-      </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" aria-label={t("calendar_prev")} onClick={() => shift(-1)}>
           <ChevronLeft className="size-4" aria-hidden />
@@ -107,97 +108,106 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
         )}
       </div>
 
-      <Card className="overflow-hidden p-0">
-        <div className="grid grid-cols-7 border-b border-line bg-paper-deep text-center text-xs text-ink-soft">
-          {WEEKDAYS.map((weekday) => (
-            <span key={weekday.getDay()} className="py-2">
-              {weekday.toLocaleDateString(locale, { weekday: "short" })}
-            </span>
-          ))}
-        </div>
-        <div className="-mr-px -mb-px grid grid-cols-7">
-          {monthDays(cursor.year, cursor.month).map((day) => {
-            const key = dayKey(day);
-            if (day.getMonth() !== cursor.month) {
-              return <span key={key} className="min-h-14 border-r border-b border-line sm:min-h-24" />;
-            }
-            const list = days.get(key) ?? [];
-            return (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={selected === key}
-                aria-label={`${day.toLocaleDateString(locale, { dateStyle: "long" })} · ${t("calendar_count", { n: list.length })}`}
-                onClick={() => setSelected(key)}
-                className={cn(
-                  "flex min-h-14 min-w-0 cursor-pointer flex-col gap-1 border-r border-b border-line p-1.5 text-left outline-none hover:bg-paper-deep focus-visible:ring-2 focus-visible:ring-ember/60 focus-visible:ring-inset sm:min-h-24 sm:p-2",
-                  selected === key && "bg-paper-deep",
-                )}
-              >
-                <span
-                  className={cn(
-                    "flex size-6 items-center justify-center rounded-full text-xs text-ink",
-                    key === dayKey(today) && "bg-ink font-semibold text-paper",
-                  )}
-                >
-                  {day.getDate()}
+      {events.isPending || events.isError ? (
+        <PanelState pending={events.isPending} error={events.isError} retry={() => void events.refetch()} />
+      ) : (
+        <>
+          <Card className="overflow-hidden p-0">
+            <div className="grid grid-cols-7 border-b border-line bg-paper-deep text-center text-xs text-ink-soft">
+              {WEEKDAYS.map((weekday) => (
+                <span key={weekday.getDay()} className="py-2">
+                  {weekday.toLocaleDateString(locale, { weekday: "short" })}
                 </span>
-                {list.slice(0, 2).map((event) => (
-                  <span
-                    key={event.id}
-                    className="w-full truncate rounded-sm bg-ember-wash px-1 text-[11.5px] leading-5 text-ink max-sm:hidden"
-                  >
-                    {event.title}
-                  </span>
-                ))}
-                {list.length > 2 && (
-                  <span className="text-[11px] text-ink-faint max-sm:hidden">+{list.length - 2}</span>
-                )}
-                {list.length > 0 && <span aria-hidden className="size-1.5 rounded-full bg-ink sm:hidden" />}
-              </button>
-            );
-          })}
-        </div>
-      </Card>
-
-      <section aria-live="polite">
-        <h3 className="mb-2 font-serif text-[15.5px] text-ink">
-          {selectedDate.toLocaleDateString(locale, { dateStyle: "full" })}
-        </h3>
-        {selectedEvents.length === 0 ? (
-          <EmptyPanel>{t("calendar_day_empty")}</EmptyPanel>
-        ) : (
-          <ul className="space-y-2">
-            {selectedEvents.map((event) => (
-              <li key={event.id}>
-                <Card className="flex items-start gap-3 p-4">
-                  <time dateTime={event.startsAt} className="shrink-0 pt-0.5 text-xs text-ink-soft tabular-nums">
-                    {new Date(event.startsAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}
-                  </time>
-                  <div className="min-w-0 flex-1">
-                    <p className="break-words text-sm font-medium text-ink">{event.title}</p>
-                    {event.note && (
-                      <p className="mt-1 break-words text-[13px] leading-relaxed whitespace-pre-line text-ink-soft">
-                        {event.note}
-                      </p>
+              ))}
+            </div>
+            <div className="-mr-px -mb-px grid grid-cols-7">
+              {visibleDays.map((day) => {
+                const key = dayKey(day);
+                if (day.getMonth() !== cursor.month) {
+                  return <span key={key} className="min-h-14 border-r border-b border-line sm:min-h-24" />;
+                }
+                const list = days.get(key) ?? [];
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={selected === key}
+                    aria-label={`${day.toLocaleDateString(locale, { dateStyle: "long" })} · ${t("calendar_count", { n: list.length })}`}
+                    onClick={() => setSelected(key)}
+                    className={cn(
+                      "flex min-h-14 min-w-0 cursor-pointer flex-col gap-1 border-r border-b border-line p-1.5 text-left outline-none hover:bg-paper-deep focus-visible:ring-2 focus-visible:ring-ember/60 focus-visible:ring-inset sm:min-h-24 sm:p-2",
+                      selected === key && "bg-paper-deep",
                     )}
-                  </div>
-                  {teacher && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`${t("room_delete")} · ${event.title}`}
-                      onClick={() => setRemoving(event)}
+                  >
+                    <span
+                      className={cn(
+                        "flex size-6 items-center justify-center rounded-full text-xs text-ink",
+                        key === dayKey(today) && "bg-ink font-semibold text-paper",
+                      )}
                     >
-                      <Trash2 className="size-4" aria-hidden />
-                    </Button>
-                  )}
-                </Card>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                      {day.getDate()}
+                    </span>
+                    {list.slice(0, 2).map((event) => (
+                      <span
+                        key={event.id}
+                        className="w-full truncate rounded-sm bg-ember-wash px-1 text-[11.5px] leading-5 text-ink max-sm:hidden"
+                      >
+                        {event.title}
+                      </span>
+                    ))}
+                    {list.length > 2 && (
+                      <span className="text-[11px] text-ink-faint max-sm:hidden">+{list.length - 2}</span>
+                    )}
+                    {list.length > 0 && <span aria-hidden className="size-1.5 rounded-full bg-ink sm:hidden" />}
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          <section aria-live="polite">
+            <h3 className="mb-2 font-serif text-[15.5px] text-ink">
+              {selectedDate.toLocaleDateString(locale, { dateStyle: "full" })}
+            </h3>
+            {selectedEvents.length === 0 ? (
+              <EmptyPanel>{t("calendar_day_empty")}</EmptyPanel>
+            ) : (
+              <ul className="space-y-2">
+                {selectedEvents.map((event) => (
+                  <li key={event.id}>
+                    <Card className="flex items-start gap-3 p-4">
+                      <time dateTime={event.startsAt} className="shrink-0 pt-0.5 text-xs text-ink-soft tabular-nums">
+                        {new Date(event.startsAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}
+                      </time>
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-sm font-medium text-ink">{event.title}</p>
+                        {event.note && (
+                          <p className="mt-1 break-words text-[13px] leading-relaxed whitespace-pre-line text-ink-soft">
+                            {event.note}
+                          </p>
+                        )}
+                      </div>
+                      {teacher && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`${t("room_delete")} · ${event.title}`}
+                          onClick={() => {
+                            remove.reset();
+                            setRemoving(event);
+                          }}
+                        >
+                          <Trash2 className="size-4" aria-hidden />
+                        </Button>
+                      )}
+                    </Card>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
 
       <FormDialog
         open={adding}
@@ -207,7 +217,9 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
         canSubmit={Boolean(title.trim() && date && time)}
         submitting={create.isPending}
         onSubmit={() => create.mutate()}
-        onCancel={() => setAdding(false)}
+        onCancel={() => {
+          if (!create.isPending) setAdding(false);
+        }}
       >
         <Field label={t("calendar_event_title")}>
           <Input value={title} maxLength={120} required onChange={(event) => setTitle(event.target.value)} />
@@ -229,17 +241,35 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
             className={cn(FIELD, "resize-y py-2")}
           />
         </Field>
+        {create.isError && (
+          <p role="alert" className="text-sm text-flag">
+            {t("common_error")}
+          </p>
+        )}
       </FormDialog>
 
       <ConfirmDialog
         open={removing !== null}
         title={t("calendar_delete_confirm")}
-        body={removing?.title}
+        body={
+          <>
+            {removing?.title}
+            {remove.isError && (
+              <p role="alert" className="text-sm text-flag">
+                {t("common_error")}
+              </p>
+            )}
+          </>
+        }
         confirmLabel={t("room_delete")}
         cancelLabel={t("common_cancel")}
         danger
-        onConfirm={() => removing && remove.mutate(removing)}
-        onCancel={() => setRemoving(null)}
+        onConfirm={() => {
+          if (removing && !remove.isPending) remove.mutate(removing);
+        }}
+        onCancel={() => {
+          if (!remove.isPending) setRemoving(null);
+        }}
       />
     </div>
   );
