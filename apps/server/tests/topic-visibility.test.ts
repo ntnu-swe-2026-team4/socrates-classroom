@@ -27,14 +27,31 @@ interface Row extends TopicIdentity {
 
 const DELETED_AT = "2026-11-23T00:00:00.000Z";
 
+const SYSTEM_ROW: Row = { id: "t_v_system", owner_id: null, classroom_id: null, deleted_at: null };
+const PERSONAL_LIN_ROW: Row = { id: "t_v_personal_lin", owner_id: LIN, classroom_id: null, deleted_at: null };
+const PERSONAL_CHEN_ROW: Row = { id: "t_v_personal_chen", owner_id: CHEN, classroom_id: null, deleted_at: null };
+const CLASS_LIN_ROW: Row = { id: "t_v_class_lin", owner_id: LIN, classroom_id: LIN_CLASS, deleted_at: null };
+const CLASS_CHEN_ROW: Row = { id: "t_v_class_chen", owner_id: CHEN, classroom_id: CHEN_CLASS, deleted_at: null };
+const DELETED_CLASS_ROW: Row = {
+  id: "t_v_deleted_class_lin",
+  owner_id: LIN,
+  classroom_id: LIN_CLASS,
+  deleted_at: DELETED_AT,
+};
+const DELETED_PERSONAL_ROW: Row = {
+  id: "t_v_deleted_personal_lin",
+  owner_id: LIN,
+  classroom_id: null,
+  deleted_at: DELETED_AT,
+};
 const ROWS: Row[] = [
-  { id: "t_v_system", owner_id: null, classroom_id: null, deleted_at: null },
-  { id: "t_v_personal_lin", owner_id: LIN, classroom_id: null, deleted_at: null },
-  { id: "t_v_personal_chen", owner_id: CHEN, classroom_id: null, deleted_at: null },
-  { id: "t_v_class_lin", owner_id: LIN, classroom_id: LIN_CLASS, deleted_at: null },
-  { id: "t_v_class_chen", owner_id: CHEN, classroom_id: CHEN_CLASS, deleted_at: null },
-  { id: "t_v_deleted_class_lin", owner_id: LIN, classroom_id: LIN_CLASS, deleted_at: DELETED_AT },
-  { id: "t_v_deleted_personal_lin", owner_id: LIN, classroom_id: null, deleted_at: DELETED_AT },
+  SYSTEM_ROW,
+  PERSONAL_LIN_ROW,
+  PERSONAL_CHEN_ROW,
+  CLASS_LIN_ROW,
+  CLASS_CHEN_ROW,
+  DELETED_CLASS_ROW,
+  DELETED_PERSONAL_ROW,
 ];
 
 beforeAll(async () => {
@@ -107,16 +124,16 @@ describe("topic visibility: the (owner_id, classroom_id) state machine lives in 
   });
 
   it("a system topic is readable by anyone, a personal topic only by its owner", () => {
-    expect(topicVisibleTo(ROWS[0], { userId: LIN })).toBe(true);
-    expect(topicVisibleTo(ROWS[0], { userId: "u_stranger" })).toBe(true);
-    expect(topicVisibleTo(ROWS[1], { userId: LIN })).toBe(true);
-    expect(topicVisibleTo(ROWS[1], { userId: CHEN })).toBe(false);
+    expect(topicVisibleTo(SYSTEM_ROW, { userId: LIN })).toBe(true);
+    expect(topicVisibleTo(SYSTEM_ROW, { userId: "u_stranger" })).toBe(true);
+    expect(topicVisibleTo(PERSONAL_LIN_ROW, { userId: LIN })).toBe(true);
+    expect(topicVisibleTo(PERSONAL_LIN_ROW, { userId: CHEN })).toBe(false);
   });
 
   it("a classroom topic is readable only inside that classroom", () => {
-    expect(topicVisibleTo(ROWS[3], { userId: LIN, classroomId: LIN_CLASS })).toBe(true);
-    expect(topicVisibleTo(ROWS[3], { userId: LIN, classroomId: CHEN_CLASS })).toBe(false);
-    expect(topicVisibleTo(ROWS[3], { userId: LIN })).toBe(false);
+    expect(topicVisibleTo(CLASS_LIN_ROW, { userId: LIN, classroomId: LIN_CLASS })).toBe(true);
+    expect(topicVisibleTo(CLASS_LIN_ROW, { userId: LIN, classroomId: CHEN_CLASS })).toBe(false);
+    expect(topicVisibleTo(CLASS_LIN_ROW, { userId: LIN })).toBe(false);
   });
 
   it("the personal-pool SQL selects exactly what the predicate accepts", async () => {

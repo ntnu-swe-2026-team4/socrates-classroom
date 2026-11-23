@@ -191,16 +191,16 @@ describe("test mode (#134): teacher slots", () => {
     await call(`/api/activities/${activityId}/slots`, jsonInit({ count: 2 }, teacher));
     const { slots } = await slotsOf(activityId);
 
-    const mine = await call(`/api/activities/${activityId}?participantId=${slots[0].id}`, {
+    const mine = await call(`/api/activities/${activityId}?participantId=${slots[0]?.id}`, {
       headers: { Cookie: teacher },
     });
     expect(mine.status).toBe(200);
     const infoBody = await mine.json();
     expect(str(infoBody, "mode")).toBe("test");
-    expect(optStr(infoBody, "participantId")).toBe(slots[0].id);
+    expect(optStr(infoBody, "participantId")).toBe(slots[0]?.id);
 
     const student = (await registerStudent(code, "偷看 slot 的成員")).cookie;
-    const denied = await call(`/api/activities/${activityId}?participantId=${slots[0].id}`, {
+    const denied = await call(`/api/activities/${activityId}?participantId=${slots[0]?.id}`, {
       headers: { Cookie: student },
     });
     expect(denied.status).toBe(403);
@@ -213,14 +213,14 @@ describe("test mode (#134): parallel dialogues and report", () => {
     await call(`/api/activities/${activityId}/slots`, jsonInit({ count: 3 }, teacher));
     const { slots } = await slotsOf(activityId);
     const questions = ["問題甲：正義是什麼？", "問題乙：自由是什麼？", "問題丙：幸福是什麼？"];
-    for (const [index, slot] of slots.entries()) {
-      await speak(`${activityId}:${slot.id}`, teacher, questions[index]);
+    for (const [index, entry] of slots.entries()) {
+      await speak(`${activityId}:${entry.id}`, teacher, must(questions[index], `question ${index}`));
     }
 
     const stats = await slotsOf(activityId);
     expect(stats.slots.map((slot) => slot.rounds)).toEqual([1, 1, 1]);
 
-    const first = await connect(`${activityId}:${slots[0].id}`, teacher);
+    const first = await connect(`${activityId}:${slots[0]?.id}`, teacher);
     const rx = frames(first);
     await rx.until((f) => f.some((m) => m.type === "hello"));
     first.send(JSON.stringify({ type: "watch" }));
@@ -232,7 +232,7 @@ describe("test mode (#134): parallel dialogues and report", () => {
     first.close();
 
     const student = (await registerStudent(code, "不能進 slot 的成員")).cookie;
-    const intruder = await connect(`${activityId}:${slots[1].id}`, student);
+    const intruder = await connect(`${activityId}:${slots[1]?.id}`, student);
     const intruderRx = frames(intruder);
     intruder.send(JSON.stringify({ type: "watch" }));
     await intruderRx.until((f) => f.length > 0 || intruder.readyState === WebSocket.CLOSED);

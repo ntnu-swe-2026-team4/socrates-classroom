@@ -93,7 +93,16 @@ function ReportPage() {
 
   const data = report.data;
   const isTeacherView = "students" in data;
-  const person = isTeacherView ? data.students[Math.min(studentIdx, data.students.length - 1)] : data;
+  const person = isTeacherView
+    ? (data.students[Math.min(studentIdx, data.students.length - 1)] ?? data.students[0])
+    : data;
+  if (person === undefined) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-[15px] text-ink-soft">
+        <p>{t("common_error")}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-4xl px-5 py-8">

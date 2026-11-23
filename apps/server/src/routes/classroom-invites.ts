@@ -122,7 +122,7 @@ async function redeem(c: Ctx, token: string, input: InviteJoinInput) {
   let result: Redemption | undefined;
   let joinedClassroom = false;
   try {
-    const [member, , , selected] = await batch(db, [
+    const batchResults = await batch(db, [
       {
         sql: `${eligible}
           INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at)
@@ -163,8 +163,11 @@ async function redeem(c: Ctx, token: string, input: InviteJoinInput) {
         params,
       },
     ]);
-    joinedClassroom = Boolean(member.meta.changes);
-    result = isRedemption(selected.results[0]) ? selected.results[0] : undefined;
+    const member = batchResults[0];
+    const selected = batchResults[3];
+    joinedClassroom = Boolean(member?.meta.changes);
+    const firstResult = selected?.results[0];
+    result = isRedemption(firstResult) ? firstResult : undefined;
   } catch (error) {
     if (
       uniqueViolationColumns(error).some(

@@ -4,6 +4,7 @@ import { useDialogue } from "@/hooks/useDialogue";
 import { companion } from "@/lib/companion";
 import type { EntryRecord } from "@earendil-works/pi-durable";
 import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
+import { must } from "./helpers";
 import { clientFrames, entryIdOf, conversationIdOf, opsFrame as opsFrameOf, viewFrame as viewFrameOf } from "./helpers";
 import type { JsonObject } from "@earendil-works/pi-durable";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -134,7 +135,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
 
   it("main flow: result=admission does not complete; the assistant entry landing moves speaking → idle", async () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
-    expect(JSON.parse(agent.sent[0])).toMatchObject({ type: "watch" });
+    expect(JSON.parse(must(agent.sent[0], "first frame"))).toMatchObject({ type: "watch" });
 
     emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答")]));
 
@@ -170,7 +171,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     expect(result.current.messages.at(-1)).toEqual({ id: "e4", role: "assistant", text: "你的直覺" });
     await waitFor(() => expect(result.current.phase).toBe("idle"));
     expect(tts).toHaveBeenCalledTimes(1);
-    expect(tts.mock.calls[0][0]).toBe("你的直覺");
+    expect(must(tts.mock.calls[0], "tts call")[0]).toBe("你的直覺");
   });
 
   it("F2: a tool-round assistant entry does not complete pending, speak, or unlock input", async () => {
@@ -271,7 +272,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     act(() => result.current.send("第一問"));
     emit(opsFrame([userEntry(1, "第一問"), assistantEntry(2, "第一答")]));
     expect(result.current.phase).toBe("speaking");
-    const firstSignal = tts.mock.calls[0][2];
+    const firstSignal = must(tts.mock.calls[0], "tts call")[2];
     if (!(firstSignal instanceof AbortSignal)) throw new Error("tts call did not receive an AbortSignal");
 
     act(() => result.current.send("第二問"));
@@ -326,7 +327,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     act(() => result.current.send("孤兒 run 的問題"));
     emit(viewFrame([userEntry(1, "孤兒 run 的問題"), assistantEntry(2, "孤兒的答案")]));
     expect(result.current.phase).toBe("speaking");
-    expect(tts.mock.calls[0][0]).toBe("孤兒的答案");
+    expect(must(tts.mock.calls[0], "tts call")[0]).toBe("孤兒的答案");
   });
 
   it("run failure broadcast: id-less error clears pending; ignored when none is pending", () => {
@@ -403,11 +404,11 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     act(() => result.current.send("被打拒的問題"));
     const submitted = agent.sent.filter((raw) => raw.includes("submit"));
     expect(submitted).toHaveLength(1);
-    emit({ type: "error", id: JSON.parse(submitted[0]).id, message: "ConversationBusy" });
+    emit({ type: "error", id: JSON.parse(must(submitted[0], "submit frame")).id, message: "ConversationBusy" });
     act(() => result.current.retryLast());
     const resent = agent.sent.filter((raw) => raw.includes("submit"));
     expect(resent).toHaveLength(2);
-    expect(JSON.parse(resent[1])).toMatchObject({ input: "被打拒的問題" });
+    expect(JSON.parse(must(resent[1], "resent frame"))).toMatchObject({ input: "被打拒的問題" });
   });
 
   it("retryLast: cleared after a successful answer — no stale input remains", () => {
@@ -429,7 +430,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     expect(result.current.phase).toBe("thinking");
     emit(opsFrame([userEntry(3, "長對話中的問題"), assistantEntry(4, "跨過 splice 的回答")]));
     expect(result.current.phase).toBe("speaking");
-    expect(tts.mock.calls[0][0]).toBe("跨過 splice 的回答");
+    expect(must(tts.mock.calls[0], "tts call")[0]).toBe("跨過 splice 的回答");
   });
 
   it("sliding window: a view past the baseline keeps waiting for the missing turn", () => {
@@ -508,7 +509,7 @@ describe("useDialogue (autoSend: queued first question)", () => {
         .map((raw) => clientFrame(raw))
         .filter((frame): frame is Extract<ClientMessage, { type: "submit" }> => frame?.type === "submit");
     expect(submits()).toHaveLength(1);
-    expect(submits()[0].input).toBe("什麼是正義？");
+    expect(must(submits()[0], "first submit").input).toBe("什麼是正義？");
     expect(result.current.pending).toBe(true);
     expect(onAutoSent).toHaveBeenCalledTimes(1);
 
@@ -574,7 +575,7 @@ describe("useDialogue (autoSend: queued first question)", () => {
       releaseTts?.();
     });
     await waitFor(() => expect(submits()).toHaveLength(2));
-    expect(submits()[1].input).toBe("第二題");
+    expect(must(submits()[1], "second submit").input).toBe("第二題");
   });
 });
 

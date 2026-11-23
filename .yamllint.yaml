@@ -1,4 +1,3 @@
-# YAML lint (GitHub Actions workflows and the pnpm workspace)
 extends: default
 
 ignore: |

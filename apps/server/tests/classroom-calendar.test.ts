@@ -9,6 +9,7 @@ import {
   cookieOf,
   createClassroom,
   field,
+  must,
   registerStudent,
   rows,
   str,
@@ -305,8 +306,8 @@ it("starts a scheduled discussion once and keeps its report on the same event", 
   const activities = await Promise.all(
     responses.map(async (response) => ({ activityId: str(await response.json(), "activityId") })),
   );
-  const activityId = activities[0].activityId;
-  expect(activities[1].activityId).toBe(activityId);
+  const activityId = must(activities[0], "first activity response").activityId;
+  expect(must(activities[1], "second activity response").activityId).toBe(activityId);
   expect(await (await request(startPath, owner)).json()).toMatchObject({ items: [{ id: activityId }] });
   expect(await (await request(range, student)).json()).toMatchObject({
     items: [{ id, topicId, activity: { id: activityId, finishedAt: null } }],

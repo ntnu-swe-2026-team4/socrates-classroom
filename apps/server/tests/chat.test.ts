@@ -200,6 +200,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     const [teacher] = await all<{ id: string }>(env.DB, "SELECT id FROM users WHERE email = 'demo@socrates.tw'");
     const student = await registerStudent(classroomCode, "額度生");
     const provider = "activity-gateway";
+    if (teacher === undefined) throw new Error("fixture teacher missing");
     const params = { teacher: teacher.id, student: student.userId, provider, now: new Date().toISOString() };
     await batch(env.DB, [
       {

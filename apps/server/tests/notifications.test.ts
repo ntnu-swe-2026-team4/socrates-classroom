@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
 import { NotificationFeedSchema, NotificationSchema, type NotificationFeed } from "@socrates/shared";
-import { call, cookieOf } from "./helpers";
+import { call, cookieOf, must } from "./helpers";
 
 const migrations = inject("d1Migrations");
 
@@ -68,7 +68,9 @@ describe("notifications feed and read watermark (#239)", () => {
     await compose(admin, `排序公告 ${Date.now()}`);
     const body = await feed();
     expect(body.items.length).toBe(before + 1);
-    expect(body.items[0].createdAt >= body.items[body.items.length - 1].createdAt).toBe(true);
+    const first = must(body.items[0], "newest notification");
+    const oldest = must(body.items[body.items.length - 1], "oldest notification");
+    expect(first.createdAt >= oldest.createdAt).toBe(true);
   });
 
   test("unread counts only items newer than the watermark; seen marks it idempotently", async () => {

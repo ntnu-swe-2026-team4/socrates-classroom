@@ -68,6 +68,7 @@ export class Router {
       const reservation = await this.#reserve(group);
       if (!reservation) continue;
       const candidate = group[reservation.index];
+      if (!candidate) return null;
       return { entry: candidate.entry, model: candidate.model, key: candidate.key, lease: reservation.lease };
     }
     return null;
@@ -139,13 +140,15 @@ export class Router {
    * must never stop traffic. The first candidate of the failing shard routes unaccounted.
    */
   async #reserve(group: Candidate[]): Promise<{ index: number; lease: string | null } | null> {
-    const stub = this.#stub(group[0].key.credential);
+    const head = group[0];
+    if (!head) return null;
+    const stub = this.#stub(head.key.credential);
     if (!stub) return { index: 0, lease: null };
     try {
       const reservation = await stub.reserve(group.map(ledgerCandidate), LEDGER_LEASE_TTL_MS);
       return reservation ? { index: reservation.index, lease: reservation.lease } : null;
     } catch (error) {
-      warnOnce(group[0].key.credential, error);
+      warnOnce(head.key.credential, error);
       return { index: 0, lease: null };
     }
   }
@@ -155,7 +158,9 @@ export class Router {
     let degraded = false;
     let offset = 0;
     for (const group of shardGroups(candidates)) {
-      const stub = this.#stub(group[0].key.credential);
+      const head = group[0];
+      if (!head) continue;
+      const stub = this.#stub(head.key.credential);
       if (!stub) {
         degraded = true;
       } else {
@@ -165,7 +170,7 @@ export class Router {
             admitted[offset + index] = value;
           });
         } catch (error) {
-          warnOnce(group[0].key.credential, error);
+          warnOnce(head.key.credential, error);
           degraded = true;
         }
       }
@@ -184,13 +189,14 @@ export class Router {
     return [...(teacherLegs ?? []), ...platform]
       .sort((a, b) => a.priority - b.priority)
       .map((entry) => {
-        const def = gatewayConfig.providers[entry.provider] ?? {};
-        return { entry, def, model: entry.model ?? providerModelOf(def) };
+        const def = gatewayConfig.providers[entry.provider];
+        const model = def === undefined ? (entry.model ?? "") : (entry.model ?? providerModelOf(def));
+        return { entry, def, model };
       })
       .filter((leg) => {
         if (canServe && !canServe({ provider: leg.entry.provider, model: leg.model })) return false;
         if (isTeacherCredential(leg.entry.credential)) return true;
-        if (!leg.def.kind) return false;
+        if (leg.def === undefined) return false;
         if (leg.def.kind === "binding" && !this.#env.AI) return false;
         if (leg.def.kind === "openai-completions") {
           if (!leg.model) return false;
@@ -205,8 +211,12 @@ export class Router {
       }));
   }
 
-  #keyOf(entry: AvailabilityEntry, def: z.infer<typeof ProviderSchema>): LedgerKey {
-    return { provider: entry.provider, model: entry.model ?? providerModelOf(def), credential: entry.credential };
+  #keyOf(entry: AvailabilityEntry, def: z.infer<typeof ProviderSchema> | undefined): LedgerKey {
+    return {
+      provider: entry.provider,
+      model: entry.model ?? (def === undefined ? "" : providerModelOf(def)),
+      credential: entry.credential,
+    };
   }
 }
 
@@ -221,7 +231,7 @@ function shardGroups(candidates: Candidate[]): Candidate[][] {
   const groups: Candidate[][] = [];
   for (const candidate of candidates) {
     const last = groups.at(-1);
-    if (last && last[0].key.credential === candidate.key.credential) last.push(candidate);
+    if (last?.[0]?.key.credential === candidate.key.credential) last.push(candidate);
     else groups.push([candidate]);
   }
   return groups;
