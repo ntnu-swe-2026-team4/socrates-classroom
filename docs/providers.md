@@ -8,7 +8,7 @@
 | 角色                   | Provider                        | 模型                        | ZDR                                        |
 | ---------------------- | ------------------------------- | --------------------------- | ------------------------------------------ |
 | 開發專用               | GLM Coding Plan Global（`zai`） | GLM-5.3 / GLM-5.3-Flash     | ✗（且條款禁產品後端）                      |
-| 生產主力（priority 1） | CF Workers AI（`AI` binding）   | `@cf/zai-org/glm-5.3-flash` | ✓（官方明文 Zero retention + No training） |
+| 生產主力（priority 1） | CF Workers AI（`AI` binding）   | `@cf/zai-org/glm-5.3`       | ✓（官方明文 Zero retention + No training） |
 | 壓底（priority 2）     | CF Workers AI（`AI` binding）   | `@cf/zai-org/glm-4.7-flash` | ✓（同上）                                  |
 
 **學生流量（生產鏈）全 ZDR；Coding Plan 不碰學生資料。**
@@ -57,8 +57,8 @@
 - **免費額度（2026-11-05 官方 pricing/limits 查證）**：**10,000 Neurons/day**（Free 與 Paid 方案皆有，00:00 UTC 重置）；超過按 **$0.011/1k Neurons**（需 Workers Paid）。⚠️ **local dev（wrangler/vite remote）的推論也計入 limits**
 - **付費模型清單**（需 Workers Paid **或** 預付 AI Gateway credits）：`@cf/zai-org/glm-5.2`／`glm-5.3`／**`glm-5.3-flash`**、`@cf/moonshotai/kimi-k2.6`／`kimi-k2.7-code`、`@cf/deepseek-ai/deepseek-v4*`——**注意：`@cf/zai-org/glm-4.7-flash` 不在清單（免費 neurons 可用）**
 - **速率**：文字生成預設 **300 req/min**；付費清單模型：標準計費 **20 req/min**、預付 credits **50 req/min**（每帳號每模型）
-- **壓底策略（同模型不換腦）**：`@cf/zai-org/glm-5.3-flash`＝與自架頭部同模型（failover 語氣連續）→ 排第一，402/403（未付費）由 breaker 降級 → `glm-4.7-flash`（免費 neurons、300 rpm）收尾。5.3-flash 是否可用取決於帳號方案，catalog 兩個都列
-- **AI Gateway credits（2026-11-05 官方 Unified Billing）**：**純預付、無免費月度額度**，購買收 5% 手續費（僅信用卡）；推論價格 pass-through。Web Search API（ceramic $0.25/1k）與付費清單模型都吃這個——**402 web_search_payment_required＝credits 為零**，載入後即通
+- **壓底策略（同模型不換腦）**：`@cf/zai-org/glm-5.3`＝與自架頭部同 z-ai glm-5.3 家族（failover 語氣連續，#401 拍板；舊主力 `glm-5.3-flash` 已於 2026-11-20 下架，見 §8）→ 排第一，402/403（未付費）由 breaker 降級 → `glm-4.7-flash`（免費 neurons、300 rpm）收尾。**部署前提：正式帳號需 Workers Paid 或 AI Gateway credits**，Free 對 5.3 回 403
+- **AI Gateway credits（2026-11-05 官方 Unified Billing）**：**純預付、無免費月度額度**，購買收 5% 手續費（僅信用卡）；推論價格 pass-through。Web Search API（ceramic $0.25/1k）與付費清單模型都吃這個——**402 web_search_payment_required＝credits 為零**，載入後即通。**Unified billing 已切（2026-11-23）**：`createAI` 以 gateway id `default` 路由 Workers AI 推論（[`pi/models.ts`](../apps/server/src/pi/models.ts)，與 websearch 同一個 gateway、同一份餘額），付費清單模型因此吃 50 rpm 檔；gateway 的 logging/caching 維持關閉（ZDR 底線）
 - **語音模型（#56/#69，2026-11-05 官方目錄查證）**：
   - STT：`@cf/openai/whisper-large-v3-turbo`（ZDR yes、$0.000513/audio-min）；binding 輸入＝base64 字串（schema `audio: string｜{body,contentType}`）
   - TTS：`@cf/myshell-ai/melotts`（ZDR yes、$0.000205/audio-min、zh 支援）；binding 參數 `prompt`＋`lang`，回 base64 WAV 文字流——**已實測**（216KB WAV→whisper 閉環轉錄）
@@ -147,12 +147,12 @@
 ## 8. Reasoning effort（各模式，#122）
 
 - **基準**：2026-11-16 實測，程式碼基準 `94bbaaf`（[#122](https://github.com/ntnu-swe-2026-team4/socrates-classroom/issues/122)）；測試腳本與原始輸出未入庫
-- **⚠️ 模型即將下架**：`@cf/zai-org/glm-5.3-flash` 在 Cloudflare 的下架清單上，2026-11-20 起回 `410 Gone`（error code 5028）。官方建議的替代模型是 `@cf/deepseek-ai/deepseek-v4.1-flash-1017` 與 `@cf/zai-org/glm-5.3`（[2026-11-05 changelog](https://developers.cloudflare.com/changelog/post/2026-11-05-planned-model-deprecations/)；2026-11-16 查證）。本節一併測了 `glm-5.3`；手上沒有能呼叫 `deepseek-v4.1-flash-1017` 的 key，未測
+- **⚠️ 模型已下架（決策已落地，#401）**：`@cf/zai-org/glm-5.3-flash` 在 Cloudflare 的下架清單上，2026-11-20 起回 `410 Gone`（error code 5028）。官方建議的替代模型是 `@cf/deepseek-ai/deepseek-v4.1-flash-1017` 與 `@cf/zai-org/glm-5.3`（[2026-11-05 changelog](https://developers.cloudflare.com/changelog/post/2026-11-05-planned-model-deprecations/)；2026-11-16 查證）。本節一併測了 `glm-5.3`；手上沒有能呼叫 `deepseek-v4.1-flash-1017` 的 key，未測。**拍板（2026-11-23）：平台鏈主力改 `glm-5.3`（YAML priority 1，5.3-flash 自 models 清單移除）**；5.3 的 ZDR 已於 2026-11-23 對 model page 核實（官方明載 Zero data retention: Yes，reasoning low／high／max）＋ Workers AI 平台層 data-usage 政策（§4）；容量注意：付費清單模型 20 req/min（標準）／50 req/min（AI Gateway credits），批量報告高峰會由 breaker 降級到 4.7-flash（300 rpm）
 - **模式對應**：
   - 主 session：Chat DO 的 root session，level 來自 `PROFILES.socrates.thinkingLevel`（[`chat.ts`](../apps/server/src/do/chat.ts) 的 PiHarness defaults）
   - BTW：`forkBtw` 從 root fork，configure 只改 extensions，所以沿用 socrates 的 level（[`btw.ts`](../apps/server/src/pi/extensions/btw.ts)）
   - 查詢：`lookup` profile；主題生成：`topic-gen` profile
-  - 現況四個模式都是 `"high"`（[`profiles.ts`](../apps/server/src/pi/agents/profiles.ts)）
+  - 現況：`socrates` 與 `class-report` 為 `"low"`（#145／#401，後者見 #249 實驗：39/60 人班 low 完成、high 在 39 人班截斷）；BTW（fork 覆寫）、查詢、主題生成與其餘報告 profile 皆 `"high"`（[`profiles.ts`](../apps/server/src/pi/agents/profiles.ts)）
 - **thinkingLevel 實際送出的值**（`agents` 0.33.0 的 `effortForLevel` 先經 pi-ai 的 `clampThinkingLevel`；模型頁 2026-11-16 查證）：
   - `glm-5.3-flash` 在 Workers AI 只接受 low／high／max，預設 max（[模型頁](https://developers.cloudflare.com/workers-ai/models/glm-5.3-flash/)）
   - minimal、low 送 `low`；medium 送 `high`，因為這顆模型的 thinkingLevelMap 把 medium 設成 null，clamp 會往上取；high、xhigh、max 都送 `high`；off 則完全不送 `reasoning_effort`，模型照預設跑 max

@@ -108,7 +108,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     extensions: ["report-submit"],
     maxTurns: 4,
     trafficClass: "batch",
-    thinkingLevel: "high",
+    thinkingLevel: "low",
   },
   "class-report-axes": {
     name: "class-report-axes",

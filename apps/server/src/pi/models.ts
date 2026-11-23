@@ -27,7 +27,10 @@ export function buildModels(env: Env, options: BuildModelsOptions = {}): ModelsB
     credentials: keyedCredentialStore(env, options.keyedOf ?? (() => null), options.teacherOf ?? (async () => null)),
     authContext: workersAuthContext(env),
   });
-  const ai = createAI({ binding: env.AI });
+  // Routing through AI Gateway id "default" bills Workers AI inference from the prepaid
+  // credits (Unified billing — the 50 rpm tier for paid models); the gateway keeps
+  // logging and caching off, so platform-credential traffic stays zero-retention.
+  const ai = createAI({ binding: env.AI, id: "default" });
   const [head, ...legs] = [...gatewayConfig.defaults.availability]
     .sort((a, b) => a.priority - b.priority)
     .map((entry) => bindingModelOf(entry))
