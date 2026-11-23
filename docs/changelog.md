@@ -2,6 +2,17 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-23 — per-IP 限流改走跨 isolate 的 RateLimiter DO（`feat/157-rate-limiter-do`，#157）
+
+### Changed
+
+- `apps/server/src/http.ts` 的 `enforceIpLimit` 不再用 module-level `ipHits`（`Map<string, number[]>`，每 isolate 各一份、滿 10k 條目還得掃表驅逐）：改呼叫 `RateLimiter` DO（`idFromName("<scope>:<ip>")`，單一 actor 序列化 60 秒 sliding window；同 region 個位數 ms）。任一 IP 對任一 scope 的放行量不再隨 isolate 數放大
+- 計數只存 DO 記憶體、不落 storage（DO 只在 idle 時 evict，而 idle 期間窗口本來就會過期；同時不把 IP 位址持久化）；DO 不可用時 fail-open（放行 + `console.warn`），與 `#196` RoutingLedger 同一取捨
+- 對外介面不變：`enforceIpLimit`／`rateLimit`／guard 順序、`429 rate_limited` envelope、無 `CF-Connecting-IP` 一律放行
+- 新 binding `RateLimiter`（`cloudflare.config.ts`、`env.ts`、`index.ts`、`wrangler.vitest.jsonc` 的 migration `v2`）
+- `tests/rate-limit.test.ts`：real DO 的跨 caller 共用計數、scope／IP 隔離、窗口過期、HTTP 路徑經 DO、DO 不可用 fail-open
+- CF Rate Limiting binding 不採用（per-location、approximate，解不掉跨 isolate 分散繞過）；`#103` 收斂為登入後身分的 per-user 限流，per-account 失敗鎖定拆為 `#393`
+
 ## 2026-11-23 — 六角圖對接單人報告思辨力指標（`feat/78-thinking-hexagon`，#78）
 
 ### Changed

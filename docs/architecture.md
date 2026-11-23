@@ -84,7 +84,7 @@ socrates-classroom/
 │       │   ├── index.ts            # /api/* → Hono；/agents/* → routeAgentRequest（WS）
 │       │   ├── app.ts              # createApp()：RpcApp 型別匯出（R6）
 │       │   ├── routes/             # REST 端點（zod 驗證、fail() 錯誤契約）
-│       │   ├── do/                 # 兩個 Durable Object
+│       │   ├── do/                 # Durable Objects（職責見 §4）
 │       │   │   ├── chat.ts         # Chat：PiHarness + registry + models（thread 級）
 │       │   │   └── report-runner.ts # ReportRunner：報告生成（activity 級，alarm 驅動）
 │       │   ├── pi/                 # pi 整合層
@@ -144,7 +144,7 @@ export interface Db {
 
 ## 4. Durable Objects（apps/server/src/do/）
 
-兩個 DO，職責分離：
+五個 DO（Chat／SoloChat／ClassroomEvents／ReportRunner／RateLimiter），職責分離：
 
 ### Chat（do/chat.ts）——thread 級
 
@@ -175,6 +175,10 @@ startReport → pending 標記 → alarm → generate：
 ```
 
 模型呼叫經 `runProfile("student-report")`／`runProfile("student-indicators")`／`runProfile("student-engagement")`／`runProfile("class-report")`（帶 axes 時為 `class-report-axes`）（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片從 pi transcript 抽取（`/transcript` 端點，不落第二份儲存）。
+
+### RateLimiter（do/rate-limiter.ts）——限流 key 級
+
+`idFromName("<scope>:<ip>")` 一 key 一個 instance，單一 actor 序列化 60 秒 sliding window 計數；`http.ts` 的 `enforceIpLimit` 每次請求一次 RPC `allow(limit, windowMs)`（同 region 個位數 ms）。計數只存 DO 記憶體、不落 storage：DO 只在 idle 時 evict，而 idle 期間窗口本來就會過期，同時避免 IP 位址持久化。DO 不可用時 caller fail-open（放行 + `console.warn`）——限流是保護性上限而非硬安全邊界（同 #196 RoutingLedger 的取捨）。per-account 失敗鎖定是獨立缺口（#393）。
 
 ## 5. Gateway（apps/server/src/gateway/）
 
@@ -277,14 +281,14 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 12. 風險與對策
 
-| 風險                                                             | 對策                                                                                                                                                          |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1 無互動式交易，tx→batch 語意差異                               | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                                                                              |
-| cf beta 格式變動                                                 | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                                                                                          |
-| dgx-spark 腿延遲（暫時移除，回歸時適用）                         | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                                                                                |
-| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）           | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                                                                                    |
-| module 級狀態（rate-limit 的 Map）隨 isolate 分散且重啟歸零      | 定位為 best-effort；跨請求一致的併發守衛在 Chat DO 的 whenBusy reject。多 isolate 佈局後限流改走 DO                                                           |
-| TTS 跨分頁仲裁的毫秒級 race（`SpeechArbiter`，同一使用者多 tab） | 已知限制：窗口為毫秒級、需同一使用者雙 tab 同時觸發朗讀才有感；目前不修。重啟條件：出現使用者可見的重複播放或殘留播放，或跨 tab 朗讀成為正式功能（#165 決定） |
+| 風險                                                             | 對策                                                                                                                                                                                                            |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1 無互動式交易，tx→batch 語意差異                               | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                                                                                                                                |
+| cf beta 格式變動                                                 | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                                                                                                                                            |
+| dgx-spark 腿延遲（暫時移除，回歸時適用）                         | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                                                                                                                                  |
+| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）           | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                                                                                                                                      |
+| per-IP 限流跨 isolate 計數（已處置，#157）                       | `RateLimiter` DO 按 `scope:ip` 分片序列化滑動窗口，跨 isolate 一致；計數只存 DO 記憶體（idle eviction＝窗口歸零，只在無流量時發生）；DO 不可用時 fail-open。跨請求一致的併發守衛仍在 Chat DO 的 whenBusy reject |
+| TTS 跨分頁仲裁的毫秒級 race（`SpeechArbiter`，同一使用者多 tab） | 已知限制：窗口為毫秒級、需同一使用者雙 tab 同時觸發朗讀才有感；目前不修。重啟條件：出現使用者可見的重複播放或殘留播放，或跨 tab 朗讀成為正式功能（#165 決定）                                                   |
 
 ## 13. Scale design v2（D9–D13）——10k 併發作為 code quality bar
 
@@ -361,7 +365,7 @@ v3 的 ActivityEvents DO 已退役。對話改用 Chat DO 的 WebSocket hibernat
 | 7   | agents 0.33＋pi 1.5                            | ✅ 已做                                                    |
 | 8   | AE data point＋cron rollup                     | 未做（#80/#81/#63，本輪不做）                              |
 
-新 bindings（ask-first）：Queues、Workflows、Rate Limiting（#103）、Analytics Engine。
+新 bindings（ask-first）：Queues、Workflows、Analytics Engine。Rate Limiting binding 不採用：它是 per-location、approximate，解不掉跨 isolate 分散繞過；per-IP 限流改走 `RateLimiter` DO（#157），#103 收斂為登入後身分的 per-user 限流。
 
 ### 13.7 Honest limits（設計不假裝解決的）
 

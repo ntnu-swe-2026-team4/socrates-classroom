@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => {
         SoloChat: bindings.durableObject({ worker: "socrates-classroom", exportName: "SoloChat" }),
         ClassroomEvents: bindings.durableObject({ worker: "socrates-classroom", exportName: "ClassroomEvents" }),
         ReportRunner: bindings.durableObject({ worker: "socrates-classroom", exportName: "ReportRunner" }),
+        RateLimiter: bindings.durableObject({ worker: "socrates-classroom", exportName: "RateLimiter" }),
         PUBLIC_BASE_URL: text("PUBLIC_BASE_URL", "https://socrates.g36maid.dev"),
         ENVIRONMENT: bindings.text(local.ENVIRONMENT || (mode === "development" ? "dev" : "production")),
         LLM_PROVIDER: bindings.text(local.LLM_PROVIDER ?? (mode === "development" ? "mock" : "")),
@@ -60,6 +61,7 @@ export default defineConfig(({ mode }) => {
         SoloChat: exports.durableObject({ storage: "sqlite" }),
         ClassroomEvents: exports.durableObject({ storage: "sqlite" }),
         ReportRunner: exports.durableObject({ storage: "sqlite" }),
+        RateLimiter: exports.durableObject({ storage: "sqlite" }),
       },
     },
   };
