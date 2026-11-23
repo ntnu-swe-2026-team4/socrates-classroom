@@ -1,4 +1,3 @@
-# prek (https://prek.j178.dev) — git hook manager; run `prek install` once after clone
 [[repos]]
 repo = "builtin"
 hooks = [

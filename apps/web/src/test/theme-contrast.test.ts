@@ -20,7 +20,10 @@ function themeBlock(selector: string): Map<string, string> {
   }
   const vars = new Map<string, string>();
   for (const match of css.slice(open, end).matchAll(/--color-([\w-]+):\s*([^;]+);/g)) {
-    vars.set(match[1], match[2].trim());
+    const name = match[1];
+    const value = match[2];
+    if (name === undefined || value === undefined) continue;
+    vars.set(name, value.trim());
   }
   return vars;
 }
@@ -42,10 +45,10 @@ function parseWash(value: string): Rgb {
 }
 
 function composite(wash: Rgb, bgHex: string): string {
-  const bg = [1, 3, 5].map((i) => Number.parseInt(bgHex.slice(i, i + 2), 16));
+  const bg = [1, 3, 5].map((i) => Number.parseInt(bgHex.slice(i, i + 2) ?? "0", 16));
   const channels: Array<keyof Rgb> = ["r", "g", "b"];
   const hex = channels.map((ch, i) =>
-    Math.round(wash.alpha * wash[ch] + (1 - wash.alpha) * bg[i])
+    Math.round(wash.alpha * wash[ch] + (1 - wash.alpha) * (bg[i] ?? 0))
       .toString(16)
       .padStart(2, "0"),
   );
@@ -53,13 +56,13 @@ function composite(wash: Rgb, bgHex: string): string {
 }
 
 function relativeLuminance(hex: string): number {
-  const channels = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255);
+  const channels = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2) ?? "0", 16) / 255);
   const linear = channels.map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
-  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  return 0.2126 * (linear[0] ?? 0) + 0.7152 * (linear[1] ?? 0) + 0.0722 * (linear[2] ?? 0);
 }
 
 function contrast(fg: string, bg: string): number {
-  const [hi, lo] = [relativeLuminance(fg), relativeLuminance(bg)].sort((a, b) => b - a);
+  const [hi = 0, lo = 0] = [relativeLuminance(fg), relativeLuminance(bg)].sort((a, b) => b - a);
   return (hi + 0.05) / (lo + 0.05);
 }
 

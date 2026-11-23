@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { must } from "../helpers";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -359,6 +360,7 @@ test("#185: the classroom page covers the retired wizard flow: AI topic → star
     fireEvent.click(screen.getByRole("button", { name: "Add to topics" }));
 
     const startSection = screen.getByRole("button", { name: "Start activity" }).closest("section");
+    expect(startSection).not.toBeNull();
     if (!(startSection instanceof HTMLElement)) throw new Error("start activity section not found");
     const activitySection = within(startSection);
     fireEvent.click(await activitySection.findByRole("button", { name: /Generated topic/ }));
@@ -369,8 +371,15 @@ test("#185: the classroom page covers the retired wizard flow: AI topic → star
       "/api/classrooms/class-9/topics",
       "/api/classrooms/class-9/activities",
     ]);
-    expect(calls[0].body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
-    expect(calls[1].body).toMatchObject({ topicId: "topic-persisted", mode: "live", reportAxes: "ai" });
+    expect(must(calls[0], "topic gen call").body).toMatchObject({
+      title: "Generated topic",
+      statement: "A generated dilemma",
+    });
+    expect(must(calls[1], "start call").body).toMatchObject({
+      topicId: "topic-persisted",
+      mode: "live",
+      reportAxes: "ai",
+    });
   } finally {
     dispose();
     vi.unstubAllGlobals();
@@ -815,7 +824,7 @@ test("#243 review: a signed-in join still reaches home when fetching the activit
 });
 
 test("F01c: a signed-in join posts without a name", async () => {
-  let joinBody: object | null = null;
+  let joinBody: Record<string, unknown> | null = null;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -835,8 +844,8 @@ test("F01c: a signed-in join posts without a name", async () => {
         },
       };
       if (path === "/api/join" && init?.method === "POST") {
-        const body: unknown = JSON.parse(String(init.body));
-        if (typeof body === "object" && body !== null) joinBody = body;
+        const parsed = JSON.parse(String(init.body));
+        if (typeof parsed === "object" && parsed !== null) joinBody = parsed;
         return new Response(
           JSON.stringify({ user: me, activityId: "activity-1", participantId: "p_2", kind: "member" }),
           { headers: { "Content-Type": "application/json" } },
@@ -1100,7 +1109,7 @@ test("#182: prioritizes flags, pages a large roster, and searches all students",
     const table = await screen.findByRole("table", { name: "Live student roster" });
     const firstPage = within(table).getAllByRole("row");
     expect(firstPage).toHaveLength(51);
-    expect(firstPage[1].textContent).toContain("Student 0999");
+    expect(must(firstPage[1], "second row").textContent).toContain("Student 0999");
     await user.click(screen.getByRole("button", { name: "Next page" }));
     expect(within(table).queryByText("Student 0999")).toBeNull();
     await user.type(screen.getByRole("searchbox", { name: "Search students" }), "0842");
@@ -1446,13 +1455,13 @@ test("#267: the teacher toggles engagement sharing; both options start off", asy
   const puts = stubTeacherReport({ classReport: false, student: false });
   const dispose = await mountRoute("/report/activity-1");
   try {
-    const findOwn = await screen.findByRole("checkbox", { name: "Each student's own report" });
-    const findGroup = screen.getByRole("checkbox", { name: "The group report" });
-    if (!(findOwn instanceof HTMLInputElement) || !(findGroup instanceof HTMLInputElement)) {
+    const ownFound = await screen.findByRole("checkbox", { name: "Each student's own report" });
+    const groupFound = screen.getByRole("checkbox", { name: "The group report" });
+    if (!(ownFound instanceof HTMLInputElement) || !(groupFound instanceof HTMLInputElement)) {
       throw new Error("engagement visibility controls are not checkboxes");
     }
-    const own = findOwn;
-    const group = findGroup;
+    const own = ownFound;
+    const group = groupFound;
     expect(own.checked).toBe(false);
     expect(group.checked).toBe(false);
     expect(screen.queryByRole("table")).toBeNull();
@@ -1468,9 +1477,9 @@ test("#267: a failed save shows an alert and the checkbox goes back to the store
   const puts = stubTeacherReport({ classReport: false, student: false }, true);
   const dispose = await mountRoute("/report/activity-1");
   try {
-    const found = await screen.findByRole("checkbox", { name: "The group report" });
-    if (!(found instanceof HTMLInputElement)) throw new Error("group report control is not a checkbox");
-    const group = found;
+    const groupFound = await screen.findByRole("checkbox", { name: "The group report" });
+    if (!(groupFound instanceof HTMLInputElement)) throw new Error("group control is not a checkbox");
+    const group = groupFound;
     fireEvent.click(group);
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(puts).toEqual([{ classReport: true, student: false }]);
@@ -1648,8 +1657,12 @@ test("#185: the users tab creates an account and disables one behind a confirmat
     await waitFor(() => expect(calls.length).toBe(2));
 
     expect(calls.map((call) => call.path)).toEqual(["/api/admin/users", "/api/admin/users/u-a"]);
-    expect(calls[0].body).toEqual({ name: "New User", email: "new@socrates.tw", password: "abcdefgh" });
-    expect(calls[1].body).toEqual({ disabled: true });
+    expect(must(calls[0], "create user call").body).toEqual({
+      name: "New User",
+      email: "new@socrates.tw",
+      password: "abcdefgh",
+    });
+    expect(must(calls[1], "disable call").body).toEqual({ disabled: true });
   } finally {
     dispose();
     vi.unstubAllGlobals();

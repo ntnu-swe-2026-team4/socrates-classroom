@@ -66,7 +66,7 @@ async function idToken(claims: Record<string, unknown>, key = signingKey, kid = 
 function cookieNamed(res: Response, name: string): string | undefined {
   return res.headers
     .getSetCookie()
-    .map((line) => line.split(";")[0])
+    .map((line) => line.split(";")[0] ?? "")
     .find((pair) => pair.startsWith(`${name}=`) && pair.length > name.length + 1);
 }
 
