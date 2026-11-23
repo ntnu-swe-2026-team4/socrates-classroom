@@ -1,14 +1,21 @@
-import { hc } from "hono/client";
+import { hc, type InferRequestType } from "hono/client";
 import type {
   ActivityInfo,
   ActivityInvite,
+  ActivityLive,
   ActivityMode,
   ActivitySlots,
   ActivityStarted,
+  AdminOverview,
   AdminUser,
+  Notification,
+  Axis,
+  ClientConfig,
   ClassroomCreated,
+  ClassroomInviteScope,
   ClassroomSummary,
   DevAccounts,
+  EngagementVisibility,
   InviteInfo,
   InviteJoined,
   JoinInfo,
@@ -16,6 +23,7 @@ import type {
   NotificationFeed,
   OAuthProviders,
   Report,
+  ReportAxes,
   SoloThread,
   SoloThreadCreateInput,
   SoloThreadUpdateInput,
@@ -28,16 +36,19 @@ import type {
   User,
 } from "@socrates/shared";
 import {
+  ActivityLiveSchema,
   ActivityStartInputSchema,
   AdminUserCreateInputSchema,
   AdminUserUpdateInputSchema,
   ClassroomCreateInputSchema,
   DevLoginInputSchema,
+  EngagementVisibilitySchema,
   ERROR_CODES,
   GenerateTopicsInputSchema,
   JoinInputSchema,
   LoginInputSchema,
   LookupInputSchema,
+  NotificationInputSchema,
   PasswordForgotInputSchema,
   PasswordResetInputSchema,
   SignupInputSchema,
@@ -76,7 +87,9 @@ export interface KeyModelInfo {
 }
 
 export interface Api {
+  classroom: typeof classroomApi;
   me(): Promise<User | null>;
+  config(): Promise<ClientConfig>;
   login(email: string, password: string): Promise<User>;
   signup(input: { name: string; email: string; password: string; tosAccepted: boolean }): Promise<User>;
   logout(): Promise<void>;
@@ -85,6 +98,8 @@ export interface Api {
   authProviders(): Promise<OAuthProviders>;
   notifications(): Promise<NotificationFeed>;
   markNotificationsSeen(): Promise<void>;
+  adminOverview(): Promise<AdminOverview>;
+  postAdminNotification(input: { title: string; body: string }): Promise<Notification>;
   joinByCode(code: string): Promise<JoinInfo>;
   joinAsGuest(code: string, input: { name?: string; tosAccepted: boolean }): Promise<JoinResult>;
   createActivityInvite(activityId: string): Promise<ActivityInvite>;
@@ -97,18 +112,33 @@ export interface Api {
   listClassroomTopics(classroomId: string): Promise<Topic[]>;
   createClassroomTopic(
     classroomId: string,
-    input: { title: string; statement: string; summary?: string; prompts: string[] },
+    input: { title: string; statement: string; summary?: string; prompts: string[]; axes?: Axis[] },
   ): Promise<Topic>;
   copyTopic(topicId: string, classroomId: string): Promise<Topic>;
-  startActivity(classroomId: string, topicId: string, mode?: ActivityMode): Promise<ActivityStarted>;
+  startActivity(
+    classroomId: string,
+    topicId: string,
+    mode?: ActivityMode,
+    reportAxes?: ReportAxes,
+    topicAxes?: Axis[],
+    calendarEventId?: string,
+  ): Promise<ActivityStarted>;
   listActivitySlots(activityId: string): Promise<ActivitySlots>;
   createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
-  createTopic(input: { title: string; statement: string; summary?: string; prompts: string[] }): Promise<Topic>;
+  createTopic(input: {
+    title: string;
+    statement: string;
+    summary?: string;
+    prompts: string[];
+    axes?: Axis[];
+  }): Promise<Topic>;
   activityInfo(activityId: string, participantId?: string): Promise<ActivityInfo>;
+  activityLive(activityId: string, signal?: AbortSignal): Promise<ActivityLive>;
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
+  setEngagementVisibility(activityId: string, visibility: EngagementVisibility): Promise<EngagementVisibility>;
   listSoloThreads(): Promise<SoloThread[]>;
   getSoloThread(id: string): Promise<SoloThread>;
   createSoloThread(input: SoloThreadCreateInput): Promise<SoloThread>;
@@ -237,7 +267,100 @@ function announceSession(): void {
   }
 }
 
+type ScopedInviteInput =
+  | { scope: "classroom" }
+  | { scope: Exclude<ClassroomInviteScope, "classroom">; activityId: string };
+
+const classroom = client.classrooms[":id"];
+const calendarEvents = classroom["calendar-events"];
+const scopedInvite = client["classroom-invites"][":token"];
+
+function idempotencyHeaders(key: string) {
+  return { headers: { ...langHeaders(), "Idempotency-Key": key } };
+}
+
+const classroomApi = {
+  async calendar(id: string, query: { from: string; to: string; cursor?: string }, signal: AbortSignal) {
+    return unwrap(await calendarEvents.$get({ param: { id }, query }, { init: { signal } }));
+  },
+  async createCalendarEvent(id: string, json: InferRequestType<typeof calendarEvents.$post>["json"]) {
+    return unwrap(await calendarEvents.$post({ param: { id }, json }));
+  },
+  async updateCalendarEvent(
+    id: string,
+    eventId: string,
+    json: InferRequestType<(typeof calendarEvents)[":eventId"]["$patch"]>["json"],
+  ) {
+    return unwrap(await calendarEvents[":eventId"].$patch({ param: { id, eventId }, json }));
+  },
+  async deleteCalendarEvent(id: string, eventId: string) {
+    await unwrap(await calendarEvents[":eventId"].$delete({ param: { id, eventId } }));
+  },
+  async announcements(id: string, cursor?: string) {
+    return unwrap(await classroom.announcements.$get({ param: { id }, query: { cursor } }));
+  },
+  async publish(id: string, body: string, key: string) {
+    return unwrap(await classroom.announcements.$post({ param: { id }, json: { body } }, idempotencyHeaders(key)));
+  },
+  async deleteAnnouncement(id: string, itemId: string) {
+    await unwrap(await classroom.announcements[":itemId"].$delete({ param: { id, itemId } }));
+  },
+  async posts(id: string, cursor?: string) {
+    return unwrap(await classroom.posts.$get({ param: { id }, query: { cursor } }));
+  },
+  async post(id: string, body: string, key: string) {
+    return unwrap(await classroom.posts.$post({ param: { id }, json: { body } }, idempotencyHeaders(key)));
+  },
+  async replies(id: string, postId: string, cursor?: string) {
+    return unwrap(await classroom.posts[":postId"].replies.$get({ param: { id, postId }, query: { cursor } }));
+  },
+  async reply(id: string, postId: string, body: string, key: string) {
+    return unwrap(
+      await classroom.posts[":postId"].replies.$post(
+        { param: { id, postId }, json: { body } },
+        idempotencyHeaders(key),
+      ),
+    );
+  },
+  async deletePost(id: string, postId: string) {
+    await unwrap(await classroom.posts[":postId"].$delete({ param: { id, postId } }));
+  },
+  async members(id: string, cursor?: string) {
+    return unwrap(await classroom.members.$get({ param: { id }, query: { cursor } }));
+  },
+  async removeMember(id: string, userId: string) {
+    await unwrap(await classroom.members[":userId"].$delete({ param: { id, userId } }));
+  },
+  async activities(id: string, cursor?: string) {
+    return unwrap(await classroom.activities.$get({ param: { id }, query: { cursor } }));
+  },
+  async invites(id: string, cursor?: string) {
+    return unwrap(await classroom.invites.$get({ param: { id }, query: { cursor } }));
+  },
+  async createInvite(id: string, input: ScopedInviteInput) {
+    return unwrap(await classroom.invites.$post({ param: { id }, json: input }));
+  },
+  async revokeInvite(id: string, inviteId: string) {
+    await unwrap(await classroom.invites[":inviteId"].$delete({ param: { id, inviteId } }));
+  },
+  async previewInvite(token: string) {
+    return unwrap(await scopedInvite.$get({ param: { token } }));
+  },
+  async acceptInvite(token: string, input: { name?: string; tosAccepted: boolean }) {
+    const joined = await unwrap(await scopedInvite.join.$post({ param: { token }, json: input }));
+    if (joined.activityId) persistActivityId(joined.activityId);
+    return joined;
+  },
+  async myReports(cursor?: string) {
+    return unwrap(await client.me.reports.$get({ query: { cursor } }));
+  },
+};
+
 export const httpApi: Api = {
+  async config() {
+    return unwrap(await client.config.$get());
+  },
+  classroom: classroomApi,
   async me() {
     return unwrap(await client.me.$get());
   },
@@ -270,6 +393,12 @@ export const httpApi: Api = {
   },
   async markNotificationsSeen() {
     await unwrap(await client.notifications.seen.$post());
+  },
+  async adminOverview() {
+    return unwrap(await client.admin.overview.$get());
+  },
+  async postAdminNotification(input) {
+    return unwrap(await client.admin.notifications.$post({ json: NotificationInputSchema.parse(input) }));
   },
   async joinByCode(code) {
     return unwrap(await client.join[":code"].$get({ param: { code } }));
@@ -330,8 +459,8 @@ export const httpApi: Api = {
       }),
     );
   },
-  async startActivity(classroomId, topicId, mode = "live") {
-    const input = ActivityStartInputSchema.parse({ topicId, mode });
+  async startActivity(classroomId, topicId, mode = "live", reportAxes, topicAxes, calendarEventId) {
+    const input = ActivityStartInputSchema.parse({ topicId, mode, reportAxes, topicAxes, calendarEventId });
     return unwrap(await client.classrooms[":id"].activities.$post({ param: { id: classroomId }, json: input }));
   },
   async listActivitySlots(activityId) {
@@ -355,11 +484,23 @@ export const httpApi: Api = {
   async activityInfo(activityId, participantId) {
     return unwrap(await client.activities[":id"].$get({ param: { id: activityId }, query: { participantId } }));
   },
+  async activityLive(activityId, signal) {
+    const response = await client.activities[":id"].live.$get({ param: { id: activityId } }, { init: { signal } });
+    return ActivityLiveSchema.parse(await unwrap(response));
+  },
   async finishActivity(activityId) {
     await unwrap(await client.activities[":id"].finish.$post({ param: { id: activityId } }));
   },
   async report(activityId) {
     return unwrap(await client.activities[":id"].report.$get({ param: { id: activityId } }));
+  },
+  async setEngagementVisibility(activityId, visibility) {
+    return unwrap(
+      await client.activities[":id"]["engagement-visibility"].$put({
+        param: { id: activityId },
+        json: EngagementVisibilitySchema.parse(visibility),
+      }),
+    );
   },
   async listSoloThreads() {
     return unwrap(await client.solo.threads.$get());

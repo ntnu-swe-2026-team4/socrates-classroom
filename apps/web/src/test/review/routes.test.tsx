@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
+import { activityLiveOptions } from "@/api/queries";
 import { setLocale } from "@/i18n";
 import { onExpression } from "@/lib/companion";
 
@@ -111,7 +112,7 @@ function roomSummary(role: "teacher" | "student") {
   };
 }
 
-async function loadPath(url: string, responses: Record<string, unknown>, statuses: Record<string, number> = {}) {
+async function loadLocation(url: string, responses: Record<string, unknown>, statuses: Record<string, number> = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -130,13 +131,16 @@ async function loadPath(url: string, responses: Record<string, unknown>, statuse
     context: { queryClient: client },
   });
   await router.load();
-  const path = router.state.location.pathname;
+  const location = router.state.location;
   client.clear();
-  return path;
+  return location;
 }
 
-async function mountRoute(url: string) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+async function loadPath(url: string, responses: Record<string, unknown>, statuses: Record<string, number> = {}) {
+  return (await loadLocation(url, responses, statuses)).pathname;
+}
+
+async function mountRoute(url: string, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: [url] }),
@@ -231,12 +235,66 @@ test("#90: an emotion already in the loaded history does not replay an expressio
   }
 });
 
-test("t.setup: create classroom → add an AI topic → start the activity", async () => {
+test("#185: a signed-in teacher creates a classroom inline from the index and lands on its page", async () => {
+  const created: Array<{ path: string; body: unknown }> = [];
+  let createdRoom = false;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (path === "/api/classrooms" && init?.method === "POST") {
+        created.push({ path, body: JSON.parse(String(init.body)) });
+        createdRoom = true;
+        return new Response(
+          JSON.stringify({ classroomId: "class-9", code: "code999", url: "http://localhost/join/code999" }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const room = {
+        id: "class-9",
+        name: "My class",
+        role: "teacher",
+        teacherName: "Teacher",
+        memberCount: 1,
+        code: "code999",
+        url: "http://localhost/join/code999",
+        current: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      };
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
+        "/api/classrooms": createdRoom ? [room] : [],
+        "/api/classrooms/class-9/activities": { items: [], nextCursor: null },
+        "/api/classrooms/class-9/topics": [],
+        "/api/config": { reportAxes: "ai" },
+        "/api/topics": [],
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/classrooms");
+  try {
+    fireEvent.click(await screen.findByRole("button", { name: "New class" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Classroom name" }), {
+      target: { value: "My class" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create classroom" }));
+    expect(await screen.findByRole("heading", { name: "My class" })).toBeTruthy();
+    expect(created.map((call) => call.body)).toEqual([{ name: "My class" }]);
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#185: the classroom page covers the retired wizard flow: AI topic → start the activity", async () => {
   const generatedTopic = {
     id: "gen_123_0",
     title: "Generated topic",
     statement: "A generated dilemma",
     prompts: ["Why?"],
+    axes: [],
   };
   const persisted = { ...generatedTopic, id: "topic-persisted", classroomId: "class-9" };
   const activity = {
@@ -257,12 +315,31 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
       const topicAdded = calls.some((call) => call.path === "/api/classrooms/class-9/topics");
       const responses: Record<string, unknown> = {
         "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
-        "/api/topics": [topic],
+        "/api/config": { reportAxes: "ai" },
+        "/api/topics": [],
         "/api/topics/generate": [generatedTopic],
-        "/api/classrooms": { classroomId: "class-9", code: "code999", url: "http://localhost/join/code999" },
+        "/api/classrooms": [
+          {
+            id: "class-9",
+            name: "Class 9",
+            role: "teacher",
+            teacherName: "Teacher",
+            memberCount: 3,
+            code: "code999",
+            url: "http://localhost/join/code999",
+            current: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+        "/api/classrooms/class-9/activities": { items: [], nextCursor: null },
         "/api/classrooms/class-9/topics": topicAdded ? [persisted] : [],
-        "/api/classrooms/class-9/activities": activity,
       };
+      if (init?.method === "POST" && path === "/api/classrooms/class-9/activities") {
+        return new Response(JSON.stringify(activity), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
       return new Response(JSON.stringify(responses[path]), {
         status: init?.method === "POST" && path !== "/api/topics/generate" ? 201 : 200,
@@ -270,34 +347,31 @@ test("t.setup: create classroom → add an AI topic → start the activity", asy
       });
     }),
   );
-  const dispose = await mountRoute("/t/setup");
+  const dispose = await mountRoute("/classrooms/class-9");
   try {
-    fireEvent.change(await screen.findByRole("textbox", { name: "Classroom name" }), {
-      target: { value: "My class" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Create classroom" }));
-    await screen.findByText(/Classroom created/);
-
     fireEvent.click(await screen.findByRole("tab", { name: "AI generate" }));
     const direction = await screen.findByPlaceholderText("Topic direction");
     fireEvent.change(direction, { target: { value: "justice" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Add to topics" }));
-
     fireEvent.click(await screen.findByRole("button", { name: /Generated topic/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
-    await screen.findByText("Activity ready");
+    fireEvent.click(screen.getByRole("button", { name: "Add to topics" }));
+
+    const startSection = screen.getByRole("button", { name: "Start activity" }).closest("section");
+    expect(startSection).not.toBeNull();
+    const activitySection = within(startSection as HTMLElement);
+    fireEvent.click(await activitySection.findByRole("button", { name: /Generated topic/ }));
+    fireEvent.click(activitySection.getByRole("button", { name: "Start activity" }));
+    await waitFor(() => expect(calls.length).toBe(2));
 
     expect(calls.map((call) => call.path)).toEqual([
-      "/api/classrooms",
       "/api/classrooms/class-9/topics",
       "/api/classrooms/class-9/activities",
     ]);
-    expect(calls[0].body).toEqual({ name: "My class" });
-    expect(calls[1].body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
-    expect(calls[2].body).toMatchObject({ topicId: "topic-persisted", mode: "live" });
+    expect(calls[0].body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
+    expect(calls[1].body).toMatchObject({ topicId: "topic-persisted", mode: "live", reportAxes: "ai" });
   } finally {
     dispose();
+    vi.unstubAllGlobals();
   }
 });
 
@@ -372,6 +446,44 @@ test("join error surfaces the code-specific message (ApiError from @/api, not sh
 test("#181: a failing identity check on /home redirects to login instead of erroring", async () => {
   const path = await loadPath("/home", { "/api/me": { message: "壞了", code: "internal_error" } }, { "/api/me": 500 });
   expect(path).toBe("/login");
+});
+
+test("the home page lists the signed-in user's own chats next to their classrooms", async () => {
+  const responses: Record<string, unknown> = {
+    "/api/me": { id: "user-1", name: "Rui", isAdmin: false },
+    "/api/classrooms": [],
+    "/api/solo/threads": [
+      {
+        id: "chat-2",
+        title: "What is courage?",
+        createdAt: "2026-11-02T00:00:00.000Z",
+        updatedAt: "2026-11-03T00:00:00.000Z",
+      },
+      {
+        id: "chat-1",
+        title: "Is lying ever right?",
+        createdAt: "2026-11-01T00:00:00.000Z",
+        updatedAt: "2026-11-01T00:00:00.000Z",
+      },
+    ],
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input instanceof Request ? input.url : input), "http://localhost").pathname;
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/home");
+  try {
+    const recent = await screen.findByRole("link", { name: /Is lying ever right\?/ });
+    expect(recent.getAttribute("href")).toBe("/chat/chat-1");
+    expect(screen.getAllByText("What is courage?")).toHaveLength(2);
+    expect(screen.getByText("2")).toBeTruthy();
+  } finally {
+    dispose();
+  }
 });
 
 function stubStoaObservers() {
@@ -454,6 +566,68 @@ test("#178: an unconfigured probe disables the buttons and a failed feed hides t
     expect(await screen.findByRole("button", { name: "Sign in with Google · Not configured" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Sign in with Facebook · Not configured" })).toBeTruthy();
     await waitFor(() => expect(screen.queryByText("Announcements")).toBeNull());
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+function stubLoginPage(login?: { status: number; code: string }) {
+  stubStoaObservers();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (path === "/api/auth/login" && login) {
+        return new Response(JSON.stringify({ message: login.code, code: login.code }), {
+          status: login.status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const responses: Record<string, unknown> = {
+        "/api/me": null,
+        "/api/auth/providers": { providers: [] },
+        "/api/notifications": { items: [], unread: null },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+}
+
+test.each([
+  ["account_disabled", "This account has been disabled. Please contact an administrator."],
+  ["oauth_state_invalid", "The sign-in timed out. Please try signing in again."],
+  ["oauth_email_unverified", "The email on this third-party account is not verified. Verify it, then sign in again."],
+  ["oauth_failed", "Third-party sign-in failed. Please try again."],
+])("#317: returning to /login with error=%s explains the reason", async (code, message) => {
+  stubLoginPage();
+  const dispose = await mountRoute(`/login?error=${code}`);
+  try {
+    expect((await screen.findByRole("alert")).textContent).toBe(message);
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test.each([
+  [403, "account_disabled", "This account has been disabled. Please contact an administrator."],
+  [429, "rate_limited", "Too many attempts. Please try again later."],
+  [401, "unauthorized", "Wrong email or password."],
+  [500, "internal_error", "Something went wrong"],
+])("#317: a password sign-in rejected with %i %s explains the reason", async (status, code, message) => {
+  stubLoginPage({ status, code });
+  const dispose = await mountRoute("/login");
+  try {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Email" }), { target: { value: "a@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password123" } });
+    const submit = screen
+      .getAllByRole("button", { name: "Sign in" })
+      .find((button) => button.getAttribute("type") === "submit");
+    if (!submit) throw new Error("submit button missing");
+    fireEvent.click(submit);
+    expect((await screen.findByRole("alert")).textContent).toBe(message);
   } finally {
     dispose();
     vi.unstubAllGlobals();
@@ -689,8 +863,22 @@ test("F01c: a signed-in join posts without a name", async () => {
 });
 
 function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<Response> | Response) {
-  const topicA = { id: "topic-a", classroomId: "class-1", title: "Topic A", statement: "Statement A", prompts: [] };
-  const topicB = { id: "topic-b", classroomId: "class-1", title: "Topic B", statement: "Statement B", prompts: [] };
+  const topicA = {
+    id: "topic-a",
+    classroomId: "class-1",
+    title: "Topic A",
+    statement: "Statement A",
+    prompts: [],
+    axes: [],
+  };
+  const topicB = {
+    id: "topic-b",
+    classroomId: "class-1",
+    title: "Topic B",
+    statement: "Statement B",
+    prompts: [],
+    axes: [],
+  };
   let current = {
     activityId: "activity-a",
     topicId: topicA.id,
@@ -698,6 +886,19 @@ function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<R
     topicStatement: topicA.statement,
     finished: false,
   };
+  let activities = [
+    {
+      id: "activity-a",
+      mode: "live",
+      topicTitle: topicA.title,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      finishedAt: null,
+    },
+  ];
+  class TestSocket extends EventTarget {
+    close() {}
+  }
+  vi.stubGlobal("WebSocket", TestSocket);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -708,6 +909,16 @@ function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<R
       if (path === "/api/classrooms") return json([{ ...roomSummary("teacher"), current }]);
       if (path === "/api/classrooms/class-1/topics") return json([topicA, topicB]);
       if (path === "/api/topics") return json([]);
+      if (path === "/api/config") return json({ reportAxes: "ai" });
+      if (path === "/api/classrooms/class-1/members") {
+        return json({ items: [], nextCursor: null, teacher: { id: "teacher-1", name: "Teacher" } });
+      }
+      if (path === "/api/classrooms/class-1/invites" && (!init?.method || init.method === "GET")) {
+        return json({ items: [], nextCursor: null });
+      }
+      if (path === "/api/classrooms/class-1/activities" && (!init?.method || init.method === "GET")) {
+        return json({ items: activities, nextCursor: null });
+      }
       if (path === "/api/classrooms/class-1/activities" && init?.method === "POST") {
         current = {
           activityId: "activity-b",
@@ -716,6 +927,16 @@ function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<R
           topicStatement: topicB.statement,
           finished: false,
         };
+        activities = [
+          {
+            id: "activity-b",
+            mode: "live",
+            topicTitle: topicB.title,
+            createdAt: "2026-01-02T00:00:00.000Z",
+            finishedAt: null,
+          },
+          ...activities,
+        ];
         return json(
           {
             classroomId: "class-1",
@@ -727,8 +948,11 @@ function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<R
           201,
         );
       }
-      const inviteMatch = path.match(/^\/api\/activities\/([^/]+)\/invites$/);
-      if (inviteMatch?.[1] && init?.method === "POST") return await onInvite(inviteMatch[1]);
+      if (path === "/api/classrooms/class-1/invites" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { activityId?: string };
+        if (!body.activityId) throw new Error("Expected activityId in classroom invite payload");
+        return await onInvite(body.activityId);
+      }
       throw new Error(`Unexpected request: ${path}`);
     }),
   );
@@ -741,28 +965,44 @@ test("#314: starting a new live activity on the classroom page resets the activi
     const token = activityId === "activity-a" ? "tok-a" : "tok-b";
     return new Response(
       JSON.stringify({
-        token,
+        id: `iv_${token}`,
+        classroomId: "class-1",
         activityId,
-        url: `/join/a/${token}`,
+        scope: "activity_guest",
+        token,
+        url: `/join/i/${token}`,
         createdAt: "2026-01-01T00:00:00.000Z",
-        expiresAt: null,
+        expiresAt: "2026-12-01T00:00:00.000Z",
+        revokedAt: null,
       }),
-      { headers: { "Content-Type": "application/json" } },
+      { status: 201, headers: { "Content-Type": "application/json" } },
     );
   });
-  const dispose = await mountRoute("/classrooms/class-1");
+  const dispose = await mountRoute("/classrooms/class-1?tab=members");
   try {
-    expect(await screen.findByRole("heading", { name: "Topic A" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Create an invite link" }));
-    expect(await screen.findByText(/\/join\/a\/tok-a/)).toBeTruthy();
+    const scope = await screen.findByLabelText("Invitation type");
+    fireEvent.change(scope, { target: { value: "activity_guest" } });
+    const create = screen.getByRole("button", { name: "Create an invite link" });
+    await waitFor(() => expect(create).toHaveProperty("disabled", false));
+    fireEvent.click(create);
+    expect(await screen.findByText(/\/join\/i\/tok-a/)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /Topic B/ }));
+    fireEvent.click(screen.getByRole("link", { name: "Topics" }));
+    expect(await screen.findByRole("heading", { name: "Topic A" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /Topic B/ }));
     fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
     expect(await screen.findByRole("heading", { name: "Topic B" })).toBeTruthy();
 
-    expect(screen.queryByText(/\/join\/a\/tok-a/)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Create an invite link" }));
-    expect(await screen.findByText(/\/join\/a\/tok-b/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("link", { name: "Members" }));
+    fireEvent.change(await screen.findByLabelText("Invitation type"), { target: { value: "activity_guest" } });
+    const nextCreate = screen.getByRole("button", { name: "Create an invite link" });
+    await waitFor(() => expect(nextCreate).toHaveProperty("disabled", false));
+    expect(screen.queryByText(/\/join\/i\/tok-a/)).toBeNull();
+    fireEvent.click(nextCreate);
+    expect(await screen.findByText(/\/join\/i\/tok-b/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Activity"), { target: { value: "activity-a" } });
+    expect(screen.queryByText(/\/join\/i\/tok-b/)).toBeNull();
     expect(inviteCalls).toEqual(["activity-a", "activity-b"]);
   } finally {
     dispose();
@@ -778,35 +1018,163 @@ test("#314: an in-flight invite creation for the previous activity does not popu
       pending.resolve = resolve;
     });
   });
-  const dispose = await mountRoute("/classrooms/class-1");
+  const dispose = await mountRoute("/classrooms/class-1?tab=members");
   try {
-    expect(await screen.findByRole("heading", { name: "Topic A" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Create an invite link" }));
+    fireEvent.change(await screen.findByLabelText("Invitation type"), { target: { value: "activity_guest" } });
+    const create = screen.getByRole("button", { name: "Create an invite link" });
+    await waitFor(() => expect(create).toHaveProperty("disabled", false));
+    fireEvent.click(create);
     await waitFor(() => expect(pending.resolve).not.toBeNull());
 
-    fireEvent.click(screen.getByRole("button", { name: /Topic B/ }));
+    fireEvent.click(screen.getByRole("link", { name: "Topics" }));
+    expect(await screen.findByRole("heading", { name: "Topic A" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /Topic B/ }));
     fireEvent.click(screen.getByRole("button", { name: "Start activity" }));
     expect(await screen.findByRole("heading", { name: "Topic B" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("link", { name: "Members" }));
+    fireEvent.change(await screen.findByLabelText("Invitation type"), { target: { value: "activity_guest" } });
+    const nextCreate = screen.getByRole("button", { name: "Create an invite link" });
+    await waitFor(() => expect(nextCreate).toHaveProperty("disabled", false));
 
     pending.resolve?.(
       new Response(
         JSON.stringify({
-          token: "tok-a",
+          id: "iv_tok-a",
+          classroomId: "class-1",
           activityId: "activity-a",
-          url: "/join/a/tok-a",
+          scope: "activity_guest",
+          token: "tok-a",
+          url: "/join/i/tok-a",
           createdAt: "2026-01-01T00:00:00.000Z",
-          expiresAt: null,
+          expiresAt: "2026-12-01T00:00:00.000Z",
+          revokedAt: null,
         }),
-        { headers: { "Content-Type": "application/json" } },
+        { status: 201, headers: { "Content-Type": "application/json" } },
       ),
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(screen.queryByText(/\/join\/a\/tok-a/)).toBeNull();
-    expect(screen.getByRole("button", { name: "Create an invite link" })).toHaveProperty("disabled", false);
+    expect(screen.queryByText(/\/join\/i\/tok-a/)).toBeNull();
+    expect(nextCreate).toHaveProperty("disabled", false);
   } finally {
     dispose();
     vi.unstubAllGlobals();
+  }
+});
+
+test("#182: prioritizes flags, pages a large roster, and searches all students", async () => {
+  const user = userEvent.setup();
+  const asOf = "2026-11-23T01:00:00.000Z";
+  const students = Array.from({ length: 1000 }, (_, index) => ({
+    id: String(index),
+    name: `Student ${String(index).padStart(4, "0")}`,
+    status: index === 999 ? "active" : "not_started",
+    rounds: index === 999 ? 2 : 0,
+    lastActiveAt: index === 999 ? asOf : null,
+    flags: index === 999 ? [{ id: "1", type: "coding" }] : [],
+  }));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
+        "/api/activities/activity-1": liveActivity,
+        "/api/classrooms": [roomSummary("teacher")],
+        "/api/activities/activity-1/live": { activityId: "activity-1", asOf, finishedAt: null, students },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return Response.json(responses[path]);
+    }),
+  );
+  const dispose = await mountRoute("/t/live/activity-1");
+  try {
+    const table = await screen.findByRole("table", { name: "Live student roster" });
+    const firstPage = within(table).getAllByRole("row");
+    expect(firstPage).toHaveLength(51);
+    expect(firstPage[1].textContent).toContain("Student 0999");
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    expect(within(table).queryByText("Student 0999")).toBeNull();
+    await user.type(screen.getByRole("searchbox", { name: "Search students" }), "0842");
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    expect(within(table).getByText("Student 0842")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Finish & view report" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "End this activity?" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test("#182: announces only new flags and hides the roster after permission is revoked", async () => {
+  const user = userEvent.setup();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } });
+  const options = activityLiveOptions("activity-1");
+  const asOf = "2026-11-23T01:00:00.000Z";
+  let flag = "1";
+  let responseStatus = 200;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (path === "/api/activities/activity-1/live" && responseStatus !== 200) {
+        const code = responseStatus === 401 ? "unauthorized" : responseStatus === 403 ? "forbidden" : "internal_error";
+        return Response.json({ code }, { status: responseStatus });
+      }
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
+        "/api/activities/activity-1": liveActivity,
+        "/api/classrooms": [roomSummary("teacher")],
+        "/api/activities/activity-1/live": {
+          activityId: "activity-1",
+          asOf,
+          finishedAt: null,
+          students: [
+            {
+              id: "student",
+              name: "Student",
+              status: "active",
+              rounds: 1,
+              lastActiveAt: asOf,
+              flags: [{ id: flag, type: "coding" }],
+            },
+          ],
+        },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return Response.json(responses[path]);
+    }),
+  );
+  const dispose = await mountRoute("/t/live/activity-1", client);
+  try {
+    expect(await screen.findByRole("rowheader", { name: "Student" })).toBeTruthy();
+    expect(screen.queryByText("New flags: 1")).toBeNull();
+    flag = "2";
+    await act(() => client.refetchQueries({ queryKey: options.queryKey }));
+    expect(await screen.findByText("New flags: 1")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    await act(() => client.refetchQueries({ queryKey: options.queryKey }));
+    expect(screen.queryByText("New flags: 1")).toBeNull();
+    responseStatus = 500;
+    await act(() => client.refetchQueries({ queryKey: options.queryKey }));
+    expect(await screen.findByText(/Updates unavailable/)).toBeTruthy();
+    expect(screen.getByRole("rowheader", { name: "Student" })).toBeTruthy();
+    responseStatus = 401;
+    await act(() => client.refetchQueries({ queryKey: options.queryKey }));
+    const expiredAlert = await screen.findByRole("alert");
+    expect(expiredAlert.textContent).toContain("Your session has expired");
+    expect(within(expiredAlert).getByRole("link", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByRole("rowheader", { name: "Student" })).toBeNull();
+    responseStatus = 403;
+    await act(() => client.refetchQueries({ queryKey: options.queryKey }));
+    const forbiddenAlert = await screen.findByRole("alert");
+    expect(forbiddenAlert.textContent).toContain("You can’t view the roster for this activity.");
+    expect(within(forbiddenAlert).queryByRole("link", { name: "Sign in" })).toBeNull();
+    expect(screen.queryByRole("rowheader", { name: "Student" })).toBeNull();
+  } finally {
+    dispose();
   }
 });
 
@@ -996,6 +1364,7 @@ test("#316: a loaded report does not fetch activity or classroom lists for the f
           pseudonym: "Student",
           analysis: null,
           indicators: null,
+          engagement: null,
           violations: [],
           positions: [],
         });
@@ -1009,5 +1378,373 @@ test("#316: a loaded report does not fetch activity or classroom lists for the f
     expect(screen.getByText(topic.title)).toBeTruthy();
   } finally {
     dispose();
+  }
+});
+
+const engagementFixture = {
+  substance: { level: 2, turns: [1, 3], evidence: "Gives short reasons of their own" },
+  uptake: { level: 0, turns: [], evidence: "" },
+  focus: { level: 3, turns: [2], evidence: "Every line is about the topic" },
+};
+
+function stubTeacherReport(visibility: { classReport: boolean; student: boolean }, saveFails = false) {
+  const puts: unknown[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const json = (body: unknown) =>
+        new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+      if (path === "/api/me") return json({ id: "teacher-1", name: "Teacher", isAdmin: false });
+      if (path === "/api/activities/activity-1/engagement-visibility" && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body));
+        puts.push(body);
+        if (saveFails) {
+          return new Response(JSON.stringify({ error: { code: "internal", message: "boom" } }), { status: 500 });
+        }
+        return json(body);
+      }
+      if (path === "/api/activities/activity-1/report") {
+        return json({
+          topicTitle: topic.title,
+          classReport: null,
+          engagementVisibility: visibility,
+          students: [
+            {
+              participantId: "p1",
+              participantName: "Ana",
+              pseudonym: "S1",
+              analysis: null,
+              indicators: null,
+              engagement: engagementFixture,
+              violations: [],
+              positions: [],
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+  return puts;
+}
+
+test("#267: the teacher toggles engagement sharing; both options start off", async () => {
+  const puts = stubTeacherReport({ classReport: false, student: false });
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    const own = await screen.findByRole("checkbox", { name: "Each student's own report" });
+    const group = screen.getByRole("checkbox", { name: "The group report" });
+    expect((own as HTMLInputElement).checked).toBe(false);
+    expect((group as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByRole("table")).toBeNull();
+    fireEvent.click(own);
+    await waitFor(() => expect(puts).toEqual([{ classReport: false, student: true }]));
+    await waitFor(() => expect((own as HTMLInputElement).checked).toBe(true));
+  } finally {
+    dispose();
+  }
+});
+
+test("#267: a failed save shows an alert and the checkbox goes back to the stored value", async () => {
+  const puts = stubTeacherReport({ classReport: false, student: false }, true);
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    const group = await screen.findByRole("checkbox", { name: "The group report" });
+    fireEvent.click(group);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(puts).toEqual([{ classReport: true, student: false }]);
+    expect((group as HTMLInputElement).checked).toBe(false);
+  } finally {
+    dispose();
+  }
+});
+
+test("#267: the group view lists engagement by pseudonym only when shared there", async () => {
+  stubTeacherReport({ classReport: true, student: false });
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    const table = await screen.findByRole("table");
+    expect(within(table).getByRole("rowheader", { name: "S1" })).toBeTruthy();
+    expect(within(table).queryByText("Ana")).toBeNull();
+    expect(
+      within(table)
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["2/3", "0/3", "3/3"]);
+  } finally {
+    dispose();
+  }
+});
+
+test("#267: the teacher's individual view always shows the student's engagement with lines", async () => {
+  stubTeacherReport({ classReport: false, student: false });
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    fireEvent.click(await screen.findByRole("tab", { name: "Individual" }));
+    expect(await screen.findByRole("heading", { name: "Engagement" })).toBeTruthy();
+    expect(screen.getByText("Gives short reasons of their own")).toBeTruthy();
+    expect(screen.getByText("Line 1、3")).toBeTruthy();
+    expect(screen.getByText("Not seen in this conversation")).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
+
+test.each([
+  [engagementFixture, true],
+  [null, false],
+])("#267: a student's own report shows engagement only when the server sends it", async (engagement, shown) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const json = (body: unknown) =>
+        new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+      if (path === "/api/me") return json({ id: "student-1", name: "Student", isAdmin: false });
+      if (path === "/api/activities/activity-1/report") {
+        return json({
+          topicTitle: topic.title,
+          participantName: "Student",
+          pseudonym: "S1",
+          analysis: null,
+          indicators: null,
+          engagement,
+          violations: [],
+          positions: [],
+        });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+  const dispose = await mountRoute("/report/activity-1");
+  try {
+    expect(await screen.findByRole("heading", { name: "Class report" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Engagement" }) !== null).toBe(shown);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
+test.each([
+  "/report/activity-1",
+  "/classrooms",
+  "/classrooms/room-1?tab=members",
+  "/settings?section=keys",
+  "/admin",
+  "/admin?tab=users",
+  "/t/live/activity-1",
+])("#318: a signed-out visit to %s goes to login carrying the address to return to", async (url) => {
+  const location = await loadLocation(url, { "/api/me": null });
+  expect(location.pathname).toBe("/login");
+  expect(location.search).toMatchObject({ next: url });
+});
+
+test("#185: the console redirects non-admins away from /admin", async () => {
+  const path = await loadPath("/admin", { "/api/me": { id: "student-1", name: "Student", isAdmin: false } });
+  expect(path).toBe("/classrooms");
+});
+
+test("#185: the overview tab shows account-level counts", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "admin-1", name: "Admin", isAdmin: true },
+        "/api/admin/overview": { users: 12, classrooms: 3, runningActivities: 2 },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/admin");
+  try {
+    const statOf = (label: string) => {
+      const card = screen.getByText(label).closest("[data-stat]") as HTMLElement;
+      return within(card).getByText(/^[0-9]+$/).textContent;
+    };
+    expect(await screen.findByText("Registered accounts")).toBeTruthy();
+    expect(statOf("Registered accounts")).toBe("12");
+    expect(statOf("Classrooms")).toBe("3");
+    expect(statOf("Activities running")).toBe("2");
+    expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+const adminUserFixture = {
+  id: "u-a",
+  name: "Lin",
+  email: "lin@socrates.tw",
+  isAdmin: false,
+  disabled: false,
+  createdAt: "2026-01-01T00:00:00.000Z",
+};
+
+test("#185: the users tab creates an account and disables one behind a confirmation", async () => {
+  const calls: Array<{ path: string; body: unknown }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (init?.method === "POST" || init?.method === "PATCH") {
+        calls.push({ path, body: JSON.parse(String(init.body)) });
+      }
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "admin-1", name: "Admin", isAdmin: true },
+        "/api/admin/users": [adminUserFixture],
+      };
+      if (init?.method === "POST" && path === "/api/admin/users") {
+        return new Response(
+          JSON.stringify({ ...adminUserFixture, id: "u-new", name: "New User", email: "new@socrates.tw" }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (init?.method === "PATCH" && path === "/api/admin/users/u-a") {
+        return new Response(JSON.stringify({ ...adminUserFixture, disabled: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/admin?tab=users");
+  try {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Name" }), { target: { value: "New User" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "new@socrates.tw" } });
+    fireEvent.change(screen.getByLabelText("Initial password"), { target: { value: "abcdefgh" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByText("Created New User")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Disable" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Disable" }));
+    await waitFor(() => expect(calls.length).toBe(2));
+
+    expect(calls.map((call) => call.path)).toEqual(["/api/admin/users", "/api/admin/users/u-a"]);
+    expect(calls[0].body).toEqual({ name: "New User", email: "new@socrates.tw", password: "abcdefgh" });
+    expect(calls[1].body).toEqual({ disabled: true });
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#185: the notify tab posts an announcement to the feed", async () => {
+  const calls: Array<{ path: string; body: unknown }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (init?.method === "POST") calls.push({ path, body: JSON.parse(String(init.body)) });
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "admin-1", name: "Admin", isAdmin: true },
+        "/api/notifications": { items: [], unread: 0 },
+      };
+      if (init?.method === "POST" && path === "/api/admin/notifications") {
+        return new Response(
+          JSON.stringify({ id: "n_1", title: "Maintenance", body: "Tonight", createdAt: "2026-01-01T00:00:00.000Z" }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/admin?tab=notify");
+  try {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Title" }), { target: { value: "Maintenance" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Message (optional)" }), {
+      target: { value: "Tonight" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send notice" }));
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(calls[0]).toMatchObject({
+      path: "/api/admin/notifications",
+      body: { title: "Maintenance", body: "Tonight" },
+    });
+    expect((screen.getByRole("textbox", { name: "Title" }) as HTMLInputElement).value).toBe("");
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#318: signing in with a return address lands back on that page", async () => {
+  stubStoaObservers();
+  let signedIn = false;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const user = { id: "u1", name: "Teacher", isAdmin: false };
+      if (path === "/api/auth/login" && init?.method === "POST") signedIn = true;
+      const responses: Record<string, unknown> = {
+        "/api/me": signedIn ? user : null,
+        "/api/auth/login": user,
+        "/api/auth/providers": { providers: [] },
+        "/api/notifications": { items: [], unread: null },
+        "/api/classrooms": [],
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ["/classrooms"] }),
+    context: { queryClient: client },
+  });
+  await router.load();
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  try {
+    expect(router.state.location.pathname).toBe("/login");
+    fireEvent.change(await screen.findByRole("textbox", { name: "Email" }), { target: { value: "a@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password123" } });
+    const submit = screen
+      .getAllByRole("button", { name: "Sign in" })
+      .find((button) => button.getAttribute("type") === "submit");
+    if (!submit) throw new Error("submit button missing");
+    fireEvent.click(submit);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/classrooms"));
+  } finally {
+    cleanup();
+    client.clear();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#318: the join page sends account holders to login with the invite address to return to", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const responses: Record<string, unknown> = {
+        "/api/me": null,
+        "/api/join/abcdef": { code: "abcdef", classroomName: "Class", topic },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/join/abcdef?draft=why%20so");
+  try {
+    await screen.findByRole("heading", { name: "Invitation topic" });
+    const link = screen.getAllByRole("link").find((item) => item.getAttribute("href")?.startsWith("/login"));
+    const next = new URL(link?.getAttribute("href") ?? "", "http://localhost").searchParams.get("next");
+    expect(next).toBe("/join/abcdef?draft=why%20so");
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
   }
 });

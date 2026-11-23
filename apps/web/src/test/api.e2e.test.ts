@@ -142,6 +142,15 @@ describe("httpApi contract (browser-side actual code)", () => {
     expect(started.activityId).toBe("a_1");
     expect(handler.mock.calls[4][0]).toBe("/api/classrooms/c_1/activities");
     expect(JSON.parse(handler.mock.calls[4][1].body as string)).toEqual({ topicId: "t_1", mode: "live" });
+    const topicAxes = [{ name: "Justice", left: "Rules", right: "Outcomes" }];
+    await httpApi.startActivity("c_1", "t_1", "live", "teacher", topicAxes);
+    expect(handler.mock.calls[5][0]).toBe("/api/classrooms/c_1/activities");
+    expect(JSON.parse(handler.mock.calls[5][1].body as string)).toEqual({
+      topicId: "t_1",
+      mode: "live",
+      reportAxes: "teacher",
+      topicAxes,
+    });
   });
 
   test("finishActivity: POST 204 with no body", async () => {
@@ -150,6 +159,18 @@ describe("httpApi contract (browser-side actual code)", () => {
     const [path, init] = handler.mock.calls[0];
     expect(path).toBe("/api/activities/a_1/finish");
     expect(init.method).toBe("POST");
+  });
+
+  test("setEngagementVisibility: PUT both flags and read back the saved visibility", async () => {
+    handler.mockReturnValue(json({ classReport: true, student: false }));
+    await expect(httpApi.setEngagementVisibility("a_1", { classReport: true, student: false })).resolves.toEqual({
+      classReport: true,
+      student: false,
+    });
+    const [path, init] = handler.mock.calls[0];
+    expect(path).toBe("/api/activities/a_1/engagement-visibility");
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(init.body as string)).toEqual({ classReport: true, student: false });
   });
 
   test("login and logout announce the session change for cross-tab sync", async () => {

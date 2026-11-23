@@ -34,6 +34,8 @@ flowchart TD
         HONO --> VOICE["voice：whisper STT／melotts TTS（AI binding）"]
         HONO --> LOOKUP["lookup：runProfile(lookup)"]
         HONO --> GEN["topics/generate：runProfile(topic-gen)"]
+        HONO -->|"WebSocket upgrade／commit 後 RPC"| EVENTS["ClassroomEvents DO（classroomId）"]
+        EVENTS -->|"驗證當前 membership／session"| DB
         HONO --> FINISH["finish → ReportRunner DO（alarm 驅動）"]
 
         AGENT -->|"thread-per-DO"| CHAT["Chat DO（do/chat.ts）"]
@@ -58,9 +60,13 @@ flowchart TD
 ```
 
 - TTS 保證路徑＝**server-side**（2026-11-04 決策）：預設 server-side，或 client `speechSynthesis` 先試、失敗/無 voice 時 fallback——#68 實作時定。原因：Firefox desktop 49+／Android 62+ 有 API（2026-11-04 查證 caniuse／MDN BCD）但 voices 全來自 OS、無 network voices——Linux 無 speech-dispatcher 時 `getVoices()` 為空、zh-TW voice 視 OS 而定，朗讀體驗不保證均一。server-side TTS candidate＝Workers AI（同 `AI` binding；model 的 ZDR／價格／zh-TW 待查證，見 providers.md 待辦）
-- 圖為 v3 target view：uploads/R2（#87）、教室社群 posts/announcements/calendar/discussions（#85/#89）、題庫分享（#86）、四階段 debate（#84）、EmotionSplitter（#90）已依 v3 移除
+- 圖為 v3 target view：uploads/R2（#87）、題庫分享（#86）、四階段 debate（#84）、EmotionSplitter（#90）已依 v3 移除
 
 非同步面：GitHub Actions 兩條 workflow（見 §8）；`cf previews deploy` 出 PR 預覽。
+
+教室社群以 D1 為資料來源。每間教室的 `ClassroomEvents` DO 用 WebSocket Hibernation API 管理連線，保存 session metadata 並將 D1 commit 後的事件推送至該班當下的成員。事件契約見 [API contract](./api-contract.md#42-教室事件324)。
+
+教室行事曆使用獨立的 `classroom_calendar_events` D1 表。排程可以先關聯議題，`activities` 在老師確認開始時才建立，並承載 participant、transcript 與 report 的關係。D1 batch 檢查教室目前的活動與排程狀態，再一起寫入 live activity、排程關聯與目前活動。這保留排程可先改期的特性，並讓開始後的同一筆事件提供對話及報告入口。參考 Discord Scheduled Events 的手動開始流程及 Moodle 的 course event。REST 契約見 [教室行事曆](./api-contract.md#43-教室行事曆348)。
 
 ## 2. Monorepo 目錄樹
 
@@ -90,8 +96,10 @@ socrates-classroom/
 │       │   │   ├── config.gen.ts       # build-time 產出（scripts/gen-config.mjs）
 │       │   │   ├── ledger.ts           # (provider, model, credential) 記帳＋cooldown
 │       │   │   └── router.ts           # traffic class 鏈走訪（teacher legs 前置合併）
-│       │   ├── prompts/            # LLM 組的 prompt 資產（build-time ?raw）
-│       │   │   ├── socrates.md（＋.en／.es）/ class-report.md / class-report-axes.md / student-report.md / student-indicators.md / assemble.ts
+│       │   ├── prompts/            # LLM 組的 prompt 資產（build-time ?raw）；規範見 #161 留言〈Prompt 規範〉
+│       │   │   ├── socrates.md（＋.en／.es）/ btw.md / lookup.md / topic-gen.md / class-report.md / class-report-axes.md / student-report.md / student-indicators.md / student-engagement.md
+│       │   │   ├── violation-classify.md / violation-classify-topic.md / emotion-classify.md  # Clef choice 題：第一段 instructions，其後每行 `- choice: criterion`（`pi/clef-prompt.ts` 解析）
+│       │   │   └── assemble.ts     # 輸入的外框（topicBlock／section／報告、lookup、topic-gen 輸入／web-content 外框／report_violation 回覆）
 │       │   ├── ws/                 # transport glue（protocol + sockets）
 │       │   ├── auth.ts / auth-crypto.ts  # session＋AES-GCM（byok.ts 併入）
 │       │   ├── db/d1.ts / http.ts / messages.ts / seed.ts / services/
@@ -111,7 +119,9 @@ socrates-classroom/
 
 ## 3. Worker 分層（apps/server）
 
-**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、`SEND_EMAIL`、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。
+**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、`SEND_EMAIL`、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。#161 已把 Clef 題目、web-content 外框、`report_violation` 回覆、lookup／topic-gen 的輸入收進 `prompts/`；報告 transcript 的行首（`renderTranscript`）與 websearch 工具的其他回傳文字仍在程式碼裡；tool 的 description 與參數說明跟著 tool 的程式碼。
+
+**topic 可見性（`services/topic-visibility.ts`）**：topic 的身份是 `(owner_id, classroom_id)` 二維狀態機——`(NULL, NULL)`＝system、`(uid, NULL)`＝personal、`(*, cid)`＝classroom。這份定義只存在一處（`topicScope`），對外兩個消費形狀：列表查詢走 `topicPoolSql`（scope 集合 → SQL fragment ＋ `$named` params）、單列授權走 `topicVisibleTo` ／ `copyableTopic`。四個呼叫點（`GET /topics`、`GET /classrooms/:id/topics`、`POST /topics/:id/copy` 的來源檢查、`topicForActivity`）都消費它，不各自重寫 WHERE；`tests/topic-visibility.test.ts` 以 truth table 鎖住狀態機，並斷言 SQL fragment 與 `topicVisibleTo` 選出的集合一致（#382）。
 
 **寄信（`SEND_EMAIL`，`send_email` binding）**：額度提醒信（#146）與密碼重設信（#230）共用，寄件人為 `ALERT_FROM_EMAIL`，模板在 `mail.ts`。Cloudflare Email Service 在 sending domain 完成 onboarding 之前，只能寄給帳號內已驗證的收件地址；寄給任意收件人需要 onboard sending domain，且需要 Workers Paid（[Send bindings](https://developers.cloudflare.com/email-service/configuration/send-bindings/)、[Pricing](https://developers.cloudflare.com/email-service/platform/pricing/)，2026-11-21 查證）。production 是否已滿足這兩項，repo 內無紀錄。
 
@@ -153,17 +163,20 @@ no queue：busy 時第二發被拒（`ConversationBusy` → error frame），不
 
 `finish` 觸發，alarm 驅動（crash-safe，attempts 上限 3）：
 
+`finish` 依活動建立時儲存的 `activities.report_axes` 選擇 report profile。`teacher` 把活動題目的軸交給 `startReport`，並以題目的軸數為上限。`ai` 與未記錄模式的舊活動走 `class-report`，由模型定軸。ReportRunner 確認 roster 為空時直接儲存 ready report，跳過模型呼叫。
+
 ```
 startReport → pending 標記 → alarm → generate：
   transcriptOf（AI：…/學生（n）：… 編號＋假名冪等）
   → Promise.all 平行 per-student studentReport（重試 2；語言＝老師的 users.lang，與 classReport 相同；引用的 turns 須是學生說過的行號，否則視同格式錯誤重試）
   → Promise.all 平行 per-student studentIndicators（六項思辨力指標，#255；與 studentReport 分開呼叫、各自失敗；重試與行號查核同 studentReport，另查 level 0 不附 turns、1–3 至少附一個；重試後仍失敗 → 該生 indicators＝null）
+  → Promise.all 平行 per-student studentEngagement（認真度三維度，#267；與 studentIndicators 是兩次呼叫，但共用同一套呼叫流程、行號查核與重試，各自失敗 → 該生 engagement＝null）
   → classReport（立場軸/落點/分群；落點由模型給 side＋strength，server 換算 end/at：left→low、right→high，at＝50∓10×strength，middle＝50）
     startReport 帶 axes（{count: 1–3, teacher: 老師的軸}）時改用 class-report-axes：老師的軸依序在前、由 server 填入名稱與兩端（模型交這些軸的落點與 why），模型補的軸寫完整、接在後面，總數不超過 count；老師軸的數量不對、總數超過 count、任一條軸的落點名單不是全班各一次（落點的意義見 api-contract.md §7），都視同格式錯誤；沒帶 axes 時與上一行相同
-  → persist（D1 reports：teacher_report=classReport、student_reports=analysis+indicators+violations-from-transcript）
+  → persist（D1 reports：teacher_report=classReport、student_reports=analysis+indicators+engagement+violations-from-transcript）
 ```
 
-模型呼叫經 `runProfile("student-report")`／`runProfile("student-indicators")`／`runProfile("class-report")`（帶 axes 時為 `class-report-axes`）（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片從 pi transcript 抽取（`/transcript` 端點，不落第二份儲存）。
+模型呼叫經 `runProfile("student-report")`／`runProfile("student-indicators")`／`runProfile("student-engagement")`／`runProfile("class-report")`（帶 axes 時為 `class-report-axes`）（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片從 pi transcript 抽取（`/transcript` 端點，不落第二份儲存）。
 
 ## 5. Gateway（apps/server/src/gateway/）
 
@@ -186,7 +199,8 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 
 ## 6. 資料層
 
-- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities（`migrations/`：001 init、002 capabilities、003 activity_participants、004 activity_invites、005 activity_mode、006 topic_classroom、007 user_identities（#124））。pi transcript 是對話與違規的唯一真相，無第二份儲存
+- **開活動的 transaction**：Worker 先確認題目權限與設軸 policy，再以同一個 D1 batch 寫入所有必要的變更。D1 回傳成功後才發送 classroom 事件。活動 API 的題目 snapshot 規則見 [api-contract.md §4.1](api-contract.md)。
+- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities／教室社群／settings（`migrations/`）。014 教室社群新增 `classroom_announcements`、`classroom_posts`、`classroom_content_requests` 與 `classroom_invites`；015（`015_topic_axes.sql`）為 `topics` 新增 `axes` 欄位並 backfill 系統題與 `copied_from` 複本（#159）；016（`016_settings.sql`）新增 `settings` key-value 表（deploy 後管理員可調整的執行期設定，未設定時 fallback 至 `providers.config.yaml`）與 `activities.report_axes`（開活動當下快照鎖定之設軸模式 `teacher`／`ai`，既有活動為 `NULL`）；018（`018_engagement_visibility.sql`）為 `activities` 新增 `engagement_to_class`／`engagement_to_student`（老師的認真度可見性勾選，預設 0，#267）。pi transcript 是對話與違規的唯一真相，無第二份儲存
 - **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 provider 鏈序（#82）
 - **DO SQLite**：只有 pi 自己的 `pi_*` 表，應用程式不讀寫——agent 狀態與產品資料分離（D2）
 - **保留政策**：AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容（judgment sink 只記 type/source）
@@ -294,7 +308,7 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ### 13.1 D9 judgment plane（one-shot gateway）
 
-v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78）、群體立場星圖（#79）、認真度——全部是 judgment plane 對 transcripts 的加工。generation plane 採集，judgment plane 加工；教學目標（C1/C2/S1/S2/A1/A2）的 proxy indicators 全部由 judgment 層量測。
+v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78）、群體立場星圖（#79）、認真度（#267，`student-engagement`）——全部是 judgment plane 對 transcripts 的加工。generation plane 採集，judgment plane 加工；教學目標（C1/C2/S1/S2/A1/A2）的 proxy indicators 全部由 judgment 層量測。
 
 - gateway＝**stateless function**（isolate 內直呼，不經 DO）：輸入＝transcript 片段＋prompt 題型；輸出＝structured choice／評分。題型：逐輪 violation choice（#71）、intent 分類（#76）、report 分析（#74）、表情 choice（#90 之後）
 - 逐輪 judgment 走 async：turn commit → enqueue（D10）→ judgment → violations 批次寫入 → publish 到 event layer → 面板；latency budget ≤30s，不擋對話主迴圈
@@ -330,7 +344,11 @@ v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78�
 
 ### 13.5 D13 event layer
 
-v3 設計為 ActivityEvents DO（SSE-in-DO＋ring buffer＋Last-Event-ID replay）；**已隨 web-next 退役**（SSE 對話改 Chat DO 的 WS hibernation，見 §4）。老師即時面板的資料源改道：#73 調查選擇輪詢 SQL 聚合（待拍板），無獨立 event DO。
+v3 的 ActivityEvents DO 已退役。對話改用 Chat DO 的 WebSocket hibernation（§4）。#73 即時面板採用 D1 read projection，Chat DO 的 root transcript 保持 source of truth。
+
+- Chat DO 在接受 live root input 前排定 durable Lifecycle job。Job 以歷史 entry ID 分頁讀取已 commit 的 `pi.user` 及 `app.violation`，涵蓋 agent tool 與 async classifier。只在摘要變更時 upsert D1。D1 成功後才推進 Chat DO 的 checkpoint。寫入失敗保留重試，較舊的 entry ID 不能覆蓋較新的 projection。
+- `activity_live_progress` 以 `(activity_id, participant_id)` 為 key。老師查詢時以 D1 的活動名單為主，透過 indexed join 讀取 projection。舊版未結束的活動由首次及後續 snapshot 查詢每次排定最多 8 個 participant 的 backfill。到 job 讀完既有資料前顯示 `unknown`。舊版已結束的活動沿用既有報告入口。
+- 首版使用 HTTP snapshot polling。以 100／1,000 人的本機 benchmark 評估 D1 與每活動一個 SQLite-backed DO。共用 D1 可直接 join 名單，沿用現有 binding。若多場活動的正式環境測試顯示共用 D1 寫入造成跨班影響，再評估按活動分片。API 形狀見 [即時面板契約](./api-contract.md#62-即時面板73)。
 
 ### 13.6 與 v3 實作的 gap（2026-11-06 web-next 重建後的狀態）
 
@@ -340,7 +358,7 @@ v3 設計為 ActivityEvents DO（SSE-in-DO＋ring buffer＋Last-Event-ID replay�
 | 2   | dialogue-save 同步寫 → Queues projection       | 未做（現為同步 batch，10k 前可接受）                       |
 | 3   | violations／usage event stream → Queues＋batch | 未做（judgment 走 entry＋D1）                              |
 | 4   | 報告生成 → Workflows 編排                      | 部分：ReportRunner DO alarm（crash-safe）；Workflows 待評  |
-| 5   | ActivityEvents → WS hibernation＋ring buffer   | 改道：#73 調查選輪詢 SQL 聚合（待拍板）；ring buffer 退役  |
+| 5   | ActivityEvents → WS hibernation＋ring buffer   | 改道：#73 採用 D1 projection 與 polling（§13.5）           |
 | 6   | pool.ts → gateway（config／ledger／cooldown）  | ✅ 已做（§5）；Coordinator DO 未建（ledger 在 isolate 內） |
 | 7   | agents 0.33＋pi 1.5                            | ✅ 已做                                                    |
 | 8   | AE data point＋cron rollup                     | 未做（#80/#81/#63，本輪不做）                              |

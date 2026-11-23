@@ -3,14 +3,16 @@ import {
   GenerateTopicsInputSchema,
   TopicCopyInputSchema,
   TopicCreateInputSchema,
-  LANG_NAMES,
   TopicGenSchema,
   ApiError,
+  type TopicDraft,
 } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
 import { fail, guardUser, langOf, newId, nowIso, rateLimit, requireUser, validateJson, type AppEnv } from "../http";
-import { classroomAccess, parsePrompts, type TopicRow } from "../services/members";
+import { classroomAccess, parsePrompts, topicCopyInsert, type TopicRow } from "../services/members";
+import { copyableTopic, topicPoolSql } from "../services/topic-visibility";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
+import { topicGenInput } from "../prompts/assemble";
 
 function mockTopics(direction: string) {
   return {
@@ -22,14 +24,23 @@ function mockTopics(direction: string) {
   };
 }
 
+function withGeneratedTopicIds(topics: Array<{ title: string; statement: string; prompts: string[] }>): TopicDraft[] {
+  return topics.map((topic, index) => ({
+    id: `gen_${Date.now()}_${index}`,
+    ...topic,
+    axes: [],
+  }));
+}
+
 export function topicsRoutes() {
   return new Hono<AppEnv>()
     .get("/topics", async (c) => {
       const user = requireUser(c);
+      const pool = topicPoolSql(["system", "personal"], { userId: user.id });
       const rows = await all<TopicRow>(
         c.env.DB,
-        "SELECT * FROM topics WHERE classroom_id IS NULL AND (owner_id IS NULL OR owner_id = $uid) ORDER BY created_at, id",
-        { uid: user.id },
+        `SELECT * FROM topics WHERE ${pool.sql} ORDER BY created_at, id`,
+        pool.params,
       );
       return c.json(rows.map(parsePrompts));
     })
@@ -38,32 +49,10 @@ export function topicsRoutes() {
       const input = c.req.valid("json");
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, input.classroomId, user);
       if (!isTeacher) fail(403, "forbidden");
-      const source = await one<TopicRow>(c.env.DB, "SELECT * FROM topics WHERE id = $id", { id: c.req.param("id") });
-      if (!source) fail(404, "not_found");
-      if (source.classroom_id === null) {
-        if (source.owner_id !== null && source.owner_id !== user.id) fail(404, "not_found");
-      } else {
-        const owner = await one<{ teacher_id: string }>(c.env.DB, "SELECT teacher_id FROM classrooms WHERE id = $id", {
-          id: source.classroom_id,
-        });
-        if (owner?.teacher_id !== user.id) fail(404, "not_found");
-      }
+      const source = await copyableTopic<TopicRow>(c.env.DB, c.req.param("id"), user.id);
       const id = newId("t_");
-      await run(
-        c.env.DB,
-        "INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, created_at) VALUES ($id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $at)",
-        {
-          id,
-          uid: user.id,
-          cid: classroom.id,
-          from: source.id,
-          title: source.title,
-          statement: source.statement,
-          summary: source.summary,
-          prompts: source.prompts,
-          at: nowIso(),
-        },
-      );
+      const copy = topicCopyInsert(source, { id, userId: user.id, classroomId: classroom.id, axes: input.axes });
+      await run(c.env.DB, copy.sql, copy.params);
       const row = await one<TopicRow>(c.env.DB, "SELECT * FROM topics WHERE id = $id", { id });
       if (!row) fail(500, "internal_error");
       return c.json(parsePrompts(row), 201);
@@ -74,7 +63,7 @@ export function topicsRoutes() {
       const id = newId("t_");
       await run(
         c.env.DB,
-        "INSERT INTO topics (id, owner_id, title, statement, summary, prompts, created_at) VALUES ($id, $uid, $title, $statement, $summary, $prompts, $at)",
+        "INSERT INTO topics (id, owner_id, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $title, $statement, $summary, $prompts, $axes, $at)",
         {
           id,
           uid: user.id,
@@ -82,6 +71,7 @@ export function topicsRoutes() {
           statement: input.statement,
           summary: input.summary ?? null,
           prompts: JSON.stringify(input.prompts),
+          axes: JSON.stringify(input.axes),
           at: nowIso(),
         },
       );
@@ -93,14 +83,9 @@ export function topicsRoutes() {
       const input = c.req.valid("json");
       requireUser(c);
       if (c.env.LLM_PROVIDER === "mock") {
-        return c.json(
-          mockTopics(input.direction).topics.map((topic, index) => ({
-            id: `gen_${Date.now()}_${index}`,
-            ...topic,
-          })),
-          200,
-          { "X-Socrates-Fallback": "mock" },
-        );
+        return c.json(withGeneratedTopicIds(mockTopics(input.direction).topics), 200, {
+          "X-Socrates-Fallback": "mock",
+        });
       }
       if (!c.env.AI) fail(502, "llm_unavailable");
       try {
@@ -110,17 +95,12 @@ export function topicsRoutes() {
           harness,
           runtime,
           "topic-gen",
-          `Direction: ${input.direction}\n\nWrite in ${LANG_NAMES[langOf(c)]}.`,
+          topicGenInput(input.direction, langOf(c)),
           await teacherLegs,
         );
         const parsed = TopicGenSchema.safeParse(JSON.parse(text));
         if (!parsed.success) throw new Error("schema_mismatch");
-        return c.json(
-          parsed.data.topics.map((topic, index) => ({
-            id: `gen_${Date.now()}_${index}`,
-            ...topic,
-          })),
-        );
+        return c.json(withGeneratedTopicIds(parsed.data.topics));
       } catch (error) {
         if (error instanceof ApiError) throw error;
         console.error("[topics/generate] failed", error instanceof Error ? error.name : typeof error);

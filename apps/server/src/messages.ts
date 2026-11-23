@@ -121,6 +121,16 @@ const M: Record<ErrorCode, Entry> = {
     en: "This password reset link is invalid or has expired. Please request a new one.",
     es: "Este enlace para restablecer la contraseña no es válido o ha caducado. Solicita uno nuevo.",
   },
+  topic_axes_required: {
+    zh: "這個題目還沒有價值軸，請先設定 1 到 3 條。",
+    en: "This topic has no value axes yet. Set 1 to 3 first.",
+    es: "Este tema aún no tiene ejes de valor. Define de 1 a 3 primero.",
+  },
+  report_axes_not_allowed: {
+    zh: "目前只允許另一種價值軸設定方式。",
+    en: "Only the other way of setting the value axes is allowed right now.",
+    es: "Ahora solo se permite la otra forma de definir los ejes de valor.",
+  },
 };
 
 export function localize(code: ErrorCode, lang: Lang, vars: Record<string, string | number> = {}): string {

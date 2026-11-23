@@ -9,6 +9,76 @@
 - 首頁漫畫故事線（`apps/web/src/routes/index.tsx`）綁定 `comic_1`～`comic_6` 旁白（合併 `comic_2_3`）、背景音樂、腳步聲與耳語環境音，以及 `HoldTurn` 長按雕像轉動音效，離開首頁時透過 `stopAllSounds()` 完整清理音軌
 - 全站按鈕點擊監聽與多語系 `<SoundToggleButton />`（`apps/web/src/components/AppShell.tsx`、`apps/web/src/i18n/index.ts`），支援 `toggle_on` / `toggle_off` 切換音與零延遲靜音
 
+## 2026-11-23 — 六角圖對接單人報告思辨力指標（`feat/78-thinking-hexagon`，#78）
+
+### Changed
+
+- `ThinkingHexagon` 與 `lib/thinking.ts` 改接 `TeacherReport.students[].indicators`／`StudentReport.indicators`（#255）：移除 `sampleThinking` 示意資料與提示列，`indicatorsToGoals` 直接將 `c1..a2` 轉成六條軸；`indicators` 為 `null` 時不顯示六角圖
+- 級數對齊後端 0–3 級（未觀察到／初步／部分／達成，三語 i18n），圖上改為四層同心框、右側方塊為三格，並顯示每項的 `evidence` 與 `turns`
+
+## 2026-11-23 — 教師報告加上學生認真度（`feat/267-engagement`，#267）
+
+### Added
+
+- `student-engagement` profile 與 `submit_student_engagement` 工具（`report-submit-engagement` extension，只裝在這條呼叫用的 registry）：逐生判斷實質發言／回應追問／切題，與思辨力指標分開呼叫，共用同一套呼叫流程、行號查核與重試，各自失敗（流程見 `docs/architecture.md` ReportRunner）
+- `TeacherReport.students[].engagement`、`TeacherReport.engagementVisibility`、`StudentReport.engagement`，以及 `PUT /api/activities/:id/engagement-visibility`（形狀見 `docs/api-contract.md` §7）；認真度上線前存下的報告回 `null`
+- migration 018：`activities.engagement_to_class`／`engagement_to_student`（預設 0：只有老師的單人報告看得到）
+- 報告頁：老師的勾選列、單人認真度面板、群體報告的假名認真度表；學生本人的報告在老師開放時顯示
+
+## 2026-11-23 — 從教室行事曆開始討論（`feat/348-scheduled-discussions`，#348）
+
+### Added
+
+- 老師可以從議題排定討論，再從原事件開始；學生可加入已開始的討論，活動結束後可回事件查看報告。
+
+## 2026-11-23 — 教室行事曆週視圖與編輯（`feat/348-calendar-controls`，#348）
+
+### Added
+
+- 教室行事曆提供月／週視圖。老師可編輯排程並選填結束時間，成員可看見橫跨多天的事件。
+
+### Fixed
+
+- 行事曆 API 的 `PATCH` 在 D1 內套用變更欄位。兩筆同時修改不同欄位的請求會保留各自的更新。
+
+## 2026-11-23 — 教室行事曆接線（`feat/348-calendar-integration`，#348）
+
+### Changed
+
+- 教室行事曆使用 `calendar-events` API 儲存與讀取排程，老師建立或刪除的事件會同步給教室成員。
+- 月曆依瀏覽器的時區查詢月份區間，自動讀取所有 cursor pages，跨日事件出現在與排程區間重疊的日期。
+
+## 2026-11-23 — 教室行事曆前端（mock）（`feat/348-classroom-calendar`，#348）
+
+### Added
+
+- 教室內頁新增「行事曆」分頁（`ClassroomCalendar`）：週一起始的月曆、上／下個月與「今天」、點日期列出當天事件；老師可新增（標題、日期、時間、說明）與刪除事件，學生唯讀
+- `lib/calendar.ts`：`monthDays`／`eventsByDay`／`dayKey` 純函式，以及暫時的 `mockCalendar`（`localStorage`，每間教室一份）；查詢走 `classroomCalendarOptions`（key `["classroom", id, "calendar"]`），後端端點定案後只需替換 `queryFn` 與兩個 mutation
+- i18n：`room_tab_calendar` 與 `calendar_*` 共 13 個 key（zh-TW／en／es）
+## 2026-11-23 — topic 可見性收斂為單一定義（`refactor/382-topic-visibility`，#382）
+
+### Added
+
+- `apps/server/src/services/topic-visibility.ts`：`topicScope()` 是 `(owner_id, classroom_id)` 二維狀態機（`(NULL, NULL)`＝system、`(uid, NULL)`＝personal、`(*, cid)`＝classroom）的唯一定義；對外兩個消費形狀——列表查詢走 `topicPoolSql(scopes, subject)`（scope 集合 → SQL fragment ＋ `$named` params）、單列授權走 `topicVisibleTo()`／`copyableTopic()`
+- `apps/server/tests/topic-visibility.test.ts`：狀態機 truth table ＋ 防漂移斷言（`topicPoolSql` 選出的列集合必須等於 `topicVisibleTo` 接受的列集合）；`copyableTopic` 的 404 邊界另測
+
+### Changed
+
+- 四個呼叫點改為消費它，不再各自拼 WHERE 或手寫判斷：`GET /topics`（`routes/topics.ts`）、`GET /classrooms/:id/topics`（`routes/classrooms.ts`）、`POST /topics/:id/copy` 的來源檢查（11 行縮為 1 行）、`topicForActivity`（`services/members.ts`）
+- 行為零變更：`GET /topics` 的 predicate 由 `classroom_id IS NULL AND (owner_id IS NULL OR owner_id = $uid)` 改寫為等價的兩個 scope 條件 OR；copy 的 403（目標班級非我帶）先於 404（來源不可讀）不變；API 契約、回應形狀、D1 schema 皆未動，既有 `topics.test.ts`／`rest.test.ts`／`chat.test.ts` 零改動即綠
+- `docs/architecture.md` §3 新增「topic 可見性」段：定義所在、「呼叫點不得各自重寫 WHERE」的約束，以及 `topicVisibleTo`／`copyableTopic` 兩個 classroom standing 的差異（前者「來源班級＝目標班級」、後者「來源班級是我帶的」）
+- 未納入本單：`seed.ts:163` 的 system-pool dedup lookup 仍手寫 `owner_id IS NULL`，屬 #383（dedup index＋upsert＋backfill）範圍
+
+## 2026-11-23 — prompt 整理：送進模型的文字收進 `prompts/`（`refactor/161-prompt-ssot`，#161）
+
+### Changed
+
+- violation 分類與頭像表情的 Clef 指示和 criteria 從 TS 移到 `prompts/violation-classify.md`、`violation-classify-topic.md`、`emotion-classify.md`（第一段 instructions，其後每行 `- choice: criterion`，由 `pi/clef-prompt.ts` 解析；choice 與 `VIOLATION_TYPES`／emotion 一一對應由 `tests/prompts.test.ts` 檢查，解析不會在載入時丟錯）
+- web-content 的 untrusted 外框、`report_violation` 的兩句回覆、lookup 與 topic-gen 的輸入（含「Write in X」）改由 `assemble.ts` 產生（`webContentBlock()`、`violationToolReply()`、`lookupInput()`、`topicGenInput()`），不再在 route／extension 手寫
+- 只是整理：送給模型的內容逐字不變。#161 規範 §8 中會改變模型行為的兩項（lookup／topic-gen 改用 md 的 `{{lang}}`、btw 指定目標語言）不在此次，需另行驗證後處理
+- 與 #161 規範的差異，留給團隊決定：violation 依有無辯題分成兩份（`violation-classify-topic.md` 不符 §2 的 `<角色>.md`），頭像表情不在 §1 的角色清單；三份 Clef md 沒有 §3 的「輸出格式」一節與 `{{lang}}`（Clef 不呼叫工具、只輸出分類）
+- `tests/prompts.test.ts` 補上 btw、lookup、topic-gen 的指示、Clef 題目與其餘外框的快照；既有快照不變
+
 ## 2026-11-22 — 單人報告加上六項思辨力指標（`feat/255-thinking-indicators`，#255）
 
 ### Added
@@ -55,6 +125,18 @@
 - src 層 84 處 `!` 清零：75 處為 baseline 冗贊斷言（現行 tsconfig 下 typed-array / string index / regex group / 守衛後陣列元素本就非 nullable，`!` 編譯後擦除、移除零行為差，含 StoaField 的 40 處動畫迴圈）；9 處以顯式窄化取代——pi `runtime.conversation()` 回傳 `ConversationHandle | undefined`（undefined＝invocation scope 已結束）改為守衛後靜默跳過寫入，websearch binding 缺失回 `websearch_binding_missing`，DOM root 缺失即 throw，錯誤 frame 與 resume session 兩處改為局部變數關聯窄化
 - `biome.jsonc` overrides：src globs（`apps/*/src/**`、`packages/*/src/**`，排除 test 目錄）凍 `style.noNonNullAssertion: error`——新增 src 違規即 CI 阻斷；tests 層豁免為暫時手段，L2（tests 清零）落地後移除
 - 探針覆核：issue #293 記錄的 116 處在今日 tip 為全庫 269（src 84、tests 185）——以今日數字為準
+
+## 2026-11-21 — 對話引擎注入辯題（`fix/162-topic-grounding`，#162）
+
+### Fixed
+
+- 蘇格拉底收得到活動的辯題：Chat DO 從 D1 載入 activity 的 topic，`socrates` extension 新增 `topic` section（`topicBlock()` 輸出，與報告 agent 收到的格式一致）；三語 `socrates*.md` 說明 Topic 段的位置，並要求即使辯題是其他語言仍以介面語言回覆
+- btw 側欄同樣收得到辯題：`btw` extension 自帶 `topic` section；`btw.md` 指向 Topic 段
+- judgment 分類器的 `on_topic` 改以該活動辯題為準（辯題及其延伸的哲學討論）；與辯題無關的哲學話題記為 `other`，無 topic 時退回原本的泛哲學定義
+
+### Notes
+
+- 不改 WS protocol、API 契約與 PiHarness settings；`report_violation` tool description 與分類器文字搬遷留給 #161，socrates prompt 重寫留給 #75
 
 ## 2026-11-21 — 群體報告可依老師的軸與軸數產生（`feat/159-report-axes`，#159）
 
@@ -295,6 +377,19 @@
 - 額度水位 60/80/100% **inline 檢測**（LiteLLM/Portkey 同款，無 cron）：以 `teacher_quota_alerts` PK 原子去重，同月同水位只寄一次，UTC 月曆跨月重置；寄送失敗自動重臂
 - 佔位帶 60s claim lease（`claimed_at`/`sent_at`）：crash 產生的孤兒 pending 佔位會在 TTL 過期後被下一輪水位檢查偷走重寄，不再靜默漏水位
 - email 走 Workers `send_email` binding（`ALERT_FROM_EMAIL`＝zone 位址、`ADMIN_ALERT_EMAIL`）；binding 缺失時 log-only fail-open。老師以其 lang 收信（zh/en/es），管理員收 zh 副本
+## 2026-11-20 — 單人報告六角圖（前端呈現，`feat/78-thinking-hexagon`，#78）
+
+### Added
+
+- `ThinkingHexagon`：單人報告（老師的單人分頁與學生本人頁）在論點總結上方多一張思辨表現圖。六條軸對應 spec 的六項思辨力目標（C1／C2／S1／S2／A1／A2），每項三級：未觀察到／部分／達成，不是分數；圖右側逐項列出名稱、等級與達成判準
+- 軸數跟著資料走（至少 3 項）；不認得的代號直接顯示代號
+- 三語 `thinking_*` 字串；`test/thinkingHexagon.test.tsx`
+
+### Notes
+
+- **資料是示意的**：後端的單人分析目前沒有這六項評估。`lib/thinking.ts` 的 `sampleThinking` 以 pseudonym 產生固定的示意等級，畫面上有「示意資料」說明；後端接上後把 `report.$id.tsx` 的資料來源換掉並拿掉 `sample` 即可。預期形狀見 `docs/api-contract.md` §7
+- 後端與既有契約零變動；roadmap 的 #78 保留，等分析接上才算完成
+
 ## 2026-11-20 — 群體報告立場星圖（`feat/79-stance-constellation`，#79）
 
 ### Added

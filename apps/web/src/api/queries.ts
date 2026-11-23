@@ -1,7 +1,13 @@
-import { queryOptions } from "@tanstack/react-query";
+import type { CalendarEvent } from "@socrates/shared";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import { api, ApiError } from "@/api";
 import { readTermHistory } from "./local";
+
+export const clientConfigOptions = queryOptions({
+  queryKey: ["config"],
+  queryFn: () => api.config(),
+});
 
 export const classroomsOptions = queryOptions({
   queryKey: ["classrooms"],
@@ -34,6 +40,35 @@ export function teacherActivityOptions(activityId: string) {
   return queryOptions({
     queryKey: ["activity", activityId, "teacher"],
     queryFn: () => api.activityInfo(activityId),
+  });
+}
+
+export function liveActivityUnavailable(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.code === "unauthorized" ||
+      error.code === "forbidden" ||
+      error.code === "account_disabled" ||
+      error.code === "not_found" ||
+      error.code === "conflict")
+  );
+}
+
+export function activityLiveOptions(activityId: string) {
+  return queryOptions({
+    queryKey: ["activity-live", activityId],
+    queryFn: ({ signal }) => api.activityLive(activityId, signal),
+    gcTime: 0,
+    retry: (count, error) => count < 1 && !liveActivityUnavailable(error),
+    refetchInterval: ({ state }) => {
+      if (state.data?.finishedAt || liveActivityUnavailable(state.error)) return false;
+      return state.error ? 15_000 : 5_000;
+    },
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: ({ state }) =>
+      state.data?.finishedAt || liveActivityUnavailable(state.error) ? false : "always",
+    refetchOnReconnect: ({ state }) =>
+      state.data?.finishedAt || liveActivityUnavailable(state.error) ? false : "always",
   });
 }
 
@@ -107,6 +142,11 @@ export const adminUsersOptions = queryOptions({
   queryFn: () => api.listAdminUsers(),
 });
 
+export const adminOverviewOptions = queryOptions({
+  queryKey: ["admin-overview"],
+  queryFn: () => api.adminOverview(),
+});
+
 export const authProvidersOptions = queryOptions({
   queryKey: ["authProviders"],
   queryFn: () => api.authProviders(),
@@ -148,5 +188,100 @@ export function qrOptions(url: string, size: number) {
         color: { dark: "#17181c", light: "#ffffff" },
       }),
     staleTime: Infinity,
+  });
+}
+
+const classroomPage = {
+  initialPageParam: "",
+  getNextPageParam: (page: { nextCursor: string | null }) => page.nextCursor ?? undefined,
+  retry: (attempt: number, error: Error) =>
+    attempt < 2 && !(error instanceof ApiError && ["forbidden", "unauthorized", "not_found"].includes(error.code)),
+};
+
+export function classroomAnnouncementsOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "announcements"],
+    queryFn: ({ pageParam }) => api.classroom.announcements(id, pageParam || undefined),
+  });
+}
+
+export function classroomPostsOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "posts"],
+    queryFn: ({ pageParam }) => api.classroom.posts(id, pageParam || undefined),
+  });
+}
+
+export function classroomRepliesOptions(id: string, postId: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: [...classroomPostsOptions(id).queryKey, postId],
+    queryFn: ({ pageParam }) => api.classroom.replies(id, postId, pageParam || undefined),
+  });
+}
+
+export function classroomMembersOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "members"],
+    queryFn: ({ pageParam }) => api.classroom.members(id, pageParam || undefined),
+  });
+}
+
+export function classroomActivitiesOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "activities"],
+    queryFn: ({ pageParam }) => api.classroom.activities(id, pageParam || undefined),
+  });
+}
+
+export function classroomCalendarScopeOptions(id: string) {
+  return queryOptions({ queryKey: ["classroom", id, "calendar"] });
+}
+
+export function classroomCalendarOptions(id: string, rangeStart: Date, rangeEnd: Date) {
+  const from = rangeStart.toISOString();
+  const to = rangeEnd.toISOString();
+
+  return queryOptions({
+    queryKey: [...classroomCalendarScopeOptions(id).queryKey, from, to],
+    retry: classroomPage.retry,
+    queryFn: async ({ signal }) => {
+      const events: CalendarEvent[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await api.classroom.calendar(id, { from, to, cursor }, signal);
+        for (const event of page.items) events.push(event);
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return events;
+    },
+  });
+}
+
+export function classroomInvitesOptions(id: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["classroom", id, "invites"],
+    queryFn: ({ pageParam }) => api.classroom.invites(id, pageParam || undefined),
+  });
+}
+
+export function scopedInviteOptions(token: string) {
+  return queryOptions({
+    queryKey: ["scopedInvite", token],
+    queryFn: () => api.classroom.previewInvite(token),
+    retry: false,
+  });
+}
+
+export function myReportsOptions(userId: string) {
+  return infiniteQueryOptions({
+    ...classroomPage,
+    queryKey: ["myReports", userId],
+    queryFn: ({ pageParam }) => api.classroom.myReports(pageParam || undefined),
   });
 }

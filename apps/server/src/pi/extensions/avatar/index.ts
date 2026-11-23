@@ -12,6 +12,8 @@ import {
 import type { Context } from "@earendil-works/chord/context";
 import { gatewayConfig } from "../../../gateway/config.gen";
 import type { Ai } from "@cloudflare/workers-types";
+import EMOTION_RAW from "../../../prompts/emotion-classify.md?raw";
+import { clefChoicePrompt } from "../../clef-prompt";
 
 export type Emotion = "happy" | "angry" | "confused" | "neutral";
 
@@ -31,13 +33,7 @@ export const EmotionEntry: Entry<{
 
 const EMOTION_MODEL = gatewayConfig.classifiers.emotion;
 
-const EMOTION_CRITERIA = {
-  happy:
-    "The student said something warm, funny, or made real progress: praised, joked, found a contradiction themselves, improved their reasoning",
-  angry: "The student was rude, dismissive, or refusing to think (restrained, teacher-like sternness, not real anger)",
-  confused: "The student's message is genuinely unclear: vague, self-contradictory, undefined terms, or nonsensical",
-  neutral: "A normal Socratic follow-up without particular emotion",
-};
+export const EMOTION_QUESTION = clefChoicePrompt<Emotion>(EMOTION_RAW);
 
 interface ClefRunResult {
   answers?: Record<string, { choice?: string; probabilities?: Record<string, number>; confidence?: number }>;
@@ -52,11 +48,7 @@ async function classify(ai: Ai, text: string): Promise<EmotionJudgment | null> {
     const raw = (await (ai as unknown as { run: (m: string, i: unknown) => Promise<unknown> }).run(EMOTION_MODEL, {
       state: { latest: text.slice(0, 2000) },
       questions: {
-        emotion: {
-          type: "choice",
-          instructions: "Pick the Socrates avatar's reaction to the student's latest message in a philosophy dialogue.",
-          criteria: EMOTION_CRITERIA,
-        },
+        emotion: { type: "choice", ...EMOTION_QUESTION },
       },
     })) as ClefRunResult;
     return emotionOf(raw);

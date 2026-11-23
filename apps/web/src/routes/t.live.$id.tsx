@@ -1,18 +1,36 @@
 import { useId, useState } from "react";
-import { activitySlotsOptions, classroomsOptions, teacherActivityOptions } from "@/api/queries";
+import {
+  activityLiveOptions,
+  activitySlotsOptions,
+  classroomsOptions,
+  liveActivityUnavailable,
+  teacherActivityOptions,
+} from "@/api/queries";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare } from "lucide-react";
 import { ACTIVITY_SLOT_MAX } from "@socrates/shared";
-import { api } from "@/api";
+import { ApiError, api } from "@/api";
 import { meOf } from "@/api/me";
-import { Button, buttonStyles, Card, Field, Input, PageHeader, SectionTitle, Spinner, cn } from "@/components/ui";
+import {
+  Button,
+  buttonStyles,
+  Card,
+  ConfirmDialog,
+  Field,
+  Input,
+  PageHeader,
+  SectionTitle,
+  Spinner,
+  cn,
+} from "@/components/ui";
 import { useT } from "@/i18n";
+import { LiveBoard } from "@/components/LiveBoard";
 
 export const Route = createFileRoute("/t/live/$id")({
-  beforeLoad: async ({ context, params }) => {
+  beforeLoad: async ({ context, params, location }) => {
     const me = await meOf(context.queryClient);
-    if (!me) throw redirect({ to: "/classrooms" });
+    if (!me) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
     const activity = await context.queryClient.ensureQueryData(teacherActivityOptions(params.id)).catch(() => {
       throw redirect({ to: "/classrooms" });
     });
@@ -30,12 +48,18 @@ function LivePage() {
   const navigate = useNavigate();
   const { id } = Route.useParams();
   const activity = useQuery(teacherActivityOptions(id));
+  const board = useQuery({ ...activityLiveOptions(id), enabled: activity.data?.mode === "live" });
+  const boardUnavailable = liveActivityUnavailable(board.error);
+  const sessionExpired = board.error instanceof ApiError && board.error.code === "unauthorized";
+  const finished = Boolean(board.data?.finishedAt || activity.data?.finishedAt);
+  const [confirming, setConfirming] = useState<string | null>(null);
   const finish = useMutation({
     mutationFn: () => api.finishActivity(id),
   });
 
   async function finishAndReport() {
-    if (finish.isPending) return;
+    if (finish.isPending || finished || boardUnavailable) return;
+    setConfirming(null);
     try {
       await finish.mutateAsync();
     } catch {
@@ -51,14 +75,35 @@ function LivePage() {
         eyebrow={t("eyebrow_teacher")}
         title={t("live_title")}
         actions={
-          <Button variant="outline" size="sm" onClick={() => void finishAndReport()} disabled={finish.isPending}>
-            {finish.isPending ? <Spinner /> : null}
-            {t("live_finish")}
-          </Button>
+          finished ? (
+            <Link to="/report/$id" params={{ id }} className={buttonStyles({ variant: "outline", size: "sm" })}>
+              {t("live_view_report")}
+            </Link>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirming(id)}
+              disabled={finish.isPending || boardUnavailable}
+            >
+              {finish.isPending ? <Spinner /> : null}
+              {t("live_finish")}
+            </Button>
+          )
         }
       />
 
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-6">
+      <ConfirmDialog
+        open={confirming === id && !finished && !boardUnavailable}
+        title={t("live_finish_title")}
+        body={t("live_finish_body")}
+        confirmLabel={t("live_finish")}
+        cancelLabel={t("common_cancel")}
+        danger
+        onConfirm={() => void finishAndReport()}
+        onCancel={() => setConfirming(null)}
+      />
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 md:px-6">
         {finish.isError && (
           <p role="alert" className="text-[13px] text-flag">
             {t("common_error")}
@@ -76,14 +121,40 @@ function LivePage() {
           </Card>
         )}
 
-        {activity.data?.mode === "test" ? (
-          <SlotPanel activityId={id} finished={Boolean(activity.data.finishedAt)} />
-        ) : (
-          <Card className="flex flex-col items-center gap-3 p-10 text-center">
-            <p className="font-serif text-[15.5px] text-ink">{t("live_pending_title")}</p>
-            <p className="max-w-md text-[12.5px] leading-relaxed text-ink-faint">{t("live_pending_body")}</p>
-          </Card>
-        )}
+        {activity.data?.mode === "test" && <SlotPanel activityId={id} finished={finished} />}
+        {activity.data?.mode === "live" &&
+          (boardUnavailable ? (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-paper p-5 text-sm text-ink"
+            >
+              <p>{t(sessionExpired ? "live_session_expired" : "live_unavailable")}</p>
+              {sessionExpired && (
+                <Link
+                  to="/login"
+                  search={{ next: `/t/live/${id}` }}
+                  className={buttonStyles({ variant: "outline", size: "sm" })}
+                >
+                  {t("login_title")}
+                </Link>
+              )}
+            </div>
+          ) : board.data ? (
+            <LiveBoard key={id} snapshot={board.data} stale={board.isError || board.fetchStatus === "paused"} />
+          ) : (
+            <Card className="p-5 text-sm text-ink-soft">
+              {board.isError ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p role="alert">{t("live_load_failed")}</p>
+                  <Button variant="outline" size="sm" onClick={() => void board.refetch()} disabled={board.isFetching}>
+                    {t("live_retry")}
+                  </Button>
+                </div>
+              ) : (
+                <p role="status">{t(board.fetchStatus === "paused" ? "live_load_failed" : "live_loading")}</p>
+              )}
+            </Card>
+          ))}
       </div>
     </div>
   );

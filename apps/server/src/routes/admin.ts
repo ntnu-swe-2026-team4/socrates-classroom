@@ -1,7 +1,15 @@
 import { Hono } from "hono";
-import { AdminUserCreateInputSchema, AdminUserUpdateInputSchema, type AdminUser } from "@socrates/shared";
+import {
+  AdminSettingsSchema,
+  AdminUserCreateInputSchema,
+  AdminUserUpdateInputSchema,
+  type AdminOverview,
+  type AdminSettings,
+  type AdminUser,
+} from "@socrates/shared";
 import { all, one, run } from "../db/d1";
 import { hashPassword } from "../auth";
+import { reportAxesPolicyOf, setReportAxesPolicy } from "../services/settings";
 import {
   fail,
   guardAdmin,
@@ -44,6 +52,20 @@ async function loadAdminUser(db: D1Database, id: string): Promise<AdminUser | nu
 
 export function adminRoutes() {
   return new Hono<AppEnv>()
+    .get("/admin/overview", guardAdmin(), async (c) => {
+      const counts = await one<{ users: number; classrooms: number; running: number }>(
+        c.env.DB,
+        `SELECT (SELECT COUNT(*) FROM users) AS users,
+                (SELECT COUNT(*) FROM classrooms) AS classrooms,
+                (SELECT COUNT(*) FROM activities WHERE finished_at IS NULL) AS running`,
+      );
+      if (!counts) fail(500, "internal_error");
+      return c.json({
+        users: counts.users,
+        classrooms: counts.classrooms,
+        runningActivities: counts.running,
+      } satisfies AdminOverview);
+    })
     .get("/admin/users", async (c) => {
       requireAdmin(c);
       const rows = await all<AdminUserRow>(
@@ -106,5 +128,13 @@ export function adminRoutes() {
       const updated = await loadAdminUser(c.env.DB, target.id);
       if (!updated) fail(500, "internal_error");
       return c.json(updated);
+    })
+    .get("/admin/settings", guardAdmin(), async (c) =>
+      c.json({ reportAxes: await reportAxesPolicyOf(c.env.DB) } satisfies AdminSettings),
+    )
+    .put("/admin/settings", guardAdmin(), validateJson(AdminSettingsSchema), async (c) => {
+      const input = c.req.valid("json");
+      await setReportAxesPolicy(c.env.DB, input.reportAxes);
+      return c.json({ reportAxes: await reportAxesPolicyOf(c.env.DB) } satisfies AdminSettings);
     });
 }

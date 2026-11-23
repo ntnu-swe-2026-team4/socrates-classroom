@@ -32,8 +32,8 @@
 - Fixture 的 SSOT 是 `apps/server/src/seed.ts`：8 個**固定 id、固定名稱、共用密碼 `demo-demo`** 的帳號（1 管理員、2 老師、5 學生；陳老師同時是「高二哲學選修 A」的成員）、3 個系統題、2 間教室（「高二哲學選修 A」3 位成員、「倫理學讀書會」空班級），每間教室各有一個進行中的活動
 - `pnpm seed` → `POST /api/dev/seed`（需 `SEED_TOKEN`＋`ENVIRONMENT=dev`）：冪等 upsert（以 id／email／教室名稱找既有 row），重跑不會改 id、不會動既有對話資料；fixture 不含任何 transcript
 - `/dev/accounts`：列出 fixture 帳號，每列「以此身分開啟」（`POST /api/dev/login` 發 session，不需密碼）與班級／邀請連結入口。切換會覆蓋目前 session；要同時扮演多個角色請開無痕視窗
-- 管理員帳號帶 `is_admin`＋`can_manage_classes`（#131）：在 `/admin/users` 可切換他人的班級管理權限、停用／復用帳號、建立新帳號；能力與停用對已登入的 session 立刻生效（不必重新登入，停用則下一個請求即 403）
-- `POST /api/dev/login` 會把 fixture 的 `is_admin` 校正回 spec（舊 seed 建的 row 在 migration 002 之後是 0，`/admin/users` 會被擋）；`can_manage_classes` 不校正——那可能正是審查中手動提權的結果。要整份重來就是 `pnpm seed`
+- 管理員帳號帶 `is_admin`（僅 seed 建立，#136/#210）：在 `/admin` console（#185）可建立帳號、停用／復用（停用對已登入的 session 立刻生效——下一個請求即 403）、發系統公告；無 mode 定稿後沒有班級管理權限可切
+- `POST /api/dev/login` 會把 fixture 的 `is_admin` 校正回 spec（舊 seed 建的 row 在 migration 002 之後是 0，`/admin` 會被擋）。要整份重來就是 `pnpm seed`
 
 ### `ENVIRONMENT` binding
 

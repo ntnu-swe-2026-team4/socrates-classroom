@@ -3,6 +3,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Extension } from "@earendil-works/pi-durable";
 import type { PiHarness } from "agents/harness/pi";
 import { BTW_THINKING_LEVEL } from "../agents/profiles";
+import { topicSection, type TopicSource } from "./socrates";
 
 export class NothingToForkError extends Error {
   constructor() {
@@ -11,10 +12,10 @@ export class NothingToForkError extends Error {
   }
 }
 
-export function btwExtension(): Extension {
+export function btwExtension(topicOf: TopicSource = async () => null): Extension {
   return {
     name: "btw",
-    sections: [{ key: "btw", render: () => BTW_RAW.trim(), tag: false }],
+    sections: [{ key: "btw", render: () => BTW_RAW.trim(), tag: false }, topicSection(topicOf)],
   };
 }
 

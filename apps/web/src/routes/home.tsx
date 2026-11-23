@@ -1,16 +1,19 @@
+import { takeClassroomInvite } from "@/lib/classroomInvite";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { classroomsOptions } from "@/api/queries";
+import { classroomsOptions, soloThreadsOptions } from "@/api/queries";
 import { useQuery } from "@tanstack/react-query";
 
 import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
 import { Button, Card, PageHeader } from "@/components/ui";
-import { useT, type MessageKey } from "@/i18n";
+import { useFormatDate, useT, type MessageKey } from "@/i18n";
 
 export const Route = createFileRoute("/home")({
-  beforeLoad: async ({ context }) => {
+  beforeLoad: async ({ context, preload }) => {
     const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login" });
+    const invite = preload ? undefined : takeClassroomInvite();
+    if (invite) throw redirect({ href: invite, replace: true });
   },
   component: HomePage,
 });
@@ -32,6 +35,9 @@ function HomePage() {
   const t = useT();
   const me = useQuery(meQueryOptions);
   const classrooms = useQuery(classroomsOptions);
+  const chats = useQuery({ ...soloThreadsOptions(me.data?.id ?? ""), enabled: Boolean(me.data) });
+  const formatDate = useFormatDate();
+  const chatList = chats.data ?? [];
   const canManage = Boolean(me.data);
   const roomList = classrooms.data ?? [];
   const running = roomList.filter((room) => room.current && !room.current.finished);
@@ -47,14 +53,17 @@ function HomePage() {
               {t("home_greeting", { greeting: t(greetingKey()), name: me.data?.name ?? "" })}
             </p>
             <h2 className="mt-1 font-serif text-3xl">{t("home_question")}</h2>
-            <div className="mt-4">
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link to="/chat">
+                <Button>{t("home_start")}</Button>
+              </Link>
               {canManage ? (
-                <Link to="/t/setup">
-                  <Button>{t("home_open_classroom")}</Button>
+                <Link to="/classrooms">
+                  <Button variant="outline">{t("home_open_classroom")}</Button>
                 </Link>
               ) : (
                 <Link to="/classrooms">
-                  <Button>{t("home_enter_classroom")}</Button>
+                  <Button variant="outline">{t("home_enter_classroom")}</Button>
                 </Link>
               )}
             </div>
@@ -68,13 +77,45 @@ function HomePage() {
         <section className="grid gap-4 sm:grid-cols-2">
           <Link to="/classrooms">
             <Card className="h-full p-5 transition-colors hover:border-ember-deep">
-              <b className="block font-serif text-4xl font-medium text-ember">{roomList.length}</b>
-              <span className="mt-1 block text-sm">{t("home_stat_classrooms")}</span>
+              <span className="block text-sm">{t("home_stat_classrooms")}</span>
+              <b className="mt-1 block font-serif text-4xl font-medium text-ember">{roomList.length}</b>
               <span className="text-xs text-ink-faint">
                 {canManage ? t("home_stat_students", { n: students }) : t("home_stat_running", { n: running.length })}
               </span>
             </Card>
           </Link>
+          <Link to="/chat">
+            <Card className="h-full p-5 transition-colors hover:border-ember-deep">
+              <span className="block text-sm">{t("home_stat_chats")}</span>
+              <b className="mt-1 block font-serif text-4xl font-medium text-ember">{chatList.length}</b>
+              <span className="mt-1 block truncate text-xs text-ink-faint">
+                {chatList[0]?.title ?? t("chat_empty")}
+              </span>
+            </Card>
+          </Link>
+        </section>
+
+        <section>
+          <Card className="p-5">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="font-serif text-[15.5px]">{t("home_recent_chats")}</h3>
+              <Link to="/chat" className="text-xs text-ember">
+                {t("home_all")}
+              </Link>
+            </div>
+            {chatList.slice(0, 5).map((chat) => (
+              <Link
+                key={chat.id}
+                to="/chat/$chatId"
+                params={{ chatId: chat.id }}
+                className="flex items-center justify-between gap-3 border-t border-line py-3 first:border-t-0"
+              >
+                <span className="min-w-0 truncate text-sm">{chat.title}</span>
+                <span className="shrink-0 text-xs text-ink-faint">{formatDate(chat.updatedAt)}</span>
+              </Link>
+            ))}
+            {!chatList.length && <p className="text-sm text-ink-faint">{t("chat_empty")}</p>}
+          </Card>
         </section>
 
         <section>

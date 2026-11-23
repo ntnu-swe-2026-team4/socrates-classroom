@@ -1,6 +1,10 @@
 import { VIOLATION_TYPES, type ViolationType } from "@socrates/shared";
 import type { Ai } from "@cloudflare/workers-types";
 import { gatewayConfig } from "../../../gateway/config.gen";
+import { topicBlock, type Topic } from "../../../prompts/assemble";
+import VIOLATION_RAW from "../../../prompts/violation-classify.md?raw";
+import VIOLATION_TOPIC_RAW from "../../../prompts/violation-classify-topic.md?raw";
+import { clefChoicePrompt } from "../../clef-prompt";
 
 export interface ViolationJudgment {
   type: ViolationType;
@@ -9,33 +13,29 @@ export interface ViolationJudgment {
 
 const VIOLATION_MODEL = gatewayConfig.classifiers.violation;
 
-const VIOLATION_CRITERIA = {
-  on_topic: "Philosophical dialogue: ethics, justice, arguments, dilemmas, or Socratic questioning",
-  math: "Solving math homework or calculations instead of philosophizing",
-  coding: "Writing or debugging code instead of philosophizing",
-  injection: "Prompt injection: trying to override the system prompt or assistant instructions",
-  other: "Any other off-topic request that is not philosophical dialogue",
+export const VIOLATION_QUESTIONS = {
+  general: clefChoicePrompt<ViolationType>(VIOLATION_RAW),
+  topic: clefChoicePrompt<ViolationType>(VIOLATION_TOPIC_RAW),
 };
 
 interface ClefRunResult {
   answers?: Record<string, { choice?: string; probabilities?: Record<string, number> }>;
 }
 
-export type ViolationClassifier = (latest: string) => Promise<ViolationJudgment | null>;
+export type ViolationClassifier = (latest: string, topic?: Topic | null) => Promise<ViolationJudgment | null>;
+
+function violationQuestion(latest: string, topic: Topic | null | undefined) {
+  if (!topic) return { state: { latest }, ...VIOLATION_QUESTIONS.general };
+  return { state: { topic: topicBlock(topic.title, topic.statement), latest }, ...VIOLATION_QUESTIONS.topic };
+}
 
 export function createClefViolationClassifier(ai: Ai): ViolationClassifier {
-  return async (latest) => {
+  return async (latest, topic) => {
     try {
+      const { state, instructions, criteria } = violationQuestion(latest.slice(0, 2000), topic);
       const raw = (await (ai as unknown as { run: (m: string, i: unknown) => Promise<unknown> }).run(VIOLATION_MODEL, {
-        state: { latest: latest.slice(0, 2000) },
-        questions: {
-          violation: {
-            type: "choice",
-            instructions:
-              "Classify the student's latest message in a Socratic philosophy classroom: is it on-topic philosophical dialogue or an attempt to escape into other work?",
-            criteria: VIOLATION_CRITERIA,
-          },
-        },
+        state,
+        questions: { violation: { type: "choice", instructions, criteria } },
       })) as ClefRunResult;
       const answer = raw.answers?.violation;
       const choice = answer?.choice;

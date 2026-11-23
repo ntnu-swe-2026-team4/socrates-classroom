@@ -8,11 +8,13 @@ import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import { BTW_THINKING_LEVEL, runProfile, PROFILES, profileRegistry } from "../src/pi/agents/profiles";
 import {
   reportSubmitAxesExtension,
+  reportSubmitEngagementExtension,
   reportSubmitExtension,
   reportSubmitIndicatorsExtension,
   SUBMIT_CLASS_AXES_REPORT,
   SUBMIT_CLASS_REPORT,
   SUBMIT_STUDENT_ANALYSIS,
+  SUBMIT_STUDENT_ENGAGEMENT,
   SUBMIT_STUDENT_INDICATORS,
 } from "../src/pi/extensions/report-submit";
 
@@ -45,6 +47,15 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
         .map(({ tool }) => tool.name)
         .filter((name) => name.startsWith("submit_")),
     ).toEqual([SUBMIT_STUDENT_INDICATORS]);
+    expect(PROFILES["student-engagement"].extensions).toEqual(["report-submit-engagement"]);
+    expect(reportSubmitEngagementExtension.tools?.map((tool) => tool.name)).toEqual([SUBMIT_STUDENT_ENGAGEMENT]);
+    expect(
+      profileRegistry(PROFILES["student-engagement"], env as never)
+        .snapshot()
+        .tools()
+        .map(({ tool }) => tool.name)
+        .filter((name) => name.startsWith("submit_")),
+    ).toEqual([SUBMIT_STUDENT_ENGAGEMENT]);
     for (const profile of Object.values(PROFILES)) {
       const json = JSON.stringify(profile);
       expect(json).not.toMatch(/glm|claude|gpt|@cf\//i);
@@ -59,6 +70,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(PROFILES["class-report"].instructions).toContain(SUBMIT_CLASS_REPORT);
     expect(PROFILES["class-report-axes"].instructions).toContain(SUBMIT_CLASS_AXES_REPORT);
     expect(PROFILES["student-indicators"].instructions).toContain(SUBMIT_STUDENT_INDICATORS);
+    expect(PROFILES["student-engagement"].instructions).toContain(SUBMIT_STUDENT_ENGAGEMENT);
     expect(PROFILES.lookup.instructions).toContain("term-lookup assistant");
     expect(PROFILES["topic-gen"].instructions).toContain("debate topics");
     expect(PROFILES.lookup.instructions).not.toMatch(/\{\{/);

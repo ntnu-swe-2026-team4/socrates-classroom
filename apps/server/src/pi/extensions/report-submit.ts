@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   ClassReportSchema,
   ClassReportSubmissionSchema,
+  EngagementSchema,
   StudentAnalysisSchema,
   ThinkingIndicatorsSchema,
 } from "@socrates/shared";
@@ -11,6 +12,7 @@ export const SUBMIT_STUDENT_ANALYSIS = "submit_student_analysis";
 export const SUBMIT_CLASS_REPORT = "submit_class_report";
 export const SUBMIT_CLASS_AXES_REPORT = "submit_class_axes_report";
 export const SUBMIT_STUDENT_INDICATORS = "submit_student_indicators";
+export const SUBMIT_STUDENT_ENGAGEMENT = "submit_student_engagement";
 
 export const ReportAxesPlanSchema = z
   .object({
@@ -42,6 +44,7 @@ const studentAnalysisParameters = z.toJSONSchema(z.object({ report: StudentAnaly
 const classReportParameters = z.toJSONSchema(ClassReportSubmissionSchema);
 const classAxesReportParameters = z.toJSONSchema(PlannedClassReportSubmissionSchema);
 const studentIndicatorsParameters = z.toJSONSchema(ThinkingIndicatorsSchema);
+const studentEngagementParameters = z.toJSONSchema(EngagementSchema);
 
 const submitStudentAnalysis = defineTool({
   name: SUBMIT_STUDENT_ANALYSIS,
@@ -104,4 +107,21 @@ const submitStudentIndicators = defineTool({
 export const reportSubmitIndicatorsExtension = defineExtension({
   name: "report-submit-indicators",
   tools: [submitStudentIndicators],
+});
+
+const submitStudentEngagement = defineTool({
+  name: SUBMIT_STUDENT_ENGAGEMENT,
+  description:
+    "Submit one student's engagement as your final action. The shape is this tool's schema: for each of substance, uptake, focus, a level from 0 to 3, the student's line numbers as turns, and one sentence of evidence. Calling it ends the turn; do not also write the engagement as text.",
+  parameters: studentEngagementParameters,
+  constrainedSampling: { type: "json_schema", strict: "prefer" },
+  replay: "safe",
+  async execute() {
+    return { control: { terminate: true } };
+  },
+});
+
+export const reportSubmitEngagementExtension = defineExtension({
+  name: "report-submit-engagement",
+  tools: [submitStudentEngagement],
 });

@@ -1,3 +1,4 @@
+import { publishClassroom } from "../do/classroom-events";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { JoinInputSchema, type JoinResult } from "@socrates/shared";
@@ -71,6 +72,7 @@ export function joinRoutes() {
             if (taken) fail(409, "name_taken");
             throw error;
           }
+          await publishClassroom(c.env, classroom.id, "members");
         }
         const participant = finished ? null : await ensureParticipant(c.env.DB, activityId, user, nowIso());
         const payload: JoinResult = {

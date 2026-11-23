@@ -1,15 +1,20 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { ApiError } from "@socrates/shared";
+import { ApiError, type ClientConfig } from "@socrates/shared";
 import { localize } from "./messages";
 import { fail, normalizeLang, type AppEnv } from "./http";
+import { reportAxesPolicyOf } from "./services/settings";
 import { seedFixture } from "./seed";
 import { lookupSession, SESSION_COOKIE } from "./auth";
 import { getCookie } from "hono/cookie";
 import { authRoutes } from "./routes/auth";
 import { joinRoutes } from "./routes/join";
+import { classroomInviteRoutes } from "./routes/classroom-invites";
 import { inviteRoutes } from "./routes/invites";
 import { topicsRoutes } from "./routes/topics";
+import { classroomCommunityRoutes } from "./routes/classroom-community";
+import { classroomCalendarRoutes } from "./routes/classroom-calendar";
+import { communityContentRoutes } from "./routes/community-content";
 import { classroomsRoutes } from "./routes/classrooms";
 import { activityRoutes } from "./routes/activity";
 import { voiceRoutes } from "./routes/voice";
@@ -24,11 +29,16 @@ import { timingSafeEqual } from "./auth-crypto";
 
 export function createApi() {
   return new Hono<AppEnv>()
+    .get("/config", async (c) => c.json({ reportAxes: await reportAxesPolicyOf(c.env.DB) } satisfies ClientConfig))
     .route("/", authRoutes())
     .route("/", joinRoutes())
     .route("/", inviteRoutes())
+    .route("/", classroomInviteRoutes())
     .route("/", topicsRoutes())
     .route("/", classroomsRoutes())
+    .route("/", classroomCommunityRoutes())
+    .route("/", classroomCalendarRoutes())
+    .route("/", communityContentRoutes())
     .route("/", activityRoutes())
     .route("/", voiceRoutes())
     .route("/", lookupRoutes())

@@ -2,10 +2,62 @@ import { useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, X } from "lucide-react";
-import { api } from "@/api";
-import { accountNotificationsOptions } from "@/api/queries";
-import { Spinner, TrapDialog, cn } from "@/components/ui";
+import { api, ApiError } from "@/api";
+import { accountNotificationsOptions, notificationsOptions } from "@/api/queries";
+import { Button, Card, Field, Input, Spinner, TrapDialog, cn } from "@/components/ui";
 import { useFormatDate, useT } from "@/i18n";
+
+export function NotificationComposer() {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const post = useMutation({
+    mutationFn: () => api.postAdminNotification({ title: title.trim(), body: body.trim() }),
+    onSuccess: async () => {
+      setTitle("");
+      setBody("");
+      await queryClient.invalidateQueries({ queryKey: notificationsOptions.queryKey });
+    },
+  });
+  return (
+    <Card className="p-6">
+      <h2 className="mb-1 font-serif text-lg">{t("notify_title")}</h2>
+      <p className="mb-4 text-[13px] leading-relaxed text-ink-soft">{t("notify_admin_desc")}</p>
+      <form
+        className="grid gap-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!post.isPending && title.trim()) post.mutate();
+        }}
+      >
+        <Field label={t("notify_field_title")}>
+          <Input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={120} />
+        </Field>
+        <Field label={t("notify_field_body")}>
+          <textarea
+            value={body}
+            rows={3}
+            maxLength={2000}
+            onChange={(event) => setBody(event.target.value)}
+            className="w-full rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-ink"
+          />
+        </Field>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" disabled={post.isPending || !title.trim()}>
+            {post.isPending ? <Spinner /> : null}
+            {t("notify_send")}
+          </Button>
+          {post.isError && (
+            <p role="alert" className="text-[13px] text-flag">
+              {post.error instanceof ApiError ? post.error.message : t("common_error")}
+            </p>
+          )}
+        </div>
+      </form>
+    </Card>
+  );
+}
 
 export function NotificationBell({ userId, className }: { userId: string; className: string }) {
   const t = useT();

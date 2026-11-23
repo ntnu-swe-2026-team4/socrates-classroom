@@ -5,11 +5,15 @@ import {
   TopicCreateInputSchema,
   type ActivityMode,
   type ClassroomSummary,
+  type ReportAxes,
   type User,
 } from "@socrates/shared";
+import { publishClassroom } from "../do/classroom-events";
 import { all, batch, one, run, type SqlEntry } from "../db/d1";
 import { fail, guardUser, newId, nowIso, requireUser, validateJson, type AppEnv } from "../http";
-import { classroomAccess, parsePrompts, topicForActivity, type TopicRow } from "../services/members";
+import { classroomAccess, parsePrompts, topicCopyInsert, topicForActivity, type TopicRow } from "../services/members";
+import { reportAxesFor } from "../services/settings";
+import { topicPoolSql } from "../services/topic-visibility";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const CODE_MAX = 256 - (256 % CODE_ALPHABET.length);
@@ -28,27 +32,64 @@ function baseUrl(env: { PUBLIC_BASE_URL?: string }): string {
   return env.PUBLIC_BASE_URL?.replace(/\/$/, "") ?? "";
 }
 
+function scheduledStartCondition(classroomId: string, eventId: string, topicId: string): SqlEntry {
+  return {
+    sql: `EXISTS (
+      SELECT 1 FROM classroom_calendar_events e
+      JOIN classrooms c ON c.id = e.classroom_id
+      LEFT JOIN activities current ON current.id = c.current_activity_id
+      WHERE e.id = $calendarEventId AND e.classroom_id = $calendarClassroomId
+        AND e.topic_id = $calendarTopicId AND e.activity_id IS NULL
+        AND (current.id IS NULL OR current.finished_at IS NOT NULL)
+    )`,
+    params: { calendarEventId: eventId, calendarClassroomId: classroomId, calendarTopicId: topicId },
+  };
+}
+
 async function createActivity(
   db: D1Database,
   classroomId: string,
   topicId: string,
   mode: ActivityMode,
-): Promise<string> {
+  reportAxes: ReportAxes,
+  copy?: SqlEntry,
+  scheduled?: { eventId: string; condition: SqlEntry },
+): Promise<string | null> {
   const id = newId("a_");
-  const queries: SqlEntry[] = [
-    {
-      sql: "INSERT INTO activities (id, classroom_id, topic_id, mode, created_at) VALUES ($id, $cid, $tid, $mode, $at)",
-      params: { id, cid: classroomId, tid: topicId, mode, at: nowIso() },
-    },
-  ];
+  const at = nowIso();
+  const queries: SqlEntry[] = copy ? [copy] : [];
+  queries.push({
+    sql: `INSERT INTO activities (id, classroom_id, topic_id, mode, report_axes, created_at)
+      SELECT $id, $cid, $tid, $mode, $axes, $at ${scheduled ? `WHERE ${scheduled.condition.sql}` : ""}`,
+    params: { ...scheduled?.condition.params, id, cid: classroomId, tid: topicId, mode, axes: reportAxes, at },
+  });
+  if (scheduled) {
+    queries.push({
+      sql: `UPDATE classroom_calendar_events SET activity_id = $aid, updated_at = $at
+        WHERE classroom_id = $cid AND id = $eventId AND EXISTS (SELECT 1 FROM activities WHERE id = $aid)`,
+      params: { aid: id, cid: classroomId, eventId: scheduled.eventId, at },
+    });
+  }
   if (mode === "live") {
     queries.push({
-      sql: "UPDATE classrooms SET current_activity_id = $aid WHERE id = $cid",
+      sql: `UPDATE classrooms SET current_activity_id = $aid
+        WHERE id = $cid AND EXISTS (SELECT 1 FROM activities WHERE id = $aid)`,
       params: { aid: id, cid: classroomId },
     });
   }
-  await batch(db, queries);
-  return id;
+  const results = await batch(db, queries);
+  return results[copy ? 1 : 0]?.meta.changes ? id : null;
+}
+
+async function scheduledEvent(db: D1Database, classroomId: string, id: string, topicId: string) {
+  const event = await one<{ topic_id: string | null; activity_id: string | null }>(
+    db,
+    "SELECT topic_id, activity_id FROM classroom_calendar_events WHERE classroom_id = $cid AND id = $id",
+    { cid: classroomId, id },
+  );
+  if (!event) fail(404, "not_found");
+  if (event.topic_id !== topicId) fail(422, "validation");
+  return event;
 }
 
 interface SummaryRow {
@@ -139,10 +180,11 @@ export function classroomsRoutes() {
     .get("/classrooms/:id/topics", async (c) => {
       const user = requireUser(c);
       const { classroom } = await classroomAccess(c.env.DB, c.req.param("id"), user);
+      const pool = topicPoolSql(["classroom"], { userId: user.id, classroomId: classroom.id });
       const rows = await all<TopicRow>(
         c.env.DB,
-        "SELECT * FROM topics WHERE classroom_id = $cid ORDER BY created_at, id",
-        { cid: classroom.id },
+        `SELECT * FROM topics WHERE ${pool.sql} ORDER BY created_at, id`,
+        pool.params,
       );
       return c.json(rows.map(parsePrompts));
     })
@@ -154,7 +196,7 @@ export function classroomsRoutes() {
       const id = newId("t_");
       await run(
         c.env.DB,
-        "INSERT INTO topics (id, owner_id, classroom_id, title, statement, summary, prompts, created_at) VALUES ($id, $uid, $cid, $title, $statement, $summary, $prompts, $at)",
+        "INSERT INTO topics (id, owner_id, classroom_id, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $title, $statement, $summary, $prompts, $axes, $at)",
         {
           id,
           uid: user.id,
@@ -163,6 +205,7 @@ export function classroomsRoutes() {
           statement: input.statement,
           summary: input.summary ?? null,
           prompts: JSON.stringify(input.prompts),
+          axes: JSON.stringify(input.axes),
           at: nowIso(),
         },
       );
@@ -175,17 +218,56 @@ export function classroomsRoutes() {
       const input = c.req.valid("json");
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, c.req.param("id"), user);
       if (!isTeacher) fail(403, "forbidden");
-      await topicForActivity(c.env.DB, input.topicId, classroom.id, user.id);
-      const activityId = await createActivity(c.env.DB, classroom.id, input.topicId, input.mode);
-      return c.json(
-        {
-          classroomId: classroom.id,
-          code: classroom.join_code,
-          url: `${baseUrl(c.env)}/join/${classroom.join_code}`,
-          activityId,
-          mode: input.mode,
-        },
-        201,
+      const started = (activityId: string) => ({
+        classroomId: classroom.id,
+        code: classroom.join_code,
+        url: `${baseUrl(c.env)}/join/${classroom.join_code}`,
+        activityId,
+        mode: input.mode,
+      });
+      const eventId = input.calendarEventId;
+      if (eventId && input.mode !== "live") fail(422, "validation");
+      const event = eventId ? await scheduledEvent(c.env.DB, classroom.id, eventId, input.topicId) : null;
+      if (event?.activity_id) return c.json(started(event.activity_id), 200);
+      const condition = eventId ? scheduledStartCondition(classroom.id, eventId, input.topicId) : undefined;
+      const topic = await topicForActivity(c.env.DB, input.topicId, classroom.id, user.id);
+      const reportAxes = await reportAxesFor(c.env.DB, input.reportAxes);
+      if (input.topicAxes && reportAxes !== "teacher") fail(422, "report_axes_not_allowed");
+
+      const originalAxes = reportAxes === "teacher" ? parsePrompts(topic).axes : [];
+      if (reportAxes === "teacher" && (input.topicAxes ?? originalAxes).length === 0) fail(422, "topic_axes_required");
+
+      let topicId = topic.id;
+      let copy: SqlEntry | undefined;
+      if (input.topicAxes && JSON.stringify(input.topicAxes) !== JSON.stringify(originalAxes)) {
+        topicId = newId("t_");
+        copy = topicCopyInsert(
+          topic,
+          {
+            id: topicId,
+            userId: user.id,
+            classroomId: classroom.id,
+            axes: input.topicAxes,
+          },
+          condition,
+        );
+      }
+      const activityId = await createActivity(
+        c.env.DB,
+        classroom.id,
+        topicId,
+        input.mode,
+        reportAxes,
+        copy,
+        eventId && condition ? { eventId, condition } : undefined,
       );
+      if (!activityId) {
+        if (!eventId) fail(500, "internal_error");
+        const current = await scheduledEvent(c.env.DB, classroom.id, eventId, input.topicId);
+        if (current.activity_id) return c.json(started(current.activity_id), 200);
+        fail(409, "conflict");
+      }
+      if (input.mode === "live") await publishClassroom(c.env, classroom.id, "activities");
+      return c.json(started(activityId), 201);
     });
 }

@@ -26,7 +26,7 @@ function DevAccountsPage() {
       queryClient.clear();
       queryClient.setQueryData(meQueryOptions.queryKey, user);
       if (account.fixtureRole === "student") await navigate({ to: "/home" });
-      else if (account.fixtureRole === "admin") await navigate({ to: "/admin/users" });
+      else if (account.fixtureRole === "admin") await navigate({ to: "/admin" });
       else await navigate({ to: "/classrooms" });
     },
   });

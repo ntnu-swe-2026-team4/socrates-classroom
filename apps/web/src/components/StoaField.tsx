@@ -5,6 +5,18 @@ import { onReducedMotionChange } from "@/lib/motion";
 
 const clamp = (v: number, a: number, b: number) => Math.min(Math.max(v, a), b);
 
+const MAX_COLUMNS = 4;
+const COLUMN_DIAMETER = 73;
+const COLUMN_MIN_PITCH = 140;
+const WIDE_DIAMETER_RATIO = 0.118;
+
+export function colonnadeLayout(width: number) {
+  return {
+    count: Math.min(MAX_COLUMNS, Math.floor(width / COLUMN_MIN_PITCH)),
+    diameter: Math.max(COLUMN_DIAMETER, width * WIDE_DIAMETER_RATIO),
+  };
+}
+
 function buildColonnade(W: number, H: number, LW: number) {
   const g = new Float32Array(W * H);
   const put = (px: number, py: number, d: number) => {
@@ -20,8 +32,7 @@ function buildColonnade(W: number, H: number, LW: number) {
       if (u >= -1 && u <= 1) put(x, y, fn(u, x));
     }
   };
-  const n = 4;
-  const D0 = LW * 0.118;
+  const { count: n, diameter: D0 } = colonnadeLayout(LW);
   const D1 = D0 * 0.86;
   const capH = 31;
   const baseH = 32;
@@ -418,7 +429,7 @@ export function StoaField({ reserve, className }: { reserve: number; className?:
       ref={attach}
       aria-hidden
       className={cn(
-        "pointer-events-none absolute inset-0 block size-full text-comic-graphite [image-rendering:pixelated]",
+        "pointer-events-none fixed top-0 left-0 block h-dvh w-screen text-comic-graphite [image-rendering:pixelated]",
         className,
       )}
     />

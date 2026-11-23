@@ -1,3 +1,4 @@
+import { publishClassroom } from "../do/classroom-events";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
@@ -142,6 +143,7 @@ export function authRoutes() {
         if (pairs.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
         fail(409, "conflict");
       }
+      await publishClassroom(c.env, classroom.id, "members");
       const user = { id, name: input.name, isAdmin: false };
       await ensureParticipant(c.env.DB, classroom.current_activity_id, user, at);
       await startSession(c, user);

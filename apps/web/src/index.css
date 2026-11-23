@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant short (@media (max-height: 916px));
+
 @theme {
   --font-sans:
     -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Helvetica Neue", Arial, sans-serif;

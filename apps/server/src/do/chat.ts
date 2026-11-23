@@ -1,7 +1,7 @@
 import type { UserInput } from "@earendil-works/pi-durable";
 import { DurableObject } from "cloudflare:workers";
 import { type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } from "agents/harness/pi";
-import { Lifecycle, type LifecycleJobContext } from "agents/lifecycle";
+import { Lifecycle, type LifecycleJobContext, type LifecycleJobOutcome } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
 import {
@@ -12,12 +12,14 @@ import {
   lookupParticipant,
   lookupSession,
 } from "../auth";
-import { activityAccess, participantOf } from "../services/members";
+import { participantOf } from "../services/members";
+import { LIVE_PROGRESS_JOB, LiveProgressProjection } from "./live-progress";
 import { forkBtw } from "../pi/extensions/btw";
 import { teacherOfActivity } from "../pi/credentials";
 import { one } from "../db/d1";
 import { ApiError, type Lang } from "@socrates/shared";
 import { normalizeLang } from "../http";
+import type { Topic } from "../prompts/assemble";
 import { ChatSockets, type ReverifyOutcome, type SocketIdentity } from "../ws/sockets";
 import {
   createDialogueCore,
@@ -40,11 +42,13 @@ class ActivityFinishedError extends Error {
 
 export class Chat extends DurableObject<Env> {
   #teacherId: string | null | undefined;
+  #topic: Topic | null | undefined;
   readonly #sessionModels = new Map<string, { provider: string; id: string }>();
 
   readonly core = createDialogueCore(this.env, {
     credentialOwner: () => this.teacherId(),
     getLang: () => this.studentLang(),
+    getTopic: () => this.topic(),
   });
 
   readonly tracker = new RunDeadlineTracker(
@@ -65,12 +69,18 @@ export class Chat extends DurableObject<Env> {
     (handle, input, options) => this.routeSubmit(handle, input, options),
     (identity) => this.canSubmit(identity),
     () => forkBtw(this.core.harness, this.core.btw),
-    (identity) => this.revalidate(identity),
+    (identity) => this.reverify(identity),
     (session) => this.tracker.recentRunFailure(session),
   );
 
   readonly webSockets = new WebSockets(this.sockets.options());
   readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.core.harness);
+  readonly liveProgress = new LiveProgressProjection(
+    this.ctx,
+    this.env.DB,
+    () => this.lifecycle.jobs,
+    () => this.core.harness.pi(),
+  );
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -99,8 +109,13 @@ export class Chat extends DurableObject<Env> {
     }
   }
 
-  async onJob({ job }: LifecycleJobContext): Promise<void> {
+  async onJob({ job }: LifecycleJobContext): Promise<LifecycleJobOutcome> {
     if (job.fn === RUN_DEADLINE_JOB) await this.tracker.checkRun(job);
+    if (job.fn === LIVE_PROGRESS_JOB) return this.liveProgress.dispatch();
+  }
+
+  async scheduleLiveProgress(): Promise<void> {
+    await this.liveProgress.schedule();
   }
 
   private async teacherId(): Promise<string | null> {
@@ -109,6 +124,24 @@ export class Chat extends DurableObject<Env> {
       this.#teacherId = activityId ? await teacherOfActivity(this.env, activityId) : null;
     }
     return this.#teacherId;
+  }
+
+  private async topic(): Promise<Topic | null> {
+    if (this.#topic !== undefined) return this.#topic;
+    const activityId = this.ctx.id.name?.split(":")[0] ?? "";
+    if (!activityId) return null;
+    try {
+      this.#topic =
+        (await one<Topic>(
+          this.env.DB,
+          "SELECT t.title, t.statement FROM activities a JOIN topics t ON t.id = a.topic_id WHERE a.id = $id",
+          { id: activityId },
+        )) ?? null;
+    } catch (error) {
+      console.warn("[chat] topic load failed", error instanceof Error ? error.name : typeof error);
+      return null;
+    }
+    return this.#topic;
   }
 
   private async studentLang(): Promise<Lang> {
@@ -123,16 +156,18 @@ export class Chat extends DurableObject<Env> {
 
   private async routeSubmit(handle: PiSession, input: UserInput, options: PiSubmitOptions): Promise<PiReceipt> {
     const activityId = this.ctx.id.name?.split(":")[0] ?? "";
-    const activity = await one<{ finished_at: string | null }>(
+    const activity = await one<{ finished_at: string | null; mode: string }>(
       this.env.DB,
-      "SELECT finished_at FROM activities WHERE id = $id",
+      "SELECT finished_at, mode FROM activities WHERE id = $id",
       { id: activityId },
     );
     if (activity?.finished_at) throw new ActivityFinishedError();
 
-    return submitViaRouter(this.env, this.core, this.#sessionModels, handle, input, options, (h, inp, opt) =>
-      this.tracker.submitWithDeadline(h, inp, opt, (p) => this.ctx.waitUntil(p)),
-    );
+    return submitViaRouter(this.env, this.core, this.#sessionModels, handle, input, options, async (h, inp, opt) => {
+      const submit = () => this.tracker.submitWithDeadline(h, inp, opt, (p) => this.ctx.waitUntil(p));
+      if (activity?.mode !== "live" || h.id !== ROOT_SESSION) return submit();
+      return this.liveProgress.trackAdmission(submit);
+    });
   }
 
   async transcript(): Promise<TranscriptReadout> {
@@ -159,19 +194,13 @@ export class Chat extends DurableObject<Env> {
         participantId,
         version: lookup.session.version,
       };
-      const access = await activityAccess(this.env.DB, activityId, {
-        user: lookup.session.user,
-        participant: null,
-      }).catch(() => null);
-      if (access && (access.isTeacher || access.participant?.id === participantId)) return identity;
-      const ownedHere = await participantOf(this.env.DB, activityId, participantId);
-      return ownedHere?.user_id === lookup.session.user.id ? identity : null;
+      return (await this.activityPermitsThread(activityId, participantId, lookup.session.user.id)) ? identity : null;
     }
     if (lookup.kind !== "missing") return null;
     const held = await lookupParticipant(this.env, cookieValue(cookie, PARTICIPANT_COOKIE));
     if (!held || held.activityId !== activityId || held.participantId !== participantId) return null;
     const participant = await participantOf(this.env.DB, activityId, participantId);
-    if (!participant || participant.user_id !== null) return null;
+    if (participant?.kind !== "guest" || participant.user_id !== null) return null;
     return { userId: null, participantId, version: null };
   }
 
@@ -181,35 +210,32 @@ export class Chat extends DurableObject<Env> {
     try {
       if (identity.userId === null) {
         const participant = await participantOf(this.env.DB, activityId, participantId);
-        return participant && participant.user_id === null ? "member" : "revoked";
+        return participant?.kind === "guest" && participant.user_id === null ? "member" : "revoked";
       }
       const state = await accountState(this.env.DB, identity.userId);
       if (!state || state.disabled || state.version !== identity.version) return "revoked";
-      const participant = await participantOf(this.env.DB, activityId, participantId);
-      if (participant?.user_id === identity.userId) return "member";
-      const access = await activityAccess(this.env.DB, activityId, {
-        user: { id: identity.userId },
-        participant: null,
-      });
-      return access.isTeacher ? "member" : "revoked";
+      return (await this.activityPermitsThread(activityId, participantId, identity.userId)) ? "member" : "revoked";
     } catch (error) {
       return error instanceof ApiError ? "revoked" : "error";
     }
   }
 
-  private async revalidate(identity: SocketIdentity): Promise<ReverifyOutcome> {
-    try {
-      if (identity.userId === null) {
-        const [activityId, participantId] = this.ctx.id.name?.split(":") ?? [];
-        if (!activityId || !participantId || identity.participantId !== participantId) return "revoked";
-        const participant = await participantOf(this.env.DB, activityId, participantId);
-        return participant && participant.user_id === null ? "member" : "revoked";
-      }
-      const state = await accountState(this.env.DB, identity.userId);
-      if (!state || state.disabled || state.version !== identity.version) return "revoked";
-      return "member";
-    } catch {
-      return "error";
-    }
+  private async activityPermitsThread(activityId: string, participantId: string, userId: string): Promise<boolean> {
+    const matching = await one(
+      this.env.DB,
+      `SELECT 1 FROM activities a JOIN classrooms c ON c.id = a.classroom_id
+       LEFT JOIN activity_participants p ON p.activity_id = a.id AND p.id = $pid
+       WHERE a.id = $aid AND (c.teacher_id = $uid OR (
+         a.mode = 'live' AND p.user_id = $uid AND (p.kind = 'guest' OR EXISTS (
+           SELECT 1 FROM members m WHERE m.classroom_id = c.id AND m.user_id = $uid
+         ))
+       ))`,
+      { aid: activityId, pid: participantId, uid: userId },
+    );
+    return matching !== null;
+  }
+
+  async disconnectMember(userId: string): Promise<void> {
+    await this.sockets.disconnectUser(userId);
   }
 }
