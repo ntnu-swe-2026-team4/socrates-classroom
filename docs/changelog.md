@@ -2,15 +2,14 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
-## 2026-11-23 — prompt 照 #161 規範收斂（`refactor/161-prompt-ssot`，#161）
+## 2026-11-23 — prompt 整理：送進模型的文字收進 `prompts/`（`refactor/161-prompt-ssot`，#161）
 
 ### Changed
 
-- violation 分類與頭像表情的 Clef 指示和 criteria 從 TS 移到 `prompts/violation-classify.md`、`violation-classify-topic.md`、`emotion-classify.md`（第一段 instructions，其後每行 `- choice: criterion`，由 `pi/clef-prompt.ts` 解析並核對 choice 與 `VIOLATION_TYPES`／emotion 一一對應）；送出的內容逐字不變
-- web-content 的 untrusted 外框與 `report_violation` 的兩句回覆移到 `assemble.ts`（`webContentBlock()`、`violationToolReply()`）；送出的內容逐字不變
-- lookup、topic-gen 的語言改由 md 的 `{{lang}}` 指定（取自 `Accept-Language`），不再寫在輸入的「Write in X」；topic-gen 輸入的 `Direction:` 外框由 `topicGenInput()` 產生
-- btw 改依學生目前的介面語言回答（`btw.md` 的 `{{lang}}`，與 socrates 同一個來源）；原本是「學生用什麼語言寫就用什麼回」
-- `tests/prompts.test.ts` 補上 btw、lookup、topic-gen 各語言的指示、Clef 題目、其餘外框的快照，格式檢查擴及所有單語言 md；既有快照不變
+- violation 分類與頭像表情的 Clef 指示和 criteria 從 TS 移到 `prompts/violation-classify.md`、`violation-classify-topic.md`、`emotion-classify.md`（第一段 instructions，其後每行 `- choice: criterion`，由 `pi/clef-prompt.ts` 解析並核對 choice 與 `VIOLATION_TYPES`／emotion 一一對應）
+- web-content 的 untrusted 外框、`report_violation` 的兩句回覆、lookup 與 topic-gen 的輸入（含「Write in X」）改由 `assemble.ts` 產生（`webContentBlock()`、`violationToolReply()`、`lookupInput()`、`topicGenInput()`），不再在 route／extension 手寫
+- 只是整理：送給模型的內容逐字不變。#161 規範 §8 中會改變模型行為的兩項（lookup／topic-gen 改用 md 的 `{{lang}}`、btw 指定目標語言）不在此次，需另行驗證後處理
+- `tests/prompts.test.ts` 補上 btw、lookup、topic-gen 的指示、Clef 題目與其餘外框的快照；既有快照不變
 
 ## 2026-11-22 — 單人報告加上六項思辨力指標（`feat/255-thinking-indicators`，#255）
 

@@ -102,9 +102,8 @@ export function topicsRoutes() {
           harness,
           runtime,
           "topic-gen",
-          topicGenInput(input.direction),
+          topicGenInput(input.direction, langOf(c)),
           await teacherLegs,
-          { lang: langOf(c) },
         );
         const parsed = TopicGenSchema.safeParse(JSON.parse(text));
         if (!parsed.success) throw new Error("schema_mismatch");

@@ -1,3 +1,4 @@
+import { LANG_NAMES, type Lang } from "@socrates/shared";
 import type { ReportAxesPlan } from "../pi/extensions/report-submit";
 
 export interface Topic {
@@ -9,8 +10,16 @@ export function topicBlock(title: string, statement: string): string {
   return `## Topic: ${title}\n${statement}`;
 }
 
-export function topicGenInput(direction: string): string {
-  return `Direction: ${direction}`;
+function inLanguage(request: string, lang: Lang): string {
+  return `${request}\n\nWrite in ${LANG_NAMES[lang]}.`;
+}
+
+export function lookupInput(term: string, lang: Lang): string {
+  return inLanguage(term, lang);
+}
+
+export function topicGenInput(direction: string, lang: Lang): string {
+  return inLanguage(`Direction: ${direction}`, lang);
 }
 
 export function webContentBlock(text: string): string {

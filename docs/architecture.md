@@ -97,7 +97,7 @@ socrates-classroom/
 │       │   ├── prompts/            # LLM 組的 prompt 資產（build-time ?raw）；規範見 #161 留言〈Prompt 規範〉
 │       │   │   ├── socrates.md（＋.en／.es）/ btw.md / lookup.md / topic-gen.md / class-report.md / class-report-axes.md / student-report.md / student-indicators.md
 │       │   │   ├── violation-classify.md / violation-classify-topic.md / emotion-classify.md  # Clef choice 題：第一段 instructions，其後每行 `- choice: criterion`（`pi/clef-prompt.ts` 解析）
-│       │   │   └── assemble.ts     # 輸入的所有外框（topicBlock／section／報告與 topic-gen 輸入／web-content 外框／report_violation 回覆）
+│       │   │   └── assemble.ts     # 輸入的所有外框（topicBlock／section／報告、lookup、topic-gen 輸入／web-content 外框／report_violation 回覆）
 │       │   ├── ws/                 # transport glue（protocol + sockets）
 │       │   ├── auth.ts / auth-crypto.ts  # session＋AES-GCM（byok.ts 併入）
 │       │   ├── db/d1.ts / http.ts / messages.ts / seed.ts / services/

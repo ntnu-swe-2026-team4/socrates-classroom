@@ -10,4 +10,4 @@ Ground the topics: search for factual anchors first (real events, data, cases) a
 Respond with only JSON, no markdown fences:
 {"topics": [{"title": "...", "statement": "...", "prompts": ["...", "..."]}]}
 
-Produce 3 topics. Write in {{lang}}. When writing Chinese, always use Traditional characters.
+Produce 3 topics. Write in the language given in the request. When writing Chinese, always use Traditional characters.

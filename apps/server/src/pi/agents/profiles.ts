@@ -136,12 +136,8 @@ export function profileRegistry(profile: AgentProfile, env: Env): Registry {
   return registry;
 }
 
-export function withLang(asset: string, lang: Lang): string {
-  return asset.replaceAll(LANG_PLACEHOLDER, LANG_NAMES[lang]);
-}
-
 export function instructionsFor(name: ProfileName, lang: Lang): string {
-  return withLang(PROFILES[name].instructions, lang);
+  return PROFILES[name].instructions.replaceAll(LANG_PLACEHOLDER, LANG_NAMES[lang]);
 }
 
 function agentChangeFor(profile: AgentProfile, lang: Lang): AgentChange {
