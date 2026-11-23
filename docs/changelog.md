@@ -16,8 +16,6 @@
 
 ### Changed
 
-<<<<<<< HEAD
-
 - `apps/server/src/http.ts` 的 `enforceIpLimit` 不再用 module-level `ipHits`（`Map<string, number[]>`，每 isolate 各一份、滿 10k 條目還得掃表驅逐）：改呼叫 `RateLimiter` DO（`idFromName("<scope>:<ip>")`，單一 actor 序列化 60 秒 sliding window；同 region 個位數 ms）。任一 IP 對任一 scope 的放行量不再隨 isolate 數放大
 - 計數只存 DO 記憶體、不落 storage（DO 只在 idle 時 evict，而 idle 期間窗口本來就會過期；同時不把 IP 位址持久化）；DO 不可用時 fail-open（放行 + `console.warn`），與 `#196` RoutingLedger 同一取捨
 - 對外介面不變：`enforceIpLimit`／`rateLimit`／guard 順序、`429 rate_limited` envelope、無 `CF-Connecting-IP` 一律放行
