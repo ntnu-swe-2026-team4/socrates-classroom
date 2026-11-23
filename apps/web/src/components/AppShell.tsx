@@ -88,6 +88,7 @@ function useSessionSync() {
 }
 
 function SoundToggleButton({ className = RAIL_SQUARE_BTN }: { className?: string }) {
+  const { t } = useI18n();
   const { enabled, setEnabled, play } = useSound();
   const label = enabled ? t("sound_off") : t("sound_on");
 

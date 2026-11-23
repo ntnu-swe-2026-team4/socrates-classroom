@@ -12,6 +12,7 @@ import {
   stopNarration,
   startHoldSound,
   stopHoldSound,
+  stopAllSounds,
   type SoundName,
 } from "@/lib/sound";
 
@@ -1671,7 +1672,7 @@ function ComicLanding() {
     return () => {
       unwatch();
       unwatchMotion();
-      stopNarration();
+      stopAllSounds();
       root.removeEventListener("scroll", schedule);
       window.removeEventListener("pointermove", onPointer);
       render.stop();

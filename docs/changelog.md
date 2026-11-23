@@ -1,6 +1,13 @@
 # Changelog（變更紀錄）
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
+## 2026-11-23 — 首頁故事多軌音效與全站介面音效開關（`feat/ux-sounds`，Refs #128, #129）
+
+### Added
+
+- 前端多軌音效引擎 `apps/web/src/lib/sound.ts` 與 `useSound` hook：支援短音效（`cloneNode` 防切音）、背景音樂循環與 `requestAnimationFrame` 淡出、單聲道故事旁白與環境音互斥切換，以及首次互動自動解鎖補播；預設靜音並與 `getCompanion().muted` 雙重連動
+- 首頁漫畫故事線（`apps/web/src/routes/index.tsx`）綁定 `comic_1`～`comic_6` 旁白（合併 `comic_2_3`）、背景音樂、腳步聲與耳語環境音，以及 `HoldTurn` 長按雕像轉動音效，離開首頁時透過 `stopAllSounds()` 完整清理音軌
+- 全站按鈕點擊監聽與多語系 `<SoundToggleButton />`（`apps/web/src/components/AppShell.tsx`、`apps/web/src/i18n/index.ts`），支援 `toggle_on` / `toggle_off` 切換音與零延遲靜音
 
 ## 2026-11-22 — 單人報告加上六項思辨力指標（`feat/255-thinking-indicators`，#255）
 
