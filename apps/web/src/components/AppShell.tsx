@@ -139,7 +139,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return <RailShell pathname={pathname}>{children}</RailShell>;
 }
 
-
 function RailShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const { t } = useI18n();
   const theme = useTheme();

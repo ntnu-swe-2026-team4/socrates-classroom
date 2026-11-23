@@ -5,9 +5,15 @@ import { LANGS, setLocale, useI18n, type Locale, type MessageKey } from "@/i18n"
 import { normalizeJoinCode } from "@/lib/joinCode";
 import { createFrameLoop } from "@/lib/frameLoop";
 import { onReducedMotionChange } from "@/lib/motion";
-import { fadeOutBgm, playNarration, playSound, stopNarration, startHoldSound, stopHoldSound, type SoundName } from "@/lib/sound";
-
-
+import {
+  fadeOutBgm,
+  playNarration,
+  playSound,
+  stopNarration,
+  startHoldSound,
+  stopHoldSound,
+  type SoundName,
+} from "@/lib/sound";
 
 export const Route = createFileRoute("/")({
   component: ComicLanding,
@@ -202,29 +208,19 @@ function Caption({
   ready?: boolean;
 }) {
   const playedRef = useRef(false);
-  const visibleRef = useRef(false);
-  const readyRef = useRef(ready);
-  readyRef.current = ready;
-
-  if (ready && visibleRef.current && sound && !playedRef.current) {
-    playedRef.current = true;
-    if (turnPage) playSound("turnPage", 0.5);
-    playNarration(sound, 0.85);
-  }
 
   const attach = useCallback(
     (el: HTMLElement | null) => {
-      if (!el || !sound) return;
+      if (!el || !sound || !ready || playedRef.current) return;
       return whileVisible(el, "-5% 0px -5% 0px", (visible) => {
-        visibleRef.current = visible;
-        if (visible && readyRef.current && !playedRef.current) {
+        if (visible && !playedRef.current) {
           playedRef.current = true;
           if (turnPage) playSound("turnPage", 0.5);
           playNarration(sound, 0.85);
         }
       });
     },
-    [sound, turnPage],
+    [sound, turnPage, ready],
   );
 
   return (
@@ -1586,7 +1582,9 @@ function HoldTurn({
           <CursorTag layer={layer} tag={tag} label={label} ariaLabel={ariaLabel} pressed={pressed} hidden={done} />
         </div>
       </div>
-      <Caption sound="comic6" className="top-[11%] -left-1 md:-left-12">{intro}</Caption>
+      <Caption sound="comic6" className="top-[11%] -left-1 md:-left-12">
+        {intro}
+      </Caption>
       <Caption
         className={cn(
           "top-[58%] right-0 max-w-[66%] transition-opacity duration-500 md:top-[42%] md:right-auto md:left-[76%] md:w-max md:max-w-[min(440px,calc(50vw_-_190px))]",
@@ -1690,7 +1688,6 @@ function ComicLanding() {
     const normalized = normalizeJoinCode(code);
     if (normalized) void navigate({ to: "/join/$code", params: { code: normalized } });
   };
-
 
   return (
     <div ref={attach} className="h-dvh overflow-x-hidden overflow-y-auto bg-comic-paper text-comic-ink">
@@ -1828,7 +1825,9 @@ function ComicLanding() {
             >
               <EyesInset label={t("comic_eyes_label")} />
             </Inset>
-            <Caption sound="comic1" className="-bottom-32 left-2 md:bottom-8 md:-left-8">{t("comic_1")}</Caption>
+            <Caption sound="comic1" className="-bottom-32 left-2 md:bottom-8 md:-left-8">
+              {t("comic_1")}
+            </Caption>
           </figure>
         </section>
 
@@ -1849,7 +1848,9 @@ function ComicLanding() {
           >
             <AgoraStage>
               <Caption className="top-[3%] -left-1 md:-left-6">{t("comic_2")}</Caption>
-              <Caption sound="comic3" className="top-[31%] -right-1 md:top-[9%] md:-right-6">{t("comic_3")}</Caption>
+              <Caption sound="comic3" className="top-[31%] -right-1 md:top-[9%] md:-right-6">
+                {t("comic_3")}
+              </Caption>
             </AgoraStage>
             <DesertStage>
               <div className="absolute top-0 right-1 z-20 w-[62%] -translate-y-1/2 md:right-[max(6px,calc(50%_-_var(--joint)/2_-_6%))] md:w-[min(38%,520px)]">
@@ -1869,7 +1870,9 @@ function ComicLanding() {
                   />
                   <WindCanvas seed={41} />
                 </div>
-                <Caption sound="comic_band" className="-top-5 -left-3 md:-left-8">{t("comic_band")}</Caption>
+                <Caption sound="comic_band" className="-top-5 -left-3 md:-left-8">
+                  {t("comic_band")}
+                </Caption>
               </div>
               <div className="absolute top-[26%] left-1 z-20 w-[40%] md:top-[15%] md:left-[max(6px,calc(50%_-_var(--joint)/2_-_7%))] md:w-[min(30%,420px)]">
                 <div
@@ -1892,7 +1895,9 @@ function ComicLanding() {
         <InkFlames />
         <figure className="relative mx-auto w-full max-w-[1180px] px-0 md:px-8">
           <Tornado label={t("comic_spin")} ariaLabel={t("comic_spin_label")} onAwake={() => setAwake(true)} />
-          <Caption sound="comic4" className="top-[118px] left-3 md:top-[130px] md:left-10">{t("comic_4")}</Caption>
+          <Caption sound="comic4" className="top-[118px] left-3 md:top-[130px] md:left-10">
+            {t("comic_4")}
+          </Caption>
           <Caption
             className={cn(
               "right-3 bottom-3 font-serif text-[15px] transition-opacity duration-700 md:right-10 md:text-[18px]",
@@ -1908,7 +1913,9 @@ function ComicLanding() {
       <main className="relative mx-auto w-full max-w-[1180px] px-4 pb-[clamp(140px,24vh,280px)] md:px-8">
         <section className="relative pt-[clamp(110px,18vh,220px)]">
           <CrowdStage>
-            <Caption sound="comic5" className="-top-5 left-3 md:-left-8">{t("comic_5")}</Caption>
+            <Caption sound="comic5" className="-top-5 left-3 md:-left-8">
+              {t("comic_5")}
+            </Caption>
           </CrowdStage>
         </section>
 
