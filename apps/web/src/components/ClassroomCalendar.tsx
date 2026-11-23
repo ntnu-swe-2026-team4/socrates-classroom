@@ -1,13 +1,13 @@
 import type { CalendarEvent } from "@socrates/shared";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "@/api";
 import { classroomCalendarOptions, classroomCalendarScopeOptions } from "@/api/queries";
 import { EmptyPanel, PanelState } from "@/components/ClassroomCommunity";
 import { Button, Card, ConfirmDialog, Field, FormDialog, Input, cn } from "@/components/ui";
 import { useI18n, useT } from "@/i18n";
-import { dayKey, eventsByDay, monthDays } from "@/lib/calendar";
+import { dayKey, eventsByDay, localDateTime, monthDays, shiftDay, weekStart } from "@/lib/calendar";
 
 const MONDAY = new Date(2024, 0, 1);
 const WEEKDAYS = Array.from({ length: 7 }, (_, index) => new Date(2024, 0, MONDAY.getDate() + index));
@@ -19,30 +19,57 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
   const { locale } = useI18n();
   const client = useQueryClient();
   const today = new Date();
-  const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
+  const [view, setView] = useState<"month" | "week">("month");
   const [selected, setSelected] = useState(dayKey(today));
-  const [adding, setAdding] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [removing, setRemoving] = useState<CalendarEvent | null>(null);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(selected);
   const [time, setTime] = useState("09:00");
+  const [end, setEnd] = useState("");
   const [note, setNote] = useState("");
-  const options = classroomCalendarOptions(id, cursor.year, cursor.month);
-  const events = useQuery(options);
+  const selectedDate = new Date(`${selected}T00:00`);
+  const year = selectedDate.getFullYear();
+  const month = selectedDate.getMonth();
+  const weekly = view === "week";
+  const rangeStart = weekly ? weekStart(selectedDate) : new Date(year, month, 1);
+  const rangeEnd = weekly ? shiftDay(rangeStart, 7) : new Date(year, month + 1, 1);
+  const events = useQuery(classroomCalendarOptions(id, rangeStart, rangeEnd));
   const refresh = () => client.invalidateQueries({ queryKey: classroomCalendarScopeOptions(id).queryKey });
-  const create = useMutation({
-    mutationFn: () =>
-      api.classroom.createCalendarEvent(id, {
+  const localStart = `${date}T${time}`;
+  const originalStart = editing ? localDateTime(editing.startsAt) : "";
+  const originalEnd = editing?.endsAt ? localDateTime(editing.endsAt) : "";
+  const startMillis = editing && localStart === originalStart ? Date.parse(editing.startsAt) : Date.parse(localStart);
+  const endMillis = editing?.endsAt && end === originalEnd ? Date.parse(editing.endsAt) : Date.parse(end);
+  const badEnd = Boolean(end && !(endMillis > startMillis));
+  const changed =
+    !editing ||
+    title.trim() !== editing.title ||
+    note.trim() !== editing.note ||
+    localStart !== originalStart ||
+    end !== originalEnd;
+  const save = useMutation({
+    mutationFn: () => {
+      if (editing) {
+        return api.classroom.updateCalendarEvent(id, editing.id, {
+          ...(title.trim() !== editing.title && { title: title.trim() }),
+          ...(note.trim() !== editing.note && { note: note.trim() }),
+          ...(localStart !== originalStart && { startsAt: new Date(startMillis).toISOString() }),
+          ...(end !== originalEnd && { endsAt: end ? new Date(endMillis).toISOString() : null }),
+        });
+      }
+      return api.classroom.createCalendarEvent(id, {
         title: title.trim(),
-        startsAt: new Date(`${date}T${time}`).toISOString(),
+        startsAt: new Date(startMillis).toISOString(),
+        ...(end && { endsAt: new Date(endMillis).toISOString() }),
         note: note.trim(),
-      }),
+      });
+    },
     onSuccess: async (event) => {
       await refresh();
-      const start = new Date(event.startsAt);
-      setCursor({ year: start.getFullYear(), month: start.getMonth() });
-      setSelected(dayKey(start));
-      setAdding(false);
+      setSelected(dayKey(new Date(event.startsAt)));
+      setEditorOpen(false);
     },
   });
   const remove = useMutation({
@@ -53,55 +80,76 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
     },
   });
 
-  const visibleDays = monthDays(cursor.year, cursor.month);
+  const visibleDays = weekly ? WEEKDAYS.map((_, index) => shiftDay(rangeStart, index)) : monthDays(year, month);
   const days = eventsByDay(
     events.data ?? [],
-    visibleDays.filter((day) => day.getMonth() === cursor.month),
+    weekly ? visibleDays : visibleDays.filter((day) => day.getMonth() === month),
   );
-  const monthLabel = new Date(cursor.year, cursor.month, 1).toLocaleDateString(locale, {
-    year: "numeric",
-    month: "long",
-  });
-  const selectedDate = new Date(`${selected}T00:00`);
+  const periodLabel = weekly
+    ? new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).formatRange(rangeStart, shiftDay(rangeEnd, -1))
+    : rangeStart.toLocaleDateString(locale, { year: "numeric", month: "long" });
   const selectedEvents = days.get(selected) ?? [];
   const shift = (step: number) => {
-    const next = new Date(cursor.year, cursor.month + step, 1);
-    setCursor({ year: next.getFullYear(), month: next.getMonth() });
+    const next = weekly ? shiftDay(selectedDate, step * 7) : new Date(year, month + step, 1);
     setSelected(dayKey(next));
   };
-  const openAdd = () => {
-    create.reset();
-    setTitle("");
-    setNote("");
-    setDate(selected);
-    setTime("09:00");
-    setAdding(true);
+  const openEditor = (event: CalendarEvent | null) => {
+    save.reset();
+    setEditing(event);
+    setTitle(event?.title ?? "");
+    setNote(event?.note ?? "");
+    const start = event ? localDateTime(event.startsAt) : `${selected}T09:00`;
+    setDate(start.slice(0, 10));
+    setTime(start.slice(11));
+    setEnd(event?.endsAt ? localDateTime(event.endsAt) : "");
+    setEditorOpen(true);
   };
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" aria-label={t("calendar_prev")} onClick={() => shift(-1)}>
-          <ChevronLeft className="size-4" aria-hidden />
-        </Button>
-        <h3 aria-live="polite" className="min-w-0 flex-1 text-center font-serif text-lg text-ink">
-          {monthLabel}
-        </h3>
-        <Button variant="outline" size="sm" aria-label={t("calendar_next")} onClick={() => shift(1)}>
-          <ChevronRight className="size-4" aria-hidden />
-        </Button>
         <Button
           variant="outline"
           size="sm"
-          onClick={() => {
-            setCursor({ year: today.getFullYear(), month: today.getMonth() });
-            setSelected(dayKey(today));
-          }}
+          aria-label={t(weekly ? "calendar_prev_week" : "calendar_prev")}
+          onClick={() => shift(-1)}
         >
+          <ChevronLeft className="size-4" aria-hidden />
+        </Button>
+        <h3 aria-live="polite" className="min-w-0 flex-1 text-center font-serif text-lg text-ink">
+          {periodLabel}
+        </h3>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={t(weekly ? "calendar_next_week" : "calendar_next")}
+          onClick={() => shift(1)}
+        >
+          <ChevronRight className="size-4" aria-hidden />
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setSelected(dayKey(today))}>
           {t("calendar_today")}
         </Button>
+        <div className="flex gap-1">
+          <Button
+            variant={weekly ? "outline" : "primary"}
+            size="sm"
+            aria-pressed={!weekly}
+            onClick={() => setView("month")}
+          >
+            {t("calendar_month")}
+          </Button>
+          <Button
+            variant={weekly ? "primary" : "outline"}
+            size="sm"
+            aria-pressed={weekly}
+            onClick={() => setView("week")}
+          >
+            {t("calendar_week")}
+          </Button>
+        </div>
         {teacher && (
-          <Button size="sm" onClick={openAdd}>
+          <Button size="sm" onClick={() => openEditor(null)}>
             <Plus className="size-4" aria-hidden />
             {t("calendar_add")}
           </Button>
@@ -123,7 +171,7 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
             <div className="-mr-px -mb-px grid grid-cols-7">
               {visibleDays.map((day) => {
                 const key = dayKey(day);
-                if (day.getMonth() !== cursor.month) {
+                if (!weekly && day.getMonth() !== month) {
                   return <span key={key} className="min-h-14 border-r border-b border-line sm:min-h-24" />;
                 }
                 const list = days.get(key) ?? [];
@@ -188,17 +236,27 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
                         )}
                       </div>
                       {teacher && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`${t("room_delete")} · ${event.title}`}
-                          onClick={() => {
-                            remove.reset();
-                            setRemoving(event);
-                          }}
-                        >
-                          <Trash2 className="size-4" aria-hidden />
-                        </Button>
+                        <div className="flex flex-wrap gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`${t("calendar_edit")} · ${event.title}`}
+                            onClick={() => openEditor(event)}
+                          >
+                            <Pencil className="size-4" aria-hidden />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`${t("room_delete")} · ${event.title}`}
+                            onClick={() => {
+                              remove.reset();
+                              setRemoving(event);
+                            }}
+                          >
+                            <Trash2 className="size-4" aria-hidden />
+                          </Button>
+                        </div>
                       )}
                     </Card>
                   </li>
@@ -210,15 +268,15 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
       )}
 
       <FormDialog
-        open={adding}
-        title={t("calendar_add")}
+        open={editorOpen}
+        title={t(editing ? "calendar_edit_event" : "calendar_add")}
         submitLabel={t("common_save")}
         cancelLabel={t("common_cancel")}
-        canSubmit={Boolean(title.trim() && date && time)}
-        submitting={create.isPending}
-        onSubmit={() => create.mutate()}
+        canSubmit={Boolean(title.trim() && Number.isFinite(startMillis) && !badEnd && changed)}
+        submitting={save.isPending}
+        onSubmit={() => save.mutate()}
         onCancel={() => {
-          if (!create.isPending) setAdding(false);
+          if (!save.isPending) setEditorOpen(false);
         }}
       >
         <Field label={t("calendar_event_title")}>
@@ -232,6 +290,19 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
             <Input type="time" value={time} required onChange={(event) => setTime(event.target.value)} />
           </Field>
         </div>
+        <Field label={t("calendar_event_end")}>
+          <Input
+            type="datetime-local"
+            value={end}
+            onChange={(event) => setEnd(event.target.value)}
+            aria-invalid={badEnd}
+          />
+        </Field>
+        {badEnd && (
+          <p role="alert" className="text-sm text-flag">
+            {t("calendar_invalid_end")}
+          </p>
+        )}
         <Field label={t("calendar_event_note")}>
           <textarea
             value={note}
@@ -241,7 +312,7 @@ export function ClassroomCalendar({ id, teacher }: { id: string; teacher: boolea
             className={cn(FIELD, "resize-y py-2")}
           />
         </Field>
-        {create.isError && (
+        {save.isError && (
           <p role="alert" className="text-sm text-flag">
             {t("common_error")}
           </p>

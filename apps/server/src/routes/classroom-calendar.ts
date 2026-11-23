@@ -132,37 +132,39 @@ export function classroomCalendarRoutes() {
         const classroomId = c.req.param("id");
         await requireTeacher(c.env.DB, classroomId, requireUser(c));
         const eventId = c.req.param("eventId");
-        const existing = await one<CalendarEventRow>(
-          c.env.DB,
-          `SELECT ${columns} FROM classroom_calendar_events WHERE classroom_id = $cid AND id = $id`,
-          { cid: classroomId, id: eventId },
-        );
-        if (!existing) fail(404, "not_found");
         const input = c.req.valid("json");
-        const row: CalendarEventRow = {
-          ...existing,
-          title: input.title ?? existing.title,
-          starts_at: input.startsAt ? new Date(input.startsAt).toISOString() : existing.starts_at,
-          ends_at:
-            input.endsAt === undefined ? existing.ends_at : input.endsAt ? new Date(input.endsAt).toISOString() : null,
-          note: input.note ?? existing.note,
-          updated_at: nowIso(),
-        };
-        if (row.ends_at && row.ends_at <= row.starts_at) fail(422, "validation");
-        await run(
+        const row = await one<CalendarEventRow>(
           c.env.DB,
-          `UPDATE classroom_calendar_events SET title = $title, starts_at = $startsAt, ends_at = $endsAt,
-           note = $note, updated_at = $updatedAt WHERE classroom_id = $cid AND id = $id`,
+          `UPDATE classroom_calendar_events
+         SET title = COALESCE($title, title),
+             starts_at = COALESCE($startsAt, starts_at),
+             ends_at = CASE WHEN $replaceEnd = 1 THEN $endsAt ELSE ends_at END,
+             note = COALESCE($note, note),
+             updated_at = $updatedAt
+         WHERE classroom_id = $cid AND id = $id
+           AND (CASE WHEN $replaceEnd = 1 THEN $endsAt ELSE ends_at END IS NULL
+             OR CASE WHEN $replaceEnd = 1 THEN $endsAt ELSE ends_at END > COALESCE($startsAt, starts_at))
+         RETURNING ${columns}`,
           {
             id: eventId,
             cid: classroomId,
-            title: row.title,
-            startsAt: row.starts_at,
-            endsAt: row.ends_at,
-            note: row.note,
-            updatedAt: row.updated_at,
+            title: input.title ?? null,
+            startsAt: input.startsAt ? new Date(input.startsAt).toISOString() : null,
+            endsAt: input.endsAt ? new Date(input.endsAt).toISOString() : null,
+            replaceEnd: Number(input.endsAt !== undefined),
+            note: input.note ?? null,
+            updatedAt: nowIso(),
           },
         );
+        if (!row) {
+          const existing = await one<{ id: string }>(
+            c.env.DB,
+            "SELECT id FROM classroom_calendar_events WHERE classroom_id = $cid AND id = $id",
+            { cid: classroomId, id: eventId },
+          );
+          if (!existing) fail(404, "not_found");
+          fail(422, "validation");
+        }
         await publishClassroom(c.env, classroomId, "calendar");
         return c.json(calendarEventOf(row));
       },
