@@ -288,6 +288,13 @@ export const ClientConfigSchema = z.object({ reportAxes: ReportAxesPolicySchema 
 export type ClientConfig = z.infer<typeof ClientConfigSchema>;
 export const AdminSettingsSchema = z.object({ reportAxes: ReportAxesPolicySchema });
 export type AdminSettings = z.infer<typeof AdminSettingsSchema>;
+
+export const AdminOverviewSchema = z.object({
+  users: z.number().int().min(0),
+  classrooms: z.number().int().min(0),
+  runningActivities: z.number().int().min(0),
+});
+export type AdminOverview = z.infer<typeof AdminOverviewSchema>;
 export const TopicAxesInputSchema = z
   .array(AxisSchema)
   .max(AXES_MAX)

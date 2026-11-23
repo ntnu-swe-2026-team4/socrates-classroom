@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
-import type { AdminUser, ClassroomSummary } from "@socrates/shared";
+import type { AdminOverview, AdminUser, ClassroomSummary } from "@socrates/shared";
 import { beforeAll, describe, expect, test } from "vitest";
 import { inject } from "vitest";
 import { one } from "../src/db/d1";
@@ -278,5 +278,32 @@ describe("who decides the report axes (#159): the backend locks one or lets the 
     } finally {
       await putSettings(admin, { reportAxes: "both" });
     }
+  });
+});
+
+describe("admin overview (#185)", () => {
+  test("overview is admin-only and counts accounts, classrooms and running activities", async () => {
+    expect((await call("/api/admin/overview")).status).toBe(401);
+
+    const student = await login("student-a@socrates.tw");
+    const denied = await call("/api/admin/overview", { headers: { Cookie: student } });
+    expect(denied.status).toBe(403);
+    expect(((await denied.json()) as { code: string }).code).toBe("forbidden");
+
+    const res = await call("/api/admin/overview", { headers: { Cookie: admin } });
+    expect(res.status).toBe(200);
+    const overview = (await res.json()) as AdminOverview;
+
+    const counts = await one<{ users: number; classrooms: number; running: number }>(
+      env.DB,
+      `SELECT (SELECT COUNT(*) FROM users) AS users,
+              (SELECT COUNT(*) FROM classrooms) AS classrooms,
+              (SELECT COUNT(*) FROM activities WHERE finished_at IS NULL) AS running`,
+    );
+    expect(overview).toEqual({
+      users: counts?.users ?? 0,
+      classrooms: counts?.classrooms ?? 0,
+      runningActivities: counts?.running ?? 0,
+    });
   });
 });

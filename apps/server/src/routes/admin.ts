@@ -3,6 +3,7 @@ import {
   AdminSettingsSchema,
   AdminUserCreateInputSchema,
   AdminUserUpdateInputSchema,
+  type AdminOverview,
   type AdminSettings,
   type AdminUser,
 } from "@socrates/shared";
@@ -51,6 +52,20 @@ async function loadAdminUser(db: D1Database, id: string): Promise<AdminUser | nu
 
 export function adminRoutes() {
   return new Hono<AppEnv>()
+    .get("/admin/overview", guardAdmin(), async (c) => {
+      const counts = await one<{ users: number; classrooms: number; running: number }>(
+        c.env.DB,
+        `SELECT (SELECT COUNT(*) FROM users) AS users,
+                (SELECT COUNT(*) FROM classrooms) AS classrooms,
+                (SELECT COUNT(*) FROM activities WHERE finished_at IS NULL) AS running`,
+      );
+      if (!counts) fail(500, "internal_error");
+      return c.json({
+        users: counts.users,
+        classrooms: counts.classrooms,
+        runningActivities: counts.running,
+      } satisfies AdminOverview);
+    })
     .get("/admin/users", async (c) => {
       requireAdmin(c);
       const rows = await all<AdminUserRow>(
