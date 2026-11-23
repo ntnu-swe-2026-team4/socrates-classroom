@@ -33,7 +33,7 @@ export const EmotionEntry: Entry<{
 
 const EMOTION_MODEL = gatewayConfig.classifiers.emotion;
 
-export const EMOTION_QUESTION = clefChoicePrompt(EMOTION_RAW, EMOTIONS);
+export const EMOTION_QUESTION = clefChoicePrompt<Emotion>(EMOTION_RAW);
 
 interface ClefRunResult {
   answers?: Record<string, { choice?: string; probabilities?: Record<string, number>; confidence?: number }>;

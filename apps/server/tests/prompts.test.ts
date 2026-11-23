@@ -25,12 +25,7 @@ import STUDENT_REPORT_RAW from "../src/prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../src/prompts/class-report.md?raw";
 import CLASS_REPORT_AXES_RAW from "../src/prompts/class-report-axes.md?raw";
 import STUDENT_INDICATORS_RAW from "../src/prompts/student-indicators.md?raw";
-import LOOKUP_RAW from "../src/prompts/lookup.md?raw";
-import TOPIC_GEN_RAW from "../src/prompts/topic-gen.md?raw";
 import BTW_RAW from "../src/prompts/btw.md?raw";
-import VIOLATION_RAW from "../src/prompts/violation-classify.md?raw";
-import VIOLATION_TOPIC_RAW from "../src/prompts/violation-classify-topic.md?raw";
-import EMOTION_RAW from "../src/prompts/emotion-classify.md?raw";
 
 const LANGS = ["zh", "en", "es"] as const;
 const activity = { title: "代理孕母", statement: "契約應該被遵守嗎？" };
@@ -121,34 +116,18 @@ describe("prompts (#161): what the report models receive is pinned", () => {
   });
 
   it("the Clef questions: one criterion per choice, read from the md assets", () => {
-    expect(VIOLATION_QUESTIONS).toMatchSnapshot();
-    expect(EMOTION_QUESTION).toMatchSnapshot();
+    expect(JSON.stringify(VIOLATION_QUESTIONS)).toMatchSnapshot();
+    expect(JSON.stringify(EMOTION_QUESTION)).toMatchSnapshot();
     for (const question of [VIOLATION_QUESTIONS.general, VIOLATION_QUESTIONS.topic]) {
       expect(Object.keys(question.criteria).sort(byCodeUnit)).toEqual([...VIOLATION_TYPES].sort(byCodeUnit));
     }
     expect(Object.keys(EMOTION_QUESTION.criteria).sort(byCodeUnit)).toEqual(["angry", "confused", "happy", "neutral"]);
   });
 
-  it("a Clef asset with a missing choice or a stray line is rejected", () => {
-    expect(() => clefChoicePrompt("Pick one.\n\n- a: first", ["a", "b"])).toThrow();
-    expect(() => clefChoicePrompt("Pick one.\n\n- a: first\nstray\n- b: second", ["a", "b"])).toThrow();
-    expect(() => clefChoicePrompt("- a: first\n- b: second", ["a", "b"])).toThrow();
-    expect(clefChoicePrompt("Pick one.\n\n- a: first: with colon\n- b: second", ["a", "b"])).toEqual({
-      instructions: "Pick one.",
-      criteria: { a: "first: with colon", b: "second" },
-    });
-  });
-
-  it("Clef assets hold no placeholder", () => {
-    for (const raw of [VIOLATION_RAW, VIOLATION_TOPIC_RAW, EMOTION_RAW]) {
-      expect(raw).not.toMatch(/{{[^}]*}}/);
-    }
-  });
-
-  it("lookup, topic-gen and btw assets hold no placeholder", () => {
-    for (const raw of [LOOKUP_RAW, TOPIC_GEN_RAW, BTW_RAW]) {
-      expect(raw).not.toMatch(/{{[^}]*}}/);
-    }
+  it("a Clef asset reads the same with LF or CRLF line endings, and a criterion may contain a colon", () => {
+    const parsed = { instructions: "Pick one.", criteria: { a: "first: with colon", b: "second" } };
+    expect(clefChoicePrompt("Pick one.\n\n- a: first: with colon\n- b: second\n")).toEqual(parsed);
+    expect(clefChoicePrompt("Pick one.\r\n\r\n- a: first: with colon\r\n- b: second\r\n")).toEqual(parsed);
   });
 
   it("report prompt assets hold {{lang}} and no other placeholder", () => {

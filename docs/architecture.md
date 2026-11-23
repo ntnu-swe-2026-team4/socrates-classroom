@@ -97,7 +97,7 @@ socrates-classroom/
 │       │   ├── prompts/            # LLM 組的 prompt 資產（build-time ?raw）；規範見 #161 留言〈Prompt 規範〉
 │       │   │   ├── socrates.md（＋.en／.es）/ btw.md / lookup.md / topic-gen.md / class-report.md / class-report-axes.md / student-report.md / student-indicators.md
 │       │   │   ├── violation-classify.md / violation-classify-topic.md / emotion-classify.md  # Clef choice 題：第一段 instructions，其後每行 `- choice: criterion`（`pi/clef-prompt.ts` 解析）
-│       │   │   └── assemble.ts     # 輸入的所有外框（topicBlock／section／報告、lookup、topic-gen 輸入／web-content 外框／report_violation 回覆）
+│       │   │   └── assemble.ts     # 輸入的外框（topicBlock／section／報告、lookup、topic-gen 輸入／web-content 外框／report_violation 回覆）
 │       │   ├── ws/                 # transport glue（protocol + sockets）
 │       │   ├── auth.ts / auth-crypto.ts  # session＋AES-GCM（byok.ts 併入）
 │       │   ├── db/d1.ts / http.ts / messages.ts / seed.ts / services/
@@ -117,7 +117,7 @@ socrates-classroom/
 
 ## 3. Worker 分層（apps/server）
 
-**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、`SEND_EMAIL`、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。送進模型的字串只由三種東西組成：`prompts/` 的 md、`assemble.ts` 的函式、資料本身；tool 的 description 與參數說明例外，跟著 tool 的程式碼（#161）。
+**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、`SEND_EMAIL`、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。#161 已把 Clef 題目、web-content 外框、`report_violation` 回覆、lookup／topic-gen 的輸入收進 `prompts/`；報告 transcript 的行首（`renderTranscript`）與 websearch 工具的其他回傳文字仍在程式碼裡；tool 的 description 與參數說明跟著 tool 的程式碼。
 
 **寄信（`SEND_EMAIL`，`send_email` binding）**：額度提醒信（#146）與密碼重設信（#230）共用，寄件人為 `ALERT_FROM_EMAIL`，模板在 `mail.ts`。Cloudflare Email Service 在 sending domain 完成 onboarding 之前，只能寄給帳號內已驗證的收件地址；寄給任意收件人需要 onboard sending domain，且需要 Workers Paid（[Send bindings](https://developers.cloudflare.com/email-service/configuration/send-bindings/)、[Pricing](https://developers.cloudflare.com/email-service/platform/pricing/)，2026-11-21 查證）。production 是否已滿足這兩項，repo 內無紀錄。
 

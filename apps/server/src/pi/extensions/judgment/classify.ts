@@ -14,8 +14,8 @@ export interface ViolationJudgment {
 const VIOLATION_MODEL = gatewayConfig.classifiers.violation;
 
 export const VIOLATION_QUESTIONS = {
-  general: clefChoicePrompt(VIOLATION_RAW, VIOLATION_TYPES),
-  topic: clefChoicePrompt(VIOLATION_TOPIC_RAW, VIOLATION_TYPES),
+  general: clefChoicePrompt<ViolationType>(VIOLATION_RAW),
+  topic: clefChoicePrompt<ViolationType>(VIOLATION_TOPIC_RAW),
 };
 
 interface ClefRunResult {
