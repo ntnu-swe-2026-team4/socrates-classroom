@@ -1,6 +1,7 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import { api, ApiError } from "@/api";
+import { mockCalendar } from "@/lib/calendar";
 import { readTermHistory } from "./local";
 
 export const clientConfigOptions = queryOptions({
@@ -238,7 +239,10 @@ export function classroomActivitiesOptions(id: string) {
 }
 
 export function classroomCalendarOptions(id: string) {
-  return queryOptions({ queryKey: ["classroom", id, "calendar"] });
+  return queryOptions({
+    queryKey: ["classroom", id, "calendar"],
+    queryFn: () => mockCalendar.list(id),
+  });
 }
 
 export function classroomInvitesOptions(id: string) {

@@ -28,6 +28,14 @@
 - 與 #161 規範的差異，留給團隊決定：violation 依有無辯題分成兩份（`violation-classify-topic.md` 不符 §2 的 `<角色>.md`），頭像表情不在 §1 的角色清單；三份 Clef md 沒有 §3 的「輸出格式」一節與 `{{lang}}`（Clef 不呼叫工具、只輸出分類）
 - `tests/prompts.test.ts` 補上 btw、lookup、topic-gen 的指示、Clef 題目與其餘外框的快照；既有快照不變
 
+## 2026-11-23 — 教室行事曆前端（mock）（`feat/348-classroom-calendar`，#348）
+
+### Added
+
+- 教室內頁新增「行事曆」分頁（`ClassroomCalendar`）：週一起始的月曆、上／下個月與「今天」、點日期列出當天事件；老師可新增（標題、日期、時間、說明）與刪除事件，學生唯讀
+- `lib/calendar.ts`：`monthDays`／`eventsByDay`／`dayKey` 純函式，以及暫時的 `mockCalendar`（`localStorage`，每間教室一份）；查詢走 `classroomCalendarOptions`（key `["classroom", id, "calendar"]`），後端端點定案後只需替換 `queryFn` 與兩個 mutation
+- i18n：`room_tab_calendar` 與 `calendar_*` 共 13 個 key（zh-TW／en／es）
+
 ## 2026-11-22 — 單人報告加上六項思辨力指標（`feat/255-thinking-indicators`，#255）
 
 ### Added
