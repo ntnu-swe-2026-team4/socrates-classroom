@@ -12,12 +12,14 @@
       { "name": "SoloChat", "class_name": "SoloChat" },
       { "name": "ClassroomEvents", "class_name": "ClassroomEvents" },
       { "name": "ReportRunner", "class_name": "ReportRunner" },
-      { "name": "RateLimiter", "class_name": "RateLimiter" }
+      { "name": "RateLimiter", "class_name": "RateLimiter" },
+      { "name": "RoutingLedger", "class_name": "RoutingLedger" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["Chat", "SoloChat", "ClassroomEvents", "ReportRunner"] },
-    { "tag": "v2", "new_sqlite_classes": ["RateLimiter"] }
+    { "tag": "v2", "new_sqlite_classes": ["RateLimiter"] },
+    { "tag": "v3", "new_sqlite_classes": ["RoutingLedger"] }
   ],
   "vars": {
     // Test-only fixtures sharing names with production secrets; never real credentials.

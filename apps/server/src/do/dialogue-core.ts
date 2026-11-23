@@ -232,7 +232,7 @@ export async function submitViaRouter(
   const router = getRouter(env);
   const canServe = (entry: { provider: string; model: string }): boolean =>
     models.models.getModel(entry.provider, entry.model) !== undefined;
-  const decision = router.pick("interactive", canServe, accountLegs);
+  const decision = await router.pick("interactive", canServe, accountLegs);
   if (!decision && !models.faux) throw new NoAvailableModelError();
   if (!decision) return doSubmit(handle, input, options);
 
@@ -250,10 +250,10 @@ export async function submitViaRouter(
     .wait(receipt.operationId)
     .then((result) => {
       const ok = result.status === "done" || (result.status === "unanswered" && result.reason === "aborted");
-      router.settle(decision, ok ? "ok" : "error");
+      void router.settle(decision, ok ? "ok" : "error");
     })
     .catch(() => {
-      if (router.ledger.inFlight(decision.key) > 0) router.settle(decision, "error");
+      void router.settle(decision, "error");
     });
 
   return receipt;
