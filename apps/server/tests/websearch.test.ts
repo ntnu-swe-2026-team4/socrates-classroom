@@ -324,8 +324,9 @@ describe("get_search_content for fetch records + paging continuity", () => {
     const delivered: string[] = [];
     for (let guard = 0; offset < content.length && guard < 10; guard += 1) {
       const page = slicePage(content, offset, 20_000, "example");
-      delivered.push(page.text.split("\n\n---\n")[0]);
-      expect(page.endOffset).toBe(offset + must(delivered.at(-1), "delivered chunk").length);
+      const chunk = must(page.text.split("\n\n---\n")[0], "delivered chunk");
+      delivered.push(chunk);
+      expect(page.endOffset).toBe(offset + chunk.length);
       offset = page.endOffset;
     }
     expect(delivered.join("")).toBe(content);

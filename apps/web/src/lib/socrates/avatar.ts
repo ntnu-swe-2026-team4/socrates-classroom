@@ -42,7 +42,10 @@ class ClipLayer {
     this.interp = trackInterpolantOf(track);
     const k = track.values.length / track.times.length;
     this.used = new Array(k).fill(false);
-    for (let i = 0; i < track.values.length; i++) if (Math.abs(track.values[i]) > 0.01) this.used[i % k] = true;
+    for (let i = 0; i < track.values.length; i++) {
+      const value = track.values[i] ?? 0;
+      if (Math.abs(value) > 0.01) this.used[i % k] = true;
+    }
     this.time = 0;
     this.weight = 0;
     this.playing = false;
@@ -76,8 +79,9 @@ class ClipLayer {
   }
 
   apply(i: number, base: number): number {
-    if (!this.weight || !this.used[i] || !this.values) return base;
-    return base + (this.values[i] - base) * this.weight;
+    const value = this.values?.[i];
+    if (!this.weight || !this.used[i] || value === undefined) return base;
+    return base + (value - base) * this.weight;
   }
 }
 

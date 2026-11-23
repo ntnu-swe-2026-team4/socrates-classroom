@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { TrapDialog } from "@/components/ui";
 import { stubElementLayout } from "./layout";
+import { must } from "./helpers";
 
 stubElementLayout();
 
@@ -24,7 +25,9 @@ test("traps focus, inerts the background and restores focus on close", () => {
     </TrapDialog>,
   );
   const dialog = panel();
-  const [first, last] = within(dialog).getAllByRole("button");
+  const buttons = within(dialog).getAllByRole("button");
+  const first = must(buttons[0], "trap dialog first button");
+  const last = must(buttons.at(-1), "trap dialog last button");
   expect(document.activeElement).toBe(first);
   expect(page.container.getAttribute("inert")).toBe("");
   expect(view.container.getAttribute("inert")).toBe(null);

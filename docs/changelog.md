@@ -2,9 +2,21 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-23 — TS 靜態保證 step 4：noUncheckedIndexedAccess 全庫開啟（`refactor/293-step4`，#293）
+
+### Changed
+
+- 兩個 tsconfig（`apps/server`、`apps/web`）開啟 `noUncheckedIndexedAccess`：所有 array index 與 index-signature 讀取型別帶 `| undefined`。全庫探針 302 errors（server 112 + web 190）分兩層清零
+- **src 層（L1）**：canvas 像素物理迴圈（`StoaField`）以 `?? 0` fallback 逐點窄化；`gateway/router.ts` 以 `def === undefined` 顯式分支取代 `?? {}`（teacher legs 的 provider 不在 config 仍放行，`#keyOf` 容忍缺 def、`#reserve`/`#admit` 的 shard head 顯式守衛）、`routing-ledger.ts` 的 `reserve` 以 `index < 0 ? undefined` 窄化 `findIndex` 結果；`db/d1.ts` 的 `batch` 加泛型參數（`batch<TopicRow>` 取代呼叫端 `as TopicRow`）；`auth.ts` 兩處手寫 timing-safe 迴圈收斂到 `timingSafeEqual`（`charCodeAt` 免索引讀）；`websearch/fetch.ts` IPv6 分類以 `g(index)` accessor 收口；regex `match[1]` 全數 `?.[1]` + 顯式 throw
+- **tests 層（L2）**：REST 式回應斷言改走 reader 家族（`str`/`rows`/`field`/`must`）或 zod `Schema.parse`；`handler.mock.calls[i]` 解構改 `lastCallN(i)` helper；vitest 的 `it` timeout 釘回 90s（report 生成實測 >60s，60s 會 flaky）
+- 已知極限：TS 的 control-flow narrowing 不追蹤迴圈計數器與 `findIndex` 結果（microsoft/TypeScript#61388、#57847），`for (let i…)` 內的 `arr[i]` 需先讀入變數再判 `undefined`；`StoaField` 熱路徑選 `?? 0` 而非 `.at()`，避免每幀配置
+- `noUnnecessaryConditions` 維持 off：flag 開啟後重跑探針 31→46 findings（`--only` 會縫過 override，含 seam 檔案的預期命中），仍以 closure mutation 與 TanStack 判別聯集誤報為主，無 true-positive 家族浮現——上游修復前不重驗
+
 ## 2026-11-23 — per-IP 限流改走跨 isolate 的 RateLimiter DO（`feat/157-rate-limiter-do`，#157）
 
 ### Changed
+
+<<<<<<< HEAD
 
 - `apps/server/src/http.ts` 的 `enforceIpLimit` 不再用 module-level `ipHits`（`Map<string, number[]>`，每 isolate 各一份、滿 10k 條目還得掃表驅逐）：改呼叫 `RateLimiter` DO（`idFromName("<scope>:<ip>")`，單一 actor 序列化 60 秒 sliding window；同 region 個位數 ms）。任一 IP 對任一 scope 的放行量不再隨 isolate 數放大
 - 計數只存 DO 記憶體、不落 storage（DO 只在 idle 時 evict，而 idle 期間窗口本來就會過期；同時不把 IP 位址持久化）；DO 不可用時 fail-open（放行 + `console.warn`），與 `#196` RoutingLedger 同一取捨

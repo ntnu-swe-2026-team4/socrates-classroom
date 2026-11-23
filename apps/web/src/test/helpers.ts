@@ -7,6 +7,11 @@ import type { Op } from "@earendil-works/chord/delta";
 export const entryIdOf = (value: number): EntryId => value as EntryId;
 export const conversationIdOf = (value: string): ConversationId => Number(value) as ConversationId;
 
+export function must<T>(value: T | undefined | null, what: string): T {
+  if (value === undefined || value === null) throw new Error(`missing: ${what}`);
+  return value;
+}
+
 // A shared-instance constructor: `new Ctor()` yields `instance` every time.
 export function singletonCtor<I extends object, T>(instance: I): new () => T {
   return new Proxy(instance.constructor, {

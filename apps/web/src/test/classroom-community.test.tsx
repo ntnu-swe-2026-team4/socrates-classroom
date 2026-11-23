@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { must } from "./helpers";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { setLocale } from "@/i18n";
 import { routeTree } from "@/routeTree.gen";
@@ -211,7 +212,7 @@ test("a teacher schedules a topic and starts the scheduled discussion from its c
   const starts = fetch.mock.calls.filter(
     ([url, init]) => String(url).endsWith("/activities") && init?.method === "POST",
   );
-  expect(JSON.parse(String(starts[0][1]?.body))).toMatchObject({
+  expect(JSON.parse(String(must(starts[0], "start request")[1]?.body))).toMatchObject({
     topicId: "ethics",
     calendarEventId: "event",
     mode: "live",

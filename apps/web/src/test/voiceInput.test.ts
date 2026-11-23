@@ -5,7 +5,7 @@ import {
   type SpeechRecognitionLike,
   type VoiceEnv,
 } from "@/lib/voiceInput";
-import { singletonCtor } from "./helpers";
+import { must, singletonCtor } from "./helpers";
 
 class FakeRecognition implements SpeechRecognitionLike {
   lang = "";
@@ -276,7 +276,7 @@ test("the fallback path collects recorder chunks and uploads them through stt ex
   recorder.ondataavailable?.({ data: new Blob(["A"], { type: "audio/webm" }) });
   await h.controller.stop();
   expect(h.env.stt).toHaveBeenCalledTimes(1);
-  const received: unknown = vi.mocked(h.env.stt).mock.calls[0][0];
+  const received: unknown = must(vi.mocked(h.env.stt).mock.calls[0], "stt call")[0];
   if (!(received instanceof Blob)) throw new Error("stt did not receive a Blob");
   expect(received.type).toBe("audio/webm");
   expect(h.onFinal).toHaveBeenCalledWith("Final transcript");

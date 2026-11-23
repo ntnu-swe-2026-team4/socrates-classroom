@@ -169,7 +169,7 @@ it("paginates root posts, deduplicates creates, and cascades replies", async () 
     await (await request(`${posts}?limit=1&cursor=${encodeURIComponent(next)}`, student.cookie)).json(),
   );
   expect([...page.items, ...last.items].map((post) => post.id)).toEqual(expect.arrayContaining([id]));
-  expect(page.items[0].id).not.toBe(last.items[0].id);
+  expect(must(page.items[0], "first page item").id).not.toBe(must(last.items[0], "last page item").id);
   expect(last.nextCursor).toBeNull();
 
   const reply = await request(`${posts}/${id}/replies`, owner, "POST", { body: "reply" });

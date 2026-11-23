@@ -133,7 +133,10 @@ export function activityRoutes() {
         if (pending.length) {
           const count = Math.min(pending.length, LIVE_BACKFILL_PER_POLL);
           const offset = (Math.floor(Date.now() / 5000) * LIVE_BACKFILL_PER_POLL) % pending.length;
-          const selected = Array.from({ length: count }, (_, index) => pending[(offset + index) % pending.length]);
+          const selected = Array.from(
+            { length: count },
+            (_, index) => pending[(offset + index) % pending.length],
+          ).filter((entry): entry is NonNullable<typeof entry> => entry !== undefined);
           c.executionCtx.waitUntil(
             Promise.allSettled(
               selected.map(({ id }) => c.env.Chat.getByName(`${activity.id}:${id}`).scheduleLiveProgress()),

@@ -20,6 +20,7 @@ describe("auth-crypto (teacher key AES-GCM)", () => {
   it("tampered ciphertext: decrypt returns null (the GCM tag blocks tampering)", async () => {
     const stored = await encryptKey(env, "sk-live-abcdef123456");
     const [version, iv, data] = stored.split(".");
+    if (version === undefined || iv === undefined || data === undefined) throw new Error("sealed key format");
     const tampered = atob(data);
     const flipped = btoa(tampered.slice(0, -1) + String.fromCharCode(tampered.charCodeAt(tampered.length - 1) ^ 1));
     expect(await decryptKey(env, [version, iv, flipped].join("."))).toBeNull();

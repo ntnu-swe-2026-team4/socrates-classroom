@@ -96,8 +96,9 @@ export function uniqueViolationColumns(error: unknown): Array<[string, string]> 
     // Miniflare/D1 envelopes the raw SQLite message: `D1_ERROR: UNIQUE constraint failed: t.c, t.c2: SQLITE_CONSTRAINT (extended: …)`
     const normalized = message.replace(/^D1_ERROR:\s*/, "");
     const match = normalized.match(/^UNIQUE constraint failed: (.+?)(?:: SQLITE_CONSTRAINT\b.*)?$/);
-    if (!match) continue;
-    return match[1]
+    const captured = match?.[1];
+    if (captured === undefined) continue;
+    return captured
       .split(",")
       .map((pair) => pair.trim().split("."))
       .filter((parts): parts is [string, string] => parts.length === 2);

@@ -65,14 +65,14 @@ describe("dev fixtures", () => {
     expect("canManageClasses" in chen).toBe(false);
     expect(chen.isAdmin).toBe(false);
     expect(chen.classrooms.map((room) => room.role)).toEqual(["student"]);
-    expect(chen.classrooms[0].code).toBeNull();
+    expect(must(chen.classrooms[0], "chen classroom").code).toBeNull();
 
     const member = must(
       body.accounts.find((account) => account.email === "student-b@socrates.tw"),
       "member account row",
     );
     expect(member.classrooms.map((room) => room.id)).toEqual(["c_fx_philosophy"]);
-    expect(member.classrooms[0].role).toBe("student");
+    expect(must(member.classrooms[0], "member classroom").role).toBe("student");
 
     const admin = must(
       body.accounts.find((account) => account.fixtureRole === "admin"),
