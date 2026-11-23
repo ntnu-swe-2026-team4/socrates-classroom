@@ -14,6 +14,7 @@ describe("UX sound engine", () => {
   beforeEach(() => {
     localStorage.clear();
     stopAllSounds();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -34,17 +35,16 @@ describe("UX sound engine", () => {
 
     const playMock = vi.fn().mockRejectedValueOnce(new Error("NotAllowedError")).mockResolvedValue(undefined);
 
-    vi.stubGlobal(
-      "Audio",
-      vi.fn(() => ({
-        play: playMock,
-        pause: vi.fn(),
-        loop: false,
-        volume: 1,
-        currentTime: 0,
-        paused: true,
-      })),
-    );
+    class MockAudio {
+      play = playMock;
+      pause = vi.fn();
+      loop = false;
+      volume = 1;
+      currentTime = 0;
+      paused = true;
+    }
+
+    vi.stubGlobal("Audio", MockAudio);
 
     playNarration("comic3");
     await Promise.resolve();
