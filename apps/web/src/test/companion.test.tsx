@@ -106,7 +106,9 @@ describe("SocratesCompanion", () => {
 
   it("sits on the dock and is display only", () => {
     renderDocked();
-    const box = model().parentElement as HTMLElement;
+    const parent = model().parentElement;
+    if (!(parent instanceof HTMLElement)) throw new Error("docked model has no parent element");
+    const box = parent;
     expect(box.style).toMatchObject({ left: "40px", top: "60px", width: "240px", height: "240px" });
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
@@ -170,7 +172,9 @@ describe("SocratesCompanion", () => {
     rect = new DOMRect(80, 120, 240, 240);
     await mutate();
     pump(4);
-    const box = model().parentElement as HTMLElement;
+    const parent = model().parentElement;
+    if (!(parent instanceof HTMLElement)) throw new Error("docked model has no parent element");
+    const box = parent;
     expect(box.style).toMatchObject({ left: "80px", top: "120px" });
 
     const settled = reads;

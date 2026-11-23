@@ -6,11 +6,11 @@ import { routeAgentRequest } from "agents";
 import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
 import { createApp } from "../src/app";
 import { seedFixture } from "../src/seed";
-import type { ClientMessage, ServerMessage } from "../src/ws/protocol";
-import type { SoloThread } from "@socrates/shared";
+import { parseServerMessage, type ClientMessage, type ServerMessage } from "../src/ws/protocol";
+import { SoloThreadSchema } from "@socrates/shared";
 import { all, batch } from "../src/db/d1";
-import type { SoloChat } from "../src/do/solo-chat";
-import { frames, latestView } from "./helpers";
+import { z } from "zod";
+import { frames, latestView, str } from "./helpers";
 
 const migrations = inject("d1Migrations");
 
@@ -54,14 +54,11 @@ function waitMessage<T extends ServerMessage>(
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Timeout waiting for message")), timeoutMs);
     socket.addEventListener("message", (event) => {
-      try {
-        const parsed = JSON.parse(event.data as string) as ServerMessage;
-        if (predicate(parsed)) {
-          clearTimeout(timer);
-          resolve(parsed);
-        }
-      } catch {
-        // ignore parse error
+      if (typeof event.data !== "string") return;
+      const parsed = parseServerMessage(event.data);
+      if (parsed !== null && predicate(parsed)) {
+        clearTimeout(timer);
+        resolve(parsed);
       }
     });
     socket.addEventListener("close", (event) => {
@@ -82,8 +79,8 @@ beforeAll(async () => {
   });
   expect(login1.status).toBe(200);
   userCookie = cookieOf(login1);
-  const me1 = (await (await call("/api/me", { headers: { Cookie: userCookie } })).json()) as { id: string };
-  userId = me1.id;
+  const me1 = str(await (await call("/api/me", { headers: { Cookie: userCookie } })).json(), "id");
+  userId = me1;
 
   const login2 = await call("/api/auth/login", {
     method: "POST",
@@ -92,8 +89,8 @@ beforeAll(async () => {
   });
   expect(login2.status).toBe(200);
   otherCookie = cookieOf(login2);
-  const me2 = (await (await call("/api/me", { headers: { Cookie: otherCookie } })).json()) as { id: string };
-  otherUserId = me2.id;
+  const me2 = str(await (await call("/api/me", { headers: { Cookie: otherCookie } })).json(), "id");
+  otherUserId = me2;
 });
 
 describe("Solo chat REST API", () => {
@@ -116,19 +113,19 @@ describe("Solo chat REST API", () => {
       body: JSON.stringify({ title: "我的自由思考" }),
     });
     expect(createRes.status).toBe(201);
-    const created = (await createRes.json()) as SoloThread;
+    const created = SoloThreadSchema.parse(await createRes.json());
     expect(created.id).toMatch(/^solo_/);
     expect(created.title).toBe("我的自由思考");
     expect(created.createdAt).toBeDefined();
 
     const listRes = await call("/api/solo/threads", { headers: { Cookie: userCookie } });
     expect(listRes.status).toBe(200);
-    const list = (await listRes.json()) as SoloThread[];
+    const list = z.array(SoloThreadSchema).parse(await listRes.json());
     expect(list.some((t) => t.id === created.id && t.title === "我的自由思考")).toBe(true);
 
     const getRes = await call(`/api/solo/threads/${created.id}`, { headers: { Cookie: userCookie } });
     expect(getRes.status).toBe(200);
-    const got = (await getRes.json()) as SoloThread;
+    const got = SoloThreadSchema.parse(await getRes.json());
     expect(got.id).toBe(created.id);
 
     const otherGet = await call(`/api/solo/threads/${created.id}`, { headers: { Cookie: otherCookie } });
@@ -140,7 +137,7 @@ describe("Solo chat REST API", () => {
       body: JSON.stringify({ title: "改名後的辯題" }),
     });
     expect(patchRes.status).toBe(200);
-    const patched = (await patchRes.json()) as SoloThread;
+    const patched = SoloThreadSchema.parse(await patchRes.json());
     expect(patched.title).toBe("改名後的辯題");
 
     const deleteRes = await call(`/api/solo/threads/${created.id}`, {
@@ -160,7 +157,7 @@ describe("Solo chat REST API", () => {
       body: JSON.stringify({ title: "即將被刪除的對話" }),
     });
     expect(createRes.status).toBe(201);
-    const created = (await createRes.json()) as SoloThread;
+    const created = SoloThreadSchema.parse(await createRes.json());
 
     const before = await all<{ n: number }>(env.DB, "SELECT COUNT(*) as n FROM solo_threads WHERE id = $id", {
       id: created.id,
@@ -182,7 +179,8 @@ describe("Solo chat WebSocket communication", () => {
     try {
       const firstEvent = await new Promise<string | number>((resolve) => {
         socket.addEventListener("message", (event) => {
-          if ((JSON.parse(event.data as string) as ServerMessage).type === "hello") resolve("hello");
+          if (typeof event.data === "string" && (parseServerMessage(event.data)?.type ?? "") === "hello")
+            resolve("hello");
         });
         socket.addEventListener("close", (event) => resolve(event.code), { once: true });
       });
@@ -199,7 +197,7 @@ describe("Solo chat WebSocket communication", () => {
       body: JSON.stringify({ title: "Deleted thread" }),
     });
     expect(created.status).toBe(201);
-    const { id } = (await created.json()) as SoloThread;
+    const { id } = SoloThreadSchema.parse(await created.json());
     const socket = await connectSolo(`${userId}:${id}`, userCookie);
     try {
       await waitMessage(socket, (message): message is ServerMessage & { type: "hello" } => message.type === "hello");
@@ -258,7 +256,7 @@ describe("Solo chat WebSocket communication", () => {
       headers: { "Content-Type": "application/json", Cookie: userCookie },
       body: JSON.stringify({ title: "自由意志是否存在？" }),
     });
-    const threadInfo = (await createRes.json()) as SoloThread;
+    const threadInfo = SoloThreadSchema.parse(await createRes.json());
     const threadName = `${userId}:${threadInfo.id}`;
 
     const socket = await connectSolo(threadName, userCookie);
@@ -299,14 +297,14 @@ describe("Solo chat WebSocket communication", () => {
     });
     expect(login.status).toBe(200);
     const cookie = cookieOf(login);
-    const { id: ownerId } = (await login.json()) as { id: string };
+    const ownerId = str(await login.json(), "id");
     const created = await call("/api/solo/threads", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookie },
       body: JSON.stringify({}),
     });
     expect(created.status).toBe(201);
-    const { id } = (await created.json()) as SoloThread;
+    const { id } = SoloThreadSchema.parse(await created.json());
     const thread = `${ownerId}:${id}`;
     const provider = "account-gateway";
     const params = { owner: ownerId, other: userId, provider, now: new Date().toISOString() };
@@ -326,7 +324,7 @@ describe("Solo chat WebSocket communication", () => {
     await runInDurableObject(stub, (instance) => {
       const faux = fauxProvider({ provider, models: [{ id: "owner-model" }, { id: "other-model" }] });
       faux.setResponses([fauxAssistantMessage("Why?")]);
-      (instance as SoloChat).models.models.setProvider(faux.provider);
+      instance.models.models.setProvider(faux.provider);
     });
 
     const socket = await connectSolo(thread, cookie);

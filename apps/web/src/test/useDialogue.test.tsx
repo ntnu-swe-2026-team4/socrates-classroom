@@ -3,17 +3,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDialogue } from "@/hooks/useDialogue";
 import { companion } from "@/lib/companion";
 import type { EntryRecord } from "@earendil-works/pi-durable";
-import type { ServerMessage } from "@server/ws/protocol";
+import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
+import { clientFrames, entryIdOf, conversationIdOf, opsFrame as opsFrameOf, viewFrame as viewFrameOf } from "./helpers";
+import type { JsonObject } from "@earendil-works/pi-durable";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 
+function clientFrame(raw: string): ClientMessage | null {
+  return clientFrames([raw])[0] ?? null;
+}
 type AgentOptions = {
   onOpen?: (event: { target: unknown }) => void;
   onMessage?: (event: { data: unknown }) => void;
   onClose?: () => void;
 };
 
-const agent = vi.hoisted(() => ({
-  options: null as AgentOptions | null,
-  sent: [] as string[],
+const agent = vi.hoisted((): { options: AgentOptions | null; sent: string[] } => ({
+  options: null,
+  sent: [],
 }));
 
 vi.mock("agents/react", () => ({
@@ -52,58 +58,65 @@ function emit(frame: ServerMessage) {
   });
 }
 
-const asEntry = (entry: object): EntryRecord => entry as unknown as EntryRecord;
-
 function userEntry(id: number, text: string): EntryRecord {
-  return asEntry({ id, conversationId: "c1", kind: "pi.user", model: [{ role: "user", content: text }] });
+  return {
+    id: entryIdOf(id),
+    conversationId: conversationIdOf("1"),
+    kind: "pi.user",
+    model: [{ role: "user", content: text, timestamp: 0 }],
+  };
 }
 
-function assistantEntry(id: number, text: string, stopReason?: string): EntryRecord {
-  return asEntry({
-    id,
-    conversationId: "c1",
-    kind: "pi.assistant",
-    model: [{ role: "assistant", content: [{ type: "text", text }], ...(stopReason ? { stopReason } : {}) }],
-  });
+function assistantEntry(id: number, text: string, stopReason?: AssistantMessage["stopReason"]): EntryRecord {
+  const message: AssistantMessage = {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    api: "openai-completions",
+    provider: "openrouter",
+    model: "test-model",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    timestamp: 0,
+    stopReason: stopReason ?? "stop",
+  };
+  return { id: entryIdOf(id), conversationId: conversationIdOf("1"), kind: "pi.assistant", model: [message] };
 }
 
 function emotionEntry(id: number): EntryRecord {
-  return asEntry({
-    id,
-    conversationId: "c1",
+  return {
+    id: entryIdOf(id),
+    conversationId: conversationIdOf("1"),
     kind: "app.emotion",
     data: { emotion: "curious", confidence: 0.9, probabilities: { curious: 0.9 } },
-  });
+  };
 }
 
 function happyEntry(id: number): EntryRecord {
-  return asEntry({
-    id,
-    conversationId: "c1",
+  return {
+    id: entryIdOf(id),
+    conversationId: conversationIdOf("1"),
     kind: "app.emotion",
     data: { emotion: "happy", confidence: 0.9, probabilities: { happy: 0.9 } },
-  });
+  };
 }
 
 function viewFrame(entries: EntryRecord[], before?: number): ServerMessage {
-  return {
-    type: "view",
-    view: { conversation: { id: 1 }, entries, docs: {}, ...(before !== undefined ? { before } : {}) },
-  } as unknown as ServerMessage;
+  return viewFrameOf(entries, before);
 }
 
-function opsFrame(entries: EntryRecord[], docs: Record<string, unknown> = {}): ServerMessage {
-  return {
-    type: "ops",
-    ops: [["r", { conversation: { id: 1 }, entries, docs }]],
-  } as unknown as ServerMessage;
+function opsFrame(entries: EntryRecord[], docs: JsonObject = {}): ServerMessage {
+  return opsFrameOf(entries, docs);
 }
 
 function submitId(): string | undefined {
-  const frame = agent.sent
-    .map((raw) => JSON.parse(raw) as { type: string; id?: string })
-    .find((f) => f.type === "submit");
-  return frame?.id;
+  const frame = agent.sent.map((raw) => clientFrame(raw)).find((frame) => frame?.type === "submit");
+  return frame?.type === "submit" ? frame.id : undefined;
 }
 
 beforeEach(() => {
@@ -140,7 +153,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     emit(
       opsFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答"), userEntry(3, "正義是什麼？")], {
         "pi.live": { generation: { message: { role: "assistant", content: [{ type: "text", text: "先從你" }] } } },
-      }),
+      } satisfies JsonObject),
     );
     expect(result.current.phase).toBe("streaming");
     expect(result.current.draft).toBe("先從你");
@@ -173,21 +186,33 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
         userEntry(1, "舊問題"),
         assistantEntry(2, "舊回答"),
         userEntry(3, "幫我查資料"),
-        asEntry({
-          id: 4,
-          conversationId: "c1",
+        {
+          id: entryIdOf(4),
+          conversationId: conversationIdOf("1"),
           kind: "pi.assistant",
           model: [
             {
               role: "assistant",
               content: [
                 { type: "text", text: "Let me search." },
-                { type: "toolCall", name: "web_search" },
+                { type: "toolCall", id: "call_1", name: "web_search", arguments: {} },
               ],
+              api: "openai-completions",
+              provider: "openrouter",
+              model: "test-model",
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+              timestamp: 0,
               stopReason: "toolUse",
-            },
+            } satisfies AssistantMessage,
           ],
-        }),
+        },
       ]),
     );
     expect(result.current.pending).toBe(true);
@@ -216,13 +241,11 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
       void result.current.loadEarlier();
     });
     await act(async () => {});
-    const op = agent.sent
-      .map((raw) => JSON.parse(raw) as { type: string; id?: string; query?: unknown })
-      .find((frame) => frame.type === "entries");
+    const op = agent.sent.map((raw) => clientFrame(raw)).find((frame) => frame?.type === "entries");
     expect(op).toMatchObject({ type: "entries", query: { maxEntryId: 3 } });
 
-    if (op?.id === undefined) throw new Error("entries frame missing id");
-    emit({ type: "result", id: op.id, result: { items: [userEntry(0, "更早")] } } as unknown as ServerMessage);
+    if (op?.type !== "entries") throw new Error("entries frame missing");
+    emit({ type: "result", id: op.id, result: { items: [userEntry(0, "更早")] } } satisfies ServerMessage);
     await waitFor(() => expect(result.current.messages[0]).toEqual({ id: "e0", role: "user", text: "更早" }));
     expect(result.current.canLoadEarlier).toBe(false);
   });
@@ -248,7 +271,8 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     act(() => result.current.send("第一問"));
     emit(opsFrame([userEntry(1, "第一問"), assistantEntry(2, "第一答")]));
     expect(result.current.phase).toBe("speaking");
-    const firstSignal = tts.mock.calls[0][2] as AbortSignal;
+    const firstSignal = tts.mock.calls[0][2];
+    if (!(firstSignal instanceof AbortSignal)) throw new Error("tts call did not receive an AbortSignal");
 
     act(() => result.current.send("第二問"));
     expect(firstSignal.aborted).toBe(true);
@@ -481,8 +505,8 @@ describe("useDialogue (autoSend: queued first question)", () => {
 
     const submits = () =>
       agent.sent
-        .map((raw) => JSON.parse(raw) as { type: string; input?: string })
-        .filter((frame) => frame.type === "submit");
+        .map((raw) => clientFrame(raw))
+        .filter((frame): frame is Extract<ClientMessage, { type: "submit" }> => frame?.type === "submit");
     expect(submits()).toHaveLength(1);
     expect(submits()[0].input).toBe("什麼是正義？");
     expect(result.current.pending).toBe(true);
@@ -500,7 +524,9 @@ describe("useDialogue (autoSend: queued first question)", () => {
 
     emit(viewFrame([]));
     const submits = () =>
-      agent.sent.map((raw) => JSON.parse(raw) as { type: string }).filter((frame) => frame.type === "submit");
+      agent.sent
+        .map((raw) => clientFrame(raw))
+        .filter((frame): frame is Extract<ClientMessage, { type: "submit" }> => frame?.type === "submit");
     expect(submits()).toHaveLength(1);
 
     emit(opsFrame([userEntry(1, "什麼是正義？"), assistantEntry(2, "先想想看")]));
@@ -540,8 +566,8 @@ describe("useDialogue (autoSend: queued first question)", () => {
     emit(viewFrame([userEntry(1, "第一題"), assistantEntry(2, "第一答")]));
     const submits = () =>
       agent.sent
-        .map((raw) => JSON.parse(raw) as { type: string; input?: string })
-        .filter((frame) => frame.type === "submit");
+        .map((raw) => clientFrame(raw))
+        .filter((frame): frame is Extract<ClientMessage, { type: "submit" }> => frame?.type === "submit");
     expect(submits()).toHaveLength(1);
 
     act(() => {

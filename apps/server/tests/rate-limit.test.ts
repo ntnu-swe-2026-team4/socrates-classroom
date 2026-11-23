@@ -5,7 +5,7 @@ import type { Env } from "../src/env";
 import { call, callWith } from "./helpers";
 
 function limiter(key: string): DurableObjectStub<RateLimiter> {
-  return env.RateLimiter.get(env.RateLimiter.idFromName(key)) as unknown as DurableObjectStub<RateLimiter>;
+  return env.RateLimiter.get(env.RateLimiter.idFromName(key));
 }
 
 function keyOf(scope: string): string {
@@ -53,11 +53,11 @@ describe("RateLimiter DO (#157)", () => {
   });
 
   it("falls open when the limiter is unreachable", async () => {
-    const unavailable = {
-      idFromName: () => {
+    const unavailable: Env["RateLimiter"] = new Proxy(env.RateLimiter, {
+      get() {
         throw new Error("limiter unavailable");
       },
-    } as unknown as Env["RateLimiter"];
+    });
     const response = await callWith({ RateLimiter: unavailable }, "/api/auth/password/reset", {
       method: "POST",
       headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.158" },

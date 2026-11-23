@@ -26,9 +26,19 @@ const axes = [
   axis("責任", { 學生1: 25, 學生2: 25, 學生3: 75, 學生4: 75 }),
 ];
 
-const stage = () => document.querySelector("[data-stance-stage]") as SVGSVGElement;
+function stage(): SVGSVGElement {
+  const node = document.querySelector("[data-stance-stage]");
+  if (!(node instanceof SVGSVGElement)) throw new Error("stance stage not rendered as an SVG");
+  return node;
+}
+
 const points = () => [...document.querySelectorAll("[data-stance-point]")];
-const pointOf = (id: string) => document.querySelector(`[data-stance-point="${id}"]`) as SVGGElement;
+
+function pointOf(id: string): SVGGElement {
+  const node = document.querySelector(`[data-stance-point="${id}"]`);
+  if (!(node instanceof SVGGElement)) throw new Error(`stance point ${id} not rendered`);
+  return node;
+}
 
 beforeEach(() => setLocale("zh-TW"));
 afterEach(cleanup);
@@ -49,7 +59,9 @@ test("groups students from the report positions and leaves out those missing an 
   expect(pointOf("學生5").dataset.stanceCluster).toBe("");
   const groups = document.querySelectorAll("[data-stance-group]");
   expect(groups).toHaveLength(2);
-  expect(within(groups[0] as HTMLElement).getByText("學生1、學生2")).toBeTruthy();
+  const first = groups[0];
+  if (!(first instanceof HTMLElement)) throw new Error("first stance group is not an element");
+  expect(within(first).getByText("學生1、學生2")).toBeTruthy();
   expect(screen.getByText(zh.stance_partial_note)).toBeTruthy();
 });
 

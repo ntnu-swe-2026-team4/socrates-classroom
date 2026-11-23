@@ -151,13 +151,13 @@
     {
       "includes": [
         "apps/server/src/pi/ai-run.ts",
+        "apps/server/src/ws/protocol.ts",
         "apps/web/src/api/http.ts",
         "apps/web/src/hooks/useSubscription.ts",
         "apps/web/src/lib/voiceInput.ts",
         "apps/web/src/lib/wsProtocol.ts",
-        "apps/server/tests/**",
-        "apps/web/src/test/**",
-        "apps/web/dev/**"
+        "apps/server/tests/helpers.ts",
+        "apps/web/src/test/helpers.ts"
       ],
       "linter": {
         "rules": {

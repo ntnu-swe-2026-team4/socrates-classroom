@@ -97,7 +97,11 @@ describe("judgment extension (violation detection: self-report tool + per-turn c
     await rx.until((f) => {
       const view = latestView(f);
       const violation = view?.entries.find((entry) => entry.kind === "app.violation");
-      return violation !== undefined && (violation.data as { source?: string }).source === "agent";
+      const source: unknown =
+        violation !== undefined && typeof violation.data === "object" && violation.data !== null
+          ? Reflect.get(violation.data, "source")
+          : undefined;
+      return source === "agent";
     });
     socket.close();
   }, 30_000);

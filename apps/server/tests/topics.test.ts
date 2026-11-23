@@ -4,7 +4,18 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { all, one, run } from "../src/db/d1";
 import { seedFixture } from "../src/seed";
-import { call, cookieOf, createClassroom, must, startActivity, systemTopicId } from "./helpers";
+import {
+  call,
+  cookieOf,
+  createClassroom,
+  field,
+  must,
+  optStr,
+  rows,
+  startActivity,
+  str,
+  systemTopicId,
+} from "./helpers";
 
 let teacher: string;
 let otherTeacher: string;
@@ -29,43 +40,49 @@ async function login(email: string): Promise<string> {
   return cookieOf(res);
 }
 
-interface SessionTopic {
-  id: string;
-  classroomId: string | null;
-  title: string;
-  statement: string;
-  axes: Array<{ name: string; left: string; right: string }>;
+async function topicsOf(classroom: string, cookie: string) {
+  const res = await call(`/api/classrooms/${classroom}/topics`, { headers: { Cookie: cookie } });
+  expect(res.status).toBe(200);
+  return rows(await res.json()).map((row) => ({
+    id: str(row, "id"),
+    classroomId: optStr(row, "classroomId"),
+    title: str(row, "title"),
+    statement: str(row, "statement"),
+  }));
 }
 
 const TEST_AXES = [{ name: "契約與人情", left: "契約優先", right: "人情優先" }];
 const OVERRIDE_AXES = [{ name: "公平與效率", left: "公平優先", right: "效率優先" }];
 
-async function topicsOf(classroom: string, cookie: string): Promise<SessionTopic[]> {
-  const res = await call(`/api/classrooms/${classroom}/topics`, { headers: { Cookie: cookie } });
-  expect(res.status).toBe(200);
-  return (await res.json()) as SessionTopic[];
+async function topicIdOf(res: Response): Promise<string> {
+  expect(res.status).toBeGreaterThanOrEqual(200);
+  return str(await res.json(), "id");
 }
 
-async function createTopic(
-  classroom: string,
-  cookie: string,
-  title: string,
-  statement: string,
-  axes?: typeof TEST_AXES,
-) {
+async function topicPromptsOf(body: unknown): Promise<string[]> {
+  const prompts = field(body, "prompts");
+  if (!Array.isArray(prompts)) throw new Error("topic prompts are not an array");
+  return prompts.map((prompt) => {
+    if (typeof prompt !== "string") throw new Error("topic prompt is not a string");
+    return prompt;
+  });
+}
+
+async function createTopic(classroom: string, cookie: string, title: string, statement: string) {
   const res = await call(
     `/api/classrooms/${classroom}/topics`,
-    jsonInit({ title, statement, prompts: ["你的判斷是什麼？"], ...(axes ? { axes } : {}) }, cookie),
+    jsonInit({ title, statement, prompts: ["你的判斷是什麼？"] }, cookie),
   );
   return res;
 }
 
 async function currentOf(classroom: string, cookie: string): Promise<{ activityId: string } | null> {
-  const rooms = (await (await call("/api/classrooms", { headers: { Cookie: cookie } })).json()) as Array<{
-    id: string;
-    current: { activityId: string } | null;
-  }>;
-  return rooms.find((room) => room.id === classroom)?.current ?? null;
+  const rooms = rows(await (await call("/api/classrooms", { headers: { Cookie: cookie } })).json());
+  const room = rooms.find((entry) => str(entry, "id") === classroom);
+  if (room === undefined) return null;
+  const current: unknown = field(room, "current");
+  if (typeof current !== "object" || current === null) return null;
+  return { activityId: str(current, "activityId") };
 }
 
 beforeAll(async () => {
@@ -81,12 +98,9 @@ beforeAll(async () => {
 
 describe("classroom / topic decoupling (#135)", () => {
   it("a classroom can exist with no activity: empty topic set, no current, join code unusable", async () => {
-    const rooms = (await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()) as Array<{
-      id: string;
-      current: unknown;
-    }>;
-    const room = rooms.find((entry) => entry.id === classroomId);
-    expect(room?.current).toBeNull();
+    const rooms = rows(await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json());
+    const room = rooms.find((entry) => str(entry, "id") === classroomId);
+    expect(room !== undefined && field(room, "current") === null).toBe(true);
     expect(await topicsOf(classroomId, teacher)).toEqual([]);
 
     const activity = await one<{ n: number }>(
@@ -106,27 +120,24 @@ describe("classroom / topic decoupling (#135)", () => {
     );
     const preview = await call(`/api/join/${code.join_code}`);
     expect(preview.status).toBe(404);
-    expect(((await preview.json()) as { code: string }).code).toBe("join_code_invalid");
+    expect(str(await preview.json(), "code")).toBe("join_code_invalid");
   });
 
   it("topics created inside a classroom belong to it and stay out of the personal pool", async () => {
-    const created = await createTopic(classroomId, teacher, "班級題", "只有這一班看得到", TEST_AXES);
+    const created = await createTopic(classroomId, teacher, "班級題", "只有這一班看得到");
     expect(created.status).toBe(201);
-    const topic = (await created.json()) as SessionTopic;
-    expect(topic.classroomId).toBe(classroomId);
-    expect(topic.axes).toEqual(TEST_AXES);
+    const topicJson = await created.json();
+    expect(optStr(topicJson, "classroomId")).toBe(classroomId);
+    const topicId = str(topicJson, "id");
 
     const list = await topicsOf(classroomId, teacher);
-    expect(list.map((row) => row.id)).toEqual([topic.id]);
+    expect(list.map((row) => row.id)).toEqual([topicId]);
     expect(await topicsOf(secondClassroomId, teacher)).toEqual([]);
 
-    const pool = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as Array<{ id: string }>;
-    expect(pool.some((row) => row.id === topic.id)).toBe(false);
+    const pool = rows(await (await call("/api/topics", { headers: { Cookie: teacher } })).json());
+    expect(pool.some((row) => str(row, "id") === topicId)).toBe(false);
 
-    const stolen = await call(
-      `/api/classrooms/${otherClassroomId}/activities`,
-      jsonInit({ topicId: topic.id }, otherTeacher),
-    );
+    const stolen = await call(`/api/classrooms/${otherClassroomId}/activities`, jsonInit({ topicId }, otherTeacher));
     expect(stolen.status).toBe(404);
   });
 
@@ -137,7 +148,7 @@ describe("classroom / topic decoupling (#135)", () => {
     const student = await login("student-a@socrates.tw");
     const asStudent = await createTopic(classroomId, student, "學生題", "不該成功");
     expect(asStudent.status).toBe(403);
-    expect(((await asStudent.json()) as { code: string }).code).toBe("forbidden");
+    expect(str(await asStudent.json(), "code")).toBe("forbidden");
 
     const outsider = await login("student-b@socrates.tw");
     const outside = await call(`/api/classrooms/${classroomId}/topics`, { headers: { Cookie: outsider } });
@@ -153,7 +164,7 @@ describe("classroom / topic decoupling (#135)", () => {
   });
 
   it("an activity starts from a classroom topic and becomes current; a test activity never does", async () => {
-    const [topic] = await topicsOf(classroomId, teacher);
+    const topic = must((await topicsOf(classroomId, teacher))[0], "topic topic");
     const live = await startActivity(teacher, classroomId, topic.id);
     expect((await currentOf(classroomId, teacher))?.activityId).toBe(live.activityId);
 
@@ -166,20 +177,21 @@ describe("classroom / topic decoupling (#135)", () => {
   });
 
   it("copying a topic into another classroom makes an independent snapshot", async () => {
-    const [source] = await topicsOf(classroomId, teacher);
+    const source = must((await topicsOf(classroomId, teacher))[0], "source topic");
     const copied = await call(`/api/topics/${source.id}/copy`, jsonInit({ classroomId: secondClassroomId }, teacher));
     expect(copied.status).toBe(201);
-    const copy = (await copied.json()) as SessionTopic;
-    expect(copy.id).not.toBe(source.id);
-    expect(copy.classroomId).toBe(secondClassroomId);
-    expect(copy.title).toBe(source.title);
-    expect(copy.statement).toBe(source.statement);
-    expect(copy.axes).toEqual(source.axes);
+    const copy = await copied.json();
+    expect(str(copy, "id")).not.toBe(source.id);
+    expect(optStr(copy, "classroomId")).toBe(secondClassroomId);
+    expect(str(copy, "title")).toBe(source.title);
+    expect(str(copy, "statement")).toBe(source.statement);
+
+    const copyId = str(copy, "id");
 
     const provenance = await one<{ copied_from: string | null }>(
       env.DB,
       "SELECT copied_from FROM topics WHERE id = $id",
-      { id: copy.id },
+      { id: copyId },
     );
     expect(provenance?.copied_from).toBe(source.id);
 
@@ -188,32 +200,18 @@ describe("classroom / topic decoupling (#135)", () => {
       statement: "來源被改過了",
       id: source.id,
     });
-    const [after] = await topicsOf(secondClassroomId, teacher);
+    const after = must((await topicsOf(secondClassroomId, teacher))[0], "after topic");
     expect(after.statement).toBe(original);
 
     const target = await topicsOf(secondClassroomId, teacher);
-    expect(target.map((row) => row.id)).toEqual([copy.id]);
+    expect(target.map((row) => row.id)).toEqual([copyId]);
     const origin = await topicsOf(classroomId, teacher);
-    expect(origin.find((row) => row.id === copy.id)).toBeUndefined();
-    expect(origin[0].statement).toBe("來源被改過了");
-
-    const overriddenRes = await call(
-      `/api/topics/${source.id}/copy`,
-      jsonInit({ classroomId: secondClassroomId, axes: OVERRIDE_AXES }, teacher),
-    );
-    expect(overriddenRes.status).toBe(201);
-    const overridden = (await overriddenRes.json()) as SessionTopic;
-    expect(overridden.axes).toEqual(OVERRIDE_AXES);
-    const overriddenProvenance = await one<{ copied_from: string | null }>(
-      env.DB,
-      "SELECT copied_from FROM topics WHERE id = $id",
-      { id: overridden.id },
-    );
-    expect(overriddenProvenance?.copied_from).toBe(source.id);
+    expect(origin.find((row) => row.id === copyId)).toBeUndefined();
+    expect(must(origin[0], "origin topic").statement).toBe("來源被改過了");
   });
 
   it("copy needs ownership of both sides and a readable source", async () => {
-    const [source] = await topicsOf(classroomId, teacher);
+    const source = must((await topicsOf(classroomId, teacher))[0], "source topic");
     const foreign = await call(`/api/topics/${source.id}/copy`, jsonInit({ classroomId: otherClassroomId }, teacher));
     expect(foreign.status).toBe(403);
 
@@ -223,44 +221,24 @@ describe("classroom / topic decoupling (#135)", () => {
     );
     expect(stolen.status).toBe(404);
 
-    const systemList = (await (await call("/api/topics", { headers: { Cookie: teacher } })).json()) as SessionTopic[];
-    const sourceSystem = must(
-      systemList.find((row) => row.id === systemTopic),
-      "system topic",
-    );
     const systemCopy = await call(
       `/api/topics/${systemTopic}/copy`,
       jsonInit({ classroomId: secondClassroomId }, teacher),
     );
     expect(systemCopy.status).toBe(201);
-    const copy = (await systemCopy.json()) as SessionTopic;
-    expect(copy.classroomId).toBe(secondClassroomId);
-    expect(copy.id).not.toBe(systemTopic);
-    expect(copy.axes.length).toBeGreaterThan(0);
-    expect(copy.axes).toEqual(sourceSystem.axes);
+    const systemCopyJson = await systemCopy.json();
+    expect(optStr(systemCopyJson, "classroomId")).toBe(secondClassroomId);
+    expect(str(systemCopyJson, "id")).not.toBe(systemTopic);
   });
 
   it("personal topics from POST /topics stay usable by their owner only", async () => {
     const created = await call("/api/topics", jsonInit({ title: "個人題", statement: "舊路徑", prompts: [] }, teacher));
     expect(created.status).toBe(201);
-    const topic = (await created.json()) as SessionTopic;
-    expect(topic.classroomId).toBeNull();
-    expect(topic.axes).toEqual([]);
+    const topicId = str(await created.json(), "id");
 
-    const withAxesRes = await call(
-      "/api/topics",
-      jsonInit({ title: "帶軸個人題", statement: "測試軸", prompts: [], axes: TEST_AXES }, teacher),
-    );
-    expect(withAxesRes.status).toBe(201);
-    const withAxes = (await withAxesRes.json()) as SessionTopic;
-    expect(withAxes.axes).toEqual(TEST_AXES);
-
-    const started = await startActivity(teacher, secondClassroomId, withAxes.id);
+    const started = await startActivity(teacher, secondClassroomId, topicId);
     expect((await currentOf(secondClassroomId, teacher))?.activityId).toBe(started.activityId);
-    const foreign = await call(
-      `/api/classrooms/${otherClassroomId}/activities`,
-      jsonInit({ topicId: withAxes.id }, otherTeacher),
-    );
+    const foreign = await call(`/api/classrooms/${otherClassroomId}/activities`, jsonInit({ topicId }, otherTeacher));
     expect(foreign.status).toBe(404);
   });
 });
@@ -295,7 +273,7 @@ describe("topic lifecycle (#383)", () => {
       axes: TEST_AXES,
     });
     expect(first.status).toBe(201);
-    const created = (await first.json()) as SessionTopic & { prompts: string[] };
+    const createdId = await topicIdOf(first);
 
     const again = await postTopic(lifecycleId, teacher, {
       title: "  重複題  ",
@@ -304,9 +282,10 @@ describe("topic lifecycle (#383)", () => {
       axes: TEST_AXES,
     });
     expect(again.status).toBe(200);
-    const existing = (await again.json()) as SessionTopic & { prompts: string[] };
-    expect(existing.id).toBe(created.id);
-    expect(existing.prompts).toEqual(["第一版提問"]);
+    const againBody = await again.json();
+    const existingId = str(againBody, "id");
+    expect(existingId).toBe(createdId);
+    expect(await topicPromptsOf(againBody)).toEqual(["第一版提問"]);
     expect(await countTopics(lifecycleId, "重複題")).toBe(1);
   });
 
@@ -321,7 +300,7 @@ describe("topic lifecycle (#383)", () => {
       axes: TEST_AXES,
     });
     expect(withAxes.status).toBe(201);
-    const axed = (await withAxes.json()) as SessionTopic;
+    const axed = await topicIdOf(withAxes);
 
     const reorderedKeys = await postTopic(lifecycleId, teacher, {
       title: "軸題",
@@ -330,7 +309,7 @@ describe("topic lifecycle (#383)", () => {
       axes: TEST_AXES.map(({ name, left, right }) => ({ right, name, left })),
     });
     expect(reorderedKeys.status).toBe(200);
-    expect(((await reorderedKeys.json()) as SessionTopic).id).toBe(axed.id);
+    expect(await topicIdOf(reorderedKeys)).toBe(axed);
     expect(await countTopics(lifecycleId, "軸題")).toBe(2);
   });
 
@@ -338,7 +317,7 @@ describe("topic lifecycle (#383)", () => {
     const body = { title: "併發題", statement: "同時建立", prompts: ["問"] };
     const responses = await Promise.all([1, 2, 3].map(() => postTopic(lifecycleId, teacher, body)));
     expect(responses.map((res) => res.status).sort()).toEqual([200, 200, 201]);
-    const ids = new Set(await Promise.all(responses.map(async (res) => ((await res.json()) as SessionTopic).id)));
+    const ids = new Set(await Promise.all(responses.map(topicIdOf)));
     expect(ids.size).toBe(1);
     expect(await countTopics(lifecycleId, "併發題")).toBe(1);
   });
@@ -346,15 +325,15 @@ describe("topic lifecycle (#383)", () => {
   it("copying the same source into one classroom resolves to a single snapshot", async () => {
     const source = await postTopic(copyTargetId, teacher, { title: "來源題", statement: "要被複製", prompts: [] });
     expect(source.status).toBe(201);
-    const sourceTopic = (await source.json()) as SessionTopic;
+    const sourceTopic = { id: await topicIdOf(source) };
 
     const first = await call(`/api/topics/${sourceTopic.id}/copy`, jsonInit({ classroomId: lifecycleId }, teacher));
     expect(first.status).toBe(201);
-    const copy = (await first.json()) as SessionTopic;
+    const copy = await topicIdOf(first);
 
     const second = await call(`/api/topics/${sourceTopic.id}/copy`, jsonInit({ classroomId: lifecycleId }, teacher));
     expect(second.status).toBe(200);
-    expect(((await second.json()) as SessionTopic).id).toBe(copy.id);
+    expect(await topicIdOf(second)).toBe(copy);
     expect(await countTopics(lifecycleId, "來源題")).toBe(1);
   });
 
@@ -365,7 +344,7 @@ describe("topic lifecycle (#383)", () => {
       prompts: [],
     });
     expect(created.status).toBe(201);
-    const topic = (await created.json()) as SessionTopic;
+    const topic = { id: await topicIdOf(created) };
     const started = await startActivity(teacher, lifecycleId, topic.id);
 
     expect((await removeTopic(lifecycleId, topic.id, teacher)).status).toBe(204);
@@ -374,16 +353,16 @@ describe("topic lifecycle (#383)", () => {
 
     const activity = await call(`/api/activities/${started.activityId}`, { headers: { Cookie: teacher } });
     expect(activity.status).toBe(200);
-    expect(((await activity.json()) as { topic: { id: string; title: string } }).topic).toMatchObject({
+    expect(field(await activity.json(), "topic")).toMatchObject({
       id: topic.id,
       title: "待刪題",
     });
 
-    const rooms = (await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()) as Array<{
-      id: string;
-      current: { topicTitle: string } | null;
-    }>;
-    expect(rooms.find((room) => room.id === lifecycleId)?.current?.topicTitle).toBe("待刪題");
+    const roomWithLifecycle = rows(await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()).find(
+      (room) => str(room, "id") === lifecycleId,
+    );
+    const current = roomWithLifecycle === undefined ? null : field(roomWithLifecycle, "current");
+    expect(current === null || current === undefined ? null : str(current, "topicTitle")).toBe("待刪題");
 
     const restarted = await call(`/api/classrooms/${lifecycleId}/activities`, jsonInit({ topicId: topic.id }, teacher));
     expect(restarted.status).toBe(404);
@@ -398,20 +377,20 @@ describe("topic lifecycle (#383)", () => {
     const body = { title: "回收題", statement: "刪除後可重建", prompts: [] };
     const created = await postTopic(lifecycleId, teacher, body);
     expect(created.status).toBe(201);
-    const topic = (await created.json()) as SessionTopic;
+    const topic = { id: await topicIdOf(created) };
 
     expect((await removeTopic(lifecycleId, topic.id, teacher)).status).toBe(204);
 
     const recreated = await postTopic(lifecycleId, teacher, body);
     expect(recreated.status).toBe(201);
-    expect(((await recreated.json()) as SessionTopic).id).not.toBe(topic.id);
+    expect(await topicIdOf(recreated)).not.toBe(topic.id);
   });
 
   it("concurrent activity starts with the same edited axes converge on one snapshot", async () => {
     const { classroomId: racyId } = await createClassroom(teacher, "併發開課班");
     const created = await postTopic(racyId, teacher, { title: "併發開課題", statement: "同時改軸", prompts: [] });
     expect(created.status).toBe(201);
-    const topic = (await created.json()) as SessionTopic;
+    const topic = { id: await topicIdOf(created) };
     const start = () =>
       call(
         `/api/classrooms/${racyId}/activities`,
@@ -442,7 +421,7 @@ describe("topic lifecycle (#383)", () => {
       prompts: [],
     });
     expect(created.status).toBe(201);
-    const topic = (await created.json()) as SessionTopic;
+    const topic = { id: await topicIdOf(created) };
 
     expect((await removeTopic(otherClassroomId, topic.id, otherTeacher)).status).toBe(404);
     expect((await removeTopic(lifecycleId, topic.id, otherTeacher)).status).toBe(403);

@@ -6,14 +6,20 @@ afterEach(() => {
 });
 
 test("F07: interrupt during decode never starts late audio playback", async () => {
-  let decoded!: (value: object) => void;
-  const pendingDecode = new Promise<object>((resolve) => {
+  let decoded!: (value: AudioBuffer) => void;
+  const pendingDecode = new Promise<AudioBuffer>((resolve) => {
     decoded = resolve;
   });
   const decode = vi.fn(() => pendingDecode);
-  const source = {
-    buffer: null as object | null,
-    onended: null as (() => void) | null,
+  const source: {
+    buffer: AudioBuffer | null;
+    onended: (() => void) | null;
+    connect(): void;
+    stop(): void;
+    start(): void;
+  } = {
+    buffer: null,
+    onended: null,
     connect() {},
     stop() {},
     start: vi.fn(() => {
@@ -42,7 +48,24 @@ test("F07: interrupt during decode never starts late audio playback", async () =
   const settled = httpApi.tts("A reply", () => {}, controller.signal).catch((error: unknown) => error);
   await vi.waitFor(() => expect(decode).toHaveBeenCalledTimes(1));
   controller.abort();
-  decoded({});
+  const mintedBuffer: AudioBuffer = {
+    get duration() {
+      return 0;
+    },
+    get length() {
+      return 0;
+    },
+    get numberOfChannels() {
+      return 0;
+    },
+    get sampleRate() {
+      return 0;
+    },
+    getChannelData: () => new Float32Array(0),
+    copyFromChannel: () => {},
+    copyToChannel: () => {},
+  };
+  decoded(mintedBuffer);
   const outcome = await settled;
   if (outcome !== undefined) expect(outcome).toMatchObject({ name: "AbortError" });
   expect(source.start).not.toHaveBeenCalled();

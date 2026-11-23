@@ -1,10 +1,10 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
-import type { DevAccounts, User } from "@socrates/shared";
+import { DevAccountsSchema, UserSchema } from "@socrates/shared";
 import { beforeAll, describe, expect, test } from "vitest";
 import { inject } from "vitest";
 import { FIXTURE_ACCOUNTS, FIXTURE_CLASSROOMS, FIXTURE_PASSWORD, seedFixture } from "../src/seed";
-import { call, callWith, cookieOf, must } from "./helpers";
+import { call, callWith, cookieOf, must, str } from "./helpers";
 
 const migrations = inject("d1Migrations");
 
@@ -46,7 +46,7 @@ describe("dev fixtures", () => {
   test("GET /api/dev/accounts lists every fixture with its classrooms", async () => {
     const res = await call("/api/dev/accounts");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as DevAccounts;
+    const body = DevAccountsSchema.parse(await res.json());
     expect(body.password).toBe(FIXTURE_PASSWORD);
     expect(body.accounts.map((account) => account.email)).toEqual(FIXTURE_ACCOUNTS.map((account) => account.email));
 
@@ -92,23 +92,23 @@ describe("dev fixtures", () => {
   test("POST /api/dev/login signs in without a password", async () => {
     const res = await call("/api/dev/login", jsonInit({ email: "student-b@socrates.tw" }));
     expect(res.status).toBe(200);
-    const user = (await res.json()) as User;
+    const user = UserSchema.parse(await res.json());
     expect(user.name).toBe("李美玲");
     expect("canManageClasses" in user).toBe(false);
 
     const me = await call("/api/me", { headers: { Cookie: cookieOf(res) } });
-    expect(((await me.json()) as User).id).toBe(user.id);
+    expect(UserSchema.parse(await me.json()).id).toBe(user.id);
   });
 
   test("POST /api/dev/login heals is_admin drift left by an older seed", async () => {
     await env.DB.prepare("UPDATE users SET is_admin = 0 WHERE id = 'u_fx_admin'").run();
     const res = await call("/api/dev/login", jsonInit({ email: "admin@socrates.tw" }));
     expect(res.status).toBe(200);
-    const user = (await res.json()) as User;
+    const user = UserSchema.parse(await res.json());
     expect(user.isAdmin).toBe(true);
 
     const me = await call("/api/me", { headers: { Cookie: cookieOf(res) } });
-    expect(((await me.json()) as User).isAdmin).toBe(true);
+    expect(UserSchema.parse(await me.json()).isAdmin).toBe(true);
     const listed = await call("/api/admin/users", { headers: { Cookie: cookieOf(res) } });
     expect(listed.status).toBe(200);
   });
@@ -116,7 +116,7 @@ describe("dev fixtures", () => {
   test("POST /api/dev/login rejects emails outside the fixture list", async () => {
     const res = await call("/api/dev/login", jsonInit({ email: "nobody@example.com" }));
     expect(res.status).toBe(404);
-    expect(((await res.json()) as { code: string }).code).toBe("not_found");
+    expect(str(await res.json(), "code")).toBe("not_found");
   });
 
   test("every dev endpoint is 404 outside ENVIRONMENT=dev", async () => {
