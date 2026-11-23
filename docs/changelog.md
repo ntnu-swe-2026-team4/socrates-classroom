@@ -11,6 +11,7 @@
 - **tests 層（L2）**：REST 式回應斷言改走 reader 家族（`str`/`rows`/`field`/`must`）或 zod `Schema.parse`；`handler.mock.calls[i]` 解構改 `lastCallN(i)` helper；vitest 的 `it` timeout 釘回 90s（report 生成實測 >60s，60s 會 flaky）
 - 已知極限：TS 的 control-flow narrowing 不追蹤迴圈計數器與 `findIndex` 結果（microsoft/TypeScript#61388、#57847），`for (let i…)` 內的 `arr[i]` 需先讀入變數再判 `undefined`；`StoaField` 熱路徑選 `?? 0` 而非 `.at()`，避免每幀配置
 - `noUnnecessaryConditions` 維持 off：flag 開啟後重跑探針 31→46 findings（`--only` 會縫過 override，含 seam 檔案的預期命中），仍以 closure mutation 與 TanStack 判別聯集誤報為主，無 true-positive 家族浮現——上游修復前不重驗
+- config 註解清理（依 AGENTS.md no-comments 政策，設計理由留在文件不在程式碼）：`biome.jsonc` 移除 `useAwaitThenable`／`noUnnecessaryConditions` 的 probe-verified 註解（rationale 見下方 2026-11-21 lint 條目的「帶證據的兩個 off」與本條目的重驗記錄）；`.yamllint.yaml`／`prek.toml` 移除檔首說明註解（用途見 AGENTS.md 的 setup 與 lint 段）
 
 ## 2026-11-23 — per-IP 限流改走跨 isolate 的 RateLimiter DO（`feat/157-rate-limiter-do`，#157）
 
