@@ -2,6 +2,14 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-24 — 平台鏈主力切 glm-5.3、class-report 改 low、推論走 AI Gateway（`feat/401-platform-glm-5.3`，#401）
+
+### Changed
+
+- 平台鏈 priority 1：`@cf/zai-org/glm-5.3-flash`（2026-11-20 下架，#399）→ `@cf/zai-org/glm-5.3`（paid；Workers Paid 或 AI Gateway credits）；`@cf/zai-org/glm-4.7-flash` 留第二順位收尾，Free 帳號對 5.3 的 403 由 breaker 降級承接
+- `class-report` thinkingLevel high→low（#249 實驗：high 在 39 人班推理超限截斷，low 完成 39／60 人班且落點零左右反轉）；其餘 profile 維持現況
+- Workers AI 推論改走 AI Gateway `default`（Unified billing）：付費清單模型 20→50 rpm；`collectLog: false`＋`skipCache: true` 在程式碼層釘死零保留（AI Gateway logs 預設開啟，不依賴 dashboard 手動狀態）
+
 ## 2026-11-23 — TS 靜態保證 step 4：noUncheckedIndexedAccess 全庫開啟（`refactor/293-step4`，#293）
 
 ### Changed

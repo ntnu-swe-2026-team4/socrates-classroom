@@ -155,7 +155,8 @@
   - 現況：`socrates` 與 `class-report` 為 `"low"`（#145／#401，後者見 #249 實驗：39/60 人班 low 完成、high 在 39 人班截斷）；BTW（fork 覆寫）、查詢、主題生成與其餘報告 profile 皆 `"high"`（[`profiles.ts`](../apps/server/src/pi/agents/profiles.ts)）
 - **thinkingLevel 實際送出的值**（`agents` 0.33.0 的 `effortForLevel` 先經 pi-ai 的 `clampThinkingLevel`；模型頁 2026-11-16 查證）：
   - `glm-5.3-flash` 在 Workers AI 只接受 low／high／max，預設 max（[模型頁](https://developers.cloudflare.com/workers-ai/models/glm-5.3-flash/)）
-  - minimal、low 送 `low`；medium 送 `high`，因為這顆模型的 thinkingLevelMap 把 medium 設成 null，clamp 會往上取；high、xhigh、max 都送 `high`；off 則完全不送 `reasoning_effort`，模型照預設跑 max
+  - `glm-5.3`（#401 起的頭部）接受 low／high／max，預設 max（[模型頁](https://developers.cloudflare.com/workers-ai/models/glm-5.3/)，2026-11-24 查證）；pi-ai 1.5.0 catalog 的 thinkingLevelMap 與 5.3-flash 完全相同（off／minimal／medium／xhigh ＝ null）
+  - 兩顆的 clamp 行為相同：minimal、low 送 `low`；medium 送 `high`（map 為 null，clamp 往上取）；high 送 `high`；max 送 `max`；off 則完全不送 `reasoning_effort`，模型照預設跑 max
   - 也就是說，現行程式碼在 Workers AI 上只送得出 low 或 high：max 送不出去，設 `off` 反而等於 max
   - `deepseek-v4.1-flash-1017` 接受 none／low／high／max，預設 high（[模型頁](https://developers.cloudflare.com/workers-ai/models/deepseek-v4.1-flash-1017/)）。換模型後要重查 pi catalog 裡它的 thinkingLevelMap
 - **測試方法**：

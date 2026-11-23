@@ -53,7 +53,7 @@ flowchart TD
         RR --> ROUTER
     end
 
-    MODELS -->|"createAI binding"| WAI["Workers AI（glm-5.3-flash → glm-4.7-flash legs）"]
+    MODELS -->|"createAI binding"| WAI["Workers AI（glm-5.3 → glm-4.7-flash legs）"]
 
     ROUTER -->|"openrouter"| OR["OpenRouter（teacher key）"]
     VOICE --> WAI
