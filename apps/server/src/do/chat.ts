@@ -1,7 +1,7 @@
 import type { UserInput } from "@earendil-works/pi-durable";
 import { DurableObject } from "cloudflare:workers";
 import { type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } from "agents/harness/pi";
-import { Lifecycle, type LifecycleJobContext } from "agents/lifecycle";
+import { Lifecycle, type LifecycleJobContext, type LifecycleJobOutcome } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
 import {
@@ -13,6 +13,7 @@ import {
   lookupSession,
 } from "../auth";
 import { participantOf } from "../services/members";
+import { LIVE_PROGRESS_JOB, LiveProgressProjection } from "./live-progress";
 import { forkBtw } from "../pi/extensions/btw";
 import { teacherOfActivity } from "../pi/credentials";
 import { one } from "../db/d1";
@@ -74,6 +75,12 @@ export class Chat extends DurableObject<Env> {
 
   readonly webSockets = new WebSockets(this.sockets.options());
   readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.core.harness);
+  readonly liveProgress = new LiveProgressProjection(
+    this.ctx,
+    this.env.DB,
+    () => this.lifecycle.jobs,
+    () => this.core.harness.pi(),
+  );
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -102,8 +109,13 @@ export class Chat extends DurableObject<Env> {
     }
   }
 
-  async onJob({ job }: LifecycleJobContext): Promise<void> {
+  async onJob({ job }: LifecycleJobContext): Promise<LifecycleJobOutcome> {
     if (job.fn === RUN_DEADLINE_JOB) await this.tracker.checkRun(job);
+    if (job.fn === LIVE_PROGRESS_JOB) return this.liveProgress.dispatch();
+  }
+
+  async scheduleLiveProgress(): Promise<void> {
+    await this.liveProgress.schedule();
   }
 
   private async teacherId(): Promise<string | null> {
@@ -144,16 +156,18 @@ export class Chat extends DurableObject<Env> {
 
   private async routeSubmit(handle: PiSession, input: UserInput, options: PiSubmitOptions): Promise<PiReceipt> {
     const activityId = this.ctx.id.name?.split(":")[0] ?? "";
-    const activity = await one<{ finished_at: string | null }>(
+    const activity = await one<{ finished_at: string | null; mode: string }>(
       this.env.DB,
-      "SELECT finished_at FROM activities WHERE id = $id",
+      "SELECT finished_at, mode FROM activities WHERE id = $id",
       { id: activityId },
     );
     if (activity?.finished_at) throw new ActivityFinishedError();
 
-    return submitViaRouter(this.env, this.core, this.#sessionModels, handle, input, options, (h, inp, opt) =>
-      this.tracker.submitWithDeadline(h, inp, opt, (p) => this.ctx.waitUntil(p)),
-    );
+    return submitViaRouter(this.env, this.core, this.#sessionModels, handle, input, options, async (h, inp, opt) => {
+      const submit = () => this.tracker.submitWithDeadline(h, inp, opt, (p) => this.ctx.waitUntil(p));
+      if (activity?.mode !== "live" || h.id !== ROOT_SESSION) return submit();
+      return this.liveProgress.trackAdmission(submit);
+    });
   }
 
   async transcript(): Promise<TranscriptReadout> {

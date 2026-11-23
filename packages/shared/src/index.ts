@@ -145,19 +145,32 @@ export const ActivitySlotCreateInputSchema = z.object({
   count: z.number().int().min(1).max(ACTIVITY_SLOT_MAX),
 });
 
+export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
+export type ViolationType = (typeof VIOLATION_TYPES)[number];
+
+export const LiveFlagSchema = z.object({
+  id: z.string(),
+  type: z.enum(VIOLATION_TYPES).exclude(["on_topic"]),
+});
+export type LiveFlag = z.infer<typeof LiveFlagSchema>;
+
 export const StudentLiveSchema = z.object({
   id: z.string(),
   name: z.string(),
-  status: z.enum(["active", "speaking", "idle"]),
-  rounds: z.number(),
-  flagged: z.boolean(),
-  flagReason: z.string().optional(),
-  lastUtterance: z.string(),
+  status: z.enum(["not_started", "active", "idle", "unknown"]),
+  rounds: z.number().int().nonnegative().nullable(),
+  lastActiveAt: z.iso.datetime().nullable(),
+  flags: z.array(LiveFlagSchema).nullable(),
 });
 export type StudentLive = z.infer<typeof StudentLiveSchema>;
 
-export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
-export type ViolationType = (typeof VIOLATION_TYPES)[number];
+export const ActivityLiveSchema = z.object({
+  activityId: z.string(),
+  finishedAt: z.iso.datetime().nullable(),
+  asOf: z.iso.datetime(),
+  students: z.array(StudentLiveSchema),
+});
+export type ActivityLive = z.infer<typeof ActivityLiveSchema>;
 
 export const ViolationSliceSchema = z.object({
   turn: z.number().int(),

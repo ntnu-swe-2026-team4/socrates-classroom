@@ -276,10 +276,27 @@ type ServerMessage =
 - 每個 slot 是一條獨立的 Chat DO thread（`{activityId}:{participantId}`），同一老師帳號可同時在 1–6 條 thread 上 `submit`（slot 的 `user_id` 就是老師）；這也取代了「單人模式」（#136 已定）
 - `finish` 照常觸發 ReportRunner，報告母體就是這些 slot（§7）；`GET /activities/:id?participantId=` 讓老師取得 slot 的 thread 名（見 §3）
 
-### 6.2 即時面板（#73，未實作）
+### 6.2 即時面板（#73）
 
-- `GET /api/activities/:id/live` → `StudentLive[]`——gate 到 #73：資料源為 Chat DO 的 pi transcript 聚合（`messages`/`violations` 表已隨 v3 退役，migration 003 drop；pi transcript 是唯一真相），實作前不佔端點
-- `StudentLive`：`{id, name, status, rounds, flagged, flagReason?, lastUtterance}`——`id` 屆時為 participant id（#132 後 thread 鍵的後半段）；現行 `/t/live/:id` 對 `live` 活動仍顯示待上線提示，對 `test` 活動則渲染 slot 列表
+`GET /api/activities/:id/live` → `ActivityLive`。只有該班 owner 的登入 session 可讀取。未登入回 401 `unauthorized`，非 owner 回 403 `forbidden`，活動不存在回 404 `not_found`，`test` 活動回 409 `conflict`。回應採用 `Cache-Control: private, no-store`。
+
+| 欄位         | 語意                                                                             |
+| ------------ | -------------------------------------------------------------------------------- |
+| `activityId` | 活動 ID。                                                                        |
+| `finishedAt` | ISO 8601 timestamp。活動進行中為 `null`，結束後仍可查詢。                        |
+| `asOf`       | Worker 讀完 snapshot 的時間，採 ISO 8601。學生摘要為 eventual consistency。      |
+| `students`   | 每個 `member`／`guest` participant 一列，依 participant ID 排序。空名單回 `[]`。 |
+
+每列 `StudentLive` 欄位如下。
+
+| 欄位                     | 語意                                                                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`, `name`             | Participant ID 與活動內顯示名稱。                                                                                                             |
+| `status`                 | `not_started` 表示 snapshot 內尚無已同步的發言。最近 120 秒曾發言為 `active`，其餘已發言者為 `idle`。既有活動的摘要尚未初始化時為 `unknown`。 |
+| `rounds`, `lastActiveAt` | 已 commit 的學生發言數、最後一次學生發言的 ISO 8601 timestamp。未發言時分別為 `0` 與 `null`，摘要未知時兩者為 `null`。                        |
+| `flags`                  | 每種類別保留最新一筆 `{id, type}`。ID 在同一 participant 內穩定。沒有已記錄的標記為 `[]`，摘要未知為 `null`。標記是供老師確認的訊號。         |
+
+老師面板建議前景每 5 秒查詢一次。重新連線時載入完整 snapshot，收到 `finishedAt` 後可停止輪詢。實作採用 [D1 projection](./architecture.md#135-d13-event-layer)。
 
 ## 7. 活動結束與報告（#74/#78/#79/#72）
 

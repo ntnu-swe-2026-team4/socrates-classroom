@@ -35,6 +35,9 @@ import {
 } from "../services/members";
 import { publishClassroom } from "../do/classroom-events";
 import { pageBounds, pageOf } from "../services/pagination";
+import { activityLiveSnapshot } from "../services/activity-live";
+
+const LIVE_BACKFILL_PER_POLL = 8;
 
 const SLOT_NAME: Record<"zh" | "en" | "es", string> = { zh: "測試", en: "Test", es: "Prueba" };
 const ActivityQuerySchema = z.object({ participantId: z.string().optional() });
@@ -111,6 +114,27 @@ export function activityRoutes() {
         finishedAt: activity.finished_at,
       };
       return c.json(payload);
+    })
+    .get("/activities/:id/live", async (c) => {
+      const user = requireUser(c);
+      const { activity, classroom } = await activityOf(c.env.DB, c.req.param("id"));
+      if (classroom.teacher_id !== user.id) fail(403, "forbidden");
+      if (activity.mode !== "live") fail(409, "conflict");
+      const snapshot = await activityLiveSnapshot(c.env.DB, activity.id);
+      if (!snapshot) fail(404, "not_found");
+      if (!snapshot.finishedAt) {
+        const pending = snapshot.students.filter((student) => student.status === "unknown");
+        if (pending.length) {
+          const offset = (Math.floor(Date.now() / 5000) * LIVE_BACKFILL_PER_POLL) % pending.length;
+          const selected = pending.slice(offset, offset + LIVE_BACKFILL_PER_POLL);
+          c.executionCtx.waitUntil(
+            Promise.allSettled(
+              selected.map(({ id }) => c.env.Chat.getByName(`${activity.id}:${id}`).scheduleLiveProgress()),
+            ),
+          );
+        }
+      }
+      return c.json(snapshot);
     })
     .get("/activities/:id/slots", async (c) => {
       const user = requireUser(c);

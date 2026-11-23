@@ -337,7 +337,11 @@ v3 的班級層產出——即時面板標記（#73）、單人報告（#74/#78�
 
 ### 13.5 D13 event layer
 
-v3 設計為 ActivityEvents DO（SSE-in-DO＋ring buffer＋Last-Event-ID replay）；**已隨 web-next 退役**（SSE 對話改 Chat DO 的 WS hibernation，見 §4）。老師即時面板的資料源改道：#73 調查選擇輪詢 SQL 聚合（待拍板），無獨立 event DO。
+v3 的 ActivityEvents DO 已退役。對話改用 Chat DO 的 WebSocket hibernation（§4）。#73 即時面板採用 D1 read projection，Chat DO 的 root transcript 保持 source of truth。
+
+- Chat DO 在接受 live root input 前排定 durable Lifecycle job。Job 以歷史 entry ID 分頁讀取已 commit 的 `pi.user` 及 `app.violation`，涵蓋 agent tool 與 async classifier。只在摘要變更時 upsert D1。D1 成功後才推進 Chat DO 的 checkpoint。寫入失敗保留重試，較舊的 entry ID 不能覆蓋較新的 projection。
+- `activity_live_progress` 以 `(activity_id, participant_id)` 為 key。老師查詢時以 D1 的活動名單為主，透過 indexed join 讀取 projection。舊版未結束的活動由首次及後續 snapshot 查詢每次排定最多 8 個 participant 的 backfill。到 job 讀完既有資料前顯示 `unknown`。舊版已結束的活動沿用既有報告入口。
+- 首版使用 HTTP snapshot polling。以 100／1,000 人的本機 benchmark 評估 D1 與每活動一個 SQLite-backed DO。共用 D1 可直接 join 名單，沿用現有 binding。若多場活動的正式環境測試顯示共用 D1 寫入造成跨班影響，再評估按活動分片。API 形狀見 [即時面板契約](./api-contract.md#62-即時面板73)。
 
 ### 13.6 與 v3 實作的 gap（2026-11-06 web-next 重建後的狀態）
 
@@ -347,7 +351,7 @@ v3 設計為 ActivityEvents DO（SSE-in-DO＋ring buffer＋Last-Event-ID replay�
 | 2   | dialogue-save 同步寫 → Queues projection       | 未做（現為同步 batch，10k 前可接受）                       |
 | 3   | violations／usage event stream → Queues＋batch | 未做（judgment 走 entry＋D1）                              |
 | 4   | 報告生成 → Workflows 編排                      | 部分：ReportRunner DO alarm（crash-safe）；Workflows 待評  |
-| 5   | ActivityEvents → WS hibernation＋ring buffer   | 改道：#73 調查選輪詢 SQL 聚合（待拍板）；ring buffer 退役  |
+| 5   | ActivityEvents → WS hibernation＋ring buffer   | 改道：#73 採用 D1 projection 與 polling（§13.5）           |
 | 6   | pool.ts → gateway（config／ledger／cooldown）  | ✅ 已做（§5）；Coordinator DO 未建（ledger 在 isolate 內） |
 | 7   | agents 0.33＋pi 1.5                            | ✅ 已做                                                    |
 | 8   | AE data point＋cron rollup                     | 未做（#80/#81/#63，本輪不做）                              |
