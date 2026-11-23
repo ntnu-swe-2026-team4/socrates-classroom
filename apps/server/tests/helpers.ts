@@ -39,7 +39,6 @@ export function frames(socket: WebSocket): {
     if (typeof event.data !== "string") return;
     const frame = parseServerMessage(event.data);
     if (frame === null) return;
-    if (process.env.DEBUG_FRAMES) console.log("[frame]", JSON.stringify(frame).slice(0, 140));
     list.push(frame);
     for (const waiter of waiters.splice(0)) waiter();
   });
