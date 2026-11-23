@@ -1082,10 +1082,8 @@ test("#182: announces only new flags and hides the roster after permission is re
     vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), "http://localhost").pathname;
       if (path === "/api/activities/activity-1/live" && responseStatus !== 200) {
-        return Response.json(
-          { code: responseStatus === 403 ? "forbidden" : "internal_error" },
-          { status: responseStatus },
-        );
+        const code = responseStatus === 401 ? "unauthorized" : responseStatus === 403 ? "forbidden" : "internal_error";
+        return Response.json({ code }, { status: responseStatus });
       }
       const responses: Record<string, unknown> = {
         "/api/me": { id: "teacher-1", name: "Teacher", isAdmin: false },
@@ -1125,9 +1123,17 @@ test("#182: announces only new flags and hides the roster after permission is re
     await act(() => client.refetchQueries({ queryKey: options.queryKey }));
     expect(await screen.findByText(/Updates unavailable/)).toBeTruthy();
     expect(screen.getByRole("rowheader", { name: "Student" })).toBeTruthy();
+    responseStatus = 401;
+    await act(() => client.refetchQueries({ queryKey: options.queryKey }));
+    const expiredAlert = await screen.findByRole("alert");
+    expect(expiredAlert.textContent).toContain("Your session has expired");
+    expect(within(expiredAlert).getByRole("link", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByRole("rowheader", { name: "Student" })).toBeNull();
     responseStatus = 403;
     await act(() => client.refetchQueries({ queryKey: options.queryKey }));
-    expect(await screen.findByRole("alert")).toBeTruthy();
+    const forbiddenAlert = await screen.findByRole("alert");
+    expect(forbiddenAlert.textContent).toContain("You can’t view the roster for this activity.");
+    expect(within(forbiddenAlert).queryByRole("link", { name: "Sign in" })).toBeNull();
     expect(screen.queryByRole("rowheader", { name: "Student" })).toBeNull();
   } finally {
     dispose();

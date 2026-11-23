@@ -10,7 +10,7 @@ import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-ro
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare } from "lucide-react";
 import { ACTIVITY_SLOT_MAX } from "@socrates/shared";
-import { api } from "@/api";
+import { ApiError, api } from "@/api";
 import { meOf } from "@/api/me";
 import {
   Button,
@@ -50,6 +50,7 @@ function LivePage() {
   const activity = useQuery(teacherActivityOptions(id));
   const board = useQuery({ ...activityLiveOptions(id), enabled: activity.data?.mode === "live" });
   const boardUnavailable = liveActivityUnavailable(board.error);
+  const sessionExpired = board.error instanceof ApiError && board.error.code === "unauthorized";
   const finished = Boolean(board.data?.finishedAt || activity.data?.finishedAt);
   const [confirming, setConfirming] = useState<string | null>(null);
   const finish = useMutation({
@@ -123,9 +124,21 @@ function LivePage() {
         {activity.data?.mode === "test" && <SlotPanel activityId={id} finished={finished} />}
         {activity.data?.mode === "live" &&
           (boardUnavailable ? (
-            <p role="alert" className="rounded-xl border border-line bg-paper p-5 text-sm text-ink">
-              {t("live_unavailable")}
-            </p>
+            <div
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-paper p-5 text-sm text-ink"
+            >
+              <p>{t(sessionExpired ? "live_session_expired" : "live_unavailable")}</p>
+              {sessionExpired && (
+                <Link
+                  to="/login"
+                  search={{ next: `/t/live/${id}` }}
+                  className={buttonStyles({ variant: "outline", size: "sm" })}
+                >
+                  {t("login_title")}
+                </Link>
+              )}
+            </div>
           ) : board.data ? (
             <LiveBoard key={id} snapshot={board.data} stale={board.isError || board.fetchStatus === "paused"} />
           ) : (
