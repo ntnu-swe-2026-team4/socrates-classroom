@@ -46,7 +46,10 @@ function DevAccountsPage() {
         title={t("dev_title")}
         description={t("dev_intro")}
         actions={
-          <Link to="/" className="inline-flex items-center gap-1 border-b border-transparent text-xs text-ember hover:border-current">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1 border-b border-transparent text-xs text-ember hover:border-current"
+          >
             <ArrowLeft className="size-3.5" aria-hidden />
             {t("common_back")}
           </Link>
