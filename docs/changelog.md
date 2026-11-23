@@ -9,6 +9,7 @@
 - violation 分類與頭像表情的 Clef 指示和 criteria 從 TS 移到 `prompts/violation-classify.md`、`violation-classify-topic.md`、`emotion-classify.md`（第一段 instructions，其後每行 `- choice: criterion`，由 `pi/clef-prompt.ts` 解析；choice 與 `VIOLATION_TYPES`／emotion 一一對應由 `tests/prompts.test.ts` 檢查，解析不會在載入時丟錯）
 - web-content 的 untrusted 外框、`report_violation` 的兩句回覆、lookup 與 topic-gen 的輸入（含「Write in X」）改由 `assemble.ts` 產生（`webContentBlock()`、`violationToolReply()`、`lookupInput()`、`topicGenInput()`），不再在 route／extension 手寫
 - 只是整理：送給模型的內容逐字不變。#161 規範 §8 中會改變模型行為的兩項（lookup／topic-gen 改用 md 的 `{{lang}}`、btw 指定目標語言）不在此次，需另行驗證後處理
+- 與 #161 規範的差異，留給團隊決定：violation 依有無辯題分成兩份（`violation-classify-topic.md` 不符 §2 的 `<角色>.md`），頭像表情不在 §1 的角色清單；三份 Clef md 沒有 §3 的「輸出格式」一節與 `{{lang}}`（Clef 不呼叫工具、只輸出分類）
 - `tests/prompts.test.ts` 補上 btw、lookup、topic-gen 的指示、Clef 題目與其餘外框的快照；既有快照不變
 
 ## 2026-11-22 — 單人報告加上六項思辨力指標（`feat/255-thinking-indicators`，#255）
