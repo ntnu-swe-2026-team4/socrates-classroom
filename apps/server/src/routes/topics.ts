@@ -10,6 +10,7 @@ import {
 import { all, one, run } from "../db/d1";
 import { fail, guardUser, langOf, newId, nowIso, rateLimit, requireUser, validateJson, type AppEnv } from "../http";
 import { classroomAccess, parsePrompts, topicCopyInsert, type TopicRow } from "../services/members";
+import { copyableTopic, topicPoolSql } from "../services/topic-visibility";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 import { topicGenInput } from "../prompts/assemble";
 
@@ -35,10 +36,11 @@ export function topicsRoutes() {
   return new Hono<AppEnv>()
     .get("/topics", async (c) => {
       const user = requireUser(c);
+      const pool = topicPoolSql(["system", "personal"], { userId: user.id });
       const rows = await all<TopicRow>(
         c.env.DB,
-        "SELECT * FROM topics WHERE classroom_id IS NULL AND (owner_id IS NULL OR owner_id = $uid) ORDER BY created_at, id",
-        { uid: user.id },
+        `SELECT * FROM topics WHERE ${pool.sql} ORDER BY created_at, id`,
+        pool.params,
       );
       return c.json(rows.map(parsePrompts));
     })
@@ -47,16 +49,7 @@ export function topicsRoutes() {
       const input = c.req.valid("json");
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, input.classroomId, user);
       if (!isTeacher) fail(403, "forbidden");
-      const source = await one<TopicRow>(c.env.DB, "SELECT * FROM topics WHERE id = $id", { id: c.req.param("id") });
-      if (!source) fail(404, "not_found");
-      if (source.classroom_id === null) {
-        if (source.owner_id !== null && source.owner_id !== user.id) fail(404, "not_found");
-      } else {
-        const owner = await one<{ teacher_id: string }>(c.env.DB, "SELECT teacher_id FROM classrooms WHERE id = $id", {
-          id: source.classroom_id,
-        });
-        if (owner?.teacher_id !== user.id) fail(404, "not_found");
-      }
+      const source = await copyableTopic<TopicRow>(c.env.DB, c.req.param("id"), user.id);
       const id = newId("t_");
       const copy = topicCopyInsert(source, { id, userId: user.id, classroomId: classroom.id, axes: input.axes });
       await run(c.env.DB, copy.sql, copy.params);

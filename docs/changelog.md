@@ -48,6 +48,19 @@
 - 教室內頁新增「行事曆」分頁（`ClassroomCalendar`）：週一起始的月曆、上／下個月與「今天」、點日期列出當天事件；老師可新增（標題、日期、時間、說明）與刪除事件，學生唯讀
 - `lib/calendar.ts`：`monthDays`／`eventsByDay`／`dayKey` 純函式，以及暫時的 `mockCalendar`（`localStorage`，每間教室一份）；查詢走 `classroomCalendarOptions`（key `["classroom", id, "calendar"]`），後端端點定案後只需替換 `queryFn` 與兩個 mutation
 - i18n：`room_tab_calendar` 與 `calendar_*` 共 13 個 key（zh-TW／en／es）
+## 2026-11-23 — topic 可見性收斂為單一定義（`refactor/382-topic-visibility`，#382）
+
+### Added
+
+- `apps/server/src/services/topic-visibility.ts`：`topicScope()` 是 `(owner_id, classroom_id)` 二維狀態機（`(NULL, NULL)`＝system、`(uid, NULL)`＝personal、`(*, cid)`＝classroom）的唯一定義；對外兩個消費形狀——列表查詢走 `topicPoolSql(scopes, subject)`（scope 集合 → SQL fragment ＋ `$named` params）、單列授權走 `topicVisibleTo()`／`copyableTopic()`
+- `apps/server/tests/topic-visibility.test.ts`：狀態機 truth table ＋ 防漂移斷言（`topicPoolSql` 選出的列集合必須等於 `topicVisibleTo` 接受的列集合）；`copyableTopic` 的 404 邊界另測
+
+### Changed
+
+- 四個呼叫點改為消費它，不再各自拼 WHERE 或手寫判斷：`GET /topics`（`routes/topics.ts`）、`GET /classrooms/:id/topics`（`routes/classrooms.ts`）、`POST /topics/:id/copy` 的來源檢查（11 行縮為 1 行）、`topicForActivity`（`services/members.ts`）
+- 行為零變更：`GET /topics` 的 predicate 由 `classroom_id IS NULL AND (owner_id IS NULL OR owner_id = $uid)` 改寫為等價的兩個 scope 條件 OR；copy 的 403（目標班級非我帶）先於 404（來源不可讀）不變；API 契約、回應形狀、D1 schema 皆未動，既有 `topics.test.ts`／`rest.test.ts`／`chat.test.ts` 零改動即綠
+- `docs/architecture.md` §3 新增「topic 可見性」段：定義所在、「呼叫點不得各自重寫 WHERE」的約束，以及 `topicVisibleTo`／`copyableTopic` 兩個 classroom standing 的差異（前者「來源班級＝目標班級」、後者「來源班級是我帶的」）
+- 未納入本單：`seed.ts:163` 的 system-pool dedup lookup 仍手寫 `owner_id IS NULL`，屬 #383（dedup index＋upsert＋backfill）範圍
 
 ## 2026-11-23 — prompt 整理：送進模型的文字收進 `prompts/`（`refactor/161-prompt-ssot`，#161）
 

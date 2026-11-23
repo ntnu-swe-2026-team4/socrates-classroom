@@ -13,6 +13,7 @@ import { all, batch, one, run, type SqlEntry } from "../db/d1";
 import { fail, guardUser, newId, nowIso, requireUser, validateJson, type AppEnv } from "../http";
 import { classroomAccess, parsePrompts, topicCopyInsert, topicForActivity, type TopicRow } from "../services/members";
 import { reportAxesFor } from "../services/settings";
+import { topicPoolSql } from "../services/topic-visibility";
 
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const CODE_MAX = 256 - (256 % CODE_ALPHABET.length);
@@ -179,10 +180,11 @@ export function classroomsRoutes() {
     .get("/classrooms/:id/topics", async (c) => {
       const user = requireUser(c);
       const { classroom } = await classroomAccess(c.env.DB, c.req.param("id"), user);
+      const pool = topicPoolSql(["classroom"], { userId: user.id, classroomId: classroom.id });
       const rows = await all<TopicRow>(
         c.env.DB,
-        "SELECT * FROM topics WHERE classroom_id = $cid ORDER BY created_at, id",
-        { cid: classroom.id },
+        `SELECT * FROM topics WHERE ${pool.sql} ORDER BY created_at, id`,
+        pool.params,
       );
       return c.json(rows.map(parsePrompts));
     })
