@@ -2,6 +2,13 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-23 — 六角圖對接單人報告思辨力指標（`feat/78-thinking-hexagon`，#78）
+
+### Changed
+
+- `ThinkingHexagon` 與 `lib/thinking.ts` 改接 `TeacherReport.students[].indicators`／`StudentReport.indicators`（#255）：移除 `sampleThinking` 示意資料與提示列，`indicatorsToGoals` 直接將 `c1..a2` 轉成六條軸；`indicators` 為 `null` 時不顯示六角圖
+- 級數對齊後端 0–3 級（未觀察到／初步／部分／達成，三語 i18n），圖上改為四層同心框、右側方塊為三格，並顯示每項的 `evidence` 與 `turns`
+
 ## 2026-11-23 — 教師報告加上學生認真度（`feat/267-engagement`，#267）
 
 ### Added

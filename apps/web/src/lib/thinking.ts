@@ -1,15 +1,28 @@
-export type ThinkingLevel = 0 | 1 | 2;
+import type { Indicator, ThinkingIndicators } from "@socrates/shared";
+
+export type ThinkingLevel = Indicator["level"];
 
 export interface ThinkingGoal {
   code: string;
   level: ThinkingLevel;
-  turns?: number[];
+  turns?: readonly number[];
+  evidence?: string;
 }
 
 export const THINKING_CODES = ["C1", "C2", "S1", "S2", "A1", "A2"] as const;
+export type ThinkingCode = (typeof THINKING_CODES)[number];
 export const MIN_GOALS = 3;
 
-const LEVEL_REACH: Record<ThinkingLevel, number> = { 0: 0.28, 1: 0.64, 2: 1 };
+const LEVEL_REACH: Record<ThinkingLevel, number> = { 0: 0.22, 1: 0.48, 2: 0.74, 3: 1 };
+
+const INDICATOR_ENTRIES: ReadonlyArray<readonly [ThinkingCode, keyof ThinkingIndicators]> = [
+  ["C1", "c1"],
+  ["C2", "c2"],
+  ["S1", "s1"],
+  ["S2", "s2"],
+  ["A1", "a1"],
+  ["A2", "a2"],
+];
 
 export const reachOf = (level: ThinkingLevel) => LEVEL_REACH[level];
 
@@ -34,15 +47,9 @@ export function shapePoints(goals: readonly ThinkingGoal[], radius: number): str
     .join(" ");
 }
 
-function hash(text: string): number {
-  let value = 2166136261;
-  for (let index = 0; index < text.length; index += 1) {
-    value ^= text.charCodeAt(index);
-    value = Math.imul(value, 16777619);
-  }
-  return value >>> 0;
-}
-
-export function sampleThinking(seed: string): ThinkingGoal[] {
-  return THINKING_CODES.map((code) => ({ code, level: (hash(`${seed}:${code}`) % 3) as ThinkingLevel }));
+export function indicatorsToGoals(indicators: ThinkingIndicators): ThinkingGoal[] {
+  return INDICATOR_ENTRIES.map(([code, key]) => {
+    const { level, turns, evidence } = indicators[key];
+    return { code, level, turns, evidence };
+  });
 }

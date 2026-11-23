@@ -13,15 +13,16 @@ import {
 
 const PANEL = "rounded-2xl border border-line bg-card";
 const DIVIDER = "border-t border-line";
-const NOTICE = "rounded-lg border border-dashed border-line-strong";
 const SIZE = 300;
 const RADIUS = 98;
 const LABEL_REACH = 1.2;
-const LEVELS: ThinkingLevel[] = [0, 1, 2];
+const LEVELS: readonly ThinkingLevel[] = [0, 1, 2, 3];
+const MAX_LEVEL: ThinkingLevel = 3;
 const LEVEL_KEYS: Record<ThinkingLevel, MessageKey> = {
   0: "thinking_level_0",
   1: "thinking_level_1",
   2: "thinking_level_2",
+  3: "thinking_level_3",
 };
 const GOAL_KEYS: Record<string, { name: MessageKey; criterion: MessageKey }> = {
   C1: { name: "thinking_c1_name", criterion: "thinking_c1_criterion" },
@@ -32,7 +33,7 @@ const GOAL_KEYS: Record<string, { name: MessageKey; criterion: MessageKey }> = {
   A2: { name: "thinking_a2_name", criterion: "thinking_a2_criterion" },
 };
 
-export function ThinkingHexagon({ goals, sample = false }: { goals: readonly ThinkingGoal[]; sample?: boolean }) {
+export function ThinkingHexagon({ goals }: { goals: readonly ThinkingGoal[] }) {
   const t = useT();
   const titleId = useId();
   if (goals.length < MIN_GOALS) return null;
@@ -48,11 +49,6 @@ export function ThinkingHexagon({ goals, sample = false }: { goals: readonly Thi
           {t("thinking_title")}
         </h2>
         <p className="mt-1 text-[13px] leading-relaxed text-ink-faint">{t("thinking_hint")}</p>
-        {sample && (
-          <p data-thinking-sample className={cn(NOTICE, "mt-3 px-3 py-2 text-[12.5px] leading-relaxed text-ink-soft")}>
-            {t("thinking_sample")}
-          </p>
-        )}
       </header>
 
       <div className={cn(DIVIDER, "grid md:grid-cols-[minmax(0,19rem)_minmax(0,1fr)]")}>
@@ -70,7 +66,7 @@ export function ThinkingHexagon({ goals, sample = false }: { goals: readonly Thi
                 points={ringPoints(goals.length, RADIUS * reachOf(level))}
                 className="fill-none stroke-line-strong"
                 strokeWidth={1}
-                strokeDasharray={level === 2 ? undefined : "2 4"}
+                strokeDasharray={level === MAX_LEVEL ? undefined : "2 4"}
               />
             ))}
             {goals.map((goal, index) => {
@@ -131,6 +127,7 @@ export function ThinkingHexagon({ goals, sample = false }: { goals: readonly Thi
                   </span>
                 </p>
                 {keys && <p className="mt-1 text-[12.5px] leading-relaxed text-ink-faint">{t(keys.criterion)}</p>}
+                {goal.evidence && <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">{goal.evidence}</p>}
                 {goal.turns && goal.turns.length > 0 && (
                   <p className="mt-0.5 text-[12px] text-ink-faint">
                     {t("report_turn_ref", { turns: goal.turns.join("、") })}

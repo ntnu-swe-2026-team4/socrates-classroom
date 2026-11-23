@@ -377,7 +377,7 @@ interface ViolationSlice {
 - transcript 來源：Chat DO RPC（`stub.transcript()`，DO→DO；外部無 request 面）；violations 同源自 `app.violation` entries——**pi transcript 是唯一真相，violations 不落第二份儲存**
 - 逐生分析與 transcript 抓取以 Router budget 批次進行（`budget("batch")`＝鏈上各 leg maxConcurrency 總和；10k 班級的生成時間與供應端限流考量）
 - 立場星圖（#79）不新增契約欄位：前端直接從 `classReport.axes[].positions` 映射——座標＝`at`（0–100 線性對到軸的兩端），每條軸一個維度，學生沒談到的軸沒有 position（前端放在該軸中間、標為空心、不納入分群）；報告依老師的軸與軸數產生時，每位學生在每條軸上都有 position，沒談到的是 `end: "middle"`、`at: 50`。分群在前端做（階層式 Ward，#58），不落儲存
-- hexagon（#78 六角圖）尚未接上 `indicators`：前端目前以示意資料渲染並在畫面標明，圖上每項為三級（未觀察到／部分／達成，不是分數）；資料源是上方的 `indicators`（#255，各 0–3 級＋行號＋依據），接線時把示意資料換成它並對齊級數
+- hexagon（#78 六角圖）直接由 `indicators` 映射（`C1–A2`，四級 0–3：未觀察到／初步／部分／達成，右側附上依據與行號；`indicators` 為 `null` 時不顯示）
 
 `GET /api/me/reports` 列出登入帳號已有個人報告的 live 活動，含已離開的班級。列表形狀見 §4.1，item 為 `{activityId, classroomId, classroomName, topicTitle, finishedAt}`。排序依 report 建立時間及活動 ID，由新到舊。
 
