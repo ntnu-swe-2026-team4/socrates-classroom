@@ -27,7 +27,7 @@ import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import type { Harness } from "@earendil-works/pi-durable";
 import type { Registry } from "@earendil-works/pi-durable";
 import type { ReportRunner } from "../src/do/report-runner";
-import type { TeacherLeg } from "../src/pi/credentials";
+import type { KeyedLeg } from "../src/pi/credentials";
 
 export function frames(socket: WebSocket): {
   list: ServerMessage[];
@@ -403,7 +403,7 @@ export function probeStudentIndicators(
   activity: { title: string; statement: string },
   transcript: string,
   spokenLines: number,
-  legs: TeacherLeg[],
+  legs: KeyedLeg[],
   lang: Lang,
 ): Promise<ThinkingIndicators | null> {
   const studentJudgment = Reflect.get(runner, "studentJudgment") as ReportRunner["studentJudgment"] | undefined;

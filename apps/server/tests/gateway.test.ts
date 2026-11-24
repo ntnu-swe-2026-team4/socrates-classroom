@@ -90,9 +90,9 @@ describe("router chain walk (config-driven, cooldown-filtered)", () => {
     const { gatewayConfig } = await import("../src/gateway/config.gen");
     const wa = gatewayConfig.providers["workers-ai"];
     expect(wa?.kind).toBe("binding");
-    expect(wa?.models?.map((m) => m.id)).toEqual(["@cf/zai-org/glm-5.3-flash", "@cf/zai-org/glm-4.7-flash"]);
+    expect(wa?.models?.map((m) => m.id)).toEqual(["@cf/zai-org/glm-5.3", "@cf/zai-org/glm-4.7-flash"]);
     const waEntries = gatewayConfig.defaults.availability.filter((e) => e.provider === "workers-ai");
-    expect(waEntries.map((e) => e.model)).toEqual(["@cf/zai-org/glm-5.3-flash", "@cf/zai-org/glm-4.7-flash"]);
+    expect(waEntries.map((e) => e.model)).toEqual(["@cf/zai-org/glm-5.3", "@cf/zai-org/glm-4.7-flash"]);
     expect(must(waEntries[0], "first workers-ai leg").priority).toBeLessThan(
       must(waEntries[1], "second workers-ai leg").priority,
     );
@@ -313,7 +313,7 @@ describe("dialogue run fallback legs (models.ts wiring)", () => {
       toMarkdown: async () => ({ format: "markdown", markdown: "" }),
     };
     const bundle = buildModels(fakeEnv({ AI: fakeAi }));
-    const model = bundle.models.getModel("cloudflare", "@cf/zai-org/glm-5.3-flash");
+    const model = bundle.models.getModel("cloudflare", "@cf/zai-org/glm-5.3");
     expect(model).toBeDefined();
     // agents' MODEL_OPTIONS symbol: fallback legs are bound on the model object
     const OPTIONS = Symbol.for("agents.models.pi-ai.options");
@@ -346,6 +346,7 @@ describe("gateway schema (availability reference validation — typos fail fast 
       axes: "both",
     },
     teacherChain: { maxConcurrency: 4 },
+    adminChain: { maxConcurrency: 4 },
     trafficClasses: {},
   };
 
@@ -586,6 +587,128 @@ describe("workersAuthContext (platform env backs only config-declared provider n
   });
 });
 
+describe("three-tier keyed chain (#355: teacher → admin → YAML binding; admin quota skip on month window)", () => {
+  async function seedKeyedPools(): Promise<void> {
+    const { env } = await import("cloudflare:workers");
+    const { applyD1Migrations } = await import("cloudflare:test");
+    await applyD1Migrations(env.DB, inject("d1Migrations"));
+    await run(env.DB, "DELETE FROM admin_key_usage WHERE admin_key_id IN ('ak_a', 'ak_b')");
+    await run(env.DB, "DELETE FROM admin_keys WHERE id IN ('ak_a', 'ak_b')");
+    await run(env.DB, "DELETE FROM users WHERE id = 'u_chain'");
+    const at = "2026-11-18T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_chain', '鏈老師', 'chain@example.com', 'x', 'zh', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO teacher_keys (user_id, provider_id, key_enc, last4, sort_order, updated_at)
+       VALUES ('u_chain', 'openrouter', 'enc', 'zzzz', 0, $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO teacher_key_models (user_id, provider_id, model, max_concurrency, sort_order, updated_at)
+       VALUES ('u_chain', 'openrouter', 'z-ai/glm-5.3-flash', NULL, 0, $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO admin_keys (id, provider_id, key_enc, last4, sort_order, updated_at, monthly_quota_usd, zdr_status)
+       VALUES ('ak_a', 'openrouter', 'enc', 'aaaa', 0, $at, NULL, 'approved')`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO admin_keys (id, provider_id, key_enc, last4, sort_order, updated_at, monthly_quota_usd, zdr_status)
+       VALUES ('ak_b', 'deepseek', 'enc', 'bbbb', 1, $at, 0.1, 'approved')`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO admin_key_models (admin_key_id, model, max_concurrency, sort_order, updated_at)
+       VALUES ('ak_a', 'z-ai/glm-5.3-flash', NULL, 0, $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO admin_key_models (admin_key_id, model, max_concurrency, sort_order, updated_at)
+       VALUES ('ak_b', 'glm-4.6', 3, 0, $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO admin_key_usage (admin_key_id, provider_id, model, input_tokens, output_tokens, total_tokens, cost_usd, billed, created_at)
+       VALUES ('ak_b', 'deepseek', 'glm-4.6', 1, 1, 2, 0.11, 0, $now)`,
+      { now: new Date().toISOString() },
+    );
+  }
+
+  it("adminLegsOf lists keys ordered by sort order with the adminChain fallback and skips quota-capped keys", async () => {
+    await seedKeyedPools();
+    const { env } = await import("cloudflare:workers");
+    const { adminLegsOf } = await import("../src/pi/credentials");
+    const { gatewayConfig } = await import("../src/gateway/config.gen");
+    const legs = await adminLegsOf(env);
+    expect(legs).toEqual([
+      {
+        provider: "openrouter",
+        model: "z-ai/glm-5.3-flash",
+        credential: "admin:ak_a",
+        maxConcurrency: gatewayConfig.adminChain.maxConcurrency,
+        providerMaxConcurrency: null,
+        priority: 0,
+      },
+    ]);
+  });
+
+  it("keyedLegsOf places teacher legs before admin legs; the chain keeps both ahead of the YAML binding legs", async () => {
+    await seedKeyedPools();
+    const { env } = await import("cloudflare:workers");
+    const { keyedLegsOf } = await import("../src/pi/credentials");
+    const { Router } = await import("../src/gateway/router");
+
+    const legs = await keyedLegsOf(env, "u_chain");
+    expect(legs.map((leg) => leg.credential)).toEqual(["teacher:u_chain", "admin:ak_a"]);
+
+    const router = new Router(ledgerEnv());
+    const entries = await router.chain("interactive", undefined, legs);
+    expect(entries.map((entry) => entry.credential)).toEqual(["teacher:u_chain", "admin:ak_a", "platform", "platform"]);
+    expect(entries.map((entry) => entry.provider)).toEqual(["openrouter", "openrouter", "workers-ai", "workers-ai"]);
+  });
+
+  it("same provider, teacher and admin credentials: cooldown on one leg does not touch the other", async () => {
+    const { Router } = await import("../src/gateway/router");
+    const router = new Router(ledgerEnv());
+    const teacherLeg = {
+      provider: "openrouter",
+      model: "z-ai/glm-5.3-flash",
+      credential: "teacher:u_chain",
+      maxConcurrency: 4,
+      priority: 0,
+    };
+    const adminLeg = { ...teacherLeg, credential: "admin:ak_a" };
+
+    for (let i = 0; i < 5; i += 1) {
+      const decision = must(await router.pick("interactive", undefined, [teacherLeg, adminLeg]), "teacher decision");
+      expect(decision.key.credential).toBe("teacher:u_chain");
+      await router.settle(decision, "error");
+    }
+    const entries = await router.chain("interactive", undefined, [teacherLeg, adminLeg]);
+    expect(entries.map((entry) => entry.credential)).toEqual(["admin:ak_a", "platform", "platform"]);
+
+    for (let i = 0; i < 5; i += 1) {
+      const decision = must(await router.pick("interactive", undefined, [teacherLeg, adminLeg]), "admin decision");
+      expect(decision.key.credential).toBe("admin:ak_a");
+      await router.settle(decision, "error");
+    }
+    const afterBothCooled = await router.chain("interactive", undefined, [teacherLeg, adminLeg]);
+    expect(afterBothCooled.map((entry) => entry.credential)).toEqual(["platform", "platform"]);
+  });
+});
+
 describe("AI-only production registry (F1 regression: YAML provider id vs createAI id)", () => {
   it("pick resolves the workers-ai legs through the real models registry without DGX or teacher keys", async () => {
     const { buildModels } = await import("../src/pi/models");
@@ -598,7 +721,7 @@ describe("AI-only production registry (F1 regression: YAML provider id vs create
       models.getModel(entry.provider, entry.model) !== undefined;
     const decision = must(await router.pick("interactive", canServe), "interactive unserved decision");
     expect(decision.entry.provider).toBe("workers-ai");
-    expect(decision.model).toBe("@cf/zai-org/glm-5.3-flash");
+    expect(decision.model).toBe("@cf/zai-org/glm-5.3");
     expect(fallback).toBeDefined();
   });
 });

@@ -1,47 +1,115 @@
 import type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
+import {
+  ADMIN_CREDENTIAL_PREFIX,
+  TEACHER_CREDENTIAL_PREFIX,
+  isAdminCredential,
+  isTeacherCredential,
+} from "../gateway/router";
 import { all, one } from "../db/d1";
 import { gatewayConfig } from "../gateway/config.gen";
 import { decryptKey } from "../auth-crypto";
 import type { Env } from "../env";
 
-interface TeacherKeyRow {
+interface KeyRow {
   key_enc: string;
 }
 
+export interface DecidedCredential {
+  provider: string;
+  credential: string;
+}
+
+interface KeyRowSource {
+  byProvider: (providerId: string) => Promise<KeyRow | null>;
+  listProviders: () => Promise<Array<{ provider_id: string }>>;
+}
+
 /**
- * Teacher keys are written only by the REST route; pi reads them here. The
- * teacher id resolves lazily because the owning classroom is not known when
- * the Models collection is built (DO field initializers run synchronously).
+ * Shared read-only credential store over D1 key rows. A missing row is an
+ * honest leg failure — the decrypt path never falls back to platform env
+ * secrets, so keyed legs can never silently run on the platform pool.
  */
-export function teacherCredentialStore(env: Env, teacherOf: () => Promise<string | null>): CredentialStore {
+export function d1ApiKeyStore(env: Env, rows: KeyRowSource): CredentialStore {
   return {
     async read(providerId: string): Promise<Credential | undefined> {
-      const teacherId = await teacherOf();
-      if (!teacherId) return undefined;
-      const row = await one<TeacherKeyRow>(
-        env.DB,
-        "SELECT key_enc FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
-        { uid: teacherId, pid: providerId },
-      );
+      const row = await rows.byProvider(providerId);
       if (!row) return undefined;
       const key = await decryptKey(env, row.key_enc);
       return key === null ? undefined : { type: "api_key", key };
     },
     async list(): Promise<readonly CredentialInfo[]> {
-      const teacherId = await teacherOf();
-      if (!teacherId) return [];
-      const rows = await all<{ provider_id: string }>(
-        env.DB,
-        "SELECT provider_id FROM teacher_keys WHERE user_id = $uid",
-        { uid: teacherId },
-      );
-      return rows.map((row) => ({ providerId: row.provider_id, type: "api_key" as const }));
+      return (await rows.listProviders()).map((row) => ({
+        providerId: row.provider_id,
+        type: "api_key" as const,
+      }));
     },
     async modify(): Promise<Credential | undefined> {
       return undefined;
     },
     async delete(): Promise<void> {},
   };
+}
+
+/**
+ * Admin BYOK keys are written only by the REST route; pi reads them here.
+ * One key per provider keeps credential attribution honest: pi's credential
+ * store resolves by provider id, so a second enabled key for the same
+ * provider could not be told apart and would silently share one ledger.
+ */
+export function adminCredentialStore(env: Env): CredentialStore {
+  return d1ApiKeyStore(env, {
+    byProvider: (providerId) =>
+      one<KeyRow>(env.DB, "SELECT key_enc FROM admin_keys WHERE provider_id = $pid", { pid: providerId }),
+    listProviders: () => all<{ provider_id: string }>(env.DB, "SELECT provider_id FROM admin_keys"),
+  });
+}
+
+/**
+ * The store the dialogue and profile harnesses resolve keyed legs through:
+ * it serves the key of the leg the router actually picked for this turn, and
+ * nothing else. Without a decision — platform legs, compaction on the
+ * default model — it resolves undefined, so keyed pools never leak onto
+ * unrouted traffic and unrouted traffic never burns a keyed pool.
+ */
+export function keyedCredentialStore(
+  env: Env,
+  decided: () => DecidedCredential | null,
+  teacherOf?: () => Promise<string | null>,
+): CredentialStore {
+  return d1ApiKeyStore(env, {
+    byProvider: async (providerId) => {
+      const decision = decided();
+      if (!decision || decision.provider !== providerId) return null;
+      if (isTeacherCredential(decision.credential)) {
+        const uid = decision.credential.slice(TEACHER_CREDENTIAL_PREFIX.length);
+        return await one<KeyRow>(
+          env.DB,
+          "SELECT key_enc FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
+          { uid, pid: providerId },
+        );
+      }
+      if (isAdminCredential(decision.credential)) {
+        const id = decision.credential.slice(ADMIN_CREDENTIAL_PREFIX.length);
+        return await one<KeyRow>(env.DB, "SELECT key_enc FROM admin_keys WHERE id = $id", { id });
+      }
+      return null;
+    },
+    listProviders: async () => {
+      const adminRows = await all<{ provider_id: string }>(env.DB, "SELECT provider_id FROM admin_keys");
+      const teacherId = teacherOf ? await teacherOf() : null;
+      const teacherRows = teacherId
+        ? await all<{ provider_id: string }>(env.DB, "SELECT provider_id FROM teacher_keys WHERE user_id = $uid", {
+            uid: teacherId,
+          })
+        : [];
+      const seen = new Set<string>();
+      return [...teacherRows, ...adminRows].filter((row) => {
+        if (seen.has(row.provider_id)) return false;
+        seen.add(row.provider_id);
+        return true;
+      });
+    },
+  });
 }
 
 // Teacher legs run on the teacher's own keys. pi resolves request auth as
@@ -78,7 +146,7 @@ export async function teacherOfActivity(env: Env, activityId: string): Promise<s
   return row?.teacher_id ?? null;
 }
 
-export interface TeacherLeg {
+export interface KeyedLeg {
   provider: string;
   model: string;
   credential: string;
@@ -94,7 +162,7 @@ export interface TeacherLegRow {
   provider_max_concurrency: number | null;
 }
 
-export async function teacherLegsOf(env: Env, teacherId: string | null): Promise<TeacherLeg[]> {
+export async function teacherLegsOf(env: Env, teacherId: string | null): Promise<KeyedLeg[]> {
   const fallbackConcurrency = gatewayConfig.teacherChain.maxConcurrency;
   if (!teacherId) return [];
   const rows = await all<TeacherLegRow>(
@@ -102,7 +170,7 @@ export async function teacherLegsOf(env: Env, teacherId: string | null): Promise
     `SELECT m.provider_id, m.model, m.max_concurrency, k.max_concurrency AS provider_max_concurrency
      FROM teacher_key_models m
      JOIN teacher_keys k ON k.user_id = m.user_id AND k.provider_id = m.provider_id
-     WHERE m.user_id = $uid
+     WHERE m.user_id = $uid AND k.disabled_by IS NULL
      ORDER BY k.sort_order, m.sort_order`,
     { uid: teacherId },
   );
@@ -114,4 +182,52 @@ export async function teacherLegsOf(env: Env, teacherId: string | null): Promise
     providerMaxConcurrency: row.provider_max_concurrency,
     priority: 0,
   }));
+}
+
+interface AdminLegRow {
+  admin_key_id: string;
+  provider_id: string;
+  model: string;
+  max_concurrency: number | null;
+  provider_max_concurrency: number | null;
+  monthly_quota_usd: number | null;
+  month_spend: number;
+}
+
+/**
+ * Admin BYOK legs of the platform pool. A key whose monthly quota is already
+ * spent skips the chain until the UTC month window resets — the prepay
+ * exposure cap of the middle tier (#355 拍板: skip, not manual disable).
+ */
+export async function adminLegsOf(env: Env): Promise<KeyedLeg[]> {
+  const fallbackConcurrency = gatewayConfig.adminChain.maxConcurrency;
+  const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
+  const rows = await all<AdminLegRow>(
+    env.DB,
+    `SELECT m.admin_key_id, m.model, m.max_concurrency, k.provider_id,
+            k.max_concurrency AS provider_max_concurrency, k.monthly_quota_usd,
+            (SELECT COALESCE(SUM(cost_usd), 0) FROM admin_key_usage u
+             WHERE u.admin_key_id = k.id AND u.created_at >= $start) AS month_spend
+     FROM admin_key_models m
+     JOIN admin_keys k ON k.id = m.admin_key_id
+     WHERE k.zdr_status = 'approved'
+     ORDER BY k.sort_order, m.sort_order`,
+    { start: monthStart },
+  );
+  return rows
+    .filter(
+      (row) => row.monthly_quota_usd === null || row.monthly_quota_usd <= 0 || row.month_spend < row.monthly_quota_usd,
+    )
+    .map((row) => ({
+      provider: row.provider_id,
+      model: row.model,
+      credential: `admin:${row.admin_key_id}`,
+      maxConcurrency: row.max_concurrency ?? fallbackConcurrency,
+      providerMaxConcurrency: row.provider_max_concurrency,
+      priority: 0,
+    }));
+}
+
+export async function keyedLegsOf(env: Env, teacherId: string | null): Promise<KeyedLeg[]> {
+  return [...(await teacherLegsOf(env, teacherId)), ...(await adminLegsOf(env))];
 }

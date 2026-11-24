@@ -4,7 +4,7 @@ import type { TeacherKeyEcho, TeacherKeyModelEcho, TeacherKeyStatus } from "@soc
 import { all, batch, one, run } from "../db/d1";
 import { fail, guardUser, nowIso, requireUser, validateJson, type AppEnv } from "../http";
 import { encryptKey } from "../auth-crypto";
-import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
+import { keyableProvider, keyableProviders } from "../pi/keyable-providers";
 
 const KeyInputSchema = z
   .object({
@@ -42,12 +42,6 @@ interface ModelRow {
   model: string;
   max_concurrency: number | null;
   sort_order: number;
-}
-
-const keyableProviders = builtinProviders().filter((provider) => provider.auth.apiKey !== undefined);
-
-function keyableProvider(providerId: string) {
-  return keyableProviders.find((provider) => provider.id === providerId);
 }
 
 export function teacherKeyRoutes() {

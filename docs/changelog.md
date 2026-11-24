@@ -11,6 +11,22 @@
 - `POST /api/auth/password/forgot` 加入同一 email 5 分鐘冷卻（`allowKey` 原子判定，冷卻內靜默回 `204` 不寄信、不破壞防列舉契約，不同 email 互不影響）
 - 測試補齊：`tests/rate-limit.test.ts`（DO keyed API／shard sweep、多 IP 換源鎖定、大小寫合併、不存在 email 同門檻、成功登入歸零、停用帳號不計失敗、密碼重設解鎖、DO 不可用 fail-open）與 `tests/password-reset.test.ts`（同 email 冷卻、跨 email 隔離、併發只寄一封）
 
+## 2026-11-24 — provider 排序互動整個改照 magpie `dragRows`（`refactor/403-magpie-sorter`，#403）
+
+### Changed
+
+- teacher／admin × key／model 四個清單的排序互動統一：拖曳把手（pointer capture、4px 縱向門檻、拖曳列跟隨指標、鄰列讓位、lift 陰影）＋鍵盤 Alt+↑↓ 移一格、Alt+Shift+↑↓ 送頂／送底；model 列由 ↑/↓ 按鈕改為與 key 列相同的把手，全部共用新 hook `useSortableOrder`（兩個元件共刪約 180 行重複排序邏輯）
+- 存檔樂觀更新、失敗回滾到 server 順序並顯示錯誤；序號計數器防止較舊的 in-flight 存檔回滾或覆寫較新的移動。API 形狀不變（`order*` 端點照舊收完整 id 陣列）
+- 拖曳幾何只吃指標位移（不混用視埠與 layout 座標），清單捲動時仍「列跟隨指標」；`noUncheckedIndexedAccess`（#293 step 4）下以每列 `offsetTop`／`offsetHeight` 快照窄化
+
+## 2026-11-24 — 平台鏈主力切 glm-5.3、class-report 改 low、推論走 AI Gateway（`feat/401-platform-glm-5.3`，#401）
+
+### Changed
+
+- 平台鏈 priority 1：`@cf/zai-org/glm-5.3-flash`（2026-11-20 下架，#399）→ `@cf/zai-org/glm-5.3`（paid；Workers Paid 或 AI Gateway credits）；`@cf/zai-org/glm-4.7-flash` 留第二順位收尾，Free 帳號對 5.3 的 403 由 breaker 降級承接
+- `class-report` thinkingLevel high→low（#249 實驗：high 在 39 人班推理超限截斷，low 完成 39／60 人班且落點零左右反轉）；其餘 profile 維持現況
+- Workers AI 推論改走 AI Gateway `default`（Unified billing）：付費清單模型 20→50 rpm；`collectLog: false`＋`skipCache: true` 在程式碼層釘死零保留（AI Gateway logs 預設開啟，不依賴 dashboard 手動狀態）
+
 ## 2026-11-23 — TS 靜態保證 step 4：noUncheckedIndexedAccess 全庫開啟（`refactor/293-step4`，#293）
 
 ### Changed

@@ -12,6 +12,7 @@ import { inject } from "vitest";
 
 vi.setConfig({ testTimeout: 15_000 });
 import { seedFixture } from "../src/seed";
+import { encryptKey } from "../src/auth-crypto";
 import { all, batch, one, run } from "../src/db/d1";
 import type { Chat } from "../src/do/chat";
 import { BTW_THINKING_LEVEL, PROFILES } from "../src/pi/agents/profiles";
@@ -233,6 +234,51 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
           { timeout: 5000 },
         )
         .toEqual([{ user_id: teacher.id, model: "teacher-model" }]);
+    } finally {
+      socket.close();
+    }
+  });
+
+  it("an admin keyed leg carries the turn and its usage lands in the platform pool (#356)", async () => {
+    const student = await registerStudent(classroomCode, "歸因生");
+    const provider = "admin-gateway";
+    const now = new Date().toISOString();
+    const enc = await encryptKey(env, "sk-or-v1-adminattr");
+    await batch(env.DB, [
+      {
+        sql: `INSERT INTO admin_keys (id, provider_id, key_enc, last4, sort_order, updated_at, monthly_quota_usd, zdr_status)
+              VALUES ('ak_attr', $provider, $enc, 'attr', 0, $now, 5, 'approved')`,
+        params: { provider, enc, now },
+      },
+      {
+        sql: `INSERT INTO admin_key_models (admin_key_id, model, sort_order, updated_at)
+              VALUES ('ak_attr', 'admin-model', 0, $now)`,
+        params: { now },
+      },
+    ]);
+
+    const thread = `${activityId}:${await participantIdOf(activityId, student.cookie)}`;
+    const stub = env.Chat.get(env.Chat.idFromName(thread));
+    await runInDurableObject(stub, (instance) => {
+      const faux = fauxProvider({ provider, models: [{ id: "admin-model" }] });
+      faux.setResponses([fauxAssistantMessage("Why?")]);
+      instance.models.models.setProvider(faux.provider);
+    });
+    const socket = await connect(thread, student.cookie);
+    try {
+      const rx = frames(socket);
+      await rx.until((f) => f.some((m) => m.type === "hello"));
+      socket.send(JSON.stringify({ type: "submit", id: "s1", input: "正義是什麼？" }));
+      await expect
+        .poll(
+          () =>
+            all(env.DB, "SELECT admin_key_id, model FROM admin_key_usage WHERE provider_id = $provider", { provider }),
+          { timeout: 5000 },
+        )
+        .toEqual([{ admin_key_id: "ak_attr", model: "admin-model" }]);
+      expect(
+        await all(env.DB, "SELECT user_id FROM teacher_key_usage WHERE provider_id = $provider", { provider }),
+      ).toEqual([]);
     } finally {
       socket.close();
     }

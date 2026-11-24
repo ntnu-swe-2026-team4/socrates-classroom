@@ -6,7 +6,7 @@ import { createAI } from "agents/models/pi-ai";
 import type { Env } from "../env";
 import type { AvailabilityEntry } from "../gateway/gateway-schema";
 import { gatewayConfig } from "../gateway/config.gen";
-import { teacherCredentialStore, workersAuthContext } from "./credentials";
+import { keyedCredentialStore, workersAuthContext, type DecidedCredential } from "./credentials";
 
 export interface ModelsBundle {
   models: MutableModels;
@@ -16,6 +16,7 @@ export interface ModelsBundle {
 
 export interface BuildModelsOptions {
   teacherOf?: () => Promise<string | null>;
+  keyedOf?: () => DecidedCredential | null;
 }
 
 export function buildModels(env: Env, options: BuildModelsOptions = {}): ModelsBundle {
@@ -23,10 +24,14 @@ export function buildModels(env: Env, options: BuildModelsOptions = {}): ModelsB
   if (!env.AI) throw new Error("AI binding is not configured; set LLM_PROVIDER=mock for offline dev");
 
   const models = builtinModels({
-    credentials: teacherCredentialStore(env, options.teacherOf ?? (async () => null)),
+    credentials: keyedCredentialStore(env, options.keyedOf ?? (() => null), options.teacherOf ?? (async () => null)),
     authContext: workersAuthContext(env),
   });
-  const ai = createAI({ binding: env.AI });
+  // Routing through AI Gateway id "default" bills Workers AI inference from the prepaid
+  // credits (Unified billing — the 50 rpm tier for paid models). collectLog:false and
+  // skipCache:true pin zero retention in code — AI Gateway logs are enabled by default,
+  // so the ZDR boundary must not depend on the gateway's dashboard state.
+  const ai = createAI({ binding: env.AI, id: "default", collectLog: false, skipCache: true });
   const [head, ...legs] = [...gatewayConfig.defaults.availability]
     .sort((a, b) => a.priority - b.priority)
     .map((entry) => bindingModelOf(entry))

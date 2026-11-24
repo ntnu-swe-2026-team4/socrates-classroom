@@ -24,8 +24,8 @@ export type BtwExtension = Extension;
 import { createUsageExtension } from "../pi/extensions/usage";
 import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
 import { buildModels, type ModelsBundle } from "../pi/models";
-import { getRouter } from "../gateway/router";
-import { teacherLegsOf } from "../pi/credentials";
+import { getRouter, isKeyedCredential } from "../gateway/router";
+import { keyedLegsOf, type DecidedCredential } from "../pi/credentials";
 import type { Lang } from "@socrates/shared";
 
 export const STUDENT_LANG_KEY = "studentLang";
@@ -67,12 +67,14 @@ export interface DialogueCore {
   btw: BtwExtension;
   harness: PiHarness;
   credentialOwner: DialogueHarnessConfig["credentialOwner"];
+  decidedCredential: { current: DecidedCredential | null };
 }
 
 export function createDialogueCore(env: Env, config: DialogueHarnessConfig): DialogueCore {
   const { credentialOwner } = config;
   const registry = createRegistry();
-  const models = buildModels(env, { teacherOf: credentialOwner });
+  const decidedCredential: { current: DecidedCredential | null } = { current: null };
+  const models = buildModels(env, { teacherOf: credentialOwner, keyedOf: () => decidedCredential.current });
   const btw = btwExtension(config.getTopic);
 
   const harness = new PiHarness({
@@ -89,7 +91,7 @@ export function createDialogueCore(env: Env, config: DialogueHarnessConfig): Dia
         ),
       );
       registry.install(createWebSearchExtension(env.AI));
-      registry.install(createUsageExtension(env, credentialOwner));
+      registry.install(createUsageExtension(env, () => decidedCredential.current));
       registry.install(btw);
 
       const btwName = btw.name;
@@ -123,7 +125,7 @@ export function createDialogueCore(env: Env, config: DialogueHarnessConfig): Dia
     registry.install(fauxReplayExtension(models.faux, fauxSocraticScript));
   }
 
-  return { registry, models, btw, harness, credentialOwner };
+  return { registry, models, btw, harness, credentialOwner, decidedCredential };
 }
 
 export class RunDeadlineTracker {
@@ -232,19 +234,25 @@ export class RunDeadlineTracker {
 
 export async function submitViaRouter(
   env: Env,
-  { models, credentialOwner }: DialogueCore,
+  { models, credentialOwner, decidedCredential }: DialogueCore,
   sessionModels: Map<string, { provider: string; id: string }>,
   handle: PiSession,
   input: UserInput,
   options: PiSubmitOptions,
   doSubmit: (handle: PiSession, input: UserInput, options: PiSubmitOptions) => Promise<PiReceipt>,
 ): Promise<PiReceipt> {
-  const accountLegs = await teacherLegsOf(env, await credentialOwner());
+  const accountLegs = await keyedLegsOf(env, await credentialOwner());
   const router = getRouter(env);
   const canServe = (entry: { provider: string; model: string }): boolean =>
     models.models.getModel(entry.provider, entry.model) !== undefined;
   const decision = await router.pick("interactive", canServe, accountLegs);
   if (!decision && !models.faux) throw new NoAvailableModelError();
+  const decidedEntry = decision && isKeyedCredential(decision.entry.credential) ? decision.entry : null;
+  const decided = decidedEntry ? { provider: decidedEntry.provider, credential: decidedEntry.credential } : null;
+  decidedCredential.current = decided;
+  const releaseDecision = () => {
+    if (decidedCredential.current === decided) decidedCredential.current = null;
+  };
   if (!decision) return doSubmit(handle, input, options);
 
   const model = models.models.getModel(decision.entry.provider, decision.model);
@@ -260,10 +268,12 @@ export async function submitViaRouter(
   void handle
     .wait(receipt.operationId)
     .then((result) => {
+      releaseDecision();
       const ok = result.status === "done" || (result.status === "unanswered" && result.reason === "aborted");
       void router.settle(decision, ok ? "ok" : "error");
     })
     .catch(() => {
+      releaseDecision();
       void router.settle(decision, "error");
     });
 

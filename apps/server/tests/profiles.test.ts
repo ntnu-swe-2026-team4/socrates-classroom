@@ -85,6 +85,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
       models: { models, default: faux.getModel(), faux },
       registry: createRegistry(),
       env,
+      decidedCredential: { current: null },
     };
     const { text, conversation } = await runProfile(harness, runtime, "lookup", "什麼是功利主義？", undefined, {
       lang: "es",
@@ -115,6 +116,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
       },
       registry: esRegistry,
       env,
+      decidedCredential: { current: null },
     };
     const esRun = await runProfile(esHarness, esRuntime, "student-report", "學生（1）：我覺得……", undefined, {
       lang: "es",
@@ -145,6 +147,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
       models: { models, default: faux.getModel(), faux },
       registry,
       env,
+      decidedCredential: { current: null },
     };
     const { payload, text } = await runProfile(harness, runtime, "class-report", "## Roster: 1", undefined, {
       submitTool: SUBMIT_CLASS_REPORT,
@@ -158,7 +161,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(PROFILES.lookup.thinkingLevel).toBe("high");
     expect(PROFILES["topic-gen"].thinkingLevel).toBe("high");
     expect(PROFILES["student-report"].thinkingLevel).toBe("high");
-    expect(PROFILES["class-report"].thinkingLevel).toBe("high");
+    expect(PROFILES["class-report"].thinkingLevel).toBe("low");
     expect(BTW_THINKING_LEVEL).toBe("high");
   });
 });

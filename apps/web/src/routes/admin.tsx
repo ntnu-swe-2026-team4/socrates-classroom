@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AdminOverview, AdminUser } from "@socrates/shared";
 import { api, ApiError } from "@/api";
 import { meOf } from "@/api/me";
+import { AdminProviderKeys } from "@/components/AdminProviderKeys";
 import { NotificationComposer } from "@/components/Notifications";
 import { Button, Card, ConfirmDialog, Field, Input, PageHeader, Spinner, cn } from "@/components/ui";
 import { ADMIN_SECTIONS, type AdminTab } from "@/lib/adminSections";
@@ -55,6 +56,7 @@ function AdminConsolePage() {
         </nav>
         {tab === "overview" && <Overview />}
         {tab === "users" && <Users />}
+        {tab === "providers" && <AdminProviderKeys />}
         {tab === "notify" && <NotificationComposer />}
       </div>
     </div>
