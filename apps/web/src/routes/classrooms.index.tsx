@@ -13,7 +13,17 @@ import { Button, Field, FormDialog, Input, PageHeader, cn } from "@/components/u
 import { useFormatDate, useT } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
 
+type View = "enrolled" | "teaching";
+
+const VIEWS = [
+  { view: "enrolled", label: "classrooms_enrolled" },
+  { view: "teaching", label: "classrooms_manage" },
+] as const;
+
 export const Route = createFileRoute("/classrooms/")({
+  validateSearch: (search: Record<string, unknown>): { view?: View } => ({
+    view: search.view === "enrolled" || search.view === "teaching" ? search.view : undefined,
+  }),
   beforeLoad: async ({ context, location }) => {
     const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
@@ -30,8 +40,12 @@ function ClassroomsPage() {
   const [code, setCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
-  const canManage = Boolean(me.data);
-  const list = classrooms.data ?? [];
+  const search = Route.useSearch();
+  const all = classrooms.data ?? [];
+  const view: View =
+    search.view ?? (all.length && all.every((room) => room.role === "teacher") ? "teaching" : "enrolled");
+  const teaching = view === "teaching";
+  const list = all.filter((room) => (room.role === "teacher") === teaching);
 
   const create = useMutation({
     mutationFn: () => api.createClassroom(name.trim()),
@@ -52,13 +66,24 @@ function ClassroomsPage() {
     <div className="min-h-full pb-16">
       <PageHeader
         width="max-w-5xl"
-        eyebrow={canManage ? t("eyebrow_teacher") : t("classrooms_eyebrow_student")}
-        title={t("nav_classrooms")}
-        description={canManage ? t("classrooms_intro_teacher") : t("classrooms_intro_student")}
+        eyebrow={t("nav_classrooms")}
+        title={t(teaching ? "classrooms_manage" : "classrooms_enrolled")}
+        description={teaching ? t("classrooms_intro_teacher") : t("classrooms_intro_student")}
         actions={
-          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+          teaching ? (
+            <Button
+              onClick={() => {
+                create.reset();
+                setName("");
+                setCreating(true);
+              }}
+            >
+              <Plus className="size-4" />
+              {t("nav_setup")}
+            </Button>
+          ) : (
             <form
-              className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none"
+              className="flex w-full min-w-0 items-center gap-2 sm:w-auto"
               onSubmit={(event) => {
                 event.preventDefault();
                 join();
@@ -78,22 +103,28 @@ function ClassroomsPage() {
                 {t("join_code_go")}
               </Button>
             </form>
-            {canManage && (
-              <Button
-                onClick={() => {
-                  create.reset();
-                  setName("");
-                  setCreating(true);
-                }}
-              >
-                <Plus className="size-4" />
-                {t("nav_setup")}
-              </Button>
-            )}
-          </div>
+          )
         }
       />
-      <div className="mx-auto w-full max-w-5xl px-6 pt-8">
+      <div className="mx-auto w-full max-w-5xl px-6 pt-6">
+        <nav aria-label={t("nav_classrooms")} className="mb-6 flex border-b border-line">
+          {VIEWS.map((item) => (
+            <Link
+              key={item.view}
+              to="/classrooms"
+              search={{ view: item.view }}
+              aria-current={view === item.view ? "page" : undefined}
+              className={cn(
+                "-mb-px border-b-2 px-3 py-2 text-sm whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ember focus-visible:ring-inset",
+                view === item.view
+                  ? "border-ember font-semibold text-ink"
+                  : "border-transparent text-ink-soft hover:text-ink",
+              )}
+            >
+              {t(item.label)}
+            </Link>
+          ))}
+        </nav>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {list.map((room) => (
             <ClassroomCard key={room.id} room={room} />
@@ -106,10 +137,10 @@ function ClassroomsPage() {
         )}
         {!classrooms.isPending && !classrooms.isError && !list.length && (
           <div className="rounded-3xl border border-dashed border-line-strong px-6 py-14 text-center text-sm text-ink-faint">
-            {canManage ? t("classrooms_empty_teacher") : t("classrooms_empty_student")}
+            {teaching ? t("classrooms_empty_teacher") : t("classrooms_empty_student")}
           </div>
         )}
-        {me.data && <PersonalReports key={me.data.id} userId={me.data.id} />}
+        {!teaching && me.data && <PersonalReports key={me.data.id} userId={me.data.id} />}
       </div>
       <FormDialog
         open={creating}

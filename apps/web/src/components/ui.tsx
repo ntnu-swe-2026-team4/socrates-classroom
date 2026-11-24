@@ -531,11 +531,13 @@ export function useHoverPopover(onOpen?: () => void) {
 export function HoverPopoverPanel({
   popover,
   className,
+  style,
   ariaLabelledBy,
   children,
 }: {
   popover: HoverPopover;
   className: string;
+  style?: React.CSSProperties;
   ariaLabelledBy: string;
   children: React.ReactNode;
 }) {
@@ -554,6 +556,7 @@ export function HoverPopoverPanel({
         role="dialog"
         aria-labelledby={ariaLabelledBy}
         className={cn("pointer-events-auto", className, popover.phase === "leaving" && "anim-rise-out")}
+        style={style}
         {...popover.hoverProps}
       >
         {children}

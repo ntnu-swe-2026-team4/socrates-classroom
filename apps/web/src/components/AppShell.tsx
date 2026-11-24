@@ -4,6 +4,7 @@ import { useAccountSheetRequest } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BookOpen,
   Eye,
   GraduationCap,
   Home,
@@ -12,6 +13,7 @@ import {
   Menu,
   MessageCircle,
   Moon,
+  Presentation,
   Settings,
   ShieldCheck,
   Sun,
@@ -52,6 +54,11 @@ const NAV = [
     icon: GraduationCap,
     match: ["/classrooms", "/join", "/dialogue", "/t/", "/report"],
   },
+] as const;
+
+const CLASSROOM_VIEWS = [
+  { view: "enrolled", label: "classrooms_enrolled", icon: BookOpen },
+  { view: "teaching", label: "classrooms_manage", icon: Presentation },
 ] as const;
 
 const HALFTONE_MATCH = [
@@ -112,6 +119,8 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const account = useHoverPopover();
+  const classroomsMenu = useHoverPopover();
+  const [classroomsMenuTop, setClassroomsMenuTop] = useState(0);
 
   const me = useQuery(meQueryOptions);
   const logout = useMutation({
@@ -136,6 +145,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
     setPrevPathname(pathname);
     setDrawerOpen(false);
     account.close();
+    classroomsMenu.close();
   }
 
   const inAdmin = pathname.startsWith("/admin");
@@ -164,8 +174,19 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           if (item.to === "/chat" && !me.data) return null;
           const active = item.match.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
           const Icon = item.icon;
+          const menuProps =
+            item.to === "/classrooms" && me.data
+              ? {
+                  onPointerEnter: (event: React.PointerEvent<HTMLAnchorElement>) => {
+                    setClassroomsMenuTop(event.currentTarget.getBoundingClientRect().top);
+                    classroomsMenu.hoverProps.onPointerEnter(event);
+                  },
+                  onPointerLeave: classroomsMenu.hoverProps.onPointerLeave,
+                  onClick: classroomsMenu.close,
+                }
+              : {};
           return (
-            <Link key={item.to} to={item.to} className={cn(NAV_BTN, active && NAV_ACTIVE)}>
+            <Link key={item.to} to={item.to} className={cn(NAV_BTN, active && NAV_ACTIVE)} {...menuProps}>
               <Icon className="size-[19px]" />
               <span className="max-w-full text-center leading-tight wrap-anywhere">{t(item.label)}</span>
             </Link>
@@ -261,6 +282,30 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       <Suspense fallback={null}>
         <SocratesCompanion />
       </Suspense>
+
+      <HoverPopoverPanel
+        popover={classroomsMenu}
+        ariaLabelledBy="classrooms-menu-title"
+        style={{ top: classroomsMenuTop }}
+        className={cn(POPUP_SURFACE, "anim-rise absolute left-[92px] flex flex-col border border-line bg-paper p-1.5")}
+      >
+        <h2 id="classrooms-menu-title" className="sr-only">
+          {t("nav_classrooms")}
+        </h2>
+        {CLASSROOM_VIEWS.map((item) => (
+          <Link
+            key={item.view}
+            to="/classrooms"
+            search={{ view: item.view }}
+            data-menu={item.view}
+            onClick={classroomsMenu.close}
+            className="flex cursor-pointer items-center gap-2.5 px-2.5 py-2 text-[13.5px] whitespace-nowrap text-ink transition-colors hover:bg-paper-deep"
+          >
+            <item.icon className="size-4 shrink-0 text-ink-soft" />
+            {t(item.label)}
+          </Link>
+        ))}
+      </HoverPopoverPanel>
 
       <HoverPopoverPanel
         popover={account}
