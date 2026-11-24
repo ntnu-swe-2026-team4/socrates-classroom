@@ -2,6 +2,14 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-24 — 登入頁：登入／註冊卡片等高、不再捲動（`fix/411-login-card-stable`，#411）
+
+### Fixed
+
+- 登入與註冊兩個模式的卡片等高：登入模式保留「顯示名稱」「同意條款」兩列的空間（`invisible`＋`aria-hidden`），兩個標題疊在同一格，切換時卡片、送出按鈕與邀請碼框不再位移；「忘記密碼？」移到密碼欄下方
+- 矮視窗（`short` variant）下第三方登入按鈕並排、輸入框與標題略縮，註冊模式在 1536×695／1366×768 不再需要捲動
+- 移除登入卡片的立體陰影，與邀請碼框一致；移除與 LOGO 重複的「回到故事」按鈕（LOGO 連結加上同文字的 `title`）
+
 ## 2026-11-24 — provider 排序互動整個改照 magpie `dragRows`（`refactor/403-magpie-sorter`，#403）
 
 ### Changed
