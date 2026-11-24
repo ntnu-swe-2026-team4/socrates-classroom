@@ -4,8 +4,39 @@ import { gatewayConfig } from "../gateway/config.gen";
 import { decryptKey } from "../auth-crypto";
 import type { Env } from "../env";
 
-interface TeacherKeyRow {
+interface KeyRow {
   key_enc: string;
+}
+
+interface KeyRowSource {
+  byProvider: (providerId: string) => Promise<KeyRow | null>;
+  listProviders: () => Promise<Array<{ provider_id: string }>>;
+}
+
+/**
+ * Shared read-only credential store over D1 key rows. A missing row is an
+ * honest leg failure — the decrypt path never falls back to platform env
+ * secrets, so keyed legs can never silently run on the platform pool.
+ */
+export function d1ApiKeyStore(env: Env, rows: KeyRowSource): CredentialStore {
+  return {
+    async read(providerId: string): Promise<Credential | undefined> {
+      const row = await rows.byProvider(providerId);
+      if (!row) return undefined;
+      const key = await decryptKey(env, row.key_enc);
+      return key === null ? undefined : { type: "api_key", key };
+    },
+    async list(): Promise<readonly CredentialInfo[]> {
+      return (await rows.listProviders()).map((row) => ({
+        providerId: row.provider_id,
+        type: "api_key" as const,
+      }));
+    },
+    async modify(): Promise<Credential | undefined> {
+      return undefined;
+    },
+    async delete(): Promise<void> {},
+  };
 }
 
 /**
@@ -14,34 +45,37 @@ interface TeacherKeyRow {
  * the Models collection is built (DO field initializers run synchronously).
  */
 export function teacherCredentialStore(env: Env, teacherOf: () => Promise<string | null>): CredentialStore {
-  return {
-    async read(providerId: string): Promise<Credential | undefined> {
+  return d1ApiKeyStore(env, {
+    byProvider: async (providerId) => {
       const teacherId = await teacherOf();
-      if (!teacherId) return undefined;
-      const row = await one<TeacherKeyRow>(
-        env.DB,
-        "SELECT key_enc FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
-        { uid: teacherId, pid: providerId },
-      );
-      if (!row) return undefined;
-      const key = await decryptKey(env, row.key_enc);
-      return key === null ? undefined : { type: "api_key", key };
+      if (!teacherId) return null;
+      return await one<KeyRow>(env.DB, "SELECT key_enc FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid", {
+        uid: teacherId,
+        pid: providerId,
+      });
     },
-    async list(): Promise<readonly CredentialInfo[]> {
+    listProviders: async () => {
       const teacherId = await teacherOf();
       if (!teacherId) return [];
-      const rows = await all<{ provider_id: string }>(
-        env.DB,
-        "SELECT provider_id FROM teacher_keys WHERE user_id = $uid",
-        { uid: teacherId },
-      );
-      return rows.map((row) => ({ providerId: row.provider_id, type: "api_key" as const }));
+      return await all<{ provider_id: string }>(env.DB, "SELECT provider_id FROM teacher_keys WHERE user_id = $uid", {
+        uid: teacherId,
+      });
     },
-    async modify(): Promise<Credential | undefined> {
-      return undefined;
-    },
-    async delete(): Promise<void> {},
-  };
+  });
+}
+
+/**
+ * Admin BYOK keys are written only by the REST route; pi reads them here.
+ * One key per provider keeps credential attribution honest: pi's credential
+ * store resolves by provider id, so a second enabled key for the same
+ * provider could not be told apart and would silently share one ledger.
+ */
+export function adminCredentialStore(env: Env): CredentialStore {
+  return d1ApiKeyStore(env, {
+    byProvider: (providerId) =>
+      one<KeyRow>(env.DB, "SELECT key_enc FROM admin_keys WHERE provider_id = $pid", { pid: providerId }),
+    listProviders: () => all<{ provider_id: string }>(env.DB, "SELECT provider_id FROM admin_keys"),
+  });
 }
 
 // Teacher legs run on the teacher's own keys. pi resolves request auth as

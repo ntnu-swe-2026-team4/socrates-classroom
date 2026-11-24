@@ -20,6 +20,7 @@ import { activityRoutes } from "./routes/activity";
 import { voiceRoutes } from "./routes/voice";
 import { lookupRoutes } from "./routes/lookup";
 import { teacherKeyRoutes } from "./routes/teacher-keys";
+import { adminKeyRoutes } from "./routes/admin-keys";
 import { adminRoutes } from "./routes/admin";
 import { notificationRoutes } from "./routes/notifications";
 import { soloRoutes } from "./routes/solo";
@@ -43,6 +44,7 @@ export function createApi() {
     .route("/", voiceRoutes())
     .route("/", lookupRoutes())
     .route("/", teacherKeyRoutes())
+    .route("/", adminKeyRoutes())
     .route("/", adminRoutes())
     .route("/", notificationRoutes())
     .route("/", soloRoutes())

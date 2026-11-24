@@ -34,7 +34,7 @@ export const AvailabilityEntrySchema = z
   .object({
     provider: z.string(),
     model: z.string().optional(),
-    credential: z.enum(["platform"]).or(z.string().regex(/^teacher:/)),
+    credential: z.enum(["platform"]).or(z.string().regex(/^teacher:|^admin:/)),
     maxConcurrency: z.number().int().min(0),
     priority: z.number().int(),
     providerMaxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
