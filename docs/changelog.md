@@ -10,6 +10,14 @@
 - 教室列表頁以 search param `?view=enrolled｜teaching` 分開兩份清單：「我選的課」含邀請碼輸入與我的報告，「教室管理」含開課按鈕；未帶 `view` 時，只有開課的人進「教室管理」，其餘進「我選的課」
 - API 與 route 結構不變（同一個 `/classrooms`，以 `role` 在前端分組）
 
+## 2026-11-24 — 正式站 `/agents/*` 被資產層攔截，WebSocket 全數握手失敗（`fix/418-agents-run-worker-first`，#418）
+
+### Fixed
+
+- `runWorkerFirst` 補上 `"/agents/*"`：array 形式的 `run_worker_first` 會停用 `Sec-Fetch-Mode` 判定（上游文件明載），未命中 pattern 的路徑一律只走 assets 層——`notFoundHandling: "single-page-application"` 回 `index.html`，路徑含 raw `:` 時先被 307 path normalization 改寫（瀏覽器 `WebSocket` 不跟隨 redirect）。`/agents/*`（`chat`／`solo-chat` 的 WebSocket 與 `useBtw`）不在 #140（2026-11-17）引入的清單內，正式站對話頁永遠「連線中斷」；`/api/*`、`/health` 在清單內不受影響。該清單加入前（11-10 WS 上線至 11-17），非 navigation 請求仍會進 Worker，對話原本可用，屬 #140 回歸
+- 新增 `cloudflare-config.test.ts`：以 production mode 評估 `cloudflare.config.ts`，斷言 Worker 擁有的三個路徑前綴（`/api/*`、`/agents/*`、`/health`）都出現在 `runWorkerFirst`；Worker 端新增路徑前綴而未同步 assets 設定時 CI 會擋下
+- dialogue／btw 的 WebSocket 設 `maxRetries: 10`（partysocket 預設 `Infinity`）：握手持續失敗時，每 3–10 秒（backoff ×1.3）一條 console error 無限增長；10 次（約 77 秒涵蓋常規 deploy 空窗）後停止重試，對話頁的「連線中斷」notice 加上「重新連線」按鈕（`location.reload()`）作為明確的恢復路徑（i18n 三語）
+
 ## 2026-11-24 — 登入頁：登入／註冊卡片等高、不再捲動（`fix/411-login-card-stable`，#411）
 
 ### Fixed

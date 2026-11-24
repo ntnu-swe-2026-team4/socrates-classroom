@@ -15,6 +15,7 @@
 - [workspaces 限制（重要）](#workspaces-限制重要)
 - [與 wrangler 的關係](#與-wrangler-的關係)
 - [CI/CD](#cicd)
+- [網域與第三方子網域（Cloudflare for SaaS）](#網域與第三方子網域cloudflare-for-saas)
 - [疑難排解](#疑難排解)
 
 ## 安裝與登入
@@ -147,15 +148,66 @@ secrets 管理一律走 `cf deploy --secrets-file`（見上方 Secrets）——w
 
 PR CI 只檢查當次 build output 實際宣告的 binding。若 conditional secret 在 PR CI 未啟用、production 才啟用，PR CI 不會警告；仍須由 Deploy preflight 確認對應 repo secret 已設定（fail-fast binding 缺值會 `::error` 中止部署）。
 
+## 網域與第三方子網域（Cloudflare for SaaS）
+
+對外入口由 `PUBLIC_BASE_URL`（`https://socrates.g36maid.dev`，Worker 的 Custom Domain）決定。要再加一個**他人 zone 底下**的網址（例：`socrates.ntnu.cc`，`ntnu.cc` 由第三方維運、只提供 DNS 面板）時，MUST 用 Cloudflare for SaaS 的 custom hostname 接入，MUST NOT 直接把 CNAME 指向 `socrates.g36maid.dev`：
+
+| 做法                                           | 結果                                                                     |
+| ---------------------------------------------- | ------------------------------------------------------------------------ |
+| CNAME 橘雲（Proxied）→ `socrates.g36maid.dev`  | Error 1014 CNAME Cross-User Banned（跨帳號指向 proxied hostname）        |
+| CNAME 灰雲（DNS-only）→ `socrates.g36maid.dev` | 解析到 Cloudflare anycast，但 edge 沒有該 hostname 的憑證 → TLS 握手失敗 |
+| custom hostname（Cloudflare for SaaS）         | edge 持有專屬憑證，流量進本 zone 後由 ruleset 決定行為                   |
+
+### 現行設定（`socrates.ntnu.cc`，2026-11-24 驗證）
+
+| 資源                  | 值                                                                                                                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DNS record（本 zone） | `saas.g36maid.dev` `AAAA 100::` Proxied——fallback origin 用的 originless 空殼，MUST NOT 刪除                                                                                                 |
+| fallback origin       | `saas.g36maid.dev`                                                                                                                                                                           |
+| custom hostname       | `socrates.ntnu.cc`（DV、`txt` DCV、Google Trust Services；`status` 與 `ssl.status` 皆 `active`）                                                                                             |
+| redirect ruleset      | `Redirects`（phase `http_request_dynamic_redirect`）：`http.host eq "socrates.ntnu.cc"` → 301 `concat("https://socrates.g36maid.dev", http.request.uri.path)`，`preserve_query_string: true` |
+
+第三方端（ntnu.cc 面板）需要三筆紀錄：`_cf-custom-hostname` TXT（hostname ownership）、`_acme-challenge` TXT（certificate DCV）、`CNAME @ → saas.g36maid.dev` **DNS-only（灰雲）**。TXT 的值 MUST NOT 寫進 repo——那是維運狀態、續簽時可能輪替；現值看 Custom Hostnames 頁的 `ownership_verification` 與 `ssl.validation_records`。
+
+建立指令（在 `apps/web/` 執行）：
+
+```bash
+cf dns records create --zone g36maid.dev --body '{"type":"AAAA","name":"saas","content":"100::","proxied":true}'
+cf custom-hostnames fallback-origin update --zone g36maid.dev --origin saas.g36maid.dev
+cf custom-hostnames create --zone g36maid.dev --hostname socrates.ntnu.cc --ssl-method txt --ssl-type dv
+cf rulesets create --zone g36maid.dev --body '{"name":"Redirects","kind":"zone","phase":"http_request_dynamic_redirect","rules":[…]}'
+```
+
+- `cf rulesets create`／`cf rulesets entrypoint update` 的個別 flag 會要求 `--id`（entrypoint ruleset 尚未存在時沒有值可給），MUST 改用 `--body` 傳 raw JSON
+- 本 zone 有 `*.g36maid.dev → <tunnel-id>.cfargotunnel.com` 的萬用 proxied record，故 MUST NOT 為 custom hostname 加 `*/*` Worker route（會把 tunnel 的子網域流量全部搶進 Worker）；301 由 ruleset 回應，Worker 不需要 route
+- zone 未啟用 Cloudflare for SaaS 時 API 回 `[1456] Access to configure this resource has not been granted for this zone. This feature is available with SSL for SaaS.`——Dashboard → SSL/TLS → Custom Hostnames → Enable（非 Enterprise zone 需帳務資料；前 100 個 hostname 免費）
+
+### 為何是 301 而不是直接提供服務
+
+`PUBLIC_BASE_URL`、Google／Facebook 的 redirect URI、session cookie（host-only）都綁在 `socrates.g36maid.dev`：在第三方 host 上直接跑 SPA 會讓登入導回 canonical 網域、`OAUTH_COOKIE` 對不上而失敗。因此第三方網址只當入口，301 保留 path 與 query string；要改成 canonical 需同步換 `PUBLIC_BASE_URL`、OAuth redirect URI 與部署設定（見 [`oauth.md`](./oauth.md) §3）。
+
+### 憑證續簽
+
+SaaS 自動續簽（目前 Google Trust Services，2027-02-22 到期）。`_acme-challenge` TXT 續簽前可能要求新 token：到 Custom Hostnames 頁取新的 `ssl.validation_records` 值更新面板即可，不需重建 hostname；要免手動可改用面板提供的 delegated DCV（`CNAME _acme-challenge → <hostname>.<hash>.dcv.cloudflare.com`）。
+
+### 驗證
+
+```bash
+cf custom-hostnames get <custom-hostname-id> --zone g36maid.dev   # status 與 ssl.status 皆須 active
+curl -sI "https://socrates.ntnu.cc/classrooms/abc?x=1"            # 301，location 保留 path 與 query
+curl -sI https://socrates.g36maid.dev/                            # 200，canonical 站台不受影響
+```
+
 ## 疑難排解
 
-| 症狀                                                   | 原因／解法                                                  |
-| ------------------------------------------------------ | ----------------------------------------------------------- |
-| `cloudflare.config.ts loading is not supported on Bun` | 用 Node ≥ 26.12 執行 cf（`npx cf`、不要 `bun cf`）          |
-| `wrangler is declared … but is not installed`          | 專案依賴沒裝：`pnpm install`（在 repo 根）                  |
-| `No lock file has been detected …`                     | workspace 提醒，可忽略（lockfile 在 repo 根）               |
-| `More than one account available …`                    | 設 `CLOUDFLARE_ACCOUNT_ID` 或 config 的 `accountId`         |
-| 部署後 AI 沒回應                                       | secrets 未上（`wrangler secret list` 檢查）或 pool 全段 429 |
+| 症狀                                                   | 原因／解法                                                                       |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `cloudflare.config.ts loading is not supported on Bun` | 用 Node ≥ 26.12 執行 cf（`npx cf`、不要 `bun cf`）                               |
+| `wrangler is declared … but is not installed`          | 專案依賴沒裝：`pnpm install`（在 repo 根）                                       |
+| `No lock file has been detected …`                     | workspace 提醒，可忽略（lockfile 在 repo 根）                                    |
+| `More than one account available …`                    | 設 `CLOUDFLARE_ACCOUNT_ID` 或 config 的 `accountId`                              |
+| 部署後 AI 沒回應                                       | secrets 未上（`wrangler secret list` 檢查）或 pool 全段 429                      |
+| `[1456] … This feature is available with SSL for SaaS` | zone 未啟用 Cloudflare for SaaS：Dashboard → SSL/TLS → Custom Hostnames → Enable |
 
 ## 來源
 

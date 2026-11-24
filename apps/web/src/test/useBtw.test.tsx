@@ -7,6 +7,7 @@ import { must } from "./helpers";
 type AgentOptions = {
   enabled?: boolean;
   onOpen?: (event: { target: unknown }) => void;
+  maxRetries?: number;
   onMessage?: (event: { data: unknown }) => void;
 };
 
@@ -56,6 +57,11 @@ beforeEach(() => {
 });
 
 describe("useBtw (side session over its own socket)", () => {
+  it("bounds the socket reconnect attempts", () => {
+    renderHook(() => useBtw("a_1", "u_1", true));
+    expect(Number.isFinite(agent.options?.maxRetries)).toBe(true);
+  });
+
   it("opens a fresh fork, hides the inherited root entries, and completes a side exchange", () => {
     const { result } = renderHook(() => useBtw("a_1", "u_1", true));
     const open = must(sent()[0], "btw open frame");

@@ -110,10 +110,29 @@ function mountChat(
   return { fetch, router };
 }
 
+test("offers reconnect while the dialogue socket is offline", async () => {
+  const reload = vi.fn();
+  const original = window.location;
+  Reflect.deleteProperty(window, "location");
+  Object.defineProperty(window, "location", { value: { ...original, reload }, writable: true, configurable: true });
+  socket.readyState = 0;
+  try {
+    mountChat("/chat/solo_1");
+    await new Promise((resolve) => setTimeout(resolve, 3200));
+    expect(await screen.findByText("Connection lost — the conversation resumes once it reconnects")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+    expect(reload).toHaveBeenCalledTimes(1);
+  } finally {
+    Reflect.deleteProperty(window, "location");
+    socket.readyState = 1;
+  }
+});
+
 beforeEach(() => {
   localStorage.clear();
   setLocale("en");
   socket.options = null;
+  socket.readyState = 1;
   socket.send.mockClear();
   vi.stubGlobal("scrollTo", vi.fn());
 });

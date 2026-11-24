@@ -1,5 +1,7 @@
 import { useCallback, useRef, useLayoutEffect, useSyncExternalStore } from "react";
 
+export const WS_MAX_RETRIES = 10;
+
 const returnZero = () => 0;
 const returnFalse = () => false;
 const mountedNow = Date.now();
