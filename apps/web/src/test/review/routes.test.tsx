@@ -1757,7 +1757,7 @@ test("#360: the providers tab shows the pool, teacher survey, and the static YAM
           legs: [
             {
               provider: "workers-ai",
-              model: "@cf/zai-org/glm-5.3-flash",
+              model: "@cf/zai-org/glm-5.3",
               credential: "platform",
               maxConcurrency: 20,
               priority: 1,
@@ -1781,7 +1781,7 @@ test("#360: the providers tab shows the pool, teacher survey, and the static YAM
     expect(within(teacherRow).getByText("····teac")).toBeTruthy();
 
     expect(screen.getByText("YAML platform chain (read-only)")).toBeTruthy();
-    expect(screen.getByText("@cf/zai-org/glm-5.3-flash")).toBeTruthy();
+    expect(screen.getByText("@cf/zai-org/glm-5.3")).toBeTruthy();
 
     fireEvent.click(within(poolRow).getByRole("button", { name: "Approve ZDR" }));
     const zdrDialog = await screen.findByRole("dialog");

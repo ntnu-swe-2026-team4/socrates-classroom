@@ -7,7 +7,7 @@ const CONFIG = {
       "kind": "binding",
       "models": [
         {
-          "id": "@cf/zai-org/glm-5.3-flash",
+          "id": "@cf/zai-org/glm-5.3",
           "cost": "paid"
         },
         {
@@ -73,7 +73,7 @@ const CONFIG = {
     "availability": [
       {
         "provider": "workers-ai",
-        "model": "@cf/zai-org/glm-5.3-flash",
+        "model": "@cf/zai-org/glm-5.3",
         "credential": "platform",
         "maxConcurrency": 20,
         "priority": 1

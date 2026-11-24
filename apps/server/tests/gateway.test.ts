@@ -90,9 +90,9 @@ describe("router chain walk (config-driven, cooldown-filtered)", () => {
     const { gatewayConfig } = await import("../src/gateway/config.gen");
     const wa = gatewayConfig.providers["workers-ai"];
     expect(wa?.kind).toBe("binding");
-    expect(wa?.models?.map((m) => m.id)).toEqual(["@cf/zai-org/glm-5.3-flash", "@cf/zai-org/glm-4.7-flash"]);
+    expect(wa?.models?.map((m) => m.id)).toEqual(["@cf/zai-org/glm-5.3", "@cf/zai-org/glm-4.7-flash"]);
     const waEntries = gatewayConfig.defaults.availability.filter((e) => e.provider === "workers-ai");
-    expect(waEntries.map((e) => e.model)).toEqual(["@cf/zai-org/glm-5.3-flash", "@cf/zai-org/glm-4.7-flash"]);
+    expect(waEntries.map((e) => e.model)).toEqual(["@cf/zai-org/glm-5.3", "@cf/zai-org/glm-4.7-flash"]);
     expect(must(waEntries[0], "first workers-ai leg").priority).toBeLessThan(
       must(waEntries[1], "second workers-ai leg").priority,
     );
@@ -313,7 +313,7 @@ describe("dialogue run fallback legs (models.ts wiring)", () => {
       toMarkdown: async () => ({ format: "markdown", markdown: "" }),
     };
     const bundle = buildModels(fakeEnv({ AI: fakeAi }));
-    const model = bundle.models.getModel("cloudflare", "@cf/zai-org/glm-5.3-flash");
+    const model = bundle.models.getModel("cloudflare", "@cf/zai-org/glm-5.3");
     expect(model).toBeDefined();
     // agents' MODEL_OPTIONS symbol: fallback legs are bound on the model object
     const OPTIONS = Symbol.for("agents.models.pi-ai.options");
@@ -721,7 +721,7 @@ describe("AI-only production registry (F1 regression: YAML provider id vs create
       models.getModel(entry.provider, entry.model) !== undefined;
     const decision = must(await router.pick("interactive", canServe), "interactive unserved decision");
     expect(decision.entry.provider).toBe("workers-ai");
-    expect(decision.model).toBe("@cf/zai-org/glm-5.3-flash");
+    expect(decision.model).toBe("@cf/zai-org/glm-5.3");
     expect(fallback).toBeDefined();
   });
 });

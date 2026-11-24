@@ -161,7 +161,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(PROFILES.lookup.thinkingLevel).toBe("high");
     expect(PROFILES["topic-gen"].thinkingLevel).toBe("high");
     expect(PROFILES["student-report"].thinkingLevel).toBe("high");
-    expect(PROFILES["class-report"].thinkingLevel).toBe("high");
+    expect(PROFILES["class-report"].thinkingLevel).toBe("low");
     expect(BTW_THINKING_LEVEL).toBe("high");
   });
 });

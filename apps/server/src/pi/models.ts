@@ -27,7 +27,11 @@ export function buildModels(env: Env, options: BuildModelsOptions = {}): ModelsB
     credentials: keyedCredentialStore(env, options.keyedOf ?? (() => null), options.teacherOf ?? (async () => null)),
     authContext: workersAuthContext(env),
   });
-  const ai = createAI({ binding: env.AI });
+  // Routing through AI Gateway id "default" bills Workers AI inference from the prepaid
+  // credits (Unified billing — the 50 rpm tier for paid models). collectLog:false and
+  // skipCache:true pin zero retention in code — AI Gateway logs are enabled by default,
+  // so the ZDR boundary must not depend on the gateway's dashboard state.
+  const ai = createAI({ binding: env.AI, id: "default", collectLog: false, skipCache: true });
   const [head, ...legs] = [...gatewayConfig.defaults.availability]
     .sort((a, b) => a.priority - b.priority)
     .map((entry) => bindingModelOf(entry))
