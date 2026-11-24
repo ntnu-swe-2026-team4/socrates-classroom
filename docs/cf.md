@@ -109,7 +109,7 @@ Schema 的 SSOT 是 `apps/server/migrations/*.sql`（`001_init.sql` 起依序前
 | `SEED_TOKEN`           | `POST /api/dev/seed` 閘門（production 留空即可禁用）                                                              | 任意亂數                            |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret（只在 `GOOGLE_CLIENT_ID` 非空時宣告；未宣告＝Google 登入停用，回 `oauth_unavailable`） | Google Cloud Console → OAuth 用戶端 |
 
-新增無條件 `bindings.secret()` 時，須同步核對 `PROD_SECRETS_FILE`，並在 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) 的 dry-run step 為該 binding 加入 dummy 值；若漏加 dummy，後續 PR CI 會持續發 `::warning`。dummy 值不可用於 production。
+新增無條件 `bindings.secret()` 時，須同步核對 `deploy.yml`「cf deploy」step 的組裝清單並在 GitHub 設定對應 repo secret（見下方 Secrets 注入），且在 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) 的 dry-run step 為該 binding 加入 dummy 值；若漏加 dummy，後續 PR CI 會持續發 `::warning`。dummy 值不可用於 production。
 
 ### dev 通道與優先序（`.dev.vars` vs `.env.local`）
 
@@ -143,9 +143,9 @@ secrets 管理一律走 `cf deploy --secrets-file`（見上方 Secrets）——w
 
 ## CI/CD
 
-見 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)（PR：共用閘門 → secret-drift check ＋ dry-run，免憑證）與 [`deploy.yml`](../.github/workflows/deploy.yml)（push main：同一閘門 → D1 migrations → deploy；只有 migrations/deploy 兩步拿 `CLOUDFLARE_API_TOKEN`/`ACCOUNT_ID`/`D1_DATABASE_ID`）。閘門本體（lint → yamllint → config-drift → typecheck → test → build）在 [`.github/actions/gate`](../.github/actions/gate/action.yml) composite action，兩個 workflow 引用同一份，新增檢查只需改一處；步驟清單見 [`architecture.md`](./architecture.md) §8。PR CI 的 dry-run step 為已知的 `AUTH_SECRET`、`BYOK_ENC_KEY`、`SEED_TOKEN` 提供 dummy 值；檢查程式對 build output `worker.config.json` 中每個 `type: "secret"` binding 檢查環境或指定的 secrets file，缺值就發 `::warning`，不阻擋 merge。dummy 值只供 CI 使用，PR CI 不讀 `PROD_SECRETS_FILE`，因此不驗證 production secrets 的實際值。Secrets 注入走 deploy 指令的 `--secrets-file`，由 `deploy.yml` 的 `PROD_SECRETS_FILE` repo secret 提供；`GOOGLE_CLIENT_ID` 走 repo variable 於 build 帶入（見 [`google-oauth.md`](./google-oauth.md) §3）。
+見 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)（PR：共用閘門 → secret-drift check ＋ dry-run，免憑證）與 [`deploy.yml`](../.github/workflows/deploy.yml)（push main：同一閘門 → D1 migrations → deploy；只有 migrations/deploy 兩步拿 `CLOUDFLARE_API_TOKEN`/`ACCOUNT_ID`/`D1_DATABASE_ID`）。閘門本體（lint → yamllint → config-drift → typecheck → test → build）在 [`.github/actions/gate`](../.github/actions/gate/action.yml) composite action，兩個 workflow 引用同一份，新增檢查只需改一處；步驟清單見 [`architecture.md`](./architecture.md) §8。PR CI 的 dry-run step 為已知的 `AUTH_SECRET`、`BYOK_ENC_KEY`、`SEED_TOKEN` 提供 dummy 值；檢查程式對 build output `worker.config.json` 中每個 `type: "secret"` binding 檢查環境或指定的 secrets file，缺值就發 `::warning`，不阻擋 merge。dummy 值只供 CI 使用，PR CI 不讀 production 的 repo secrets，因此不驗證 production secrets 的實際值。Secrets 注入走 deploy 指令的 `--secrets-file`：`deploy.yml` 將逐顆 repo secrets（`AUTH_SECRET`、`BYOK_ENC_KEY`、`SEED_TOKEN`、`GOOGLE_CLIENT_SECRET`、`FACEBOOK_APP_SECRET`——conditional 者值留空即自動跳過）組裝成 `.env.production.local` 提供，輪替單一 secret 只需更新那一顆 repo secret；`GOOGLE_CLIENT_ID` 走 repo variable 於 build 帶入（見 [`google-oauth.md`](./google-oauth.md) §3）。
 
-PR CI 只檢查當次 build output 實際宣告的 binding。若 conditional secret 在 PR CI 未啟用、production 才啟用，PR CI 不會警告；仍須由 Deploy preflight 確認 `PROD_SECRETS_FILE` 有對應值。
+PR CI 只檢查當次 build output 實際宣告的 binding。若 conditional secret 在 PR CI 未啟用、production 才啟用，PR CI 不會警告；仍須由 Deploy preflight 確認對應 repo secret 已設定（fail-fast binding 缺值會 `::error` 中止部署）。
 
 ## 疑難排解
 

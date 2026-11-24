@@ -31,16 +31,30 @@ jobs:
           D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
       - name: cf deploy (same build artifact)
         run: |
-          if [ -z "$PROD_SECRETS_FILE" ]; then
-            echo "::error::PROD_SECRETS_FILE repo secret is not set"
-            echo "::error::secrets ride only via --secrets-file (docs/cf.md §Secrets); deploying without AUTH_SECRET ships a broken production"
-            exit 1
-          fi
+          # fail-fast bindings（缺任一顆即中止；docs/cf.md §Secrets）
+          for k in AUTH_SECRET BYOK_ENC_KEY; do
+            if [ -z "${!k}" ]; then
+              echo "::error::$k repo secret is not set"
+              echo "::error::secrets ride only via --secrets-file (docs/cf.md §Secrets); deploying without AUTH_SECRET ships a broken production"
+              exit 1
+            fi
+          done
           trap 'rm -f .env.production.local' EXIT
-          printf '%s' "$PROD_SECRETS_FILE" > .env.production.local
+          # 逐顆 repo secrets 組裝成 secrets file——輪替一顆只動一顆，
+          # conditional secret（值留空）自動跳過，對齊 cloudflare.config.ts 的條件宣告
+          : > .env.production.local
+          for k in AUTH_SECRET BYOK_ENC_KEY SEED_TOKEN GOOGLE_CLIENT_SECRET FACEBOOK_APP_SECRET; do
+            if [ -n "${!k}" ]; then
+              printf '%s=%s\n' "$k" "${!k}" >> .env.production.local
+            fi
+          done
           pnpm exec cf deploy --prebuilt --mode production --secrets-file .env.production.local
         working-directory: apps/web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          PROD_SECRETS_FILE: ${{ secrets.PROD_SECRETS_FILE }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          BYOK_ENC_KEY: ${{ secrets.BYOK_ENC_KEY }}
+          SEED_TOKEN: ${{ secrets.SEED_TOKEN }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          FACEBOOK_APP_SECRET: ${{ secrets.FACEBOOK_APP_SECRET }}
