@@ -541,7 +541,8 @@ test("#178: the colonnade login page renders provider buttons from the probe and
     expect(screen.getByRole("link", { name: "Sign in with Facebook" }).getAttribute("href")).toBe(
       "/api/auth/oauth/facebook/start",
     );
-    expect(screen.getByRole("link", { name: "Back to the story" })).toBeTruthy();
+    expect(screen.getByTitle("Back to the story").getAttribute("href")).toBe("/");
+    expect(screen.queryByRole("link", { name: "Back to the story" })).toBeNull();
     expect(screen.getByRole("link", { name: "Forgot password?" }).getAttribute("href")).toBe("/forgot-password");
     expect(screen.getByLabelText("Have an invite code?")).toBeTruthy();
     expect(screen.getByText("Maintenance window")).toBeTruthy();
@@ -616,6 +617,24 @@ test.each([
   const dispose = await mountRoute(`/login?error=${code}`);
   try {
     expect((await screen.findByRole("alert")).textContent).toBe(message);
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("the sign-in form reserves the register-only rows without exposing them", async () => {
+  stubLoginPage();
+  const dispose = await mountRoute("/login");
+  try {
+    await screen.findByRole("link", { name: "Forgot password?" });
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByLabelText("Display name")).toBeNull();
+    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Register", pressed: false }));
+    expect(screen.getByRole("checkbox")).toHaveProperty("checked", false);
+    expect(screen.getByLabelText("Display name")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Forgot password?" })).toBeNull();
   } finally {
     dispose();
     vi.unstubAllGlobals();

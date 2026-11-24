@@ -127,24 +127,26 @@ function ClassroomView({
       <div className="mt-4 grid min-w-0 items-start gap-4 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-6">
         <aside className="min-w-0 rounded-xl border border-line bg-card p-2 md:sticky md:top-6">
           {rooms.length > 1 && (
-            <select
-              aria-label={t("classroom_pick_class")}
-              value={room.id}
-              onChange={(event) =>
-                void navigate({
-                  to: "/classrooms/$classroomId",
-                  params: { classroomId: event.target.value },
-                  search: {},
-                })
-              }
-              className="mb-2 h-10 w-full truncate rounded-lg border border-line-strong bg-paper px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-ember/60"
-            >
-              {rooms.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
+            <div className="-mx-2 -mt-2 mb-2 rounded-t-xl border-b border-line bg-[#C0AF83] in-data-[theme=dark]:bg-[#C9AF6D]">
+              <select
+                aria-label={t("classroom_pick_class")}
+                value={room.id}
+                onChange={(event) =>
+                  void navigate({
+                    to: "/classrooms/$classroomId",
+                    params: { classroomId: event.target.value },
+                    search: {},
+                  })
+                }
+                className="h-12 w-full truncate rounded-t-xl bg-transparent px-3.5 text-sm font-medium text-[#161514] outline-none [color-scheme:light] hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ember/60"
+              >
+                {rooms.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
           <nav aria-label={t("room_tabs")} className="grid grid-cols-2 gap-1 sm:grid-cols-5 md:grid-cols-1">
             {tabs.map((entry) => {
