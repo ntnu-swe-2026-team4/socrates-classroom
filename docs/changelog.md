@@ -2,6 +2,16 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-24 — email 驗證 hard gate：未驗證不得使用系統（`fix/437-email-verify-hard-gate`，#437）
+
+### Fixed
+
+- Email 驗證閘門生效：#259 只追蹤 `email_verified_at` 卻沒有任何地方強制執行，註冊完直接拿到完整 session（`/auth/register` 甚至已寫入 `members` 並建立 participant），登入、所有 API 與 WebSocket 全部可用。現由 `/api/*` middleware 對未驗證 session 回 `403 email_unverified`（僅放行 `/api/me`、login、logout、register、signup、providers、password forgot/reset、email verify、verify/resend），WS authorize（chat／solo／classroom-events）同樣拒絕；前端呈現 VerifyGate 畫面（重寄驗證信＋登出），`/verify-email` 點完連結立即解鎖
+- Email 搶註修復（stale takeover）：超過 `EMAIL_VERIFY_TTL_HOURS`（24h）仍未驗證的帳號從未證明信箱所有權，任何人以該 email 重新 `signup`／`register` 會覆寫該帳號的 name／password／lang／`created_at` 並 `session_version + 1`（舊 session 全滅）；已驗證的地址永不適用
+- Admin 建立帳號（admin 主動發放 credentials，非本人自稱擁有信箱）直接寫入 `email_verified_at`，不受 gate 影響
+- `register` 限流由每 IP 每分鐘 30 收緊為 10；`email_unverified` 錯誤碼三語本地化
+- 模型與契約更新：`accounts.md` §8、`api-contract.md` §2.1/§2.3/§10、`feature.md`
+
 ## 2026-11-24 — 正式站 `/agents/*` 被資產層攔截，WebSocket 全數握手失敗（`fix/418-agents-run-worker-first`，#418）
 
 ### Fixed

@@ -189,6 +189,7 @@ export class Chat extends DurableObject<Env> {
     const cookie = request.headers.get("Cookie") ?? "";
     const lookup = await lookupSession(this.env, cookieValue(cookie, SESSION_COOKIE));
     if (lookup.kind === "ok") {
+      if (!lookup.session.user.emailVerified) return null;
       const identity: SocketIdentity = {
         userId: lookup.session.user.id,
         participantId,

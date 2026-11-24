@@ -3,6 +3,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, inject, test } from "vitest";
 import { one, run } from "../src/db/d1";
 import { emailVerifyBinding, issueSessionToken, sealAccountToken } from "../src/auth";
+import { EMAIL_VERIFY_TTL_HOURS } from "@socrates/shared";
 import { cookieOf, field, must, scopedEnv, str, workerFetch } from "./helpers";
 
 interface SentEmail {
@@ -110,6 +111,7 @@ async function sealVerifyToken(userId: string, ttlMs: number): Promise<string> {
 
 async function classroomCode(m: Mailbox): Promise<{ code: string; cookie: string }> {
   const teacher = await signup(m, freshEmail());
+  expect((await verify(m, tokenOf(must(teacher.mail, "verification mail")))).status).toBe(204);
   const created = await m.request("/api/classrooms", {
     method: "POST",
     headers: { ...json, Cookie: teacher.cookie },
@@ -323,5 +325,98 @@ describe("verification resend (#259)", () => {
     }
     expect(last?.status).toBe(429);
     expect(await codeOf(must(last, "rate-limit response"))).toBe("rate_limited");
+  });
+});
+
+describe("email verification hard gate (#437)", () => {
+  test("unverified session: data routes → 403 email_unverified; verify flow routes stay open", async () => {
+    const m = mailbox();
+    const account = await signup(m, freshEmail());
+
+    const blocked = await m.request("/api/classrooms", { headers: { Cookie: account.cookie } });
+    expect(blocked.status).toBe(403);
+    expect(await codeOf(blocked)).toBe("email_unverified");
+
+    const me = await m.request("/api/me", { headers: { Cookie: account.cookie } });
+    expect(me.status).toBe(200);
+    expect(field(await me.json(), "emailVerified")).toBe(false);
+
+    const resend = await m.post("/api/auth/email/verify/resend", {}, { Cookie: account.cookie });
+    expect(resend.status).toBe(204);
+
+    const logout = await m.post("/api/auth/logout", {}, { Cookie: account.cookie });
+    expect(logout.status).toBe(204);
+
+    const login = await m.post("/api/auth/login", { email: freshEmail(), password: "wrong-pass-1" });
+    expect(login.status).toBe(401);
+  });
+
+  test("after clicking the verification link the same session unlocks data routes", async () => {
+    const m = mailbox();
+    const account = await signup(m, freshEmail());
+
+    const before = await m.request("/api/classrooms", { headers: { Cookie: account.cookie } });
+    expect(before.status).toBe(403);
+
+    expect((await verify(m, tokenOf(must(account.mail, "verification mail")))).status).toBe(204);
+
+    const after = await m.request("/api/classrooms", { headers: { Cookie: account.cookie } });
+    expect(after.status).toBe(200);
+  });
+
+  test("expired but unused verification: register with the same email after the TTL reclaims the address", async () => {
+    const m = mailbox();
+    const email = freshEmail();
+    const squatter = await signup(m, email);
+    await run(env.DB, "UPDATE users SET created_at = $at WHERE id = $id", {
+      id: squatter.id,
+      at: new Date(Date.now() - (EMAIL_VERIFY_TTL_HOURS + 1) * 3_600_000).toISOString(),
+    });
+
+    const res = await m.post("/api/auth/signup", {
+      email,
+      password: "reclaim-pass-1",
+      name: "正主",
+      tosAccepted: true,
+    });
+    expect(res.status).toBe(200);
+    const reclaimed = await res.json();
+    expect(str(reclaimed, "id")).toBe(squatter.id);
+
+    // the squatter's session is dead (session_version bumped)
+    const stale = await me(m, squatter.cookie);
+    expect(stale).toBeNull();
+
+    // the reclaimed account is still unverified with a fresh created_at:
+    // the address is claimed again and blocks further signups
+    const retry = await m.post("/api/auth/signup", {
+      email,
+      password: "reclaim-pass-2",
+      name: "再試",
+      tosAccepted: true,
+    });
+    expect(retry.status).toBe(409);
+    expect(await codeOf(retry)).toBe("email_taken");
+  });
+
+  test("a verified account keeps the address; stale takeover never touches it", async () => {
+    const m = mailbox();
+    const email = freshEmail();
+    const owner = await signup(m, email);
+    expect((await verify(m, tokenOf(must(owner.mail, "verification mail")))).status).toBe(204);
+    await run(env.DB, "UPDATE users SET created_at = $at WHERE id = $id", {
+      id: owner.id,
+      at: new Date(Date.now() - (EMAIL_VERIFY_TTL_HOURS + 1) * 3_600_000).toISOString(),
+    });
+
+    const res = await m.post("/api/auth/signup", {
+      email,
+      password: "hijack-pass-1",
+      name: "搶註者",
+      tosAccepted: true,
+    });
+    expect(res.status).toBe(409);
+    expect(await codeOf(res)).toBe("email_taken");
+    expect((await me(m, owner.cookie))?.emailVerified).toBe(true);
   });
 });

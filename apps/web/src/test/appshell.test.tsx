@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { AppShell } from "@/components/AppShell";
+import { api } from "@/api";
 import { COMPANION_DOCK_ATTR } from "@/components/SocratesCompanion";
 import { openAccountSheet, useAccountSheetRequest } from "@/lib/accountSheet";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
@@ -266,5 +267,26 @@ test("a page without a companion dock shows no Socrates model", async () => {
     expect(screen.queryByRole("img", { name: "Socrates" })).toBeNull();
   } finally {
     client.clear();
+  }
+});
+
+test("#437: an unverified account is gated out of the shell with resend and logout", async () => {
+  const user = userEvent.setup();
+  const client = mountShell({ id: "u9", name: "Newbie", isAdmin: false, emailVerified: false }, "/home");
+  try {
+    expect(await screen.findByRole("heading", { name: "Verify your email first" })).toBeTruthy();
+    expect(screen.queryByText("page")).toBeNull();
+
+    const resend = vi.spyOn(api, "resendEmailVerification").mockResolvedValue(undefined);
+    await user.click(screen.getByRole("button", { name: "Resend verification email" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Resent" })).toBeTruthy());
+    expect(resend).toHaveBeenCalledTimes(1);
+
+    calls.navigate.mockClear();
+    await user.click(screen.getByRole("button", { name: "Log out" }));
+    await waitFor(() => expect(calls.logout).toHaveBeenCalledTimes(1));
+    expect(client.getQueryData(meQueryOptions.queryKey)).toBeNull();
+  } finally {
+    vi.restoreAllMocks();
   }
 });

@@ -20,7 +20,7 @@ import { api, type User } from "@/api";
 import { meQueryOptions } from "@/api/me";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
 import { NotificationBell } from "@/components/Notifications";
-import { HoverPopoverPanel, Initial, POPUP_SURFACE, TrapDialog, cn, useHoverPopover } from "@/components/ui";
+import { Button, HoverPopoverPanel, Initial, POPUP_SURFACE, TrapDialog, cn, useHoverPopover } from "@/components/ui";
 import { useDomEvent } from "@/hooks/useSubscription";
 import { useI18n } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
@@ -30,6 +30,9 @@ const SocratesCompanion = lazy(() =>
 );
 
 const BARE_ROUTES = [/^\/$/, /^\/login\/?$/];
+
+/** Routes that must stay reachable while the email is unverified. */
+const VERIFICATION_EXEMPT = /^\/(verify-email|forgot-password|reset-password)\/?$/;
 
 const RAIL_FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vermilion";
 const NAV_BTN = cn(
@@ -105,6 +108,46 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return <RailShell pathname={pathname}>{children}</RailShell>;
 }
 
+function VerifyGate() {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [resent, setResent] = useState(false);
+  const resend = useMutation({
+    mutationFn: () => api.resendEmailVerification(),
+    onSuccess: () => setResent(true),
+  });
+  const logout = useMutation({
+    mutationFn: () => api.logout(),
+    onSuccess: async () => {
+      queryClient.clear();
+      queryClient.setQueryData(meQueryOptions.queryKey, null);
+      await navigate({ to: "/" });
+    },
+  });
+  return (
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-5 px-6">
+      <div className="w-full max-w-sm">
+        <h1 className="text-[22px] leading-tight font-semibold tracking-tight text-ink">{t("verify_gate_title")}</h1>
+        <p className="mt-3 text-sm leading-relaxed text-ink-soft">{t("verify_gate_hint")}</p>
+        <div className="mt-5 flex items-center gap-3">
+          <Button onClick={() => resend.mutate()} disabled={resend.isPending} aria-busy={resend.isPending}>
+            {resent ? t("verify_gate_sent") : t("verify_gate_resend")}
+          </Button>
+          <button
+            type="button"
+            onClick={() => logout.mutate()}
+            disabled={logout.isPending}
+            className="cursor-pointer text-[13px] text-ink-soft transition-colors hover:text-ink"
+          >
+            {t("verify_gate_logout")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RailShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const { t } = useI18n();
   const theme = useTheme();
@@ -137,6 +180,8 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
     setDrawerOpen(false);
     account.close();
   }
+
+  const gateRequired = Boolean(me.data && !me.data.emailVerified) && !VERIFICATION_EXEMPT.test(pathname);
 
   const inAdmin = pathname.startsWith("/admin");
   const halftone = HALFTONE_MATCH.some((prefix) => pathname.startsWith(prefix));
@@ -235,73 +280,79 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
 
   return (
     <div className="flex h-dvh bg-paper text-ink [--font-serif:var(--font-sans)]">
-      <aside className="relative hidden h-dvh shrink-0 md:block">{rail}</aside>
+      {gateRequired ? (
+        <VerifyGate />
+      ) : (
+        <>
+          <aside className="relative hidden h-dvh shrink-0 md:block">{rail}</aside>
 
-      <button
-        type="button"
-        aria-label={t("menu_open")}
-        onClick={() => setDrawerOpen(true)}
-        className="fixed top-3 left-3 z-30 flex size-8 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-card text-ink-soft md:hidden"
-      >
-        <Menu className="size-[17px]" />
-      </button>
+          <button
+            type="button"
+            aria-label={t("menu_open")}
+            onClick={() => setDrawerOpen(true)}
+            className="fixed top-3 left-3 z-30 flex size-8 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-card text-ink-soft md:hidden"
+          >
+            <Menu className="size-[17px]" />
+          </button>
 
-      {drawerOpen && (
-        <TrapDialog className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
-          {rail}
-        </TrapDialog>
-      )}
+          {drawerOpen && (
+            <TrapDialog className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
+              {rail}
+            </TrapDialog>
+          )}
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <main className={cn("relative min-h-0 min-w-0 flex-1 overflow-y-auto", halftone && "ht-theme")}>
-          {children}
-        </main>
-      </div>
-
-      <Suspense fallback={null}>
-        <SocratesCompanion />
-      </Suspense>
-
-      <HoverPopoverPanel
-        popover={account}
-        ariaLabelledBy="account-title"
-        className={cn(
-          POPUP_SURFACE,
-          "anim-rise absolute bottom-3 left-3 flex w-64 flex-col border border-line bg-paper p-1.5 md:left-24",
-        )}
-      >
-        <h2 id="account-title" className="sr-only">
-          {t("account_title")}
-        </h2>
-        {me.data && (
-          <div className="flex items-center gap-3 px-2.5 py-2.5">
-            <Initial name={me.data.name} className="size-9 text-[14px]" />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[14px] font-medium text-ink">{me.data.name}</div>
-            </div>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <main className={cn("relative min-h-0 min-w-0 flex-1 overflow-y-auto", halftone && "ht-theme")}>
+              {children}
+            </main>
           </div>
-        )}
-        <div className="my-1 h-px bg-line" aria-hidden />
-        <Link
-          to="/settings"
-          data-menu="settings"
-          className="flex w-full cursor-pointer items-center gap-2.5 px-2.5 py-2 text-left text-[13.5px] text-ink transition-colors hover:bg-paper-deep"
-        >
-          <Settings className="size-4 text-ink-soft" />
-          <span className="flex-1">{t("settings_title")}</span>
-        </Link>
-        <div className="my-1 h-px bg-line" aria-hidden />
-        <button
-          type="button"
-          data-menu="logout"
-          onClick={() => logout.mutate()}
-          disabled={logout.isPending}
-          className="flex w-full cursor-pointer items-center gap-2.5 px-2.5 py-2 text-left text-[13.5px] text-flag transition-colors hover:bg-flag-wash"
-        >
-          <LogOut className="size-4" />
-          {t("account_logout")}
-        </button>
-      </HoverPopoverPanel>
+
+          <Suspense fallback={null}>
+            <SocratesCompanion />
+          </Suspense>
+
+          <HoverPopoverPanel
+            popover={account}
+            ariaLabelledBy="account-title"
+            className={cn(
+              POPUP_SURFACE,
+              "anim-rise absolute bottom-3 left-3 flex w-64 flex-col border border-line bg-paper p-1.5 md:left-24",
+            )}
+          >
+            <h2 id="account-title" className="sr-only">
+              {t("account_title")}
+            </h2>
+            {me.data && (
+              <div className="flex items-center gap-3 px-2.5 py-2.5">
+                <Initial name={me.data.name} className="size-9 text-[14px]" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[14px] font-medium text-ink">{me.data.name}</div>
+                </div>
+              </div>
+            )}
+            <div className="my-1 h-px bg-line" aria-hidden />
+            <Link
+              to="/settings"
+              data-menu="settings"
+              className="flex w-full cursor-pointer items-center gap-2.5 px-2.5 py-2 text-left text-[13.5px] text-ink transition-colors hover:bg-paper-deep"
+            >
+              <Settings className="size-4 text-ink-soft" />
+              <span className="flex-1">{t("settings_title")}</span>
+            </Link>
+            <div className="my-1 h-px bg-line" aria-hidden />
+            <button
+              type="button"
+              data-menu="logout"
+              onClick={() => logout.mutate()}
+              disabled={logout.isPending}
+              className="flex w-full cursor-pointer items-center gap-2.5 px-2.5 py-2 text-left text-[13.5px] text-flag transition-colors hover:bg-flag-wash"
+            >
+              <LogOut className="size-4" />
+              {t("account_logout")}
+            </button>
+          </HoverPopoverPanel>
+        </>
+      )}
     </div>
   );
 }

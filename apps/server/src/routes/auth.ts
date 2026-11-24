@@ -95,6 +95,39 @@ function publicBase(c: Ctx): string {
   return c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
 }
 
+/** An unverified account older than the verification TTL never proved email
+ * ownership, so the address is free to claim: re-registering overwrites the
+ * credentials (and bumps session_version, killing the old sessions). */
+function isStaleUnverified(row: { email_verified_at: string | null; created_at: string }): boolean {
+  if (row.email_verified_at !== null) return false;
+  const created = Date.parse(row.created_at);
+  return Number.isFinite(created) && created <= Date.now() - EMAIL_VERIFY_TTL_HOURS * 3_600_000;
+}
+
+interface EmailClaimRow {
+  id: string;
+  email_verified_at: string | null;
+  created_at: string;
+}
+
+async function takeoverStaleUnverified(
+  db: Ctx["env"]["DB"],
+  email: string,
+  next: { name: string; hash: string; lang: Lang },
+): Promise<string | null> {
+  const row = await one<EmailClaimRow>(db, "SELECT id, email_verified_at, created_at FROM users WHERE email = $email", {
+    email,
+  });
+  if (!row || !isStaleUnverified(row)) return null;
+  const result = await run(
+    db,
+    `UPDATE users SET name = $name, password_hash = $hash, lang = $lang, created_at = $at, session_version = session_version + 1
+     WHERE id = $id AND email_verified_at IS NULL`,
+    { id: row.id, name: next.name, hash: next.hash, lang: next.lang, at: nowIso() },
+  );
+  return result.meta.changes ? row.id : null;
+}
+
 async function sendVerificationMail(c: Ctx, account: VerifyAccount): Promise<void> {
   const token = await sealAccountToken(
     { env: c.env },
@@ -138,7 +171,7 @@ export function authRoutes() {
       await startSession(c, user);
       return c.json(user);
     })
-    .post("/auth/register", rateLimit("register", 30), validateJson(RegisterInputSchema), async (c) => {
+    .post("/auth/register", rateLimit("register", 10), validateJson(RegisterInputSchema), async (c) => {
       const input = c.req.valid("json");
       if (!input.tosAccepted) fail(422, "tos_required");
       const classroom = await one<{ id: string; current_activity_id: string | null }>(
@@ -160,23 +193,33 @@ export function authRoutes() {
         { cid: classroom.id, name: input.name },
       );
       if (clash) fail(409, "name_taken");
-      const emailTaken = await one<{ id: string }>(c.env.DB, "SELECT id FROM users WHERE email = $email", {
-        email: input.email,
-      });
-      if (emailTaken) fail(409, "conflict");
-      const id = newId("u_");
+      const emailTaken = await one<EmailClaimRow>(
+        c.env.DB,
+        "SELECT id, email_verified_at, created_at FROM users WHERE email = $email",
+        {
+          email: input.email,
+        },
+      );
+      if (emailTaken && !isStaleUnverified(emailTaken)) fail(409, "conflict");
+      const takenId = emailTaken
+        ? await takeoverStaleUnverified(c.env.DB, input.email, { name: input.name, hash, lang: langOf(c) })
+        : null;
+      if (emailTaken && !takenId) fail(409, "conflict");
+      const id = takenId ?? newId("u_");
       const at = nowIso();
       try {
-        await batch(c.env.DB, [
-          {
+        const statements: Array<{ sql: string; params: Record<string, unknown> }> = [];
+        if (!takenId) {
+          statements.push({
             sql: "INSERT INTO users (id, name, email, password_hash, lang, created_at) VALUES ($id, $name, $email, $hash, $lang, $at)",
             params: { id, name: input.name, email: input.email, hash, at, lang: langOf(c) },
-          },
-          {
-            sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
-            params: { cid: classroom.id, uid: id, name: input.name, at },
-          },
-        ]);
+          });
+        }
+        statements.push({
+          sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
+          params: { cid: classroom.id, uid: id, name: input.name, at },
+        });
+        await batch(c.env.DB, statements);
       } catch (error) {
         const pairs = uniqueViolationColumns(error);
         if (pairs.length === 0) throw error;
@@ -190,11 +233,11 @@ export function authRoutes() {
       await startSession(c, user);
       return c.json(user);
     })
-    .post("/auth/signup", rateLimit("register", 30), validateJson(SignupInputSchema), async (c) => {
+    .post("/auth/signup", rateLimit("register", 10), validateJson(SignupInputSchema), async (c) => {
       const input = c.req.valid("json");
       if (!input.tosAccepted) fail(422, "tos_required");
       const hash = await hashPassword(input.password);
-      const id = newId("u_");
+      let id = newId("u_");
       try {
         await batch(c.env.DB, [
           {
@@ -203,9 +246,15 @@ export function authRoutes() {
           },
         ]);
       } catch (error) {
-        const pairs = uniqueViolationColumns(error);
-        if (pairs.some(([table, column]) => table === "users" && column === "email")) fail(409, "email_taken");
-        throw error;
+        if (!uniqueViolationColumns(error).some(([table, column]) => table === "users" && column === "email"))
+          throw error;
+        const takenId = await takeoverStaleUnverified(c.env.DB, input.email, {
+          name: input.name,
+          hash,
+          lang: langOf(c),
+        });
+        if (!takenId) fail(409, "email_taken");
+        id = takenId;
       }
       const user: User = { id, name: input.name, isAdmin: false, emailVerified: false };
       queueVerificationMail(c, { id, email: input.email, lang: langOf(c) });

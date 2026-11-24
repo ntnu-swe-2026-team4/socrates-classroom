@@ -14,6 +14,7 @@ import {
   rows,
   str,
   systemTopicId,
+  verifyUserEmail,
 } from "./helpers";
 import { seedFixture } from "../src/seed";
 
@@ -291,6 +292,7 @@ it("starts a scheduled discussion once and keeps its report on the same event", 
   });
   expect(signup.status).toBe(200);
   const student = cookieOf(signup);
+  await verifyUserEmail(str(await signup.json(), "id"));
   const invite = await request(`/classrooms/${classroomId}/invites`, owner, "POST", { scope: "classroom" });
   expect(invite.status).toBe(201);
   const token = str(await invite.json(), "token");
