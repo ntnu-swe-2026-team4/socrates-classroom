@@ -71,6 +71,25 @@ async function mountRoute(url: string) {
   };
 }
 
+function json(body: unknown): Response {
+  return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+}
+
+function stubRoutes(routes: Record<string, () => Response>): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const route = routes[path];
+      if (route) return route();
+      throw new Error(`Unexpected request: ${path}`);
+    }),
+  );
+}
+
+const teacher = () => json({ id: "teacher-1", name: "Teacher", isAdmin: false, emailVerified: false });
+const providers = () => json({ providers: ["google"] });
+
 test("settings shows the three section tabs and defaults to the general language card", async () => {
   const dispose = await mountRoute("/settings");
   try {
@@ -157,6 +176,66 @@ test("the keys panel does not duplicate the provider keys heading", async () => 
     await screen.findByTestId("provider-keys");
     const headings = screen.getAllByRole("heading", { level: 2 });
     expect(headings.map((heading) => heading.textContent)).toEqual(["API keys (bring your own)"]);
+  } finally {
+    dispose();
+  }
+});
+
+test("account section lists sign-in methods and gates changes behind re-auth", async () => {
+  stubRoutes({
+    "/api/me": teacher,
+    "/api/auth/providers": providers,
+    "/api/me/identities": () =>
+      json({
+        email: { email: "teacher@example.com", verified: false },
+        oauth: [{ provider: "google", email: "teacher@gmail.com", linkedAt: "2026-11-20T00:00:00.000Z" }],
+        reauthExpiresAt: null,
+      }),
+  });
+  const dispose = await mountRoute("/settings?section=account");
+  try {
+    expect(await screen.findByText("Email and password")).toBeTruthy();
+    expect(screen.getByText("teacher@example.com")).toBeTruthy();
+    expect(screen.getByText("teacher@gmail.com")).toBeTruthy();
+    expect(screen.getByText("Confirm your identity")).toBeTruthy();
+    expect(screen.getByLabelText("Current password")).toBeTruthy();
+    for (const button of screen.getAllByRole("button", { name: "Remove" })) {
+      expect(button.hasAttribute("disabled")).toBe(true);
+    }
+  } finally {
+    dispose();
+  }
+});
+
+test("account section disables the one unconfigured provider and notes the last method", async () => {
+  stubRoutes({
+    "/api/me": teacher,
+    "/api/auth/providers": providers,
+    "/api/me/identities": () => json({ email: null, oauth: [], reauthExpiresAt: null }),
+  });
+  const dispose = await mountRoute("/settings?section=account");
+  try {
+    const linkButtons = await screen.findAllByRole("button", { name: "Link" });
+    expect(linkButtons).toHaveLength(2);
+    expect(linkButtons.every((button) => button.hasAttribute("disabled"))).toBe(true);
+    expect(screen.getByText(/at least one must remain/)).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
+
+test("a reauth redirect notice is announced on the account section", async () => {
+  stubRoutes({
+    "/api/me": teacher,
+    "/api/auth/providers": providers,
+    "/api/me/identities": () => json({ email: null, oauth: [], reauthExpiresAt: null }),
+  });
+  const dispose = await mountRoute("/settings?section=account&reauth=ok");
+  try {
+    expect(await screen.findByRole("status")).toHaveProperty(
+      "textContent",
+      "Identity confirmed. You can change sign-in methods now.",
+    );
   } finally {
     dispose();
   }

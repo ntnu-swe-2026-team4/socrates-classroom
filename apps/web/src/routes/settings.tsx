@@ -1,21 +1,44 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { meOf } from "@/api/me";
 import { Card, PageHeader, Segmented, cn } from "@/components/ui";
+import { LoginMethods, providerLabel } from "@/components/LoginMethods";
 import { ProviderKeys } from "@/components/ProviderKeys";
 import { locales, setLocale, useI18n, useT, type Locale, type MessageKey } from "@/i18n";
 import { companion, useCompanion } from "@/lib/companion";
-import { KeyRound, MessagesSquare, SlidersHorizontal, Volume1, Volume2, VolumeX } from "lucide-react";
+import { KeyRound, MessagesSquare, ShieldCheck, SlidersHorizontal, Volume1, Volume2, VolumeX } from "lucide-react";
 
 const SECTIONS = [
+  { id: "account", label: "settings_nav_account", icon: ShieldCheck },
   { id: "general", label: "settings_nav_general", icon: SlidersHorizontal },
   { id: "dialogue", label: "settings_nav_dialogue", icon: MessagesSquare },
   { id: "keys", label: "settings_nav_keys", icon: KeyRound },
 ] as const satisfies ReadonlyArray<{ id: string; label: MessageKey; icon: typeof KeyRound }>;
 type Section = (typeof SECTIONS)[number]["id"];
 
+interface SettingsSearch {
+  section?: Section;
+  linked?: string;
+  reauth?: string;
+  error?: string;
+}
+
+const NOTICE_ERRORS: Record<string, MessageKey> = {
+  identity_taken: "identity_err_identity_taken",
+  provider_already_linked: "identity_err_provider_already_linked",
+  reauth_identity_mismatch: "identity_err_reauth_identity_mismatch",
+  reauth_required: "identity_err_reauth_required",
+  oauth_failed: "login_err_oauth_failed",
+  oauth_state_invalid: "login_err_oauth_state",
+  oauth_email_unverified: "login_err_oauth_unverified",
+  oauth_unavailable: "login_err_oauth_unavailable",
+};
+
 export const Route = createFileRoute("/settings")({
-  validateSearch: (search: Record<string, unknown>): { section?: Section } => ({
+  validateSearch: (search: Record<string, unknown>): SettingsSearch => ({
     section: SECTIONS.find((item) => item.id === search.section && item.id !== "general")?.id,
+    linked: typeof search.linked === "string" ? search.linked : undefined,
+    reauth: typeof search.reauth === "string" ? search.reauth : undefined,
+    error: typeof search.error === "string" ? search.error : undefined,
   }),
   beforeLoad: async ({ context, location }) => {
     const me = await meOf(context.queryClient);
@@ -24,13 +47,39 @@ export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
 
+function SettingsNotice() {
+  const t = useT();
+  const { linked, reauth, error } = Route.useSearch();
+  const text =
+    reauth === "ok"
+      ? t("identity_notice_reauth")
+      : linked !== undefined && linked !== ""
+        ? t("identity_notice_linked", { name: providerLabel(t, linked) })
+        : error !== undefined && error !== ""
+          ? t(NOTICE_ERRORS[error] ?? "identity_err_generic")
+          : null;
+  if (text === null) return null;
+  const failed = error !== undefined && error !== "";
+  return (
+    <p
+      role={failed ? "alert" : "status"}
+      className={cn(
+        "rounded-lg border px-3.5 py-2.5 text-[13px]",
+        failed ? "border-flag text-flag" : "border-line-strong bg-paper-deep/60 text-ink",
+      )}
+    >
+      {text}
+    </p>
+  );
+}
+
 function SettingsPage() {
   const t = useT();
   const { locale } = useI18n();
   const navigate = useNavigate();
   const wanted = Route.useSearch().section ?? "general";
   const section = SECTIONS.some((item) => item.id === wanted) ? wanted : "general";
-  const current = SECTIONS.find((item) => item.id === section) ?? SECTIONS[0];
+  const current = SECTIONS.find((item) => item.id === section) ?? SECTIONS[1];
   const hasOwnHeading = section === "keys";
 
   return (
@@ -75,6 +124,8 @@ function SettingsPage() {
               {t(current.label)}
             </h2>
           )}
+          <SettingsNotice />
+          {section === "account" && <LoginMethods />}
           {section === "general" && (
             <Card className="flex flex-col gap-3 p-5">
               <p className="font-serif text-[15.5px] text-ink">{t("settings_lang")}</p>
