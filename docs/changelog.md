@@ -2,12 +2,12 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
-## 2026-11-24 — 教室按鈕下拉選單：分開「我選的課」與「教室管理」（`feat/408-classrooms-nav-menu`，#408）
+## 2026-11-24 — 教室按鈕展開選單：分開「我選的課」與「教室管理」（`feat/408-classrooms-nav-menu`，#408）
 
 ### Changed
 
-- 側邊欄「教室」按鈕在滑鼠 hover 時顯示下拉選單（「我選的課」／「教室管理」），沿用帳號選單的 `useHoverPopover`
-- 教室列表頁以 search param `?view=enrolled｜teaching` 分開兩份清單：「我選的課」含邀請碼輸入與我的報告，「教室管理」含開課按鈕；頁面上方有同樣的切換連結供觸控與鍵盤使用。未帶 `view` 時，只有開課的人進「教室管理」，其餘進「我選的課」
+- 側邊欄「教室」按鈕加上箭頭，按下在原地展開「我選的課」／「教室管理」兩個子項目，再按收合（`aria-expanded`）；在教室相關頁面時預設展開
+- 教室列表頁以 search param `?view=enrolled｜teaching` 分開兩份清單：「我選的課」含邀請碼輸入與我的報告，「教室管理」含開課按鈕；頁面上方有同樣的切換連結。未帶 `view` 時，只有開課的人進「教室管理」，其餘進「我選的課」
 - API 與 route 結構不變（同一個 `/classrooms`，以 `role` 在前端分組）
 
 ## 2026-11-24 — provider 排序互動整個改照 magpie `dragRows`（`refactor/403-magpie-sorter`，#403）

@@ -162,8 +162,26 @@ test("the rail lists home and classrooms, and admins get the manage-site link", 
   const client = mountShell({ id: "u1", name: "Admin", isAdmin: true, emailVerified: true });
   try {
     expect(screen.getByRole("link", { name: "Home" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Classrooms" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Classrooms" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Manage site" })).toBeTruthy();
+  } finally {
+    client.clear();
+  }
+});
+
+test("the classrooms button expands and collapses its two destinations in place", () => {
+  const client = mountShell(teacher, "/home");
+  try {
+    const toggle = screen.getByRole("button", { name: "Classrooms" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("link", { name: "My courses" })).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("link", { name: "My courses" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Manage classrooms" })).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("link", { name: "Manage classrooms" })).toBeNull();
   } finally {
     client.clear();
   }

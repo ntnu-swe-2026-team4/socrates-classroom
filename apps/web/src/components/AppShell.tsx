@@ -4,7 +4,7 @@ import { useAccountSheetRequest } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  BookOpen,
+  ChevronDown,
   Eye,
   GraduationCap,
   Home,
@@ -13,7 +13,6 @@ import {
   Menu,
   MessageCircle,
   Moon,
-  Presentation,
   Settings,
   ShieldCheck,
   Sun,
@@ -57,9 +56,14 @@ const NAV = [
 ] as const;
 
 const CLASSROOM_VIEWS = [
-  { view: "enrolled", label: "classrooms_enrolled", icon: BookOpen },
-  { view: "teaching", label: "classrooms_manage", icon: Presentation },
+  { view: "enrolled", label: "classrooms_enrolled" },
+  { view: "teaching", label: "classrooms_manage" },
 ] as const;
+
+const SUB_BTN = cn(
+  "comic-sink flex w-[76px] cursor-pointer items-center justify-center border-[1.5px] border-transparent px-1 py-1.5 text-center text-[11px] leading-tight text-ht-soft wrap-anywhere hover:border-ht-line hover:bg-ht-hover hover:text-ht-ink",
+  RAIL_FOCUS,
+);
 
 const HALFTONE_MATCH = [
   "/home",
@@ -119,8 +123,14 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const account = useHoverPopover();
-  const classroomsMenu = useHoverPopover();
-  const [classroomsMenuTop, setClassroomsMenuTop] = useState(0);
+  const classroomsView = useRouterState({
+    select: (state) => {
+      const search: unknown = state.location.search;
+      if (state.location.pathname !== "/classrooms" || typeof search !== "object" || search === null) return undefined;
+      return "view" in search && typeof search.view === "string" ? search.view : undefined;
+    },
+  });
+  const [classroomsOpen, setClassroomsOpen] = useState(pathname.startsWith("/classrooms"));
 
   const me = useQuery(meQueryOptions);
   const logout = useMutation({
@@ -145,7 +155,6 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
     setPrevPathname(pathname);
     setDrawerOpen(false);
     account.close();
-    classroomsMenu.close();
   }
 
   const inAdmin = pathname.startsWith("/admin");
@@ -174,19 +183,40 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           if (item.to === "/chat" && !me.data) return null;
           const active = item.match.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
           const Icon = item.icon;
-          const menuProps =
-            item.to === "/classrooms" && me.data
-              ? {
-                  onPointerEnter: (event: React.PointerEvent<HTMLAnchorElement>) => {
-                    setClassroomsMenuTop(event.currentTarget.getBoundingClientRect().top);
-                    classroomsMenu.hoverProps.onPointerEnter(event);
-                  },
-                  onPointerLeave: classroomsMenu.hoverProps.onPointerLeave,
-                  onClick: classroomsMenu.close,
-                }
-              : {};
+          if (item.to === "/classrooms" && me.data) {
+            return (
+              <div key={item.to} className="flex flex-col items-center gap-1">
+                <button
+                  type="button"
+                  data-rail="classrooms"
+                  aria-expanded={classroomsOpen}
+                  aria-controls="rail-classrooms-menu"
+                  onClick={() => setClassroomsOpen(!classroomsOpen)}
+                  className={cn(NAV_BTN, active && NAV_ACTIVE)}
+                >
+                  <Icon className="size-[19px]" />
+                  <span className="max-w-full text-center leading-tight wrap-anywhere">{t(item.label)}</span>
+                  <ChevronDown aria-hidden className={cn("size-3", classroomsOpen && "rotate-180")} />
+                </button>
+                <div id="rail-classrooms-menu" hidden={!classroomsOpen} className="flex flex-col items-center gap-1">
+                  {CLASSROOM_VIEWS.map((sub) => (
+                    <Link
+                      key={sub.view}
+                      to="/classrooms"
+                      search={{ view: sub.view }}
+                      data-menu={sub.view}
+                      aria-current={classroomsView === sub.view ? "page" : undefined}
+                      className={cn(SUB_BTN, classroomsView === sub.view && "border-ht-line font-bold text-ht-ink")}
+                    >
+                      {t(sub.label)}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            );
+          }
           return (
-            <Link key={item.to} to={item.to} className={cn(NAV_BTN, active && NAV_ACTIVE)} {...menuProps}>
+            <Link key={item.to} to={item.to} className={cn(NAV_BTN, active && NAV_ACTIVE)}>
               <Icon className="size-[19px]" />
               <span className="max-w-full text-center leading-tight wrap-anywhere">{t(item.label)}</span>
             </Link>
@@ -282,30 +312,6 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       <Suspense fallback={null}>
         <SocratesCompanion />
       </Suspense>
-
-      <HoverPopoverPanel
-        popover={classroomsMenu}
-        ariaLabelledBy="classrooms-menu-title"
-        style={{ top: classroomsMenuTop }}
-        className={cn(POPUP_SURFACE, "anim-rise absolute left-[92px] flex flex-col border border-line bg-paper p-1.5")}
-      >
-        <h2 id="classrooms-menu-title" className="sr-only">
-          {t("nav_classrooms")}
-        </h2>
-        {CLASSROOM_VIEWS.map((item) => (
-          <Link
-            key={item.view}
-            to="/classrooms"
-            search={{ view: item.view }}
-            data-menu={item.view}
-            onClick={classroomsMenu.close}
-            className="flex cursor-pointer items-center gap-2.5 px-2.5 py-2 text-[13.5px] whitespace-nowrap text-ink transition-colors hover:bg-paper-deep"
-          >
-            <item.icon className="size-4 shrink-0 text-ink-soft" />
-            {t(item.label)}
-          </Link>
-        ))}
-      </HoverPopoverPanel>
 
       <HoverPopoverPanel
         popover={account}
