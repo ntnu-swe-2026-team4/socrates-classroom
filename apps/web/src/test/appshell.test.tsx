@@ -282,6 +282,10 @@ test("#437: an unverified account is gated out of the shell with resend and logo
     await waitFor(() => expect(screen.getByRole("button", { name: "Resent" })).toBeTruthy());
     expect(resend).toHaveBeenCalledTimes(1);
 
+    resend.mockRejectedValue(new Error("rate limited"));
+    await user.click(screen.getByRole("button", { name: "Resent" }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+
     calls.navigate.mockClear();
     await user.click(screen.getByRole("button", { name: "Log out" }));
     await waitFor(() => expect(calls.logout).toHaveBeenCalledTimes(1));

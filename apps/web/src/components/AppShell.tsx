@@ -113,9 +113,14 @@ function VerifyGate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [resent, setResent] = useState(false);
+  const [failed, setFailed] = useState(false);
   const resend = useMutation({
     mutationFn: () => api.resendEmailVerification(),
-    onSuccess: () => setResent(true),
+    onSuccess: () => {
+      setFailed(false);
+      setResent(true);
+    },
+    onError: () => setFailed(true),
   });
   const logout = useMutation({
     mutationFn: () => api.logout(),
@@ -130,6 +135,11 @@ function VerifyGate() {
       <div className="w-full max-w-sm">
         <h1 className="text-[22px] leading-tight font-semibold tracking-tight text-ink">{t("verify_gate_title")}</h1>
         <p className="mt-3 text-sm leading-relaxed text-ink-soft">{t("verify_gate_hint")}</p>
+        {failed && (
+          <p role="alert" className="mt-2 text-sm leading-relaxed text-flag">
+            {t("verify_gate_failed")}
+          </p>
+        )}
         <div className="mt-5 flex items-center gap-3">
           <Button onClick={() => resend.mutate()} disabled={resend.isPending} aria-busy={resend.isPending}>
             {resent ? t("verify_gate_sent") : t("verify_gate_resend")}

@@ -130,7 +130,7 @@ interface User {
 - `signup`／`register` 建立 email 帳號後寄出驗證信（語言依 `users.lang`），連結為 `PUBLIC_BASE_URL`（未設則用請求 origin）＋`/verify-email#token=<token>`；寄信走 `waitUntil`，寄送失敗只記 log（fail-open，不阻擋註冊）
 - token 對 client 是不透明字串；有效 24 小時（`EMAIL_VERIFY_TTL_HOURS`）。伺服器不存 token：簽章用途為 `email_verify`（與 `password_reset` 互不通用，見 §2.2），綁定目前的 `users.email`——email 一改舊連結即失效。單次使用由寫入端保證：`UPDATE … WHERE email_verified_at IS NULL`，重放只會是 no-op
 - **hard gate（#437，取代 #259 的 soft 模型）**：未驗證的 session 只能存取驗證流程相關端點（`/api/me`、login、logout、register、signup、providers、password forgot/reset、email verify、verify/resend），其餘 API 一律 `403 email_unverified`；WS authorize（chat／solo／classroom-events）同樣拒絕。設計語意見 [`accounts.md`](./accounts.md) §8
-- **stale takeover**：超過 `EMAIL_VERIFY_TTL_HOURS` 仍未驗證的帳號，其地址視同無主——以該 email 重新 `signup`／`register` 覆寫 name／password／lang／`created_at` 並 `session_version + 1`（舊 session 全滅），帳號維持未驗證；已驗證的地址不適用，照回 409
+- **stale takeover**：超過 `EMAIL_VERIFY_TTL_HOURS` 仍未驗證的帳號，其地址視同無主——以該 email 重新 `signup`／`register` 覆寫 name／password／lang／`created_at` 並 `session_version + 1`（舊 session 全滅），帳號維持未驗證；已驗證的地址不適用，照回 409。`register` 對「stale 帳號已是該教室成員」的情形視為冪等：member row 改名為請求的 name 並更新 `tos_accepted_at`，照回 200（同一 user id）
 - 同一個 `users.email` 只能屬於一個帳號（UNIQUE，stale takeover 為唯一例外）；驗證狀態決定 hard gate（見上），也用於判斷「這個信箱是否已被本人確認」
 
 ## 3. 入場（唯一閘門，#66/#70）

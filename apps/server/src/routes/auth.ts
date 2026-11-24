@@ -187,12 +187,6 @@ export function authRoutes() {
       );
       if (activity?.finished_at) fail(409, "activity_finished");
       const hash = await hashPassword(input.password);
-      const clash = await one<{ id: string }>(
-        c.env.DB,
-        "SELECT user_id AS id FROM members WHERE classroom_id = $cid AND name = $name",
-        { cid: classroom.id, name: input.name },
-      );
-      if (clash) fail(409, "name_taken");
       const emailTaken = await one<EmailClaimRow>(
         c.env.DB,
         "SELECT id, email_verified_at, created_at FROM users WHERE email = $email",
@@ -200,11 +194,18 @@ export function authRoutes() {
           email: input.email,
         },
       );
-      if (emailTaken && !isStaleUnverified(emailTaken)) fail(409, "conflict");
-      const takenId = emailTaken
+      const reclaiming = emailTaken !== null && isStaleUnverified(emailTaken);
+      const clash = await one<{ id: string }>(
+        c.env.DB,
+        "SELECT user_id AS id FROM members WHERE classroom_id = $cid AND name = $name AND ($exclude IS NULL OR user_id != $exclude)",
+        { cid: classroom.id, name: input.name, exclude: reclaiming ? emailTaken.id : null },
+      );
+      if (clash) fail(409, "name_taken");
+      if (emailTaken && !reclaiming) fail(409, "conflict");
+      const takenId = reclaiming
         ? await takeoverStaleUnverified(c.env.DB, input.email, { name: input.name, hash, lang: langOf(c) })
         : null;
-      if (emailTaken && !takenId) fail(409, "conflict");
+      if (reclaiming && !takenId) fail(409, "conflict");
       const id = takenId ?? newId("u_");
       const at = nowIso();
       try {
@@ -223,8 +224,17 @@ export function authRoutes() {
       } catch (error) {
         const pairs = uniqueViolationColumns(error);
         if (pairs.length === 0) throw error;
-        if (pairs.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
-        fail(409, "conflict");
+        if (takenId && pairs.some(([table]) => table === "members")) {
+          await run(
+            c.env.DB,
+            "UPDATE members SET name = $name, tos_accepted_at = $at WHERE classroom_id = $cid AND user_id = $uid",
+            { cid: classroom.id, uid: id, name: input.name, at },
+          );
+        } else if (pairs.some(([table, column]) => table === "members" && column === "name")) {
+          fail(409, "name_taken");
+        } else {
+          fail(409, "conflict");
+        }
       }
       await publishClassroom(c.env, classroom.id, "members");
       queueVerificationMail(c, { id, email: input.email, lang: langOf(c) });

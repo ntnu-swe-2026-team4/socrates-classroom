@@ -364,7 +364,7 @@ describe("email verification hard gate (#437)", () => {
     expect(after.status).toBe(200);
   });
 
-  test("expired but unused verification: register with the same email after the TTL reclaims the address", async () => {
+  test("expired but unused verification: signup with the same email after the TTL reclaims the address", async () => {
     const m = mailbox();
     const email = freshEmail();
     const squatter = await signup(m, email);
@@ -397,6 +397,74 @@ describe("email verification hard gate (#437)", () => {
     });
     expect(retry.status).toBe(409);
     expect(await codeOf(retry)).toBe("email_taken");
+  });
+
+  test("register with the same email after the TTL reclaims the address into a classroom", async () => {
+    const m = mailbox();
+    const { code } = await classroomCode(m);
+    const email = freshEmail();
+    const squatter = await signup(m, email);
+    await run(env.DB, "UPDATE users SET created_at = $at WHERE id = $id", {
+      id: squatter.id,
+      at: new Date(Date.now() - (EMAIL_VERIFY_TTL_HOURS + 1) * 3_600_000).toISOString(),
+    });
+
+    const before = m.sent.length;
+    const res = await m.post("/api/auth/register", {
+      code,
+      email,
+      password: "reclaim-pass-1",
+      name: "正主生",
+      tosAccepted: true,
+    });
+    expect(res.status).toBe(200);
+    expect(str(await res.json(), "id")).toBe(squatter.id);
+    expect(m.sent).toHaveLength(before + 1);
+
+    const stale = await me(m, squatter.cookie);
+    expect(stale).toBeNull();
+  });
+
+  test("register reclaim when the stale account is already a member of the same classroom", async () => {
+    const m = mailbox();
+    const { code } = await classroomCode(m);
+    const email = freshEmail();
+    const squatter = await m.post("/api/auth/register", {
+      code,
+      email,
+      password: "squatter-pass-1",
+      name: "佔位生",
+      tosAccepted: true,
+    });
+    expect(squatter.status).toBe(200);
+    const squatterId = str(await squatter.json(), "id");
+    await run(env.DB, "UPDATE users SET created_at = $at WHERE id = $id", {
+      id: squatterId,
+      at: new Date(Date.now() - (EMAIL_VERIFY_TTL_HOURS + 1) * 3_600_000).toISOString(),
+    });
+
+    const before = m.sent.length;
+    const res = await m.post("/api/auth/register", {
+      code,
+      email,
+      password: "reclaim-pass-1",
+      name: "佔位生",
+      tosAccepted: true,
+    });
+    expect(res.status).toBe(200);
+    expect(str(await res.json(), "id")).toBe(squatterId);
+
+    const member = await one<{ name: string; tos_accepted_at: string }>(
+      env.DB,
+      "SELECT name, tos_accepted_at FROM members WHERE user_id = $uid",
+      { uid: squatterId },
+    );
+    expect(member?.name).toBe("佔位生");
+    expect(member?.tos_accepted_at).toBeTruthy();
+    expect(m.sent).toHaveLength(before + 1);
+
+    const stale = await me(m, cookieOf(squatter));
+    expect(stale).toBeNull();
   });
 
   test("a verified account keeps the address; stale takeover never touches it", async () => {
