@@ -580,10 +580,10 @@ function Turn({ speaker, text, caret }: { speaker: "user" | "assistant"; text: s
       </span>
       <div
         className={cn(
-          "whitespace-pre-wrap font-serif text-[14.5px] leading-7 text-ink",
+          "min-w-0 whitespace-pre-wrap font-serif text-[14.5px] leading-7 wrap-anywhere text-ink",
           mine
             ? "max-w-[min(80%,56rem)] rounded-2xl border border-line bg-ember-wash px-4 py-2.5"
-            : "min-w-0 max-w-[56rem] flex-1 pt-0.5",
+            : "max-w-[56rem] flex-1 pt-0.5",
           caret && "caret",
         )}
       >
