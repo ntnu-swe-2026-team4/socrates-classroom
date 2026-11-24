@@ -19,6 +19,7 @@ export interface RouteDecision {
 }
 
 const TEACHER_CREDENTIAL_PREFIX = "teacher:";
+const ADMIN_CREDENTIAL_PREFIX = "admin:";
 
 export function isTeacherCredential(credential: string): boolean {
   return credential.startsWith(TEACHER_CREDENTIAL_PREFIX);
@@ -28,6 +29,14 @@ interface Candidate {
   entry: AvailabilityEntry;
   model: string;
   key: LedgerKey;
+}
+
+export function isAdminCredential(credential: string): boolean {
+  return credential.startsWith(ADMIN_CREDENTIAL_PREFIX);
+}
+
+export function isKeyedCredential(credential: string): boolean {
+  return isTeacherCredential(credential) || isAdminCredential(credential);
 }
 
 const sharedByEnv = new WeakMap<Env, Router>();
@@ -52,9 +61,9 @@ export class Router {
   async chain(
     trafficClass: TrafficClass,
     canServe?: (entry: ResolvedLeg) => boolean,
-    teacherLegs?: AvailabilityEntry[],
+    keyedLegs?: AvailabilityEntry[],
   ): Promise<AvailabilityEntry[]> {
-    const candidates = this.#candidates(trafficClass, canServe, teacherLegs);
+    const candidates = this.#candidates(trafficClass, canServe, keyedLegs);
     const { admitted } = await this.#admit(candidates);
     return candidates.filter((_, index) => admitted[index]).map((candidate) => candidate.entry);
   }
@@ -62,9 +71,9 @@ export class Router {
   async pick(
     trafficClass: TrafficClass,
     canServe?: (entry: ResolvedLeg) => boolean,
-    teacherLegs?: AvailabilityEntry[],
+    keyedLegs?: AvailabilityEntry[],
   ): Promise<RouteDecision | null> {
-    for (const group of shardGroups(this.#candidates(trafficClass, canServe, teacherLegs))) {
+    for (const group of shardGroups(this.#candidates(trafficClass, canServe, keyedLegs))) {
       const reservation = await this.#reserve(group);
       if (!reservation) continue;
       const candidate = group[reservation.index];
@@ -76,10 +85,10 @@ export class Router {
 
   async budget(
     trafficClass: TrafficClass,
-    teacherLegs?: AvailabilityEntry[],
+    keyedLegs?: AvailabilityEntry[],
     canServe?: (entry: ResolvedLeg) => boolean,
   ): Promise<number> {
-    const candidates = this.#candidates(trafficClass, canServe, teacherLegs);
+    const candidates = this.#candidates(trafficClass, canServe, keyedLegs);
     const { admitted, degraded } = await this.#admit(candidates);
     if (degraded) return 0;
     const sums = new Map<string, number>();
@@ -182,12 +191,13 @@ export class Router {
   #candidates(
     trafficClass: TrafficClass,
     canServe?: (entry: ResolvedLeg) => boolean,
-    teacherLegs?: AvailabilityEntry[],
+    keyedLegs?: AvailabilityEntry[],
   ): Candidate[] {
     const availability = gatewayConfig.trafficClasses[trafficClass]?.availability ?? "defaults";
-    const platform = availability === "defaults" ? gatewayConfig.defaults.availability : [];
-    return [...(teacherLegs ?? []), ...platform]
-      .sort((a, b) => a.priority - b.priority)
+    const platform = (availability === "defaults" ? [...gatewayConfig.defaults.availability] : []).sort(
+      (a, b) => a.priority - b.priority,
+    );
+    return [...(keyedLegs ?? []), ...platform]
       .map((entry) => {
         const def = gatewayConfig.providers[entry.provider];
         const model = def === undefined ? (entry.model ?? "") : (entry.model ?? providerModelOf(def));
@@ -195,7 +205,7 @@ export class Router {
       })
       .filter((leg) => {
         if (canServe && !canServe({ provider: leg.entry.provider, model: leg.model })) return false;
-        if (isTeacherCredential(leg.entry.credential)) return true;
+        if (isKeyedCredential(leg.entry.credential)) return true;
         if (leg.def === undefined) return false;
         if (leg.def.kind === "binding" && !this.#env.AI) return false;
         if (leg.def.kind === "openai-completions") {
