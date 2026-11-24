@@ -32,12 +32,16 @@ import {
 } from "../auth";
 import { sendEmailVerificationEmail, sendPasswordResetEmail } from "../mail";
 import {
+  allowIdentifier,
+  clearIdentifierLimit,
+  enforceIdentifierLimit,
   enforceIpLimit,
   fail,
   langOf,
   newId,
   nowIso,
   rateLimit,
+  recordIdentifierHit,
   requireUser,
   validateJson,
   uniqueViolationColumns,
@@ -66,6 +70,11 @@ const OAUTH_COOKIE = "socrates_oauth";
 const OAUTH_COOKIE_PATH = "/api/auth/oauth";
 const OAUTH_TTL_SECONDS = 600;
 const OAUTH_SUCCESS_PATH = "/home";
+const LOGIN_FAIL_SCOPE = "login-fail";
+const LOGIN_FAIL_LIMIT = 10;
+const LOGIN_FAIL_WINDOW_MS = 15 * 60_000;
+const FORGOT_EMAIL_SCOPE = "password-forgot-email";
+const FORGOT_EMAIL_COOLDOWN_MS = 5 * 60_000;
 
 interface ResetAccountRow {
   id: string;
@@ -128,12 +137,17 @@ export function authRoutes() {
     .get("/me", (c) => c.json(c.get("user")))
     .post("/auth/login", rateLimit("login", 30), validateJson(LoginInputSchema), async (c) => {
       const input = c.req.valid("json");
+      await enforceIdentifierLimit(c, LOGIN_FAIL_SCOPE, input.email, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW_MS);
       const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE email = $email", {
         email: input.email,
       });
       const ok = await verifyPassword(input.password, row?.password_hash ?? DUMMY_HASH);
-      if (!row || !ok) fail(401, "unauthorized");
+      if (!row || !ok) {
+        await recordIdentifierHit(c, LOGIN_FAIL_SCOPE, input.email, LOGIN_FAIL_WINDOW_MS);
+        fail(401, "unauthorized");
+      }
       if (row.disabled_at !== null) fail(403, "account_disabled");
+      await clearIdentifierLimit(c, LOGIN_FAIL_SCOPE, input.email);
       const user = toUser(row);
       await startSession(c, user);
       return c.json(user);
@@ -320,13 +334,21 @@ export function authRoutes() {
           PASSWORD_RESET_TTL_MINUTES * 60_000,
         );
         if (account?.email) {
-          const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
-          const mail = { to: account.email, lang: account.lang, link: `${base}/reset-password#token=${token}` };
-          c.executionCtx.waitUntil(
-            sendPasswordResetEmail(c.env, { ...mail, minutes: PASSWORD_RESET_TTL_MINUTES }).catch((error: unknown) => {
-              console.warn("[auth] password reset mail failed:", error instanceof Error ? error.message : typeof error);
-            }),
-          );
+          const allowed = await allowIdentifier(c, FORGOT_EMAIL_SCOPE, account.email, 1, FORGOT_EMAIL_COOLDOWN_MS);
+          if (allowed) {
+            const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
+            const mail = { to: account.email, lang: account.lang, link: `${base}/reset-password#token=${token}` };
+            c.executionCtx.waitUntil(
+              sendPasswordResetEmail(c.env, { ...mail, minutes: PASSWORD_RESET_TTL_MINUTES }).catch(
+                (error: unknown) => {
+                  console.warn(
+                    "[auth] password reset mail failed:",
+                    error instanceof Error ? error.message : typeof error,
+                  );
+                },
+              ),
+            );
+          }
         }
         return c.body(null, 204);
       },
@@ -363,6 +385,7 @@ export function authRoutes() {
           { id: row.id, next: await hashPassword(input.password), current: row.password_hash, email: row.email },
         );
         if (!result.meta.changes) fail(400, "reset_token_invalid");
+        await clearIdentifierLimit(c, LOGIN_FAIL_SCOPE, row.email);
         return c.body(null, 204);
       },
     );

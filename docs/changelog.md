@@ -2,6 +2,15 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-24 — 登入失敗 per-account 鎖定與 forgot per-email 冷卻（`feat/393-login-lockout`，#393）
+
+### Added
+
+- `RateLimiter` DO 新增 keyed sliding window API（`check`／`record`／`allowKey`／`clear`），以 `sha256Hex(lowercase(email))` 作為 key、`key.slice(0, 2)` 分片成固定 256 shard/scope（DO 名不含 PII、不因隨機 email 灑量無限建 DO），單 shard 超過 1024 entries 時清過期項並依 LRU 封頂；維持純記憶體與 DO 不可用時 fail-open
+- `POST /api/auth/login` 在 DB lookup 與 PBKDF2 之前檢查 `login-fail`（10 次失敗 / 15 分鐘 sliding window，存在與不存在的 email 採同一門檻防列舉，超限回既有 `429 rate_limited`、不附 `Retry-After`）；僅 `!row || !ok` 計失敗（密碼正確但停用的 `403 account_disabled` 不計）；登入成功與 `POST /api/auth/password/reset` 成功皆清空計數（DoS 逃生口）
+- `POST /api/auth/password/forgot` 加入同一 email 5 分鐘冷卻（`allowKey` 原子判定，冷卻內靜默回 `204` 不寄信、不破壞防列舉契約，不同 email 互不影響）
+- 測試補齊：`tests/rate-limit.test.ts`（DO keyed API／shard sweep、多 IP 換源鎖定、大小寫合併、不存在 email 同門檻、成功登入歸零、停用帳號不計失敗、密碼重設解鎖、DO 不可用 fail-open）與 `tests/password-reset.test.ts`（同 email 冷卻、跨 email 隔離、併發只寄一封）
+
 ## 2026-11-23 — TS 靜態保證 step 4：noUncheckedIndexedAccess 全庫開啟（`refactor/293-step4`，#293）
 
 ### Changed
