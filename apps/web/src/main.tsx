@@ -24,7 +24,7 @@ declare module "@tanstack/react-router" {
   }
 
   interface HistoryState {
-    soloQuestion?: { text: string; operationId: string };
+    soloQuestion?: { text: string; operationId: string; voiceMode?: boolean };
   }
 }
 

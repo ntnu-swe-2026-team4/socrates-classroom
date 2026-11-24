@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { Keyboard, MessageCircleQuestionMark, Mic, Send, Square, TextSearch } from "lucide-react";
 import { BtwPanel, type BtwPanelHandle } from "@/components/BtwPanel";
 import { SidebarToggle, useSidebarOverlay } from "@/components/ChatLayout";
@@ -8,10 +8,10 @@ import { cn } from "@/components/ui";
 import { textOf, useDialogue, type DialogueAgent } from "@/hooks/useDialogue";
 import { useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { useElapsed } from "@/hooks/useSubscription";
-import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { useVoiceInput, type VoiceInput } from "@/hooks/useVoiceInput";
 import { useT, type MessageKey } from "@/i18n";
 
-const VOICE_ERROR_KEY: Record<"denied" | "unsupported" | "failed", MessageKey> = {
+export const VOICE_ERROR_KEY: Record<"denied" | "unsupported" | "failed", MessageKey> = {
   denied: "voice_denied",
   unsupported: "voice_unsupported",
   failed: "voice_failed",
@@ -43,6 +43,7 @@ export interface DialogueViewProps {
   onTermOpened?: () => void;
   headerActions?: ReactNode;
   closedNotice?: ReactNode;
+  initialVoiceMode?: boolean;
 }
 
 export function DialogueView({
@@ -63,6 +64,7 @@ export function DialogueView({
   onTermOpened,
   headerActions,
   closedNotice,
+  initialVoiceMode = false,
 }: DialogueViewProps) {
   const t = useT();
   const {
@@ -126,7 +128,7 @@ export function DialogueView({
   const onVoiceFinal = useCallback((text: string) => void submit(text), [submit]);
   const voice = useVoiceInput(onVoiceFinal, onAmplitudeNoop);
 
-  const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(initialVoiceMode);
   const sidebarOverlay = useSidebarOverlay();
   const modeSwitched = useRef(false);
   const attachHold = useCallback((node: HTMLButtonElement | null) => {
@@ -358,6 +360,7 @@ export function DialogueView({
 
         <footer
           ref={footerRef}
+          data-sand-floor
           className={cn(
             "px-4 pb-4 md:px-8",
             voiceOverlay ? "absolute inset-x-0 bottom-0 pt-20" : "shrink-0 border-t border-line pt-3",
@@ -424,37 +427,7 @@ export function DialogueView({
                   >
                     <Keyboard className="size-4" />
                   </button>
-                  <button
-                    ref={attachHold}
-                    type="button"
-                    aria-label={t("dlg_hold_to_talk")}
-                    title={t("dlg_hold_to_talk")}
-                    disabled={awaitingReply || !viewReady}
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      void voice.start();
-                    }}
-                    onPointerUp={() => void voice.stop()}
-                    onPointerCancel={() => void voice.stop()}
-                    onPointerLeave={() => voice.state === "listening" && void voice.stop()}
-                    onKeyDown={(event) => {
-                      if (event.key === " " || event.key === "Enter") {
-                        event.preventDefault();
-                        void voice.start();
-                      }
-                    }}
-                    onKeyUp={() => voice.state === "listening" && void voice.stop()}
-                    onBlur={() => voice.state === "listening" && void voice.stop()}
-                    style={{ touchAction: "none" }}
-                    className={cn(
-                      "flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors disabled:opacity-50",
-                      voice.state === "listening"
-                        ? "border-ember bg-ember text-on-ember"
-                        : "border-line-strong bg-paper-deep text-ink-soft hover:border-ember-deep hover:text-ink",
-                    )}
-                  >
-                    <Mic className="size-5" />
-                  </button>
+                  <HoldToTalkButton ref={attachHold} voice={voice} disabled={awaitingReply || !viewReady} />
                   {awaitingReply ? (
                     <button
                       type="button"
@@ -539,6 +512,52 @@ export function DialogueView({
         agent={agent}
       />
     </div>
+  );
+}
+
+export function HoldToTalkButton({
+  ref,
+  voice,
+  disabled,
+}: {
+  ref?: Ref<HTMLButtonElement>;
+  voice: VoiceInput;
+  disabled?: boolean;
+}) {
+  const t = useT();
+  const listening = voice.state === "listening";
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={t("dlg_hold_to_talk")}
+      title={t("dlg_hold_to_talk")}
+      disabled={disabled}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        void voice.start();
+      }}
+      onPointerUp={() => void voice.stop()}
+      onPointerCancel={() => void voice.stop()}
+      onPointerLeave={() => listening && void voice.stop()}
+      onKeyDown={(event) => {
+        if (event.key === " " || event.key === "Enter") {
+          event.preventDefault();
+          void voice.start();
+        }
+      }}
+      onKeyUp={() => listening && void voice.stop()}
+      onBlur={() => listening && void voice.stop()}
+      style={{ touchAction: "none" }}
+      className={cn(
+        "flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors disabled:opacity-50",
+        listening
+          ? "border-ember bg-ember text-on-ember"
+          : "border-line-strong bg-paper-deep text-ink-soft hover:border-ember-deep hover:text-ink",
+      )}
+    >
+      <Mic className="size-5" />
+    </button>
   );
 }
 
