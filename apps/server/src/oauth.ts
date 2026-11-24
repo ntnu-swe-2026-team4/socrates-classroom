@@ -9,12 +9,25 @@ export interface OAuthProfile {
   name: string;
 }
 
+export type OAuthIntent = "login" | "bind" | "reauth";
+
 export interface OAuthPending {
   provider: OAuthProvider;
   state: string;
   verifier: string;
   nonce: string;
   exp: number;
+  intent: OAuthIntent;
+  uid?: string;
+  ver?: number;
+  hint?: string;
+  returnTo?: string;
+}
+
+const OAUTH_INTENTS: readonly OAuthIntent[] = ["login", "bind", "reauth"];
+
+function isOAuthIntent(value: string): value is OAuthIntent {
+  return OAUTH_INTENTS.some((intent) => intent === value);
 }
 
 export function readOAuthPending(value: unknown): OAuthPending | null {
@@ -24,17 +37,36 @@ export function readOAuthPending(value: unknown): OAuthPending | null {
   const verifier = Reflect.get(value, "verifier");
   const nonce = Reflect.get(value, "nonce");
   const exp = Reflect.get(value, "exp");
+  const intent = Reflect.get(value, "intent");
+  const uid = Reflect.get(value, "uid");
+  const ver = Reflect.get(value, "ver");
+  const hint = Reflect.get(value, "hint");
+  const returnTo = Reflect.get(value, "returnTo");
   if (
     typeof provider !== "string" ||
     !isOAuthProvider(provider) ||
     typeof state !== "string" ||
     typeof verifier !== "string" ||
     typeof nonce !== "string" ||
-    typeof exp !== "number"
+    typeof exp !== "number" ||
+    typeof intent !== "string" ||
+    !isOAuthIntent(intent)
   ) {
     return null;
   }
-  return { provider, state, verifier, nonce, exp };
+  if (intent !== "login" && (typeof uid !== "string" || typeof ver !== "number")) return null;
+  return {
+    provider,
+    state,
+    verifier,
+    nonce,
+    exp,
+    intent,
+    ...(typeof uid === "string" ? { uid } : {}),
+    ...(typeof ver === "number" ? { ver } : {}),
+    ...(typeof hint === "string" ? { hint } : {}),
+    ...(typeof returnTo === "string" ? { returnTo } : {}),
+  };
 }
 
 export interface GoogleConfig {
@@ -84,7 +116,7 @@ export async function pkceChallenge(verifier: string): Promise<string> {
 
 export async function googleAuthorizeUrl(config: GoogleConfig, pending: OAuthPending): Promise<string> {
   const url = new URL(GOOGLE_AUTH_URL);
-  url.search = new URLSearchParams({
+  const params = new URLSearchParams({
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
     response_type: "code",
@@ -94,7 +126,12 @@ export async function googleAuthorizeUrl(config: GoogleConfig, pending: OAuthPen
     code_challenge: await pkceChallenge(pending.verifier),
     code_challenge_method: "S256",
     prompt: "select_account",
-  }).toString();
+  });
+  if (pending.intent === "reauth") {
+    params.set("max_age", "0");
+    if (pending.hint) params.set("login_hint", pending.hint);
+  }
+  url.search = params.toString();
   return url.toString();
 }
 
@@ -230,13 +267,15 @@ export async function appsecretProof(appSecret: string, accessToken: string): Pr
 
 export function facebookAuthorizeUrl(config: FacebookConfig, pending: OAuthPending): string {
   const url = new URL(FACEBOOK_DIALOG_URL);
-  url.search = new URLSearchParams({
+  const params = new URLSearchParams({
     client_id: config.appId,
     redirect_uri: config.redirectUri,
     response_type: "code",
     scope: "email",
     state: pending.state,
-  }).toString();
+  });
+  if (pending.intent === "reauth") params.set("auth_type", "reauthenticate");
+  url.search = params.toString();
   return url.toString();
 }
 

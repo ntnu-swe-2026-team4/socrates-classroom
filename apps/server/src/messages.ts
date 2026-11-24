@@ -146,6 +146,51 @@ const M: Record<ErrorCode, Entry> = {
     en: "Only the other way of setting the value axes is allowed right now.",
     es: "Ahora solo se permite la otra forma de definir los ejes de valor.",
   },
+  reauth_required: {
+    zh: "請先再次驗證身分，才能變更登入方式。",
+    en: "Confirm your identity again before changing sign-in methods.",
+    es: "Confirma tu identidad de nuevo antes de cambiar los métodos de acceso.",
+  },
+  invalid_credentials: {
+    zh: "密碼不正確。",
+    en: "That password is not correct.",
+    es: "Esa contraseña no es correcta.",
+  },
+  password_not_set: {
+    zh: "這個帳號沒有密碼，請改用已綁定的登入方式驗證。",
+    en: "This account has no password. Verify with a linked sign-in method instead.",
+    es: "Esta cuenta no tiene contraseña. Verifícate con un método de acceso vinculado.",
+  },
+  identity_taken: {
+    zh: "這個帳號已經綁在另一個使用者身上了。",
+    en: "That account is already linked to another user.",
+    es: "Esa cuenta ya está vinculada a otro usuario.",
+  },
+  provider_already_linked: {
+    zh: "你已經綁定這個登入方式了。",
+    en: "You have already linked this sign-in method.",
+    es: "Ya has vinculado este método de acceso.",
+  },
+  email_already_linked: {
+    zh: "這個帳號已經有 Email 登入方式，請改用變更信箱或密碼。",
+    en: "This account already has an email sign-in method. Change the email or password instead.",
+    es: "Esta cuenta ya tiene acceso con email. Cambia el correo o la contraseña.",
+  },
+  identity_not_found: {
+    zh: "這個登入方式不在你的帳號上。",
+    en: "This sign-in method is not on your account.",
+    es: "Este método de acceso no está en tu cuenta.",
+  },
+  last_login_method: {
+    zh: "這是最後一種登入方式，不能解除綁定。",
+    en: "This is your last sign-in method, so it cannot be removed.",
+    es: "Este es tu último método de acceso, así que no se puede quitar.",
+  },
+  reauth_identity_mismatch: {
+    zh: "驗證回來的帳號和目前登入的帳號不同，請再試一次。",
+    en: "The account you verified with is not the account that is signed in. Try again.",
+    es: "La cuenta con la que te verificaste no es la cuenta actual. Inténtalo de nuevo.",
+  },
 };
 
 export function localize(code: ErrorCode, lang: Lang, vars: Record<string, string | number> = {}): string {

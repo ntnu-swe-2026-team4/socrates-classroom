@@ -4,27 +4,41 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
   EMAIL_VERIFY_TTL_HOURS,
   PASSWORD_RESET_TTL_MINUTES,
+  BindEmailInputSchema,
   EmailVerifyInputSchema,
   LoginInputSchema,
+  OAuthStartInputSchema,
   PasswordForgotInputSchema,
   PasswordResetInputSchema,
+  ReauthPasswordInputSchema,
   RegisterInputSchema,
   SignupInputSchema,
+  type BindEmailResult,
   type ErrorCode,
+  type IdentitySummary,
   type Lang,
+  type OAuthStartResult,
+  type ReauthResult,
   type User,
 } from "@socrates/shared";
-import { batch, one, run } from "../db/d1";
+import { all, batch, one, run } from "../db/d1";
 import {
   DUMMY_HASH,
+  accountState,
   emailVerifyBinding,
+  endReauth,
   endSession,
   hashPassword,
+  issueReauth,
   openPayload,
   passwordResetBinding,
   readAccountToken,
+  readReauth,
+  requireReauth,
+  resumeSession,
   sealAccountToken,
   sealPayload,
+  startReauth,
   startSession,
   toUser,
   verifyAccountToken,
@@ -159,6 +173,64 @@ function queueVerificationMail(c: Ctx, account: VerifyAccount): void {
       console.warn("[auth] email verification mail failed:", error instanceof Error ? error.message : typeof error);
     }),
   );
+}
+
+const DEFAULT_RETURN_TO = "/settings";
+
+function safeReturnTo(value: string | undefined): string {
+  if (!value?.startsWith("/") || value.startsWith("//") || value.includes("\\")) return DEFAULT_RETURN_TO;
+  return value;
+}
+
+function returnToUrl(returnTo: string, params: Record<string, string>): string {
+  const url = new URL(returnTo, "https://socrates.invalid");
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+type OAuthPendingDraft = Omit<OAuthPending, "state" | "verifier" | "nonce" | "exp">;
+
+async function beginOAuth(c: Ctx, provider: OAuthProvider, draft: OAuthPendingDraft): Promise<string | null> {
+  const runtime = providerRuntime(c, provider);
+  if (!runtime) return null;
+  const pending: OAuthPending = {
+    ...draft,
+    provider,
+    state: randomToken(),
+    verifier: randomToken(48),
+    nonce: randomToken(),
+    exp: Date.now() + OAUTH_TTL_SECONDS * 1000,
+  };
+  setCookie(c, OAUTH_COOKIE, await sealPayload({ env: c.env }, pending), {
+    httpOnly: true,
+    secure: true,
+    sameSite: "Lax",
+    path: OAUTH_COOKIE_PATH,
+    maxAge: OAUTH_TTL_SECONDS,
+  });
+  return runtime.authorizeUrl(pending);
+}
+
+async function identityPresence(c: Ctx, userId: string, method: string): Promise<boolean> {
+  if (method === "email") {
+    const row = await one<{ ok: number }>(
+      c.env.DB,
+      "SELECT 1 AS ok FROM users WHERE id = $id AND email IS NOT NULL AND password_hash IS NOT NULL",
+      { id: userId },
+    );
+    return row !== null;
+  }
+  const row = await one<{ ok: number }>(
+    c.env.DB,
+    "SELECT 1 AS ok FROM user_identities WHERE user_id = $id AND provider = $provider",
+    { id: userId, provider: method },
+  );
+  return row !== null;
+}
+
+async function failUnbind(c: Ctx, userId: string, method: string): Promise<never> {
+  if (!(await identityPresence(c, userId, method))) fail(404, "identity_not_found");
+  fail(409, "last_login_method");
 }
 
 export function authRoutes() {
@@ -325,23 +397,9 @@ export function authRoutes() {
       await enforceIpLimit(c, "oauth", 30);
       const provider = c.req.param("provider");
       if (!isOAuthProvider(provider)) fail(404, "not_found");
-      const runtime = providerRuntime(c, provider);
-      if (!runtime) return oauthFailure(c, "oauth_unavailable");
-      const pending: OAuthPending = {
-        provider,
-        state: randomToken(),
-        verifier: randomToken(48),
-        nonce: randomToken(),
-        exp: Date.now() + OAUTH_TTL_SECONDS * 1000,
-      };
-      setCookie(c, OAUTH_COOKIE, await sealPayload({ env: c.env }, pending), {
-        httpOnly: true,
-        secure: true,
-        sameSite: "Lax",
-        path: OAUTH_COOKIE_PATH,
-        maxAge: OAUTH_TTL_SECONDS,
-      });
-      return c.redirect(await runtime.authorizeUrl(pending), 302);
+      const url = await beginOAuth(c, provider, { provider, intent: "login" });
+      if (!url) return oauthFailure(c, "oauth_unavailable");
+      return c.redirect(url, 302);
     })
     .get("/auth/oauth/:provider/callback", async (c) => {
       await enforceIpLimit(c, "oauth", 30);
@@ -349,28 +407,210 @@ export function authRoutes() {
       if (!isOAuthProvider(provider)) fail(404, "not_found");
       const pending = readOAuthPending(await openPayload({ env: c.env }, getCookie(c, OAUTH_COOKIE)));
       deleteCookie(c, OAUTH_COOKIE, { path: OAUTH_COOKIE_PATH, secure: true });
+      const returnTo = pending && pending.intent !== "login" ? safeReturnTo(pending.returnTo) : undefined;
+      const failed = (code: ErrorCode) => oauthFailure(c, code, returnTo);
       const state = c.req.query("state");
       const code = c.req.query("code");
       if (!pending || pending.provider !== provider || pending.exp < Date.now() || !state || state !== pending.state) {
-        return oauthFailure(c, "oauth_state_invalid");
+        return failed("oauth_state_invalid");
       }
-      if (c.req.query("error") || !code) return oauthFailure(c, "oauth_failed");
+      if (c.req.query("error") || !code) return failed("oauth_failed");
       const runtime = providerRuntime(c, provider);
-      if (!runtime) return oauthFailure(c, "oauth_unavailable");
+      if (!runtime) return failed("oauth_unavailable");
       let profile: OAuthProfile;
       try {
         profile = await runtime.profile(code, pending);
       } catch (error) {
-        if (error instanceof OAuthError) return oauthFailure(c, error.code);
+        if (error instanceof OAuthError) return failed(error.code);
         throw error;
       }
-      const user = await userForIdentity(c, provider, profile);
-      if (!user) return oauthFailure(c, "account_disabled");
-      await startSession(c, user);
-      return c.redirect(OAUTH_SUCCESS_PATH, 302);
+      if (pending.intent === "login") {
+        const user = await userForIdentity(c, provider, profile);
+        if (!user) return failed("account_disabled");
+        await startSession(c, user);
+        return c.redirect(OAUTH_SUCCESS_PATH, 302);
+      }
+      const sessionUser = c.get("user");
+      const version = c.get("sessionVersion");
+      if (!sessionUser || version === null || sessionUser.id !== pending.uid || version !== pending.ver) {
+        return failed("reauth_identity_mismatch");
+      }
+      const bound = await one<{ user_id: string }>(
+        c.env.DB,
+        "SELECT user_id FROM user_identities WHERE provider = $provider AND provider_user_id = $subject",
+        { provider, subject: profile.subject },
+      );
+      if (pending.intent === "reauth") {
+        if (bound?.user_id !== sessionUser.id) return failed("reauth_identity_mismatch");
+        await startReauth(c, sessionUser.id, version);
+        return c.redirect(returnToUrl(safeReturnTo(returnTo), { reauth: "ok" }), 302);
+      }
+      if (bound && bound.user_id !== sessionUser.id) return failed("identity_taken");
+      if (!bound) {
+        const inserted = await run(
+          c.env.DB,
+          `INSERT INTO user_identities (provider, provider_user_id, user_id, email, created_at)
+           SELECT $provider, $subject, $uid, $email, $at
+           WHERE NOT EXISTS (SELECT 1 FROM user_identities WHERE user_id = $uid AND provider = $provider)`,
+          { provider, subject: profile.subject, uid: sessionUser.id, email: profile.email, at: nowIso() },
+        ).catch((error: unknown) => {
+          if (uniqueViolationColumns(error).some(([table]) => table === "user_identities")) return null;
+          throw error;
+        });
+        if (inserted === null) return failed("identity_taken");
+        if (!inserted.meta.changes) return failed("provider_already_linked");
+      }
+      return c.redirect(returnToUrl(safeReturnTo(returnTo), { linked: provider }), 302);
     })
     .post("/auth/logout", (c) => {
       endSession(c);
+      endReauth(c);
+      return c.body(null, 204);
+    })
+    .post("/auth/reauth/password", rateLimit("reauth", 10), validateJson(ReauthPasswordInputSchema), async (c) => {
+      const user = requireUser(c);
+      const version = c.get("sessionVersion");
+      if (version === null) fail(401, "unauthorized");
+      const row = await one<{ password_hash: string | null }>(
+        c.env.DB,
+        "SELECT password_hash FROM users WHERE id = $id",
+        { id: user.id },
+      );
+      if (!row?.password_hash) fail(409, "password_not_set");
+      if (!(await verifyPassword(c.req.valid("json").password, row.password_hash))) fail(401, "invalid_credentials");
+      const expiresAt = await startReauth(c, user.id, version);
+      return c.json({ expiresAt: new Date(expiresAt).toISOString() } satisfies ReauthResult);
+    })
+    .post(
+      "/auth/reauth/oauth/:provider/start",
+      rateLimit("oauth", 30),
+      validateJson(OAuthStartInputSchema),
+      async (c) => {
+        const user = requireUser(c);
+        const version = c.get("sessionVersion");
+        if (version === null) fail(401, "unauthorized");
+        const provider = c.req.param("provider");
+        if (!isOAuthProvider(provider)) fail(404, "not_found");
+        const bound = await one<{ email: string | null }>(
+          c.env.DB,
+          "SELECT email FROM user_identities WHERE user_id = $id AND provider = $provider",
+          { id: user.id, provider },
+        );
+        if (!bound) fail(404, "identity_not_found");
+        const returnTo = safeReturnTo(c.req.valid("json").returnTo);
+        const url = await beginOAuth(c, provider, {
+          provider,
+          intent: "reauth",
+          uid: user.id,
+          ver: version,
+          returnTo,
+          hint: bound.email ?? undefined,
+        });
+        if (!url) fail(409, "oauth_unavailable");
+        return c.json({ url } satisfies OAuthStartResult);
+      },
+    )
+    .get("/me/identities", async (c) => {
+      const user = requireUser(c);
+      const version = c.get("sessionVersion");
+      const row = await one<{ email: string | null; email_verified_at: string | null }>(
+        c.env.DB,
+        "SELECT email, email_verified_at FROM users WHERE id = $id",
+        { id: user.id },
+      );
+      const linked = await all<{ provider: string; email: string | null; created_at: string }>(
+        c.env.DB,
+        "SELECT provider, email, created_at FROM user_identities WHERE user_id = $id ORDER BY created_at",
+        { id: user.id },
+      );
+      const reauth = await readReauth(c);
+      const active = reauth && version !== null && reauth.uid === user.id && reauth.ver === version;
+      return c.json({
+        email: row?.email ? { email: row.email, verified: row.email_verified_at !== null } : null,
+        oauth: linked.flatMap((identity) =>
+          isOAuthProvider(identity.provider)
+            ? [{ provider: identity.provider, email: identity.email, linkedAt: identity.created_at }]
+            : [],
+        ),
+        reauthExpiresAt: active ? new Date(reauth.exp).toISOString() : null,
+      } satisfies IdentitySummary);
+    })
+    .post(
+      "/me/identities/oauth/:provider/start",
+      rateLimit("oauth", 30),
+      validateJson(OAuthStartInputSchema),
+      async (c) => {
+        const user = requireUser(c);
+        const { version } = await requireReauth(c);
+        const provider = c.req.param("provider");
+        if (!isOAuthProvider(provider)) fail(404, "not_found");
+        if (await identityPresence(c, user.id, provider)) fail(409, "provider_already_linked");
+        const returnTo = safeReturnTo(c.req.valid("json").returnTo);
+        const url = await beginOAuth(c, provider, { provider, intent: "bind", uid: user.id, ver: version, returnTo });
+        if (!url) fail(409, "oauth_unavailable");
+        return c.json({ url } satisfies OAuthStartResult);
+      },
+    )
+    .post("/me/identities/email", rateLimit("identity-bind", 10), validateJson(BindEmailInputSchema), async (c) => {
+      const user = requireUser(c);
+      await requireReauth(c);
+      const input = c.req.valid("json");
+      const row = await one<{ email: string | null; password_hash: string | null; lang: Lang }>(
+        c.env.DB,
+        "SELECT email, password_hash, lang FROM users WHERE id = $id",
+        { id: user.id },
+      );
+      if (!row) fail(404, "not_found");
+      if (row.email !== null || row.password_hash !== null) fail(409, "email_already_linked");
+      const hash = await hashPassword(input.password);
+      const updated = await run(
+        c.env.DB,
+        `UPDATE users SET email = $email, password_hash = $hash, email_verified_at = NULL
+         WHERE id = $id AND email IS NULL AND password_hash IS NULL`,
+        { id: user.id, email: input.email, hash },
+      ).catch((error: unknown) => {
+        if (uniqueViolationColumns(error).some(([table, column]) => table === "users" && column === "email")) {
+          fail(409, "email_taken");
+        }
+        throw error;
+      });
+      if (!updated.meta.changes) fail(409, "email_already_linked");
+      queueVerificationMail(c, { id: user.id, email: input.email, lang: row.lang });
+      return c.json({ email: input.email, verified: false } satisfies BindEmailResult);
+    })
+    .delete("/me/identities/:method", rateLimit("identity-unbind", 10), async (c) => {
+      const user = requireUser(c);
+      const { exp } = await requireReauth(c);
+      const method = c.req.param("method");
+      if (method === "email") {
+        const updated = await run(
+          c.env.DB,
+          `UPDATE users
+           SET email = NULL, password_hash = NULL, email_verified_at = NULL, session_version = session_version + 1
+           WHERE id = $id
+             AND email IS NOT NULL AND password_hash IS NOT NULL
+             AND EXISTS (SELECT 1 FROM user_identities WHERE user_id = $id)`,
+          { id: user.id },
+        );
+        if (!updated.meta.changes) await failUnbind(c, user.id, method);
+      } else if (isOAuthProvider(method)) {
+        const removed = await run(
+          c.env.DB,
+          `DELETE FROM user_identities
+           WHERE user_id = $id AND provider = $provider
+             AND (EXISTS (SELECT 1 FROM users WHERE id = $id AND email IS NOT NULL AND password_hash IS NOT NULL)
+                  OR (SELECT COUNT(*) FROM user_identities WHERE user_id = $id) > 1)`,
+          { id: user.id, provider: method },
+        );
+        if (!removed.meta.changes) await failUnbind(c, user.id, method);
+        await run(c.env.DB, "UPDATE users SET session_version = session_version + 1 WHERE id = $id", { id: user.id });
+      } else {
+        fail(404, "not_found");
+      }
+      const state = await accountState(c.env.DB, user.id);
+      const version = state?.version ?? 0;
+      await resumeSession(c, user, version);
+      await issueReauth(c, user.id, version, exp);
       return c.body(null, 204);
     })
     .post(
@@ -477,8 +717,9 @@ function providerRuntime(c: Ctx, provider: OAuthProvider): ProviderRuntime | nul
   };
 }
 
-function oauthFailure(c: Ctx, code: ErrorCode): Response {
-  return c.redirect(`/login?error=${code}`, 302);
+function oauthFailure(c: Ctx, code: ErrorCode, returnTo?: string): Response {
+  if (returnTo === undefined) return c.redirect(`/login?error=${code}`, 302);
+  return c.redirect(returnToUrl(returnTo, { error: code }), 302);
 }
 
 async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthProfile): Promise<User | null> {

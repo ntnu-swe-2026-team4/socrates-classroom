@@ -10,6 +10,7 @@ export interface AppEnv {
     user: User | null;
     lang: Lang;
     sessionIssue: "stale" | "disabled" | null;
+    sessionVersion: number | null;
   };
 }
 
