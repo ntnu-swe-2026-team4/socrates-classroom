@@ -502,3 +502,11 @@ body {
     transition: none;
   }
 }
+
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
