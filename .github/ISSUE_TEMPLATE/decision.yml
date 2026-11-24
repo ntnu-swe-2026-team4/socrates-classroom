@@ -1,0 +1,44 @@
+name: Decision
+description: 需要拍板的決策。不改程式；完成時 docs 有對應條目。
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 問題與限制
+      value: |
+        要決定：
+        為什麼現在：
+        約束：
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: 選項（至少 2 個，每個都要寫否決理由）
+      value: |
+        ### A.
+        - 做法：
+        - 代價：
+        - 為何不選：
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 驗證來源
+      description: 上游文件或實測的連結。依 docs/AGENTS.md，訓練記憶不算。
+    validations:
+      required: true
+  - type: textarea
+    id: resolution
+    attributes:
+      label: 決議
+      description: 定案後填寫；這段文字之後貼進 PR 的〈設計審查〉段，不重寫第二次
+  - type: dropdown
+    id: landing
+    attributes:
+      label: 落地方式（關單前必填，三選一）
+      options:
+        - docs 條目（architecture.md／providers.md 連結）
+        - 後續 issue
+        - No-go 理由

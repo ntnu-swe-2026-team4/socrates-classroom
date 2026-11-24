@@ -1,0 +1,28 @@
+name: Task
+description: 可直接實作的工程工作。不改變產品行為，也不產生決策。
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 要改什麼
+      description: 具體到檔案或模組；一段話能講完就不要列清單
+    validations:
+      required: true
+  - type: textarea
+    id: dod
+    attributes:
+      label: 完成定義（Definition of Done）
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: 為什麼是現在
+      description: 觸發點（bug 遺留、review 待決項、依賴解鎖）；沒有就寫「無」
+  - type: textarea
+    id: verified
+    attributes:
+      label: 驗證方式
+      description: 跑哪個測試或指令確認完成

@@ -1,0 +1,34 @@
+name: Technical story
+description: 內部技術工作。使用者看不到行為改變；完成時契約或約束改變。
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: 三句話
+      value: |
+        為了（技術目標／痛點）：
+        我們需要（具體技術工作）：
+        以確保（可量化的結果／效益）：
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 驗收（可量化、可驗證）
+      description: 完成時用什麼量測確認；不接受「程式碼更乾淨」這種無法驗證的句子
+      placeholder: 每個新端點都有匿名 401／非 admin 403／admin 2xx 三向測試
+    validations:
+      required: true
+  - type: textarea
+    id: invariants
+    attributes:
+      label: 不改變什麼（Invariants）
+      description: 這張單刻意不動的行為、契約或資料；technical story 的價值就在「改了結構但行為不變」
+      placeholder: 送給模型的內容逐字不變
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: 影響的契約或文件
+      description: docs/api-contract.md、AGENTS.md 的非妥協項、providers.config.yaml；沒有就寫「無」
