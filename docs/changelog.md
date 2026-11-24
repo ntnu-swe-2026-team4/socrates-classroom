@@ -2,6 +2,33 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-24 — provider 排序互動整個改照 magpie `dragRows`（`refactor/403-magpie-sorter`，#403）
+
+### Changed
+
+- teacher／admin × key／model 四個清單的排序互動統一：拖曳把手（pointer capture、4px 縱向門檻、拖曳列跟隨指標、鄰列讓位、lift 陰影）＋鍵盤 Alt+↑↓ 移一格、Alt+Shift+↑↓ 送頂／送底；model 列由 ↑/↓ 按鈕改為與 key 列相同的把手，全部共用新 hook `useSortableOrder`（兩個元件共刪約 180 行重複排序邏輯）
+- 存檔樂觀更新、失敗回滾到 server 順序並顯示錯誤；序號計數器防止較舊的 in-flight 存檔回滾或覆寫較新的移動。API 形狀不變（`order*` 端點照舊收完整 id 陣列）
+- 拖曳幾何只吃指標位移（不混用視埠與 layout 座標），清單捲動時仍「列跟隨指標」；`noUncheckedIndexedAccess`（#293 step 4）下以每列 `offsetTop`／`offsetHeight` 快照窄化
+
+## 2026-11-24 — 平台鏈主力切 glm-5.3、class-report 改 low、推論走 AI Gateway（`feat/401-platform-glm-5.3`，#401）
+
+### Changed
+
+- 平台鏈 priority 1：`@cf/zai-org/glm-5.3-flash`（2026-11-20 下架，#399）→ `@cf/zai-org/glm-5.3`（paid；Workers Paid 或 AI Gateway credits）；`@cf/zai-org/glm-4.7-flash` 留第二順位收尾，Free 帳號對 5.3 的 403 由 breaker 降級承接
+- `class-report` thinkingLevel high→low（#249 實驗：high 在 39 人班推理超限截斷，low 完成 39／60 人班且落點零左右反轉）；其餘 profile 維持現況
+- Workers AI 推論改走 AI Gateway `default`（Unified billing）：付費清單模型 20→50 rpm；`collectLog: false`＋`skipCache: true` 在程式碼層釘死零保留（AI Gateway logs 預設開啟，不依賴 dashboard 手動狀態）
+
+## 2026-11-23 — TS 靜態保證 step 4：noUncheckedIndexedAccess 全庫開啟（`refactor/293-step4`，#293）
+
+### Changed
+
+- 兩個 tsconfig（`apps/server`、`apps/web`）開啟 `noUncheckedIndexedAccess`：所有 array index 與 index-signature 讀取型別帶 `| undefined`。全庫探針 302 errors（server 112 + web 190）分兩層清零
+- **src 層（L1）**：canvas 像素物理迴圈（`StoaField`）以 `?? 0` fallback 逐點窄化；`gateway/router.ts` 以 `def === undefined` 顯式分支取代 `?? {}`（teacher legs 的 provider 不在 config 仍放行，`#keyOf` 容忍缺 def、`#reserve`/`#admit` 的 shard head 顯式守衛）、`routing-ledger.ts` 的 `reserve` 以 `index < 0 ? undefined` 窄化 `findIndex` 結果；`db/d1.ts` 的 `batch` 加泛型參數（`batch<TopicRow>` 取代呼叫端 `as TopicRow`）；`auth.ts` 兩處手寫 timing-safe 迴圈收斂到 `timingSafeEqual`（`charCodeAt` 免索引讀）；`websearch/fetch.ts` IPv6 分類以 `g(index)` accessor 收口；regex `match[1]` 全數 `?.[1]` + 顯式 throw
+- **tests 層（L2）**：REST 式回應斷言改走 reader 家族（`str`/`rows`/`field`/`must`）或 zod `Schema.parse`；`handler.mock.calls[i]` 解構改 `lastCallN(i)` helper；vitest 的 `it` timeout 釘回 90s（report 生成實測 >60s，60s 會 flaky）
+- 已知極限：TS 的 control-flow narrowing 不追蹤迴圈計數器與 `findIndex` 結果（microsoft/TypeScript#61388、#57847），`for (let i…)` 內的 `arr[i]` 需先讀入變數再判 `undefined`；`StoaField` 熱路徑選 `?? 0` 而非 `.at()`，避免每幀配置
+- `noUnnecessaryConditions` 維持 off：flag 開啟後重跑探針 31→46 findings（`--only` 會縫過 override，含 seam 檔案的預期命中），仍以 closure mutation 與 TanStack 判別聯集誤報為主，無 true-positive 家族浮現——上游修復前不重驗
+- config 註解清理（依 AGENTS.md no-comments 政策，設計理由留在文件不在程式碼）：`biome.jsonc` 移除 `useAwaitThenable`／`noUnnecessaryConditions` 的 probe-verified 註解（rationale 見下方 2026-11-21 lint 條目的「帶證據的兩個 off」與本條目的重驗記錄）；`.yamllint.yaml`／`prek.toml` 移除檔首說明註解（用途見 AGENTS.md 的 setup 與 lint 段）
+
 ## 2026-11-23 — per-IP 限流改走跨 isolate 的 RateLimiter DO（`feat/157-rate-limiter-do`，#157）
 
 ### Changed
@@ -112,6 +139,27 @@
 
 - `student-indicators` profile 與 `submit_student_indicators` 工具（`report-submit-indicators` extension，只裝在這條呼叫用的 registry）：逐生判斷 C1–A2，與論點總結分開呼叫、各自失敗（流程見 `docs/architecture.md` ReportRunner）
 - `TeacherReport.students[].indicators`、`StudentReport.indicators`（形狀見 `docs/api-contract.md` §7）；指標上線前存下的報告回 `null`，不變成 `report_failed`
+
+## 2026-11-24 — TS 靜態保證 step 1b L2：tests 層 unsafe type assertion 真清收回（`refactor/293-step1b-tests`，#293）
+
+### Changed
+
+- tests 層 cast 真清：`apps/server/tests/**` 與 `apps/web/src/test/**` 共 229 處 `as` 斷言退役（探針 @ tip `3bfb75c0`：tests 目錄 236→7，殘留 7 處全在 carve-out 的兩個 helpers 檔）；`biome.jsonc` 的 tests 目錄 override 收窄回 `tests/helpers.ts` 兩檔——收回屬實，carve 面僅剩測試工程本質 cast（`runInDurableObject` 官方 pattern、fake fixture builders、jsdom shim、helpers 自身的 `undefined as never`／worker／registry glue）
+- reader 家族承接斷言：`apps/server/tests/helpers.ts`（`str`／`optStr`／`num`／`optNum`／`bool`／`field`／`rows`）與 `apps/web/src/test/helpers.ts`（新檔）——`Reflect` 讀取、fail-fast 帶欄名（缺欄或型別不符即擲錯，取代 cast 後靜默 `undefined` 傳染）；`admin.test` 改走 shared zod schema（`AdminUserSchema`／`ClassroomSummarySchema`），斷言從「宣稱合約」升級為「驗證合約」
+- 附帶 src 小改動（測試轉換的必要支撐）：`ws/protocol.ts` 新增 server 端 `parseServerMessage`（`ServerMessage` 五個 variant 對應守衛，與 #309 的 web 端同名函式對稱）與 `conversationIdOf`（runtime safe-integer 驗證取代裸 cast）；`activity-live.ts` 空列時 `finishedAt` 回 `null`（`noUncheckedIndexedAccess` 窄化，語意不變）
+- 回應 null 契約的斷言在 cast 退役時一度失守（value 隨 cast 一起被丟掉的 value-loss 模式），本層補回：teacher key echo 的 `monthlyQuotaUsd === null`（`PUT /api/settings/keys/openrouter` 的 rekey 與 keyless 兩處）與 personal topic 的 `classroomId === null`；測試轉換一律單次 `.json()` 讀取、按欄取值
+
+## 2026-11-22 — TS 靜態保證 step 1b L1：src 層 unsafe type assertion 清零（`refactor/293-step1b-src`，#293）
+
+### Changed
+
+- src 層 146 處 `as` 斷言清零（全庫探針 476→351 @ tip `f0756802`，其餘 tests 層由 1b-L2 承接；探針隨 tree 旋轉，覆核時以當時 tip 標注）；探針覆核與 spike 分層提案見 issue 註解。主要族群落地：
+  - **WS protocol 雙向守衛**（`ws/protocol.ts` 的 `parseClientMessage` 全驗學生端訊框＋`web/src/lib/wsProtocol.ts` 的 `parseServerMessage` shallow 檢查同源 Worker 訊框；`isEntryId`/`entryIdOf` predicate 處理 branded id）
+  - **JWT claims 誠實化**（`openPayload` 回 `unknown`、三種 claims 逐欄位驗證後建構、Google JWKs 逐把 field-validate、8 處 `as BufferSource` 為 legacy 直接移除）
+  - **dialogue hooks**：`WindowedEntry` 改 `Pick<EntryRecord, …>`，pi 自身的 `Message[]` 型別直接流動（role 窄化取代 cast）；`textOfContent` 取代偽造 `Message`；fake socket 走 `canSend` shape predicate（test 的 plain-object fake 因此存活）
+  - **pi/ai seam**：`ai-run.ts` 單一轉換點承接 workers-types 靜態 catalog vs config 模型 id 的型別斷層（`aiRunOf`＋`readChoiceResult`）；`fail()` 參數收斂為 `FailStatus` union（實測 10 個 status 碼）並以 `httpStatusOf` 窄化進 Hono
+  - 其餘：`readViolationType` 供 config 驅動的型別窄化、i18n/stance/DOM/THREE 家族 predicate 化、`transcript()` 的 violations 由源頭窄化為 `ViolationType`
+- **凍結面與 carve-out**：頂層 `nursery.noUnsafeTypeAssertion: "error"` 落地（實證此 rule 不在 recommended preset 也非 types domain 成員，先前的「凍結」其實無 gate——review 勘誤），gate 面以雙向 probe 驗證（governed src 插入 probe → `pnpm lint` 紅 → 移除回綠）。例外 override 兩組：(1) 五個型別系統 seam 檔案（`ai-run.ts`／`api/http.ts`／`useSubscription.ts`／`voiceInput.ts`／`wsProtocol.ts`）——静態型別與 config 驅動模型 id／同源 typed payload／vendor DOM ctor／fake 環境 glue 的終端橋，欄位級守衛已覆蓋全部業務值，shape 同 #283 `noConsole` 先例；(2) tests 目錄（`apps/server/tests/**`／`apps/web/src/test/**`／`apps/web/dev/**`）——`runInDurableObject` 官方 pattern、fake fixture builders、jsdom shim 等測試工程本質 cast，由 1b-L2 以 reader 家族逐檔真清收回。註：Biome 2.6.8 的 suppression 註解引擎對有效壓制誤報 `suppressions/unused`（#5503 家族，已驗證 suppression 確實有效），故不走 biome-ignore＋ratchet 白名單路線，待上游修復後可回收為 suppression 流
 
 ## 2026-11-22 — TS 靜態保證 step 3：suppression ratchet 白名單凍結（`refactor/293-step3-ratchet`，#293）
 

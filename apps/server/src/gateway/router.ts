@@ -18,7 +18,8 @@ export interface RouteDecision {
   lease: string | null;
 }
 
-const TEACHER_CREDENTIAL_PREFIX = "teacher:";
+export const TEACHER_CREDENTIAL_PREFIX = "teacher:";
+export const ADMIN_CREDENTIAL_PREFIX = "admin:";
 
 export function isTeacherCredential(credential: string): boolean {
   return credential.startsWith(TEACHER_CREDENTIAL_PREFIX);
@@ -28,6 +29,14 @@ interface Candidate {
   entry: AvailabilityEntry;
   model: string;
   key: LedgerKey;
+}
+
+export function isAdminCredential(credential: string): boolean {
+  return credential.startsWith(ADMIN_CREDENTIAL_PREFIX);
+}
+
+export function isKeyedCredential(credential: string): boolean {
+  return isTeacherCredential(credential) || isAdminCredential(credential);
 }
 
 const sharedByEnv = new WeakMap<Env, Router>();
@@ -52,9 +61,9 @@ export class Router {
   async chain(
     trafficClass: TrafficClass,
     canServe?: (entry: ResolvedLeg) => boolean,
-    teacherLegs?: AvailabilityEntry[],
+    keyedLegs?: AvailabilityEntry[],
   ): Promise<AvailabilityEntry[]> {
-    const candidates = this.#candidates(trafficClass, canServe, teacherLegs);
+    const candidates = this.#candidates(trafficClass, canServe, keyedLegs);
     const { admitted } = await this.#admit(candidates);
     return candidates.filter((_, index) => admitted[index]).map((candidate) => candidate.entry);
   }
@@ -62,12 +71,13 @@ export class Router {
   async pick(
     trafficClass: TrafficClass,
     canServe?: (entry: ResolvedLeg) => boolean,
-    teacherLegs?: AvailabilityEntry[],
+    keyedLegs?: AvailabilityEntry[],
   ): Promise<RouteDecision | null> {
-    for (const group of shardGroups(this.#candidates(trafficClass, canServe, teacherLegs))) {
+    for (const group of shardGroups(this.#candidates(trafficClass, canServe, keyedLegs))) {
       const reservation = await this.#reserve(group);
       if (!reservation) continue;
       const candidate = group[reservation.index];
+      if (!candidate) return null;
       return { entry: candidate.entry, model: candidate.model, key: candidate.key, lease: reservation.lease };
     }
     return null;
@@ -75,10 +85,10 @@ export class Router {
 
   async budget(
     trafficClass: TrafficClass,
-    teacherLegs?: AvailabilityEntry[],
+    keyedLegs?: AvailabilityEntry[],
     canServe?: (entry: ResolvedLeg) => boolean,
   ): Promise<number> {
-    const candidates = this.#candidates(trafficClass, canServe, teacherLegs);
+    const candidates = this.#candidates(trafficClass, canServe, keyedLegs);
     const { admitted, degraded } = await this.#admit(candidates);
     if (degraded) return 0;
     const sums = new Map<string, number>();
@@ -139,13 +149,15 @@ export class Router {
    * must never stop traffic. The first candidate of the failing shard routes unaccounted.
    */
   async #reserve(group: Candidate[]): Promise<{ index: number; lease: string | null } | null> {
-    const stub = this.#stub(group[0].key.credential);
+    const head = group[0];
+    if (!head) return null;
+    const stub = this.#stub(head.key.credential);
     if (!stub) return { index: 0, lease: null };
     try {
       const reservation = await stub.reserve(group.map(ledgerCandidate), LEDGER_LEASE_TTL_MS);
       return reservation ? { index: reservation.index, lease: reservation.lease } : null;
     } catch (error) {
-      warnOnce(group[0].key.credential, error);
+      warnOnce(head.key.credential, error);
       return { index: 0, lease: null };
     }
   }
@@ -155,7 +167,9 @@ export class Router {
     let degraded = false;
     let offset = 0;
     for (const group of shardGroups(candidates)) {
-      const stub = this.#stub(group[0].key.credential);
+      const head = group[0];
+      if (!head) continue;
+      const stub = this.#stub(head.key.credential);
       if (!stub) {
         degraded = true;
       } else {
@@ -165,7 +179,7 @@ export class Router {
             admitted[offset + index] = value;
           });
         } catch (error) {
-          warnOnce(group[0].key.credential, error);
+          warnOnce(head.key.credential, error);
           degraded = true;
         }
       }
@@ -177,24 +191,26 @@ export class Router {
   #candidates(
     trafficClass: TrafficClass,
     canServe?: (entry: ResolvedLeg) => boolean,
-    teacherLegs?: AvailabilityEntry[],
+    keyedLegs?: AvailabilityEntry[],
   ): Candidate[] {
     const availability = gatewayConfig.trafficClasses[trafficClass]?.availability ?? "defaults";
-    const platform = availability === "defaults" ? gatewayConfig.defaults.availability : [];
-    return [...(teacherLegs ?? []), ...platform]
-      .sort((a, b) => a.priority - b.priority)
+    const platform = (availability === "defaults" ? [...gatewayConfig.defaults.availability] : []).sort(
+      (a, b) => a.priority - b.priority,
+    );
+    return [...(keyedLegs ?? []), ...platform]
       .map((entry) => {
-        const def = gatewayConfig.providers[entry.provider] ?? {};
-        return { entry, def, model: entry.model ?? providerModelOf(def) };
+        const def = gatewayConfig.providers[entry.provider];
+        const model = def === undefined ? (entry.model ?? "") : (entry.model ?? providerModelOf(def));
+        return { entry, def, model };
       })
       .filter((leg) => {
         if (canServe && !canServe({ provider: leg.entry.provider, model: leg.model })) return false;
-        if (isTeacherCredential(leg.entry.credential)) return true;
-        if (!leg.def.kind) return false;
+        if (isKeyedCredential(leg.entry.credential)) return true;
+        if (leg.def === undefined) return false;
         if (leg.def.kind === "binding" && !this.#env.AI) return false;
         if (leg.def.kind === "openai-completions") {
           if (!leg.model) return false;
-          if (leg.def.baseUrlEnv && !this.#env[leg.def.baseUrlEnv as keyof Env]) return false;
+          if (leg.def.baseUrlEnv && !Reflect.get(this.#env, leg.def.baseUrlEnv)) return false;
         }
         return true;
       })
@@ -205,8 +221,12 @@ export class Router {
       }));
   }
 
-  #keyOf(entry: AvailabilityEntry, def: z.infer<typeof ProviderSchema>): LedgerKey {
-    return { provider: entry.provider, model: entry.model ?? providerModelOf(def), credential: entry.credential };
+  #keyOf(entry: AvailabilityEntry, def: z.infer<typeof ProviderSchema> | undefined): LedgerKey {
+    return {
+      provider: entry.provider,
+      model: entry.model ?? (def === undefined ? "" : providerModelOf(def)),
+      credential: entry.credential,
+    };
   }
 }
 
@@ -221,7 +241,7 @@ function shardGroups(candidates: Candidate[]): Candidate[][] {
   const groups: Candidate[][] = [];
   for (const candidate of candidates) {
     const last = groups.at(-1);
-    if (last && last[0].key.credential === candidate.key.credential) last.push(candidate);
+    if (last?.[0]?.key.credential === candidate.key.credential) last.push(candidate);
     else groups.push([candidate]);
   }
   return groups;

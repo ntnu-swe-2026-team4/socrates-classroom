@@ -77,9 +77,10 @@ export async function activityLiveSnapshot(db: Db, activityId: string): Promise<
   );
   if (!rows.length) return null;
   const now = Date.now();
+  const first = rows[0];
   const snapshot: ActivityLive = {
     activityId,
-    finishedAt: rows[0].finished_at,
+    finishedAt: first?.finished_at ?? null,
     asOf: new Date(now).toISOString(),
     students: [],
   };

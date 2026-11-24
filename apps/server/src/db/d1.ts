@@ -25,7 +25,7 @@ export function prepare(sql: string, params?: Record<string, unknown>): { sql: s
       const match = /^\$(\w+)/.exec(sql.slice(i));
       if (match) {
         const name = match[1];
-        if (!params || !(name in params)) throw new Error(`d1: missing bind param $${name}`);
+        if (name === undefined || !params || !(name in params)) throw new Error(`d1: missing bind param $${name}`);
         const value = params[name];
         values.push(value === undefined ? null : value);
         out += "?";
@@ -71,7 +71,7 @@ export async function run(db: D1Database, sql: string, params?: Record<string, u
     .run();
 }
 
-export async function batch(db: D1Database, entries: SqlEntry[]): Promise<D1Result[]> {
+export async function batch<T = Record<string, unknown>>(db: D1Database, entries: SqlEntry[]): Promise<D1Result<T>[]> {
   const statements = entries.map(({ sql, params }) => {
     const q = prepare(sql, params);
     return db.prepare(q.sql).bind(...q.values);

@@ -3,9 +3,8 @@ import { env } from "cloudflare:workers";
 import { applyD1Migrations, evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { beforeAll, expect, inject, it } from "vitest";
 import { one, run } from "../src/db/d1";
-import type { Chat } from "../src/do/chat";
 import { seedFixture } from "../src/seed";
-import { call, classroomWithActivity, cookieOf, joinGuest, registerStudent, speak } from "./helpers";
+import { call, classroomWithActivity, cookieOf, field, joinGuest, registerStudent, rows, speak } from "./helpers";
 
 let teacher: string;
 const migrations = inject("d1Migrations");
@@ -43,10 +42,11 @@ it("serves 1,000 named participants only to the classroom owner", async () => {
   const response = await live(activityId, teacher);
   expect(response.status).toBe(200);
   expect(response.headers.get("Cache-Control")).toBe("private, no-store");
-  const snapshot = (await response.json()) as { students: unknown[] };
-  expect(snapshot).toMatchObject({ activityId, finishedAt: null, asOf: expect.any(String) });
-  expect(snapshot.students).toHaveLength(1000);
-  expect(snapshot.students).toContainEqual({
+  const body: unknown = await response.json();
+  expect(body).toMatchObject({ activityId, finishedAt: null, asOf: expect.any(String) });
+  const students = rows(field(body, "students"));
+  expect(students).toHaveLength(1000);
+  expect(students).toContainEqual({
     id: guest.participantId,
     name: "Guest",
     status: "not_started",
@@ -72,7 +72,7 @@ it("recovers committed dialogue and flags after a D1 write failure and DO evicti
       .poll(
         () =>
           runInDurableObject(stub, (instance) =>
-            (instance as Chat).lifecycle.jobs
+            instance.lifecycle.jobs
               .list()
               .some((job) => job.fn === "activity-live-progress" && job.time > Date.now() + 5_000),
           ),
@@ -87,7 +87,7 @@ it("recovers committed dialogue and flags after a D1 write failure and DO evicti
   }
   await evictDurableObject(stub);
   await runInDurableObject(stub, async (instance) => {
-    const jobs = (instance as Chat).lifecycle.jobs;
+    const jobs = instance.lifecycle.jobs;
     const job = jobs.list().find(({ fn }) => fn === "activity-live-progress");
     expect(job).toBeDefined();
     if (job) await jobs.reschedule(job.id, Date.now());
@@ -122,7 +122,7 @@ it("backfills existing participants from all pages and distinguishes an empty th
   await run(env.DB, "UPDATE activities SET live_projection_legacy = 1 WHERE id = $aid", { aid: activityId });
   const thread = env.Chat.getByName(`${activityId}:${speaker.participantId}`);
   await runInDurableObject(thread, async (instance) => {
-    const harness = await (instance as Chat).harness.pi();
+    const harness = await instance.harness.pi();
     const root = await harness.root(BACKGROUND_CONTEXT);
     await root.commit(async (transaction) => {
       for (let index = 0; index < 129; index++) {
@@ -133,8 +133,9 @@ it("backfills existing participants from all pages and distinguishes an empty th
       }
     }, BACKGROUND_CONTEXT);
   });
-  const initial = (await (await live(activityId, teacher)).json()) as { students: unknown[] };
-  expect(initial.students).toEqual(
+  const initialBody: unknown = await (await live(activityId, teacher)).json();
+  const initial = rows(field(initialBody, "students"));
+  expect(initial).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ id: quiet.participantId, status: "unknown", rounds: null, flags: null }),
       expect.objectContaining({ id: speaker.participantId, status: "unknown", rounds: null, flags: null }),
@@ -143,8 +144,8 @@ it("backfills existing participants from all pages and distinguishes an empty th
   await expect
     .poll(
       async () => {
-        const snapshot = (await (await live(activityId, teacher)).json()) as { students: unknown[] };
-        return snapshot.students;
+        const snapshot: unknown = await (await live(activityId, teacher)).json();
+        return field(snapshot, "students");
       },
       { timeout: 10_000 },
     )

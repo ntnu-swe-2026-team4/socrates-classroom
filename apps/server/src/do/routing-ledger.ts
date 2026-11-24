@@ -27,8 +27,8 @@ export class RoutingLedger extends DurableObject<Env> {
   async reserve(candidates: LedgerCandidate[], ttlMs = LEDGER_LEASE_TTL_MS): Promise<LedgerReservation | null> {
     this.#sweep(Date.now());
     const index = candidates.findIndex((candidate) => this.#ledger.hasRoom(candidate, candidate.key));
-    if (index < 0) return null;
-    const candidate = candidates[index];
+    const candidate = index < 0 ? undefined : candidates[index];
+    if (!candidate) return null;
     const lease = crypto.randomUUID();
     this.#ledger.record(candidate.key);
     this.#ledger.begin(candidate.key);

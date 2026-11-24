@@ -17,7 +17,11 @@ export function useDomEvent<E extends Event>(
   const subscribe = useCallback(
     (_notify: () => void) => {
       if (!target) return () => {};
-      const listener = (event: Event) => latest.current(event as E);
+      const listener = (event: Event) => {
+        if (latest.current === null) return;
+        // E is the caller-declared DOM event type for this target+type pair
+        latest.current(event as E);
+      };
       target.addEventListener(type, listener, capture);
       return () => target.removeEventListener(type, listener, capture);
     },

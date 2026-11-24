@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useBtw } from "@/hooks/useBtw";
 import type { ServerMessage } from "@server/ws/protocol";
+import { must } from "./helpers";
 
 type AgentOptions = {
   enabled?: boolean;
@@ -9,7 +10,7 @@ type AgentOptions = {
   onMessage?: (event: { data: unknown }) => void;
 };
 
-const agent = vi.hoisted(() => ({ options: null as AgentOptions | null, sent: [] as string[] }));
+const agent = vi.hoisted((): { options: AgentOptions | null; sent: string[] } => ({ options: null, sent: [] }));
 
 vi.mock("agents/react", () => ({
   useAgent: (options: AgentOptions) => {
@@ -57,7 +58,7 @@ beforeEach(() => {
 describe("useBtw (side session over its own socket)", () => {
   it("opens a fresh fork, hides the inherited root entries, and completes a side exchange", () => {
     const { result } = renderHook(() => useBtw("a_1", "u_1", true));
-    const open = sent()[0];
+    const open = must(sent()[0], "btw open frame");
     expect(open).toMatchObject({ type: "btw" });
     expect(open.session).toBeUndefined();
 
@@ -74,7 +75,7 @@ describe("useBtw (side session over its own socket)", () => {
       expect(result.current.ask("電車難題是什麼？")).toBe(true);
     });
     expect(result.current.phase).toBe("thinking");
-    expect(sent().at(-1)).toMatchObject({ type: "submit", input: "電車難題是什麼？" });
+    expect(must(sent().at(-1), "last sent frame")).toMatchObject({ type: "submit", input: "電車難題是什麼？" });
 
     emit(ops([...root, user(3, "電車難題是什麼？"), assistant(4, "**電車難題**是一個思想實驗。")]));
     expect(result.current.phase).toBe("idle");
@@ -88,17 +89,17 @@ describe("useBtw (side session over its own socket)", () => {
     });
     expect(sent().some((frame) => frame.type === "submit")).toBe(false);
     emit(view(root));
-    emit({ type: "result", id: sent()[0].id, result: { session: "7" } });
-    expect(sent().at(-1)).toMatchObject({ type: "submit", input: "功利主義是什麼？" });
+    emit({ type: "result", id: must(sent()[0], "btw open frame").id, result: { session: "7" } });
+    expect(must(sent().at(-1), "last sent frame")).toMatchObject({ type: "submit", input: "功利主義是什麼？" });
   });
 
   it("re-attaches to the stored session; an UnknownSession reply falls back to a fresh fork", () => {
     sessionStorage.setItem("btw:a_1:u_1", JSON.stringify({ session: "9", forkHead: 2 }));
     renderHook(() => useBtw("a_1", "u_1", true));
-    const attach = sent()[0];
+    const attach = must(sent()[0], "attach frame");
     expect(attach).toMatchObject({ type: "btw", session: "9" });
     emit({ type: "error", id: attach.id, message: "gone", code: "UnknownSession" });
-    const retry = sent()[1];
+    const retry = must(sent()[1], "retry frame");
     expect(retry).toMatchObject({ type: "btw" });
     expect(retry.session).toBeUndefined();
     expect(sessionStorage.getItem("btw:a_1:u_1")).toBeNull();
@@ -106,7 +107,7 @@ describe("useBtw (side session over its own socket)", () => {
 
   it("NothingToFork surfaces as an error and leaves the panel unbound", () => {
     const { result } = renderHook(() => useBtw("a_1", "u_1", true));
-    emit({ type: "error", id: sent()[0].id, message: "empty", code: "NothingToFork" });
+    emit({ type: "error", id: must(sent()[0], "attach frame").id, message: "empty", code: "NothingToFork" });
     expect(result.current.error).toEqual({ code: "NothingToFork" });
     expect(result.current.ready).toBe(false);
   });

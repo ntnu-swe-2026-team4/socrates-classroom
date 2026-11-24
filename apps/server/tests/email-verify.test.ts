@@ -1,10 +1,9 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, inject, test } from "vitest";
-import worker from "../src/index";
 import { one, run } from "../src/db/d1";
-import { type AccountTokenPurpose, emailVerifyBinding, issueSessionToken, sealAccountToken } from "../src/auth";
-import { cookieOf, must, scopedEnv } from "./helpers";
+import { emailVerifyBinding, issueSessionToken, sealAccountToken } from "../src/auth";
+import { cookieOf, field, must, scopedEnv, str, workerFetch } from "./helpers";
 
 interface SentEmail {
   to: string;
@@ -38,10 +37,8 @@ function mailbox(delivery: Delivery = "delivered") {
   });
   const request = async (path: string, init: RequestInit = {}): Promise<Response> => {
     const pending: Promise<unknown>[] = [];
-    const res = await (
-      worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }
-    ).fetch(new Request(`http://worker.test${path}`, init), scoped, {
-      waitUntil: (promise: Promise<unknown>) => pending.push(promise),
+    const res = await workerFetch(scoped, new Request(`http://worker.test${path}`, init), (promise) => {
+      pending.push(promise);
     });
     await Promise.all(pending);
     return res;
@@ -65,25 +62,37 @@ async function signup(m: Mailbox, email: string, lang = "zh-TW") {
     { "Accept-Language": lang },
   );
   expect(res.status).toBe(200);
-  const user = (await res.json()) as { id: string; emailVerified: boolean };
+  const user = await res.json();
   const mails = m.sent.slice(before);
-  return { id: user.id, emailVerified: user.emailVerified, cookie: cookieOf(res), mail: mails.at(-1) };
+  return {
+    id: str(user, "id"),
+    emailVerified: field(user, "emailVerified") === true,
+    cookie: cookieOf(res),
+    mail: mails.at(-1),
+  };
 }
 
 function tokenOf(mail: SentEmail): string {
-  return must(/#token=([A-Za-z0-9_\-.]+)/.exec(mail.text), "verify token")[1];
+  const token = must(/#token=([A-Za-z0-9_\-.]+)/.exec(mail.text), "verify token")[1];
+  if (token === undefined) throw new Error("verify token group missing");
+  return token;
 }
 
 async function codeOf(res: Response): Promise<string> {
-  return ((await res.json()) as { code: string }).code;
+  return str(await res.json(), "code");
 }
 
 const verify = (m: Mailbox, token: string) => m.post("/api/auth/email/verify", { token });
 
-async function me(m: Mailbox, cookie: string): Promise<{ emailVerified: boolean } | null> {
-  return (await (await m.request("/api/me", { headers: { Cookie: cookie } })).json()) as {
-    emailVerified: boolean;
-  } | null;
+async function me(m: Mailbox, cookie: string) {
+  const body = await (await m.request("/api/me", { headers: { Cookie: cookie } })).json();
+  if (body === null || typeof body !== "object") return null;
+  return {
+    id: str(body, "id"),
+    name: str(body, "name"),
+    isAdmin: field(body, "isAdmin") === true,
+    emailVerified: field(body, "emailVerified") === true,
+  };
 }
 
 async function sessionCookie(userId: string): Promise<string> {
@@ -96,7 +105,7 @@ async function sealVerifyToken(userId: string, ttlMs: number): Promise<string> {
     await one<{ email: string }>(env.DB, "SELECT email FROM users WHERE id = $id", { id: userId }),
     "user",
   );
-  return sealAccountToken({ env }, "email_verify" as AccountTokenPurpose, userId, emailVerifyBinding(row.email), ttlMs);
+  return sealAccountToken({ env }, "email_verify", userId, emailVerifyBinding(row.email), ttlMs);
 }
 
 async function classroomCode(m: Mailbox): Promise<{ code: string; cookie: string }> {
@@ -107,7 +116,8 @@ async function classroomCode(m: Mailbox): Promise<{ code: string; cookie: string
     body: JSON.stringify({ name: "驗證班" }),
   });
   expect(created.status).toBe(201);
-  const classroom = (await created.json()) as { classroomId: string; code: string };
+  const classroomJson = await created.json();
+  const classroom = { classroomId: str(classroomJson, "classroomId"), code: str(classroomJson, "code") };
   const topic = await m.request("/api/topics", {
     method: "POST",
     headers: { ...json, Cookie: teacher.cookie },
@@ -121,7 +131,7 @@ async function classroomCode(m: Mailbox): Promise<{ code: string; cookie: string
   const started = await m.request(`/api/classrooms/${classroom.classroomId}/activities`, {
     method: "POST",
     headers: { ...json, Cookie: teacher.cookie },
-    body: JSON.stringify({ topicId: ((await topic.json()) as { id: string }).id, mode: "live" }),
+    body: JSON.stringify({ topicId: str(await topic.json(), "id"), mode: "live" }),
   });
   expect(started.status).toBe(201);
   return { code: classroom.code, cookie: teacher.cookie };
@@ -161,7 +171,7 @@ describe("email verification (#259)", () => {
     });
 
     expect(res.status).toBe(200);
-    expect((await res.json()) as { emailVerified: boolean }).toMatchObject({ emailVerified: false });
+    expect(field(await res.json(), "emailVerified")).toBe(false);
     const mail = must(m.sent.slice(before).at(-1), "verification mail");
     expect(mail.to).toBe(email);
     expect(mail.text).toContain("/verify-email#token=");
@@ -183,7 +193,7 @@ describe("email verification (#259)", () => {
     const account = await signup(m, email);
     const token = tokenOf(must(account.mail, "verification mail"));
     const expired = await sealVerifyToken(account.id, -60_000);
-    const [payload, signature] = token.split(".") as [string, string];
+    const [payload = "", signature = ""] = token.split(".");
     const flipped = `${payload}.${signature.startsWith("A") ? "B" : "A"}${signature.slice(1)}`;
 
     for (const bad of [expired, flipped, "not-a-token", ""]) {

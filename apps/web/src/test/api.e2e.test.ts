@@ -2,10 +2,23 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { httpApi } from "@/api/http";
 import { meOf } from "@/api/me";
+import { must } from "./helpers";
 import { ApiError } from "@/api";
 
 type Handler = (path: string, init: RequestInit) => Response | Promise<Response>;
 const handler = vi.fn<Handler>();
+
+function lastCall(): [path: string, init: RequestInit] {
+  const call = handler.mock.calls.at(-1);
+  if (call === undefined) throw new Error("handler was not called");
+  return call;
+}
+
+function lastCallN(n: number): [path: string, init: RequestInit] {
+  const call = handler.mock.calls[n];
+  if (call === undefined) throw new Error(`handler call ${n} missing`);
+  return call;
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -34,7 +47,7 @@ describe("httpApi contract (browser-side actual code)", () => {
     document.documentElement.lang = "zh-TW";
     const user = await httpApi.me();
     expect(user?.name).toBe("小明");
-    const [path, init] = handler.mock.calls[0];
+    const [path, init] = lastCall();
     expect(path).toBe("/api/me");
     expect(init.credentials).toBe("include");
     expect(new Headers(init.headers).get("Accept-Language")).toBe("zh");
@@ -46,10 +59,10 @@ describe("httpApi contract (browser-side actual code)", () => {
     expect(payload.activityId).toBe("a_1");
     expect(payload.user).toBeNull();
     expect(payload.participantId).toBe("p_1");
-    const [path, init] = handler.mock.calls[0];
+    const [path, init] = lastCall();
     expect(path).toBe("/api/join");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ code: "socrat", name: "小明", tosAccepted: true });
+    expect(JSON.parse(String(init.body))).toEqual({ code: "socrat", name: "小明", tosAccepted: true });
     expect(localStorage.getItem("socrates_activity")).toBe("a_1");
   });
 
@@ -66,17 +79,17 @@ describe("httpApi contract (browser-side actual code)", () => {
       });
     });
     await httpApi.createActivityInvite("a_1");
-    expect(handler.mock.calls[0][0]).toBe("/api/activities/a_1/invites");
-    expect(handler.mock.calls[0][1].method).toBe("POST");
+    expect(lastCallN(0)[0]).toBe("/api/activities/a_1/invites");
+    expect(lastCallN(0)[1].method).toBe("POST");
 
     await httpApi.inviteInfo("t1");
-    expect(handler.mock.calls[1][0]).toBe("/api/invites/t1");
+    expect(lastCallN(1)[0]).toBe("/api/invites/t1");
 
     const joined = await httpApi.joinByInvite("t1", { name: "訪客", tosAccepted: true });
     expect(joined.participantId).toBe("p_2");
-    const [path, init] = handler.mock.calls[2];
+    const [path, init] = lastCallN(2);
     expect(path).toBe("/api/invites/t1/join");
-    expect(JSON.parse(init.body as string)).toEqual({ name: "訪客", tosAccepted: true });
+    expect(JSON.parse(String(init.body))).toEqual({ name: "訪客", tosAccepted: true });
   });
 
   test("error mapping: 422 tos_required → ApiError.code", async () => {
@@ -88,11 +101,11 @@ describe("httpApi contract (browser-side actual code)", () => {
     try {
       await httpApi.joinAsGuest("socrat", { name: "小明", tosAccepted: false });
     } catch (error) {
-      expect(error).toBeInstanceOf(ApiError);
-      expect((error as ApiError).code).toBe("tos_required");
+      if (!(error instanceof ApiError)) throw error;
+      expect(error.code).toBe("tos_required");
       const tosCall = handler.mock.calls.at(-1);
       if (tosCall === undefined) throw new Error("missing tos fetch call");
-      expect(JSON.parse(tosCall[1].body as string).tosAccepted).toBe(false);
+      expect(JSON.parse(String(tosCall[1].body)).tosAccepted).toBe(false);
     }
   });
 
@@ -100,7 +113,7 @@ describe("httpApi contract (browser-side actual code)", () => {
     handler.mockReturnValue(json({ text: "我認為應該拉桿" }));
     const text = await httpApi.stt(new Blob([new Uint8Array([1])], { type: "audio/webm" }));
     expect(text).toBe("我認為應該拉桿");
-    const [path] = handler.mock.calls[0];
+    const [path] = lastCallN(0);
     expect(path).toBe("/api/stt");
   });
 
@@ -121,31 +134,31 @@ describe("httpApi contract (browser-side actual code)", () => {
     });
 
     const classroom = await httpApi.createClassroom("班");
-    expect(handler.mock.calls[0][0]).toBe("/api/classrooms");
-    expect(JSON.parse(handler.mock.calls[0][1].body as string)).toEqual({ name: "班" });
+    expect(lastCallN(0)[0]).toBe("/api/classrooms");
+    expect(JSON.parse(String(lastCallN(0)[1].body))).toEqual({ name: "班" });
     expect(classroom.classroomId).toBe("c_1");
 
     await httpApi.listClassroomTopics("c_1");
-    expect(handler.mock.calls[1][0]).toBe("/api/classrooms/c_1/topics");
+    expect(lastCallN(1)[0]).toBe("/api/classrooms/c_1/topics");
 
     const topic = await httpApi.createClassroomTopic("c_1", { title: "題", statement: "述", prompts: [] });
     expect(topic.classroomId).toBe("c_1");
-    expect(handler.mock.calls[2][0]).toBe("/api/classrooms/c_1/topics");
-    expect(handler.mock.calls[2][1].method).toBe("POST");
+    expect(lastCallN(2)[0]).toBe("/api/classrooms/c_1/topics");
+    expect(lastCallN(2)[1].method).toBe("POST");
 
     const copy = await httpApi.copyTopic("t_1", "c_2");
     expect(copy.id).toBe("t_2");
-    expect(handler.mock.calls[3][0]).toBe("/api/topics/t_1/copy");
-    expect(JSON.parse(handler.mock.calls[3][1].body as string)).toEqual({ classroomId: "c_2" });
+    expect(lastCallN(3)[0]).toBe("/api/topics/t_1/copy");
+    expect(JSON.parse(String(lastCallN(3)[1].body))).toEqual({ classroomId: "c_2" });
 
     const started = await httpApi.startActivity("c_1", "t_1");
     expect(started.activityId).toBe("a_1");
-    expect(handler.mock.calls[4][0]).toBe("/api/classrooms/c_1/activities");
-    expect(JSON.parse(handler.mock.calls[4][1].body as string)).toEqual({ topicId: "t_1", mode: "live" });
+    expect(lastCallN(4)[0]).toBe("/api/classrooms/c_1/activities");
+    expect(JSON.parse(String(lastCallN(4)[1].body))).toEqual({ topicId: "t_1", mode: "live" });
     const topicAxes = [{ name: "Justice", left: "Rules", right: "Outcomes" }];
     await httpApi.startActivity("c_1", "t_1", "live", "teacher", topicAxes);
-    expect(handler.mock.calls[5][0]).toBe("/api/classrooms/c_1/activities");
-    expect(JSON.parse(handler.mock.calls[5][1].body as string)).toEqual({
+    expect(lastCallN(5)[0]).toBe("/api/classrooms/c_1/activities");
+    expect(JSON.parse(String(lastCallN(5)[1].body))).toEqual({
       topicId: "t_1",
       mode: "live",
       reportAxes: "teacher",
@@ -156,7 +169,7 @@ describe("httpApi contract (browser-side actual code)", () => {
   test("finishActivity: POST 204 with no body", async () => {
     handler.mockReturnValue(new Response(null, { status: 204 }));
     await expect(httpApi.finishActivity("a_1")).resolves.toBeUndefined();
-    const [path, init] = handler.mock.calls[0];
+    const [path, init] = lastCall();
     expect(path).toBe("/api/activities/a_1/finish");
     expect(init.method).toBe("POST");
   });
@@ -167,10 +180,10 @@ describe("httpApi contract (browser-side actual code)", () => {
       classReport: true,
       student: false,
     });
-    const [path, init] = handler.mock.calls[0];
+    const [path, init] = lastCall();
     expect(path).toBe("/api/activities/a_1/engagement-visibility");
     expect(init.method).toBe("PUT");
-    expect(JSON.parse(init.body as string)).toEqual({ classReport: true, student: false });
+    expect(JSON.parse(String(init.body))).toEqual({ classReport: true, student: false });
   });
 
   test("login and logout announce the session change for cross-tab sync", async () => {
@@ -220,12 +233,12 @@ describe("httpApi contract (browser-side actual code)", () => {
     });
     const providers = await httpApi.authProviders();
     expect(providers.providers).toEqual(["google"]);
-    expect(handler.mock.calls[0][0]).toBe("/api/auth/providers");
+    expect(lastCallN(0)[0]).toBe("/api/auth/providers");
 
     const feed = await httpApi.notifications();
-    expect(feed.items[0].title).toBe("維護公告");
+    expect(must(feed.items[0], "notification item").title).toBe("維護公告");
     expect(feed.unread).toBeNull();
-    expect(handler.mock.calls[1][0]).toBe("/api/notifications");
+    expect(lastCallN(1)[0]).toBe("/api/notifications");
   });
 
   test("signup posts the consented account and announces the session", async () => {
@@ -238,10 +251,10 @@ describe("httpApi contract (browser-side actual code)", () => {
       tosAccepted: true,
     });
     expect(user.id).toBe("u2");
-    const [path, init] = handler.mock.calls[0];
+    const [path, init] = lastCall();
     expect(path).toBe("/api/auth/signup");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({
+    expect(JSON.parse(String(init.body))).toEqual({
       name: "小明",
       email: "new@example.com",
       password: "password123",
@@ -260,7 +273,7 @@ describe("httpApi contract (browser-side actual code)", () => {
   test("teacher key model delete resolves on a 204 with an empty body", async () => {
     handler.mockReturnValue(new Response(null, { status: 204 }));
     await expect(httpApi.deleteTeacherKeyModel("openai", "gpt-4o")).resolves.toBeUndefined();
-    const [path, init] = handler.mock.calls[0];
+    const [path, init] = lastCall();
     expect(path).toBe("/api/settings/keys/openai/models/gpt-4o");
     expect(init.method).toBe("DELETE");
   });
@@ -268,7 +281,7 @@ describe("httpApi contract (browser-side actual code)", () => {
   test("teacher key model delete encodes a model id that contains a slash", async () => {
     handler.mockReturnValue(new Response(null, { status: 204 }));
     await httpApi.deleteTeacherKeyModel("openrouter", "anthropic/claude-haiku-4.5");
-    expect(handler.mock.calls[0][0]).toBe("/api/settings/keys/openrouter/models/anthropic%2Fclaude-haiku-4.5");
+    expect(lastCallN(0)[0]).toBe("/api/settings/keys/openrouter/models/anthropic%2Fclaude-haiku-4.5");
   });
 
   test("activityInfo serializes the optional participantId without residue", async () => {
@@ -284,17 +297,17 @@ describe("httpApi contract (browser-side actual code)", () => {
       }),
     );
     await httpApi.activityInfo("a_1");
-    expect(handler.mock.calls[0][0]).toBe("/api/activities/a_1");
+    expect(lastCallN(0)[0]).toBe("/api/activities/a_1");
     await httpApi.activityInfo("a_1", "p_9");
-    expect(handler.mock.calls[1][0]).toBe("/api/activities/a_1?participantId=p_9");
+    expect(lastCallN(1)[0]).toBe("/api/activities/a_1?participantId=p_9");
   });
 
   test("createActivitySlots passes the count through unclamped (the server owns the 1-6 bounds)", async () => {
     handler.mockImplementation(() => json({ activityId: "a_1", mode: "test", maxSlots: 6, slots: [] }));
     await httpApi.createActivitySlots("a_1", 9);
-    const [path, init] = handler.mock.calls[0];
+    const [path, init] = lastCall();
     expect(path).toBe("/api/activities/a_1/slots");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ count: 9 });
+    expect(JSON.parse(String(init.body))).toEqual({ count: 9 });
   });
 });

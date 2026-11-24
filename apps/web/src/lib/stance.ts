@@ -172,8 +172,9 @@ export function wardClusters(points: readonly (readonly number[])[], target: num
     let right = 1;
     for (let i = 0; i < clusters.length; i += 1) {
       for (let j = i + 1; j < clusters.length; j += 1) {
-        const a = clusters[i] as Cluster;
-        const b = clusters[j] as Cluster;
+        const a = clusters[i];
+        const b = clusters[j];
+        if (a === undefined || b === undefined) continue;
         const sizes = (a.members.length * b.members.length) / (a.members.length + b.members.length);
         const cost = sizes * squaredDistance(a.centroid, b.centroid);
         if (cost < best) {
@@ -183,8 +184,9 @@ export function wardClusters(points: readonly (readonly number[])[], target: num
         }
       }
     }
-    const a = clusters[left] as Cluster;
-    const b = clusters[right] as Cluster;
+    const a = clusters[left] ?? clusters[0];
+    const b = clusters[right] ?? clusters[0];
+    if (a === undefined || b === undefined) break;
     const apart = Math.sqrt(squaredDistance(a.centroid, b.centroid));
     if (target === "auto" && clusters.length <= autoMost && apart > autoGap) break;
     const total = a.members.length + b.members.length;

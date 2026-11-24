@@ -293,8 +293,6 @@ const messages = {
     settings_keys_save: "儲存金鑰",
     settings_keys_saving: "儲存中…",
     settings_keys_delete: "刪除 provider",
-    settings_keys_up: "上移",
-    settings_keys_down: "下移",
     settings_keys_empty: "尚未新增任何 API keys，單人對話和你開設的教室會使用平台鏈。",
     settings_keys_models: "{n} 個模型",
     settings_keys_one_model: "1 個模型",
@@ -477,6 +475,42 @@ const messages = {
     admin_tab_users: "使用者",
     admin_tab_notify: "系統通知",
     admin_tabs: "管理分頁",
+    admin_tab_providers: "Provider 管理",
+    admin_providers_pool_title: "平台池 admin keys",
+    admin_providers_pool_desc: "平台池的 runtime keyed 腿：新增、設定月額度、通過 ZDR 核可後生效；不用等發版。",
+    admin_providers_pool_empty: "還沒有 admin key。",
+    admin_providers_add: "新增 key",
+    admin_providers_key: "Key（只存加密，之後只顯示末四碼）",
+    admin_providers_quota_optional: "每月額度 USD（選填）",
+    admin_providers_quota: "額度 {n}",
+    admin_providers_month_usage: "本月 {cost}／{tokens} tokens",
+    admin_providers_zdr_approved: "ZDR 已核可",
+    admin_providers_zdr_unverified: "ZDR 未核可",
+    admin_providers_zdr_approve: "ZDR 核可",
+    admin_providers_zdr_title: "核可 {provider} 的 ZDR",
+    admin_providers_zdr_desc: "貼上官方資料保留（retention）說明頁連結；核可後這把 key 的腿才會進 provider chain。",
+    admin_providers_zdr_source: "官方 retention 說明 URL",
+    admin_providers_zdr_verified: "查證日期：{date}",
+    admin_providers_conflict: "這個 provider 已有一把 admin key。",
+    admin_providers_delete: "刪除",
+    admin_providers_delete_title: "刪除 {provider} 的 admin key？",
+    admin_providers_delete_body: "腿立刻退出 chain，用量紀錄保留。",
+    admin_providers_teacher_title: "Teacher keys 總覽",
+    admin_providers_teacher_desc:
+      "所有帳號的自帶 key：用量、額度水位與代管停用（停用後該腿退出該老師的 chain，老師端仍看得到設定）。",
+    admin_providers_teacher_empty: "還沒有老師設定 key。",
+    admin_providers_teacher_disabled: "代管停用",
+    admin_providers_teacher_disable: "代管停用",
+    admin_providers_teacher_enable: "恢復",
+    admin_providers_teacher_disable_title: "代管停用 {name} 的 {provider} key？",
+    admin_providers_teacher_disable_body: "該腿立刻退出這位老師的 chain；老師的設定保留，可隨時恢復。",
+    admin_providers_teacher_enable_title: "恢復 {name} 的 {provider} key？",
+    admin_providers_teacher_enable_body: "該腿重新進入這位老師的 chain。",
+    admin_providers_chain_title: "YAML 平台鏈（唯讀）",
+    admin_providers_chain_desc:
+      "build-time 設定的保底鏈；修改走 providers.config.yaml PR。health/cooldown 資料源待 #80。",
+    admin_providers_chain_leg: "併發 {concurrency}・priority {priority}",
+    admin_providers_zdr_note: "學生流量只走通過 ZDR 查證的平台腿；未核可的 key 不會服務任何請求。",
     admin_stat_users: "註冊帳號",
     admin_stat_classrooms: "教室",
     admin_stat_running: "進行中的活動",
@@ -1013,8 +1047,6 @@ const messages = {
     settings_keys_save: "Save key",
     settings_keys_saving: "Saving…",
     settings_keys_delete: "Delete provider",
-    settings_keys_up: "Move up",
-    settings_keys_down: "Move down",
     settings_keys_empty: "No API keys yet. Solo dialogue and classrooms you own will use the platform chain.",
     settings_keys_models: "{n} models",
     settings_keys_one_model: "1 model",
@@ -1232,6 +1264,45 @@ const messages = {
     admin_tab_users: "Users",
     admin_tab_notify: "Notices",
     admin_tabs: "Admin sections",
+    admin_tab_providers: "Providers",
+    admin_providers_pool_title: "Platform pool admin keys",
+    admin_providers_pool_desc:
+      "Runtime keyed legs of the platform pool: add keys, set monthly quotas, and approve ZDR — no deploy needed.",
+    admin_providers_pool_empty: "No admin keys yet.",
+    admin_providers_add: "Add key",
+    admin_providers_key: "Key (stored encrypted; only the last four show afterwards)",
+    admin_providers_quota_optional: "Monthly quota USD (optional)",
+    admin_providers_quota: "Quota {n} USD",
+    admin_providers_month_usage: "This month {cost} / {tokens} tokens",
+    admin_providers_zdr_approved: "ZDR approved",
+    admin_providers_zdr_unverified: "ZDR unverified",
+    admin_providers_zdr_approve: "Approve ZDR",
+    admin_providers_zdr_title: "Approve ZDR for {provider}",
+    admin_providers_zdr_desc:
+      "Paste the official data-retention page; the leg joins the provider chain only after approval.",
+    admin_providers_zdr_source: "Official retention statement URL",
+    admin_providers_zdr_verified: "Verified on {date}",
+    admin_providers_conflict: "This provider already has an admin key.",
+    admin_providers_delete: "Delete",
+    admin_providers_delete_title: "Delete the {provider} admin key?",
+    admin_providers_delete_body: "Its legs leave the chain immediately; usage records are kept.",
+    admin_providers_teacher_title: "Teacher keys survey",
+    admin_providers_teacher_desc:
+      "Every account's own keys: usage, quota watermark, and managed suspension (a suspended leg leaves that teacher's chain; the teacher still sees the setting).",
+    admin_providers_teacher_empty: "No teacher has set a key yet.",
+    admin_providers_teacher_disabled: "Suspended",
+    admin_providers_teacher_disable: "Suspend",
+    admin_providers_teacher_enable: "Restore",
+    admin_providers_teacher_disable_title: "Suspend {name}'s {provider} key?",
+    admin_providers_teacher_disable_body:
+      "The leg leaves this teacher's chain immediately; the setting is kept and can be restored.",
+    admin_providers_teacher_enable_title: "Restore {name}'s {provider} key?",
+    admin_providers_teacher_enable_body: "The leg rejoins this teacher's chain.",
+    admin_providers_chain_title: "YAML platform chain (read-only)",
+    admin_providers_chain_desc:
+      "The build-time fallback chain; changes go through a providers.config.yaml PR. Health/cooldown data awaits #80.",
+    admin_providers_chain_leg: "concurrency {concurrency} · priority {priority}",
+    admin_providers_zdr_note: "Student traffic only rides ZDR-verified platform legs; unapproved keys serve nothing.",
     admin_stat_users: "Registered accounts",
     admin_stat_classrooms: "Classrooms",
     admin_stat_running: "Activities running",
@@ -1784,8 +1855,6 @@ const messages = {
     settings_keys_save: "Guardar clave",
     settings_keys_saving: "Guardando…",
     settings_keys_delete: "Eliminar proveedor",
-    settings_keys_up: "Subir",
-    settings_keys_down: "Bajar",
     settings_keys_empty:
       "Aún no hay claves de API. El diálogo individual y las aulas que administras usarán la cadena de la plataforma.",
     settings_keys_models: "{n} modelos",
@@ -2005,6 +2074,46 @@ const messages = {
     admin_tab_overview: "Resumen",
     admin_tab_users: "Usuarios",
     admin_tab_notify: "Avisos",
+    admin_tab_providers: "Proveedores",
+    admin_providers_pool_title: "Admin keys del pool de plataforma",
+    admin_providers_pool_desc:
+      "Legs con key del pool en runtime: añade claves, fija cuotas mensuales y aprueba ZDR sin desplegar.",
+    admin_providers_pool_empty: "Aún no hay admin keys.",
+    admin_providers_add: "Añadir clave",
+    admin_providers_key: "Clave (se guarda cifrada; solo se muestran los últimos cuatro)",
+    admin_providers_quota_optional: "Cuota mensual USD (opcional)",
+    admin_providers_quota: "Cuota {n}",
+    admin_providers_month_usage: "Este mes {cost} / {tokens} tokens",
+    admin_providers_zdr_approved: "ZDR aprobado",
+    admin_providers_zdr_unverified: "ZDR sin verificar",
+    admin_providers_zdr_approve: "Aprobar ZDR",
+    admin_providers_zdr_title: "Aprobar ZDR de {provider}",
+    admin_providers_zdr_desc:
+      "Pega la página oficial de retención de datos; la leg entra en la cadena solo tras la aprobación.",
+    admin_providers_zdr_source: "URL oficial de la declaración de retención",
+    admin_providers_zdr_verified: "Verificado el {date}",
+    admin_providers_conflict: "Este proveedor ya tiene una admin key.",
+    admin_providers_delete: "Eliminar",
+    admin_providers_delete_title: "¿Eliminar la admin key de {provider}?",
+    admin_providers_delete_body: "Sus legs salen de la cadena de inmediato; los registros de uso se conservan.",
+    admin_providers_teacher_title: "Resumen de teacher keys",
+    admin_providers_teacher_desc:
+      "Las claves propias de cada cuenta: uso, nivel de cuota y suspensión administrada (la leg suspendida sale de la cadena de ese docente; el docente sigue viendo la configuración).",
+    admin_providers_teacher_empty: "Ningún docente ha configurado una clave todavía.",
+    admin_providers_teacher_disabled: "Suspendida",
+    admin_providers_teacher_disable: "Suspender",
+    admin_providers_teacher_enable: "Restaurar",
+    admin_providers_teacher_disable_title: "¿Suspender la clave de {provider} de {name}?",
+    admin_providers_teacher_disable_body:
+      "La leg sale de la cadena de este docente de inmediato; la configuración se conserva y puede restaurarse.",
+    admin_providers_teacher_enable_title: "¿Restaurar la clave de {provider} de {name}?",
+    admin_providers_teacher_enable_body: "La leg vuelve a la cadena de este docente.",
+    admin_providers_chain_title: "Cadena YAML de plataforma (solo lectura)",
+    admin_providers_chain_desc:
+      "La cadena de respaldo definida en build; los cambios van por PR de providers.config.yaml. Datos de health/cooldown pendientes de #80.",
+    admin_providers_chain_leg: "concurrencia {concurrency} · prioridad {priority}",
+    admin_providers_zdr_note:
+      "El tráfico estudiante solo usa legs de plataforma verificadas por ZDR; las claves sin aprobar no sirven nada.",
     admin_tabs: "Secciones de administración",
     admin_stat_users: "Cuentas registradas",
     admin_stat_classrooms: "Aulas",
@@ -2303,13 +2412,16 @@ function readInitial(): Locale {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     const normalized = saved === "zh" ? "zh-TW" : saved;
-    if (normalized && (locales as readonly string[]).includes(normalized)) return normalized as Locale;
+    if (normalized) {
+      const savedLocale = locales.find((locale) => locale === normalized);
+      if (savedLocale !== undefined) return savedLocale;
+    }
   } catch {}
   for (const tag of navigator.languages) {
     try {
       const base = new Intl.Locale(tag.toLowerCase()).language;
-      const match = (locales as readonly string[]).find((l) => l.toLowerCase() === base);
-      if (match) return match as Locale;
+      const match = locales.find((l) => l.toLowerCase() === base);
+      if (match !== undefined) return match;
     } catch {}
   }
   return "zh-TW";

@@ -65,9 +65,7 @@
         "useReactCompiler": "error",
         "noUselessTypeConversion": "error",
         "noReturnInFinally": "error",
-        // Probe-verified 2026-11-21 at tip 736c742: 6/6 findings are false positives — the rule
-        // cannot resolve function-typed parameters, narrowed locals, or overload sets, only
-        // this.#field reads. Revisit when the nursery inference matures.
+        "noUnsafeTypeAssertion": "error",
         "useAwaitThenable": "off"
       },
       "security": {
@@ -79,10 +77,6 @@
         "noArrayIndexKey": "error",
         "noConsole": "error",
         "noDebugger": "error",
-        // Probe-triaged 2026-11-21 at tip 736c742: 31 findings, ~76% false positives across three
-        // families the inference cannot handle — TanStack's discriminated-union isPending (resolved
-        // always-falsy with no initialData in play), ref/field mutation across closures, and index
-        // access that only noUncheckedIndexedAccess (#293 step 4) would legitimize. Revisit upstream.
         "noUnnecessaryConditions": "off"
       }
     }
@@ -128,7 +122,7 @@
       }
     },
     {
-      "includes": ["apps/web/src/test/**"],
+      "includes": ["apps/web/src/test/**", "apps/web/dev/**"],
       "linter": {
         "rules": {
           "suspicious": {
@@ -138,11 +132,20 @@
       }
     },
     {
-      "includes": ["apps/web/dev/**"],
+      "includes": [
+        "apps/server/src/pi/ai-run.ts",
+        "apps/server/src/ws/protocol.ts",
+        "apps/web/src/api/http.ts",
+        "apps/web/src/hooks/useSubscription.ts",
+        "apps/web/src/lib/voiceInput.ts",
+        "apps/web/src/lib/wsProtocol.ts",
+        "apps/server/tests/helpers.ts",
+        "apps/web/src/test/helpers.ts"
+      ],
       "linter": {
         "rules": {
-          "suspicious": {
-            "noConsole": "off"
+          "nursery": {
+            "noUnsafeTypeAssertion": "off"
           }
         }
       }

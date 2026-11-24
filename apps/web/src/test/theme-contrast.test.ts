@@ -20,7 +20,10 @@ function themeBlock(selector: string): Map<string, string> {
   }
   const vars = new Map<string, string>();
   for (const match of css.slice(open, end).matchAll(/--color-([\w-]+):\s*([^;]+);/g)) {
-    vars.set(match[1], match[2].trim());
+    const name = match[1];
+    const value = match[2];
+    if (name === undefined || value === undefined) continue;
+    vars.set(name, value.trim());
   }
   return vars;
 }
@@ -42,9 +45,10 @@ function parseWash(value: string): Rgb {
 }
 
 function composite(wash: Rgb, bgHex: string): string {
-  const bg = [1, 3, 5].map((i) => Number.parseInt(bgHex.slice(i, i + 2), 16));
-  const hex = ["r", "g", "b"].map((ch, i) =>
-    Math.round(wash.alpha * wash[ch as keyof Rgb] + (1 - wash.alpha) * bg[i])
+  const bg = [1, 3, 5].map((i) => Number.parseInt(bgHex.slice(i, i + 2) ?? "0", 16));
+  const channels: Array<keyof Rgb> = ["r", "g", "b"];
+  const hex = channels.map((ch, i) =>
+    Math.round(wash.alpha * wash[ch] + (1 - wash.alpha) * (bg[i] ?? 0))
       .toString(16)
       .padStart(2, "0"),
   );
@@ -52,14 +56,21 @@ function composite(wash: Rgb, bgHex: string): string {
 }
 
 function relativeLuminance(hex: string): number {
-  const channels = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255);
+  const channels = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2) ?? "0", 16) / 255);
   const linear = channels.map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
-  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  return 0.2126 * (linear[0] ?? 0) + 0.7152 * (linear[1] ?? 0) + 0.0722 * (linear[2] ?? 0);
 }
 
 function contrast(fg: string, bg: string): number {
-  const [hi, lo] = [relativeLuminance(fg), relativeLuminance(bg)].sort((a, b) => b - a);
+  const [hi = 0, lo = 0] = [relativeLuminance(fg), relativeLuminance(bg)].sort((a, b) => b - a);
   return (hi + 0.05) / (lo + 0.05);
+}
+
+function demandVar(vars: Map<string, string>, key: string, mode: string): string {
+  const value = vars.get(key);
+  expect(value, `--color-${key} missing in ${mode} theme`).toBeDefined();
+  if (value === undefined) throw new Error(`--color-${key} missing in ${mode} theme`);
+  return value;
 }
 
 describe.each([
@@ -68,35 +79,28 @@ describe.each([
 ] as const)("theme text contrast (%s)", (mode, vars) => {
   it.each(textTokens)("%s reaches WCAG 2.1 AA (4.5:1) on every app background", (token) => {
     for (const bg of backgrounds) {
-      const fg = vars.get(token);
-      const bgValue = vars.get(bg);
-      expect(fg, `--color-${token} missing in ${mode} theme`).toMatch(/^#[0-9a-f]{6}$/i);
-      expect(bgValue, `--color-${bg} missing in ${mode} theme`).toMatch(/^#[0-9a-f]{6}$/i);
-      const ratio = contrast(fg as string, bgValue as string);
-      expect(ratio).toBeGreaterThanOrEqual(4.5);
+      const fg = demandVar(vars, token, mode);
+      const bgValue = demandVar(vars, bg, mode);
+      expect(contrast(fg, bgValue)).toBeGreaterThanOrEqual(4.5);
     }
   });
 
   it.each(accentTokens)("%s text reaches AA on every background and its wash", (token) => {
-    const fg = vars.get(token);
-    expect(fg, `--color-${token} missing in ${mode} theme`).toMatch(/^#[0-9a-f]{6}$/i);
+    const fg = demandVar(vars, token, mode);
     for (const bg of backgrounds) {
-      const bgValue = vars.get(bg);
-      expect(bgValue, `--color-${bg} missing in ${mode} theme`).toMatch(/^#[0-9a-f]{6}$/i);
-      expect(contrast(fg as string, bgValue as string)).toBeGreaterThanOrEqual(4.5);
+      const bgValue = demandVar(vars, bg, mode);
+      expect(contrast(fg, bgValue)).toBeGreaterThanOrEqual(4.5);
     }
     for (const bg of washBackgrounds) {
-      const bgValue = vars.get(bg) as string;
-      const wash = parseWash(vars.get(`${token}-wash`) as string);
-      expect(contrast(fg as string, composite(wash, bgValue))).toBeGreaterThanOrEqual(4.5);
+      const bgValue = demandVar(vars, bg, mode);
+      const wash = parseWash(demandVar(vars, `${token}-wash`, mode));
+      expect(contrast(fg, composite(wash, bgValue))).toBeGreaterThanOrEqual(4.5);
     }
   });
 
   it("on-ember reaches AA on the solid ember fill", () => {
-    const onEmber = vars.get("on-ember");
-    const ember = vars.get("ember");
-    expect(onEmber, `--color-on-ember missing in ${mode} theme`).toMatch(/^#[0-9a-f]{6}$/i);
-    expect(ember, `--color-ember missing in ${mode} theme`).toMatch(/^#[0-9a-f]{6}$/i);
-    expect(contrast(onEmber as string, ember as string)).toBeGreaterThanOrEqual(4.5);
+    const onEmber = demandVar(vars, "on-ember", mode);
+    const ember = demandVar(vars, "ember", mode);
+    expect(contrast(onEmber, ember)).toBeGreaterThanOrEqual(4.5);
   });
 });

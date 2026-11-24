@@ -90,13 +90,13 @@ export function topicsRoutes() {
       if (!c.env.AI) fail(502, "llm_unavailable");
       try {
         const user = requireUser(c);
-        const { harness, runtime, teacherLegs } = await openProfileHarness(c.env, "topic-gen", async () => user.id);
+        const { harness, runtime, keyedLegs } = await openProfileHarness(c.env, "topic-gen", async () => user.id);
         const { text } = await runProfile(
           harness,
           runtime,
           "topic-gen",
           topicGenInput(input.direction, langOf(c)),
-          await teacherLegs,
+          await keyedLegs,
         );
         const parsed = TopicGenSchema.safeParse(JSON.parse(text));
         if (!parsed.success) throw new Error("schema_mismatch");

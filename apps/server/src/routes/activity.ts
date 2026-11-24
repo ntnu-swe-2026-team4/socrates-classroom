@@ -1,14 +1,7 @@
 import { Hono } from "hono";
 import type { ZodType } from "zod";
 import { z } from "zod";
-import type {
-  ActivityInfo,
-  ActivitySlot,
-  EngagementVisibility,
-  StudentReport,
-  TeacherReport,
-  ViolationType,
-} from "@socrates/shared";
+import type { ActivityInfo, ActivitySlot, EngagementVisibility, StudentReport, TeacherReport } from "@socrates/shared";
 import {
   ACTIVITY_SLOT_MAX,
   ActivitySlotCreateInputSchema,
@@ -140,7 +133,10 @@ export function activityRoutes() {
         if (pending.length) {
           const count = Math.min(pending.length, LIVE_BACKFILL_PER_POLL);
           const offset = (Math.floor(Date.now() / 5000) * LIVE_BACKFILL_PER_POLL) % pending.length;
-          const selected = Array.from({ length: count }, (_, index) => pending[(offset + index) % pending.length]);
+          const selected = Array.from(
+            { length: count },
+            (_, index) => pending[(offset + index) % pending.length],
+          ).filter((entry): entry is NonNullable<typeof entry> => entry !== undefined);
           c.executionCtx.waitUntil(
             Promise.allSettled(
               selected.map(({ id }) => c.env.Chat.getByName(`${activity.id}:${id}`).scheduleLiveProgress()),
@@ -350,7 +346,7 @@ export function activityRoutes() {
             analysis: own.analysis,
             indicators: own.indicators ?? null,
             engagement: own.engagement ?? null,
-            violations: own.violations.map((violation) => ({ ...violation, type: violation.type as ViolationType })),
+            violations: own.violations.map((violation) => ({ ...violation, type: violation.type })),
             positions: own.positions ?? [],
           })),
         };
@@ -365,7 +361,7 @@ export function activityRoutes() {
         analysis: own.analysis,
         indicators: own.indicators ?? null,
         engagement: engagementVisibilityOf(activity).student ? (own.engagement ?? null) : null,
-        violations: own.violations.map((violation) => ({ ...violation, type: violation.type as ViolationType })),
+        violations: own.violations.map((violation) => ({ ...violation, type: violation.type })),
         positions: own.positions ?? [],
       };
       return c.json(report);

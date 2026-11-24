@@ -1,11 +1,11 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import type { Mock } from "vitest";
 import {
   VoiceInputController,
   type MediaStreamLike,
   type SpeechRecognitionLike,
   type VoiceEnv,
 } from "@/lib/voiceInput";
+import { must, singletonCtor } from "./helpers";
 
 class FakeRecognition implements SpeechRecognitionLike {
   lang = "";
@@ -59,8 +59,8 @@ class FakeAudioContext {
   }
 }
 
-function makeStream(trackStop: ReturnType<typeof vi.fn> = vi.fn()): MediaStreamLike {
-  return { getTracks: () => [{ stop: trackStop }] } as unknown as MediaStreamLike;
+function makeStream(trackStop: () => void = vi.fn()): MediaStreamLike {
+  return { getTracks: () => [{ stop: trackStop }] };
 }
 
 function makeEnv(overrides: Partial<VoiceEnv> = {}): VoiceEnv {
@@ -79,15 +79,9 @@ function makeEnv(overrides: Partial<VoiceEnv> = {}): VoiceEnv {
 
 function makeRecognitionCtor(): { recognition: FakeRecognition; recognitionCtor: VoiceEnv["recognitionCtor"] } {
   const recognition = new FakeRecognition();
-  const recognitionCtor = vi.fn(
-    () =>
-      new Proxy(FakeRecognition, {
-        construct: () => recognition,
-      }) as unknown as new () => FakeRecognition,
-  );
+  const recognitionCtor = vi.fn(() => singletonCtor<FakeRecognition, SpeechRecognitionLike>(recognition));
   return { recognition, recognitionCtor };
 }
-
 interface Harness {
   controller: VoiceInputController;
   env: VoiceEnv;
@@ -116,18 +110,21 @@ function mountController(overrides: Partial<VoiceEnv> = {}): Harness {
 }
 
 function recorderOf(harness: Harness): FakeRecorder {
-  return (harness.env.createRecorder as Mock).mock.results[0].value as FakeRecorder;
+  const created = vi.mocked(harness.env.createRecorder).mock.results[0]?.value;
+  if (!(created instanceof FakeRecorder)) throw new Error("createRecorder did not produce a FakeRecorder");
+  return created;
 }
 
 function recognitionResult(
   final: string,
   interim: string,
 ): Parameters<NonNullable<SpeechRecognitionLike["onresult"]>>[0] {
-  const results = [
-    { 0: { transcript: final }, isFinal: true, length: 1 },
-    { 0: { transcript: interim }, isFinal: false, length: 1 },
-  ];
-  return { resultIndex: 0, results } as unknown as Parameters<NonNullable<SpeechRecognitionLike["onresult"]>>[0];
+  const item = (transcript: string, isFinal: boolean): ArrayLike<{ transcript: string }> & { isFinal: boolean } => ({
+    0: { transcript },
+    isFinal,
+    length: 1,
+  });
+  return { resultIndex: 0, results: [item(final, true), item(interim, false)] };
 }
 
 beforeEach(() => {
@@ -279,8 +276,9 @@ test("the fallback path collects recorder chunks and uploads them through stt ex
   recorder.ondataavailable?.({ data: new Blob(["A"], { type: "audio/webm" }) });
   await h.controller.stop();
   expect(h.env.stt).toHaveBeenCalledTimes(1);
-  const blob = (h.env.stt as Mock).mock.calls[0][0] as Blob;
-  expect(blob.type).toBe("audio/webm");
+  const received: unknown = must(vi.mocked(h.env.stt).mock.calls[0], "stt call")[0];
+  if (!(received instanceof Blob)) throw new Error("stt did not receive a Blob");
+  expect(received.type).toBe("audio/webm");
   expect(h.onFinal).toHaveBeenCalledWith("Final transcript");
   expect(h.states).toEqual(["listening", "processing", "idle"]);
 });

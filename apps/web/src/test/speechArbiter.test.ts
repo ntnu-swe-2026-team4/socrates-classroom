@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SpeechSource } from "@/lib/companion";
+import { must } from "./helpers";
 import { SpeechArbiter, type SpeechEnv } from "@/lib/speechArbiter";
 
 function fakeEnv(options: { maxChars?: number; settle?: boolean } = {}) {
@@ -50,7 +51,7 @@ describe("SpeechArbiter (injected environment)", () => {
     const playing = a.speak("dialogue", "第一邊在講話");
     void b.speak("assistant", "第二邊朗讀", { userInitiated: true });
 
-    expect(first.requests[0].signal.aborted).toBe(false);
+    expect(must(first.requests[0], "first request").signal.aborted).toBe(false);
     expect(first.sources).toEqual(["dialogue"]);
     expect(second.sources).toEqual(["assistant"]);
     expect(first.announced()).toBe(1);
@@ -89,12 +90,13 @@ describe("SpeechArbiter (injected environment)", () => {
   it("caps at the injected budget and cuts at a sentence end", async () => {
     const spaced = fakeEnv({ maxChars: 12, settle: true });
     await new SpeechArbiter(spaced.env).speak("dialogue", "第一句話比較長。 第二句話也很長。");
-    expect(spaced.requests[0].text).toBe("第一句話比較長。");
+    expect(must(spaced.requests[0], "spaced request").text).toBe("第一句話比較長。");
 
     const tight = fakeEnv({ maxChars: 12, settle: true });
     await new SpeechArbiter(tight.env).speak("dialogue", "第一句話比較長。第二句話也很長。");
-    expect(tight.requests[0].text).toBe("第一句話比較長。第二句話");
-    expect(tight.requests[0].text.length).toBeLessThanOrEqual(12);
+    const tightRequest = must(tight.requests[0], "tight request");
+    expect(tightRequest.text).toBe("第一句話比較長。第二句話");
+    expect(tightRequest.text.length).toBeLessThanOrEqual(12);
   });
 
   it("stops local playback when another tab starts, and dispose detaches the listener", async () => {

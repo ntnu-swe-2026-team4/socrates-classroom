@@ -1,26 +1,28 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, expect, inject, it } from "vitest";
-import { call, classroomWithActivity, cookieOf, createClassroom, registerStudent, systemTopicId } from "./helpers";
+import { z } from "zod";
+import { CalendarEventSchema } from "@socrates/shared";
+import {
+  call,
+  classroomWithActivity,
+  cookieOf,
+  createClassroom,
+  field,
+  must,
+  registerStudent,
+  rows,
+  str,
+  systemTopicId,
+} from "./helpers";
 import { seedFixture } from "../src/seed";
 
 const migrations = inject("d1Migrations");
 
-interface CalendarEvent {
-  id: string;
-  classroomId: string;
-  title: string;
-  startsAt: string;
-  endsAt: string | null;
-  note: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface CalendarPage {
-  items: CalendarEvent[];
-  nextCursor: string | null;
-}
+const CalendarPageSchema = z.object({
+  items: z.array(CalendarEventSchema),
+  nextCursor: z.string().nullable(),
+});
 
 let owner: string;
 let topicId: string;
@@ -38,10 +40,10 @@ function calendarPath(classroomId: string, from: string, to: string, extra: Reco
   return `/classrooms/${classroomId}/calendar-events?${query}`;
 }
 
-async function createEvent(classroomId: string, input: object): Promise<CalendarEvent> {
+async function createEvent(classroomId: string, input: object): Promise<z.infer<typeof CalendarEventSchema>> {
   const response = await request(`/classrooms/${classroomId}/calendar-events`, owner, "POST", input);
   expect(response.status).toBe(201);
-  return (await response.json()) as CalendarEvent;
+  return CalendarEventSchema.parse(await response.json());
 }
 
 beforeAll(async () => {
@@ -73,7 +75,10 @@ it("stores an event for an empty classroom without creating a dialogue activity"
   const path = calendarPath(classroomId, "2026-11-23T06:00:00Z", "2026-11-23T08:00:00Z");
   const response = await request(path, owner);
   expect(response.status).toBe(200);
-  expect((await response.json()) as CalendarPage).toMatchObject({ items: [{ id: event.id }], nextCursor: null });
+  expect(CalendarPageSchema.parse(await response.json())).toMatchObject({
+    items: [{ id: event.id }],
+    nextCursor: null,
+  });
   expect(await (await request(`/classrooms/${classroomId}/activities`, owner)).json()).toMatchObject({ items: [] });
 });
 
@@ -171,14 +176,16 @@ it("queries overlapping events in start order with a range-bound cursor", async 
   await createEvent(classroomId, { title: "Outside", startsAt: "2026-11-24T00:00:00Z" });
   const from = "2026-11-23T00:00:00Z";
   const to = "2026-11-24T00:00:00Z";
-  const first = (await (
-    await request(calendarPath(classroomId, from, to, { limit: "2" }), owner)
-  ).json()) as CalendarPage;
+  const first = CalendarPageSchema.parse(
+    await (await request(calendarPath(classroomId, from, to, { limit: "2" }), owner)).json(),
+  );
   expect(first.items.map((item) => item.id)).toEqual([spanning.id, middle.id]);
   expect(first.nextCursor).toEqual(expect.any(String));
-  const next = (await (
-    await request(calendarPath(classroomId, from, to, { limit: "2", cursor: first.nextCursor ?? "" }), owner)
-  ).json()) as CalendarPage;
+  const next = CalendarPageSchema.parse(
+    await (
+      await request(calendarPath(classroomId, from, to, { limit: "2", cursor: first.nextCursor ?? "" }), owner)
+    ).json(),
+  );
   expect(next.items.map((item) => item.id)).toEqual([later.id]);
   expect(next.nextCursor).toBeNull();
   expect(
@@ -269,7 +276,7 @@ it("starts a scheduled discussion once and keeps its report on the same event", 
     topicId,
   });
   expect(created.status).toBe(201);
-  const { id } = (await created.json()) as CalendarEvent;
+  const id = str(await created.json(), "id");
   const range = calendarPath(classroomId, "2026-11-27T00:00:00Z", "2026-11-28T00:00:00Z");
   expect(await (await request(range, owner)).json()).toMatchObject({
     items: [{ id, topicId, activity: null }],
@@ -286,7 +293,7 @@ it("starts a scheduled discussion once and keeps its report on the same event", 
   const student = cookieOf(signup);
   const invite = await request(`/classrooms/${classroomId}/invites`, owner, "POST", { scope: "classroom" });
   expect(invite.status).toBe(201);
-  const { token } = (await invite.json()) as { token: string };
+  const token = str(await invite.json(), "token");
   expect((await request(`/classroom-invites/${token}/join`, student, "POST", { tosAccepted: true })).status).toBe(200);
   const input = { topicId, calendarEventId: id };
   expect((await request(startPath, student, "POST", input)).status).toBe(403);
@@ -297,10 +304,10 @@ it("starts a scheduled discussion once and keeps its report on the same event", 
   ]);
   expect(responses.map((response) => response.status).sort()).toEqual([200, 201]);
   const activities = await Promise.all(
-    responses.map(async (response) => (await response.json()) as { activityId: string }),
+    responses.map(async (response) => ({ activityId: str(await response.json(), "activityId") })),
   );
-  const activityId = activities[0].activityId;
-  expect(activities[1].activityId).toBe(activityId);
+  const activityId = must(activities[0], "first activity response").activityId;
+  expect(must(activities[1], "second activity response").activityId).toBe(activityId);
   expect(await (await request(startPath, owner)).json()).toMatchObject({ items: [{ id: activityId }] });
   expect(await (await request(range, student)).json()).toMatchObject({
     items: [{ id, topicId, activity: { id: activityId, finishedAt: null } }],
@@ -319,8 +326,9 @@ it("preserves the current live discussion when another is scheduled to start", a
   const path = `/classrooms/${classroomId}/activities`;
   const start = await request(path, owner, "POST", { topicId, calendarEventId: event.id });
   expect(start.status).toBe(409);
-  const history = (await (await request(path, owner)).json()) as { items: { id: string }[] };
-  expect(history.items.map((activity) => activity.id)).toEqual([activityId]);
-  const classrooms = (await (await request("/classrooms", owner)).json()) as { id: string; current: unknown }[];
-  expect(classrooms.find((room) => room.id === classroomId)?.current).toMatchObject({ activityId });
+  const history = rows(field(await (await request(path, owner)).json(), "items"));
+  expect(history.map((activity) => field(activity, "id"))).toEqual([activityId]);
+  const classrooms = rows(await (await request("/classrooms", owner)).json());
+  const currents = classrooms.map((room) => field(room, "current"));
+  expect(currents.find((entry) => entry !== null)).toMatchObject({ activityId });
 });

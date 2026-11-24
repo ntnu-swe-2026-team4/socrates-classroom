@@ -295,7 +295,8 @@ export function trapDialogFocus(node: HTMLElement | null): (() => void) | undefi
     const items = focusables();
     if (items.length === 0) return;
     event.preventDefault();
-    const index = items.indexOf(document.activeElement as HTMLElement);
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const index = active === null ? -1 : items.indexOf(active);
     const next = event.shiftKey ? items[(index <= 0 ? items.length : index) - 1] : items[(index + 1) % items.length];
     next?.focus();
   };

@@ -5,6 +5,7 @@ import { subscribeToClassroom } from "@/api/classroom-events";
 import { ClassroomCalendar } from "@/components/ClassroomCalendar";
 import { setLocale } from "@/i18n";
 import { dayKey, eventsByDay, monthDays } from "@/lib/calendar";
+import { must } from "./helpers";
 
 afterEach(() => {
   cleanup();
@@ -25,9 +26,14 @@ function mount(teacher: boolean) {
 test("a month is laid out in whole Monday-first weeks", () => {
   const november = monthDays(2026, 10);
   expect(november).toHaveLength(42);
-  expect(dayKey(november[0])).toBe("2026-10-26");
-  expect(dayKey(november[6])).toBe("2026-11-01");
-  expect(dayKey(november[41])).toBe("2026-12-06");
+  const [first, sixth, last] = [
+    must(november[0], "first day"),
+    must(november[6], "sixth day"),
+    must(november[41], "last day"),
+  ];
+  expect(dayKey(first)).toBe("2026-10-26");
+  expect(dayKey(sixth)).toBe("2026-11-01");
+  expect(dayKey(last)).toBe("2026-12-06");
   expect(monthDays(2027, 1)).toHaveLength(28);
 });
 
@@ -202,7 +208,7 @@ test("a calendar socket update refreshes the visible month", async () => {
         nextCursor: null,
       }),
     );
-    sockets[0].dispatchEvent(
+    must(sockets[0], "opened socket").dispatchEvent(
       new MessageEvent("message", { data: JSON.stringify({ type: "classroom.changed", resource: "calendar" }) }),
     );
     await screen.findAllByText("After update");
@@ -222,12 +228,14 @@ test("week view fetches seven local days starting Monday", async () => {
   const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
   const followingMonday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7);
   const [weeklyRequest] = fetch.mock.calls.slice(-1);
+  if (weeklyRequest === undefined) throw new Error("weekly fetch missing");
   const query = new URL(String(weeklyRequest[0]), "http://localhost").searchParams;
   expect(query.get("from")).toBe(monday.toISOString());
   expect(query.get("to")).toBe(followingMonday.toISOString());
   fireEvent.click(screen.getByRole("button", { name: "Next week" }));
   await waitFor(() => {
     const [request] = fetch.mock.calls.slice(-1);
+    if (request === undefined) throw new Error("next week fetch missing");
     expect(new URL(String(request[0]), "http://localhost").searchParams.get("from")).toBe(
       followingMonday.toISOString(),
     );

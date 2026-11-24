@@ -453,6 +453,38 @@ export const TeacherKeyStatusSchema = z.object({
 });
 export type TeacherKeyStatus = z.infer<typeof TeacherKeyStatusSchema>;
 
+export const AdminTeacherKeyStatusSchema = z.object({
+  userId: z.string(),
+  userName: z.string(),
+  userEmail: z.string().nullable(),
+  provider: z.string(),
+  last4: z.string(),
+  disabled: z.boolean(),
+  disabledAt: z.string().nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+  monthCostUsd: z.number(),
+  monthTokens: z.number(),
+  updatedAt: z.string(),
+  models: z.array(z.object({ model: z.string(), sortOrder: z.number() })),
+});
+export type AdminTeacherKeyStatus = z.infer<typeof AdminTeacherKeyStatusSchema>;
+
+export const AdminProviderChainSchema = z.object({
+  mode: z.literal("static"),
+  legs: z.array(
+    z.object({
+      provider: z.string(),
+      model: z.string(),
+      credential: z.string(),
+      maxConcurrency: z.number().int().min(0),
+      priority: z.number().int(),
+    }),
+  ),
+});
+export type AdminProviderChain = z.infer<typeof AdminProviderChainSchema>;
+
+export const AdminTeacherKeyDisableInputSchema = z.object({ disabled: z.boolean() });
+
 export const TeacherKeyEchoSchema = z.object({
   provider: z.string(),
   last4: z.string().optional(),
@@ -467,6 +499,104 @@ export const TeacherKeyModelEchoSchema = z.object({
   maxConcurrency: z.number().int().min(1).max(100).nullable(),
 });
 export type TeacherKeyModelEcho = z.infer<typeof TeacherKeyModelEchoSchema>;
+
+export const AdminKeyStatusSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  last4: z.string(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+  monthCostUsd: z.number(),
+  monthTokens: z.number(),
+  sortOrder: z.number(),
+  updatedAt: z.string(),
+  zdrStatus: z.enum(["unverified", "approved"]),
+  zdrRetentionSource: z.string().nullable(),
+  zdrVerifiedAt: z.string().nullable(),
+  models: z.array(
+    z.object({
+      model: z.string(),
+      maxConcurrency: z.number().int().min(1).max(100).nullable(),
+      sortOrder: z.number(),
+    }),
+  ),
+});
+export type AdminKeyStatus = z.infer<typeof AdminKeyStatusSchema>;
+
+export const AdminKeyEchoSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  last4: z.string().optional(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+  zdrStatus: z.enum(["unverified", "approved"]).optional(),
+  zdrRetentionSource: z.string().nullable().optional(),
+  zdrVerifiedAt: z.string().nullable().optional(),
+});
+export type AdminKeyEcho = z.infer<typeof AdminKeyEchoSchema>;
+
+export const AdminKeyCreateInputSchema = z.object({
+  provider: z.string().min(1).max(100),
+  key: z.string().min(8).max(256),
+  maxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
+  monthlyQuotaUsd: z.number().positive().max(100000).nullable().optional(),
+});
+
+export const AdminKeyUpdateInputSchema = z
+  .object({
+    key: z.string().min(8).max(256).optional(),
+    maxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
+    monthlyQuotaUsd: z.number().positive().max(100000).nullable().optional(),
+  })
+  .refine(
+    (input) => input.key !== undefined || input.maxConcurrency !== undefined || input.monthlyQuotaUsd !== undefined,
+    {
+      message: "key, maxConcurrency or monthlyQuotaUsd required",
+    },
+  );
+
+export const AdminKeyModelEchoSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  model: z.string(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+});
+export type AdminKeyModelEcho = z.infer<typeof AdminKeyModelEchoSchema>;
+
+export const AdminKeyModelInputSchema = z.object({
+  model: z.string().min(1).max(200),
+  maxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
+});
+
+export const AdminKeyModelOrderInputSchema = z.object({ models: z.array(z.string().min(1).max(200)).max(200) });
+
+export const AdminKeyOrderInputSchema = z.object({ keys: z.array(z.string()).max(50) });
+
+export const AdminKeyZdrInputSchema = z.object({
+  retentionSource: z.string().url().max(500),
+  verifiedAt: z
+    .string()
+    .date()
+    .refine((value) => value <= new Date().toISOString().slice(0, 10), {
+      message: "verifiedAt must not be in the future",
+    }),
+});
+
+export const AdminActionSchema = z.object({
+  id: z.number().int(),
+  actorId: z.string().nullable(),
+  action: z.string(),
+  target: z.string(),
+  before: z.unknown().nullable(),
+  after: z.unknown().nullable(),
+  createdAt: z.string(),
+});
+export type AdminAction = z.infer<typeof AdminActionSchema>;
+
+export const AdminActionsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  cursor: z.coerce.number().int().min(0).optional(),
+});
 
 export const ViolationChoiceSchema = z.object({
   type: z.string(),

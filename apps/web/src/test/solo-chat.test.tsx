@@ -1,28 +1,40 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi, type Mock } from "vitest";
 import { setLocale } from "@/i18n";
+import { must } from "./helpers";
 import { routeTree } from "@/routeTree.gen";
 import type { SoloThread, User } from "@socrates/shared";
 
-const socket = vi.hoisted(() => ({
-  send: vi.fn(),
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
-  readyState: 1,
-  OPEN: 1,
-  options: null as null | {
-    agent: string;
-    name: string;
-    enabled?: boolean;
-    onMessage: (event: { data: string }) => void;
-    onClose?: () => void;
-  },
-}));
+type AgentOptions = {
+  agent: string;
+  name: string;
+  enabled?: boolean;
+  onMessage: (event: { data: string }) => void;
+  onClose?: () => void;
+};
+
+const socket = vi.hoisted(
+  (): {
+    send: Mock;
+    addEventListener: Mock;
+    removeEventListener: Mock;
+    readyState: number;
+    OPEN: number;
+    options: AgentOptions | null;
+  } => ({
+    send: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    readyState: 1,
+    OPEN: 1,
+    options: null,
+  }),
+);
 
 vi.mock("agents/react", () => ({
-  useAgent: (options: NonNullable<typeof socket.options>) => {
+  useAgent: (options: AgentOptions) => {
     if (options.enabled !== false) socket.options = options;
     return socket;
   },
@@ -65,11 +77,12 @@ function mountChat(
     }
     const match = pathname.match(/^\/api\/solo\/threads\/([^/]+)$/);
     if (match) {
-      const id = match[1];
+      const id = must(match[1], "solo thread id");
       const target = saved.find((item) => item.id === id);
       if (!target) return Response.json({ code: "not_found" }, { status: 404 });
       if (init?.method === "DELETE") {
-        if (onDeleteRequest) await onDeleteRequest(id);
+        const onRequest = onDeleteRequest;
+        if (onRequest) await onRequest(id);
         saved = saved.filter((item) => item.id !== id);
         return new Response(null, { status: 204 });
       }
@@ -193,7 +206,7 @@ test("disables actions only on the thread currently being deleted", async () => 
   await screen.findByRole("link", { name: secondThread.title });
 
   const deleteButtons = screen.getAllByRole("button", { name: "Delete chat" });
-  fireEvent.click(deleteButtons[0]);
+  fireEvent.click(must(deleteButtons[0], "delete button"));
   fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete chat" }));
 
   await waitFor(() =>

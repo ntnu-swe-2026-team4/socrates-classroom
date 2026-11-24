@@ -11,7 +11,7 @@ import {
   oauthProviders,
   resetGoogleKeyCache,
 } from "../src/oauth";
-import { call, classroomWithActivity, cookieOf, must } from "./helpers";
+import { bool, call, classroomWithActivity, cookieOf, field, must, optStr, rows, str } from "./helpers";
 import { one, run } from "../src/db/d1";
 
 const migrations = inject("d1Migrations");
@@ -36,12 +36,20 @@ function encodeJson(value: unknown): string {
   return b64url(new TextEncoder().encode(JSON.stringify(value)));
 }
 
+function isCryptoKeyPair(pair: object): pair is CryptoKeyPair {
+  return "privateKey" in pair && "publicKey" in pair;
+}
+
 async function rsaPair(): Promise<CryptoKeyPair> {
-  return (await crypto.subtle.generateKey(
+  const pair: unknown = await crypto.subtle.generateKey(
     { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
     true,
     ["sign", "verify"],
-  )) as CryptoKeyPair;
+  );
+  if (pair instanceof CryptoKey || typeof pair !== "object" || pair === null || !isCryptoKeyPair(pair)) {
+    throw new Error("RSASSA-PKCS1-v1_5 did not produce a key pair");
+  }
+  return pair;
 }
 
 async function idToken(claims: Record<string, unknown>, key = signingKey, kid = "kid-1"): Promise<string> {
@@ -58,7 +66,7 @@ async function idToken(claims: Record<string, unknown>, key = signingKey, kid = 
 function cookieNamed(res: Response, name: string): string | undefined {
   return res.headers
     .getSetCookie()
-    .map((line) => line.split(";")[0])
+    .map((line) => line.split(";")[0] ?? "")
     .find((pair) => pair.startsWith(`${name}=`) && pair.length > name.length + 1);
 }
 
@@ -130,11 +138,14 @@ async function googleLogin(sub: string, extra: Record<string, unknown> = {}): Pr
 }
 
 async function me(cookie: string): Promise<{ id: string; name: string; isAdmin: boolean } | null> {
-  return (await (await call("/api/me", { headers: { Cookie: cookie } })).json()) as {
-    id: string;
-    name: string;
-    isAdmin: boolean;
-  } | null;
+  const res = await call("/api/me", { headers: { Cookie: cookie } });
+  const body: unknown = await res.json();
+  if (body === null) return null;
+  return {
+    id: str(body, "id"),
+    name: str(body, "name"),
+    isAdmin: bool(body, "isAdmin"),
+  };
 }
 
 beforeAll(async () => {
@@ -162,12 +173,12 @@ describe("email signup (standalone account)", () => {
     const body = { email: "New.User@Example.com", password: "password-1", name: "新用戶", tosAccepted: true };
     const res = await call("/api/auth/signup", { method: "POST", headers: json, body: JSON.stringify(body) });
     expect(res.status).toBe(200);
-    const user = (await res.json()) as { id: string; name: string; isAdmin: boolean };
-    expect(user.name).toBe("新用戶");
-    expect("canManageClasses" in user).toBe(false);
-    expect(user.isAdmin).toBe(false);
+    const user = await res.json();
+    expect(str(user, "name")).toBe("新用戶");
+    expect("canManageClasses" in (typeof user === "object" && user !== null ? user : {})).toBe(false);
+    expect(bool(user, "isAdmin")).toBe(false);
     const session = cookieOf(res);
-    expect((await me(session))?.id).toBe(user.id);
+    expect((await me(session))?.id).toBe(str(user, "id"));
 
     const login = await call("/api/auth/login", {
       method: "POST",
@@ -175,7 +186,7 @@ describe("email signup (standalone account)", () => {
       body: JSON.stringify({ email: "new.user@example.com", password: "password-1" }),
     });
     expect(login.status).toBe(200);
-    expect(((await login.json()) as { id: string }).id).toBe(user.id);
+    expect(str(await login.json(), "id")).toBe(str(user, "id"));
   });
 
   test("duplicate email → 409, missing ToS → 422, weak password → 422", async () => {
@@ -185,13 +196,13 @@ describe("email signup (standalone account)", () => {
     );
     const dup = await call("/api/auth/signup", { method: "POST", headers: json, body: JSON.stringify(base) });
     expect(dup.status).toBe(409);
-    expect(((await dup.json()) as { code: string }).code).toBe("email_taken");
+    expect(str(await dup.json(), "code")).toBe("email_taken");
     const noTos = await call("/api/auth/signup", {
       method: "POST",
       headers: json,
       body: JSON.stringify({ ...base, email: "tos@example.com", tosAccepted: false }),
     });
-    expect(((await noTos.json()) as { code: string }).code).toBe("tos_required");
+    expect(str(await noTos.json(), "code")).toBe("tos_required");
     const weak = await call("/api/auth/signup", {
       method: "POST",
       headers: json,
@@ -221,13 +232,10 @@ describe("email signup (standalone account)", () => {
       body: JSON.stringify({ code: joinCode, tosAccepted: true }),
     });
     expect(joined.status).toBe(200);
-    const list = (await (await call("/api/classrooms", { headers: { Cookie: session } })).json()) as Array<{
-      role: string;
-      code: string | null;
-    }>;
+    const list = rows(await (await call("/api/classrooms", { headers: { Cookie: session } })).json());
     expect(list.length).toBe(2);
-    expect(list.some((room) => room.role === "teacher" && room.code !== null)).toBe(true);
-    expect(list.some((room) => room.role === "student" && room.code === null)).toBe(true);
+    expect(list.some((room) => str(room, "role") === "teacher" && optStr(room, "code") !== null)).toBe(true);
+    expect(list.some((room) => str(room, "role") === "student" && optStr(room, "code") === null)).toBe(true);
   });
 });
 
@@ -281,18 +289,18 @@ describe("Google OAuth", () => {
       headers: json,
       body: JSON.stringify({ email: "g-200@gmail.com", password: "password-1", name: "E", tosAccepted: true }),
     });
-    const emailUser = (await signup.json()) as { id: string };
+    const emailUser = await signup.json();
     const google = await googleLogin("g-200");
     const googleUser = await me(must(cookieNamed(google, "socrates_session"), "socrates_session cookie"));
     expect(googleUser?.id).toBeDefined();
-    expect(googleUser?.id).not.toBe(emailUser.id);
+    expect(googleUser?.id).not.toBe(str(emailUser, "id"));
 
     const login = await call("/api/auth/login", {
       method: "POST",
       headers: json,
       body: JSON.stringify({ email: "g-200@gmail.com", password: "password-1" }),
     });
-    expect(((await login.json()) as { id: string }).id).toBe(emailUser.id);
+    expect(str(await login.json(), "id")).toBe(str(emailUser, "id"));
   });
 
   test("missing cookie or mismatched state → oauth_state_invalid, no session", async () => {
@@ -348,10 +356,10 @@ describe("authProviders capability detection (#207)", () => {
   test("GET /auth/providers lists configured providers; apple stays retired (拍板見 accounts.md §7)", async () => {
     const res = await call("/api/auth/providers");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { providers: string[] };
-    expect(body.providers).toContain("google");
-    expect(body.providers).toContain("facebook");
-    expect(body.providers).not.toContain("apple");
+    const providers = rows(field(await res.json(), "providers"));
+    expect(providers).toContain("google");
+    expect(providers).toContain("facebook");
+    expect(providers).not.toContain("apple");
   });
 
   test("GET /auth/providers is browser-cacheable: constant payload, no session, no DB", async () => {

@@ -35,7 +35,14 @@ export function langOf(c: Ctx): Lang {
   return c.get("lang");
 }
 
-export function fail(status: number, code: ErrorCode, vars: Record<string, string | number> = {}): never {
+export const FAIL_STATUSES = [400, 401, 403, 404, 409, 410, 422, 429, 500, 502] as const;
+export type FailStatus = (typeof FAIL_STATUSES)[number];
+
+export function httpStatusOf(status: number): FailStatus | undefined {
+  return FAIL_STATUSES.find((candidate) => candidate === status);
+}
+
+export function fail(status: FailStatus, code: ErrorCode, vars: Record<string, string | number> = {}): never {
   throw new ApiError(status, code, vars);
 }
 
@@ -89,12 +96,12 @@ export function uniqueViolationColumns(error: unknown): Array<[string, string]> 
     // Miniflare/D1 envelopes the raw SQLite message: `D1_ERROR: UNIQUE constraint failed: t.c, t.c2: SQLITE_CONSTRAINT (extended: …)`
     const normalized = message.replace(/^D1_ERROR:\s*/, "");
     const match = normalized.match(/^UNIQUE constraint failed: (.+?)(?:: SQLITE_CONSTRAINT\b.*)?$/);
-    if (!match) continue;
-    return match[1]
+    const captured = match?.[1];
+    if (captured === undefined) continue;
+    return captured
       .split(",")
       .map((pair) => pair.trim().split("."))
-      .filter((parts): parts is [string, string] => parts.length === 2)
-      .map(([table, column]) => [table, column] as [string, string]);
+      .filter((parts): parts is [string, string] => parts.length === 2);
   }
   return [];
 }

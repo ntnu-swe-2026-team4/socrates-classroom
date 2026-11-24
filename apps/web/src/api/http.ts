@@ -6,8 +6,14 @@ import type {
   ActivityMode,
   ActivitySlots,
   ActivityStarted,
+  AdminAction,
   AdminOverview,
+  AdminProviderChain,
+  AdminTeacherKeyStatus,
   AdminUser,
+  AdminKeyStatus,
+  AdminKeyEcho,
+  AdminKeyModelEcho,
   Notification,
   Axis,
   ClientConfig,
@@ -49,6 +55,8 @@ import {
   JoinInputSchema,
   LoginInputSchema,
   LookupInputSchema,
+  AdminKeyCreateInputSchema,
+  AdminKeyUpdateInputSchema,
   NotificationInputSchema,
   PasswordForgotInputSchema,
   PasswordResetInputSchema,
@@ -74,7 +82,7 @@ export class ApiError extends Error {
 }
 
 function toErrorCode(raw: string | undefined): ErrorCode {
-  return (ERROR_CODES as readonly string[]).includes(raw ?? "") ? (raw as ErrorCode) : "internal_error";
+  return ERROR_CODES.find((code) => code === raw) ?? "internal_error";
 }
 
 export interface KeyProviderInfo {
@@ -101,6 +109,28 @@ export interface Api {
   notifications(): Promise<NotificationFeed>;
   markNotificationsSeen(): Promise<void>;
   adminOverview(): Promise<AdminOverview>;
+  adminActions(cursor?: number): Promise<{ items: AdminAction[]; nextCursor: number | null }>;
+  listAdminKeys(): Promise<AdminKeyStatus[]>;
+  createAdminKey(input: {
+    provider: string;
+    key: string;
+    maxConcurrency?: number | null;
+    monthlyQuotaUsd?: number | null;
+  }): Promise<AdminKeyEcho>;
+  updateAdminKey(
+    id: string,
+    input: { key?: string; maxConcurrency?: number | null; monthlyQuotaUsd?: number | null },
+  ): Promise<AdminKeyEcho>;
+  deleteAdminKey(id: string): Promise<void>;
+  orderAdminKeys(keys: string[]): Promise<void>;
+  orderAdminKeyModels(id: string, models: string[]): Promise<void>;
+  adminKeyProviderModels(provider: string): Promise<KeyModelInfo[]>;
+  putAdminKeyModel(id: string, model: string, maxConcurrency?: number | null): Promise<AdminKeyModelEcho>;
+  deleteAdminKeyModel(id: string, model: string): Promise<void>;
+  approveAdminKeyZdr(id: string, input: { retentionSource: string; verifiedAt: string }): Promise<AdminKeyEcho>;
+  adminTeacherKeys(): Promise<AdminTeacherKeyStatus[]>;
+  setAdminTeacherKeyDisabled(userId: string, provider: string, disabled: boolean): Promise<void>;
+  adminPlatformChain(): Promise<AdminProviderChain>;
   postAdminNotification(input: { title: string; body: string }): Promise<Notification>;
   joinByCode(code: string): Promise<JoinInfo>;
   joinAsGuest(code: string, input: { name?: string; tosAccepted: boolean }): Promise<JoinResult>;
@@ -184,14 +214,23 @@ type JsonLike = {
 };
 
 async function raiseApiError(res: { statusText: string; json(): Promise<unknown> }): Promise<never> {
-  const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-  throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
+  const parsed: unknown = await res.json().catch(() => null);
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new ApiError("internal_error", res.statusText);
+  }
+  const code = Reflect.get(parsed, "code");
+  const message = Reflect.get(parsed, "message");
+  throw new ApiError(
+    toErrorCode(typeof code === "string" ? code : undefined),
+    typeof message === "string" ? message : res.statusText,
+  );
 }
 
 async function unwrap<R extends JsonLike>(res: R): Promise<Awaited<ReturnType<R["json"]>>> {
-  if (res.status === 204) return undefined as Awaited<ReturnType<R["json"]>>;
+  if (res.status === 204) return undefined as unknown as Awaited<ReturnType<R["json"]>>;
   if (!res.ok) return raiseApiError(res);
-  return res.json() as Promise<Awaited<ReturnType<R["json"]>>>;
+  // same-origin API — R is the Hono-typed response whose json() the generic carries
+  return (await res.json()) as unknown as Awaited<ReturnType<R["json"]>>;
 }
 
 async function playTts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void> {
@@ -199,8 +238,11 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
   const res = await client.tts.$post({ json: input }, { init: { signal } });
   if (!res.ok) return raiseApiError(res);
   const bytes = await res.arrayBuffer();
+  // Safari legacy prefix — same constructor shape under the vendor name
+  const legacyCtor: unknown = Reflect.get(window, "webkitAudioContext");
   const AudioContextCtor =
-    window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    window.AudioContext ??
+    (typeof legacyCtor === "function" ? (legacyCtor as unknown as typeof AudioContext) : undefined);
   const context = new AudioContextCtor();
   if (context.state === "suspended") await context.resume().catch(() => {});
   const source = context.createBufferSource();
@@ -401,6 +443,63 @@ export const httpApi: Api = {
   },
   async adminOverview() {
     return unwrap(await client.admin.overview.$get());
+  },
+  async adminActions(cursor) {
+    const query = cursor === undefined ? {} : { cursor: String(cursor) };
+    return unwrap(await client.admin.actions.$get({ query }));
+  },
+  async listAdminKeys() {
+    return unwrap(await client.admin.keys.$get());
+  },
+  async createAdminKey(input) {
+    return unwrap(await client.admin.keys.$post({ json: AdminKeyCreateInputSchema.parse(input) }));
+  },
+  async updateAdminKey(id, input) {
+    return unwrap(await client.admin.keys[":id"].$put({ param: { id }, json: AdminKeyUpdateInputSchema.parse(input) }));
+  },
+  async deleteAdminKey(id) {
+    await unwrap(await client.admin.keys[":id"].$delete({ param: { id } }));
+  },
+  async orderAdminKeys(keys) {
+    await unwrap(await client.admin.keys.order.$put({ json: { keys } }));
+  },
+  async orderAdminKeyModels(id, models) {
+    await unwrap(await client.admin.keys[":id"].models.order.$put({ param: { id }, json: { models } }));
+  },
+  async adminKeyProviderModels(provider) {
+    return unwrap(await client.admin.keys.providers[":provider"].models.$get({ param: { provider } }));
+  },
+  async putAdminKeyModel(id, model, maxConcurrency) {
+    return unwrap(
+      await client.admin.keys[":id"].models.$put({
+        param: { id },
+        json: maxConcurrency === undefined ? { model } : { model, maxConcurrency },
+      }),
+    );
+  },
+  async deleteAdminKeyModel(id, model) {
+    await unwrap(
+      await client.admin.keys[":id"].models[":model"].$delete({
+        param: { id, model: encodeURIComponent(model) },
+      }),
+    );
+  },
+  async approveAdminKeyZdr(id, input) {
+    return unwrap(await client.admin.keys[":id"].zdr.$post({ param: { id }, json: input }));
+  },
+  async adminTeacherKeys() {
+    return unwrap(await client.admin["teacher-keys"].$get());
+  },
+  async setAdminTeacherKeyDisabled(userId, provider, disabled) {
+    await unwrap(
+      await client.admin["teacher-keys"][":userId"][":provider"].$patch({
+        param: { userId, provider },
+        json: { disabled },
+      }),
+    );
+  },
+  async adminPlatformChain() {
+    return unwrap(await client.admin["platform-chain"].$get());
   },
   async postAdminNotification(input) {
     return unwrap(await client.admin.notifications.$post({ json: NotificationInputSchema.parse(input) }));
