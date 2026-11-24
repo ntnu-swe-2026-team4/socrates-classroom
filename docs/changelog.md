@@ -2,6 +2,13 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-24 — production 寄信路徑開通（`docs/email-sending-live`）
+
+### Fixed
+
+- production 寄信路徑開通：Workers Paid（自 2026-11-09 起生效）＋ sending domain `g36maid.dev` 與子網域 `socrates.g36maid.dev`（寄件人 `ALERT_FROM_EMAIL` 所在）皆已完成 onboarding（DNS `status: ready`），REST API 實測寄送成功——此前 `SEND_EMAIL` binding 對任意收件人一律失敗，被 fail-open 吞掉，驗證信／密碼重設信／額度提醒信實質不可用
+- 子網域 onboard 由 `cf email-sending subdomains create` 補上（apex onboard 不自動涵蓋子網域）；`docs/architecture.md` §寄信改為記錄已滿足狀態與逐 domain onboarding 限制
+
 ## 2026-11-24 — 登入頁：登入／註冊卡片等高、不再捲動（`fix/411-login-card-stable`，#411）
 
 ### Fixed
