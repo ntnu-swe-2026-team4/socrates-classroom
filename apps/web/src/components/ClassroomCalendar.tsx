@@ -1,6 +1,6 @@
 import type { CalendarEvent, Topic } from "@socrates/shared";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "@/api";
@@ -48,7 +48,7 @@ export function ClassroomCalendar({
   const weekly = view === "week";
   const rangeStart = weekly ? weekStart(selectedDate) : new Date(year, month, 1);
   const rangeEnd = weekly ? shiftDay(rangeStart, 7) : new Date(year, month + 1, 1);
-  const events = useQuery(classroomCalendarOptions(id, rangeStart, rangeEnd));
+  const events = useQuery({ ...classroomCalendarOptions(id, rangeStart, rangeEnd), placeholderData: keepPreviousData });
   const refresh = () => client.invalidateQueries({ queryKey: classroomCalendarScopeOptions(id).queryKey });
   const closeEditor = () => {
     setEditorOpen(false);
