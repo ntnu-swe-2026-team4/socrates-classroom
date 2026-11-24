@@ -187,6 +187,29 @@ test("the classrooms button expands and collapses its two destinations in place"
   }
 });
 
+test("navigating into a classroom page expands the classrooms menu", () => {
+  calls.pathname = "/home";
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(meQueryOptions.queryKey, teacher);
+  const shell = (page: string) => (
+    <QueryClientProvider client={client}>
+      <AppShell>
+        <p>{page}</p>
+      </AppShell>
+    </QueryClientProvider>
+  );
+  const view = render(shell("home"));
+  try {
+    expect(screen.getByRole("button", { name: "Classrooms" }).getAttribute("aria-expanded")).toBe("false");
+    calls.pathname = "/classrooms";
+    view.rerender(shell("classrooms"));
+    expect(screen.getByRole("button", { name: "Classrooms" }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("link", { name: "My courses" })).toBeTruthy();
+  } finally {
+    client.clear();
+  }
+});
+
 test("non-admins do not see the manage-site link", () => {
   const client = mountShell();
   try {

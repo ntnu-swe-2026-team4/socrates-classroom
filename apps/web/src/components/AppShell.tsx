@@ -152,13 +152,14 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
     setPrevPathname(pathname);
     setDrawerOpen(false);
     account.close();
+    if (pathname.startsWith("/classrooms")) setClassroomsOpen(true);
   }
 
   const inAdmin = pathname.startsWith("/admin");
   const halftone = HALFTONE_MATCH.some((prefix) => pathname.startsWith(prefix));
   const themeTip = t("theme_toggle");
 
-  const rail = (
+  const rail = (classroomsMenuId: string) => (
     <nav className="flex h-full w-[88px] flex-col items-center overflow-x-hidden overflow-y-auto border-r-[1.5px] border-ht-line bg-ht-surface py-4 font-comic-sans">
       <Link
         to="/home"
@@ -187,7 +188,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                   type="button"
                   data-rail="classrooms"
                   aria-expanded={classroomsOpen}
-                  aria-controls="rail-classrooms-menu"
+                  aria-controls={classroomsMenuId}
                   onClick={() => setClassroomsOpen(!classroomsOpen)}
                   className={cn(NAV_BTN, "relative", active && NAV_ACTIVE)}
                 >
@@ -198,7 +199,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                     className={cn("absolute top-1.5 right-1.5 size-3", classroomsOpen && "rotate-180")}
                   />
                 </button>
-                <div id="rail-classrooms-menu" hidden={!classroomsOpen} className="flex flex-col items-center gap-1.5">
+                <div id={classroomsMenuId} hidden={!classroomsOpen} className="flex flex-col items-center gap-1.5">
                   {CLASSROOM_VIEWS.map((sub) => (
                     <Link
                       key={sub.view}
@@ -290,7 +291,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
 
   return (
     <div className="flex h-dvh bg-paper text-ink [--font-serif:var(--font-sans)]">
-      <aside className="relative hidden h-dvh shrink-0 md:block">{rail}</aside>
+      <aside className="relative hidden h-dvh shrink-0 md:block">{rail("rail-classrooms-menu")}</aside>
 
       <button
         type="button"
@@ -303,7 +304,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
 
       {drawerOpen && (
         <TrapDialog className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
-          {rail}
+          {rail("drawer-classrooms-menu")}
         </TrapDialog>
       )}
 
