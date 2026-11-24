@@ -18,8 +18,8 @@ export interface RouteDecision {
   lease: string | null;
 }
 
-const TEACHER_CREDENTIAL_PREFIX = "teacher:";
-const ADMIN_CREDENTIAL_PREFIX = "admin:";
+export const TEACHER_CREDENTIAL_PREFIX = "teacher:";
+export const ADMIN_CREDENTIAL_PREFIX = "admin:";
 
 export function isTeacherCredential(credential: string): boolean {
   return credential.startsWith(TEACHER_CREDENTIAL_PREFIX);

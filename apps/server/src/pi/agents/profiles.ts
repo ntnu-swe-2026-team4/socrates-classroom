@@ -25,9 +25,9 @@ import { socratesExtension } from "../extensions/socrates";
 import { createAvatarExtension } from "../extensions/avatar";
 import { createJudgmentExtension } from "../extensions/judgment";
 import { createWebSearchExtension } from "../extensions/websearch";
-import { getRouter, type TrafficClass } from "../../gateway/router";
+import { getRouter, isKeyedCredential, type TrafficClass } from "../../gateway/router";
 import type { SettleKind } from "../../gateway/ledger";
-import { keyedLegsOf, type KeyedLeg } from "../credentials";
+import { keyedLegsOf, type DecidedCredential, type KeyedLeg } from "../credentials";
 import {
   reportSubmitAxesExtension,
   reportSubmitEngagementExtension,
@@ -169,6 +169,7 @@ export interface ProfileRuntime {
   models: ReturnType<typeof buildModels>;
   registry: Registry;
   env: Env;
+  decidedCredential: { current: DecidedCredential | null };
 }
 
 export async function openProfileHarness(
@@ -176,13 +177,17 @@ export async function openProfileHarness(
   profileName: Exclude<ProfileName, "socrates">,
   teacherOf?: () => Promise<string | null>,
 ): Promise<{ harness: Harness; runtime: ProfileRuntime; keyedLegs: Promise<KeyedLeg[]> }> {
-  const models = buildModels(env, teacherOf ? { teacherOf } : {});
+  const decidedCredential: { current: DecidedCredential | null } = { current: null };
+  const models = buildModels(env, {
+    ...(teacherOf ? { teacherOf } : {}),
+    keyedOf: () => decidedCredential.current,
+  });
   const registry = profileRegistry(PROFILES[profileName], env);
-  if (teacherOf) registry.install(createUsageExtension(env, teacherOf));
+  registry.install(createUsageExtension(env, () => decidedCredential.current));
   const harness = await Harness.open(new MemoryStorage(), { models: models.models, registry }, BACKGROUND_CONTEXT);
   return {
     harness,
-    runtime: { models, registry, env },
+    runtime: { models, registry, env, decidedCredential },
     keyedLegs: keyedLegsOf(env, teacherOf ? await teacherOf() : null),
   };
 }
@@ -246,6 +251,9 @@ export async function runProfile(
     runtime.models.models.getModel(entry.provider, entry.model) !== undefined;
   const decision = await router.pick(profile.trafficClass, canServe, keyedLegs);
   if (!decision && !runtime.models.faux) throw new NoAvailableModelError();
+  const decidedEntry = decision && isKeyedCredential(decision.entry.credential) ? decision.entry : null;
+  const decided = decidedEntry ? { provider: decidedEntry.provider, credential: decidedEntry.credential } : null;
+  runtime.decidedCredential.current = decided;
   let kind: SettleKind = "error";
   try {
     const model = decision
@@ -284,6 +292,7 @@ export async function runProfile(
     kind = "ok";
     return { text, payload: null, conversation };
   } finally {
+    if (runtime.decidedCredential.current === decided) runtime.decidedCredential.current = null;
     if (decision) await router.settle(decision, kind);
   }
 }

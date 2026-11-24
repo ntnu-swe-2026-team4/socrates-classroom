@@ -2,7 +2,9 @@ import type { Usage } from "@earendil-works/pi-ai";
 import type { Lang } from "@socrates/shared";
 import { one, run } from "../db/d1";
 import type { Env } from "../env";
+import type { DecidedCredential } from "../pi/credentials";
 import { sendAdminQuotaAlertEmail, sendQuotaAlertEmail } from "../mail";
+import { ADMIN_CREDENTIAL_PREFIX, TEACHER_CREDENTIAL_PREFIX, isAdminCredential, isTeacherCredential } from "./router";
 import { claimQuotaThresholds, monthWindow } from "./quota-alerts";
 
 export interface UsageSample {
@@ -142,6 +144,27 @@ async function announceAdmin(
       error instanceof Error ? error.message : typeof error,
     );
     return false;
+  }
+}
+
+/**
+ * Attribution gate for keyed legs: the router decision's credential decides
+ * which pool a turn bills — teacher:<uid> → the teacher's quota, admin:<id> →
+ * the platform pool. Platform binding legs record nothing here; their meter
+ * shape rides on #211/#80.
+ */
+export async function recordKeyedUsage(
+  env: Env,
+  decided: DecidedCredential | null,
+  sample: UsageSample,
+): Promise<void> {
+  if (!decided || decided.provider !== sample.provider) return;
+  if (isTeacherCredential(decided.credential)) {
+    await recordTeacherUsage(env, decided.credential.slice(TEACHER_CREDENTIAL_PREFIX.length), sample);
+    return;
+  }
+  if (isAdminCredential(decided.credential)) {
+    await recordAdminUsage(env, decided.credential.slice(ADMIN_CREDENTIAL_PREFIX.length), sample);
   }
 }
 

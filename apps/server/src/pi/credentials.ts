@@ -1,4 +1,10 @@
 import type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
+import {
+  ADMIN_CREDENTIAL_PREFIX,
+  TEACHER_CREDENTIAL_PREFIX,
+  isAdminCredential,
+  isTeacherCredential,
+} from "../gateway/router";
 import { all, one } from "../db/d1";
 import { gatewayConfig } from "../gateway/config.gen";
 import { decryptKey } from "../auth-crypto";
@@ -6,6 +12,11 @@ import type { Env } from "../env";
 
 interface KeyRow {
   key_enc: string;
+}
+
+export interface DecidedCredential {
+  provider: string;
+  credential: string;
 }
 
 interface KeyRowSource {
@@ -40,31 +51,6 @@ export function d1ApiKeyStore(env: Env, rows: KeyRowSource): CredentialStore {
 }
 
 /**
- * Teacher keys are written only by the REST route; pi reads them here. The
- * teacher id resolves lazily because the owning classroom is not known when
- * the Models collection is built (DO field initializers run synchronously).
- */
-export function teacherCredentialStore(env: Env, teacherOf: () => Promise<string | null>): CredentialStore {
-  return d1ApiKeyStore(env, {
-    byProvider: async (providerId) => {
-      const teacherId = await teacherOf();
-      if (!teacherId) return null;
-      return await one<KeyRow>(env.DB, "SELECT key_enc FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid", {
-        uid: teacherId,
-        pid: providerId,
-      });
-    },
-    listProviders: async () => {
-      const teacherId = await teacherOf();
-      if (!teacherId) return [];
-      return await all<{ provider_id: string }>(env.DB, "SELECT provider_id FROM teacher_keys WHERE user_id = $uid", {
-        uid: teacherId,
-      });
-    },
-  });
-}
-
-/**
  * Admin BYOK keys are written only by the REST route; pi reads them here.
  * One key per provider keeps credential attribution honest: pi's credential
  * store resolves by provider id, so a second enabled key for the same
@@ -75,6 +61,54 @@ export function adminCredentialStore(env: Env): CredentialStore {
     byProvider: (providerId) =>
       one<KeyRow>(env.DB, "SELECT key_enc FROM admin_keys WHERE provider_id = $pid", { pid: providerId }),
     listProviders: () => all<{ provider_id: string }>(env.DB, "SELECT provider_id FROM admin_keys"),
+  });
+}
+
+/**
+ * The store the dialogue and profile harnesses resolve keyed legs through:
+ * it serves the key of the leg the router actually picked for this turn, and
+ * nothing else. Without a decision — platform legs, compaction on the
+ * default model — it resolves undefined, so keyed pools never leak onto
+ * unrouted traffic and unrouted traffic never burns a keyed pool.
+ */
+export function keyedCredentialStore(
+  env: Env,
+  decided: () => DecidedCredential | null,
+  teacherOf?: () => Promise<string | null>,
+): CredentialStore {
+  return d1ApiKeyStore(env, {
+    byProvider: async (providerId) => {
+      const decision = decided();
+      if (!decision || decision.provider !== providerId) return null;
+      if (isTeacherCredential(decision.credential)) {
+        const uid = decision.credential.slice(TEACHER_CREDENTIAL_PREFIX.length);
+        return await one<KeyRow>(
+          env.DB,
+          "SELECT key_enc FROM teacher_keys WHERE user_id = $uid AND provider_id = $pid",
+          { uid, pid: providerId },
+        );
+      }
+      if (isAdminCredential(decision.credential)) {
+        const id = decision.credential.slice(ADMIN_CREDENTIAL_PREFIX.length);
+        return await one<KeyRow>(env.DB, "SELECT key_enc FROM admin_keys WHERE id = $id", { id });
+      }
+      return null;
+    },
+    listProviders: async () => {
+      const adminRows = await all<{ provider_id: string }>(env.DB, "SELECT provider_id FROM admin_keys");
+      const teacherId = teacherOf ? await teacherOf() : null;
+      const teacherRows = teacherId
+        ? await all<{ provider_id: string }>(env.DB, "SELECT provider_id FROM teacher_keys WHERE user_id = $uid", {
+            uid: teacherId,
+          })
+        : [];
+      const seen = new Set<string>();
+      return [...teacherRows, ...adminRows].filter((row) => {
+        if (seen.has(row.provider_id)) return false;
+        seen.add(row.provider_id);
+        return true;
+      });
+    },
   });
 }
 
