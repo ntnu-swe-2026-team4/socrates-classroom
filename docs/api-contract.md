@@ -489,6 +489,14 @@ interface ViolationSlice {
 
 - 額度警示（60/80/100%）與 teacher keys 共用同一套 claim/lease/re-arm 機制（`gateway/quota-alerts.ts`，#146 模式抽出）；收件人僅 `ADMIN_ALERT_EMAIL`（zh）。
 
+### 9.4 管理員：動作稽核（#359；母單 #353）
+
+admin panel 直接操作生產鏈的前提：每個 admin 動作與其業務寫入以同一個 D1 `batch()` 提交——稽核失敗即整個操作失敗。`admin_actions`（migration 023）：`{id, actorId, action, target, before, after, createdAt}`；`before`／`after` 為純 JSON 摘要，**MUST NOT 含 key 素材**（last4-only）；`actor_id` FK `users` ON DELETE SET NULL（#233 慣例——帳號刪除保留紀錄、actor 為 null）。動作命名：`admin_key.create`／`admin_key.update`／`admin_key.delete`／`admin_key_model.upsert`／`admin_key_model.delete`；ZDR 核可（#357）與 teacher key 代管停用（#360）落地時寫入同一表。
+
+| Operation                                                                    | 說明                                                                                                                |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/admin/actions?limit&cursor` → `{items: AdminAction[], nextCursor}` | requireAdmin；新到舊（`id` DESC），`limit` 預設 30、上限 100，`cursor`＝上一頁最後一筆 `id`；匿名 401／非 admin 403 |
+
 ## 10. 錯誤碼
 
 `code` 為 shared 的 `ErrorCode` literal union＋`ApiError`（帶型別 `code`），呼叫端 switch 窮舉有編譯期檢查。

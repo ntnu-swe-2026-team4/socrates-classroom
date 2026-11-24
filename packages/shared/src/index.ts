@@ -534,6 +534,22 @@ export const AdminKeyModelOrderInputSchema = z.object({ models: z.array(z.string
 
 export const AdminKeyOrderInputSchema = z.object({ keys: z.array(z.string()).max(50) });
 
+export const AdminActionSchema = z.object({
+  id: z.number().int(),
+  actorId: z.string().nullable(),
+  action: z.string(),
+  target: z.string(),
+  before: z.unknown().nullable(),
+  after: z.unknown().nullable(),
+  createdAt: z.string(),
+});
+export type AdminAction = z.infer<typeof AdminActionSchema>;
+
+export const AdminActionsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  cursor: z.coerce.number().int().min(0).optional(),
+});
+
 export const ViolationChoiceSchema = z.object({
   type: z.string(),
   probability: z.number().min(0).max(1),

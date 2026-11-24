@@ -8,7 +8,8 @@ import {
   AdminKeyUpdateInputSchema,
   type AdminKeyStatus,
 } from "@socrates/shared";
-import { all, batch, one, run } from "../db/d1";
+import { all, batch, one } from "../db/d1";
+import { adminActionEntry } from "../services/audit";
 import { keyableProvider, keyableProviders } from "../pi/keyable-providers";
 import { encryptKey } from "../auth-crypto";
 import {
@@ -107,26 +108,38 @@ export function adminKeyRoutes() {
       rateLimit("admin-create-key", 30),
       validateJson(AdminKeyCreateInputSchema),
       async (c) => {
-        requireAdmin(c);
+        const actor = requireAdmin(c);
         const input = c.req.valid("json");
         if (!keyableProvider(input.provider)) fail(422, "byok_provider_invalid");
         const enc = await encryptKey(c.env, input.key);
         const id = newId("ak_");
         try {
-          await run(
-            c.env.DB,
-            `INSERT INTO admin_keys (id, provider_id, key_enc, last4, sort_order, updated_at, max_concurrency, monthly_quota_usd)
-           SELECT $id, $pid, $enc, $last4, COALESCE((SELECT MAX(sort_order) FROM admin_keys), -1) + 1, $at, $maxConcurrency, $quota`,
+          await batch(c.env.DB, [
             {
-              id,
-              pid: input.provider,
-              enc,
-              last4: input.key.slice(-4),
-              at: nowIso(),
-              maxConcurrency: input.maxConcurrency ?? null,
-              quota: input.monthlyQuotaUsd ?? null,
+              sql: `INSERT INTO admin_keys (id, provider_id, key_enc, last4, sort_order, updated_at, max_concurrency, monthly_quota_usd)
+                    SELECT $id, $pid, $enc, $last4, COALESCE((SELECT MAX(sort_order) FROM admin_keys), -1) + 1, $at, $maxConcurrency, $quota`,
+              params: {
+                id,
+                pid: input.provider,
+                enc,
+                last4: input.key.slice(-4),
+                at: nowIso(),
+                maxConcurrency: input.maxConcurrency ?? null,
+                quota: input.monthlyQuotaUsd ?? null,
+              },
             },
-          );
+            adminActionEntry({
+              actorId: actor.id,
+              action: "admin_key.create",
+              target: `admin_key:${id}`,
+              after: {
+                provider: input.provider,
+                last4: input.key.slice(-4),
+                maxConcurrency: input.maxConcurrency ?? null,
+                monthlyQuotaUsd: input.monthlyQuotaUsd ?? null,
+              },
+            }),
+          ]);
         } catch (error) {
           if (
             uniqueViolationColumns(error).some(([table, column]) => table === "admin_keys" && column === "provider_id")
@@ -175,7 +188,7 @@ export function adminKeyRoutes() {
       rateLimit("admin-update-key", 30),
       validateJson(AdminKeyUpdateInputSchema),
       async (c) => {
-        requireAdmin(c);
+        const actor = requireAdmin(c);
         const target = await loadAdminKey(c.env.DB, c.req.param("id"));
         if (!target) fail(404, "not_found");
         const input = c.req.valid("json");
@@ -183,24 +196,37 @@ export function adminKeyRoutes() {
         const last4 = input.key === undefined ? null : input.key.slice(-4);
         const maxConcurrency = ("maxConcurrency" in input ? input.maxConcurrency : target.max_concurrency) ?? null;
         const monthlyQuotaUsd = ("monthlyQuotaUsd" in input ? input.monthlyQuotaUsd : target.monthly_quota_usd) ?? null;
-        await run(
-          c.env.DB,
-          `UPDATE admin_keys SET
-           key_enc = COALESCE($enc, key_enc),
-           last4 = COALESCE($last4, last4),
-           max_concurrency = $maxConcurrency,
-           monthly_quota_usd = $quota,
-           updated_at = $at
-         WHERE id = $id`,
+        await batch(c.env.DB, [
           {
-            enc: keyEnc,
-            last4,
-            maxConcurrency,
-            quota: monthlyQuotaUsd,
-            at: nowIso(),
-            id: target.id,
+            sql: `UPDATE admin_keys SET
+                key_enc = COALESCE($enc, key_enc),
+                last4 = COALESCE($last4, last4),
+                max_concurrency = $maxConcurrency,
+                monthly_quota_usd = $quota,
+                updated_at = $at
+              WHERE id = $id`,
+            params: {
+              enc: keyEnc,
+              last4,
+              maxConcurrency,
+              quota: monthlyQuotaUsd,
+              at: nowIso(),
+              id: target.id,
+            },
           },
-        );
+          adminActionEntry({
+            actorId: actor.id,
+            action: "admin_key.update",
+            target: `admin_key:${target.id}`,
+            before: {
+              provider: target.provider_id,
+              last4: target.last4,
+              maxConcurrency: target.max_concurrency,
+              monthlyQuotaUsd: target.monthly_quota_usd,
+            },
+            after: { provider: target.provider_id, last4: last4 ?? target.last4, maxConcurrency, monthlyQuotaUsd },
+          }),
+        ]);
         const updated = await loadAdminKey(c.env.DB, target.id);
         if (!updated) fail(500, "internal_error");
         return c.json({
@@ -213,9 +239,23 @@ export function adminKeyRoutes() {
       },
     )
     .delete("/admin/keys/:id", guardAdmin(), async (c) => {
-      requireAdmin(c);
-      const result = await run(c.env.DB, "DELETE FROM admin_keys WHERE id = $id", { id: c.req.param("id") });
-      if ((result.meta?.changes ?? 0) === 0) fail(404, "not_found");
+      const actor = requireAdmin(c);
+      const target = await loadAdminKey(c.env.DB, c.req.param("id"));
+      if (!target) fail(404, "not_found");
+      await batch(c.env.DB, [
+        { sql: "DELETE FROM admin_keys WHERE id = $id", params: { id: target.id } },
+        adminActionEntry({
+          actorId: actor.id,
+          action: "admin_key.delete",
+          target: `admin_key:${target.id}`,
+          before: {
+            provider: target.provider_id,
+            last4: target.last4,
+            maxConcurrency: target.max_concurrency,
+            monthlyQuotaUsd: target.monthly_quota_usd,
+          },
+        }),
+      ]);
       return c.body(null, 204);
     })
     .put("/admin/keys/:id/models/order", guardAdmin(), validateJson(AdminKeyModelOrderInputSchema), async (c) => {
@@ -245,7 +285,7 @@ export function adminKeyRoutes() {
       return c.json({ models: input.models });
     })
     .put("/admin/keys/:id/models", guardAdmin(), validateJson(AdminKeyModelInputSchema), async (c) => {
-      requireAdmin(c);
+      const actor = requireAdmin(c);
       const key = await loadAdminKey(c.env.DB, c.req.param("id"));
       if (!key) fail(404, "not_found");
       const input = c.req.valid("json");
@@ -259,22 +299,28 @@ export function adminKeyRoutes() {
       );
       const maxConcurrency =
         ("maxConcurrency" in input ? input.maxConcurrency : (existing?.max_concurrency ?? null)) ?? null;
-      if (existing) {
-        await run(
-          c.env.DB,
-          "UPDATE admin_key_models SET max_concurrency = $maxConcurrency, updated_at = $at WHERE admin_key_id = $id AND model = $model",
-          { id: key.id, model: input.model, maxConcurrency, at: nowIso() },
-        );
-      } else {
-        await run(
-          c.env.DB,
-          `INSERT INTO admin_key_models (admin_key_id, model, max_concurrency, sort_order, updated_at)
-           SELECT $id, $model, $maxConcurrency, COALESCE(
-             (SELECT MAX(sort_order) FROM admin_key_models WHERE admin_key_id = $id
-           ), -1) + 1, $at`,
-          { id: key.id, model: input.model, maxConcurrency, at: nowIso() },
-        );
-      }
+      const write = existing
+        ? {
+            sql: "UPDATE admin_key_models SET max_concurrency = $maxConcurrency, updated_at = $at WHERE admin_key_id = $id AND model = $model",
+            params: { id: key.id, model: input.model, maxConcurrency, at: nowIso() },
+          }
+        : {
+            sql: `INSERT INTO admin_key_models (admin_key_id, model, max_concurrency, sort_order, updated_at)
+                  SELECT $id, $model, $maxConcurrency, COALESCE(
+                    (SELECT MAX(sort_order) FROM admin_key_models WHERE admin_key_id = $id
+                  ), -1) + 1, $at`,
+            params: { id: key.id, model: input.model, maxConcurrency, at: nowIso() },
+          };
+      await batch(c.env.DB, [
+        write,
+        adminActionEntry({
+          actorId: actor.id,
+          action: "admin_key_model.upsert",
+          target: `admin_key:${key.id}`,
+          before: existing ? { model: input.model, maxConcurrency: existing.max_concurrency } : null,
+          after: { model: input.model, maxConcurrency },
+        }),
+      ]);
       const payload = AdminKeyModelEchoSchema.parse({
         id: key.id,
         provider: key.provider_id,
@@ -284,12 +330,28 @@ export function adminKeyRoutes() {
       return c.json(payload);
     })
     .delete("/admin/keys/:id/models/:model", guardAdmin(), async (c) => {
-      requireAdmin(c);
-      const result = await run(c.env.DB, "DELETE FROM admin_key_models WHERE admin_key_id = $id AND model = $model", {
-        id: c.req.param("id"),
-        model: c.req.param("model"),
-      });
-      if ((result.meta?.changes ?? 0) === 0) fail(404, "not_found");
+      const actor = requireAdmin(c);
+      const key = await loadAdminKey(c.env.DB, c.req.param("id"));
+      if (!key) fail(404, "not_found");
+      const model = c.req.param("model");
+      const existing = await one<{ max_concurrency: number | null }>(
+        c.env.DB,
+        "SELECT max_concurrency FROM admin_key_models WHERE admin_key_id = $id AND model = $model",
+        { id: key.id, model },
+      );
+      if (!existing) fail(404, "not_found");
+      await batch(c.env.DB, [
+        {
+          sql: "DELETE FROM admin_key_models WHERE admin_key_id = $id AND model = $model",
+          params: { id: key.id, model },
+        },
+        adminActionEntry({
+          actorId: actor.id,
+          action: "admin_key_model.delete",
+          target: `admin_key:${key.id}`,
+          before: { model, maxConcurrency: existing.max_concurrency },
+        }),
+      ]);
       return c.body(null, 204);
     });
 }
