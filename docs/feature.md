@@ -36,6 +36,7 @@
 | 開活動       | 以班級議題或系統題開新活動（`live` 會換掉進行中活動；`test` 不換，見下）                                                                                                                                                                              | `POST /api/classrooms/:id/activities`・`/classrooms/:id`                                                 |
 | 測試模式     | 老師建 1–6 個 slot，各自一條獨立對話；學生任何入口都看不到；結束後照常產報告                                                                                                                                                                          | `GET/POST /api/activities/:id/slots`・`/t/live/:id`                                                      |
 | 議題池       | 系統題＋個人題列表；AI 生成候選（未落庫）                                                                                                                                                                                                             | `GET/POST /api/topics`・`POST /api/topics/generate`                                                      |
+| 登入方式管理 | 一個帳號可綁多種登入方式（email＋密碼、Google／Facebook），至少保留一種；綁定／解綁前需 re-auth（密碼或已綁 SSO）；解綁踢出其他裝置。設定頁「帳號與登入方式」分區（#138，契約見 api-contract §2.4）                        | `GET /api/me/identities`・`POST /api/me/identities/{email,oauth/:provider/start}`・`DELETE /api/me/identities/:method`・`/settings?section=account` |
 
 ## 單人：與蘇格拉底對話
 

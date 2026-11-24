@@ -11,6 +11,27 @@
 - 修法：`aiRunOf` 改回 method call wrapper（`(model, inputs) => ai.run(model, inputs)`），`AiRun` 的 inputs 型別收斂為 `Record<string, unknown>` 免型別斷言；新增 `tests/ai-run.test.ts` 回歸測試（fake binding 的 `run` 依賴 receiver state，detached 呼叫會 `TypeError`——現有 fake 因 Proxy 與 arrow 不用 `this` 而抓不到此回歸）
 - `docs/development.md` 計費表格反映 unified billing（credits），補語音功能的 credits 依賴與 mock 行為（#467）
 
+
+## 2026-11-24 — 登入方式綁定／解綁與 sudo re-auth（`feat/138-login-methods`，#138）
+
+### Added
+
+- `GET /api/me/identities`（目前登入方式清單）、`POST /api/auth/reauth/password`、`POST /api/auth/reauth/oauth/:provider/start`、`POST /api/me/identities/oauth/:provider/start`、`POST /api/me/identities/email`、`DELETE /api/me/identities/:method`（契約見 `docs/api-contract.md` §2.4）
+- `socrates_reauth` 短效 sudo cookie（10 分鐘；`AUTH_SECRET` 推導的獨立用途金鑰、payload 綁 `uid`＋`session_version`）：一般登入不核發、登出同步清除、任何 `session_version` bump 即失效；未通過／過期一律 403 `reauth_required`
+- `/settings` 新分區「帳號與登入方式」（`LoginMethods` 元件）：清單、re-auth（密碼或已綁 SSO）、綁定／解綁，以及 OAuth 回跳結果提示（`?linked=`／`?reauth=ok`／`?error=`）；三語文案
+- 新錯誤碼 `reauth_required`／`invalid_credentials`／`password_not_set`／`identity_taken`／`provider_already_linked`／`email_already_linked`／`identity_not_found`／`last_login_method`／`reauth_identity_mismatch`（三語訊息）
+
+### Changed
+
+- OAuth pending cookie 新增 `intent`（`login`／`bind`／`reauth`）＋`uid`／`ver`／`returnTo`，登入與綁定共用既有 callback URI（Google Cloud Console／Meta App Dashboard 已登錄的 Redirect URI 不變）；bind／reauth 回調以即時 session 再驗 `uid`／`ver`
+- SSO 重驗參數：Google `max_age=0`＋`prompt=select_account`（identity 有 email 時帶 `login_hint`）；Facebook `auth_type=reauthenticate`
+- 綁定以單句 `INSERT … SELECT … WHERE NOT EXISTS`（同 provider 最多 1 筆），解綁以單句 `UPDATE`／`DELETE` 把「至少保留一種登入方式」檢查與寫入合併——並發解綁不會把帳號鎖死；解綁成功 `session_version + 1`，當前裝置在同一回應換發 `socrates_session`／`socrates_reauth`（不延長 sudo 窗口）
+- `session_version` 併入 request context（`c.set("sessionVersion")`），re-auth 守衛免額外 DB 讀取
+
+### Docs
+
+- `docs/api-contract.md` §1／§2.1／新 §2.4／§10、`docs/accounts.md` §8／§10、`docs/frontend.md` route 表、`docs/feature.md`
+
 ## 2026-11-24 — 教室按鈕展開選單：分開「我選的課」與「教室管理」（`feat/408-classrooms-nav-menu`，#408）
 
 ### Changed
