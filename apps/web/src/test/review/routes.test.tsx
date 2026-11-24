@@ -403,13 +403,14 @@ test("the classroom list keeps joined courses and managed classrooms on separate
       return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
     }),
   );
-  const dispose = await mountRoute("/classrooms");
+  let dispose = await mountRoute("/classrooms");
   try {
     expect(await screen.findByRole("heading", { name: "Joined course" })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1, name: "My courses" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Owned classroom" })).toBeNull();
     expect(screen.queryByRole("button", { name: "New class" })).toBeNull();
-    fireEvent.click(screen.getByRole("link", { name: "Manage classrooms" }));
+    dispose();
+    dispose = await mountRoute("/classrooms?view=teaching");
     expect(await screen.findByRole("heading", { name: "Owned classroom" })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1, name: "Manage classrooms" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Joined course" })).toBeNull();

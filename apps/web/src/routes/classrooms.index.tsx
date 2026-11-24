@@ -15,11 +15,6 @@ import { normalizeJoinCode } from "@/lib/joinCode";
 
 type View = "enrolled" | "teaching";
 
-const VIEWS = [
-  { view: "enrolled", label: "classrooms_enrolled" },
-  { view: "teaching", label: "classrooms_manage" },
-] as const;
-
 export const Route = createFileRoute("/classrooms/")({
   validateSearch: (search: Record<string, unknown>): { view?: View } => ({
     view: search.view === "enrolled" || search.view === "teaching" ? search.view : undefined,
@@ -106,25 +101,7 @@ function ClassroomsPage() {
           )
         }
       />
-      <div className="mx-auto w-full max-w-5xl px-6 pt-6">
-        <nav aria-label={t("nav_classrooms")} className="mb-6 flex border-b border-line">
-          {VIEWS.map((item) => (
-            <Link
-              key={item.view}
-              to="/classrooms"
-              search={{ view: item.view }}
-              aria-current={view === item.view ? "page" : undefined}
-              className={cn(
-                "-mb-px border-b-2 px-3 py-2 text-sm whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ember focus-visible:ring-inset",
-                view === item.view
-                  ? "border-ember font-semibold text-ink"
-                  : "border-transparent text-ink-soft hover:text-ink",
-              )}
-            >
-              {t(item.label)}
-            </Link>
-          ))}
-        </nav>
+      <div className="mx-auto w-full max-w-5xl px-6 pt-8">
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {list.map((room) => (
             <ClassroomCard key={room.id} room={room} />
