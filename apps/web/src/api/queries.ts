@@ -137,6 +137,14 @@ export function keyProviderModelsOptions(provider: string) {
   });
 }
 
+export function adminKeyProviderModelsOptions(provider: string) {
+  return queryOptions({
+    queryKey: ["adminKeyProviderModels", provider],
+    queryFn: () => api.adminKeyProviderModels(provider),
+    staleTime: Infinity,
+  });
+}
+
 export const adminUsersOptions = queryOptions({
   queryKey: ["admin-users"],
   queryFn: () => api.listAdminUsers(),
@@ -145,6 +153,22 @@ export const adminUsersOptions = queryOptions({
 export const adminOverviewOptions = queryOptions({
   queryKey: ["admin-overview"],
   queryFn: () => api.adminOverview(),
+});
+
+export const adminKeysOptions = queryOptions({
+  queryKey: ["admin-keys"],
+  queryFn: () => api.listAdminKeys(),
+});
+
+export const adminTeacherKeysOptions = queryOptions({
+  queryKey: ["admin-teacher-keys"],
+  queryFn: () => api.adminTeacherKeys(),
+});
+
+export const adminPlatformChainOptions = queryOptions({
+  queryKey: ["admin-platform-chain"],
+  queryFn: () => api.adminPlatformChain(),
+  staleTime: Infinity,
 });
 
 export const authProvidersOptions = queryOptions({

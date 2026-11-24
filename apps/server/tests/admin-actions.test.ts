@@ -149,4 +149,31 @@ describe("admin action audit log (#359)", () => {
       expect(nextPage.items.every((item) => item.id < cursor)).toBe(true);
     }
   });
+
+  test("key and leg ordering write audit rows without key material (#390)", async () => {
+    const key = await createAdminKey(admin, "sk-or-v1-auditorder");
+    const legRes = await call(`/api/admin/keys/${key.id}/models`, putInit({ model: "z-ai/glm-5.3-flash" }, admin));
+    expect(legRes.status).toBe(200);
+    const secondRes = await call(`/api/admin/keys/${key.id}/models`, putInit({ model: "z-ai/glm-4.7-flash" }, admin));
+    expect(secondRes.status).toBe(200);
+
+    const legOrder = await call(
+      `/api/admin/keys/${key.id}/models/order`,
+      putInit({ models: ["z-ai/glm-4.7-flash", "z-ai/glm-5.3-flash"] }, admin),
+    );
+    expect(legOrder.status).toBe(200);
+    const keyOrder = await call("/api/admin/keys/order", putInit({ keys: [key.id] }, admin));
+    expect(keyOrder.status).toBe(200);
+
+    const rows = await actions();
+    const legRow = rows.find((row) => row.action === "admin_key_model.order");
+    expect(legRow?.target).toBe(`admin_key:${key.id}`);
+    expect(JSON.parse(String(legRow?.after_json))).toEqual({
+      models: ["z-ai/glm-4.7-flash", "z-ai/glm-5.3-flash"],
+    });
+    const keyRow = rows.find((row) => row.action === "admin_key.order");
+    expect(keyRow?.target).toBe("admin_keys");
+    expect(JSON.parse(String(keyRow?.after_json))).toEqual({ keys: [key.id] });
+    expect(JSON.stringify(rows)).not.toContain("sk-or-");
+  });
 });

@@ -170,7 +170,7 @@ export async function teacherLegsOf(env: Env, teacherId: string | null): Promise
     `SELECT m.provider_id, m.model, m.max_concurrency, k.max_concurrency AS provider_max_concurrency
      FROM teacher_key_models m
      JOIN teacher_keys k ON k.user_id = m.user_id AND k.provider_id = m.provider_id
-     WHERE m.user_id = $uid
+     WHERE m.user_id = $uid AND k.disabled_by IS NULL
      ORDER BY k.sort_order, m.sort_order`,
     { uid: teacherId },
   );
