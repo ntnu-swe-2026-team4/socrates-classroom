@@ -191,6 +191,17 @@ body {
   }
 }
 
+@keyframes rise-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 @keyframes state-pulse {
   0%,
   100% {
@@ -242,6 +253,9 @@ body {
   }
   .anim-rise {
     animation: rise-in 0.24s ease-out;
+  }
+  .anim-rise-out {
+    animation: rise-out 107ms ease-in forwards;
   }
   .anim-sheet {
     animation: sheet-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -371,8 +385,23 @@ body {
   }
 }
 
+@utility comic-lift {
+  transition:
+    translate 120ms ease-out,
+    box-shadow 120ms ease-out;
+  &:hover:not(:disabled) {
+    translate: -2px -2px;
+    box-shadow: 4px 4px 0 color-mix(in srgb, var(--color-ht-shade) 18%, transparent);
+  }
+  &:active:not(:disabled) {
+    translate: 0 0;
+    box-shadow: 1px 1px 0 color-mix(in srgb, var(--color-ht-shade) 26%, transparent);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .comic-sink {
+  .comic-sink,
+  .comic-lift {
     transition: none;
   }
 }

@@ -20,7 +20,7 @@ import { api, type User } from "@/api";
 import { meQueryOptions } from "@/api/me";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
 import { NotificationBell } from "@/components/Notifications";
-import { Initial, TrapDialog, cn } from "@/components/ui";
+import { HoverPopoverPanel, Initial, POPUP_SURFACE, TrapDialog, cn, useHoverPopover } from "@/components/ui";
 import { useDomEvent } from "@/hooks/useSubscription";
 import { useI18n } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
@@ -54,7 +54,18 @@ const NAV = [
   },
 ] as const;
 
-const HALFTONE_MATCH = ["/home", "/chat", "/classrooms", "/dialogue", "/admin", "/t/", "/report", "/settings", "/join"];
+const HALFTONE_MATCH = [
+  "/home",
+  "/chat",
+  "/classrooms",
+  "/dialogue",
+  "/admin",
+  "/t/",
+  "/report",
+  "/settings",
+  "/join",
+  "/dev",
+];
 
 function useSessionSync() {
   const queryClient = useQueryClient();
@@ -100,13 +111,13 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
+  const account = useHoverPopover();
 
   const me = useQuery(meQueryOptions);
   const logout = useMutation({
     mutationFn: () => api.logout(),
     onSuccess: async () => {
-      setAccountOpen(false);
+      account.close();
       queryClient.clear();
       queryClient.setQueryData(meQueryOptions.queryKey, null);
       await navigate({ to: "/" });
@@ -117,14 +128,14 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const [prevAccountRequest, setPrevAccountRequest] = useState(accountRequest);
   if (accountRequest !== prevAccountRequest) {
     setPrevAccountRequest(accountRequest);
-    setAccountOpen(true);
+    account.pin();
   }
 
   const [prevPathname, setPrevPathname] = useState(pathname);
   if (pathname !== prevPathname) {
     setPrevPathname(pathname);
     setDrawerOpen(false);
-    setAccountOpen(false);
+    account.close();
   }
 
   const inAdmin = pathname.startsWith("/admin");
@@ -183,11 +194,13 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       {me.data ? (
         <button
           type="button"
+          {...account.hoverProps}
           onClick={() => {
             setDrawerOpen(false);
-            setAccountOpen(true);
+            account.pin();
           }}
           aria-haspopup="dialog"
+          aria-expanded={account.open}
           aria-label={t("account_title")}
           className={cn(
             "flex w-full shrink-0 cursor-pointer flex-col items-center gap-[5px] border-t-2 border-dotted border-ht-dotted pt-3.5 pb-1 text-ht-ink transition-colors hover:bg-ht-hover",
@@ -249,46 +262,46 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
         <SocratesCompanion />
       </Suspense>
 
-      {accountOpen && (
-        <TrapDialog
-          ariaLabelledBy="account-title"
-          plain
-          className="anim-rise absolute bottom-3 left-3 flex w-64 flex-col rounded-xl border border-line bg-paper p-1.5 shadow-xl md:left-[92px]"
-          onClose={() => setAccountOpen(false)}
-        >
-          <h2 id="account-title" className="sr-only">
-            {t("account_title")}
-          </h2>
-          {me.data && (
-            <div className="flex items-center gap-3 px-2.5 py-2.5">
-              <Initial name={me.data.name} className="size-9 text-[14px]" />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[14px] font-medium text-ink">{me.data.name}</div>
-              </div>
+      <HoverPopoverPanel
+        popover={account}
+        ariaLabelledBy="account-title"
+        className={cn(
+          POPUP_SURFACE,
+          "anim-rise absolute bottom-3 left-3 flex w-64 flex-col border border-line bg-paper p-1.5 md:left-24",
+        )}
+      >
+        <h2 id="account-title" className="sr-only">
+          {t("account_title")}
+        </h2>
+        {me.data && (
+          <div className="flex items-center gap-3 px-2.5 py-2.5">
+            <Initial name={me.data.name} className="size-9 text-[14px]" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[14px] font-medium text-ink">{me.data.name}</div>
             </div>
-          )}
-          <div className="my-1 h-px bg-line" aria-hidden />
-          <Link
-            to="/settings"
-            data-menu="settings"
-            className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] text-ink transition-colors hover:bg-paper-deep"
-          >
-            <Settings className="size-4 text-ink-soft" />
-            <span className="flex-1">{t("settings_title")}</span>
-          </Link>
-          <div className="my-1 h-px bg-line" aria-hidden />
-          <button
-            type="button"
-            data-menu="logout"
-            onClick={() => logout.mutate()}
-            disabled={logout.isPending}
-            className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] text-flag transition-colors hover:bg-flag-wash"
-          >
-            <LogOut className="size-4" />
-            {t("account_logout")}
-          </button>
-        </TrapDialog>
-      )}
+          </div>
+        )}
+        <div className="my-1 h-px bg-line" aria-hidden />
+        <Link
+          to="/settings"
+          data-menu="settings"
+          className="flex w-full cursor-pointer items-center gap-2.5 px-2.5 py-2 text-left text-[13.5px] text-ink transition-colors hover:bg-paper-deep"
+        >
+          <Settings className="size-4 text-ink-soft" />
+          <span className="flex-1">{t("settings_title")}</span>
+        </Link>
+        <div className="my-1 h-px bg-line" aria-hidden />
+        <button
+          type="button"
+          data-menu="logout"
+          onClick={() => logout.mutate()}
+          disabled={logout.isPending}
+          className="flex w-full cursor-pointer items-center gap-2.5 px-2.5 py-2 text-left text-[13.5px] text-flag transition-colors hover:bg-flag-wash"
+        >
+          <LogOut className="size-4" />
+          {t("account_logout")}
+        </button>
+      </HoverPopoverPanel>
     </div>
   );
 }

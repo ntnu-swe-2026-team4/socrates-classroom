@@ -2,9 +2,11 @@ import { takeClassroomInvite } from "@/lib/classroomInvite";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { classroomsOptions, soloThreadsOptions } from "@/api/queries";
 import { useQuery } from "@tanstack/react-query";
+import { ArrowRight } from "lucide-react";
 
 import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
+import { DotField } from "@/components/DotField";
 import { Button, Card, PageHeader } from "@/components/ui";
 import { useFormatDate, useT, type MessageKey } from "@/i18n";
 
@@ -31,6 +33,15 @@ function greetingKey(): MessageKey {
           : "greet_evening";
 }
 
+function StatCardHint({ label }: { label: string }) {
+  return (
+    <span className="absolute right-5 bottom-4 inline-flex items-center gap-1 text-xs text-ink-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none">
+      {label}
+      <ArrowRight aria-hidden className="size-3.5" />
+    </span>
+  );
+}
+
 function HomePage() {
   const t = useT();
   const me = useQuery(meQueryOptions);
@@ -42,12 +53,14 @@ function HomePage() {
   const roomList = classrooms.data ?? [];
   const running = roomList.filter((room) => room.current && !room.current.finished);
   const students = roomList.reduce((n, room) => n + room.memberCount, 0);
+  const managesClassrooms = me.data?.isAdmin === true || roomList.some((room) => room.role === "teacher");
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="relative isolate flex min-h-full flex-col">
+      <DotField className="-z-10" />
       <PageHeader width="max-w-4xl" eyebrow={t("home_eyebrow")} title={t("nav_home")} />
       <div className="mx-auto w-full max-w-4xl space-y-5 px-6 py-6">
-        <Card className="grid gap-8 bg-gradient-to-br from-ember-wash to-transparent p-8 md:grid-cols-[1fr_240px]">
+        <Card className="grid gap-8 bg-linear-to-br from-ember-wash to-transparent p-8 md:grid-cols-[1fr_240px]">
           <div className="min-w-0">
             <p className="text-xs text-ember">
               {t("home_greeting", { greeting: t(greetingKey()), name: me.data?.name ?? "" })}
@@ -75,22 +88,24 @@ function HomePage() {
         </Card>
 
         <section className="grid gap-4 sm:grid-cols-2">
-          <Link to="/classrooms">
-            <Card className="h-full p-5 transition-colors hover:border-ember-deep">
+          <Link to="/classrooms" className="group">
+            <Card className="comic-lift relative h-full p-5 pb-9 hover:border-ember-deep">
               <span className="block text-sm">{t("home_stat_classrooms")}</span>
               <b className="mt-1 block font-serif text-4xl font-medium text-ember">{roomList.length}</b>
               <span className="text-xs text-ink-faint">
                 {canManage ? t("home_stat_students", { n: students }) : t("home_stat_running", { n: running.length })}
               </span>
+              <StatCardHint label={t(managesClassrooms ? "home_manage_classrooms" : "home_go_classrooms")} />
             </Card>
           </Link>
-          <Link to="/chat">
-            <Card className="h-full p-5 transition-colors hover:border-ember-deep">
+          <Link to="/chat" className="group">
+            <Card className="comic-lift relative h-full p-5 pb-9 hover:border-ember-deep">
               <span className="block text-sm">{t("home_stat_chats")}</span>
               <b className="mt-1 block font-serif text-4xl font-medium text-ember">{chatList.length}</b>
               <span className="mt-1 block truncate text-xs text-ink-faint">
                 {chatList[0]?.title ?? t("chat_empty")}
               </span>
+              <StatCardHint label={t("home_go_chat")} />
             </Card>
           </Link>
         </section>
@@ -99,7 +114,7 @@ function HomePage() {
           <Card className="p-5">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="font-serif text-[15.5px]">{t("home_recent_chats")}</h3>
-              <Link to="/chat" className="text-xs text-ember">
+              <Link to="/chat" className="text-xs text-ember hover:underline">
                 {t("home_all")}
               </Link>
             </div>
@@ -122,7 +137,7 @@ function HomePage() {
           <Card className="p-5">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="font-serif text-[15.5px]">{t("home_classroom_feed")}</h3>
-              <Link to="/classrooms" className="text-xs text-ember">
+              <Link to="/classrooms" className="text-xs text-ember hover:underline">
                 {t("home_all")}
               </Link>
             </div>

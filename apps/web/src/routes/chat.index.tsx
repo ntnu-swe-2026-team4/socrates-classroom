@@ -13,7 +13,7 @@ function NewChatPage() {
   const { soloUserId } = Route.useRouteContext();
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line pr-3 pl-14 md:pl-2">
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-paper pr-3 pl-14 md:pl-2">
         <SidebarToggle />
         <h1 className="truncate pl-1 text-[14.5px] font-medium text-ink">{t("chat_new")}</h1>
       </header>
