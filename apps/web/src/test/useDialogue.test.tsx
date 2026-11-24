@@ -16,6 +16,7 @@ type AgentOptions = {
   onOpen?: (event: { target: unknown }) => void;
   onMessage?: (event: { data: unknown }) => void;
   onClose?: () => void;
+  maxRetries?: number;
 };
 
 const agent = vi.hoisted((): { options: AgentOptions | null; sent: string[] } => ({
@@ -131,6 +132,11 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
   it("subscribes to the conversation once when the socket opens", () => {
     renderHook(() => useDialogue("a_1", "u_1"));
     expect(agent.sent.map((raw) => JSON.parse(raw)).filter((frame) => frame.type === "watch")).toHaveLength(1);
+  });
+
+  it("bounds the socket reconnect attempts", () => {
+    renderHook(() => useDialogue("a_1", "u_1"));
+    expect(Number.isFinite(agent.options?.maxRetries)).toBe(true);
   });
 
   it("main flow: result=admission does not complete; the assistant entry landing moves speaking → idle", async () => {

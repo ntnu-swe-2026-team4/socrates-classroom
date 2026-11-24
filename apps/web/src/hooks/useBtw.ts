@@ -4,6 +4,7 @@ import { applyImmutable } from "@earendil-works/chord/delta";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import type { ClientMessage } from "@server/ws/protocol";
 import { parseServerMessage } from "@/lib/wsProtocol";
+import { WS_MAX_RETRIES } from "@/hooks/useSubscription";
 import {
   answered,
   dialogueName,
@@ -182,6 +183,7 @@ export function useBtw(threadId: string, userId: string, enabled: boolean, agent
     name,
     query: { lang: document.documentElement.lang || "zh-TW" },
     enabled,
+    maxRetries: WS_MAX_RETRIES,
     onOpen: (event) => {
       if (canSend(event.target)) open(event.target, false);
     },
