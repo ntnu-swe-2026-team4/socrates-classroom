@@ -35,6 +35,11 @@ export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 export const OAuthProvidersSchema = z.object({ providers: z.array(z.enum(OAUTH_PROVIDERS)) });
 export type OAuthProviders = z.infer<typeof OAuthProvidersSchema>;
 
+export const LOGIN_METHODS = ["email", ...OAUTH_PROVIDERS] as const;
+export const LoginMethodSchema = z.enum(LOGIN_METHODS);
+export type LoginMethod = z.infer<typeof LoginMethodSchema>;
+export const REAUTH_TTL_SECONDS = 600;
+
 export const AxisSchema = z.object({
   name: z.string().trim().min(1).max(40),
   left: z.string().trim().min(1).max(40),
@@ -276,6 +281,33 @@ export const PasswordResetInputSchema = z.object({
   password: z.string().min(8).max(128),
 });
 export const EmailVerifyInputSchema = z.object({ token: z.string().max(2048) });
+
+export const IdentitySummarySchema = z.object({
+  email: z.object({ email: z.string(), verified: z.boolean() }).nullable(),
+  oauth: z.array(
+    z.object({
+      provider: z.enum(OAUTH_PROVIDERS),
+      email: z.string().nullable(),
+      linkedAt: z.string(),
+    }),
+  ),
+  reauthExpiresAt: z.iso.datetime().nullable(),
+});
+export type IdentitySummary = z.infer<typeof IdentitySummarySchema>;
+
+export const ReauthPasswordInputSchema = z.object({ password: z.string().min(1).max(128) });
+export const ReauthResultSchema = z.object({ expiresAt: z.iso.datetime() });
+export type ReauthResult = z.infer<typeof ReauthResultSchema>;
+
+export const OAuthStartInputSchema = z.object({ returnTo: z.string().max(512).optional() });
+export type OAuthStartInput = z.infer<typeof OAuthStartInputSchema>;
+export const OAuthStartResultSchema = z.object({ url: z.string() });
+export type OAuthStartResult = z.infer<typeof OAuthStartResultSchema>;
+
+export const BindEmailInputSchema = z.object({ email: emailField, password: z.string().min(8).max(128) });
+export type BindEmailInput = z.infer<typeof BindEmailInputSchema>;
+export const BindEmailResultSchema = z.object({ email: z.string(), verified: z.boolean() });
+export type BindEmailResult = z.infer<typeof BindEmailResultSchema>;
 export const JoinInputSchema = z.object({
   code: z.string().min(4).max(32),
   name: z.string().trim().max(80).optional(),
@@ -637,6 +669,15 @@ export const ERROR_CODES = [
   "email_not_set",
   "topic_axes_required",
   "report_axes_not_allowed",
+  "reauth_required",
+  "invalid_credentials",
+  "password_not_set",
+  "identity_taken",
+  "provider_already_linked",
+  "email_already_linked",
+  "identity_not_found",
+  "last_login_method",
+  "reauth_identity_mismatch",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
