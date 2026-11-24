@@ -478,6 +478,9 @@ export const AdminKeyStatusSchema = z.object({
   monthTokens: z.number(),
   sortOrder: z.number(),
   updatedAt: z.string(),
+  zdrStatus: z.enum(["unverified", "approved"]),
+  zdrRetentionSource: z.string().nullable(),
+  zdrVerifiedAt: z.string().nullable(),
   models: z.array(
     z.object({
       model: z.string(),
@@ -494,6 +497,9 @@ export const AdminKeyEchoSchema = z.object({
   last4: z.string().optional(),
   maxConcurrency: z.number().int().min(1).max(100).nullable(),
   monthlyQuotaUsd: z.number().positive().nullable(),
+  zdrStatus: z.enum(["unverified", "approved"]).optional(),
+  zdrRetentionSource: z.string().optional(),
+  zdrVerifiedAt: z.string().optional(),
 });
 export type AdminKeyEcho = z.infer<typeof AdminKeyEchoSchema>;
 
@@ -533,6 +539,16 @@ export const AdminKeyModelInputSchema = z.object({
 export const AdminKeyModelOrderInputSchema = z.object({ models: z.array(z.string().min(1).max(200)).max(200) });
 
 export const AdminKeyOrderInputSchema = z.object({ keys: z.array(z.string()).max(50) });
+
+export const AdminKeyZdrInputSchema = z.object({
+  retentionSource: z.string().url().max(500),
+  verifiedAt: z
+    .string()
+    .date()
+    .refine((value) => value <= new Date().toISOString().slice(0, 10), {
+      message: "verifiedAt must not be in the future",
+    }),
+});
 
 export const AdminActionSchema = z.object({
   id: z.number().int(),

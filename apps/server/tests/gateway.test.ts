@@ -616,14 +616,14 @@ describe("three-tier keyed chain (#355: teacher → admin → YAML binding; admi
     );
     await run(
       env.DB,
-      `INSERT INTO admin_keys (id, provider_id, key_enc, last4, sort_order, updated_at, monthly_quota_usd)
-       VALUES ('ak_a', 'openrouter', 'enc', 'aaaa', 0, $at, NULL)`,
+      `INSERT INTO admin_keys (id, provider_id, key_enc, last4, sort_order, updated_at, monthly_quota_usd, zdr_status)
+       VALUES ('ak_a', 'openrouter', 'enc', 'aaaa', 0, $at, NULL, 'approved')`,
       { at },
     );
     await run(
       env.DB,
-      `INSERT INTO admin_keys (id, provider_id, key_enc, last4, sort_order, updated_at, monthly_quota_usd)
-       VALUES ('ak_b', 'deepseek', 'enc', 'bbbb', 1, $at, 0.1)`,
+      `INSERT INTO admin_keys (id, provider_id, key_enc, last4, sort_order, updated_at, monthly_quota_usd, zdr_status)
+       VALUES ('ak_b', 'deepseek', 'enc', 'bbbb', 1, $at, 0.1, 'approved')`,
       { at },
     );
     await run(

@@ -210,6 +210,7 @@ export async function adminLegsOf(env: Env): Promise<KeyedLeg[]> {
              WHERE u.admin_key_id = k.id AND u.created_at >= $start) AS month_spend
      FROM admin_key_models m
      JOIN admin_keys k ON k.id = m.admin_key_id
+     WHERE k.zdr_status = 'approved'
      ORDER BY k.sort_order, m.sort_order`,
     { start: monthStart },
   );
