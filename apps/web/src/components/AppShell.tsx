@@ -4,6 +4,7 @@ import { useAccountSheetRequest } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BookOpen,
   ChevronDown,
   Eye,
   GraduationCap,
@@ -13,6 +14,7 @@ import {
   Menu,
   MessageCircle,
   Moon,
+  Presentation,
   Settings,
   ShieldCheck,
   Sun,
@@ -56,14 +58,9 @@ const NAV = [
 ] as const;
 
 const CLASSROOM_VIEWS = [
-  { view: "enrolled", label: "classrooms_enrolled" },
-  { view: "teaching", label: "classrooms_manage" },
+  { view: "enrolled", label: "nav_classrooms_enrolled", icon: BookOpen },
+  { view: "teaching", label: "nav_classrooms_manage", icon: Presentation },
 ] as const;
-
-const SUB_BTN = cn(
-  "comic-sink flex w-[76px] cursor-pointer items-center justify-center border-[1.5px] border-transparent px-1 py-1.5 text-center text-[11px] leading-tight text-ht-soft wrap-anywhere hover:border-ht-line hover:bg-ht-hover hover:text-ht-ink",
-  RAIL_FOCUS,
-);
 
 const HALFTONE_MATCH = [
   "/home",
@@ -192,13 +189,16 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                   aria-expanded={classroomsOpen}
                   aria-controls="rail-classrooms-menu"
                   onClick={() => setClassroomsOpen(!classroomsOpen)}
-                  className={cn(NAV_BTN, active && NAV_ACTIVE)}
+                  className={cn(NAV_BTN, "relative", active && NAV_ACTIVE)}
                 >
                   <Icon className="size-[19px]" />
                   <span className="max-w-full text-center leading-tight wrap-anywhere">{t(item.label)}</span>
-                  <ChevronDown aria-hidden className={cn("size-3", classroomsOpen && "rotate-180")} />
+                  <ChevronDown
+                    aria-hidden
+                    className={cn("absolute top-1.5 right-1.5 size-3", classroomsOpen && "rotate-180")}
+                  />
                 </button>
-                <div id="rail-classrooms-menu" hidden={!classroomsOpen} className="flex flex-col items-center gap-1">
+                <div id="rail-classrooms-menu" hidden={!classroomsOpen} className="flex flex-col items-center gap-1.5">
                   {CLASSROOM_VIEWS.map((sub) => (
                     <Link
                       key={sub.view}
@@ -206,9 +206,13 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
                       search={{ view: sub.view }}
                       data-menu={sub.view}
                       aria-current={classroomsView === sub.view ? "page" : undefined}
-                      className={cn(SUB_BTN, classroomsView === sub.view && "border-ht-line font-bold text-ht-ink")}
+                      className={cn(
+                        NAV_BTN,
+                        classroomsView === sub.view && "border-ht-line bg-ht-hover font-bold text-ht-ink",
+                      )}
                     >
-                      {t(sub.label)}
+                      <sub.icon className="size-[19px]" />
+                      <span className="max-w-full text-center leading-tight wrap-anywhere">{t(sub.label)}</span>
                     </Link>
                   ))}
                 </div>

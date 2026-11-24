@@ -178,10 +178,10 @@ test("the classrooms button expands and collapses its two destinations in place"
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("link", { name: "My courses" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Manage classrooms" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Manage" })).toBeTruthy();
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByRole("link", { name: "Manage classrooms" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Manage" })).toBeNull();
   } finally {
     client.clear();
   }
