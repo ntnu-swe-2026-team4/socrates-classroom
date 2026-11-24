@@ -97,6 +97,7 @@ secret 外洩（例如出現在截圖或訊息裡），或定期更換時，照�
    - 本機：`http://localhost:5173/api/auth/oauth/facebook/callback`
    - 正式站：`https://socrates.g36maid.dev/api/auth/oauth/facebook/callback`
 3. Graph API 版本 pin **`v27.0`**（官方現行 latest；升版時改 `apps/server/src/oauth.ts` 三個常數＋本節）。
+4. 正式環境帶入：`FACEBOOK_APP_ID` 設 GitHub repo variable（Deploy workflow 於 build 時帶入，與 `GOOGLE_CLIENT_ID` 同通道）；`FACEBOOK_APP_SECRET` 設同名 repo secret（未設定＝留空＝Facebook 登入停用）。
 
 ### 6.3 流程與身分
 

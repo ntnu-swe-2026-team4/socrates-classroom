@@ -18,6 +18,7 @@ jobs:
     env:
       CF_SEND_TELEMETRY: "false"
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      FACEBOOK_APP_ID: ${{ vars.FACEBOOK_APP_ID }}
     steps:
       - uses: actions/checkout@v7
       - name: Shared gate (install / lint / yamllint / config-drift / typecheck / test / cf build)
