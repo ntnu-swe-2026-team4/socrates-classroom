@@ -55,7 +55,10 @@ export default defineConfig(({ mode }) => {
         ADMIN_ALERT_EMAIL: text("ADMIN_ALERT_EMAIL", ""),
         SEND_EMAIL: bindings.sendEmail(),
       },
-      assets: { notFoundHandling: "single-page-application", runWorkerFirst: ["/api/*", "/health"] },
+      assets: {
+        notFoundHandling: "single-page-application",
+        runWorkerFirst: ["/api/*", "/agents/*", "/health"],
+      },
       domains: ["socrates.g36maid.dev"],
       exports: {
         Chat: exports.durableObject({ storage: "sqlite" }),

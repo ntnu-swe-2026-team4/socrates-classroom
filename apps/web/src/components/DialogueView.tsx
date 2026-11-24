@@ -403,7 +403,10 @@ export function DialogueView({
             {closedNotice ? (
               <Notice text={closedNotice} />
             ) : !ready ? (
-              <Notice text={connectGraceOver ? t("dlg_offline") : t("dlg_connecting")} />
+              <Notice
+                text={connectGraceOver ? t("dlg_offline") : t("dlg_connecting")}
+                action={connectGraceOver ? { label: t("dlg_reconnect"), onClick: () => location.reload() } : undefined}
+              />
             ) : voiceMode ? (
               <div className="flex flex-col items-center">
                 <div
