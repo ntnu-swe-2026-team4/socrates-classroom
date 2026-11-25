@@ -164,9 +164,9 @@ describe("password reset (#230)", () => {
   test("two links outstanding: using one → the other 400 reset_token_invalid", async () => {
     const m = mailbox();
     const email = freshEmail();
-    await signup(m, email, "old-password-1");
+    const account = await signup(m, email, "old-password-1");
     const first = await requestLink(m, email);
-    const second = await requestLink(m, email);
+    const second = await sealedToken("password_reset", account.id, 29 * 60_000);
 
     expect((await reset(m, first, "new-password-1")).status).toBe(204);
     const stale = await reset(m, second, "other-password-1");
@@ -348,5 +348,52 @@ describe("password reset rate limits (#230)", () => {
     }
     expect(last?.status).toBe(429);
     expect(await codeOf(must(last, "rate-limit response"))).toBe("rate_limited");
+  });
+});
+
+describe("password forgot per-email cooldown (#393)", () => {
+  test("second forgot for the same email within cooldown returns 204 silently across IPs and casing", async () => {
+    const m = mailbox();
+    const email = freshEmail();
+    await signup(m, email, "old-password-1");
+
+    const first = await m.post("/api/auth/password/forgot", { email }, { "CF-Connecting-IP": "198.51.100.10" });
+    const second = await m.post(
+      "/api/auth/password/forgot",
+      { email: email.toUpperCase() },
+      { "CF-Connecting-IP": "198.51.100.11" },
+    );
+
+    expect(first.status).toBe(204);
+    expect(second.status).toBe(204);
+    expect(resetMails(m)).toHaveLength(1);
+  });
+
+  test("cooldown for one email does not suppress a different email", async () => {
+    const m = mailbox();
+    const firstEmail = freshEmail();
+    const secondEmail = freshEmail();
+    await signup(m, firstEmail, "old-password-1");
+    await signup(m, secondEmail, "old-password-1");
+
+    expect((await m.post("/api/auth/password/forgot", { email: firstEmail })).status).toBe(204);
+    expect((await m.post("/api/auth/password/forgot", { email: firstEmail })).status).toBe(204);
+    expect((await m.post("/api/auth/password/forgot", { email: secondEmail })).status).toBe(204);
+
+    expect(resetMails(m).map((mail) => mail.to)).toEqual([firstEmail, secondEmail]);
+  });
+
+  test("concurrent forgot requests for the same email send only one mail", async () => {
+    const m = mailbox();
+    const email = freshEmail();
+    await signup(m, email, "old-password-1");
+
+    const responses = await Promise.all([
+      m.post("/api/auth/password/forgot", { email }, { "CF-Connecting-IP": "198.51.100.12" }),
+      m.post("/api/auth/password/forgot", { email }, { "CF-Connecting-IP": "198.51.100.13" }),
+    ]);
+
+    expect(responses.map((res) => res.status)).toEqual([204, 204]);
+    expect(resetMails(m)).toHaveLength(1);
   });
 });
