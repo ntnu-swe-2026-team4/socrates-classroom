@@ -1,5 +1,6 @@
 name: Task
 description: 可直接實作的工程工作。不改變產品行為，也不產生決策。
+type: Task
 body:
   - type: textarea
     id: what

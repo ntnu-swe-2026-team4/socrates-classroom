@@ -1,5 +1,6 @@
 name: Bug
 description: 回報預期外的行為。完成時程式回到 docs/feature.md 既有的描述。
+type: Bug
 body:
   - type: textarea
     id: what-happened

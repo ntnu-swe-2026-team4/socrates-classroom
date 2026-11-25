@@ -1,5 +1,6 @@
-name: Technical story
+name: Technical Story
 description: 內部技術工作。使用者看不到行為改變；完成時契約或約束改變。
+type: Technical Story
 body:
   - type: textarea
     id: goal

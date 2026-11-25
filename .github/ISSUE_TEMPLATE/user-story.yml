@@ -1,5 +1,6 @@
-name: User story
+name: User Story
 description: 使用者可觀察的行為增量。完成時 docs/feature.md 既有那一列的行為改變。
+type: User Story
 body:
   - type: textarea
     id: story

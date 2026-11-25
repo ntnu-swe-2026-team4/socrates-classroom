@@ -1,5 +1,6 @@
 name: Epic
 description: 跨 feature 的交付批次。不填 Size 與 Priority；不是主題標籤。
+type: Epic
 body:
   - type: textarea
     id: goal

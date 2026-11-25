@@ -1,5 +1,6 @@
 name: Decision
 description: 需要拍板的決策。不改程式；完成時 docs 有對應條目。
+type: Decision
 body:
   - type: textarea
     id: problem

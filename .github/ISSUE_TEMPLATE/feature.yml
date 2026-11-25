@@ -1,5 +1,6 @@
 name: Feature
 description: 新能力。完成時 docs/feature.md 新增一列。
+type: Feature
 body:
   - type: textarea
     id: problem
