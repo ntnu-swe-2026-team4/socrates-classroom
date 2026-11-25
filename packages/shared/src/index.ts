@@ -677,6 +677,7 @@ export const ERROR_CODES = [
   "email_already_linked",
   "identity_not_found",
   "last_login_method",
+  "last_verified_method",
   "reauth_identity_mismatch",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

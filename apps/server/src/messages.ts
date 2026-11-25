@@ -186,6 +186,11 @@ const M: Record<ErrorCode, Entry> = {
     en: "This is your last sign-in method, so it cannot be removed.",
     es: "Este es tu último método de acceso, así que no se puede quitar.",
   },
+  last_verified_method: {
+    zh: "這是帳號最後一種已驗證的登入方式，請先完成信箱驗證再解除綁定。",
+    en: "This is the account's last verified sign-in method. Verify your email before removing it.",
+    es: "Es el último método de acceso verificado de la cuenta. Verifica tu correo antes de quitarlo.",
+  },
   reauth_identity_mismatch: {
     zh: "驗證回來的帳號和目前登入的帳號不同，請再試一次。",
     en: "The account you verified with is not the account that is signed in. Try again.",
