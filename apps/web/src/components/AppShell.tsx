@@ -4,6 +4,8 @@ import { useAccountSheetRequest } from "@/lib/accountSheet";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BookOpen,
+  ChevronDown,
   Eye,
   GraduationCap,
   Home,
@@ -12,6 +14,7 @@ import {
   Menu,
   MessageCircle,
   Moon,
+  Presentation,
   Settings,
   ShieldCheck,
   Sun,
@@ -55,6 +58,11 @@ const NAV = [
     icon: GraduationCap,
     match: ["/classrooms", "/join", "/dialogue", "/t/", "/report"],
   },
+] as const;
+
+const CLASSROOM_VIEWS = [
+  { view: "enrolled", label: "nav_classrooms_enrolled", icon: BookOpen },
+  { view: "teaching", label: "nav_classrooms_manage", icon: Presentation },
 ] as const;
 
 const HALFTONE_MATCH = [
@@ -165,6 +173,14 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const account = useHoverPopover();
+  const classroomsView = useRouterState({
+    select: (state) => {
+      const search: unknown = state.location.search;
+      if (state.location.pathname !== "/classrooms" || typeof search !== "object" || search === null) return undefined;
+      return "view" in search && typeof search.view === "string" ? search.view : undefined;
+    },
+  });
+  const [classroomsOpen, setClassroomsOpen] = useState(pathname.startsWith("/classrooms"));
 
   const me = useQuery(meQueryOptions);
   const logout = useMutation({
@@ -189,6 +205,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
     setPrevPathname(pathname);
     setDrawerOpen(false);
     account.close();
+    if (pathname.startsWith("/classrooms")) setClassroomsOpen(true);
   }
 
   const gateRequired = Boolean(me.data && !me.data.emailVerified) && !VERIFICATION_EXEMPT.test(pathname);
@@ -197,7 +214,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const halftone = HALFTONE_MATCH.some((prefix) => pathname.startsWith(prefix));
   const themeTip = t("theme_toggle");
 
-  const rail = (
+  const rail = (classroomsMenuId: string) => (
     <nav className="flex h-full w-[88px] flex-col items-center overflow-x-hidden overflow-y-auto border-r-[1.5px] border-ht-line bg-ht-surface py-4 font-comic-sans">
       <Link
         to="/home"
@@ -219,6 +236,45 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           if (item.to === "/chat" && !me.data) return null;
           const active = item.match.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
           const Icon = item.icon;
+          if (item.to === "/classrooms" && me.data) {
+            return (
+              <div key={item.to} className="flex flex-col items-center gap-1">
+                <button
+                  type="button"
+                  data-rail="classrooms"
+                  aria-expanded={classroomsOpen}
+                  aria-controls={classroomsMenuId}
+                  onClick={() => setClassroomsOpen(!classroomsOpen)}
+                  className={cn(NAV_BTN, "relative", active && NAV_ACTIVE)}
+                >
+                  <Icon className="size-[19px]" />
+                  <span className="max-w-full text-center leading-tight wrap-anywhere">{t(item.label)}</span>
+                  <ChevronDown
+                    aria-hidden
+                    className={cn("absolute top-1.5 right-1.5 size-3", classroomsOpen && "rotate-180")}
+                  />
+                </button>
+                <div id={classroomsMenuId} hidden={!classroomsOpen} className="flex flex-col items-center gap-1.5">
+                  {CLASSROOM_VIEWS.map((sub) => (
+                    <Link
+                      key={sub.view}
+                      to="/classrooms"
+                      search={{ view: sub.view }}
+                      data-menu={sub.view}
+                      aria-current={classroomsView === sub.view ? "page" : undefined}
+                      className={cn(
+                        NAV_BTN,
+                        classroomsView === sub.view && "border-ht-line bg-ht-hover font-bold text-ht-ink",
+                      )}
+                    >
+                      <sub.icon className="size-[19px]" />
+                      <span className="max-w-full text-center leading-tight wrap-anywhere">{t(sub.label)}</span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            );
+          }
           return (
             <Link key={item.to} to={item.to} className={cn(NAV_BTN, active && NAV_ACTIVE)}>
               <Icon className="size-[19px]" />
@@ -294,7 +350,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
         <VerifyGate />
       ) : (
         <>
-          <aside className="relative hidden h-dvh shrink-0 md:block">{rail}</aside>
+          <aside className="relative hidden h-dvh shrink-0 md:block">{rail("rail-classrooms-menu")}</aside>
 
           <button
             type="button"
@@ -307,7 +363,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
 
           {drawerOpen && (
             <TrapDialog className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
-              {rail}
+              {rail("drawer-classrooms-menu")}
             </TrapDialog>
           )}
 

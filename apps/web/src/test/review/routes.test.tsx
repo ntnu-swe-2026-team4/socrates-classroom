@@ -276,7 +276,7 @@ test("#185: a signed-in teacher creates a classroom inline from the index and la
       return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
     }),
   );
-  const dispose = await mountRoute("/classrooms");
+  const dispose = await mountRoute("/classrooms?view=teaching");
   try {
     fireEvent.click(await screen.findByRole("button", { name: "New class" }));
     fireEvent.change(await screen.findByRole("textbox", { name: "Classroom name" }), {
@@ -380,6 +380,41 @@ test("#185: the classroom page covers the retired wizard flow: AI topic → star
       mode: "live",
       reportAxes: "ai",
     });
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("the classroom list keeps joined courses and managed classrooms on separate views", async () => {
+  const rooms = [
+    { ...roomSummary("student"), id: "class-joined", name: "Joined course" },
+    { ...roomSummary("teacher"), id: "class-owned", name: "Owned classroom" },
+  ];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "user-1", name: "User", isAdmin: false },
+        "/api/classrooms": rooms,
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  let dispose = await mountRoute("/classrooms");
+  try {
+    expect(await screen.findByRole("heading", { name: "Joined course" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "My courses" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Owned classroom" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New class" })).toBeNull();
+    dispose();
+    dispose = await mountRoute("/classrooms?view=teaching");
+    expect(await screen.findByRole("heading", { name: "Owned classroom" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Manage classrooms" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Joined course" })).toBeNull();
+    expect(screen.getByRole("button", { name: "New class" })).toBeTruthy();
   } finally {
     dispose();
     vi.unstubAllGlobals();

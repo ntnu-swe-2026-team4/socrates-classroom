@@ -163,8 +163,49 @@ test("the rail lists home and classrooms, and admins get the manage-site link", 
   const client = mountShell({ id: "u1", name: "Admin", isAdmin: true, emailVerified: true });
   try {
     expect(screen.getByRole("link", { name: "Home" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Classrooms" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Classrooms" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Manage site" })).toBeTruthy();
+  } finally {
+    client.clear();
+  }
+});
+
+test("the classrooms button expands and collapses its two destinations in place", () => {
+  const client = mountShell(teacher, "/home");
+  try {
+    const toggle = screen.getByRole("button", { name: "Classrooms" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("link", { name: "My courses" })).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("link", { name: "My courses" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Manage" })).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("link", { name: "Manage" })).toBeNull();
+  } finally {
+    client.clear();
+  }
+});
+
+test("navigating into a classroom page expands the classrooms menu", () => {
+  calls.pathname = "/home";
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(meQueryOptions.queryKey, teacher);
+  const shell = (page: string) => (
+    <QueryClientProvider client={client}>
+      <AppShell>
+        <p>{page}</p>
+      </AppShell>
+    </QueryClientProvider>
+  );
+  const view = render(shell("home"));
+  try {
+    expect(screen.getByRole("button", { name: "Classrooms" }).getAttribute("aria-expanded")).toBe("false");
+    calls.pathname = "/classrooms";
+    view.rerender(shell("classrooms"));
+    expect(screen.getByRole("button", { name: "Classrooms" }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("link", { name: "My courses" })).toBeTruthy();
   } finally {
     client.clear();
   }

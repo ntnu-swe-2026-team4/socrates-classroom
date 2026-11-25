@@ -2,6 +2,14 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-24 — 教室按鈕展開選單：分開「我選的課」與「教室管理」（`feat/408-classrooms-nav-menu`，#408）
+
+### Changed
+
+- 側邊欄「教室」按鈕加上箭頭，按下在原地展開「我選的課」／「教室管理」兩個子項目，再按收合（`aria-expanded`）；進到教室相關頁面時自動展開
+- 教室列表頁以 search param `?view=enrolled｜teaching` 分開兩份清單：「我選的課」含邀請碼輸入與我的報告，「教室管理」含開課按鈕；未帶 `view` 時，只有開課的人進「教室管理」，其餘進「我選的課」
+- API 與 route 結構不變（同一個 `/classrooms`，以 `role` 在前端分組）
+
 ## 2026-11-24 — 登入失敗 per-account 鎖定與 forgot per-email 冷卻（`feat/393-login-lockout`，#393）
 
 ### Added
