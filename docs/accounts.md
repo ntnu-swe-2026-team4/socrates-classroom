@@ -2,7 +2,7 @@
 
 > 日期：2026-11-20 ｜ 狀態：定稿（實作分階段落地，見 §10）
 > 來源：Outline spec「角色與班級模型」rev 200（2026-11-17 定稿，G36maid 與 blade_isoe.520 共同討論）——本文件為 repo SSOT，Outline 僅留討論記錄。
-> 本文件擁有「帳號與權限模型」domain：角色、模式、身分語意與設計決策。API 形狀與授權矩陣見 [`api-contract.md`](./api-contract.md)（§1.1、§2）；系統拓撲見 [`architecture.md`](./architecture.md)；SSO 流程見 [`google-oauth.md`](./google-oauth.md)。
+> 本文件擁有「帳號與權限模型」domain：角色、模式、身分語意與設計決策。API 形狀與授權矩陣見 [`api-contract.md`](./api-contract.md)（§1.1、§2）；系統拓撲見 [`architecture.md`](./architecture.md)；SSO 流程見 [`oauth.md`](./oauth.md)。
 
 ## 1. 設計問答
 

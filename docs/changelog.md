@@ -61,6 +61,13 @@
 - `class-report` thinkingLevel high→low（#249 實驗：high 在 39 人班推理超限截斷，low 完成 39／60 人班且落點零左右反轉）；其餘 profile 維持現況
 - Workers AI 推論改走 AI Gateway `default`（Unified billing）：付費清單模型 20→50 rpm；`collectLog: false`＋`skipCache: true` 在程式碼層釘死零保留（AI Gateway logs 預設開啟，不依賴 dashboard 手動狀態）
 
+## 2026-11-24 — `FACEBOOK_APP_ID` production 帶入通道＋`google-oauth.md` 改名 `oauth.md`（`ci/deploy-facebook-app-id`，#410）
+
+### Changed
+
+- `deploy.yml` job env 補 `FACEBOOK_APP_ID: ${{ vars.FACEBOOK_APP_ID }}`，與 `GOOGLE_CLIENT_ID` 同通道（repo variable 於 build 帶入 text binding）——此前 production build 永遠拿到空字串，Facebook 登入在正式站無法啟用；未設 variable＝停用，merge 不改變現狀
+- `docs/google-oauth.md` 改名 [`oauth.md`](./oauth.md)（純 git mv＋引用同步）：文件標題與內容自 2026-11-21 起已擴域為「第三方登入（SSO）設定」（Google §1–5、Facebook §6、Apple 退場 §7），檔名停在單一 provider 名不符實；§6.2 補 step 4 正式環境帶入點
+
 ## 2026-11-23 — TS 靜態保證 step 4：noUncheckedIndexedAccess 全庫開啟（`refactor/293-step4`，#293）
 
 ### Changed
@@ -741,7 +748,7 @@
 - 錯誤碼 `oauth_unavailable`／`oauth_state_invalid`／`oauth_email_unverified`／`oauth_failed`（三語）；binding `GOOGLE_CLIENT_ID`（text）／`GOOGLE_CLIENT_SECRET`（secret，留空＝停用）
 - 錯誤碼 `email_taken`（三語）：`POST /auth/signup` 信箱重複回 409 `email_taken`，取代語意模糊的 `conflict`；邀請碼註冊 `POST /auth/register` 維持 `conflict` 不變
 - `assets.runWorkerFirst: ["/api/*", "/health"]`：SPA `notFoundHandling` 會把瀏覽器 navigation（`Sec-Fetch-Mode: navigate`）直接回 `index.html`，導致整頁跳轉的 `/api/auth/oauth/*` 永遠到不了 Worker
-- 新增 [`google-oauth.md`](./google-oauth.md)（建立用戶端、本機／正式設定、secret 輪替、常見錯誤）；`.env.example` 補 `GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET`
+- 新增 `google-oauth.md`（現更名為 [`oauth.md`](./oauth.md)；建立用戶端、本機／正式設定、secret 輪替、常見錯誤）；`.env.example` 補 `GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET`
 - 測試：`tests/auth-sso.test.ts`（signup、OAuth 成功／state 竄改／簽章偽造／aud・iss・exp・nonce・未驗證 email）、`tests/migrations.test.ts`（user_identities 唯一性與 cascade）
 
 ## 2026-11-09 — routing/ 更名 gateway/（`experiment/web-next`）

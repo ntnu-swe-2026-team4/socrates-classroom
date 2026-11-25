@@ -106,7 +106,7 @@ interface User {
 
 - 一個帳號對應一種登入方式；同一個 email 經 email 註冊與 Google／Facebook 登入是**各自獨立的帳號**（第三方登入不以 email 認身分）
 - Google 帳號的 email 存於 `user_identities.email`，`users.email` 為 NULL（`users.email` 只承載 email 密碼登入）；Facebook 帳號同理，且其 email 可能缺席（informational）
-- callback redirect URI＝`PUBLIC_BASE_URL`（未設則用請求 origin）＋`/api/auth/oauth/<provider>/callback`；Google 需登錄於 Google Cloud Console，Facebook 需登錄於 Meta App Dashboard（設定見 [`google-oauth.md`](./google-oauth.md) §6）
+- callback redirect URI＝`PUBLIC_BASE_URL`（未設則用請求 origin）＋`/api/auth/oauth/<provider>/callback`；Google 需登錄於 Google Cloud Console，Facebook 需登錄於 Meta App Dashboard（設定見 [`oauth.md`](./oauth.md) §6）
 
 ### 2.2 密碼找回（#230）
 
