@@ -311,7 +311,7 @@ const messages = {
     identity_unbind_confirm_title: "解除綁定「{name}」？",
     identity_unbind_confirm_message: "解除後就不能再用這個方式登入；如果這是你最後一種登入方式，系統會拒絕。",
     identity_bind_email_title: "加上 Email＋密碼",
-    identity_bind_email_hint: "綁定後會寄出驗證信，未驗證不影響登入。",
+    identity_bind_email_hint: "綁定後會寄出驗證信，完成驗證前不能以 Email＋密碼登入；已綁的第三方登入不受影響。",
     identity_bind_email_submit: "綁定 Email",
     identity_last_method_hint: "這是你目前唯一的一種登入方式，至少要保留一種。",
     identity_cancel: "取消",
@@ -1116,7 +1116,8 @@ const messages = {
     identity_unbind_confirm_message:
       "You will no longer be able to sign in this way. If it is your last sign-in method, the request is refused.",
     identity_bind_email_title: "Add email and password",
-    identity_bind_email_hint: "We will send a verification email; an unverified email does not block sign-in.",
+    identity_bind_email_hint:
+      "We will send a verification email. Until you verify it, email + password cannot be used to sign in; your linked third-party sign-in keeps working.",
     identity_bind_email_submit: "Link email",
     identity_last_method_hint: "This is your only sign-in method right now — at least one must remain.",
     identity_cancel: "Cancel",
@@ -1975,7 +1976,8 @@ const messages = {
     identity_unbind_confirm_message:
       "Ya no podrás iniciar sesión de esta forma. Si es tu último método de acceso, la solicitud se rechaza.",
     identity_bind_email_title: "Añadir email y contraseña",
-    identity_bind_email_hint: "Enviaremos un correo de verificación; no verificarlo no bloquea el acceso.",
+    identity_bind_email_hint:
+      "Enviaremos un correo de verificación. Hasta verificarlo, no podrás iniciar sesión con email y contraseña; tu acceso externo vinculado sigue funcionando.",
     identity_bind_email_submit: "Vincular email",
     identity_last_method_hint: "Es tu único método de acceso ahora mismo; al menos uno debe quedar.",
     identity_cancel: "Cancelar",

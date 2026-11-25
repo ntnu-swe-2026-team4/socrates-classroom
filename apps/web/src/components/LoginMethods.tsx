@@ -38,12 +38,14 @@ export function LoginMethods() {
   const [bindPassword, setBindPassword] = useState("");
   const [bindConfirm, setBindConfirm] = useState("");
   const [confirmUnbind, setConfirmUnbind] = useState<LoginMethod | null>(null);
+  const [resent, setResent] = useState(false);
 
   const data = identities.data;
   const email = data?.email ?? null;
   const oauth = data?.oauth ?? [];
   const reauthActive = data?.reauthExpiresAt != null;
   const methodCount = (email === null ? 0 : 1) + oauth.length;
+  const lastVerifiedProvider = email !== null && !email.verified && oauth.length === 1;
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: identitiesOptions.queryKey });
@@ -103,6 +105,12 @@ export function LoginMethods() {
       await api.unbindIdentity(confirmUnbind);
       setConfirmUnbind(null);
       await refresh();
+    });
+
+  const resendVerification = () =>
+    run("resend", async () => {
+      await api.resendEmailVerification();
+      setResent(true);
     });
 
   const methodName = (method: LoginMethod): string =>
@@ -219,6 +227,17 @@ export function LoginMethods() {
                   )}
                 </span>
               )}
+              {email && !email.verified && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy !== null}
+                  aria-busy={busy === "resend"}
+                  onClick={() => void resendVerification()}
+                >
+                  {resent ? t("verify_gate_sent") : t("verify_gate_resend")}
+                </Button>
+              )}
               {email && (
                 <Button
                   variant="ghost"
@@ -253,7 +272,7 @@ export function LoginMethods() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      disabled={busy !== null || methodCount === 1 || !reauthActive}
+                      disabled={busy !== null || methodCount === 1 || lastVerifiedProvider || !reauthActive}
                       onClick={() => setConfirmUnbind(provider)}
                     >
                       {t("identity_unbind")}
