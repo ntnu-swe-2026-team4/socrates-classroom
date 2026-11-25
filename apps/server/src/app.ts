@@ -52,6 +52,19 @@ export function createApi() {
 }
 export type RpcApi = ReturnType<typeof createApi>;
 
+const VERIFICATION_BYPASS = new Set([
+  "/api/me",
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/auth/register",
+  "/api/auth/signup",
+  "/api/auth/providers",
+  "/api/auth/password/forgot",
+  "/api/auth/password/reset",
+  "/api/auth/email/verify",
+  "/api/auth/email/verify/resend",
+]);
+
 export function createApp() {
   return new Hono<AppEnv>()
     .use("/api/*", async (c, next) => {
@@ -60,6 +73,9 @@ export function createApp() {
       const lookup = await lookupSession(c.env, getCookie(c, SESSION_COOKIE));
       c.set("user", lookup.kind === "ok" ? lookup.session.user : null);
       c.set("sessionIssue", lookup.kind === "ok" || lookup.kind === "missing" ? null : lookup.kind);
+      if (lookup.kind === "ok" && !lookup.session.user.emailVerified && !VERIFICATION_BYPASS.has(c.req.path)) {
+        fail(403, "email_unverified");
+      }
       await next();
     })
     .route("/api", createApi())

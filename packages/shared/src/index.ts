@@ -631,6 +631,7 @@ export const ERROR_CODES = [
   "oauth_email_unverified",
   "oauth_failed",
   "email_taken",
+  "email_unverified",
   "reset_token_invalid",
   "verify_token_invalid",
   "email_not_set",

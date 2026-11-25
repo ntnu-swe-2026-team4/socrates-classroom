@@ -160,7 +160,7 @@ function LoginPage() {
   const formReady = email.trim() && password.length >= 8 && (mode === "login" || (name.trim() && tos)) && !busy;
 
   return (
-    <div className="relative flex min-h-dvh flex-col overflow-x-hidden bg-comic-ground bg-[radial-gradient(var(--color-comic-dot)_1.1px,transparent_1.5px)] bg-size-[12px_12px] font-sans text-comic-ink [color-scheme:light] lg:grid lg:min-h-[max(100dvh,640px)] lg:grid-cols-[minmax(0,1fr)_minmax(600px,58%)] lg:overflow-clip">
+    <div className="relative flex min-h-dvh flex-col overflow-x-hidden bg-comic-ground font-sans text-comic-ink [color-scheme:light] lg:grid lg:min-h-[max(100dvh,640px)] lg:grid-cols-[minmax(0,1fr)_minmax(600px,58%)] lg:overflow-clip">
       <StoaField reserve={RIGHT_COLUMN_PX} className="opacity-35 max-lg:hidden" />
 
       <section className="relative flex flex-col gap-6 px-4 pt-6 sm:px-8 lg:sticky lg:top-0 lg:h-dvh lg:min-h-[640px] lg:self-start lg:px-16 lg:pt-14">

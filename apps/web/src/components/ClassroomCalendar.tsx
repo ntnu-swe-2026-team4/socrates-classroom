@@ -1,6 +1,6 @@
 import type { CalendarEvent, Topic } from "@socrates/shared";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "@/api";
@@ -13,6 +13,7 @@ import { dayKey, eventsByDay, localDateTime, monthDays, shiftDay, weekStart } fr
 
 const MONDAY = new Date(2024, 0, 1);
 const WEEKDAYS = Array.from({ length: 7 }, (_, index) => new Date(2024, 0, MONDAY.getDate() + index));
+const PICKER_INPUT = "block min-w-0 max-w-full appearance-none text-left [&::-webkit-date-and-time-value]:text-left";
 const FIELD =
   "w-full rounded-lg border border-line-strong bg-paper px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-ink";
 
@@ -48,7 +49,7 @@ export function ClassroomCalendar({
   const weekly = view === "week";
   const rangeStart = weekly ? weekStart(selectedDate) : new Date(year, month, 1);
   const rangeEnd = weekly ? shiftDay(rangeStart, 7) : new Date(year, month + 1, 1);
-  const events = useQuery(classroomCalendarOptions(id, rangeStart, rangeEnd));
+  const events = useQuery({ ...classroomCalendarOptions(id, rangeStart, rangeEnd), placeholderData: keepPreviousData });
   const refresh = () => client.invalidateQueries({ queryKey: classroomCalendarScopeOptions(id).queryKey });
   const closeEditor = () => {
     setEditorOpen(false);
@@ -327,12 +328,24 @@ export function ClassroomCalendar({
         <Field label={t("calendar_event_title")}>
           <Input value={title} maxLength={120} required onChange={(event) => setTitle(event.target.value)} />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 *:min-w-0">
           <Field label={t("calendar_event_date")}>
-            <Input type="date" value={date} required onChange={(event) => setDate(event.target.value)} />
+            <Input
+              type="date"
+              value={date}
+              required
+              onChange={(event) => setDate(event.target.value)}
+              className={PICKER_INPUT}
+            />
           </Field>
           <Field label={t("calendar_event_time")}>
-            <Input type="time" value={time} required onChange={(event) => setTime(event.target.value)} />
+            <Input
+              type="time"
+              value={time}
+              required
+              onChange={(event) => setTime(event.target.value)}
+              className={PICKER_INPUT}
+            />
           </Field>
         </div>
         <Field label={t("calendar_event_end")}>
@@ -341,6 +354,7 @@ export function ClassroomCalendar({
             value={end}
             onChange={(event) => setEnd(event.target.value)}
             aria-invalid={badEnd}
+            className={PICKER_INPUT}
           />
         </Field>
         {badEnd && (

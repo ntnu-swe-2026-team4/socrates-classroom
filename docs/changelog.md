@@ -11,6 +11,24 @@
 - `POST /api/auth/password/forgot` 加入同一 email 5 分鐘冷卻（`allowKey` 原子判定，冷卻內靜默回 `204` 不寄信、不破壞防列舉契約，不同 email 互不影響）
 - 測試補齊：`tests/rate-limit.test.ts`（DO keyed API／shard sweep、多 IP 換源鎖定、大小寫合併、不存在 email 同門檻、成功登入歸零、停用帳號不計失敗、密碼重設解鎖、DO 不可用 fail-open）與 `tests/password-reset.test.ts`（同 email 冷卻、跨 email 隔離、併發只寄一封）
 
+## 2026-11-24 — email 驗證 hard gate：未驗證不得使用系統（`fix/437-email-verify-hard-gate`，#437）
+
+### Fixed
+
+- Email 驗證閘門生效：#259 只追蹤 `email_verified_at` 卻沒有任何地方強制執行，註冊完直接拿到完整 session（`/auth/register` 甚至已寫入 `members` 並建立 participant），登入、所有 API 與 WebSocket 全部可用。現由 `/api/*` middleware 對未驗證 session 回 `403 email_unverified`（僅放行 `/api/me`、login、logout、register、signup、providers、password forgot/reset、email verify、verify/resend），WS authorize（chat／solo／classroom-events）同樣拒絕；前端呈現 VerifyGate 畫面（重寄驗證信＋登出），`/verify-email` 點完連結立即解鎖
+- Email 搶註修復（stale takeover）：超過 `EMAIL_VERIFY_TTL_HOURS`（24h）仍未驗證的帳號從未證明信箱所有權，任何人以該 email 重新 `signup`／`register` 會覆寫該帳號的 name／password／lang／`created_at` 並 `session_version + 1`（舊 session 全滅）；已驗證的地址永不適用。`register` 對「stale 帳號已是該教室成員」視為冪等（member row 改名＋更新 `tos_accepted_at`，照回 200），同名搶佔也不會被誤擋 `name_taken`
+- Admin 建立帳號（admin 主動發放 credentials，非本人自稱擁有信箱）直接寫入 `email_verified_at`，不受 gate 影響
+- `register` 限流由每 IP 每分鐘 30 收緊為 10；`email_unverified` 錯誤碼三語本地化
+- 模型與契約更新：`accounts.md` §8、`api-contract.md` §2.1/§2.3/§10、`feature.md`
+
+## 2026-11-24 — 正式站 `/agents/*` 被資產層攔截，WebSocket 全數握手失敗（`fix/418-agents-run-worker-first`，#418）
+
+### Fixed
+
+- `runWorkerFirst` 補上 `"/agents/*"`：array 形式的 `run_worker_first` 會停用 `Sec-Fetch-Mode` 判定（上游文件明載），未命中 pattern 的路徑一律只走 assets 層——`notFoundHandling: "single-page-application"` 回 `index.html`，路徑含 raw `:` 時先被 307 path normalization 改寫（瀏覽器 `WebSocket` 不跟隨 redirect）。`/agents/*`（`chat`／`solo-chat` 的 WebSocket 與 `useBtw`）不在 #140（2026-11-17）引入的清單內，正式站對話頁永遠「連線中斷」；`/api/*`、`/health` 在清單內不受影響。該清單加入前（11-10 WS 上線至 11-17），非 navigation 請求仍會進 Worker，對話原本可用，屬 #140 回歸
+- 新增 `cloudflare-config.test.ts`：以 production mode 評估 `cloudflare.config.ts`，斷言 Worker 擁有的三個路徑前綴（`/api/*`、`/agents/*`、`/health`）都出現在 `runWorkerFirst`；Worker 端新增路徑前綴而未同步 assets 設定時 CI 會擋下
+- dialogue／btw 的 WebSocket 設 `maxRetries: 10`（partysocket 預設 `Infinity`）：握手持續失敗時，每 3–10 秒（backoff ×1.3）一條 console error 無限增長；10 次（約 77 秒涵蓋常規 deploy 空窗）後停止重試，對話頁的「連線中斷」notice 加上「重新連線」按鈕（`location.reload()`）作為明確的恢復路徑（i18n 三語）
+
 ## 2026-11-24 — 登入頁：登入／註冊卡片等高、不再捲動（`fix/411-login-card-stable`，#411）
 
 ### Fixed

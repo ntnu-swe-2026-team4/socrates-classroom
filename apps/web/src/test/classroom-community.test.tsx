@@ -12,7 +12,7 @@ vi.mock("@/components/SocratesCompanion", () => ({ SocratesWindow: () => null })
 
 const token = "1234567890abcdef1234567890abcdef";
 const timestamp = "2026-11-22T03:00:00.000Z";
-const student = { id: "student", name: "Student", isAdmin: false };
+const student = { id: "student", name: "Student", isAdmin: false, emailVerified: true };
 const room = {
   id: "room",
   role: "student",

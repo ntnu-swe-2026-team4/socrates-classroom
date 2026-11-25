@@ -5,7 +5,7 @@ import { applyImmutable } from "@earendil-works/chord/delta";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
 import { companion } from "@/lib/companion";
-import { useOnUnmount } from "@/hooks/useSubscription";
+import { WS_MAX_RETRIES, useOnUnmount } from "@/hooks/useSubscription";
 import {
   ConversationTranscript,
   type ConversationView,
@@ -395,6 +395,7 @@ export function useDialogue(threadId: string, userId: string, options?: Dialogue
     agent,
     name: dialogueName(agent, threadId, userId),
     query: { lang: document.documentElement.lang || "zh-TW" },
+    maxRetries: WS_MAX_RETRIES,
     onOpen: (event) => {
       if (canSend(event.target)) {
         event.target.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));

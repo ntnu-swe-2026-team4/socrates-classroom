@@ -28,6 +28,7 @@ export class ClassroomEvents extends DurableObject<Env> {
 
     const lookup = await lookupSession(this.env, cookieValue(request.headers.get("Cookie") ?? "", SESSION_COOKIE));
     if (lookup.kind !== "ok") return new Response(null, { status: lookup.kind === "disabled" ? 403 : 401 });
+    if (!lookup.session.user.emailVerified) return new Response(null, { status: 403 });
     const classroomId = this.ctx.id.name;
     if (!classroomId) return new Response(null, { status: 404 });
     const { user, version, expiresAt } = lookup.session;

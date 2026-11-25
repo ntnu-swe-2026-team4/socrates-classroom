@@ -11,7 +11,18 @@ import {
   oauthProviders,
   resetGoogleKeyCache,
 } from "../src/oauth";
-import { bool, call, classroomWithActivity, cookieOf, field, must, optStr, rows, str } from "./helpers";
+import {
+  bool,
+  call,
+  classroomWithActivity,
+  cookieOf,
+  field,
+  must,
+  optStr,
+  rows,
+  str,
+  verifyUserEmail,
+} from "./helpers";
 import { one, run } from "../src/db/d1";
 
 const migrations = inject("d1Migrations");
@@ -218,6 +229,7 @@ describe("email signup (standalone account)", () => {
       body: JSON.stringify({ email: "joiner@example.com", password: "password-1", name: "加入者", tosAccepted: true }),
     });
     const session = cookieOf(res);
+    await verifyUserEmail(str(await res.json(), "id"));
     const create = await call("/api/classrooms", {
       method: "POST",
       headers: { ...json, Cookie: session },
