@@ -2,6 +2,15 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-26 — 正式站語音與分類器全失效：aiRunOf 遺失 binding receiver（`fix/ai-run-this-binding`，#439）
+
+### Fixed
+
+- #309 的 typed seam（`pi/ai-run.ts`）把 `run` 方法從 binding 上拆下來回傳（`return (ai as …).run`），呼叫時 receiver 是 `undefined`——binding 的 `run` 內部讀自身狀態即拋 `TypeError`。受害範圍：STT／TTS（`routes/voice.ts`）回 502「語音播放失敗／語音輸入失敗」；violation／emotion 分類器（`judgment/classify.ts`、`avatar/index.ts`）`catch { return null }` 靜默降級——正式站自 2026-11-24 部署起違規標記只剩主模型 `report_violation` 工具來源、表情全落 fallback。websearch 不受影響（`ai.websearch` 一直是 method call）；對話走 agents `createAI` 路徑（內部也是 method call），同樣不受影響
+- 正式站證據（Workers Logs）：#309 部署（2026-11-23T23:14Z）前零筆 `binding failed`；之後至 2026-11-26 全為 `[tts] binding failed TypeError`（首筆 2026-11-24 12:29 UTC+8）。錯誤發生在請求送出前，與 AI Gateway credits 餘額無關——「金額用完」對語音不成立；帳號為 Workers Paid
+- 修法：`aiRunOf` 改回 method call wrapper（`(model, inputs) => ai.run(model, inputs)`），`AiRun` 的 inputs 型別收斂為 `Record<string, unknown>` 免型別斷言；新增 `tests/ai-run.test.ts` 回歸測試（fake binding 的 `run` 依賴 receiver state，detached 呼叫會 `TypeError`——現有 fake 因 Proxy 與 arrow 不用 `this` 而抓不到此回歸）
+- `docs/development.md` 計費表格反映 unified billing（credits），補語音功能的 credits 依賴與 mock 行為（#467）
+
 ## 2026-11-24 — 教室按鈕展開選單：分開「我選的課」與「教室管理」（`feat/408-classrooms-nav-menu`，#408）
 
 ### Changed

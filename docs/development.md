@@ -43,15 +43,19 @@
 
 `.env.local`（gitignored，範本見 `.env.example`；僅 dev 讀取——build/deploy 用 config 預設，生產設定走 `cf deploy --secrets-file`）。預設 `LLM_PROVIDER=mock`（離線 faux 模型，零帳號）——要真對話，三選一：
 
-| 方式          | 設定                                      | 費用                            |
-| ------------- | ----------------------------------------- | ------------------------------- |
-| 離線 mock     | 預設（`LLM_PROVIDER=mock`，無需設定）     | 0 元（faux 腳本回覆，非真 LLM） |
-| CF Workers AI | `CF_REMOTE_AI=true`（需 `cf auth login`） | Workers AI 計費（neurons）      |
-| Workers AI    | `CF_REMOTE_AI=true` ＋ `cf login`         | 免費 Neurons 額度               |
+| 方式          | 設定                                      | 費用                                                          |
+| ------------- | ----------------------------------------- | ------------------------------------------------------------- |
+| 離線 mock     | 預設（`LLM_PROVIDER=mock`，無需設定）     | 0 元（faux 腳本回覆，非真 LLM）                               |
+| CF Workers AI | `CF_REMOTE_AI=true`（需 `cf auth login`） | AI Gateway credits（unified billing；費率見 providers.md §4） |
 
 都不設真 LLM 時用 mock；`pnpm seed` 只要 `SEED_TOKEN` 與 `ENVIRONMENT=dev` 成立就可用（與 LLM 模式無關）。
 
 - **fixture 帳號被改壞** → 重跑 `pnpm seed`：fixture 帳號（含密碼 `demo-demo`）與教室會被 upsert 回固定值，id 不變
+
+### 語音功能（TTS/STT）在本地
+
+- **mock（預設）**：TTS 回本地合成音檔、STT 回固定 transcript（`routes/voice.ts`）——離線可測 UI 接線，非真語音
+- **真語音（`CF_REMOTE_AI=true`＋非 mock `LLM_PROVIDER`）**：TTS／STT 都從 unified billing credits 扣款（模型與費率見 providers.md §4）——帳號缺 Workers Paid 或 credits 為零時固定 502（前端「語音播放失敗」／「語音輸入失敗」）；`CF_REMOTE_AI=true` 只保證免費對話腿，不涵蓋語音
 
 ## 常見問題
 
