@@ -53,6 +53,7 @@ function ChatPage() {
       subtitle={t("chat_solo_subtitle")}
       autoSend={question?.text}
       autoSendOperationId={question?.operationId}
+      initialVoiceMode={question?.voiceMode}
       onAutoSent={(receipt) => {
         if (receipt && !receipt.accepted) return;
         if (question && router.state.location.state.soloQuestion?.operationId === question.operationId) {

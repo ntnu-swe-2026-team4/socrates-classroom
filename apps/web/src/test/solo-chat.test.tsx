@@ -39,6 +39,14 @@ vi.mock("agents/react", () => ({
     return socket;
   },
 }));
+const voiceHook = vi.hoisted((): { onFinal: ((text: string) => void) | null } => ({ onFinal: null }));
+
+vi.mock("@/hooks/useVoiceInput", () => ({
+  useVoiceInput: (onFinal: (text: string) => void) => {
+    voiceHook.onFinal = onFinal;
+    return { state: "idle", interim: "", error: null, start: async () => {}, stop: () => {} };
+  },
+}));
 vi.mock("@/components/SocratesCompanion", () => ({ SocratesWindow: () => null, SocratesCompanion: () => null }));
 
 const thread: SoloThread = {
@@ -194,6 +202,35 @@ test("retries the first question with the same operation ID after a disconnect a
     });
   });
   await waitFor(() => expect(router.state.location.state).not.toHaveProperty("soloQuestion"));
+});
+
+test("starts a new topic in voice mode and keeps voice mode in the dialogue", async () => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const { fetch, router } = mountChat("/chat");
+  await screen.findByRole("textbox", { name: "Type a question you want to think through…" });
+  fireEvent.click(screen.getByRole("button", { name: "Voice mode" }));
+  expect(screen.getByRole("button", { name: "Hold to talk" })).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "Type a question you want to think through…" })).toBeNull();
+
+  act(() => voiceHook.onFinal?.(thread.title));
+
+  await waitFor(() => expect(router.state.location.href).toBe(`/chat/${thread.id}`));
+  expect(fetch).toHaveBeenCalledWith("/api/solo/threads", expect.objectContaining({ method: "POST" }));
+  expect(router.state.location.state).toHaveProperty("soloQuestion.voiceMode", true);
+  await waitFor(() => expect(socket.options).toMatchObject({ agent: "solo-chat", name: `u_1:${thread.id}` }));
+  act(() => {
+    socket.options?.onMessage({
+      data: JSON.stringify({ type: "view", view: { conversation: { id: 1 }, entries: [], docs: {} } }),
+    });
+  });
+  expect(await screen.findByRole("button", { name: "Hold to talk" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Type instead" })).toBeTruthy();
 });
 
 test("renames a selected thread and returns to the composer when that thread is deleted", async () => {
