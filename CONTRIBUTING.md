@@ -20,6 +20,8 @@
 
 Type 在 organization 層定義，不能 per-repo 自訂；用 gh CLI 開單時加 `--type`。名稱以 organization 上的定義為準（`Task`、`Bug`、`Feature`、`User Story`、`Technical Story`、`Decision`、`Epic`）。
 
+從 blank issue 開的單不經過 form，type 會是空的：這種情況要事後補 type（`gh issue edit <N> --type <name>`），否則它不屬於任何一類、也不會被 § Status 的必要欄位檢查涵蓋。
+
 - `task` 與 `decision` 的分界：task 可以直接實作，decision 不會改程式。**兩者混合時不屬於這兩種**，拆成 decision 加另一張，不要挑「比較像的」硬塞。
 - `feature` 與 `User Story` 的先後：承諾在 feature（要不要做）、切法在 User Story（怎麼交付）。**一個 User Story 就能完成的能力不開 feature**；第 2 個 story 出現時才補開 feature 當容器。
 - `epic` 是交付批次，不是大 feature；主題由 domain label 表達，epic 不承擔主題。
@@ -122,5 +124,5 @@ issue 開完後必須加入 GitHub Project [`ntnu-swe-team4-kanban`](https://git
 - 功能合併進 `main` 後三步驟：`docs/roadmap.md` 移除條目 → `docs/changelog.md` 加條目 → `docs/feature.md` 加功能列。
 - Issue Type 與文件的對應（見 [§ Type](#type分類)）就是這三步驟的判準：`Feature` 完成要新增一列、`User Story` 完成要改既有列、`Bug` 完成要讓程式回到文件描述、`Decision` 完成要在 `architecture.md`／`providers.md` 留下決議段落。
 - API 請求／回覆變更 → `docs/api-contract.md`；系統決策變更 → `docs/architecture.md`。
-- 文件與程式碼矛盾視同 bug，看到就修（併入相關 PR，或開獨立的 `[docs]` PR）。
+- 文件與程式碼矛盾視同 bug，看到就修（併入相關 PR，或另開一個 `docs: …` 標題的 PR）。
 - PR template 的「文件更新」填寫與 self-review 的「文件無偏移」checkbox 就是在驗證這件事。
