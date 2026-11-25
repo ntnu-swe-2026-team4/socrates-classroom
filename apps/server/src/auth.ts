@@ -51,6 +51,7 @@ interface UserRow {
   is_admin: number;
   disabled_at: string | null;
   session_version: number;
+  has_identity: number;
 }
 
 export function toUser(row: {
@@ -59,12 +60,13 @@ export function toUser(row: {
   email: string | null;
   email_verified_at: string | null;
   is_admin: number;
+  has_identity: number;
 }): User {
   return {
     id: row.id,
     name: row.name,
     isAdmin: row.is_admin === 1,
-    emailVerified: row.email === null || row.email_verified_at !== null,
+    emailVerified: row.email === null || row.email_verified_at !== null || row.has_identity === 1,
   };
 }
 
@@ -295,7 +297,9 @@ export async function lookupSession(env: SessionEnv, token: string | undefined):
   if (!claims) return { kind: "missing" };
   const row = await one<UserRow>(
     env.DB,
-    "SELECT id, name, email, email_verified_at, is_admin, disabled_at, session_version FROM users WHERE id = $id",
+    `SELECT id, name, email, email_verified_at, is_admin, disabled_at, session_version,
+            EXISTS(SELECT 1 FROM user_identities WHERE user_id = users.id) AS has_identity
+     FROM users WHERE id = $id`,
     { id: claims.uid },
   );
   if (!row) return { kind: "missing" };

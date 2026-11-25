@@ -106,6 +106,7 @@ interface UserRow {
   password_hash: string | null;
   is_admin: number;
   disabled_at: string | null;
+  has_identity: number;
 }
 
 interface VerifyAccount {
@@ -230,6 +231,14 @@ async function identityPresence(c: Ctx, userId: string, method: string): Promise
 
 async function failUnbind(c: Ctx, userId: string, method: string): Promise<never> {
   if (!(await identityPresence(c, userId, method))) fail(404, "identity_not_found");
+  if (method !== "email") {
+    const fallback = await one<{ ok: number }>(
+      c.env.DB,
+      "SELECT 1 AS ok FROM users WHERE id = $id AND email IS NOT NULL AND password_hash IS NOT NULL",
+      { id: userId },
+    );
+    if (fallback) fail(409, "last_verified_method");
+  }
   fail(409, "last_login_method");
 }
 
@@ -243,15 +252,19 @@ export function authRoutes() {
     .post("/auth/login", rateLimit("login", 30), validateJson(LoginInputSchema), async (c) => {
       const input = c.req.valid("json");
       await enforceIdentifierLimit(c, LOGIN_FAIL_SCOPE, input.email, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW_MS);
-      const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE email = $email", {
-        email: input.email,
-      });
+      const row = await one<UserRow>(
+        c.env.DB,
+        `SELECT *, EXISTS(SELECT 1 FROM user_identities WHERE user_id = users.id) AS has_identity
+         FROM users WHERE email = $email`,
+        { email: input.email },
+      );
       const ok = await verifyPassword(input.password, row?.password_hash ?? DUMMY_HASH);
       if (!row || !ok) {
         await recordIdentifierHit(c, LOGIN_FAIL_SCOPE, input.email, LOGIN_FAIL_WINDOW_MS);
         fail(401, "unauthorized");
       }
       if (row.disabled_at !== null) fail(403, "account_disabled");
+      if (row.email_verified_at === null && row.has_identity === 1) fail(403, "email_unverified");
       await clearIdentifierLimit(c, LOGIN_FAIL_SCOPE, input.email);
       const user = toUser(row);
       await startSession(c, user);
@@ -598,7 +611,9 @@ export function authRoutes() {
           c.env.DB,
           `DELETE FROM user_identities
            WHERE user_id = $id AND provider = $provider
-             AND (EXISTS (SELECT 1 FROM users WHERE id = $id AND email IS NOT NULL AND password_hash IS NOT NULL)
+             AND (EXISTS (SELECT 1 FROM users
+                          WHERE id = $id AND email IS NOT NULL AND password_hash IS NOT NULL
+                            AND email_verified_at IS NOT NULL)
                   OR (SELECT COUNT(*) FROM user_identities WHERE user_id = $id) > 1)`,
           { id: user.id, provider: method },
         );
@@ -729,7 +744,7 @@ async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthPr
   const existing = await one<OAuthUserRow>(c.env.DB, findSql, key);
   if (existing) {
     if (existing.disabled_at !== null) return null;
-    return toUser(existing);
+    return toUser({ ...existing, has_identity: 1 });
   }
   const id = newId("u_");
   const at = nowIso();
@@ -748,7 +763,7 @@ async function userForIdentity(c: Ctx, provider: OAuthProvider, profile: OAuthPr
     if (!uniqueViolationColumns(error).some(([table]) => table === "user_identities")) throw error;
     const raced = await one<OAuthUserRow>(c.env.DB, findSql, key);
     if (!raced || raced.disabled_at !== null) return null;
-    return toUser(raced);
+    return toUser({ ...raced, has_identity: 1 });
   }
   return { id, name: profile.name, isAdmin: false, emailVerified: true };
 }

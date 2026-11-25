@@ -3,7 +3,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, inject, test, vi } from "vitest";
 import { seedFixture } from "../src/seed";
 import { GOOGLE_JWKS_URL, GOOGLE_TOKEN_URL, resetGoogleKeyCache } from "../src/oauth";
-import { call, cookieOf, field, must, rows, str } from "./helpers";
+import { call, cookieOf, field, must, rows, str, verifyUserEmail } from "./helpers";
 import { run } from "../src/db/d1";
 
 const migrations = inject("d1Migrations");
@@ -124,7 +124,9 @@ async function signup(email: string): Promise<{ id: string; session: string }> {
     body: JSON.stringify({ email, password: "password-1", name: email.split("@")[0], tosAccepted: true }),
   });
   expect(res.status).toBe(200);
-  return { id: str(await res.json(), "id"), session: cookieOf(res) };
+  const id = str(await res.json(), "id");
+  await verifyUserEmail(id);
+  return { id, session: cookieOf(res) };
 }
 
 async function reauthWithPassword(session: string, password = "password-1"): Promise<Response> {
@@ -192,6 +194,70 @@ afterEach(() => {
   resetGoogleKeyCache();
 });
 
+describe("verified-method gate alignment (#138 × #437)", () => {
+  async function googleWithUnverifiedEmail(sub: string, email: string, password: string) {
+    const user = await loginWithGoogle(sub);
+    const bind = await call("/api/me/identities/email", {
+      method: "POST",
+      headers: { ...json, Cookie: await reauthWithGoogle(user.session, sub) },
+      body: JSON.stringify({ email, password }),
+    });
+    expect(bind.status).toBe(200);
+    return user;
+  }
+
+  test("an unverified bound email does not gate an account that keeps a verified SSO method", async () => {
+    const user = await googleWithUnverifiedEmail("id-gate-aligned", "gate-aligned@example.com", "aligned-pass-1");
+    const res = await call("/api/classrooms", { headers: { Cookie: user.session } });
+    expect(res.status).toBe(200);
+    const me = await call("/api/me", { headers: { Cookie: user.session } });
+    expect(field(await me.json(), "emailVerified")).toBe(true);
+  });
+
+  test("unverified email + password cannot sign in while the account has another entry", async () => {
+    const user = await googleWithUnverifiedEmail("id-login-method", "login-method@example.com", "aligned-pass-2");
+    const blocked = await call("/api/auth/login", {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ email: "login-method@example.com", password: "aligned-pass-2" }),
+    });
+    expect(blocked.status).toBe(403);
+    expect(str(await blocked.json(), "code")).toBe("email_unverified");
+    expect(cookieNamed(blocked, "socrates_session")).toBeUndefined();
+
+    const sso = await loginWithGoogle("id-login-method");
+    expect(sso.id).toBe(user.id);
+
+    await verifyUserEmail(user.id);
+    const login = await call("/api/auth/login", {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ email: "login-method@example.com", password: "aligned-pass-2" }),
+    });
+    expect(login.status).toBe(200);
+    expect(str(await login.json(), "id")).toBe(user.id);
+  });
+
+  test("the last verified method cannot be unbound while the email stays unverified", async () => {
+    const user = await googleWithUnverifiedEmail("id-last-verified", "last-verified@example.com", "aligned-pass-3");
+    const cookies = await reauthed(user.session, "aligned-pass-3");
+    const blocked = await unbind(cookies, "google");
+    expect(blocked.status).toBe(409);
+    expect(str(await blocked.json(), "code")).toBe("last_verified_method");
+
+    const emailRemoved = await unbind(cookies, "email");
+    expect(emailRemoved.status).toBe(204);
+    const googleKept = await call("/api/classrooms", { headers: { Cookie: cookieOf(emailRemoved) } });
+    expect(googleKept.status).toBe(200);
+
+    const rebound = await googleWithUnverifiedEmail("id-last-verified", "last-verified@example.com", "aligned-pass-3");
+    expect(rebound.id).toBe(user.id);
+    await verifyUserEmail(user.id);
+    const allowed = await unbind(await reauthed(rebound.session, "aligned-pass-3"), "google");
+    expect(allowed.status).toBe(204);
+  });
+});
+
 describe("login method overview (#138)", () => {
   test("requires a session", async () => {
     expect((await identities("socrates_session=")).status).toBe(401);
@@ -203,7 +269,7 @@ describe("login method overview (#138)", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(field(field(body, "email"), "email")).toBe("overview@example.com");
-    expect(field(field(body, "email"), "verified")).toBe(false);
+    expect(field(field(body, "email"), "verified")).toBe(true);
     expect(rows(field(body, "oauth"))).toEqual([]);
     expect(field(body, "reauthExpiresAt")).toBeNull();
   });
@@ -403,6 +469,7 @@ describe("bind email (#138 D6)", () => {
     const body = await res.json();
     expect(str(body, "email")).toBe("bound.user@example.com");
     expect(field(body, "verified")).toBe(false);
+    await verifyUserEmail(user.id);
 
     const login = await call("/api/auth/login", {
       method: "POST",
@@ -551,6 +618,7 @@ describe("unbind (#138 D5/D7)", () => {
       body: JSON.stringify({ email: "unbind-email@example.com", password: "unbind-pass-1" }),
     });
     expect(bind.status).toBe(200);
+    await verifyUserEmail(user.id);
 
     const res = await unbind(await reauthed(user.session, "unbind-pass-1"), "email");
     expect(res.status).toBe(204);
@@ -577,6 +645,7 @@ describe("unbind (#138 D5/D7)", () => {
       body: JSON.stringify({ email: "unbind-window@example.com", password: "unbind-pass-2" }),
     });
     expect(bind.status).toBe(200);
+    await verifyUserEmail(user.id);
     const cookies = await reauthed(user.session, "unbind-pass-2");
     const oldReauth = must(
       cookieNamed(await reauthWithPassword(user.session, "unbind-pass-2"), "socrates_reauth"),
