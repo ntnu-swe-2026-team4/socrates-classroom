@@ -45,7 +45,12 @@ async function signup(name: string) {
     tosAccepted: true,
   });
   expect(result.status).toBe(200);
-  return { userId: idSchema.parse(await result.json()).id, cookie: cookieOf(result) };
+  const userId = idSchema.parse(await result.json()).id;
+  await run(env.DB, "UPDATE users SET email_verified_at = $at WHERE id = $id", {
+    id: userId,
+    at: new Date().toISOString(),
+  });
+  return { userId, cookie: cookieOf(result) };
 }
 
 async function invite(classroomId: string, scope: string, activityId?: string) {

@@ -127,6 +127,20 @@ function calendarServer(initial: string[] = []) {
   return fetch;
 }
 
+test("switching month keeps the grid on screen while the next month loads", async () => {
+  const fetch = vi.fn(() =>
+    fetch.mock.calls.length === 1
+      ? Promise.resolve(Response.json({ items: [], nextCursor: null }))
+      : new Promise<Response>(() => {}),
+  );
+  vi.stubGlobal("fetch", fetch);
+  mount(false);
+  await waitFor(() => expect(screen.getAllByRole("button", { name: /·/ }).length).toBeGreaterThanOrEqual(28));
+  fireEvent.click(screen.getByRole("button", { name: "Next month" }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  expect(screen.getAllByRole("button", { name: /·/ }).length).toBeGreaterThanOrEqual(28);
+});
+
 test("a teacher creates an API event in another month", async () => {
   const fetch = calendarServer();
   const today = new Date();

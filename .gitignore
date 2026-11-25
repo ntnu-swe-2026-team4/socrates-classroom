@@ -63,3 +63,4 @@ pnpm-debug.log*
 ._*
 [Tt]humbs.db
 [Dd]esktop.ini
+.hermes-pr-body.md

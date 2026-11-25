@@ -146,6 +146,7 @@ export class SoloChat extends DurableObject<Env> {
     const cookie = request.headers.get("Cookie") ?? "";
     const lookup = await lookupSession(this.env, cookieValue(cookie, SESSION_COOKIE));
     if (lookup.kind !== "ok" || lookup.session.user.id !== userId) return null;
+    if (!lookup.session.user.emailVerified) return null;
     if (!(await this.threadExists(userId, threadId))) return null;
 
     return {
