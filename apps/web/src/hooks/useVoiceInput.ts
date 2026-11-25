@@ -9,8 +9,6 @@ import {
 
 export type { VoiceError, VoiceState } from "@/lib/voiceInput";
 
-export type VoiceInput = ReturnType<typeof useVoiceInput>;
-
 export function useVoiceInput(onFinal: (text: string) => void, onAmplitude: (value: number) => void) {
   const [state, setState] = useState<VoiceState>("idle");
   const [interim, setInterim] = useState("");
