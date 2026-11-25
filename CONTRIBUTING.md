@@ -47,13 +47,13 @@ Backlog 的 issue 可以缺任何欄位；**離開 Backlog 時下列欄位要齊
 | 驗收段       | 必填，body 要有可驗證的驗收條件                                               |
 | `Priority`   | 必填 — `Urgent` / `High` / `Medium` / `Low`；值由開發者判斷，agent 不代填     |
 
-`Priority` 與其他必要欄位最大的差別：它是 organization 層的 **issue field**，不是 project item field。issue fields 沒有 required 屬性（官方 [Managing issue fields](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/managing-issue-fields) 只提供 pinning 與 visibility），所以「必填」靠三層落實：
+`Priority` 與 `Size` 都是 organization 層的 **issue field**，不是 project item field：值存在 issue 上、建立 issue 時就看得到、可經 REST／GraphQL 讀寫（`gh api /orgs/{org}/issue-fields`、`setIssueFieldValue`），因此 CI 驗得動。代價是 pinning 只能在組織設定（Planning → Issue fields）操作，沒有 API，所以設定不可版控。兩種欄位的完整差異與取捨見 #436 的附錄。
 
-1. **Pin 到 7 個 type 加「Issues without a type」**：建立 issue 與側欄一次看得到（pinning 只能在 organization settings 設定，無 API）
-2. **saved view**：`Status != Backlog AND Priority is empty` 當作每日 triage 清單；`Ready` 以前的單不計入
-3. **可程檢驗**：issue field 可經 REST／GraphQL 讀寫（`gh api /orgs/{org}/issue-fields`、`setIssueFieldValue`），CI 可以真的擋；project field 反而要 item id
+issue fields 沒有 required 屬性（官方 [Managing issue fields](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/managing-issue-fields) 只提供 pinning 與 visibility），所以「必填」靠三層落實：
 
-`Size` 也是一個軸，但它是 project-level 的 field：只在本 project 存在、建立 issue 時看不到、需要 item id 才能讀寫。兩者的差異在 #436 的階段 0 待決（是否把尺寸軸搬回 org issue field）。
+1. **Pin 到對應的 type 加「Issues without a type」**：建立畫面與 issue 側欄才看得到（pinning 無 API）
+2. **saved view**：`Status != Backlog AND <field> is empty` 當作每日 triage 清單；Backlog 的單不計入
+3. **CI**：用 issue field 的 API 驗證——`gh project item-list` 讀不到 issue field 的值，用錯來源會得到「全部為空」的假訊號
 
 `Size` 的錨點是「幾個 PR」：
 
