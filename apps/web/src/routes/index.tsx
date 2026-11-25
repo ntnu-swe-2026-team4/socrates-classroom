@@ -189,7 +189,7 @@ function Caption({ className, children }: { className?: string; children: ReactN
   return (
     <figcaption
       className={cn(
-        "absolute z-20 max-w-[min(78vw,340px)] border-2 border-comic-ink bg-comic-paper px-3 py-2 text-[12.5px] leading-relaxed font-medium tracking-wide text-comic-ink md:text-[13.5px]",
+        "pointer-events-none absolute z-20 max-w-[min(78vw,340px)] border-2 border-comic-ink bg-comic-paper px-3 py-2 text-[12.5px] leading-relaxed font-medium tracking-wide text-comic-ink md:text-[13.5px]",
         className,
       )}
     >

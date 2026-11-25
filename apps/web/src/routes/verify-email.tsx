@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/api";
+import { meQueryOptions } from "@/api/me";
 import { Button, buttonStyles } from "@/components/ui";
 import { useT } from "@/i18n";
 
@@ -15,6 +17,7 @@ function tokenOf(hash: string): string {
 function VerifyEmailPage() {
   const t = useT();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const token = useRouterState({ select: (state) => tokenOf(state.location.hash) });
   const [state, setState] = useState<"idle" | "busy" | "done" | "invalid" | "error">(token ? "idle" : "invalid");
 
@@ -23,6 +26,7 @@ function VerifyEmailPage() {
     setState("busy");
     try {
       await api.verifyEmail(token);
+      await queryClient.invalidateQueries({ queryKey: meQueryOptions.queryKey });
       setState("done");
       await navigate({ to: "/verify-email", hash: "", replace: true });
     } catch (error) {

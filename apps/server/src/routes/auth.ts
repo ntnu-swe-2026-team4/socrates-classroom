@@ -32,12 +32,16 @@ import {
 } from "../auth";
 import { sendEmailVerificationEmail, sendPasswordResetEmail } from "../mail";
 import {
+  allowIdentifier,
+  clearIdentifierLimit,
+  enforceIdentifierLimit,
   enforceIpLimit,
   fail,
   langOf,
   newId,
   nowIso,
   rateLimit,
+  recordIdentifierHit,
   requireUser,
   validateJson,
   uniqueViolationColumns,
@@ -66,6 +70,11 @@ const OAUTH_COOKIE = "socrates_oauth";
 const OAUTH_COOKIE_PATH = "/api/auth/oauth";
 const OAUTH_TTL_SECONDS = 600;
 const OAUTH_SUCCESS_PATH = "/home";
+const LOGIN_FAIL_SCOPE = "login-fail";
+const LOGIN_FAIL_LIMIT = 10;
+const LOGIN_FAIL_WINDOW_MS = 15 * 60_000;
+const FORGOT_EMAIL_SCOPE = "password-forgot-email";
+const FORGOT_EMAIL_COOLDOWN_MS = 5 * 60_000;
 
 interface ResetAccountRow {
   id: string;
@@ -93,6 +102,39 @@ interface VerifyAccount {
 
 function publicBase(c: Ctx): string {
   return c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
+}
+
+/** An unverified account older than the verification TTL never proved email
+ * ownership, so the address is free to claim: re-registering overwrites the
+ * credentials (and bumps session_version, killing the old sessions). */
+function isStaleUnverified(row: { email_verified_at: string | null; created_at: string }): boolean {
+  if (row.email_verified_at !== null) return false;
+  const created = Date.parse(row.created_at);
+  return Number.isFinite(created) && created <= Date.now() - EMAIL_VERIFY_TTL_HOURS * 3_600_000;
+}
+
+interface EmailClaimRow {
+  id: string;
+  email_verified_at: string | null;
+  created_at: string;
+}
+
+async function takeoverStaleUnverified(
+  db: Ctx["env"]["DB"],
+  email: string,
+  next: { name: string; hash: string; lang: Lang },
+): Promise<string | null> {
+  const row = await one<EmailClaimRow>(db, "SELECT id, email_verified_at, created_at FROM users WHERE email = $email", {
+    email,
+  });
+  if (!row || !isStaleUnverified(row)) return null;
+  const result = await run(
+    db,
+    `UPDATE users SET name = $name, password_hash = $hash, lang = $lang, created_at = $at, session_version = session_version + 1
+     WHERE id = $id AND email_verified_at IS NULL`,
+    { id: row.id, name: next.name, hash: next.hash, lang: next.lang, at: nowIso() },
+  );
+  return result.meta.changes ? row.id : null;
 }
 
 async function sendVerificationMail(c: Ctx, account: VerifyAccount): Promise<void> {
@@ -128,17 +170,22 @@ export function authRoutes() {
     .get("/me", (c) => c.json(c.get("user")))
     .post("/auth/login", rateLimit("login", 30), validateJson(LoginInputSchema), async (c) => {
       const input = c.req.valid("json");
+      await enforceIdentifierLimit(c, LOGIN_FAIL_SCOPE, input.email, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW_MS);
       const row = await one<UserRow>(c.env.DB, "SELECT * FROM users WHERE email = $email", {
         email: input.email,
       });
       const ok = await verifyPassword(input.password, row?.password_hash ?? DUMMY_HASH);
-      if (!row || !ok) fail(401, "unauthorized");
+      if (!row || !ok) {
+        await recordIdentifierHit(c, LOGIN_FAIL_SCOPE, input.email, LOGIN_FAIL_WINDOW_MS);
+        fail(401, "unauthorized");
+      }
       if (row.disabled_at !== null) fail(403, "account_disabled");
+      await clearIdentifierLimit(c, LOGIN_FAIL_SCOPE, input.email);
       const user = toUser(row);
       await startSession(c, user);
       return c.json(user);
     })
-    .post("/auth/register", rateLimit("register", 30), validateJson(RegisterInputSchema), async (c) => {
+    .post("/auth/register", rateLimit("register", 10), validateJson(RegisterInputSchema), async (c) => {
       const input = c.req.valid("json");
       if (!input.tosAccepted) fail(422, "tos_required");
       const classroom = await one<{ id: string; current_activity_id: string | null }>(
@@ -154,34 +201,54 @@ export function authRoutes() {
       );
       if (activity?.finished_at) fail(409, "activity_finished");
       const hash = await hashPassword(input.password);
+      const emailTaken = await one<EmailClaimRow>(
+        c.env.DB,
+        "SELECT id, email_verified_at, created_at FROM users WHERE email = $email",
+        {
+          email: input.email,
+        },
+      );
+      const reclaiming = emailTaken !== null && isStaleUnverified(emailTaken);
       const clash = await one<{ id: string }>(
         c.env.DB,
-        "SELECT user_id AS id FROM members WHERE classroom_id = $cid AND name = $name",
-        { cid: classroom.id, name: input.name },
+        "SELECT user_id AS id FROM members WHERE classroom_id = $cid AND name = $name AND ($exclude IS NULL OR user_id != $exclude)",
+        { cid: classroom.id, name: input.name, exclude: reclaiming ? emailTaken.id : null },
       );
       if (clash) fail(409, "name_taken");
-      const emailTaken = await one<{ id: string }>(c.env.DB, "SELECT id FROM users WHERE email = $email", {
-        email: input.email,
-      });
-      if (emailTaken) fail(409, "conflict");
-      const id = newId("u_");
+      if (emailTaken && !reclaiming) fail(409, "conflict");
+      const takenId = reclaiming
+        ? await takeoverStaleUnverified(c.env.DB, input.email, { name: input.name, hash, lang: langOf(c) })
+        : null;
+      if (reclaiming && !takenId) fail(409, "conflict");
+      const id = takenId ?? newId("u_");
       const at = nowIso();
       try {
-        await batch(c.env.DB, [
-          {
+        const statements: Array<{ sql: string; params: Record<string, unknown> }> = [];
+        if (!takenId) {
+          statements.push({
             sql: "INSERT INTO users (id, name, email, password_hash, lang, created_at) VALUES ($id, $name, $email, $hash, $lang, $at)",
             params: { id, name: input.name, email: input.email, hash, at, lang: langOf(c) },
-          },
-          {
-            sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
-            params: { cid: classroom.id, uid: id, name: input.name, at },
-          },
-        ]);
+          });
+        }
+        statements.push({
+          sql: "INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at) VALUES ($cid, $uid, $name, $at, $at)",
+          params: { cid: classroom.id, uid: id, name: input.name, at },
+        });
+        await batch(c.env.DB, statements);
       } catch (error) {
         const pairs = uniqueViolationColumns(error);
         if (pairs.length === 0) throw error;
-        if (pairs.some(([table, column]) => table === "members" && column === "name")) fail(409, "name_taken");
-        fail(409, "conflict");
+        if (takenId && pairs.some(([table]) => table === "members")) {
+          await run(
+            c.env.DB,
+            "UPDATE members SET name = $name, tos_accepted_at = $at WHERE classroom_id = $cid AND user_id = $uid",
+            { cid: classroom.id, uid: id, name: input.name, at },
+          );
+        } else if (pairs.some(([table, column]) => table === "members" && column === "name")) {
+          fail(409, "name_taken");
+        } else {
+          fail(409, "conflict");
+        }
       }
       await publishClassroom(c.env, classroom.id, "members");
       queueVerificationMail(c, { id, email: input.email, lang: langOf(c) });
@@ -190,11 +257,11 @@ export function authRoutes() {
       await startSession(c, user);
       return c.json(user);
     })
-    .post("/auth/signup", rateLimit("register", 30), validateJson(SignupInputSchema), async (c) => {
+    .post("/auth/signup", rateLimit("register", 10), validateJson(SignupInputSchema), async (c) => {
       const input = c.req.valid("json");
       if (!input.tosAccepted) fail(422, "tos_required");
       const hash = await hashPassword(input.password);
-      const id = newId("u_");
+      let id = newId("u_");
       try {
         await batch(c.env.DB, [
           {
@@ -203,9 +270,15 @@ export function authRoutes() {
           },
         ]);
       } catch (error) {
-        const pairs = uniqueViolationColumns(error);
-        if (pairs.some(([table, column]) => table === "users" && column === "email")) fail(409, "email_taken");
-        throw error;
+        if (!uniqueViolationColumns(error).some(([table, column]) => table === "users" && column === "email"))
+          throw error;
+        const takenId = await takeoverStaleUnverified(c.env.DB, input.email, {
+          name: input.name,
+          hash,
+          lang: langOf(c),
+        });
+        if (!takenId) fail(409, "email_taken");
+        id = takenId;
       }
       const user: User = { id, name: input.name, isAdmin: false, emailVerified: false };
       queueVerificationMail(c, { id, email: input.email, lang: langOf(c) });
@@ -320,13 +393,21 @@ export function authRoutes() {
           PASSWORD_RESET_TTL_MINUTES * 60_000,
         );
         if (account?.email) {
-          const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
-          const mail = { to: account.email, lang: account.lang, link: `${base}/reset-password#token=${token}` };
-          c.executionCtx.waitUntil(
-            sendPasswordResetEmail(c.env, { ...mail, minutes: PASSWORD_RESET_TTL_MINUTES }).catch((error: unknown) => {
-              console.warn("[auth] password reset mail failed:", error instanceof Error ? error.message : typeof error);
-            }),
-          );
+          const allowed = await allowIdentifier(c, FORGOT_EMAIL_SCOPE, account.email, 1, FORGOT_EMAIL_COOLDOWN_MS);
+          if (allowed) {
+            const base = c.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
+            const mail = { to: account.email, lang: account.lang, link: `${base}/reset-password#token=${token}` };
+            c.executionCtx.waitUntil(
+              sendPasswordResetEmail(c.env, { ...mail, minutes: PASSWORD_RESET_TTL_MINUTES }).catch(
+                (error: unknown) => {
+                  console.warn(
+                    "[auth] password reset mail failed:",
+                    error instanceof Error ? error.message : typeof error,
+                  );
+                },
+              ),
+            );
+          }
         }
         return c.body(null, 204);
       },
@@ -363,6 +444,7 @@ export function authRoutes() {
           { id: row.id, next: await hashPassword(input.password), current: row.password_hash, email: row.email },
         );
         if (!result.meta.changes) fail(400, "reset_token_invalid");
+        await clearIdentifierLimit(c, LOGIN_FAIL_SCOPE, row.email);
         return c.body(null, 204);
       },
     );

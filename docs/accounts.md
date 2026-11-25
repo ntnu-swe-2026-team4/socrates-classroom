@@ -98,10 +98,11 @@ flowchart LR
 
 - 活動邀請連結要有 QR code 的連結方式。
 
-- **email 驗證（#259）**：`users.email`「屬於帳號本人」這個假設由 `users.email_verified_at` 表達，註冊（`signup`／`register`）後寄驗證信，使用者點連結證明信箱是自己的。API 形狀與 token 細節見 [`api-contract.md`](./api-contract.md) §2.3，本節只定模型語意：
-  - **未驗證的帳號 MUST 照常登入、入班、對話與使用教師功能**；前端只提示可以驗證。理由：班級窗口註冊（`POST /auth/register`）是學生入班的唯一入口，若要求先收信才能用，入班就依賴寄信即時送達——寄信有上線前提（見 [`architecture.md`](./architecture.md) §3）也可能延遲或進垃圾信匣，一出問題學生就完全進不去。訪客入場（`/join`，不建帳號）不受影響
+- **email 驗證（#259，閘門 #437）**：`users.email`「屬於帳號本人」這個假設由 `users.email_verified_at` 表達，註冊（`signup`／`register`）後寄驗證信，使用者點連結證明信箱是自己的。API 形狀與 token 細節見 [`api-contract.md`](./api-contract.md) §2.3，本節只定模型語意：
+  - **hard gate（#437 拍板，取代 #259 的 soft 模型）**：未驗證的 session 只能存取驗證流程相關端點（`/api/me`、login、logout、register、signup、providers、password forgot/reset、email verify、verify/resend），其餘一律 `403 email_unverified`；WS（chat／solo／classroom-events）同樣拒絕。前端呈現 VerifyGate 畫面（重寄＋登出），`/verify-email` 點完連結後立即解鎖。session 照常發放——`/auth/email/verify/resend` 需要本人身份，且「發 session 但閘門擋 API」是 GitHub／Discord 等的主流做法；訪客入場（`/join`，不建帳號）不受影響
+  - 原 #259 soft 模型的理由（寄信延遲會把學生完全擋在門外）由兩個機制化解：VerifyGate 上一鍵重寄；以及 stale takeover（見下）——最壞情況等 24 小時後地址可被重新註冊
+  - **stale takeover**：超過 `EMAIL_VERIFY_TTL_HOURS`（24h）仍未驗證的帳號從未證明信箱所有權，其地址視同無主——任何人以該 email 重新 `signup`／`register` 會直接覆寫該帳號的 name／password／lang／`created_at` 並 `session_version + 1`（舊 session 全滅），帳號維持未驗證。已驗證的地址永不適用
   - `User.emailVerified` 的語意是「這個帳號沒有待驗證的 email」：`users.email` 為 NULL 的 SSO 帳號（Google／Facebook）與已驗證的 email 帳號都是 `true`；SSO 帳號要補 email 走 #138 的綁定流程，改 email 走 #234
-  - 驗證狀態**不是授權**：它不改變任何端點的存取判斷，只是讓「寄到 `users.email` 的信（重設密碼 #230、額度警示 #200）屬於本人」這件事可被檢查
   - 驗證信與重設信共用 `mail.ts`、共用帳號 token（用途金鑰分離：`email_verify` 與 `password_reset` 的 token 不能互用）
 
 ## 9. 目前不處理

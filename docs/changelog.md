@@ -2,6 +2,25 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-24 — 登入失敗 per-account 鎖定與 forgot per-email 冷卻（`feat/393-login-lockout`，#393）
+
+### Added
+
+- `RateLimiter` DO 新增 keyed sliding window API（`check`／`record`／`allowKey`／`clear`），以 `sha256Hex(lowercase(email))` 作為 key、`key.slice(0, 2)` 分片成固定 256 shard/scope（DO 名不含 PII、不因隨機 email 灑量無限建 DO），單 shard 超過 1024 entries 時清過期項並依 LRU 封頂；維持純記憶體與 DO 不可用時 fail-open
+- `POST /api/auth/login` 在 DB lookup 與 PBKDF2 之前檢查 `login-fail`（10 次失敗 / 15 分鐘 sliding window，存在與不存在的 email 採同一門檻防列舉，超限回既有 `429 rate_limited`、不附 `Retry-After`）；僅 `!row || !ok` 計失敗（密碼正確但停用的 `403 account_disabled` 不計）；登入成功與 `POST /api/auth/password/reset` 成功皆清空計數（DoS 逃生口）
+- `POST /api/auth/password/forgot` 加入同一 email 5 分鐘冷卻（`allowKey` 原子判定，冷卻內靜默回 `204` 不寄信、不破壞防列舉契約，不同 email 互不影響）
+- 測試補齊：`tests/rate-limit.test.ts`（DO keyed API／shard sweep、多 IP 換源鎖定、大小寫合併、不存在 email 同門檻、成功登入歸零、停用帳號不計失敗、密碼重設解鎖、DO 不可用 fail-open）與 `tests/password-reset.test.ts`（同 email 冷卻、跨 email 隔離、併發只寄一封）
+
+## 2026-11-24 — email 驗證 hard gate：未驗證不得使用系統（`fix/437-email-verify-hard-gate`，#437）
+
+### Fixed
+
+- Email 驗證閘門生效：#259 只追蹤 `email_verified_at` 卻沒有任何地方強制執行，註冊完直接拿到完整 session（`/auth/register` 甚至已寫入 `members` 並建立 participant），登入、所有 API 與 WebSocket 全部可用。現由 `/api/*` middleware 對未驗證 session 回 `403 email_unverified`（僅放行 `/api/me`、login、logout、register、signup、providers、password forgot/reset、email verify、verify/resend），WS authorize（chat／solo／classroom-events）同樣拒絕；前端呈現 VerifyGate 畫面（重寄驗證信＋登出），`/verify-email` 點完連結立即解鎖
+- Email 搶註修復（stale takeover）：超過 `EMAIL_VERIFY_TTL_HOURS`（24h）仍未驗證的帳號從未證明信箱所有權，任何人以該 email 重新 `signup`／`register` 會覆寫該帳號的 name／password／lang／`created_at` 並 `session_version + 1`（舊 session 全滅）；已驗證的地址永不適用。`register` 對「stale 帳號已是該教室成員」視為冪等（member row 改名＋更新 `tos_accepted_at`，照回 200），同名搶佔也不會被誤擋 `name_taken`
+- Admin 建立帳號（admin 主動發放 credentials，非本人自稱擁有信箱）直接寫入 `email_verified_at`，不受 gate 影響
+- `register` 限流由每 IP 每分鐘 30 收緊為 10；`email_unverified` 錯誤碼三語本地化
+- 模型與契約更新：`accounts.md` §8、`api-contract.md` §2.1/§2.3/§10、`feature.md`
+
 ## 2026-11-24 — 正式站 `/agents/*` 被資產層攔截，WebSocket 全數握手失敗（`fix/418-agents-run-worker-first`，#418）
 
 ### Fixed

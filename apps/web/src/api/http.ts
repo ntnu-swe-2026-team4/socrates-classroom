@@ -105,6 +105,7 @@ export interface Api {
   requestPasswordReset(email: string): Promise<void>;
   resetPassword(token: string, password: string): Promise<void>;
   verifyEmail(token: string): Promise<void>;
+  resendEmailVerification(): Promise<void>;
   authProviders(): Promise<OAuthProviders>;
   notifications(): Promise<NotificationFeed>;
   markNotificationsSeen(): Promise<void>;
@@ -431,6 +432,9 @@ export const httpApi: Api = {
   },
   async verifyEmail(token) {
     await unwrap(await client.auth.email.verify.$post({ json: EmailVerifyInputSchema.parse({ token }) }));
+  },
+  async resendEmailVerification() {
+    await unwrap(await client.auth.email.verify.resend.$post({}));
   },
   async authProviders() {
     return unwrap(await client.auth.providers.$get());

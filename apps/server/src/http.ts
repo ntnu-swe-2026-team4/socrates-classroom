@@ -129,3 +129,70 @@ async function allowIp(c: Ctx, ip: string, scope: string, limit: number): Promis
     return true;
   }
 }
+
+const textEncoder = new TextEncoder();
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", textEncoder.encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function identifierTarget(c: Ctx, scope: string, identifier: string) {
+  const key = await sha256Hex(identifier.toLowerCase());
+  const shard = key.slice(0, 2);
+  return {
+    key,
+    limiter: c.env.RateLimiter.get(c.env.RateLimiter.idFromName(`${scope}:${shard}`)),
+  };
+}
+
+export async function enforceIdentifierLimit(
+  c: Ctx,
+  scope: string,
+  identifier: string,
+  limit: number,
+  windowMs: number,
+): Promise<void> {
+  let allowed = true;
+  try {
+    const { key, limiter } = await identifierTarget(c, scope, identifier);
+    allowed = await limiter.check(key, limit, windowMs);
+  } catch (error) {
+    console.warn("[rate-limit] unavailable, allowing request", error instanceof Error ? error.message : error);
+  }
+  if (!allowed) fail(429, "rate_limited");
+}
+
+export async function recordIdentifierHit(c: Ctx, scope: string, identifier: string, windowMs: number): Promise<void> {
+  try {
+    const { key, limiter } = await identifierTarget(c, scope, identifier);
+    await limiter.record(key, windowMs);
+  } catch (error) {
+    console.warn("[rate-limit] unavailable, skipping record", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function allowIdentifier(
+  c: Ctx,
+  scope: string,
+  identifier: string,
+  limit: number,
+  windowMs: number,
+): Promise<boolean> {
+  try {
+    const { key, limiter } = await identifierTarget(c, scope, identifier);
+    return await limiter.allowKey(key, limit, windowMs);
+  } catch (error) {
+    console.warn("[rate-limit] unavailable, allowing request", error instanceof Error ? error.message : error);
+    return true;
+  }
+}
+
+export async function clearIdentifierLimit(c: Ctx, scope: string, identifier: string): Promise<void> {
+  try {
+    const { key, limiter } = await identifierTarget(c, scope, identifier);
+    await limiter.clear(key);
+  } catch (error) {
+    console.warn("[rate-limit] unavailable, skipping clear", error instanceof Error ? error.message : error);
+  }
+}

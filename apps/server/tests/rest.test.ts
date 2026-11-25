@@ -26,6 +26,7 @@ import {
   scopedEnv,
   speak,
   str,
+  verifyUserEmail,
 } from "./helpers";
 
 let teacher: string;
@@ -670,6 +671,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     });
     expect(registered.status).toBe(200);
     const registeredBody = await registered.json();
+    await verifyUserEmail(str(registeredBody, "id"));
     expect(
       "canManageClasses" in (typeof registeredBody === "object" && registeredBody !== null ? registeredBody : {}),
     ).toBe(false);
@@ -719,6 +721,7 @@ describe("R6 REST layer (Hono, real Worker entry)", () => {
     });
     expect(signup.status).toBe(200);
     const account = cookieOf(signup);
+    await verifyUserEmail(str(await signup.clone().json(), "id"));
 
     const classroom = await call("/api/classrooms", {
       method: "POST",
