@@ -45,6 +45,7 @@ import {
   participantIdOf,
   registerStudent,
   speak,
+  verifyUserEmail,
 } from "./helpers";
 
 let teacherCookie: string;
@@ -316,6 +317,7 @@ describe("report pipeline (transcript from Chat DO → ReportRunner → §7 shap
     });
     expect(joined.status).toBe(200);
     const studentCookie = cookieOf(joined);
+    await verifyUserEmail(str(await joined.json(), "id"));
 
     await speak(
       `${created.activityId}:${await participantIdOf(created.activityId, studentCookie)}`,

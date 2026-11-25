@@ -25,7 +25,13 @@ beforeEach(() => {
       const path = new URL(String(input), "http://localhost").pathname;
       if (path === "/api/me") {
         return new Response(
-          JSON.stringify({ id: "teacher-1", name: "Teacher", canManageClasses: true, isAdmin: false }),
+          JSON.stringify({
+            id: "teacher-1",
+            name: "Teacher",
+            canManageClasses: true,
+            isAdmin: false,
+            emailVerified: true,
+          }),
           {
             headers: { "Content-Type": "application/json" },
           },

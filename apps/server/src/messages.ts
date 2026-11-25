@@ -111,6 +111,11 @@ const M: Record<ErrorCode, Entry> = {
     en: "This account's email is not verified.",
     es: "El correo de esta cuenta no está verificado.",
   },
+  email_unverified: {
+    zh: "請先驗證信箱：我們已寄出驗證信，點擊信中的連結後即可繼續使用。",
+    en: "Verify your email first: we sent you a verification link; click it to continue.",
+    es: "Verifica tu correo primero: te enviamos un enlace de verificación; ábrelo para continuar.",
+  },
   oauth_failed: {
     zh: "第三方登入失敗，請再試一次。",
     en: "Third-party sign-in failed. Please try again.",

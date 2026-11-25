@@ -22,6 +22,7 @@ import type { Env } from "../src/env";
 import type { Ai } from "@cloudflare/workers-types";
 import type { ToolExecutionResult, ToolRegistration } from "@earendil-works/pi-durable";
 import { sealAccountToken, type AccountTokenPurpose } from "../src/auth";
+import { run } from "../src/db/d1";
 import { parseServerMessage, type ServerMessage } from "../src/ws/protocol";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import type { Harness } from "@earendil-works/pi-durable";
@@ -178,6 +179,14 @@ export async function joinGuest(
   };
 }
 
+/** Tests exercise data routes, so fixture accounts skip the verification gate (#437). */
+export async function verifyUserEmail(userId: string): Promise<void> {
+  await run(env.DB, "UPDATE users SET email_verified_at = $at WHERE id = $id AND email_verified_at IS NULL", {
+    id: userId,
+    at: new Date().toISOString(),
+  });
+}
+
 export async function registerStudent(
   code: string,
   name: string,
@@ -189,7 +198,9 @@ export async function registerStudent(
     body: JSON.stringify({ code, name, email, password: "student-pass-1", tosAccepted: true }),
   });
   expect(res.status).toBe(200);
-  return { cookie: cookieOf(res), userId: str(await res.json(), "id"), email };
+  const userId = str(await res.json(), "id");
+  await verifyUserEmail(userId);
+  return { cookie: cookieOf(res), userId, email };
 }
 
 export async function participantIdOf(activityId: string, cookie: string): Promise<string> {
