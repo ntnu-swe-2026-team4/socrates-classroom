@@ -1,9 +1,9 @@
 import type { Ai } from "@cloudflare/workers-types";
 
-export type AiRun = (model: string, inputs: unknown) => Promise<unknown>;
+export type AiRun = (model: string, inputs: Record<string, unknown>) => Promise<unknown>;
 
 export function aiRunOf(ai: Ai): AiRun {
-  return (ai as unknown as { run: AiRun }).run;
+  return (model, inputs) => ai.run(model, inputs);
 }
 
 export interface ClefChoice {
