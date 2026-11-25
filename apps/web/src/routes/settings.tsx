@@ -33,6 +33,14 @@ const NOTICE_ERRORS: Record<string, MessageKey> = {
   oauth_unavailable: "login_err_oauth_unavailable",
 };
 
+interface SettingsNoticeValue {
+  linked?: string;
+  reauth?: string;
+  error?: string;
+}
+
+let pendingNotice: SettingsNoticeValue | null = null;
+
 export const Route = createFileRoute("/settings")({
   validateSearch: (search: Record<string, unknown>): SettingsSearch => ({
     section: SECTIONS.find((item) => item.id === search.section && item.id !== "general")?.id,
@@ -40,26 +48,33 @@ export const Route = createFileRoute("/settings")({
     reauth: typeof search.reauth === "string" ? search.reauth : undefined,
     error: typeof search.error === "string" ? search.error : undefined,
   }),
-  beforeLoad: async ({ context, location }) => {
+  beforeLoad: async ({ context, location, search }) => {
     const me = await meOf(context.queryClient);
     if (!me) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
+    if (search.linked !== undefined || search.reauth !== undefined || search.error !== undefined) {
+      pendingNotice = { linked: search.linked, reauth: search.reauth, error: search.error };
+      throw redirect({ to: "/settings", search: { section: "account" }, replace: true });
+    }
+    const notice = pendingNotice;
+    pendingNotice = null;
+    return { notice };
   },
   component: SettingsPage,
 });
 
 function SettingsNotice() {
   const t = useT();
-  const { linked, reauth, error } = Route.useSearch();
+  const { notice } = Route.useRouteContext();
   const text =
-    reauth === "ok"
+    notice?.reauth === "ok"
       ? t("identity_notice_reauth")
-      : linked !== undefined && linked !== ""
-        ? t("identity_notice_linked", { name: providerLabel(t, linked) })
-        : error !== undefined && error !== ""
-          ? t(NOTICE_ERRORS[error] ?? "identity_err_generic")
+      : notice?.linked !== undefined && notice.linked !== ""
+        ? t("identity_notice_linked", { name: providerLabel(t, notice.linked) })
+        : notice?.error !== undefined && notice.error !== ""
+          ? t(NOTICE_ERRORS[notice.error] ?? "identity_err_generic")
           : null;
   if (text === null) return null;
-  const failed = error !== undefined && error !== "";
+  const failed = notice?.error !== undefined && notice.error !== "";
   return (
     <p
       role={failed ? "alert" : "status"}
@@ -124,8 +139,12 @@ function SettingsPage() {
               {t(current.label)}
             </h2>
           )}
-          <SettingsNotice />
-          {section === "account" && <LoginMethods />}
+          {section === "account" && (
+            <>
+              <SettingsNotice />
+              <LoginMethods />
+            </>
+          )}
           {section === "general" && (
             <Card className="flex flex-col gap-3 p-5">
               <p className="font-serif text-[15.5px] text-ink">{t("settings_lang")}</p>

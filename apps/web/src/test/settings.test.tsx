@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -52,23 +52,36 @@ afterEach(() => {
   companion.setVoiceStyle("elder");
 });
 
-async function mountRoute(url: string) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const router = createRouter({
+function createAppRouter(client: QueryClient, url: string) {
+  return createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: [url] }),
     context: { queryClient: client },
   });
+}
+
+type AppRouter = ReturnType<typeof createAppRouter>;
+
+interface RouteDispose {
+  (): void;
+  router: AppRouter;
+}
+
+async function mountRoute(url: string): Promise<RouteDispose> {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createAppRouter(client, url);
   await router.load();
   render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  return () => {
+  const dispose: RouteDispose = () => {
     cleanup();
     client.clear();
   };
+  dispose.router = router;
+  return dispose;
 }
 
 function json(body: unknown): Response {
@@ -207,6 +220,54 @@ test("account section lists sign-in methods and gates changes behind re-auth", a
   }
 });
 
+test("an unverified email offers a resend and protects the last verified method", async () => {
+  stubRoutes({
+    "/api/me": teacher,
+    "/api/auth/providers": providers,
+    "/api/me/identities": () =>
+      json({
+        email: { email: "teacher@example.com", verified: false },
+        oauth: [{ provider: "google", email: "teacher@gmail.com", linkedAt: "2026-11-20T00:00:00.000Z" }],
+        reauthExpiresAt: "2026-11-25T12:00:00.000Z",
+      }),
+    "/api/auth/email/verify/resend": () => new Response(null, { status: 204 }),
+  });
+  const dispose = await mountRoute("/settings?section=account");
+  try {
+    const buttons = await screen.findAllByRole("button", { name: "Remove" });
+    expect(buttons).toHaveLength(2);
+    const [emailRemove, googleRemove] = buttons;
+    expect(emailRemove?.hasAttribute("disabled")).toBe(false);
+    expect(googleRemove?.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Resend verification email" }));
+    expect(await screen.findByRole("button", { name: "Resent" })).toBeTruthy();
+  } finally {
+    dispose();
+  }
+});
+
+test("a verified email leaves every provider removable", async () => {
+  stubRoutes({
+    "/api/me": teacher,
+    "/api/auth/providers": providers,
+    "/api/me/identities": () =>
+      json({
+        email: { email: "teacher@example.com", verified: true },
+        oauth: [{ provider: "google", email: "teacher@gmail.com", linkedAt: "2026-11-20T00:00:00.000Z" }],
+        reauthExpiresAt: "2026-11-25T12:00:00.000Z",
+      }),
+  });
+  const dispose = await mountRoute("/settings?section=account");
+  try {
+    for (const button of await screen.findAllByRole("button", { name: "Remove" })) {
+      expect(button.hasAttribute("disabled")).toBe(false);
+    }
+    expect(screen.queryByRole("button", { name: "Resend verification email" })).toBeNull();
+  } finally {
+    dispose();
+  }
+});
+
 test("account section disables the one unconfigured provider and notes the last method", async () => {
   stubRoutes({
     "/api/me": teacher,
@@ -224,7 +285,7 @@ test("account section disables the one unconfigured provider and notes the last 
   }
 });
 
-test("a reauth redirect notice is announced on the account section", async () => {
+test("a reauth redirect notice is announced once and dropped from the URL", async () => {
   stubRoutes({
     "/api/me": teacher,
     "/api/auth/providers": providers,
@@ -236,6 +297,26 @@ test("a reauth redirect notice is announced on the account section", async () =>
       "textContent",
       "Identity confirmed. You can change sign-in methods now.",
     );
+    expect(dispose.router.state.location.href).toBe("/settings?section=account");
+    await dispose.router.navigate({ to: "/settings", search: {} });
+    await dispose.router.navigate({ to: "/settings", search: { section: "account" } });
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  } finally {
+    dispose();
+  }
+});
+
+test("an OAuth error notice routes the visitor to the account section", async () => {
+  stubRoutes({
+    "/api/me": teacher,
+    "/api/auth/providers": providers,
+    "/api/me/identities": () => json({ email: null, oauth: [], reauthExpiresAt: null }),
+  });
+  const dispose = await mountRoute("/settings?section=dialogue&error=identity_taken");
+  try {
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(dispose.router.state.location.href).toBe("/settings?section=account");
+    expect(screen.getByRole("button", { name: "Account" }).getAttribute("aria-current")).toBe("page");
   } finally {
     dispose();
   }
