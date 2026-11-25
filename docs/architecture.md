@@ -180,7 +180,10 @@ startReport → pending 標記 → alarm → generate：
 
 ### RateLimiter（do/rate-limiter.ts）——限流 key 級
 
-`idFromName("<scope>:<ip>")` 一 key 一個 instance，單一 actor 序列化 60 秒 sliding window 計數；`http.ts` 的 `enforceIpLimit` 每次請求一次 RPC `allow(limit, windowMs)`（同 region 個位數 ms）。計數只存 DO 記憶體、不落 storage：DO 只在 idle 時 evict，而 idle 期間窗口本來就會過期，同時避免 IP 位址持久化。DO 不可用時 caller fail-open（放行 + `console.warn`）——限流是保護性上限而非硬安全邊界（同 #196 RoutingLedger 的取捨）。per-account 失敗鎖定是獨立缺口（#393）。
+單一 DO 承載兩種模式，皆只存 DO 記憶體、不落 storage（DO 只在 idle 時 evict，而 idle 期間窗口本來就會過期，同時避免 IP 或 email 持久化）；DO 不可用時 caller MUST fail-open（放行 + `console.warn`）——限流是保護性上限而非硬安全邊界（同 #196 RoutingLedger 的取捨）：
+
+- **per-IP 模式（#157）**：`idFromName("<scope>:<ip>")` 一 key 一個 instance，單一 actor 序列化 60 秒 sliding window；`http.ts` 的 `enforceIpLimit` 每次請求一次 RPC `allow(limit, windowMs)`（同 region 個位數 ms）。
+- **per-identifier 模式（#393）**：`key = sha256Hex(lowercase(email))`、`shard = key.slice(0, 2)`，走 `idFromName("<scope>:<shard>")` 固定 256 shard/scope（DO 名不含 PII，且任意隨機 email 灑量不會無上限新增 DO instance）。DO 內以 `Map` 保存 per-key sliding window（超過 1024 entries 時先清除過期項，仍超限則依 LRU 驅逐最舊 key），提供 `check`/`record`/`allowKey`/`clear` RPC：`POST /auth/login` 在 DB lookup 與 PBKDF2 之前 `check`（`login-fail`，10 次/15 分鐘，存在與不存在的 email 同門檻防列舉，超限 `429 rate_limited` 不附 `Retry-After`），失敗 `record`、登入成功與 `POST /auth/password/reset` 成功 `clear`（作為 DoS 逃生口）；`POST /auth/password/forgot` 採原子 `allowKey`（`password-forgot-email`，5 分鐘 1 封，超限靜默回 204）。OAuth 路徑不共用此 bucket。
 
 ### RoutingLedger（do/routing-ledger.ts）——credential 級
 
@@ -293,14 +296,14 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 12. 風險與對策
 
-| 風險                                                             | 對策                                                                                                                                                                                                            |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1 無互動式交易，tx→batch 語意差異                               | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                                                                                                                                |
-| cf beta 格式變動                                                 | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                                                                                                                                            |
-| dgx-spark 腿延遲（暫時移除，回歸時適用）                         | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                                                                                                                                  |
-| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）           | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                                                                                                                                      |
-| per-IP 限流跨 isolate 計數（已處置，#157）                       | `RateLimiter` DO 按 `scope:ip` 分片序列化滑動窗口，跨 isolate 一致；計數只存 DO 記憶體（idle eviction＝窗口歸零，只在無流量時發生）；DO 不可用時 fail-open。跨請求一致的併發守衛仍在 Chat DO 的 whenBusy reject |
-| TTS 跨分頁仲裁的毫秒級 race（`SpeechArbiter`，同一使用者多 tab） | 已知限制：窗口為毫秒級、需同一使用者雙 tab 同時觸發朗讀才有感；目前不修。重啟條件：出現使用者可見的重複播放或殘留播放，或跨 tab 朗讀成為正式功能（#165 決定）                                                   |
+| 風險                                                              | 對策                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D1 無互動式交易，tx→batch 語意差異                                | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                                                                                                                                                                                                                       |
+| cf beta 格式變動                                                  | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                                                                                                                                                                                                                                   |
+| dgx-spark 腿延遲（暫時移除，回歸時適用）                          | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                                                                                                                                                                                                                         |
+| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）            | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                                                                                                                                                                                                                             |
+| per-IP 與 per-identifier 限流跨 isolate 計數（已處置，#157/#393） | `RateLimiter` DO 按 `scope:ip`（per-IP）與 `scope:shard`（per-identifier，SHA-256 前 2 hex 固定 256 shard、無 PII）序列化 sliding window，跨 isolate 一致；計數只存 DO 記憶體（idle eviction＝窗口歸零，只在無流量時發生）；DO 不可用時 fail-open。跨請求一致的併發守衛仍在 Chat DO 的 whenBusy reject |
+| TTS 跨分頁仲裁的毫秒級 race（`SpeechArbiter`，同一使用者多 tab）  | 已知限制：窗口為毫秒級、需同一使用者雙 tab 同時觸發朗讀才有感；目前不修。重啟條件：出現使用者可見的重複播放或殘留播放，或跨 tab 朗讀成為正式功能（#165 決定）                                                                                                                                          |
 
 ## 13. Scale design v2（D9–D13）——10k 併發作為 code quality bar
 
