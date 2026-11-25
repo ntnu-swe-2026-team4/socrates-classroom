@@ -1,0 +1,34 @@
+name: Epic
+description: 跨 feature 的交付批次。不填 Size 與 Priority；不是主題標籤。
+type: Epic
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目標
+      description: 這個 epic 完成後，世界長什麼樣
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 範圍（in / out）
+      value: |
+        包含：
+        不包含：
+    validations:
+      required: true
+  - type: textarea
+    id: closing
+    attributes:
+      label: 關閉條件
+      description: 什麼情況下手動關閉這個 epic（子單全關？milestone 結束？）
+    validations:
+      required: true
+  - type: textarea
+    id: children
+    attributes:
+      label: 子單清單
+      description: 以 sub-issue 建立；這裡只列標題與順序供對照
+      value: |
+        - [ ]
