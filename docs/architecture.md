@@ -31,7 +31,7 @@ flowchart TD
         HONO --> AUTH["auth：HMAC cookie＋PBKDF2（auth.ts）"]
         HONO --> ROUTES["routes/：auth／join／topics／classrooms／activity／voice／lookup／teacher-keys"]
         ROUTES --> DB[("D1：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys")]
-        HONO --> VOICE["voice：whisper STT／melotts TTS（AI binding）"]
+        HONO --> VOICE["voice：whisper STT／grok-tts TTS（AI binding）"]
         HONO --> LOOKUP["lookup：runProfile(lookup)"]
         HONO --> GEN["topics/generate：runProfile(topic-gen)"]
         HONO -->|"WebSocket upgrade／commit 後 RPC"| EVENTS["ClassroomEvents DO（classroomId）"]
@@ -59,7 +59,7 @@ flowchart TD
     VOICE --> WAI
 ```
 
-- TTS 保證路徑＝**server-side**（2026-11-04 決策）：預設 server-side，或 client `speechSynthesis` 先試、失敗/無 voice 時 fallback——#68 實作時定。原因：Firefox desktop 49+／Android 62+ 有 API（2026-11-04 查證 caniuse／MDN BCD）但 voices 全來自 OS、無 network voices——Linux 無 speech-dispatcher 時 `getVoices()` 為空、zh-TW voice 視 OS 而定，朗讀體驗不保證均一。server-side TTS candidate＝Workers AI（同 `AI` binding；model 的 ZDR／價格／zh-TW 待查證，見 providers.md 待辦）
+- TTS 保證路徑＝**server-side**（2026-11-04 決策）：預設 server-side，或 client `speechSynthesis` 先試、失敗/無 voice 時 fallback——#68 實作時定。原因：Firefox desktop 49+／Android 62+ 有 API（2026-11-04 查證 caniuse／MDN BCD）但 voices 全來自 OS、無 network voices——Linux 無 speech-dispatcher 時 `getVoices()` 為空、zh-TW voice 視 OS 而定，朗讀體驗不保證均一。server-side TTS 現行＝`xai/grok-tts`（同 `AI` binding，經 AI Gateway；ZDR／價格／輸入形狀見 providers.md §4 語音模型）
 - 圖為 v3 target view：uploads/R2（#87）、題庫分享（#86）、四階段 debate（#84）、EmotionSplitter（#90）已依 v3 移除
 
 非同步面：GitHub Actions 兩條 workflow（見 §8）；`cf previews deploy` 出 PR 預覽。
