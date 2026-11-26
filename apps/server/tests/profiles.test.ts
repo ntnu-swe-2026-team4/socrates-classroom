@@ -72,7 +72,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(PROFILES["student-indicators"].instructions).toContain(SUBMIT_STUDENT_INDICATORS);
     expect(PROFILES["student-engagement"].instructions).toContain(SUBMIT_STUDENT_ENGAGEMENT);
     expect(PROFILES.lookup.instructions).toContain("term-lookup assistant");
-    expect(PROFILES["topic-gen"].instructions).toContain("debate topics");
+    expect(PROFILES["topic-gen"].instructions).toContain("蘇格拉底式課堂的討論主題編輯");
     expect(PROFILES.lookup.instructions).not.toMatch(/\{\{/);
     expect(PROFILES["topic-gen"].instructions).not.toMatch(/\{\{/);
     expect(PROFILES["student-report"].instructions).toContain("{{lang}}");
