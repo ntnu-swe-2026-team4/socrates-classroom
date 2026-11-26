@@ -177,6 +177,11 @@ export const authProvidersOptions = queryOptions({
   staleTime: Infinity,
 });
 
+export const identitiesOptions = queryOptions({
+  queryKey: ["identities"],
+  queryFn: () => api.identities(),
+});
+
 export const notificationsOptions = queryOptions({
   queryKey: ["notifications"],
   queryFn: () => api.notifications(),

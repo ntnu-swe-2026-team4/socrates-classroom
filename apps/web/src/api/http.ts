@@ -14,6 +14,10 @@ import type {
   AdminKeyStatus,
   AdminKeyEcho,
   AdminKeyModelEcho,
+  BindEmailInput,
+  BindEmailResult,
+  IdentitySummary,
+  LoginMethod,
   Notification,
   Axis,
   ClientConfig,
@@ -27,7 +31,10 @@ import type {
   JoinInfo,
   JoinResult,
   NotificationFeed,
+  OAuthProvider,
   OAuthProviders,
+  OAuthStartResult,
+  ReauthResult,
   Report,
   ReportAxes,
   SoloThread,
@@ -46,6 +53,7 @@ import {
   ActivityStartInputSchema,
   AdminUserCreateInputSchema,
   AdminUserUpdateInputSchema,
+  BindEmailInputSchema,
   ClassroomCreateInputSchema,
   DevLoginInputSchema,
   EmailVerifyInputSchema,
@@ -55,6 +63,8 @@ import {
   JoinInputSchema,
   LoginInputSchema,
   LookupInputSchema,
+  OAuthStartInputSchema,
+  ReauthPasswordInputSchema,
   AdminKeyCreateInputSchema,
   AdminKeyUpdateInputSchema,
   NotificationInputSchema,
@@ -107,6 +117,12 @@ export interface Api {
   verifyEmail(token: string): Promise<void>;
   resendEmailVerification(): Promise<void>;
   authProviders(): Promise<OAuthProviders>;
+  identities(): Promise<IdentitySummary>;
+  reauthWithPassword(password: string): Promise<ReauthResult>;
+  startOAuthReauth(provider: OAuthProvider, returnTo?: string): Promise<OAuthStartResult>;
+  startIdentityBind(provider: OAuthProvider, returnTo?: string): Promise<OAuthStartResult>;
+  bindEmail(input: BindEmailInput): Promise<BindEmailResult>;
+  unbindIdentity(method: LoginMethod): Promise<void>;
   notifications(): Promise<NotificationFeed>;
   markNotificationsSeen(): Promise<void>;
   adminOverview(): Promise<AdminOverview>;
@@ -438,6 +454,34 @@ export const httpApi: Api = {
   },
   async authProviders() {
     return unwrap(await client.auth.providers.$get());
+  },
+  async identities() {
+    return unwrap(await client.me.identities.$get());
+  },
+  async reauthWithPassword(password) {
+    return unwrap(await client.auth.reauth.password.$post({ json: ReauthPasswordInputSchema.parse({ password }) }));
+  },
+  async startOAuthReauth(provider, returnTo) {
+    return unwrap(
+      await client.auth.reauth.oauth[":provider"].start.$post({
+        param: { provider },
+        json: OAuthStartInputSchema.parse(returnTo === undefined ? {} : { returnTo }),
+      }),
+    );
+  },
+  async startIdentityBind(provider, returnTo) {
+    return unwrap(
+      await client.me.identities.oauth[":provider"].start.$post({
+        param: { provider },
+        json: OAuthStartInputSchema.parse(returnTo === undefined ? {} : { returnTo }),
+      }),
+    );
+  },
+  async bindEmail(input) {
+    return unwrap(await client.me.identities.email.$post({ json: BindEmailInputSchema.parse(input) }));
+  },
+  async unbindIdentity(method) {
+    await unwrap(await client.me.identities[":method"].$delete({ param: { method } }));
   },
   async notifications() {
     return unwrap(await client.notifications.$get());
