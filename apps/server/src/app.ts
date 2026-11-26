@@ -72,6 +72,7 @@ export function createApp() {
       c.set("lang", normalizeLang(c.req.header("Accept-Language")));
       const lookup = await lookupSession(c.env, getCookie(c, SESSION_COOKIE));
       c.set("user", lookup.kind === "ok" ? lookup.session.user : null);
+      c.set("sessionVersion", lookup.kind === "ok" ? lookup.session.version : null);
       c.set("sessionIssue", lookup.kind === "ok" || lookup.kind === "missing" ? null : lookup.kind);
       if (lookup.kind === "ok" && !lookup.session.user.emailVerified && !VERIFICATION_BYPASS.has(c.req.path)) {
         fail(403, "email_unverified");

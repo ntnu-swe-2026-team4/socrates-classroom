@@ -310,4 +310,55 @@ describe("httpApi contract (browser-side actual code)", () => {
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({ count: 9 });
   });
+
+  test("identities: GET /api/me/identities", async () => {
+    handler.mockReturnValue(json({ email: null, oauth: [], reauthExpiresAt: null }));
+    await httpApi.identities();
+    expect(lastCall()[0]).toBe("/api/me/identities");
+  });
+
+  test("reauthWithPassword: POST /api/auth/reauth/password", async () => {
+    handler.mockReturnValue(json({ expiresAt: "2026-11-22T10:10:00.000Z" }));
+    const result = await httpApi.reauthWithPassword("secret-pass");
+    expect(result.expiresAt).toBe("2026-11-22T10:10:00.000Z");
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/auth/reauth/password");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ password: "secret-pass" });
+  });
+
+  test("startOAuthReauth: POST reauth start returns the authorize url with returnTo", async () => {
+    handler.mockReturnValue(json({ url: "https://accounts.google.com/x" }));
+    const started = await httpApi.startOAuthReauth("google", "/settings?section=account");
+    expect(started.url).toBe("https://accounts.google.com/x");
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/auth/reauth/oauth/google/start");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ returnTo: "/settings?section=account" });
+  });
+
+  test("startIdentityBind: POST /api/me/identities/oauth/:provider/start omits an absent returnTo", async () => {
+    handler.mockReturnValue(json({ url: "https://www.facebook.com/x" }));
+    await httpApi.startIdentityBind("facebook");
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/me/identities/oauth/facebook/start");
+    expect(JSON.parse(String(init.body))).toEqual({});
+  });
+
+  test("bindEmail: POST /api/me/identities/email normalizes the email", async () => {
+    handler.mockReturnValue(json({ email: "bound@example.com", verified: false }));
+    const result = await httpApi.bindEmail({ email: "Bound@Example.com", password: "bound-pass-1" });
+    expect(result.verified).toBe(false);
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/me/identities/email");
+    expect(JSON.parse(String(init.body))).toEqual({ email: "bound@example.com", password: "bound-pass-1" });
+  });
+
+  test("unbindIdentity: DELETE /api/me/identities/:method", async () => {
+    handler.mockReturnValue(new Response(null, { status: 204 }));
+    await httpApi.unbindIdentity("google");
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/me/identities/google");
+    expect(init.method).toBe("DELETE");
+  });
 });

@@ -1,13 +1,16 @@
-import { deleteCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { User } from "@socrates/shared";
-import type { Ctx } from "./http";
+import { REAUTH_TTL_SECONDS } from "@socrates/shared";
+import { fail, type Ctx } from "./http";
 import { timingSafeEqual } from "./auth-crypto";
 import { one, type Db } from "./db/d1";
 
 export const SESSION_COOKIE = "socrates_session";
+export const REAUTH_COOKIE = "socrates_reauth";
 export const PARTICIPANT_COOKIE = "socrates_participant";
 const SESSION_DAYS = 30;
 const PARTICIPANT_DAYS = 7;
+const REAUTH_PATH = "/api";
 
 export function cookieValue(header: string, name: string): string | undefined {
   return header
@@ -48,6 +51,7 @@ interface UserRow {
   is_admin: number;
   disabled_at: string | null;
   session_version: number;
+  has_identity: number;
 }
 
 export function toUser(row: {
@@ -56,12 +60,13 @@ export function toUser(row: {
   email: string | null;
   email_verified_at: string | null;
   is_admin: number;
+  has_identity: number;
 }): User {
   return {
     id: row.id,
     name: row.name,
     isAdmin: row.is_admin === 1,
-    emailVerified: row.email === null || row.email_verified_at !== null,
+    emailVerified: row.email === null || row.email_verified_at !== null || row.has_identity === 1,
   };
 }
 
@@ -128,6 +133,7 @@ export async function openPayload(ctx: { env: { AUTH_SECRET?: string } }, token:
 }
 
 export type AccountTokenPurpose = "password_reset" | "email_verify";
+type SignedPurpose = AccountTokenPurpose | "reauth";
 
 interface AccountTokenClaims {
   purpose: AccountTokenPurpose;
@@ -135,8 +141,69 @@ interface AccountTokenClaims {
   exp: number;
 }
 
-function purposeSecret(ctx: { env: { AUTH_SECRET?: string } }, purpose: AccountTokenPurpose): Promise<string> {
+function purposeSecret(ctx: { env: { AUTH_SECRET?: string } }, purpose: SignedPurpose): Promise<string> {
   return sign(`socrates:${purpose}`, secretOf(ctx));
+}
+
+interface ReauthClaims {
+  purpose: "reauth";
+  uid: string;
+  ver: number;
+  exp: number;
+}
+
+export async function issueReauth(c: Ctx, userId: string, version: number, expiresAt: number): Promise<void> {
+  const claims: ReauthClaims = { purpose: "reauth", uid: userId, ver: version, exp: expiresAt };
+  const payload = b64url(encoder.encode(JSON.stringify(claims)));
+  const sig = await sign(payload, await purposeSecret({ env: c.env }, "reauth"));
+  const maxAge = Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000));
+  setCookie(c, REAUTH_COOKIE, `${payload}.${sig}`, {
+    httpOnly: true,
+    sameSite: "Lax",
+    path: REAUTH_PATH,
+    maxAge,
+    secure: true,
+  });
+}
+
+export async function startReauth(c: Ctx, userId: string, version: number): Promise<number> {
+  const expiresAt = Date.now() + REAUTH_TTL_SECONDS * 1000;
+  await issueReauth(c, userId, version, expiresAt);
+  return expiresAt;
+}
+
+export function endReauth(c: Ctx): void {
+  deleteCookie(c, REAUTH_COOKIE, { path: REAUTH_PATH });
+}
+
+export async function readReauth(c: Ctx): Promise<{ uid: string; ver: number; exp: number } | null> {
+  const token = getCookie(c, REAUTH_COOKIE);
+  if (!token) return null;
+  const [payload, sig, extra] = token.split(".");
+  if (!payload || !sig || extra !== undefined) return null;
+  const expected = await sign(payload, await purposeSecret({ env: c.env }, "reauth"));
+  if (!timingSafeEqual(expected, sig)) return null;
+  try {
+    const decoded: unknown = JSON.parse(new TextDecoder().decode(fromB64url(payload)));
+    if (!isRecord(decoded)) return null;
+    if (decoded.purpose !== "reauth" || typeof decoded.uid !== "string" || typeof decoded.ver !== "number") {
+      return null;
+    }
+    if (typeof decoded.exp !== "number" || decoded.exp <= Date.now()) return null;
+    return { uid: decoded.uid, ver: decoded.ver, exp: decoded.exp };
+  } catch {
+    return null;
+  }
+}
+
+export async function requireReauth(c: Ctx): Promise<{ exp: number; version: number }> {
+  const user = c.get("user");
+  const version = c.get("sessionVersion");
+  const claims = await readReauth(c);
+  if (!user || version === null || !claims || claims.uid !== user.id || claims.ver !== version) {
+    fail(403, "reauth_required");
+  }
+  return { exp: claims.exp, version };
 }
 
 export function passwordResetBinding(passwordHash: string, email: string | null): string {
@@ -230,7 +297,9 @@ export async function lookupSession(env: SessionEnv, token: string | undefined):
   if (!claims) return { kind: "missing" };
   const row = await one<UserRow>(
     env.DB,
-    "SELECT id, name, email, email_verified_at, is_admin, disabled_at, session_version FROM users WHERE id = $id",
+    `SELECT id, name, email, email_verified_at, is_admin, disabled_at, session_version,
+            EXISTS(SELECT 1 FROM user_identities WHERE user_id = users.id) AS has_identity
+     FROM users WHERE id = $id`,
     { id: claims.uid },
   );
   if (!row) return { kind: "missing" };
@@ -253,9 +322,8 @@ export async function accountState(db: Db, userId: string): Promise<AccountState
   return row ? { disabled: row.disabled_at !== null, version: row.session_version } : null;
 }
 
-export async function startSession(c: Ctx, user: User): Promise<void> {
-  const state = await accountState(c.env.DB, user.id);
-  const token = await issueSessionToken({ env: c.env }, user, state?.version ?? 0);
+export async function resumeSession(c: Ctx, user: User, version: number): Promise<void> {
+  const token = await issueSessionToken({ env: c.env }, user, version);
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "Lax",
@@ -263,6 +331,11 @@ export async function startSession(c: Ctx, user: User): Promise<void> {
     maxAge: SESSION_DAYS * 86400,
     secure: true,
   });
+}
+
+export async function startSession(c: Ctx, user: User): Promise<void> {
+  const state = await accountState(c.env.DB, user.id);
+  await resumeSession(c, user, state?.version ?? 0);
 }
 
 export function endSession(c: Ctx): void {

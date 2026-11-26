@@ -11,6 +11,49 @@
 - `prefers-reduced-motion: reduce` 下只畫靜態一幀並停止 pointer 互動，系統設定切換時即時生效；動畫以實際 frame 間隔計算（`dt` clamp 0.05s），不同更新率下行為一致
 - 測試：`quicksand.test.ts` 涵蓋沙床分布（貼地且越近地面越密）、單向橫流且表層較快、pointer 推開近處沙粒而不動遠處、離開後回位且與 frame rate 無關
 
+## 2026-11-26 — 正式站語音與分類器全失效：aiRunOf 遺失 binding receiver（`fix/ai-run-this-binding`，#439）
+
+### Fixed
+
+- #309 的 typed seam（`pi/ai-run.ts`）把 `run` 方法從 binding 上拆下來回傳（`return (ai as …).run`），呼叫時 receiver 是 `undefined`——binding 的 `run` 內部讀自身狀態即拋 `TypeError`。受害範圍：STT／TTS（`routes/voice.ts`）回 502「語音播放失敗／語音輸入失敗」；violation／emotion 分類器（`judgment/classify.ts`、`avatar/index.ts`）`catch { return null }` 靜默降級——正式站自 2026-11-24 部署起違規標記只剩主模型 `report_violation` 工具來源、表情全落 fallback。websearch 不受影響（`ai.websearch` 一直是 method call）；對話走 agents `createAI` 路徑（內部也是 method call），同樣不受影響
+- 正式站證據（Workers Logs）：#309 部署（2026-11-23T23:14Z）前零筆 `binding failed`；之後至 2026-11-26 全為 `[tts] binding failed TypeError`（首筆 2026-11-24 12:29 UTC+8）。錯誤發生在請求送出前，與 AI Gateway credits 餘額無關——「金額用完」對語音不成立；帳號為 Workers Paid
+- 修法：`aiRunOf` 改回 method call wrapper（`(model, inputs) => ai.run(model, inputs)`），`AiRun` 的 inputs 型別收斂為 `Record<string, unknown>` 免型別斷言；新增 `tests/ai-run.test.ts` 回歸測試（fake binding 的 `run` 依賴 receiver state，detached 呼叫會 `TypeError`——現有 fake 因 Proxy 與 arrow 不用 `this` 而抓不到此回歸）
+- `docs/development.md` 計費表格反映 unified billing（credits），補語音功能的 credits 依賴與 mock 行為（#467）
+
+## 2026-11-24 — 登入方式綁定／解綁與 sudo re-auth（`feat/138-login-methods`，#138）
+
+### Added
+
+- `GET /api/me/identities`（目前登入方式清單）、`POST /api/auth/reauth/password`、`POST /api/auth/reauth/oauth/:provider/start`、`POST /api/me/identities/oauth/:provider/start`、`POST /api/me/identities/email`、`DELETE /api/me/identities/:method`（契約見 `docs/api-contract.md` §2.4）
+- `socrates_reauth` 短效 sudo cookie（10 分鐘；`AUTH_SECRET` 推導的獨立用途金鑰、payload 綁 `uid`＋`session_version`）：一般登入不核發、登出同步清除、任何 `session_version` bump 即失效；未通過／過期一律 403 `reauth_required`
+- `/settings` 新分區「帳號與登入方式」（`LoginMethods` 元件）：清單、re-auth（密碼或已綁 SSO）、綁定／解綁，以及 OAuth 回跳結果提示（`?linked=`／`?reauth=ok`／`?error=`）；三語文案
+- 新錯誤碼 `reauth_required`／`invalid_credentials`／`password_not_set`／`identity_taken`／`provider_already_linked`／`email_already_linked`／`identity_not_found`／`last_login_method`／`last_verified_method`／`reauth_identity_mismatch`（三語訊息）
+- `LoginMethods` 帳號區對未驗證 email 提供一鍵重寄驗證信（與 VerifyGate 同文案）
+
+### Changed
+
+- OAuth pending cookie 新增 `intent`（`login`／`bind`／`reauth`）＋`uid`／`ver`／`returnTo`，登入與綁定共用既有 callback URI（Google Cloud Console／Meta App Dashboard 已登錄的 Redirect URI 不變）；bind／reauth 回調以即時 session 再驗 `uid`／`ver`
+- SSO 重驗參數：Google `max_age=0`＋`prompt=select_account`（identity 有 email 時帶 `login_hint`）；Facebook `auth_type=reauthenticate`
+- 綁定以單句 `INSERT … SELECT … WHERE NOT EXISTS`（同 provider 最多 1 筆），解綁以單句 `UPDATE`／`DELETE` 把「至少保留一種登入方式」檢查與寫入合併——並發解綁不會把帳號鎖死；解綁成功 `session_version + 1`，當前裝置在同一回應換發 `socrates_session`／`socrates_reauth`（不延長 sudo 窗口）
+- `session_version` 併入 request context（`c.set("sessionVersion")`），re-auth 守衛免額外 DB 讀取
+- **hard gate 對齊為「至少一種 verified method」**（#138 × #437，rebase 設計修正）：帳號有任一 `user_identities`（SSO）或 `email_verified_at` 非 NULL 即放行——SSO 帳號綁了未驗證 email 不會落入 VerifyGate 鎖死；`toUser`／`lookupSession`／`POST /auth/login` 的 SELECT 併入 `EXISTS(user_identities)`
+- **方式層：未驗證的 email＋密碼不可登入**——`POST /auth/login` 對「`email_verified_at IS NULL` 且帳號另有 SSO identity」回 403 `email_unverified`（不發 session）；email-only 未驗證帳號維持 session＋VerifyGate
+- 解綁守衛從「至少一種登入方式」升級為「至少一種 verified 方式」：SSO 分支要求 `email_verified_at IS NOT NULL` 或另一筆 identity（僅剩未驗證 email＋密碼 → 409 `last_verified_method`，單句 SQL 原子保護不變）
+- `?linked=`／`?reauth=ok`／`?error=` 提示只消費一次：beforeLoad 以 replace redirect 清除 URL（重整理／返回不再重複播報），且只在帳號分區渲染
+- 文件修正：§10／§2.4 的 `identity_taken` 實際僅於 callback 以 302 `<returnTo>?error=` 回應（非 JSON 409）；`provider_already_linked` 記明 409（bind start）與 302（callback 併發）兩處
+
+### Docs
+
+- `docs/api-contract.md` §1／§2.1／新 §2.4／§10、`docs/accounts.md` §8／§10、`docs/frontend.md` route 表、`docs/feature.md`
+
+## 2026-11-24 — 教室按鈕展開選單：分開「我選的課」與「教室管理」（`feat/408-classrooms-nav-menu`，#408）
+
+### Changed
+
+- 側邊欄「教室」按鈕加上箭頭，按下在原地展開「我選的課」／「教室管理」兩個子項目，再按收合（`aria-expanded`）；進到教室相關頁面時自動展開
+- 教室列表頁以 search param `?view=enrolled｜teaching` 分開兩份清單：「我選的課」含邀請碼輸入與我的報告，「教室管理」含開課按鈕；未帶 `view` 時，只有開課的人進「教室管理」，其餘進「我選的課」
+- API 與 route 結構不變（同一個 `/classrooms`，以 `role` 在前端分組）
+
 ## 2026-11-24 — 登入失敗 per-account 鎖定與 forgot per-email 冷卻（`feat/393-login-lockout`，#393）
 
 ### Added
@@ -61,6 +104,13 @@
 - 平台鏈 priority 1：`@cf/zai-org/glm-5.3-flash`（2026-11-20 下架，#399）→ `@cf/zai-org/glm-5.3`（paid；Workers Paid 或 AI Gateway credits）；`@cf/zai-org/glm-4.7-flash` 留第二順位收尾，Free 帳號對 5.3 的 403 由 breaker 降級承接
 - `class-report` thinkingLevel high→low（#249 實驗：high 在 39 人班推理超限截斷，low 完成 39／60 人班且落點零左右反轉）；其餘 profile 維持現況
 - Workers AI 推論改走 AI Gateway `default`（Unified billing）：付費清單模型 20→50 rpm；`collectLog: false`＋`skipCache: true` 在程式碼層釘死零保留（AI Gateway logs 預設開啟，不依賴 dashboard 手動狀態）
+
+## 2026-11-24 — `FACEBOOK_APP_ID` production 帶入通道＋`google-oauth.md` 改名 `oauth.md`（`ci/deploy-facebook-app-id`，#410）
+
+### Changed
+
+- `deploy.yml` job env 補 `FACEBOOK_APP_ID: ${{ vars.FACEBOOK_APP_ID }}`，與 `GOOGLE_CLIENT_ID` 同通道（repo variable 於 build 帶入 text binding）——此前 production build 永遠拿到空字串，Facebook 登入在正式站無法啟用；未設 variable＝停用，merge 不改變現狀
+- `docs/google-oauth.md` 改名 [`oauth.md`](./oauth.md)（純 git mv＋引用同步）：文件標題與內容自 2026-11-21 起已擴域為「第三方登入（SSO）設定」（Google §1–5、Facebook §6、Apple 退場 §7），檔名停在單一 provider 名不符實；§6.2 補 step 4 正式環境帶入點
 
 ## 2026-11-23 — TS 靜態保證 step 4：noUncheckedIndexedAccess 全庫開啟（`refactor/293-step4`，#293）
 
@@ -742,7 +792,7 @@
 - 錯誤碼 `oauth_unavailable`／`oauth_state_invalid`／`oauth_email_unverified`／`oauth_failed`（三語）；binding `GOOGLE_CLIENT_ID`（text）／`GOOGLE_CLIENT_SECRET`（secret，留空＝停用）
 - 錯誤碼 `email_taken`（三語）：`POST /auth/signup` 信箱重複回 409 `email_taken`，取代語意模糊的 `conflict`；邀請碼註冊 `POST /auth/register` 維持 `conflict` 不變
 - `assets.runWorkerFirst: ["/api/*", "/health"]`：SPA `notFoundHandling` 會把瀏覽器 navigation（`Sec-Fetch-Mode: navigate`）直接回 `index.html`，導致整頁跳轉的 `/api/auth/oauth/*` 永遠到不了 Worker
-- 新增 [`google-oauth.md`](./google-oauth.md)（建立用戶端、本機／正式設定、secret 輪替、常見錯誤）；`.env.example` 補 `GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET`
+- 新增 `google-oauth.md`（現更名為 [`oauth.md`](./oauth.md)；建立用戶端、本機／正式設定、secret 輪替、常見錯誤）；`.env.example` 補 `GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET`
 - 測試：`tests/auth-sso.test.ts`（signup、OAuth 成功／state 竄改／簽章偽造／aud・iss・exp・nonce・未驗證 email）、`tests/migrations.test.ts`（user_identities 唯一性與 cascade）
 
 ## 2026-11-09 — routing/ 更名 gateway/（`experiment/web-next`）

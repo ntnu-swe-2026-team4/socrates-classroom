@@ -2,7 +2,7 @@
 
 > 日期：2026-11-20 ｜ 狀態：定稿（實作分階段落地，見 §10）
 > 來源：Outline spec「角色與班級模型」rev 200（2026-11-17 定稿，G36maid 與 blade_isoe.520 共同討論）——本文件為 repo SSOT，Outline 僅留討論記錄。
-> 本文件擁有「帳號與權限模型」domain：角色、模式、身分語意與設計決策。API 形狀與授權矩陣見 [`api-contract.md`](./api-contract.md)（§1.1、§2）；系統拓撲見 [`architecture.md`](./architecture.md)；SSO 流程見 [`google-oauth.md`](./google-oauth.md)。
+> 本文件擁有「帳號與權限模型」domain：角色、模式、身分語意與設計決策。API 形狀與授權矩陣見 [`api-contract.md`](./api-contract.md)（§1.1、§2）；系統拓撲見 [`architecture.md`](./architecture.md)；SSO 流程見 [`oauth.md`](./oauth.md)。
 
 ## 1. 設計問答
 
@@ -99,10 +99,11 @@ flowchart LR
 - 活動邀請連結要有 QR code 的連結方式。
 
 - **email 驗證（#259，閘門 #437）**：`users.email`「屬於帳號本人」這個假設由 `users.email_verified_at` 表達，註冊（`signup`／`register`）後寄驗證信，使用者點連結證明信箱是自己的。API 形狀與 token 細節見 [`api-contract.md`](./api-contract.md) §2.3，本節只定模型語意：
-  - **hard gate（#437 拍板，取代 #259 的 soft 模型）**：未驗證的 session 只能存取驗證流程相關端點（`/api/me`、login、logout、register、signup、providers、password forgot/reset、email verify、verify/resend），其餘一律 `403 email_unverified`；WS（chat／solo／classroom-events）同樣拒絕。前端呈現 VerifyGate 畫面（重寄＋登出），`/verify-email` 點完連結後立即解鎖。session 照常發放——`/auth/email/verify/resend` 需要本人身份，且「發 session 但閘門擋 API」是 GitHub／Discord 等的主流做法；訪客入場（`/join`，不建帳號）不受影響
+  - **hard gate（#437 拍板，取代 #259 的 soft 模型；#138 對齊為 verified method）**：gate 的鈔匙是「帳號至少一種 **verified method**」——有任一 `user_identities`（SSO 登入由 provider 端驗證，Clerk 的 OIDC `email_verified` claim 同精神）或 `email_verified_at` 非 NULL 即放行；一種都沒有的 session（＝未驗證的 email-only 帳號）只能存取驗證流程相關端點（`/api/me`、login、logout、register、signup、providers、password forgot/reset、email verify、verify/resend），其餘一律 `403 email_unverified`；WS（chat／solo／classroom-events）同樣拒絕。前端呈現 VerifyGate 畫面（重寄＋登出），`/verify-email` 點完連結後立即解鎖。session 照常發放——`/auth/email/verify/resend` 需要本人身份，且「發 session 但閘門擋 API」是 GitHub／Discord 等的主流做法；訪客入場（`/join`，不建帳號）不受影響。**帳號層與方式層是兩條軸**：gate 以 verified method 計算（SSO 帳號綁了打錯的 email 不會鎖死，仍可進設定頁解綁重綁），但方式層見下條
+  - **方式層（#138 拍板：未驗證一律影響登入）**：未驗證的 email＋密碼不可作為登入憑證——`POST /auth/login` 對「`email_verified_at IS NULL` 且帳號另有 SSO identity」回 403 `email_unverified`（不發 session，引導改用已綁 SSO 或先完成驗證）；email-only 未驗證帳號維持發 session＋VerifyGate（否則重寄驗證信沒有入口）。Auth0 把「未驗證就覆寫唯一 email」點名為反模式——因此解綁守衛同步升級為「至少一種 verified 方式」（僅剩未驗證 email＋密碼時 409 `last_verified_method`，先驗證再解），見 api-contract.md §2.4
   - 原 #259 soft 模型的理由（寄信延遲會把學生完全擋在門外）由兩個機制化解：VerifyGate 上一鍵重寄；以及 stale takeover（見下）——最壞情況等 24 小時後地址可被重新註冊
   - **stale takeover**：超過 `EMAIL_VERIFY_TTL_HOURS`（24h）仍未驗證的帳號從未證明信箱所有權，其地址視同無主——任何人以該 email 重新 `signup`／`register` 會直接覆寫該帳號的 name／password／lang／`created_at` 並 `session_version + 1`（舊 session 全滅），帳號維持未驗證。已驗證的地址永不適用
-  - `User.emailVerified` 的語意是「這個帳號沒有待驗證的 email」：`users.email` 為 NULL 的 SSO 帳號（Google／Facebook）與已驗證的 email 帳號都是 `true`；SSO 帳號要補 email 走 #138 的綁定流程，改 email 走 #234
+  - `User.emailVerified` 的語意是「帳號至少一種已驗證的登入方式」（#138 對齊 #437）：`email_verified_at` 非 NULL、或有任一 `user_identities`（SSO 由 provider 端驗證）；`users.email` 為 NULL 的 SSO 帳號與已驗證的 email 帳號都是 `true`，SSO 帳號綁了未驗證 email 也仍是 `true`（帳號層 gate 不觸發，但該 email＋密碼驗證前不可登入，見方式層）。SSO 帳號要補 email 走 #138 的綁定流程，改 email 走 #234
   - 驗證信與重設信共用 `mail.ts`、共用帳號 token（用途金鑰分離：`email_verify` 與 `password_reset` 的 token 不能互用）
 
 ## 9. 目前不處理
@@ -115,6 +116,6 @@ flowchart LR
 
 實作分階段進行；功能存在性清單的 SSOT 是 [`feature.md`](./feature.md)，此處只記模型落地：
 
-- **已上 main**：班級邀請註冊（`POST /auth/register`）、訪客與 activity participants（#132/#133）、測試模式（#134）、自行註冊與 Google OAuth（#124）、email 帳號的密碼找回（#230，§1「email 是註冊加找回」的找回半邊）、email 驗證（#259——`users.email_verified_at`＋`POST /auth/email/verify`＋`/verify-email`，§8）；capability 模型（`can_manage_classes`，#131/#142）——**已退役**（#210，無 mode 定稿 §7）：建立類端點開放給所有登入 user，`users.can_manage_classes` 與 legacy `users.role` 欄位移除，`PATCH /admin/users/:id` 僅剩停用
+- **已上 main**：班級邀請註冊（`POST /auth/register`）、訪客與 activity participants（#132/#133）、測試模式（#134）、自行註冊與 Google OAuth（#124）、email 帳號的密碼找回（#230，§1「email 是註冊加找回」的找回半邊）、email 驗證（#259——`users.email_verified_at`＋`POST /auth/email/verify`＋`/verify-email`，§8）、登入方式綁定／解綁（#138——一個帳號多種登入方式、至少保留一種 verified 方式、變更前 re-auth、未驗證 email＋密碼不可登入（§8），§2.4 契約＋`/settings` 帳號區）；capability 模型（`can_manage_classes`，#131/#142）——**已退役**（#210，無 mode 定稿 §7）：建立類端點開放給所有登入 user，`users.can_manage_classes` 與 legacy `users.role` 欄位移除，`PATCH /admin/users/:id` 僅剩停用
 - **已結案**：user↔teacher mode toggle（#208——未 merge 即 close，被無 mode 定稿取代）
 - **計畫中**：SSO 擴充 Facebook 與 authProviders 探測（#207——Apple 拍板退場，見 §7）；teacher 端建立 student（#206——原範圍已被窗口拍板推翻，待重劃或關閉）
