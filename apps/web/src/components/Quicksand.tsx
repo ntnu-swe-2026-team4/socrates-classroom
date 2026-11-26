@@ -43,6 +43,41 @@ export function placeGrains(
   }
 }
 
+export interface Push {
+  pointer: { x: number; y: number; active: boolean };
+  keep: number;
+  push: number;
+}
+
+export function pushRates(dt: number): { keep: number; push: number } {
+  return { keep: Math.exp(-dt / RETURN_SECONDS), push: 1 - (1 - PUSH_RATE) ** (dt * 60) };
+}
+
+export function displaceGrain(
+  ox: Float32Array,
+  oy: Float32Array,
+  i: number,
+  x: number,
+  y: number,
+  { pointer, keep, push }: Push,
+): void {
+  let dx = (ox[i] ?? 0) * keep;
+  let dy = (oy[i] ?? 0) * keep;
+  if (pointer.active) {
+    const ax = x + dx - pointer.x;
+    const ay = y + dy - pointer.y;
+    const d2 = ax * ax + ay * ay;
+    if (d2 < PUSH_RADIUS * PUSH_RADIUS) {
+      const d = Math.sqrt(d2) || 0.001;
+      const step = (PUSH_RADIUS - d) * push;
+      dx += (ax / d) * step;
+      dy += (ay / d) * step;
+    }
+  }
+  ox[i] = dx;
+  oy[i] = dy;
+}
+
 export function Quicksand({ className }: { className?: string }) {
   const attach = useCallback((canvas: HTMLCanvasElement | null) => {
     if (!canvas) return;
@@ -78,27 +113,12 @@ export function Quicksand({ className }: { className?: string }) {
       pointer.active = client.active && Math.hypot(px - pointer.x, py - pointer.y) > 0.25;
       pointer.x = px;
       pointer.y = py;
-      const keep = Math.exp(-dt / RETURN_SECONDS);
-      const push = 1 - (1 - PUSH_RATE) ** (dt * 60);
+      const frame: Push = { pointer, ...pushRates(dt) };
       buf.fill(0);
       placeGrains(grains, W, floor, t, (i, x, y) => {
-        let dx = (ox[i] ?? 0) * keep;
-        let dy = (oy[i] ?? 0) * keep;
-        if (pointer.active) {
-          const ax = x + dx - pointer.x;
-          const ay = y + dy - pointer.y;
-          const d2 = ax * ax + ay * ay;
-          if (d2 < PUSH_RADIUS * PUSH_RADIUS) {
-            const d = Math.sqrt(d2) || 0.001;
-            const step = (PUSH_RADIUS - d) * push;
-            dx += (ax / d) * step;
-            dy += (ay / d) * step;
-          }
-        }
-        ox[i] = dx;
-        oy[i] = dy;
-        const gx = (x + dx) | 0;
-        const gy = Math.min(y + dy, floor - 1) | 0;
+        displaceGrain(ox, oy, i, x, y, frame);
+        const gx = (x + (ox[i] ?? 0)) | 0;
+        const gy = Math.min(y + (oy[i] ?? 0), floor - 1) | 0;
         if (gx >= 0 && gy >= 0 && gx < W && gy < H) buf[gy * W + gx] = ink;
       });
       ctx.putImageData(img, 0, 0);

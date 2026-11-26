@@ -2,6 +2,15 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-27 — 聊天室背景改為橫向流沙，提升對話易讀性（`422-chatroom-ui-improve`，#422）
+
+### Changed
+
+- 聊天室背景由「呼吸點陣」（`DotField`）改為「橫向流沙」（新元件 `Quicksand`）：沙粒堆積在輸入區上緣（DialogueView footer 以 `data-sand-floor` 標記位置，找不到時退回容器底部），只沿水平方向流動，越靠表層流得越快；滑鼠／觸控經過會把附近沙粒推開，離開後以指數衰減緩回原位（time constant 1.1 秒）。對話紀錄區不再有全版面閃動的點陣，文字易讀性提升；`DotField` 仍用於首頁與 `dev.accounts`
+- 圖層由 `-z-10`（內容後方）改為 `z-10`：流沙緊鄰輸入欄正上方，圖層優先級與輸入欄相同、高於對話紀錄；以 `opacity-25`＋`pointer-events-none` 確保不擋文字與點擊，header／sidebar overlay（`z-40`／`z-50`）仍在沙之上
+- `prefers-reduced-motion: reduce` 下只畫靜態一幀並停止 pointer 互動，系統設定切換時即時生效；動畫以實際 frame 間隔計算（`dt` clamp 0.05s），不同更新率下行為一致
+- 測試：`quicksand.test.ts` 涵蓋沙床分布（貼地且越近地面越密）、單向橫流且表層較快、pointer 推開近處沙粒而不動遠處、離開後回位且與 frame rate 無關
+
 ## 2026-11-24 — 登入失敗 per-account 鎖定與 forgot per-email 冷卻（`feat/393-login-lockout`，#393）
 
 ### Added
