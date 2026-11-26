@@ -360,6 +360,7 @@ export function DialogueView({
 
         <footer
           ref={footerRef}
+          data-sand-floor
           className={cn(
             "px-4 pb-4 md:px-8",
             voiceOverlay ? "absolute inset-x-0 bottom-0 pt-20" : "shrink-0 border-t border-line pt-3",

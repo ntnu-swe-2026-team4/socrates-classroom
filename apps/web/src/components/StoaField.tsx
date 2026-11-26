@@ -169,7 +169,7 @@ function buildColonnade(W: number, H: number, LW: number) {
   return { hx, hy };
 }
 
-function inkFromColor(color: string): number {
+export function inkFromColor(color: string): number {
   const [r = 0, g = 0, b = 0] = (color.match(/\d+(\.\d+)?/g) ?? []).map(Number);
   return ((0xff << 24) | (b << 16) | (g << 8) | r) >>> 0;
 }

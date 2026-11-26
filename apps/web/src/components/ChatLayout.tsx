@@ -1,7 +1,7 @@
 import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { DotField } from "@/components/DotField";
+import { Quicksand } from "@/components/Quicksand";
 import { cn, trapDialogFocus } from "@/components/ui";
 import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useMediaQuery } from "@/hooks/useSubscription";
@@ -51,7 +51,7 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
   if (!sidebar)
     return (
       <div className="relative isolate flex h-full min-h-0 flex-col">
-        <DotField className="-z-10 opacity-50" />
+        <Quicksand className="z-10" />
         {children}
       </div>
     );
@@ -91,7 +91,7 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
           {sidebar}
         </SidebarPanel>
         <div inert={mobile && open} className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col">
-          <DotField className="-z-10 opacity-50" />
+          <Quicksand className="z-10" />
           {children}
         </div>
       </div>
