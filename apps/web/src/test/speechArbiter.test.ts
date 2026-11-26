@@ -3,20 +3,32 @@ import type { SpeechSource } from "@/lib/companion";
 import { must } from "./helpers";
 import { SpeechArbiter, type SpeechEnv } from "@/lib/speechArbiter";
 
-function fakeEnv(options: { maxChars?: number; settle?: boolean } = {}) {
-  const requests: { text: string; signal: AbortSignal }[] = [];
+function fakeEnv(options: { maxChars?: number; settle?: boolean; hang?: boolean } = {}) {
+  const requests: {
+    text: string;
+    signal: AbortSignal;
+    start: () => void;
+    amplitude: (value: number) => void;
+  }[] = [];
+  const amplitudes: number[] = [];
+  let playing = 0;
   const sources: (SpeechSource | null)[] = [];
   let announced = 0;
   let mute = false;
   let listener: (() => void) | null = null;
   const env: SpeechEnv = {
-    request: (text, _onAmplitude, signal) => {
-      requests.push({ text, signal });
+    request: (text, amplitude, signal, start) => {
+      requests.push({ text, signal, start, amplitude });
       if (options.settle) return Promise.resolve();
+      if (options.hang) return new Promise<void>(() => {});
       return new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve()));
     },
     muted: () => mute,
     setSpeakingSource: (source) => sources.push(source),
+    setPlaying: () => {
+      playing += 1;
+    },
+    setAmplitude: (value) => amplitudes.push(value),
     announce: () => {
       announced += 1;
     },
@@ -32,6 +44,8 @@ function fakeEnv(options: { maxChars?: number; settle?: boolean } = {}) {
     env,
     requests,
     sources,
+    amplitudes,
+    playing: () => playing,
     announced: () => announced,
     setMuted: (value: boolean) => {
       mute = value;
@@ -75,6 +89,40 @@ describe("SpeechArbiter (injected environment)", () => {
 
     arbiter.stop();
     expect(await replay).toBe("interrupted");
+  });
+
+  it("clears the speaking state on stop even when the transport never settles", () => {
+    const fake = fakeEnv({ hang: true });
+    const arbiter = new SpeechArbiter(fake.env);
+
+    void arbiter.speak("dialogue", "播不出來的回覆");
+    expect(fake.sources).toEqual(["dialogue"]);
+    arbiter.stop();
+    expect(fake.sources).toEqual(["dialogue", null]);
+    expect(must(fake.requests[0], "request").signal.aborted).toBe(true);
+  });
+
+  it("reports playback and amplitude only for the reading that owns the channel", () => {
+    const fake = fakeEnv();
+    const arbiter = new SpeechArbiter(fake.env);
+
+    void arbiter.speak("dialogue", "第一句");
+    const first = must(fake.requests[0], "first request");
+    expect(fake.playing()).toBe(0);
+    first.start();
+    first.amplitude(0.4);
+    expect(fake.playing()).toBe(1);
+    expect(fake.amplitudes).toEqual([0.4]);
+
+    void arbiter.speak("dialogue", "第二句");
+    first.start();
+    first.amplitude(0.9);
+    expect(fake.playing()).toBe(1);
+    expect(fake.amplitudes).toEqual([0.4]);
+
+    arbiter.stop();
+    must(fake.requests[1], "second request").start();
+    expect(fake.playing()).toBe(1);
   });
 
   it("stays silent while muted and never reaches the transport", async () => {

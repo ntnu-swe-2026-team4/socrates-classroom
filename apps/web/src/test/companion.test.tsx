@@ -7,6 +7,7 @@ import { companion, getCompanion, onExpression } from "@/lib/companion";
 
 const scene = vi.hoisted(() => ({
   setSpeaking: vi.fn(),
+  setAmplitude: vi.fn(),
   setExpression: vi.fn(),
   dispose: vi.fn(),
 }));
@@ -41,6 +42,7 @@ beforeEach(() => {
   localStorage.clear();
   scene.setExpression.mockClear();
   scene.setSpeaking.mockClear();
+  scene.setAmplitude.mockClear();
   stopSpeech.mockClear();
   act(() => {
     companion.setVisible(true);
@@ -125,10 +127,20 @@ describe("SocratesCompanion", () => {
     renderDocked();
     expect(screen.queryByRole("status")).toBeNull();
     act(() => companion.setSpeakingSource("dialogue"));
+    expect(screen.getByRole("status").textContent).toBe("準備語音…");
+    expect(scene.setSpeaking).not.toHaveBeenCalledWith(true);
+    companion.setAmplitude(0.5);
+    expect(scene.setAmplitude).not.toHaveBeenCalled();
+    act(() => companion.setSpeechPlaying());
     expect(screen.getByRole("status").textContent).toBe("正在朗讀");
     expect(scene.setSpeaking).toHaveBeenLastCalledWith(true);
+    companion.setAmplitude(0.5);
+    expect(scene.setAmplitude).toHaveBeenLastCalledWith(0.5);
     await user.click(screen.getByRole("button", { name: "停止朗讀" }));
     expect(stopSpeech).toHaveBeenCalledTimes(1);
+    act(() => companion.setSpeakingSource(null));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(scene.setSpeaking).toHaveBeenLastCalledWith(false);
   });
 
   it("settles the dock tracker after stable frames and re-wakes on layout change", async () => {

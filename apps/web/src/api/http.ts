@@ -175,7 +175,7 @@ export interface Api {
   listActivitySlots(activityId: string): Promise<ActivitySlots>;
   createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
   stt(audio: Blob): Promise<string>;
-  tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
+  tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal, playback?: TtsPlayback): Promise<void>;
   createTopic(input: {
     title: string;
     statement: string;
@@ -250,7 +250,31 @@ async function unwrap<R extends JsonLike>(res: R): Promise<Awaited<ReturnType<R[
   return (await res.json()) as unknown as Awaited<ReturnType<R["json"]>>;
 }
 
-async function playTts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void> {
+export interface TtsPlayback {
+  volume?: number;
+  onStart?: () => void;
+}
+
+const AUDIO_RESUME_TIMEOUT_MS = 1500;
+
+function abortRace(signal?: AbortSignal): { promise: Promise<never>; dispose: () => void } {
+  let onAbort = () => {};
+  const promise = new Promise<never>((_, reject) => {
+    if (!signal) return;
+    onAbort = () => reject(new DOMException("aborted", "AbortError"));
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  });
+  promise.catch(() => {});
+  return { promise, dispose: () => signal?.removeEventListener("abort", onAbort) };
+}
+
+async function playTts(
+  text: string,
+  onAmplitude: (value: number) => void,
+  signal?: AbortSignal,
+  playback: TtsPlayback = {},
+): Promise<void> {
   const input = TtsInputSchema.parse({ text, lang: langHeaders()["Accept-Language"] });
   const res = await client.tts.$post({ json: input }, { init: { signal } });
   if (!res.ok) return raiseApiError(res);
@@ -261,61 +285,58 @@ async function playTts(text: string, onAmplitude: (value: number) => void, signa
     window.AudioContext ??
     (typeof legacyCtor === "function" ? (legacyCtor as unknown as typeof AudioContext) : undefined);
   const context = new AudioContextCtor();
-  if (context.state === "suspended") await context.resume().catch(() => {});
   const source = context.createBufferSource();
-  const stopEarly = () => {
-    void context.close().catch(() => {});
-  };
-  if (signal?.aborted) {
-    stopEarly();
-    throw new DOMException("aborted", "AbortError");
-  }
-  const onAbortDuringDecode = () => stopEarly();
-  signal?.addEventListener("abort", onAbortDuringDecode, { once: true });
-  try {
-    source.buffer = await context.decodeAudioData(bytes);
-  } catch (error) {
-    stopEarly();
-    throw error;
-  } finally {
-    signal?.removeEventListener("abort", onAbortDuringDecode);
-  }
-  if (signal?.aborted) {
-    stopEarly();
-    throw new DOMException("aborted", "AbortError");
-  }
-  const analyser = context.createAnalyser();
-  analyser.fftSize = 256;
-  source.connect(analyser);
-  analyser.connect(context.destination);
-  const data = new Uint8Array(analyser.frequencyBinCount);
+  const aborted = abortRace(signal);
   let raf = 0;
-  let stopped = false;
-  const stop = () => {
-    if (stopped) return;
-    stopped = true;
-    cancelAnimationFrame(raf);
-    void source.stop();
-    void context.close();
-    signal?.removeEventListener("abort", stop);
-  };
-  signal?.addEventListener("abort", stop, { once: true });
-  await new Promise<void>((resolve) => {
+  let resumeTimer: ReturnType<typeof setTimeout> | undefined;
+  let started = false;
+  try {
+    if (context.state === "suspended") {
+      await Promise.race([
+        context.resume().catch(() => {}),
+        new Promise<void>((resolve) => {
+          resumeTimer = setTimeout(resolve, AUDIO_RESUME_TIMEOUT_MS);
+        }),
+        aborted.promise,
+      ]);
+    }
+    if (context.state === "suspended") throw new Error("audio_blocked");
+    source.buffer = await Promise.race([context.decodeAudioData(bytes), aborted.promise]);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 256;
+    const gain = context.createGain();
+    gain.gain.value = Math.min(1, Math.max(0, playback.volume ?? 1));
+    source.connect(analyser);
+    analyser.connect(gain);
+    gain.connect(context.destination);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const ended = new Promise<void>((resolve) => {
+      source.onended = () => resolve();
+    });
     const tick = () => {
-      if (stopped) return resolve();
       analyser.getByteTimeDomainData(data);
       let sum = 0;
       for (const sample of data) sum += (sample - 128) ** 2;
       onAmplitude(Math.min(1, Math.sqrt(sum / data.length) / 42));
       raf = requestAnimationFrame(tick);
     };
-    source.onended = () => {
-      stop();
-      resolve();
-    };
     source.start();
+    started = true;
+    playback.onStart?.();
     raf = requestAnimationFrame(tick);
-  });
+    await Promise.race([ended, aborted.promise]);
+  } finally {
+    clearTimeout(resumeTimer);
+    cancelAnimationFrame(raf);
+    aborted.dispose();
+    source.onended = null;
+    if (started) {
+      try {
+        source.stop();
+      } catch {}
+    }
+    void context.close().catch(() => {});
+  }
 }
 
 export const SESSION_SIGNAL_KEY = "socrates_session_changed";

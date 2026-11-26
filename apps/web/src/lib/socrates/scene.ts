@@ -4,7 +4,7 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { Avatar } from "./avatar";
+import { Avatar, visemeSample } from "./avatar";
 import glbUrl from "./socrates.glb?url";
 
 type GLTF = { scene: THREE.Object3D; animations: THREE.AnimationClip[] };
@@ -16,11 +16,8 @@ export interface SceneOptions {
   onError?: () => void;
 }
 
-const FAKE_VISEMES = ["viseme_aa", "viseme_E", "viseme_O", "viseme_PP", "viseme_FF", "viseme_kk", "viseme_I"];
-
-function fakeVisemeSample(t: number) {
-  const idx = Math.floor(t * 8) % FAKE_VISEMES.length;
-  return { viseme: FAKE_VISEMES[idx] ?? null, weight: 0.4 + 0.4 * Math.abs(Math.sin(t * 13)) };
+function prefersStill(): boolean {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
 function loadModel(url: string) {
@@ -79,6 +76,7 @@ function buildStoneMaterial(baseMap: THREE.Texture | null, fallback: THREE.Color
 export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElement, opts: SceneOptions = {}) {
   const mini = !!opts.mini;
   let speaking = false;
+  let amplitude = 0;
   let avatar: Avatar | null = null;
   let pendingExpression: [string, { loop?: boolean }] | null = null;
   let disposed = false;
@@ -143,6 +141,7 @@ export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElemen
     .then(({ model, clips }) => {
       if (disposed) return;
       avatar = new Avatar(model, clips);
+      avatar.setSpeaking(speaking && !prefersStill());
       if (pendingExpression) avatar.setExpression(...pendingExpression);
       model.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
@@ -193,7 +192,7 @@ export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElemen
     const dt = Math.min(tick(), 0.1);
     if (avatar) {
       if (speaking) {
-        const sample = fakeVisemeSample(elapsed);
+        const sample = visemeSample(elapsed, amplitude);
         avatar.setViseme(sample.viseme, sample.weight);
       }
       avatar.update(dt);
@@ -223,8 +222,12 @@ export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElemen
   return {
     setSpeaking(on: boolean) {
       speaking = on;
-      if (!on && avatar) avatar.setViseme(null, 0);
+      amplitude = 0;
+      avatar?.setSpeaking(on && !prefersStill());
       kick();
+    },
+    setAmplitude(value: number) {
+      amplitude = value;
     },
     setExpression(name: string | null, options?: { loop?: boolean }) {
       if (avatar) avatar.setExpression(name, options);

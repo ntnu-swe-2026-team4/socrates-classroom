@@ -276,7 +276,7 @@ function CompanionBody({ dock }: { dock: DockRect }) {
       {state.speakingSource && (
         <div className="anim-fade pointer-events-auto absolute bottom-1 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-line-strong bg-paper py-0.5 pr-0.5 pl-2.5 text-[11.5px] text-ink-soft shadow-sm">
           <span className="size-1.5 shrink-0 rounded-full bg-ember motion-safe:animate-pulse" aria-hidden />
-          <span role="status">{t("companion_speaking")}</span>
+          <span role="status">{t(state.speaking ? "companion_speaking" : "companion_preparing")}</span>
           <button
             type="button"
             aria-label={t("companion_stop_speaking")}

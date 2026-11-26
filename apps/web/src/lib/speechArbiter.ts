@@ -6,9 +6,11 @@ export type { SpeechSource } from "@/lib/companion";
 export type SpeechOutcome = "ended" | "interrupted" | "skipped" | "muted";
 
 export interface SpeechEnv {
-  request(text: string, onAmplitude: (value: number) => void, signal: AbortSignal): Promise<void>;
+  request(text: string, onAmplitude: (value: number) => void, signal: AbortSignal, onStart: () => void): Promise<void>;
   muted(): boolean;
   setSpeakingSource(source: SpeechSource | null): void;
+  setPlaying(): void;
+  setAmplitude(value: number): void;
   announce(): void;
   onRemoteAnnounce(listener: () => void): () => void;
   maxChars(): number;
@@ -46,9 +48,12 @@ export const defaultSpeechEnv: SpeechEnv = (() => {
   const tabId = newTabId();
   const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel("socrates-speech");
   return {
-    request: (text, onAmplitude, signal) => api.tts(text, onAmplitude, signal),
+    request: (text, onAmplitude, signal, onStart) =>
+      api.tts(text, onAmplitude, signal, { volume: getCompanion().volume, onStart }),
     muted: () => getCompanion().muted,
     setSpeakingSource: (source) => companion.setSpeakingSource(source),
+    setPlaying: () => companion.setSpeechPlaying(),
+    setAmplitude: (value) => companion.setAmplitude(value),
     announce: () => channel?.postMessage({ type: "start", tab: tabId }),
     onRemoteAnnounce: (listener) => {
       if (!channel) return () => {};
@@ -78,8 +83,11 @@ export class SpeechArbiter {
   }
 
   stop(source?: SpeechSource): void {
-    if (!this.#active || (source && this.#active.source !== source)) return;
-    this.#active.controller.abort();
+    const active = this.#active;
+    if (!active || (source && active.source !== source)) return;
+    this.#active = null;
+    this.env.setSpeakingSource(null);
+    active.controller.abort();
   }
 
   speak(source: SpeechSource, text: string, options: { userInitiated?: boolean } = {}): Promise<SpeechOutcome> {
@@ -99,7 +107,16 @@ export class SpeechArbiter {
     this.env.setSpeakingSource(source);
     this.env.announce();
     return this.env
-      .request(boundedSpeech(text, this.env.maxChars()), () => {}, current.controller.signal)
+      .request(
+        boundedSpeech(text, this.env.maxChars()),
+        (value) => {
+          if (this.#active?.id === current.id) this.env.setAmplitude(value);
+        },
+        current.controller.signal,
+        () => {
+          if (this.#active?.id === current.id) this.env.setPlaying();
+        },
+      )
       .then((): SpeechOutcome => (current.controller.signal.aborted ? "interrupted" : "ended"))
       .catch((error: unknown): SpeechOutcome => {
         if (current.controller.signal.aborted) return "interrupted";

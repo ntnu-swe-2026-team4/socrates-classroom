@@ -18,6 +18,15 @@ export const VISEMES = [
   "viseme_U",
 ];
 
+const SPEECH_VISEMES = ["viseme_aa", "viseme_E", "viseme_O", "viseme_PP", "viseme_FF", "viseme_kk", "viseme_I"];
+const SILENCE_AMPLITUDE = 0.04;
+
+export function visemeSample(t: number, amplitude: number): { viseme: string | null; weight: number } {
+  if (amplitude < SILENCE_AMPLITUDE) return { viseme: null, weight: 0 };
+  const idx = Math.floor(t * 8) % SPEECH_VISEMES.length;
+  return { viseme: SPEECH_VISEMES[idx] ?? null, weight: Math.min(1, 0.25 + amplitude * 1.5) };
+}
+
 const BLINK_KEYS = ["eyeBlinkLeft", "eyeBlinkRight"];
 const BLINK_TIMING = { close: 0.28, hold: 0.12, open: 0.45 };
 
@@ -120,6 +129,7 @@ export class Avatar {
   nextBlinkAt: number;
   blinkStart: number;
   speaking: number;
+  talk: number;
   time: number;
   expressionLayers: Map<string, ClipLayer>;
   expression: ClipLayer | null;
@@ -134,6 +144,7 @@ export class Avatar {
     this.nextBlinkAt = 2;
     this.blinkStart = -1;
     this.speaking = 0;
+    this.talk = 0;
     this.time = 0;
 
     model.traverse((obj: THREE.Object3D) => {
@@ -199,7 +210,8 @@ export class Avatar {
     }
 
     const t = this.time;
-    const talk = this.speaking * (Math.sin(t * 5.3) * 0.5 + Math.sin(t * 3.1) * 0.5);
+    this.talk += (this.speaking - this.talk) * (1 - Math.exp(-6 * dt));
+    const talk = this.talk * (Math.sin(t * 5.3) * 0.5 + Math.sin(t * 3.1) * 0.5);
     this.root.rotation.y = Math.sin(t * 0.37) * 0.05 + Math.sin(t * 0.83) * 0.015;
     this.root.rotation.x = Math.sin(t * 0.51) * 0.012 + talk * 0.008;
     this.root.rotation.z = Math.sin(t * 0.29) * 0.01;

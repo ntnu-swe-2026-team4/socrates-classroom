@@ -473,7 +473,7 @@ describe("lain round-3: reconnect rollover + empty assistant entries", () => {
       ]),
     );
     await waitFor(() => expect(result.current.pending).toBe(false));
-    expect(tts).toHaveBeenCalledWith("新回答", expect.anything(), expect.anything());
+    expect(tts).toHaveBeenCalledWith("新回答", expect.anything(), expect.anything(), expect.anything());
   });
 
   it("assistant entry with empty text does not complete the round; the real answer later does", async () => {
@@ -486,7 +486,7 @@ describe("lain round-3: reconnect rollover + empty assistant entries", () => {
     expect(result.current.pending).toBe(true);
     emit(opsFrame([userEntry(1, "問題"), assistantEntry(2, ""), assistantEntry(3, "真正的回答")]));
     await waitFor(() => expect(result.current.pending).toBe(false));
-    expect(tts).toHaveBeenCalledWith("真正的回答", expect.anything(), expect.anything());
+    expect(tts).toHaveBeenCalledWith("真正的回答", expect.anything(), expect.anything(), expect.anything());
   });
 
   it("reconnect full view with a trailing empty assistant entry completes the round (idle, no TTS)", async () => {
