@@ -59,7 +59,8 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
       setStack((prev) => {
         const next = [...prev];
         const index = next.findLastIndex((entry) => entry.term === trimmed);
-        if (index >= 0) next[index] = { ...next[index], status: "ready", explanation };
+        const prior = index >= 0 ? next[index] : undefined;
+        if (index >= 0 && prior !== undefined) next[index] = { ...prior, status: "ready", explanation };
         return next;
       });
       queryClient.setQueryData(termHistoryOptions.queryKey, readTermHistory());
@@ -67,7 +68,8 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
       setStack((prev) => {
         const next = [...prev];
         const index = next.findLastIndex((entry) => entry.term === trimmed);
-        if (index >= 0) next[index] = { ...next[index], status: "error" };
+        const prior = index >= 0 ? next[index] : undefined;
+        if (index >= 0 && prior !== undefined) next[index] = { ...prior, status: "error" };
         return next;
       });
     } finally {
@@ -207,7 +209,7 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
                   onClick={() => setStack((prev) => prev.slice(0, -1))}
                   className="mt-3 ml-1.5 self-start rounded-full border border-line px-3 py-1 text-[12.5px] text-ink-soft hover:border-ember hover:text-ember"
                 >
-                  {t("term_back_to")}「{stack[stack.length - 2].term}」
+                  {t("term_back_to")}「{stack[stack.length - 2]?.term}」
                 </button>
               )}
             </div>

@@ -13,7 +13,7 @@ let cookies: string[];
 async function connect(name: string, index = 0): Promise<WebSocket> {
   const response = await routeAgentRequest(
     new Request(`https://example.com/agents/chat/${name}`, {
-      headers: { Upgrade: "websocket", Cookie: cookies[index] },
+      headers: { Upgrade: "websocket", Cookie: must(cookies[index], "cookie for index") },
     }),
     env,
   );
@@ -59,7 +59,7 @@ function toolNames(view: ConversationView | undefined): string[] {
 
 describe("judgment extension (violation detection: self-report tool + per-turn classification task)", () => {
   it("no AI binding: tool registers in the registry (hello carries tools), the answer completes, nothing throws", async () => {
-    const socket = await connect(threads[0], 0);
+    const socket = await connect(must(threads[0], "thread 0"), 0);
     const rx = frames(socket);
     await rx.until((f) => {
       const hello = f.find((m) => m.type === "hello");
@@ -83,7 +83,7 @@ describe("judgment extension (violation detection: self-report tool + per-turn c
   }, 30_000);
 
   it("Socrates calls report_violation: an app.violation entry (source=agent) appears in the transcript", async () => {
-    const socket = await connect(threads[1], 1);
+    const socket = await connect(must(threads[1], "thread 1"), 1);
     const rx = frames(socket);
     await rx.until((f) => f.some((m) => m.type === "hello"));
     socket.send(JSON.stringify({ type: "watch" }));
@@ -97,7 +97,11 @@ describe("judgment extension (violation detection: self-report tool + per-turn c
     await rx.until((f) => {
       const view = latestView(f);
       const violation = view?.entries.find((entry) => entry.kind === "app.violation");
-      return violation !== undefined && (violation.data as { source?: string }).source === "agent";
+      const source: unknown =
+        violation !== undefined && typeof violation.data === "object" && violation.data !== null
+          ? Reflect.get(violation.data, "source")
+          : undefined;
+      return source === "agent";
     });
     socket.close();
   }, 30_000);

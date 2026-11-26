@@ -1,8 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
-import { createRegistry, Harness, type Registry } from "@earendil-works/pi-durable";
+import { createRegistry, Harness, type JsonObject, type Registry } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
-import type { JsonObject } from "@earendil-works/pi-durable";
 import type { ZodType } from "zod";
 import {
   fauxAssistantMessage,
@@ -15,7 +14,7 @@ import type { Env } from "../env";
 import { secretOf } from "../auth";
 import { buildModels } from "../pi/models";
 import { runProfile } from "../pi/agents/profiles";
-import { teacherLegsOf, teacherOfActivity, type TeacherLeg } from "../pi/credentials";
+import { keyedLegsOf, teacherOfActivity, type DecidedCredential, type KeyedLeg } from "../pi/credentials";
 import {
   PlannedClassReportSubmissionSchema,
   ReportAxesPlanSchema,
@@ -48,7 +47,6 @@ import {
   type StudentAnalysis,
   type ThinkingIndicators,
   type ViolationSlice,
-  type ViolationType,
 } from "@socrates/shared";
 import { getRouter } from "../gateway/router";
 import { gatewayConfig } from "../gateway/config.gen";
@@ -138,8 +136,10 @@ export function reportAlarmPlan(input: {
 
 export class ReportRunner extends DurableObject<Env> {
   #inFlight: Promise<void> | null = null;
+  readonly #decidedCredential: { current: DecidedCredential | null } = { current: null };
   readonly models = buildModels(this.env, {
     teacherOf: () => teacherOfActivity(this.env, this.ctx.id.name ?? ""),
+    keyedOf: () => this.#decidedCredential.current,
   });
   readonly registry = createRegistry();
   readonly axesRegistry = createRegistry();
@@ -154,7 +154,7 @@ export class ReportRunner extends DurableObject<Env> {
     this.engagementRegistry.install(reportSubmitEngagementExtension);
     const registries = [this.registry, this.axesRegistry, this.indicatorsRegistry, this.engagementRegistry];
     for (const registry of registries) {
-      registry.install(createUsageExtension(this.env, () => teacherOfActivity(this.env, this.ctx.id.name ?? "")));
+      registry.install(createUsageExtension(this.env, () => this.#decidedCredential.current));
     }
     if (this.models.faux) {
       this.models.faux.setResponses([fauxReportScript]);
@@ -305,8 +305,8 @@ export class ReportRunner extends DurableObject<Env> {
       { aid: activityId },
     );
 
-    const legs = await this.teacherLegs();
-    const batch = this.batchSize(participants.length, legs);
+    const legs = await this.keyedLegs();
+    const batch = await this.batchSize(participants.length, legs);
     const transcripts = new Map<string, RawTranscript>();
     for (let i = 0; i < participants.length; i += batch) {
       await Promise.all(
@@ -473,7 +473,7 @@ export class ReportRunner extends DurableObject<Env> {
     activity: { title: string; statement: string },
     transcript: string,
     spokenLines: number,
-    legs: TeacherLeg[],
+    legs: KeyedLeg[],
     lang: Lang,
   ): Promise<T | null> {
     if (!transcript.trim()) return null;
@@ -504,7 +504,7 @@ export class ReportRunner extends DurableObject<Env> {
     return null;
   }
 
-  private async openClassReport(harness: Harness, input: string, legs: TeacherLeg[], lang: Lang): Promise<ClassReport> {
+  private async openClassReport(harness: Harness, input: string, legs: KeyedLeg[], lang: Lang): Promise<ClassReport> {
     const { text, payload } = await this.runAgent(harness, "class-report", input, legs, {
       lang,
       submitTool: SUBMIT_CLASS_REPORT,
@@ -516,7 +516,7 @@ export class ReportRunner extends DurableObject<Env> {
     plan: ReportAxesPlan,
     roster: string[],
     input: string,
-    legs: TeacherLeg[],
+    legs: KeyedLeg[],
     lang: Lang,
   ): Promise<ClassReport> {
     const harness = await this.openHarness(this.axesRegistry);
@@ -539,11 +539,18 @@ export class ReportRunner extends DurableObject<Env> {
     harness: Harness,
     profile: "student-report" | LeveledProfile | "class-report" | "class-report-axes",
     input: string,
-    legs: TeacherLeg[],
+    legs: KeyedLeg[],
     options: { lang: Lang; submitTool: string },
     registry: Registry = this.registry,
   ): Promise<{ text: string; payload: JsonObject | null }> {
-    return runProfile(harness, { models: this.models, registry, env: this.env }, profile, input, legs, options);
+    return runProfile(
+      harness,
+      { models: this.models, registry, env: this.env, decidedCredential: this.#decidedCredential },
+      profile,
+      input,
+      legs,
+      options,
+    );
   }
 
   private async teacherLanguage(): Promise<Lang> {
@@ -555,13 +562,13 @@ export class ReportRunner extends DurableObject<Env> {
     return row?.lang ?? "zh";
   }
 
-  private batchSize(participantCount: number, legs: TeacherLeg[]): number {
-    const budget = getRouter(this.env).budget("batch", legs);
+  private async batchSize(participantCount: number, legs: KeyedLeg[]): Promise<number> {
+    const budget = await getRouter(this.env).budget("batch", legs);
     return budget > 0 ? Math.min(budget, participantCount) : Math.min(8, participantCount);
   }
 
-  private async teacherLegs(): Promise<TeacherLeg[]> {
-    return teacherLegsOf(this.env, await teacherOfActivity(this.env, this.ctx.id.name ?? ""));
+  private async keyedLegs(): Promise<KeyedLeg[]> {
+    return keyedLegsOf(this.env, await teacherOfActivity(this.env, this.ctx.id.name ?? ""));
   }
 
   private async transcriptOf(activityId: string, participantId: string): Promise<RawTranscript> {
@@ -573,7 +580,7 @@ export class ReportRunner extends DurableObject<Env> {
       violations: collapseViolations(
         data.violations.map((violation) => ({
           turn: violation.turn,
-          type: violation.type as ViolationType,
+          type: violation.type,
           excerpt: violation.excerpt,
         })),
       ),
@@ -674,7 +681,11 @@ export function toPlannedClassReport(
   if (plan.teacher.length + submission.addedAxes.length > plan.count) throw new Error("report_axes_over_count");
   const { teacherAxes, addedAxes, ...rest } = submission;
   const axes = [
-    ...teacherAxes.map(({ positions, why }, index) => ({ ...plan.teacher[index], positions, why })),
+    ...teacherAxes.map(({ positions, why }, index) => {
+      const planned = plan.teacher[index];
+      if (planned === undefined) throw new Error("report_teacher_axes_mismatch");
+      return { ...planned, positions, why };
+    }),
     ...addedAxes,
   ];
   const everyone = [...roster].sort(byCodeUnit);
@@ -736,10 +747,15 @@ function payloadOf(text: string, payload: JsonObject | null, key?: string): unkn
 
 function textOf(content: string | readonly unknown[]): string {
   if (typeof content === "string") return content;
-  return (content as Array<{ type: string; text?: string }>)
-    .filter((part) => part.type === "text")
-    .map((part) => part.text ?? "")
-    .join("");
+  const parts: string[] = [];
+  for (const part of content) {
+    if (typeof part !== "object" || part === null) continue;
+    const text = Reflect.get(part, "text");
+    if (Reflect.get(part, "type") === "text" && typeof text === "string") {
+      parts.push(text);
+    }
+  }
+  return parts.join("");
 }
 
 const AXES_PLAN_KEY = "axesPlan";
@@ -800,7 +816,7 @@ function fauxReportScript(context: TranscriptContext): AssistantMessage {
         stopReason: "toolUse",
       });
     }
-    const rosterLine = prompt.split("## Roster:")[1].split("\n")[1] ?? "";
+    const rosterLine = prompt.split("## Roster:")[1]?.split("\n")[1] ?? "";
     const roster = rosterLine
       .split(",")
       .map((name) => name.trim())

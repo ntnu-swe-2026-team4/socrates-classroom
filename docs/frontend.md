@@ -26,7 +26,7 @@ flowchart LR
         F --> G["/report/:id　報告頁"]
     end
     D --> G
-    C --> H["/settings　語言"]
+    C --> H["/settings　語言＋登入方式"]
     subgraph rail[rail 可達（PR #108 收編）]
         J["/home　首頁"] --> K["/classrooms　教室列表"]
         K --> L["/classrooms/:id　教室詳情"]
@@ -43,6 +43,10 @@ flowchart LR
     subgraph recovery[密碼找回]
         M["/forgot-password　申請重設信"] -->|"信中連結"| N["/reset-password　設定新密碼"]
     end
+    subgraph verify[Email 驗證]
+        R["/verify-email　驗證信箱"] -->|"成功後"| J
+    end
+    C -.->|"註冊後寄驗證信"| R
     N --> C
 ```
 
@@ -55,7 +59,7 @@ flowchart LR
 | 5   | `/dialogue`                       | 對話頁 ★                     | 學生；`slot` 參數供老師開測試 slot | 主題標題＋對話流＋按住說話＋文字框＋頭像（DialogueView 元件：頭像側欄可收合）；查詢／順帶一問（#121）／STT／TTS 內嵌於此                                                                  | #68、#69、#76、#134  |
 | 6   | `/t/live/:id`                     | 即時面板                     | 老師                               | `live`：前景每 5 秒更新名單，依標記及狀態排序，支援搜尋、篩選、分頁與新標記提示；`test`：1–6 個 slot；結束活動需確認                                                                      | #73、#134、#182      |
 | 7   | `/report/:id`                     | 報告頁                       | 老師＋學生（看自己）               | 群體：維度漸展星圖＋分群（老師勾選時附假名認真度表）；單人：論點總結＋認真度＋六角圖；老師另有認真度可見性勾選列（#267）；同頁兩視角、去識別化                                            | #74、#78、#79、#72   |
-| 8   | `/settings`                       | 設定                         | 老師                               | 介面語言。學生經 account sheet（名字顯示＋登出），無此頁入口                                                                                                                              | —                    |
+| 8   | `/settings`                       | 設定                         | 老師                               | 分區導覽：帳號與登入方式（`GET /api/me/identities` 列表、re-auth 後綁定／解綁 email 與 SSO，#138）／介面語言／對話體驗／API keys。學生經 account sheet（名字顯示＋登出）                  | —、#138              |
 | 9   | `/home`                           | 首頁                         | 所有人（rail）                     | greeting＋教室統計/動態                                                                                                                                                                   | PR #108              |
 | 10  | `/classrooms`                     | 教室列表                     | 登入帳戶（rail）                   | 班級清單、舊邀請碼入口與跨班級的「我的報告」                                                                                                                                              | #187                 |
 | 11  | `/classrooms/:id`                 | 教室詳情                     | 成員                               | 主題／公告／討論區／成員。老師管理議題、活動及邀請，學生參與活動、討論及查看報告                                                                                                          | #187                 |
@@ -65,6 +69,7 @@ flowchart LR
 | 15  | `/chat`                           | 提問                         | 登入帳戶（rail）                   | 首問 composer、建議問題與對話歷史                                                                                                                                                         | #186                 |
 | 16  | `/chat/:chatId`                   | 單人對話                     | thread 擁有者                      | 共用 DialogueView 和 BTW，歷史側欄提供搜尋、改名與刪除                                                                                                                                    | #186                 |
 | 17  | `/join/i/:token`                  | 教室邀請                     | 受邀者                             | 預覽邀請。需要帳號時可登入或註冊，明確接受後導向該班或活動                                                                                                                                | #187                 |
+| 18  | `/verify-email`                   | 驗證信箱                     | 收到驗證信的使用者                 | 從 `#token=` 讀 token，按「驗證這個信箱」才送出（apps/web 禁用 `useEffect`，不自動觸發）；成功後從網址移除 token 並提供回教室連結，token 無效或過期時提示並同樣提供回教室連結             | #259                 |
 
 單人對話的 `StartChat` 建立 thread 後以 history state 傳遞首問與 `operationId`。`DialogueView` 收到 WebSocket view 後送出首問，收到 `accepted: true` 的 submission receipt 後清除 history state；若被拒絕則保留 state 供重試。若在 receipt 前斷線，重連後沿用相同 `operationId`。REST 和 WebSocket 契約見 [API contract](./api-contract.md#55-單人自由提問對話solo-chat281)。
 

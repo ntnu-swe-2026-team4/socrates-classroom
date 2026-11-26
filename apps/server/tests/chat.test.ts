@@ -6,11 +6,13 @@ import { ROOT_SESSION } from "agents/harness/pi";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
 import { ROOT_CONVERSATION_ID, type ConversationId } from "@earendil-works/pi-durable";
+import { conversationIdOf, type ServerMessage } from "../src/ws/protocol";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { inject } from "vitest";
 
 vi.setConfig({ testTimeout: 15_000 });
 import { seedFixture } from "../src/seed";
+import { encryptKey } from "../src/auth-crypto";
 import { all, batch, one, run } from "../src/db/d1";
 import type { Chat } from "../src/do/chat";
 import { BTW_THINKING_LEVEL, PROFILES } from "../src/pi/agents/profiles";
@@ -26,7 +28,10 @@ import {
   latestView,
   must,
   participantIdOf,
+  promptInputOf,
   registerStudent,
+  resultFrameOf,
+  str,
 } from "./helpers";
 
 let teacherCookie: string;
@@ -63,7 +68,7 @@ async function activityTopic(): Promise<Topic> {
 }
 
 async function sessionContext(thread: string, session: string): Promise<string> {
-  const stub = env.Chat.get(env.Chat.idFromName(thread)) as unknown as DurableObjectStub<Chat>;
+  const stub = env.Chat.get(env.Chat.idFromName(thread));
   return runInDurableObject(stub, async (instance) =>
     JSON.stringify(await instance.harness.session(session).messages()),
   );
@@ -87,9 +92,11 @@ beforeAll(async () => {
 describe("chat core (real DO + real WebSocket + faux model)", () => {
   it("Socrates' prompt is the one written in the student's language", async () => {
     for (const lang of ["zh", "en", "es"] as const) {
-      const sections = socratesExtension(() => lang).sections;
-      const render = must(sections?.[0], "socrates section").render as () => Promise<string>;
-      expect(await render()).toBe(SOCRATES_PROMPTS[lang]);
+      const extension = socratesExtension(() => lang);
+      const section = must(extension.sections?.[0], "socrates section");
+      expect(section.key).toBe("preamble");
+      const prompt: unknown = await section.render(promptInputOf(), BACKGROUND_CONTEXT);
+      expect(prompt).toBe(SOCRATES_PROMPTS[lang]);
     }
     expect(new Set(Object.values(SOCRATES_PROMPTS)).size).toBe(3);
   });
@@ -104,11 +111,9 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
       "socrates topic section",
     );
     expect(withTopic.key).toBe("topic");
-    expect(await (withTopic.render as () => Promise<string | undefined>)()).toBe(
-      topicBlock(topic.title, topic.statement),
-    );
+    expect(await withTopic.render(promptInputOf(), BACKGROUND_CONTEXT)).toBe(topicBlock(topic.title, topic.statement));
     const without = must(socratesExtension(() => "zh").sections?.[1], "socrates topic section without topic");
-    expect(await (without.render as () => Promise<string | undefined>)()).toBeUndefined();
+    expect(await without.render(promptInputOf(), BACKGROUND_CONTEXT)).toBeUndefined();
   });
 
   it("Socrates' run context carries the activity's topic (#162)", async () => {
@@ -147,11 +152,9 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
   it("the student's connection sets the language; a watching teacher's does not", async () => {
     const student = await joinStudent("語言生");
     const thread = `${activityId}:${student.participantId}`;
-    const stub = env.Chat.get(env.Chat.idFromName(thread)) as unknown as DurableObjectStub<Chat>;
+    const stub = env.Chat.get(env.Chat.idFromName(thread));
     const langNow = () =>
-      runInDurableObject(stub, async (instance) =>
-        (instance as unknown as { ctx: DurableObjectState }).ctx.storage.get<string>("studentLang"),
-      );
+      runInDurableObject<Chat, unknown>(stub, async (_instance, state) => state.storage.get<string>("studentLang"));
 
     const own = await connect(thread, student.cookie, "en");
     await frames(own).until((f) => f.some((m) => m.type === "hello"));
@@ -198,6 +201,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     const [teacher] = await all<{ id: string }>(env.DB, "SELECT id FROM users WHERE email = 'demo@socrates.tw'");
     const student = await registerStudent(classroomCode, "額度生");
     const provider = "activity-gateway";
+    if (teacher === undefined) throw new Error("fixture teacher missing");
     const params = { teacher: teacher.id, student: student.userId, provider, now: new Date().toISOString() };
     await batch(env.DB, [
       {
@@ -217,7 +221,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     await runInDurableObject(stub, (instance) => {
       const faux = fauxProvider({ provider, models: [{ id: "teacher-model" }, { id: "student-model" }] });
       faux.setResponses([fauxAssistantMessage("Why?")]);
-      (instance as Chat).models.models.setProvider(faux.provider);
+      instance.models.models.setProvider(faux.provider);
     });
     const socket = await connect(thread, student.cookie);
     try {
@@ -230,6 +234,51 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
           { timeout: 5000 },
         )
         .toEqual([{ user_id: teacher.id, model: "teacher-model" }]);
+    } finally {
+      socket.close();
+    }
+  });
+
+  it("an admin keyed leg carries the turn and its usage lands in the platform pool (#356)", async () => {
+    const student = await registerStudent(classroomCode, "歸因生");
+    const provider = "admin-gateway";
+    const now = new Date().toISOString();
+    const enc = await encryptKey(env, "sk-or-v1-adminattr");
+    await batch(env.DB, [
+      {
+        sql: `INSERT INTO admin_keys (id, provider_id, key_enc, last4, sort_order, updated_at, monthly_quota_usd, zdr_status)
+              VALUES ('ak_attr', $provider, $enc, 'attr', 0, $now, 5, 'approved')`,
+        params: { provider, enc, now },
+      },
+      {
+        sql: `INSERT INTO admin_key_models (admin_key_id, model, sort_order, updated_at)
+              VALUES ('ak_attr', 'admin-model', 0, $now)`,
+        params: { now },
+      },
+    ]);
+
+    const thread = `${activityId}:${await participantIdOf(activityId, student.cookie)}`;
+    const stub = env.Chat.get(env.Chat.idFromName(thread));
+    await runInDurableObject(stub, (instance) => {
+      const faux = fauxProvider({ provider, models: [{ id: "admin-model" }] });
+      faux.setResponses([fauxAssistantMessage("Why?")]);
+      instance.models.models.setProvider(faux.provider);
+    });
+    const socket = await connect(thread, student.cookie);
+    try {
+      const rx = frames(socket);
+      await rx.until((f) => f.some((m) => m.type === "hello"));
+      socket.send(JSON.stringify({ type: "submit", id: "s1", input: "正義是什麼？" }));
+      await expect
+        .poll(
+          () =>
+            all(env.DB, "SELECT admin_key_id, model FROM admin_key_usage WHERE provider_id = $provider", { provider }),
+          { timeout: 5000 },
+        )
+        .toEqual([{ admin_key_id: "ak_attr", model: "admin-model" }]);
+      expect(
+        await all(env.DB, "SELECT user_id FROM teacher_key_usage WHERE provider_id = $provider", { provider }),
+      ).toEqual([]);
     } finally {
       socket.close();
     }
@@ -291,7 +340,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
       socket.send(JSON.stringify({ type: "watch" }));
       await rx.until((f) => f.some((m) => m.type === "view"));
       await runInDurableObject(stub, async (instance) => {
-        await (instance as Chat).lifecycle.jobs.push({
+        await instance.lifecycle.jobs.push({
           fn: "dialogue-run-deadline",
           time: Date.now() + 120_000,
           payload: { session: ROOT_SESSION, operationId: crypto.randomUUID() },
@@ -325,8 +374,8 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     let socket: WebSocket | undefined;
 
     try {
-      await runInDurableObject(stub, async (instance, state) => {
-        const chat = instance as Chat;
+      await runInDurableObject<Chat, void>(stub, async (instance, state) => {
+        const chat = instance;
         await chat.lifecycle.start();
         await chat.lifecycle.disableAlarms();
         const operationId = crypto.randomUUID();
@@ -360,7 +409,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
         .poll(
           () =>
             runInDurableObject(stub, (instance) =>
-              (instance as Chat).lifecycle.jobs.list().some((job) => job.fn === "dialogue-run-deadline"),
+              instance.lifecycle.jobs.list().some((job) => job.fn === "dialogue-run-deadline"),
             ),
           { timeout: 5_000 },
         )
@@ -370,7 +419,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
       expect(rx.list.filter((m) => m.type === "error" && m.code === "llm_unavailable")).toHaveLength(0);
     } finally {
       socket?.close();
-      await runInDurableObject(stub, (instance) => (instance as Chat).harness.session(ROOT_SESSION).abort());
+      await runInDurableObject(stub, (instance) => instance.harness.session(ROOT_SESSION).abort());
     }
   }, 20_000);
 
@@ -384,8 +433,8 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
       socket.send(JSON.stringify({ type: "watch" }));
       await rx.until((f) => f.some((m) => m.type === "view"));
 
-      const deadline = await runInDurableObject(stub, async (instance) => {
-        const chat = instance as Chat;
+      const deadline = await runInDurableObject<Chat, unknown>(stub, async (instance) => {
+        const chat = instance;
         const session = chat.harness.session(ROOT_SESSION);
         const receipt = await session.submit("正義是什麼？".repeat(100), { whenBusy: "reject" });
         expect(receipt.accepted).toBe(true);
@@ -400,13 +449,13 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
       });
 
       await rx.until((f) => f.some((m) => m.type === "error" && m.code === "llm_unavailable" && m.id === undefined));
-      expect(Date.now()).toBeGreaterThanOrEqual(deadline);
+      expect(Date.now()).toBeGreaterThanOrEqual(Number(deadline));
       expect(
-        await runInDurableObject(stub, (instance) => (instance as Chat).harness.session(ROOT_SESSION).busy()),
+        await runInDurableObject<Chat, unknown>(stub, (instance) => instance.harness.session(ROOT_SESSION).busy()),
       ).toBe(true);
     } finally {
       socket.close();
-      await runInDurableObject(stub, (instance) => (instance as Chat).harness.session(ROOT_SESSION).abort());
+      await runInDurableObject(stub, (instance) => instance.harness.session(ROOT_SESSION).abort());
     }
   }, 20_000);
 
@@ -482,9 +531,7 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     await rx.until((f) => f.some((m) => m.type === "result" && m.id === "q"));
     socket.send(JSON.stringify({ type: "abort", id: "ab" }));
     await rx.until((f) => f.some((m) => m.type === "result" && m.id === "ab"));
-    const abortResult = rx.list.find((m) => m.type === "result" && m.id === "ab") as unknown as {
-      result: unknown;
-    };
+    const abortResult = must(resultFrameOf(rx.list, "ab"), "abort result frame");
     expect(typeof abortResult.result).toBe("boolean");
     expect(socket.readyState).toBe(WebSocket.OPEN);
     socket.close();
@@ -505,18 +552,24 @@ describe("chat core (real DO + real WebSocket + faux model)", () => {
     });
     socket.send(JSON.stringify({ type: "entries", id: "e1", query: { order: "ascending" }, limit: 100 }));
     await rx.until((f) => f.some((m) => m.type === "result" && m.id === "e1"));
-    const page = rx.list.find((m) => m.type === "result" && m.id === "e1") as unknown as {
-      result: { items: Array<{ kind: string }> };
-    };
-    const kinds = page.result.items.map((entry) => entry.kind);
+    const pageFrame = must(resultFrameOf(rx.list, "e1"), "entries page frame");
+    const pageResult: unknown = pageFrame.result;
+    const pageItems: unknown =
+      typeof pageResult === "object" && pageResult !== null && "items" in pageResult
+        ? Reflect.get(pageResult, "items")
+        : [];
+    const kinds = (Array.isArray(pageItems) ? pageItems : []).map((entry) => str(entry, "kind"));
     expect(kinds).toContain("pi.user");
     expect(kinds).toContain("pi.assistant");
     socket.send(JSON.stringify({ type: "entries", id: "e2", query: { order: "ascending" }, limit: 1 }));
     await rx.until((f) => f.some((m) => m.type === "result" && m.id === "e2"));
-    const single = rx.list.find((m) => m.type === "result" && m.id === "e2") as unknown as {
-      result: { items: unknown[] };
-    };
-    expect(single.result.items.length).toBeLessThanOrEqual(1);
+    const singleFrame = must(resultFrameOf(rx.list, "e2"), "entries single frame");
+    const singleResult: unknown = singleFrame.result;
+    const singleItems: unknown =
+      typeof singleResult === "object" && singleResult !== null && "items" in singleResult
+        ? Reflect.get(singleResult, "items")
+        : [];
+    expect((Array.isArray(singleItems) ? singleItems : []).length).toBeLessThanOrEqual(1);
     socket.close();
   }, 20_000);
 
@@ -640,7 +693,7 @@ describe("btw side session (#121): a fork of the root that never writes back", (
   }
 
   async function rootUserTexts(thread: string): Promise<string[]> {
-    const chat = env.Chat.get(env.Chat.idFromName(thread)) as unknown as DurableObjectStub<Chat>;
+    const chat = env.Chat.get(env.Chat.idFromName(thread));
     const { messages } = await chat.transcript();
     return messages.filter((message) => message.role === "user").map((message) => message.text);
   }
@@ -667,18 +720,17 @@ describe("btw side session (#121): a fork of the root that never writes back", (
     const side = await opened(thread, student.cookie);
     side.socket.send(JSON.stringify({ type: "btw", id: "b1" }));
     await side.rx.until((f) => f.some((m) => m.type === "result" && m.id === "b1"));
-    const opened1 = side.rx.list.find((m) => m.type === "result" && m.id === "b1");
-    const session = (opened1 as { result: { session: string } }).result.session;
-    expect(typeof session).toBe("string");
+    const openedFrame = must(resultFrameOf(side.rx.list, "b1"), "btw open result frame");
+    const session = str(openedFrame.result, "session");
     expect(session).not.toBe("1");
     expect(userTexts(latestView(side.rx.list))).toContain("主對話第一句");
 
-    const stub = env.Chat.get(env.Chat.idFromName(thread)) as unknown as DurableObjectStub<Chat>;
+    const stub = env.Chat.get(env.Chat.idFromName(thread));
     const levels = await runInDurableObject(stub, async (instance) => {
       const pi = await instance.harness.pi();
       const levelOf = async (id: ConversationId) =>
         (await (await pi.conversation(id, BACKGROUND_CONTEXT))?.agent(BACKGROUND_CONTEXT))?.thinkingLevel;
-      return { root: await levelOf(ROOT_CONVERSATION_ID), btw: await levelOf(Number(session) as ConversationId) };
+      return { root: await levelOf(ROOT_CONVERSATION_ID), btw: await levelOf(conversationIdOf(session)) };
     });
     expect(levels).toEqual({ root: PROFILES.socrates.thinkingLevel, btw: BTW_THINKING_LEVEL });
 
@@ -734,8 +786,8 @@ describe("btw side session (#121): a fork of the root that never writes back", (
     await fresh.rx.until((f) => f.some((m) => m.type === "result" && m.id === "m1"));
     fresh.socket.send(JSON.stringify({ type: "btw", id: "b1" }));
     await fresh.rx.until((f) => f.some((m) => m.type === "result" && m.id === "b1"));
-    const session = (fresh.rx.list.find((m) => m.type === "result" && m.id === "b1") as { result: { session: string } })
-      .result.session;
+    const freshFrame = must(resultFrameOf(fresh.rx.list, "b1"), "fresh btw result frame");
+    const session = str(freshFrame.result, "session");
 
     const teacher = await opened(thread, teacherCookie);
     teacher.socket.send(JSON.stringify({ type: "btw", id: "t1" }));
@@ -793,7 +845,13 @@ describe("WS error-frame hygiene + worker entry CORS", () => {
     await rx.until((f) => f.some((m) => m.type === "view"));
     socket.send(JSON.stringify({ type: "submit", id: "big", input: "字".repeat(2001) }));
     await rx.until((f) => f.some((m) => m.type === "error" && m.id === "big"));
-    const frame = rx.list.find((m) => m.type === "error" && m.id === "big") as { code?: string; message: string };
+    const frame = must(
+      rx.list.find(
+        (message): message is Extract<ServerMessage, { type: "error" }> =>
+          message.type === "error" && message.id === "big",
+      ),
+      "oversized submit error frame",
+    );
     expect(frame.message).toBe("Request failed");
     expect(frame.code).toBeUndefined();
     socket.close();

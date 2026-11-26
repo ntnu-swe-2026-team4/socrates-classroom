@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { decryptKey, encryptKey, timingSafeEqual } from "../src/auth-crypto";
-import type { Env } from "../src/env";
+import { fakeEnv } from "./helpers";
 
-const env = { BYOK_ENC_KEY: "test-encryption-key" } as unknown as Env;
+const env = fakeEnv({ BYOK_ENC_KEY: "test-encryption-key" });
 
 describe("auth-crypto (teacher key AES-GCM)", () => {
   it("roundtrip: encrypt → decrypt returns the original; blob carries the v1 prefix", async () => {
@@ -20,6 +20,7 @@ describe("auth-crypto (teacher key AES-GCM)", () => {
   it("tampered ciphertext: decrypt returns null (the GCM tag blocks tampering)", async () => {
     const stored = await encryptKey(env, "sk-live-abcdef123456");
     const [version, iv, data] = stored.split(".");
+    if (version === undefined || iv === undefined || data === undefined) throw new Error("sealed key format");
     const tampered = atob(data);
     const flipped = btoa(tampered.slice(0, -1) + String.fromCharCode(tampered.charCodeAt(tampered.length - 1) ^ 1));
     expect(await decryptKey(env, [version, iv, flipped].join("."))).toBeNull();
@@ -33,7 +34,7 @@ describe("auth-crypto (teacher key AES-GCM)", () => {
 
   it("key rotation: the old blob no longer decrypts (returns null, no throw)", async () => {
     const stored = await encryptKey(env, "sk-live-abcdef123456");
-    const otherEnv = { BYOK_ENC_KEY: "a-different-key" } as unknown as Env;
+    const otherEnv = fakeEnv({ BYOK_ENC_KEY: "a-different-key" });
     expect(await decryptKey(otherEnv, stored)).toBeNull();
   });
 

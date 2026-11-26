@@ -1,6 +1,6 @@
+import { type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } from "agents/harness/pi";
 import type { UserInput } from "@earendil-works/pi-durable";
 import { DurableObject } from "cloudflare:workers";
-import { type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } from "agents/harness/pi";
 import { Lifecycle, type LifecycleJobContext, type LifecycleJobOutcome } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env";
@@ -189,6 +189,7 @@ export class Chat extends DurableObject<Env> {
     const cookie = request.headers.get("Cookie") ?? "";
     const lookup = await lookupSession(this.env, cookieValue(cookie, SESSION_COOKIE));
     if (lookup.kind === "ok") {
+      if (!lookup.session.user.emailVerified) return null;
       const identity: SocketIdentity = {
         userId: lookup.session.user.id,
         participantId,

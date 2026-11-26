@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from "react";
 import { useAgent } from "agents/react";
 import { applyImmutable } from "@earendil-works/chord/delta";
-import type { Message } from "@earendil-works/pi-ai";
 import type { ConversationView } from "@earendil-works/pi-durable";
-import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
+import type { ClientMessage } from "@server/ws/protocol";
+import { parseServerMessage } from "@/lib/wsProtocol";
+import { WS_MAX_RETRIES } from "@/hooks/useSubscription";
 import {
   answered,
   dialogueName,
@@ -25,10 +26,11 @@ function readStored(key: string): StoredSession | null {
   try {
     const raw = sessionStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredSession>;
-    return typeof parsed.session === "string" && typeof parsed.forkHead === "number"
-      ? { session: parsed.session, forkHead: parsed.forkHead }
-      : null;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    const session = Reflect.get(parsed, "session");
+    const forkHead = Reflect.get(parsed, "forkHead");
+    return typeof session === "string" && typeof forkHead === "number" ? { session, forkHead } : null;
   } catch {
     return null;
   }
@@ -61,6 +63,10 @@ export function useBtw(threadId: string, userId: string, enabled: boolean, agent
   const failedInputRef = useRef<string | null>(null);
   const queuedRef = useRef<string | null>(null);
 
+  function canSend(value: unknown): value is { send: (data: string) => void } {
+    return typeof value === "object" && value !== null && typeof Reflect.get(value, "send") === "function";
+  }
+
   function open(socket: { send: (data: string) => void }, fresh: boolean) {
     const id = crypto.randomUUID();
     openIdRef.current = id;
@@ -92,8 +98,10 @@ export function useBtw(threadId: string, userId: string, enabled: boolean, agent
       finishPending();
       return;
     }
-    const live = next.docs["pi.live"] as { runFailure?: unknown } | undefined;
-    if (live?.runFailure) finishPending("llm_unavailable");
+    const live = next.docs["pi.live"];
+    if (typeof live === "object" && live !== null && !Array.isArray(live) && Reflect.get(live, "runFailure")) {
+      finishPending("llm_unavailable");
+    }
   }
 
   function adopt(next: ConversationView) {
@@ -104,12 +112,8 @@ export function useBtw(threadId: string, userId: string, enabled: boolean, agent
 
   function onFrame(raw: unknown) {
     if (typeof raw !== "string") return;
-    let frame: ServerMessage;
-    try {
-      frame = JSON.parse(raw) as ServerMessage;
-    } catch {
-      return;
-    }
+    const frame = parseServerMessage(raw);
+    if (frame === null) return;
     switch (frame.type) {
       case "view": {
         if (freshRef.current && openIdRef.current !== null) {
@@ -138,12 +142,14 @@ export function useBtw(threadId: string, userId: string, enabled: boolean, agent
       }
       case "result": {
         if (frame.id !== openIdRef.current) return;
-        const result = frame.result as { session?: unknown } | null;
-        if (!result || typeof result.session !== "string") return;
+        const result = frame.result;
+        if (typeof result !== "object" || result === null || Array.isArray(result)) return;
+        const session = Reflect.get(result, "session");
+        if (typeof session !== "string") return;
         openIdRef.current = null;
         freshRef.current = false;
-        sessionRef.current = result.session;
-        writeStored(key, { session: result.session, forkHead: forkHeadRef.current ?? 0 });
+        sessionRef.current = session;
+        writeStored(key, { session, forkHead: forkHeadRef.current ?? 0 });
         setError(null);
         setBound(true);
         const queued = queuedRef.current;
@@ -177,7 +183,10 @@ export function useBtw(threadId: string, userId: string, enabled: boolean, agent
     name,
     query: { lang: document.documentElement.lang || "zh-TW" },
     enabled,
-    onOpen: (event) => open(event.target as WebSocket, false),
+    maxRetries: WS_MAX_RETRIES,
+    onOpen: (event) => {
+      if (canSend(event.target)) open(event.target, false);
+    },
     onMessage: (event) => onFrame(event.data),
     onClose: () => {
       setBound(false);
@@ -232,7 +241,7 @@ export function useBtw(threadId: string, userId: string, enabled: boolean, agent
       if (entry.id <= forkHead) continue;
       if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") continue;
       if (entry.kind === "pi.assistant" && intermediateAssistant(entry)) continue;
-      const text = textOf((entry.model?.[0] ?? undefined) as Message | undefined);
+      const text = textOf(entry.model?.[0]);
       if (!text) continue;
       out.push({ id: `e${entry.id}`, role: entry.kind === "pi.user" ? "user" : "assistant", text });
     }

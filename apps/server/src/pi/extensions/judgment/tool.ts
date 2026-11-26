@@ -33,7 +33,7 @@ export function createReportViolationTool(report: (input: ViolationReport) => Pr
             type: "write",
             entry: {
               kind: "app.violation",
-              data: { type: args.type, probability: 1, excerpt: args.excerpt, source: "agent" } as never,
+              data: { type: args.type, probability: 1, excerpt: args.excerpt, source: "agent" },
             },
           });
         }, context);

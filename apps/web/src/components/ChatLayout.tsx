@@ -1,5 +1,7 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { DotField } from "@/components/DotField";
 import { cn, trapDialogFocus } from "@/components/ui";
 import { usePersistentFlag } from "@/hooks/usePersistentFlag";
 import { useMediaQuery } from "@/hooks/useSubscription";
@@ -38,14 +40,25 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
     setMobileOpen(false);
   }
   const open = mobile ? mobileOpen : desktopOpen;
-  const toggle = () => (mobile ? setMobileOpen((value) => !value) : setDesktopOpen(!desktopOpen));
+  const root = useRef<HTMLDivElement>(null);
+  const setOpen = (next: boolean) => {
+    flushSync(() => (mobile ? setMobileOpen(next) : setDesktopOpen(next)));
+    root.current?.querySelector<HTMLElement>("[data-sidebar-toggle]")?.focus();
+  };
+  const toggle = () => setOpen(!open);
   const SidebarPanel = mobile ? "div" : "aside";
 
-  if (!sidebar) return <div className="flex h-full min-h-0 flex-col">{children}</div>;
+  if (!sidebar)
+    return (
+      <div className="relative isolate flex h-full min-h-0 flex-col">
+        <DotField className="-z-10 opacity-50" />
+        {children}
+      </div>
+    );
 
   return (
     <SidebarContext.Provider value={{ open, toggle, overlay: mobile && open }}>
-      <div className="flex h-full min-h-0">
+      <div ref={root} className="flex h-full min-h-0">
         {open && mobile && (
           <button
             type="button"
@@ -69,15 +82,16 @@ export function ChatLayout({ sidebar, children }: { sidebar?: ReactNode; childre
                 : "hidden",
           )}
           onClickCapture={(event) => {
-            if (mobile && (event.target as HTMLElement).closest("a")) setMobileOpen(false);
+            if (mobile && event.target instanceof HTMLElement && event.target.closest("a")) setMobileOpen(false);
           }}
           onKeyDown={(event) => {
-            if (mobile && open && event.key === "Escape") setMobileOpen(false);
+            if (mobile && open && event.key === "Escape") setOpen(false);
           }}
         >
           {sidebar}
         </SidebarPanel>
-        <div inert={mobile && open} className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div inert={mobile && open} className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col">
+          <DotField className="-z-10 opacity-50" />
           {children}
         </div>
       </div>
@@ -89,14 +103,21 @@ export function useSidebarOverlay(): boolean {
   return useContext(SidebarContext)?.overlay ?? false;
 }
 
-export function SidebarToggle({ className }: { className?: string }) {
+export function SidebarToggle({
+  placement = "content",
+  className,
+}: {
+  placement?: "sidebar" | "content";
+  className?: string;
+}) {
   const t = useT();
   const context = useContext(SidebarContext);
-  if (!context) return null;
+  if (!context || (placement === "content" && context.open)) return null;
   const label = context.open ? t("panel_collapse") : t("panel_expand");
   const Icon = context.open ? PanelLeftClose : PanelLeftOpen;
   return (
     <button
+      data-sidebar-toggle
       type="button"
       onClick={context.toggle}
       aria-label={label}
@@ -125,7 +146,7 @@ export function SidebarHeader({
     <div className={cn("flex h-14 shrink-0 items-center gap-1 border-b border-line pr-2 pl-3", className)}>
       <h2 className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{title}</h2>
       {actions}
-      <SidebarToggle />
+      <SidebarToggle placement="sidebar" />
     </div>
   );
 }

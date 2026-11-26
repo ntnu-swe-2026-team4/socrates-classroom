@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { must } from "../helpers";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -11,7 +12,9 @@ import { onExpression } from "@/lib/companion";
 
 vi.mock("@/components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
 
-const agent = vi.hoisted(() => ({ options: null as null | { onMessage?: (event: { data: unknown }) => void } }));
+const agent = vi.hoisted((): { options: null | { onMessage?: (event: { data: unknown }) => void } } => ({
+  options: null,
+}));
 vi.mock("agents/react", () => ({
   useAgent: (options: { enabled?: boolean; onMessage?: (event: { data: unknown }) => void }) => {
     if (options.enabled !== false) agent.options = options;
@@ -273,7 +276,7 @@ test("#185: a signed-in teacher creates a classroom inline from the index and la
       return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
     }),
   );
-  const dispose = await mountRoute("/classrooms");
+  const dispose = await mountRoute("/classrooms?view=teaching");
   try {
     fireEvent.click(await screen.findByRole("button", { name: "New class" }));
     fireEvent.change(await screen.findByRole("textbox", { name: "Classroom name" }), {
@@ -358,7 +361,8 @@ test("#185: the classroom page covers the retired wizard flow: AI topic → star
 
     const startSection = screen.getByRole("button", { name: "Start activity" }).closest("section");
     expect(startSection).not.toBeNull();
-    const activitySection = within(startSection as HTMLElement);
+    if (!(startSection instanceof HTMLElement)) throw new Error("start activity section not found");
+    const activitySection = within(startSection);
     fireEvent.click(await activitySection.findByRole("button", { name: /Generated topic/ }));
     fireEvent.click(activitySection.getByRole("button", { name: "Start activity" }));
     await waitFor(() => expect(calls.length).toBe(2));
@@ -367,8 +371,50 @@ test("#185: the classroom page covers the retired wizard flow: AI topic → star
       "/api/classrooms/class-9/topics",
       "/api/classrooms/class-9/activities",
     ]);
-    expect(calls[0].body).toMatchObject({ title: "Generated topic", statement: "A generated dilemma" });
-    expect(calls[1].body).toMatchObject({ topicId: "topic-persisted", mode: "live", reportAxes: "ai" });
+    expect(must(calls[0], "topic gen call").body).toMatchObject({
+      title: "Generated topic",
+      statement: "A generated dilemma",
+    });
+    expect(must(calls[1], "start call").body).toMatchObject({
+      topicId: "topic-persisted",
+      mode: "live",
+      reportAxes: "ai",
+    });
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("the classroom list keeps joined courses and managed classrooms on separate views", async () => {
+  const rooms = [
+    { ...roomSummary("student"), id: "class-joined", name: "Joined course" },
+    { ...roomSummary("teacher"), id: "class-owned", name: "Owned classroom" },
+  ];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "user-1", name: "User", isAdmin: false },
+        "/api/classrooms": rooms,
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  let dispose = await mountRoute("/classrooms");
+  try {
+    expect(await screen.findByRole("heading", { name: "Joined course" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "My courses" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Owned classroom" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New class" })).toBeNull();
+    dispose();
+    dispose = await mountRoute("/classrooms?view=teaching");
+    expect(await screen.findByRole("heading", { name: "Owned classroom" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Manage classrooms" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Joined course" })).toBeNull();
+    expect(screen.getByRole("button", { name: "New class" })).toBeTruthy();
   } finally {
     dispose();
     vi.unstubAllGlobals();
@@ -530,7 +576,8 @@ test("#178: the colonnade login page renders provider buttons from the probe and
     expect(screen.getByRole("link", { name: "Sign in with Facebook" }).getAttribute("href")).toBe(
       "/api/auth/oauth/facebook/start",
     );
-    expect(screen.getByRole("link", { name: "Back to the story" })).toBeTruthy();
+    expect(screen.getByTitle("Back to the story").getAttribute("href")).toBe("/");
+    expect(screen.queryByRole("link", { name: "Back to the story" })).toBeNull();
     expect(screen.getByRole("link", { name: "Forgot password?" }).getAttribute("href")).toBe("/forgot-password");
     expect(screen.getByLabelText("Have an invite code?")).toBeTruthy();
     expect(screen.getByText("Maintenance window")).toBeTruthy();
@@ -605,6 +652,24 @@ test.each([
   const dispose = await mountRoute(`/login?error=${code}`);
   try {
     expect((await screen.findByRole("alert")).textContent).toBe(message);
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("the sign-in form reserves the register-only rows without exposing them", async () => {
+  stubLoginPage();
+  const dispose = await mountRoute("/login");
+  try {
+    await screen.findByRole("link", { name: "Forgot password?" });
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByLabelText("Display name")).toBeNull();
+    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Register", pressed: false }));
+    expect(screen.getByRole("checkbox")).toHaveProperty("checked", false);
+    expect(screen.getByLabelText("Display name")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Forgot password?" })).toBeNull();
   } finally {
     dispose();
     vi.unstubAllGlobals();
@@ -833,7 +898,8 @@ test("F01c: a signed-in join posts without a name", async () => {
         },
       };
       if (path === "/api/join" && init?.method === "POST") {
-        joinBody = JSON.parse(init.body as string);
+        const parsed = JSON.parse(String(init.body));
+        if (typeof parsed === "object" && parsed !== null) joinBody = parsed;
         return new Response(
           JSON.stringify({ user: me, activityId: "activity-1", participantId: "p_2", kind: "member" }),
           { headers: { "Content-Type": "application/json" } },
@@ -949,9 +1015,13 @@ function stubClassroomActivitySwitch(onInvite: (activityId: string) => Promise<R
         );
       }
       if (path === "/api/classrooms/class-1/invites" && init?.method === "POST") {
-        const body = JSON.parse(String(init.body)) as { activityId?: string };
-        if (!body.activityId) throw new Error("Expected activityId in classroom invite payload");
-        return await onInvite(body.activityId);
+        const parsed: unknown = JSON.parse(String(init.body));
+        const activityId: unknown =
+          typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, "activityId") : undefined;
+        if (typeof activityId !== "string" || activityId.length === 0) {
+          throw new Error("Expected activityId in classroom invite payload");
+        }
+        return await onInvite(activityId);
       }
       throw new Error(`Unexpected request: ${path}`);
     }),
@@ -1093,7 +1163,7 @@ test("#182: prioritizes flags, pages a large roster, and searches all students",
     const table = await screen.findByRole("table", { name: "Live student roster" });
     const firstPage = within(table).getAllByRole("row");
     expect(firstPage).toHaveLength(51);
-    expect(firstPage[1].textContent).toContain("Student 0999");
+    expect(must(firstPage[1], "second row").textContent).toContain("Student 0999");
     await user.click(screen.getByRole("button", { name: "Next page" }));
     expect(within(table).queryByText("Student 0999")).toBeNull();
     await user.type(screen.getByRole("searchbox", { name: "Search students" }), "0842");
@@ -1188,9 +1258,11 @@ function stubTestActivitySlots(
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = new URL(String(input), "http://localhost").pathname;
       if (path === "/api/activities/activity-1/slots" && init?.method === "POST") {
-        const body = JSON.parse(String(init.body)) as { count: number };
-        createCounts.push(body.count);
-        for (let i = 0; i < body.count; i += 1) {
+        const parsed: unknown = JSON.parse(String(init.body));
+        const count: unknown = typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, "count") : undefined;
+        if (typeof count !== "number") throw new Error("Expected numeric count in slot create payload");
+        createCounts.push(count);
+        for (let i = 0; i < count; i += 1) {
           const index = slots.length + 1;
           slots = [...slots, { id: `slot-${index}`, name: `Test ${index}`, rounds: 0, lastUtterance: null }];
         }
@@ -1217,7 +1289,9 @@ test("#303: t.live test-slot count input can be cleared with Backspace and retyp
   const createCounts = stubTestActivitySlots([]);
   const dispose = await mountRoute("/t/live/activity-1");
   try {
-    const input = (await screen.findByRole("spinbutton", { name: "How many to add" })) as HTMLInputElement;
+    const found = await screen.findByRole("spinbutton", { name: "How many to add" });
+    if (!(found instanceof HTMLInputElement)) throw new Error("slot count control is not an input");
+    const input = found;
     const submit = screen.getByRole("button", { name: "Add test dialogues" });
     await waitFor(() => expect(submit).toHaveProperty("disabled", false));
     expect(input.value).toBe("1");
@@ -1250,7 +1324,9 @@ test("#303: t.live test-slot count input rejects out-of-range and non-integer va
   ]);
   const dispose = await mountRoute("/t/live/activity-1");
   try {
-    const input = (await screen.findByRole("spinbutton", { name: "How many to add" })) as HTMLInputElement;
+    const found = await screen.findByRole("spinbutton", { name: "How many to add" });
+    if (!(found instanceof HTMLInputElement)) throw new Error("slot count control is not an input");
+    const input = found;
     const submit = screen.getByRole("button", { name: "Add test dialogues" });
     await waitFor(() => expect(submit).toHaveProperty("disabled", false));
 
@@ -1433,14 +1509,19 @@ test("#267: the teacher toggles engagement sharing; both options start off", asy
   const puts = stubTeacherReport({ classReport: false, student: false });
   const dispose = await mountRoute("/report/activity-1");
   try {
-    const own = await screen.findByRole("checkbox", { name: "Each student's own report" });
-    const group = screen.getByRole("checkbox", { name: "The group report" });
-    expect((own as HTMLInputElement).checked).toBe(false);
-    expect((group as HTMLInputElement).checked).toBe(false);
+    const ownFound = await screen.findByRole("checkbox", { name: "Each student's own report" });
+    const groupFound = screen.getByRole("checkbox", { name: "The group report" });
+    if (!(ownFound instanceof HTMLInputElement) || !(groupFound instanceof HTMLInputElement)) {
+      throw new Error("engagement visibility controls are not checkboxes");
+    }
+    const own = ownFound;
+    const group = groupFound;
+    expect(own.checked).toBe(false);
+    expect(group.checked).toBe(false);
     expect(screen.queryByRole("table")).toBeNull();
     fireEvent.click(own);
     await waitFor(() => expect(puts).toEqual([{ classReport: false, student: true }]));
-    await waitFor(() => expect((own as HTMLInputElement).checked).toBe(true));
+    await waitFor(() => expect(own.checked).toBe(true));
   } finally {
     dispose();
   }
@@ -1450,11 +1531,13 @@ test("#267: a failed save shows an alert and the checkbox goes back to the store
   const puts = stubTeacherReport({ classReport: false, student: false }, true);
   const dispose = await mountRoute("/report/activity-1");
   try {
-    const group = await screen.findByRole("checkbox", { name: "The group report" });
+    const groupFound = await screen.findByRole("checkbox", { name: "The group report" });
+    if (!(groupFound instanceof HTMLInputElement)) throw new Error("group control is not a checkbox");
+    const group = groupFound;
     fireEvent.click(group);
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(puts).toEqual([{ classReport: true, student: false }]);
-    expect((group as HTMLInputElement).checked).toBe(false);
+    expect(group.checked).toBe(false);
   } finally {
     dispose();
   }
@@ -1562,7 +1645,8 @@ test("#185: the overview tab shows account-level counts", async () => {
   const dispose = await mountRoute("/admin");
   try {
     const statOf = (label: string) => {
-      const card = screen.getByText(label).closest("[data-stat]") as HTMLElement;
+      const card = screen.getByText(label).closest("[data-stat]");
+      if (!(card instanceof HTMLElement)) throw new Error(`stat card for ${label} not found`);
       return within(card).getByText(/^[0-9]+$/).textContent;
     };
     expect(await screen.findByText("Registered accounts")).toBeTruthy();
@@ -1627,15 +1711,170 @@ test("#185: the users tab creates an account and disables one behind a confirmat
     await waitFor(() => expect(calls.length).toBe(2));
 
     expect(calls.map((call) => call.path)).toEqual(["/api/admin/users", "/api/admin/users/u-a"]);
-    expect(calls[0].body).toEqual({ name: "New User", email: "new@socrates.tw", password: "abcdefgh" });
-    expect(calls[1].body).toEqual({ disabled: true });
+    expect(must(calls[0], "create user call").body).toEqual({
+      name: "New User",
+      email: "new@socrates.tw",
+      password: "abcdefgh",
+    });
+    expect(must(calls[1], "disable call").body).toEqual({ disabled: true });
   } finally {
     dispose();
     vi.unstubAllGlobals();
   }
 });
 
-test("#185: the notify tab posts an announcement to the feed", async () => {
+test("#360: the providers tab shows the pool, teacher survey, and the static YAML chain", async () => {
+  let zdrApproved = false;
+  const calls: Array<{ path: string; body: unknown }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (init?.method === "POST" && path === "/api/admin/keys/ak_1/zdr") {
+        zdrApproved = true;
+        return new Response(
+          JSON.stringify({
+            id: "ak_1",
+            provider: "cloudflare-workers-ai",
+            last4: "tok3",
+            maxConcurrency: null,
+            monthlyQuotaUsd: null,
+            zdrStatus: "approved",
+            zdrRetentionSource: "https://developers.cloudflare.com/workers-ai/platform/data-usage/",
+            zdrVerifiedAt: "2026-11-23",
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (init?.method === "PUT" && (path === "/api/admin/keys/order" || path === "/api/admin/keys/ak_1/models")) {
+        calls.push({ path, body: JSON.parse(String(init.body)) });
+        return new Response(JSON.stringify({ id: "ak_1" }), { headers: { "Content-Type": "application/json" } });
+      }
+      const responses: Record<string, unknown> = {
+        "/api/me": { id: "admin-1", name: "Admin", isAdmin: true },
+        "/api/admin/keys": [
+          {
+            id: "ak_1",
+            provider: "cloudflare-workers-ai",
+            last4: "tok3",
+            maxConcurrency: null,
+            monthlyQuotaUsd: 20,
+            monthCostUsd: 3.5,
+            monthTokens: 12000,
+            sortOrder: 0,
+            updatedAt: "2026-11-23T00:00:00.000Z",
+            zdrStatus: zdrApproved ? "approved" : "unverified",
+            zdrRetentionSource: zdrApproved
+              ? "https://developers.cloudflare.com/workers-ai/platform/data-usage/"
+              : null,
+            zdrVerifiedAt: zdrApproved ? "2026-11-23" : null,
+            models: [{ model: "@cf/zai-org/glm-5.3-flash", maxConcurrency: null, sortOrder: 0 }],
+          },
+          {
+            id: "ak_2",
+            provider: "openrouter",
+            last4: "rou2",
+            maxConcurrency: null,
+            monthlyQuotaUsd: null,
+            monthCostUsd: 0,
+            monthTokens: 0,
+            sortOrder: 1,
+            updatedAt: "2026-11-23T00:00:00.000Z",
+            zdrStatus: "unverified",
+            zdrRetentionSource: null,
+            zdrVerifiedAt: null,
+            models: [],
+          },
+        ],
+        "/api/admin/keys/providers": [{ id: "cloudflare-workers-ai", name: "Cloudflare Workers AI" }],
+        "/api/admin/keys/providers/cloudflare-workers-ai/models": [
+          { id: "@cf/zai-org/glm-4.7-flash", name: "GLM 4.7 Flash" },
+        ],
+        "/api/admin/teacher-keys": [
+          {
+            userId: "u_fx_lin",
+            userName: "林老師",
+            userEmail: "lin@socrates.tw",
+            provider: "openrouter",
+            last4: "teac",
+            disabled: false,
+            disabledAt: null,
+            monthlyQuotaUsd: 10,
+            monthCostUsd: 7.9,
+            monthTokens: 40000,
+            updatedAt: "2026-11-22T00:00:00.000Z",
+            models: [{ model: "z-ai/glm-5.3-flash", sortOrder: 0 }],
+          },
+        ],
+        "/api/admin/platform-chain": {
+          mode: "static",
+          legs: [
+            {
+              provider: "workers-ai",
+              model: "@cf/zai-org/glm-5.3",
+              credential: "platform",
+              maxConcurrency: 20,
+              priority: 1,
+            },
+          ],
+        },
+      };
+      if (!(path in responses)) throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(responses[path]), { headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  const dispose = await mountRoute("/admin?tab=providers");
+  try {
+    expect(await screen.findByText("Platform pool admin keys")).toBeTruthy();
+    const poolRow = must((await screen.findByText("····tok3")).closest("li"), "pool row");
+    expect(within(poolRow).getByText("cloudflare-workers-ai")).toBeTruthy();
+    expect(within(poolRow).getByText("ZDR unverified")).toBeTruthy();
+
+    expect(screen.getByText("Teacher keys survey")).toBeTruthy();
+    const teacherRow = must(screen.getByText("林老師").closest("li"), "teacher row");
+    expect(within(teacherRow).getByText("····teac")).toBeTruthy();
+
+    expect(screen.getByText("YAML platform chain (read-only)")).toBeTruthy();
+    expect(screen.getByText("@cf/zai-org/glm-5.3")).toBeTruthy();
+
+    fireEvent.click(within(poolRow).getByRole("button", { name: "Approve ZDR" }));
+    const zdrDialog = await screen.findByRole("dialog");
+    fireEvent.change(within(zdrDialog).getByRole("textbox", { name: "Official retention statement URL" }), {
+      target: { value: "https://developers.cloudflare.com/workers-ai/platform/data-usage/" },
+    });
+    fireEvent.click(within(zdrDialog).getByRole("button", { name: "Approve ZDR" }));
+    expect(await screen.findByText("ZDR approved")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /^cloudflare-workers-ai/ }));
+    expect(await screen.findByText("Add model leg")).toBeTruthy();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search models…" }), {
+      target: { value: "4.7" },
+    });
+    fireEvent.click(await screen.findByText("@cf/zai-org/glm-4.7-flash"));
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        path: "/api/admin/keys/ak_1/models",
+        body: { model: "@cf/zai-org/glm-4.7-flash" },
+      }),
+    );
+
+    const openrouterHandle = screen.getByRole("button", {
+      name: "Drag to reorder — the higher one is tried first openrouter",
+    });
+    fireEvent.keyDown(openrouterHandle, { altKey: true, key: "ArrowUp" });
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        path: "/api/admin/keys/order",
+        body: { keys: ["ak_2", "ak_1"] },
+      }),
+    );
+  } finally {
+    dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("#360: the notify tab posts an announcement to the feed", async () => {
   const calls: Array<{ path: string; body: unknown }> = [];
   vi.stubGlobal(
     "fetch",
@@ -1668,7 +1907,9 @@ test("#185: the notify tab posts an announcement to the feed", async () => {
       path: "/api/admin/notifications",
       body: { title: "Maintenance", body: "Tonight" },
     });
-    expect((screen.getByRole("textbox", { name: "Title" }) as HTMLInputElement).value).toBe("");
+    const titleBox = screen.getByRole("textbox", { name: "Title" });
+    if (!(titleBox instanceof HTMLInputElement)) throw new Error("title control is not an input");
+    expect(titleBox.value).toBe("");
   } finally {
     dispose();
     vi.unstubAllGlobals();

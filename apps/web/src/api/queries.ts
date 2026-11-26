@@ -23,7 +23,7 @@ export const topicsOptions = queryOptions({
 export function classroomTopicsOptions(classroomId: string | null) {
   return queryOptions({
     queryKey: ["classroomTopics", classroomId],
-    queryFn: () => api.listClassroomTopics(classroomId as string),
+    queryFn: () => api.listClassroomTopics(classroomId ?? ""),
     enabled: classroomId !== null,
   });
 }
@@ -137,6 +137,14 @@ export function keyProviderModelsOptions(provider: string) {
   });
 }
 
+export function adminKeyProviderModelsOptions(provider: string) {
+  return queryOptions({
+    queryKey: ["adminKeyProviderModels", provider],
+    queryFn: () => api.adminKeyProviderModels(provider),
+    staleTime: Infinity,
+  });
+}
+
 export const adminUsersOptions = queryOptions({
   queryKey: ["admin-users"],
   queryFn: () => api.listAdminUsers(),
@@ -147,10 +155,31 @@ export const adminOverviewOptions = queryOptions({
   queryFn: () => api.adminOverview(),
 });
 
+export const adminKeysOptions = queryOptions({
+  queryKey: ["admin-keys"],
+  queryFn: () => api.listAdminKeys(),
+});
+
+export const adminTeacherKeysOptions = queryOptions({
+  queryKey: ["admin-teacher-keys"],
+  queryFn: () => api.adminTeacherKeys(),
+});
+
+export const adminPlatformChainOptions = queryOptions({
+  queryKey: ["admin-platform-chain"],
+  queryFn: () => api.adminPlatformChain(),
+  staleTime: Infinity,
+});
+
 export const authProvidersOptions = queryOptions({
   queryKey: ["authProviders"],
   queryFn: () => api.authProviders(),
   staleTime: Infinity,
+});
+
+export const identitiesOptions = queryOptions({
+  queryKey: ["identities"],
+  queryFn: () => api.identities(),
 });
 
 export const notificationsOptions = queryOptions({

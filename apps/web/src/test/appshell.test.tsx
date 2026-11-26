@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { AppShell } from "@/components/AppShell";
+import { api } from "@/api";
 import { COMPANION_DOCK_ATTR } from "@/components/SocratesCompanion";
 import { openAccountSheet, useAccountSheetRequest } from "@/lib/accountSheet";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
@@ -33,7 +34,7 @@ vi.mock("@/lib/socrates/scene", () => ({
   createSocratesScene: () => ({ setSpeaking: vi.fn(), setExpression: vi.fn(), dispose: vi.fn() }),
 }));
 
-const teacher: User = { id: "u1", name: "Teacher", isAdmin: false };
+const teacher: User = { id: "u1", name: "Teacher", isAdmin: false, emailVerified: true };
 
 function mountShell(user: User | null = teacher, pathname = calls.pathname, page: ReactNode = <p>page</p>) {
   calls.pathname = pathname;
@@ -122,11 +123,19 @@ test("a session signal from another tab re-queries me", async () => {
   }
 });
 
+function stubWindowLocation(location: unknown): void {
+  Object.defineProperty(window, "location", {
+    value: location,
+    writable: true,
+    configurable: true,
+  });
+}
+
 test("a re-check that changes identity reloads the page", async () => {
   const original = window.location;
   const reload = vi.fn();
   Reflect.deleteProperty(window, "location");
-  (window as unknown as { location: unknown }).location = { ...original, reload };
+  stubWindowLocation({ ...original, reload });
   try {
     calls.me.mockResolvedValue({ id: "u2", name: "Someone Else", isAdmin: false });
     const client = mountShell();
@@ -135,7 +144,7 @@ test("a re-check that changes identity reloads the page", async () => {
     client.clear();
   } finally {
     Reflect.deleteProperty(window, "location");
-    (window as unknown as { location: unknown }).location = original;
+    stubWindowLocation(original);
   }
 });
 
@@ -151,11 +160,52 @@ test("a re-check that only changes admin rights updates the cache without reload
 });
 
 test("the rail lists home and classrooms, and admins get the manage-site link", () => {
-  const client = mountShell({ id: "u1", name: "Admin", isAdmin: true });
+  const client = mountShell({ id: "u1", name: "Admin", isAdmin: true, emailVerified: true });
   try {
     expect(screen.getByRole("link", { name: "Home" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Classrooms" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Classrooms" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Manage site" })).toBeTruthy();
+  } finally {
+    client.clear();
+  }
+});
+
+test("the classrooms button expands and collapses its two destinations in place", () => {
+  const client = mountShell(teacher, "/home");
+  try {
+    const toggle = screen.getByRole("button", { name: "Classrooms" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("link", { name: "My courses" })).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("link", { name: "My courses" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Manage" })).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("link", { name: "Manage" })).toBeNull();
+  } finally {
+    client.clear();
+  }
+});
+
+test("navigating into a classroom page expands the classrooms menu", () => {
+  calls.pathname = "/home";
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(meQueryOptions.queryKey, teacher);
+  const shell = (page: string) => (
+    <QueryClientProvider client={client}>
+      <AppShell>
+        <p>{page}</p>
+      </AppShell>
+    </QueryClientProvider>
+  );
+  const view = render(shell("home"));
+  try {
+    expect(screen.getByRole("button", { name: "Classrooms" }).getAttribute("aria-expanded")).toBe("false");
+    calls.pathname = "/classrooms";
+    view.rerender(shell("classrooms"));
+    expect(screen.getByRole("button", { name: "Classrooms" }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("link", { name: "My courses" })).toBeTruthy();
   } finally {
     client.clear();
   }
@@ -185,6 +235,15 @@ test("the account button opens the compact sheet with settings and sign out, no 
 
 test("inner routes render inside the halftone theme wrapper", () => {
   const client = mountShell(teacher, "/settings");
+  try {
+    expect(document.querySelector("main")?.className).toContain("ht-theme");
+  } finally {
+    client.clear();
+  }
+});
+
+test("the dev accounts page renders inside the halftone theme wrapper", () => {
+  const client = mountShell(teacher, "/dev/accounts");
   try {
     expect(document.querySelector("main")?.className).toContain("ht-theme");
   } finally {
@@ -249,5 +308,30 @@ test("a page without a companion dock shows no Socrates model", async () => {
     expect(screen.queryByRole("img", { name: "Socrates" })).toBeNull();
   } finally {
     client.clear();
+  }
+});
+
+test("#437: an unverified account is gated out of the shell with resend and logout", async () => {
+  const user = userEvent.setup();
+  const client = mountShell({ id: "u9", name: "Newbie", isAdmin: false, emailVerified: false }, "/home");
+  try {
+    expect(await screen.findByRole("heading", { name: "Verify your email first" })).toBeTruthy();
+    expect(screen.queryByText("page")).toBeNull();
+
+    const resend = vi.spyOn(api, "resendEmailVerification").mockResolvedValue(undefined);
+    await user.click(screen.getByRole("button", { name: "Resend verification email" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Resent" })).toBeTruthy());
+    expect(resend).toHaveBeenCalledTimes(1);
+
+    resend.mockRejectedValue(new Error("rate limited"));
+    await user.click(screen.getByRole("button", { name: "Resent" }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+
+    calls.navigate.mockClear();
+    await user.click(screen.getByRole("button", { name: "Log out" }));
+    await waitFor(() => expect(calls.logout).toHaveBeenCalledTimes(1));
+    expect(client.getQueryData(meQueryOptions.queryKey)).toBeNull();
+  } finally {
+    vi.restoreAllMocks();
   }
 });

@@ -62,9 +62,13 @@ const PROVIDER_LABELS: Record<OAuthProvider, MessageKey> = {
 const RIGHT_COLUMN_PX = 680;
 const BOX = "border-[1.5px] border-comic-ink";
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vermilion";
+const INPUT_HEIGHT = "h-[42px] lg:short:h-9";
+const FORM_GAP = "flex flex-col gap-3.5 lg:short:gap-2.5";
+const TOS = "flex cursor-pointer items-start gap-2.5 text-[12.5px] leading-relaxed";
 const INPUT = cn(
   BOX,
-  "h-[42px] w-full min-w-0 rounded-none bg-comic-paper px-3 text-[14px] text-comic-ink placeholder:text-comic-graphite/60",
+  INPUT_HEIGHT,
+  "w-full min-w-0 rounded-none bg-comic-paper px-3 text-[14px] text-comic-ink placeholder:text-comic-graphite/60",
   FOCUS,
 );
 const LABEL = "flex flex-col gap-1.5 text-[12.5px] font-medium";
@@ -123,7 +127,7 @@ function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [errorKey, setErrorKey] = useState<MessageKey | null>(
-    search.error && ERROR_KEYS[search.error] ? ERROR_KEYS[search.error] : null,
+    search.error && ERROR_KEYS[search.error] ? (ERROR_KEYS[search.error] ?? null) : null,
   );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -154,30 +158,22 @@ function LoginPage() {
   }
 
   const formReady = email.trim() && password.length >= 8 && (mode === "login" || (name.trim() && tos)) && !busy;
-  const title = mode === "login" ? t("login_title") : t("register_title");
 
   return (
-    <div className="relative flex min-h-dvh flex-col overflow-x-hidden bg-comic-ground bg-[radial-gradient(var(--color-comic-dot)_1.1px,transparent_1.5px)] bg-size-[12px_12px] font-sans text-comic-ink [color-scheme:light] lg:grid lg:min-h-[max(100dvh,640px)] lg:grid-cols-[minmax(0,1fr)_minmax(600px,58%)] lg:overflow-clip">
+    <div className="relative flex min-h-dvh flex-col overflow-x-hidden bg-comic-ground font-sans text-comic-ink [color-scheme:light] lg:grid lg:min-h-[max(100dvh,640px)] lg:grid-cols-[minmax(0,1fr)_minmax(600px,58%)] lg:overflow-clip">
       <StoaField reserve={RIGHT_COLUMN_PX} className="opacity-35 max-lg:hidden" />
 
       <section className="relative flex flex-col gap-6 px-4 pt-6 sm:px-8 lg:sticky lg:top-0 lg:h-dvh lg:min-h-[640px] lg:self-start lg:px-16 lg:pt-14">
         <div className="flex flex-wrap items-center gap-3">
-          <Link to="/" className={cn(BOX, "inline-flex items-center gap-3 bg-comic-paper pr-3.5", FOCUS)}>
+          <Link
+            to="/"
+            title={t("login_back_to_story")}
+            className={cn(BOX, "inline-flex items-center gap-3 bg-comic-paper pr-3.5", FOCUS)}
+          >
             <span className="flex size-10 items-center justify-center bg-comic-ink text-[20px] font-bold text-comic-paper">
               {t("app_mark")}
             </span>
             <span className="text-[13px] font-bold tracking-[0.3em] uppercase">{t("brand_name")}</span>
-          </Link>
-          <Link
-            to="/"
-            className={cn(
-              BOX,
-              "flex h-10 items-center gap-1.5 bg-comic-paper px-3 text-[12.5px] hover:bg-comic-ink hover:text-comic-paper",
-              FOCUS,
-            )}
-          >
-            <ArrowLeft className="size-3.5" />
-            {t("login_back_to_story")}
           </Link>
           <fieldset className={cn(BOX, "m-0 flex h-10 p-0")}>
             <legend className="sr-only">{t("settings_lang")}</legend>
@@ -230,11 +226,20 @@ function LoginPage() {
       </section>
 
       <section className="relative mx-auto flex w-full max-w-[560px] flex-col justify-center gap-5 px-4 py-8 sm:px-8 lg:mx-0 lg:max-w-none lg:px-12 lg:py-12 lg:short:gap-3 lg:short:py-3 lg:*:mx-auto lg:*:w-full lg:*:max-w-[460px]">
-        <div className="relative">
-          <div aria-hidden className="absolute inset-[8px_-8px_-8px_8px] bg-comic-ink" />
-          <div className={cn(BOX, "relative bg-comic-paper p-5 sm:p-7 lg:short:p-5")}>
+        <div>
+          <div className={cn(BOX, "bg-comic-paper p-5 sm:p-7 lg:short:p-5")}>
             <div className="flex items-center justify-between gap-3">
-              <h2 className="font-serif text-[28px] leading-tight font-black">{title}</h2>
+              <h2 className="grid font-serif text-[28px] leading-tight font-black lg:short:text-[24px]">
+                {(["login", "register"] as const).map((value) => (
+                  <span
+                    key={value}
+                    aria-hidden={mode !== value}
+                    className={cn("col-start-1 row-start-1", mode !== value && "invisible")}
+                  >
+                    {value === "login" ? t("login_title") : t("register_title")}
+                  </span>
+                ))}
+              </h2>
               <fieldset className={cn(BOX, "m-0 flex p-0")}>
                 <legend className="sr-only">{t("login_mode")}</legend>
                 {(["login", "register"] as const).map((value) => (
@@ -259,17 +264,22 @@ function LoginPage() {
             </div>
             <p className="mt-1.5 mb-5 text-[13px] text-comic-soft lg:short:mb-3">{t("login_hint")}</p>
 
-            <div className="grid grid-cols-1 gap-2">
+            <div className="grid grid-cols-1 gap-2 lg:short:grid-cols-2">
               {OAUTH_PROVIDERS.map((id) => {
                 const enabled = providers.data?.providers.includes(id) ?? false;
                 const label = t(PROVIDER_LABELS[id]);
                 const body = (
                   <>
-                    <i aria-hidden className="size-2 rounded-full bg-current" />
-                    {label}
+                    <i aria-hidden className="size-2 shrink-0 rounded-full bg-current" />
+                    <span data-provider-label className="min-w-0 truncate">
+                      {label}
+                    </span>
                   </>
                 );
-                const base = cn(BOX, "flex h-10 items-center gap-3 bg-comic-paper px-3.5 text-[13.5px]");
+                const base = cn(
+                  BOX,
+                  "flex h-10 min-w-0 items-center gap-3 bg-comic-paper px-3.5 text-[13.5px] lg:short:gap-2 lg:short:px-2.5 lg:short:text-[12.5px]",
+                );
                 return enabled ? (
                   <a
                     key={id}
@@ -302,7 +312,7 @@ function LoginPage() {
             </div>
 
             <form
-              className="flex flex-col gap-3.5 lg:short:gap-2.5"
+              className={FORM_GAP}
               onSubmit={(event) => {
                 event.preventDefault();
                 if (!formReady) return;
@@ -364,22 +374,36 @@ function LoginPage() {
                   {showPassword ? t("password_hide") : t("password_show")}
                 </button>
               </span>
-              <label
-                aria-hidden={mode === "login"}
-                className={cn(
-                  "flex cursor-pointer items-start gap-2.5 text-[12.5px] leading-relaxed",
-                  mode === "login" && "invisible lg:short:hidden",
-                )}
-              >
-                <input
-                  type="checkbox"
-                  checked={tos}
-                  disabled={mode === "login"}
-                  onChange={(event) => setTos(event.target.checked)}
-                  className={cn("mt-1 size-4 shrink-0 cursor-pointer accent-comic-ink", FOCUS)}
-                />
-                {t("join_tos")}
-              </label>
+              {mode === "register" ? (
+                <label className={TOS}>
+                  <input
+                    type="checkbox"
+                    checked={tos}
+                    onChange={(event) => setTos(event.target.checked)}
+                    className={cn("mt-1 size-4 shrink-0 cursor-pointer accent-comic-ink", FOCUS)}
+                  />
+                  {t("join_tos")}
+                </label>
+              ) : (
+                <div className="relative">
+                  <div aria-hidden className={cn(FORM_GAP, "invisible")}>
+                    <span className={LABEL}>
+                      {t("register_name")}
+                      <span className={INPUT_HEIGHT} />
+                    </span>
+                    <span className={TOS}>
+                      <span className="size-4 shrink-0" />
+                      {t("join_tos")}
+                    </span>
+                  </div>
+                  <Link
+                    to="/forgot-password"
+                    className={cn("absolute top-0 right-0 text-[12.5px] underline underline-offset-4", FOCUS)}
+                  >
+                    {t("login_forgot")}
+                  </Link>
+                </div>
+              )}
               {errorKey && (
                 <p role="alert" className="text-[12.5px] text-vermilion">
                   {t(errorKey)}
@@ -404,14 +428,6 @@ function LoginPage() {
                   </span>
                 )}
               </button>
-              {mode === "login" && (
-                <Link
-                  to="/forgot-password"
-                  className={cn("self-end text-[12.5px] underline underline-offset-4", FOCUS)}
-                >
-                  {t("login_forgot")}
-                </Link>
-              )}
             </form>
           </div>
         </div>

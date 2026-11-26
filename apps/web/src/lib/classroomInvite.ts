@@ -6,6 +6,10 @@ export const inviteScopeLabels = {
   classroom_activity: "room_invite_classroom_activity",
 } as const satisfies Record<ClassroomInviteScope, string>;
 
+export function isClassroomInviteScope(value: string): value is ClassroomInviteScope {
+  return value in inviteScopeLabels;
+}
+
 const pendingInviteKey = "socrates:classroom-invite-return";
 const invitePath = /^\/join\/i\/[a-f0-9]{32}$/;
 
@@ -26,14 +30,12 @@ export function takeClassroomInvite(): string | undefined {
     const raw = sessionStorage.getItem(pendingInviteKey);
     if (!raw) return undefined;
     sessionStorage.removeItem(pendingInviteKey);
-    const saved = JSON.parse(raw) as { next?: unknown; expiresAt?: unknown };
-    if (
-      typeof saved.next === "string" &&
-      invitePath.test(saved.next) &&
-      typeof saved.expiresAt === "number" &&
-      saved.expiresAt > Date.now()
-    ) {
-      return saved.next;
+    const saved: unknown = JSON.parse(raw);
+    if (typeof saved !== "object" || saved === null) return undefined;
+    const next: unknown = Reflect.get(saved, "next");
+    const expiresAt: unknown = Reflect.get(saved, "expiresAt");
+    if (typeof next === "string" && invitePath.test(next) && typeof expiresAt === "number" && expiresAt > Date.now()) {
+      return next;
     }
   } catch {
     return undefined;

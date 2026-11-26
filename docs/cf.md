@@ -15,6 +15,7 @@
 - [workspaces 限制（重要）](#workspaces-限制重要)
 - [與 wrangler 的關係](#與-wrangler-的關係)
 - [CI/CD](#cicd)
+- [網域與第三方子網域（Cloudflare for SaaS）](#網域與第三方子網域cloudflare-for-saas)
 - [疑難排解](#疑難排解)
 
 ## 安裝與登入
@@ -47,15 +48,15 @@ cf --version
 
 `apps/web/cloudflare.config.ts`——TypeScript 設定，取代 `wrangler.jsonc`。本專案使用的鍵：
 
-| 鍵                                 | 本專案值                                                                                                          |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `worker.entrypoint`                | `../server/src/index.ts`（Worker 原始碼在 apps/server）                                                           |
-| `worker.compatibilityDate / Flags` | `2026-11-01` / `nodejs_compat`                                                                                    |
-| `worker.env.DB`                    | `bindings.d1({ name: "socrates", id: <固定 UUID> })`                                                              |
-| `worker.env.AI`                    | `bindings.ai({})`（dev 設 `CF_REMOTE_AI=true` 時 `dev.remote: true`）                                             |
-| `worker.env.Chat / ReportRunner`   | `bindings.durableObject({ worker, exportName })`                                                                  |
-| `worker.exports`                   | `exports.durableObject({ storage: "sqlite" })`——**取代 wrangler 的 migrations**                                   |
-| `worker.env.*`（text/secret）      | vars 與 secrets 宣告（dev：`.dev.vars` 存在時整檔優先，否則 `loadEnv` 讀 `.env.local` override——見下方 §Secrets） |
+| 鍵                                                                          | 本專案值                                                                                                          |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `worker.entrypoint`                                                         | `../server/src/index.ts`（Worker 原始碼在 apps/server）                                                           |
+| `worker.compatibilityDate / Flags`                                          | `2026-11-01` / `nodejs_compat`                                                                                    |
+| `worker.env.DB`                                                             | `bindings.d1({ name: "socrates", id: <固定 UUID> })`                                                              |
+| `worker.env.AI`                                                             | `bindings.ai({})`（dev 設 `CF_REMOTE_AI=true` 時 `dev.remote: true`）                                             |
+| `worker.env.Chat / SoloChat / ClassroomEvents / ReportRunner / RateLimiter` | `bindings.durableObject({ worker, exportName })`                                                                  |
+| `worker.exports`                                                            | `exports.durableObject({ storage: "sqlite" })`——**取代 wrangler 的 migrations**                                   |
+| `worker.env.*`（text/secret）                                               | vars 與 secrets 宣告（dev：`.dev.vars` 存在時整檔優先，否則 `loadEnv` 讀 `.env.local` override——見下方 §Secrets） |
 
 注意：
 
@@ -109,13 +110,13 @@ Schema 的 SSOT 是 `apps/server/migrations/*.sql`（`001_init.sql` 起依序前
 | `SEED_TOKEN`           | `POST /api/dev/seed` 閘門（production 留空即可禁用）                                                              | 任意亂數                            |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret（只在 `GOOGLE_CLIENT_ID` 非空時宣告；未宣告＝Google 登入停用，回 `oauth_unavailable`） | Google Cloud Console → OAuth 用戶端 |
 
-新增無條件 `bindings.secret()` 時，須同步核對 `PROD_SECRETS_FILE`，並在 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) 的 dry-run step 為該 binding 加入 dummy 值；若漏加 dummy，後續 PR CI 會持續發 `::warning`。dummy 值不可用於 production。
+新增無條件 `bindings.secret()` 時，須同步核對 `deploy.yml`「cf deploy」step 的組裝清單並在 GitHub 設定對應 repo secret（見下方 Secrets 注入），且在 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) 的 dry-run step 為該 binding 加入 dummy 值；若漏加 dummy，後續 PR CI 會持續發 `::warning`。dummy 值不可用於 production。
 
 ### dev 通道與優先序（`.dev.vars` vs `.env.local`）
 
 dev 的 vars／secrets 取值只有一條規則：`apps/web/.dev.vars` 存在時，本地 bindings **整檔以它為準**（`@cloudflare/vite-plugin` 的 `loadDevVars`）——`.env`／`.env.local` 與 process env 一律不讀，且沒有任何遮蔽警告；沒有 `.dev.vars` 的機器（fresh clone 的預設）才由 `loadEnv` 讀 `.env.local`。兩條通道 MUST 二擇一：本地若留有早期 setup 產生的 `.dev.vars`，刪除它、或把它當唯一通道維護——`pnpm seed`（`apps/server/scripts/seed.mjs`）與 dev 啟動的 missing-secrets 警告（`apps/web/vite.config.ts`）都照同一條優先序取值。`--mode` 變體 `.dev.vars.<mode>` 存在時會取代 `.dev.vars`（官方行為，本專案未使用）。
 
-Google 登入另需 text binding `GOOGLE_CLIENT_ID`（`cloudflare.config.ts`：dev 由 `.env.local`，production 由 repo variable 於 build 時帶入），並在 Google Cloud Console 登錄 redirect URI `<PUBLIC_BASE_URL>/api/auth/oauth/google/callback`；本地開發需在 `.env.local` 設 `PUBLIC_BASE_URL=http://localhost:5173`。建立用戶端、正式環境設定與 secret 輪替步驟見 [`google-oauth.md`](./google-oauth.md)。
+Google／Facebook 登入另需 text binding `GOOGLE_CLIENT_ID`／`FACEBOOK_APP_ID`（`cloudflare.config.ts`：dev 由 `.env.local`，production 由 repo variable 於 build 時帶入），並在 Google Cloud Console／Meta App Dashboard 登錄 redirect URI `<PUBLIC_BASE_URL>/api/auth/oauth/<provider>/callback`；本地開發需在 `.env.local` 設 `PUBLIC_BASE_URL=http://localhost:5173`。建立用戶端、正式環境設定與 secret 輪替步驟見 [`oauth.md`](./oauth.md)。
 
 ```bash
 # 一次上傳（dotenv 格式；.env.production.local 不會進 dev/git）
@@ -143,19 +144,70 @@ secrets 管理一律走 `cf deploy --secrets-file`（見上方 Secrets）——w
 
 ## CI/CD
 
-見 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)（PR：共用閘門 → secret-drift check ＋ dry-run，免憑證）與 [`deploy.yml`](../.github/workflows/deploy.yml)（push main：同一閘門 → D1 migrations → deploy；只有 migrations/deploy 兩步拿 `CLOUDFLARE_API_TOKEN`/`ACCOUNT_ID`/`D1_DATABASE_ID`）。閘門本體（lint → yamllint → config-drift → typecheck → test → build）在 [`.github/actions/gate`](../.github/actions/gate/action.yml) composite action，兩個 workflow 引用同一份，新增檢查只需改一處；步驟清單見 [`architecture.md`](./architecture.md) §8。PR CI 的 dry-run step 為已知的 `AUTH_SECRET`、`BYOK_ENC_KEY`、`SEED_TOKEN` 提供 dummy 值；檢查程式對 build output `worker.config.json` 中每個 `type: "secret"` binding 檢查環境或指定的 secrets file，缺值就發 `::warning`，不阻擋 merge。dummy 值只供 CI 使用，PR CI 不讀 `PROD_SECRETS_FILE`，因此不驗證 production secrets 的實際值。Secrets 注入走 deploy 指令的 `--secrets-file`，由 `deploy.yml` 的 `PROD_SECRETS_FILE` repo secret 提供；`GOOGLE_CLIENT_ID` 走 repo variable 於 build 帶入（見 [`google-oauth.md`](./google-oauth.md) §3）。
+見 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)（PR：共用閘門 → secret-drift check ＋ dry-run，免憑證）與 [`deploy.yml`](../.github/workflows/deploy.yml)（push main：同一閘門 → D1 migrations → deploy；只有 migrations/deploy 兩步拿 `CLOUDFLARE_API_TOKEN`/`ACCOUNT_ID`/`D1_DATABASE_ID`）。閘門本體（lint → yamllint → config-drift → typecheck → test → build）在 [`.github/actions/gate`](../.github/actions/gate/action.yml) composite action，兩個 workflow 引用同一份，新增檢查只需改一處；步驟清單見 [`architecture.md`](./architecture.md) §8。PR CI 的 dry-run step 為已知的 `AUTH_SECRET`、`BYOK_ENC_KEY`、`SEED_TOKEN` 提供 dummy 值；檢查程式對 build output `worker.config.json` 中每個 `type: "secret"` binding 檢查環境或指定的 secrets file，缺值就發 `::warning`，不阻擋 merge。dummy 值只供 CI 使用，PR CI 不讀 production 的 repo secrets，因此不驗證 production secrets 的實際值。Secrets 注入走 deploy 指令的 `--secrets-file`：`deploy.yml` 將逐顆 repo secrets（`AUTH_SECRET`、`BYOK_ENC_KEY`、`SEED_TOKEN`、`GOOGLE_CLIENT_SECRET`、`FACEBOOK_APP_SECRET`——conditional 者值留空即自動跳過）組裝成 `.env.production.local` 提供，輪替單一 secret 只需更新那一顆 repo secret；`GOOGLE_CLIENT_ID`／`FACEBOOK_APP_ID` 走 repo variable 於 build 帶入（見 [`oauth.md`](./oauth.md) §3）。
 
-PR CI 只檢查當次 build output 實際宣告的 binding。若 conditional secret 在 PR CI 未啟用、production 才啟用，PR CI 不會警告；仍須由 Deploy preflight 確認 `PROD_SECRETS_FILE` 有對應值。
+PR CI 只檢查當次 build output 實際宣告的 binding。若 conditional secret 在 PR CI 未啟用、production 才啟用，PR CI 不會警告；仍須由 Deploy preflight 確認對應 repo secret 已設定（fail-fast binding 缺值會 `::error` 中止部署）。
+
+## 網域與第三方子網域（Cloudflare for SaaS）
+
+對外入口由 `PUBLIC_BASE_URL`（`https://socrates.g36maid.dev`，Worker 的 Custom Domain）決定。要再加一個**他人 zone 底下**的網址（例：`socrates.ntnu.cc`，`ntnu.cc` 由第三方維運、只提供 DNS 面板）時，MUST 用 Cloudflare for SaaS 的 custom hostname 接入，MUST NOT 直接把 CNAME 指向 `socrates.g36maid.dev`：
+
+| 做法                                           | 結果                                                                     |
+| ---------------------------------------------- | ------------------------------------------------------------------------ |
+| CNAME 橘雲（Proxied）→ `socrates.g36maid.dev`  | Error 1014 CNAME Cross-User Banned（跨帳號指向 proxied hostname）        |
+| CNAME 灰雲（DNS-only）→ `socrates.g36maid.dev` | 解析到 Cloudflare anycast，但 edge 沒有該 hostname 的憑證 → TLS 握手失敗 |
+| custom hostname（Cloudflare for SaaS）         | edge 持有專屬憑證，流量進本 zone 後由 ruleset 決定行為                   |
+
+### 現行設定（`socrates.ntnu.cc`，2026-11-24 驗證）
+
+| 資源                  | 值                                                                                                                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DNS record（本 zone） | `saas.g36maid.dev` `AAAA 100::` Proxied——fallback origin 用的 originless 空殼，MUST NOT 刪除                                                                                                 |
+| fallback origin       | `saas.g36maid.dev`                                                                                                                                                                           |
+| custom hostname       | `socrates.ntnu.cc`（DV、`txt` DCV、Google Trust Services；`status` 與 `ssl.status` 皆 `active`）                                                                                             |
+| redirect ruleset      | `Redirects`（phase `http_request_dynamic_redirect`）：`http.host eq "socrates.ntnu.cc"` → 301 `concat("https://socrates.g36maid.dev", http.request.uri.path)`，`preserve_query_string: true` |
+
+第三方端（ntnu.cc 面板）需要三筆紀錄：`_cf-custom-hostname` TXT（hostname ownership）、`_acme-challenge` TXT（certificate DCV）、`CNAME @ → saas.g36maid.dev` **DNS-only（灰雲）**。TXT 的值 MUST NOT 寫進 repo——那是維運狀態、續簽時可能輪替；現值看 Custom Hostnames 頁的 `ownership_verification` 與 `ssl.validation_records`。
+
+建立指令（在 `apps/web/` 執行）：
+
+```bash
+cf dns records create --zone g36maid.dev --body '{"type":"AAAA","name":"saas","content":"100::","proxied":true}'
+cf custom-hostnames fallback-origin update --zone g36maid.dev --origin saas.g36maid.dev
+cf custom-hostnames create --zone g36maid.dev --hostname socrates.ntnu.cc --ssl-method txt --ssl-type dv
+cf rulesets create --zone g36maid.dev --body '{"name":"Redirects","kind":"zone","phase":"http_request_dynamic_redirect","rules":[…]}'
+```
+
+- `cf rulesets create`／`cf rulesets entrypoint update` 的個別 flag 會要求 `--id`（entrypoint ruleset 尚未存在時沒有值可給），MUST 改用 `--body` 傳 raw JSON
+- 本 zone 有 `*.g36maid.dev → <tunnel-id>.cfargotunnel.com` 的萬用 proxied record，故 MUST NOT 為 custom hostname 加 `*/*` Worker route（會把 tunnel 的子網域流量全部搶進 Worker）；301 由 ruleset 回應，Worker 不需要 route
+- zone 未啟用 Cloudflare for SaaS 時 API 回 `[1456] Access to configure this resource has not been granted for this zone. This feature is available with SSL for SaaS.`——Dashboard → SSL/TLS → Custom Hostnames → Enable（非 Enterprise zone 需帳務資料；前 100 個 hostname 免費）
+
+### 為何是 301 而不是直接提供服務
+
+`PUBLIC_BASE_URL`、Google／Facebook 的 redirect URI、session cookie（host-only）都綁在 `socrates.g36maid.dev`：在第三方 host 上直接跑 SPA 會讓登入導回 canonical 網域、`OAUTH_COOKIE` 對不上而失敗。因此第三方網址只當入口，301 保留 path 與 query string；要改成 canonical 需同步換 `PUBLIC_BASE_URL`、OAuth redirect URI 與部署設定（見 [`oauth.md`](./oauth.md) §3）。
+
+### 憑證續簽
+
+SaaS 自動續簽（目前 Google Trust Services，2027-02-22 到期）。`_acme-challenge` TXT 續簽前可能要求新 token：到 Custom Hostnames 頁取新的 `ssl.validation_records` 值更新面板即可，不需重建 hostname；要免手動可改用面板提供的 delegated DCV（`CNAME _acme-challenge → <hostname>.<hash>.dcv.cloudflare.com`）。
+
+### 驗證
+
+```bash
+cf custom-hostnames get <custom-hostname-id> --zone g36maid.dev   # status 與 ssl.status 皆須 active
+curl -sI "https://socrates.ntnu.cc/classrooms/abc?x=1"            # 301，location 保留 path 與 query
+curl -sI https://socrates.g36maid.dev/                            # 200，canonical 站台不受影響
+```
 
 ## 疑難排解
 
-| 症狀                                                   | 原因／解法                                                  |
-| ------------------------------------------------------ | ----------------------------------------------------------- |
-| `cloudflare.config.ts loading is not supported on Bun` | 用 Node ≥ 26.12 執行 cf（`npx cf`、不要 `bun cf`）          |
-| `wrangler is declared … but is not installed`          | 專案依賴沒裝：`pnpm install`（在 repo 根）                  |
-| `No lock file has been detected …`                     | workspace 提醒，可忽略（lockfile 在 repo 根）               |
-| `More than one account available …`                    | 設 `CLOUDFLARE_ACCOUNT_ID` 或 config 的 `accountId`         |
-| 部署後 AI 沒回應                                       | secrets 未上（`wrangler secret list` 檢查）或 pool 全段 429 |
+| 症狀                                                   | 原因／解法                                                                       |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `cloudflare.config.ts loading is not supported on Bun` | 用 Node ≥ 26.12 執行 cf（`npx cf`、不要 `bun cf`）                               |
+| `wrangler is declared … but is not installed`          | 專案依賴沒裝：`pnpm install`（在 repo 根）                                       |
+| `No lock file has been detected …`                     | workspace 提醒，可忽略（lockfile 在 repo 根）                                    |
+| `More than one account available …`                    | 設 `CLOUDFLARE_ACCOUNT_ID` 或 config 的 `accountId`                              |
+| 部署後 AI 沒回應                                       | secrets 未上（`wrangler secret list` 檢查）或 pool 全段 429                      |
+| `[1456] … This feature is available with SSL for SaaS` | zone 未啟用 Cloudflare for SaaS：Dashboard → SSL/TLS → Custom Hostnames → Enable |
 
 ## 來源
 

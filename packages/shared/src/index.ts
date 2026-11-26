@@ -24,14 +24,21 @@ export const UserSchema = z.object({
   id: z.string(),
   name: z.string(),
   isAdmin: z.boolean(),
+  emailVerified: z.boolean(),
 });
 export type User = z.infer<typeof UserSchema>;
 
 export const OAUTH_PROVIDERS = ["google", "facebook"] as const;
 export const PASSWORD_RESET_TTL_MINUTES = 30;
+export const EMAIL_VERIFY_TTL_HOURS = 24;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 export const OAuthProvidersSchema = z.object({ providers: z.array(z.enum(OAUTH_PROVIDERS)) });
 export type OAuthProviders = z.infer<typeof OAuthProvidersSchema>;
+
+export const LOGIN_METHODS = ["email", ...OAUTH_PROVIDERS] as const;
+export const LoginMethodSchema = z.enum(LOGIN_METHODS);
+export type LoginMethod = z.infer<typeof LoginMethodSchema>;
+export const REAUTH_TTL_SECONDS = 600;
 
 export const AxisSchema = z.object({
   name: z.string().trim().min(1).max(40),
@@ -273,6 +280,34 @@ export const PasswordResetInputSchema = z.object({
   token: z.string().max(2048),
   password: z.string().min(8).max(128),
 });
+export const EmailVerifyInputSchema = z.object({ token: z.string().max(2048) });
+
+export const IdentitySummarySchema = z.object({
+  email: z.object({ email: z.string(), verified: z.boolean() }).nullable(),
+  oauth: z.array(
+    z.object({
+      provider: z.enum(OAUTH_PROVIDERS),
+      email: z.string().nullable(),
+      linkedAt: z.string(),
+    }),
+  ),
+  reauthExpiresAt: z.iso.datetime().nullable(),
+});
+export type IdentitySummary = z.infer<typeof IdentitySummarySchema>;
+
+export const ReauthPasswordInputSchema = z.object({ password: z.string().min(1).max(128) });
+export const ReauthResultSchema = z.object({ expiresAt: z.iso.datetime() });
+export type ReauthResult = z.infer<typeof ReauthResultSchema>;
+
+export const OAuthStartInputSchema = z.object({ returnTo: z.string().max(512).optional() });
+export type OAuthStartInput = z.infer<typeof OAuthStartInputSchema>;
+export const OAuthStartResultSchema = z.object({ url: z.string() });
+export type OAuthStartResult = z.infer<typeof OAuthStartResultSchema>;
+
+export const BindEmailInputSchema = z.object({ email: emailField, password: z.string().min(8).max(128) });
+export type BindEmailInput = z.infer<typeof BindEmailInputSchema>;
+export const BindEmailResultSchema = z.object({ email: z.string(), verified: z.boolean() });
+export type BindEmailResult = z.infer<typeof BindEmailResultSchema>;
 export const JoinInputSchema = z.object({
   code: z.string().min(4).max(32),
   name: z.string().trim().max(80).optional(),
@@ -450,6 +485,38 @@ export const TeacherKeyStatusSchema = z.object({
 });
 export type TeacherKeyStatus = z.infer<typeof TeacherKeyStatusSchema>;
 
+export const AdminTeacherKeyStatusSchema = z.object({
+  userId: z.string(),
+  userName: z.string(),
+  userEmail: z.string().nullable(),
+  provider: z.string(),
+  last4: z.string(),
+  disabled: z.boolean(),
+  disabledAt: z.string().nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+  monthCostUsd: z.number(),
+  monthTokens: z.number(),
+  updatedAt: z.string(),
+  models: z.array(z.object({ model: z.string(), sortOrder: z.number() })),
+});
+export type AdminTeacherKeyStatus = z.infer<typeof AdminTeacherKeyStatusSchema>;
+
+export const AdminProviderChainSchema = z.object({
+  mode: z.literal("static"),
+  legs: z.array(
+    z.object({
+      provider: z.string(),
+      model: z.string(),
+      credential: z.string(),
+      maxConcurrency: z.number().int().min(0),
+      priority: z.number().int(),
+    }),
+  ),
+});
+export type AdminProviderChain = z.infer<typeof AdminProviderChainSchema>;
+
+export const AdminTeacherKeyDisableInputSchema = z.object({ disabled: z.boolean() });
+
 export const TeacherKeyEchoSchema = z.object({
   provider: z.string(),
   last4: z.string().optional(),
@@ -464,6 +531,104 @@ export const TeacherKeyModelEchoSchema = z.object({
   maxConcurrency: z.number().int().min(1).max(100).nullable(),
 });
 export type TeacherKeyModelEcho = z.infer<typeof TeacherKeyModelEchoSchema>;
+
+export const AdminKeyStatusSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  last4: z.string(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+  monthCostUsd: z.number(),
+  monthTokens: z.number(),
+  sortOrder: z.number(),
+  updatedAt: z.string(),
+  zdrStatus: z.enum(["unverified", "approved"]),
+  zdrRetentionSource: z.string().nullable(),
+  zdrVerifiedAt: z.string().nullable(),
+  models: z.array(
+    z.object({
+      model: z.string(),
+      maxConcurrency: z.number().int().min(1).max(100).nullable(),
+      sortOrder: z.number(),
+    }),
+  ),
+});
+export type AdminKeyStatus = z.infer<typeof AdminKeyStatusSchema>;
+
+export const AdminKeyEchoSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  last4: z.string().optional(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+  zdrStatus: z.enum(["unverified", "approved"]).optional(),
+  zdrRetentionSource: z.string().nullable().optional(),
+  zdrVerifiedAt: z.string().nullable().optional(),
+});
+export type AdminKeyEcho = z.infer<typeof AdminKeyEchoSchema>;
+
+export const AdminKeyCreateInputSchema = z.object({
+  provider: z.string().min(1).max(100),
+  key: z.string().min(8).max(256),
+  maxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
+  monthlyQuotaUsd: z.number().positive().max(100000).nullable().optional(),
+});
+
+export const AdminKeyUpdateInputSchema = z
+  .object({
+    key: z.string().min(8).max(256).optional(),
+    maxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
+    monthlyQuotaUsd: z.number().positive().max(100000).nullable().optional(),
+  })
+  .refine(
+    (input) => input.key !== undefined || input.maxConcurrency !== undefined || input.monthlyQuotaUsd !== undefined,
+    {
+      message: "key, maxConcurrency or monthlyQuotaUsd required",
+    },
+  );
+
+export const AdminKeyModelEchoSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  model: z.string(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+});
+export type AdminKeyModelEcho = z.infer<typeof AdminKeyModelEchoSchema>;
+
+export const AdminKeyModelInputSchema = z.object({
+  model: z.string().min(1).max(200),
+  maxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
+});
+
+export const AdminKeyModelOrderInputSchema = z.object({ models: z.array(z.string().min(1).max(200)).max(200) });
+
+export const AdminKeyOrderInputSchema = z.object({ keys: z.array(z.string()).max(50) });
+
+export const AdminKeyZdrInputSchema = z.object({
+  retentionSource: z.string().url().max(500),
+  verifiedAt: z
+    .string()
+    .date()
+    .refine((value) => value <= new Date().toISOString().slice(0, 10), {
+      message: "verifiedAt must not be in the future",
+    }),
+});
+
+export const AdminActionSchema = z.object({
+  id: z.number().int(),
+  actorId: z.string().nullable(),
+  action: z.string(),
+  target: z.string(),
+  before: z.unknown().nullable(),
+  after: z.unknown().nullable(),
+  createdAt: z.string(),
+});
+export type AdminAction = z.infer<typeof AdminActionSchema>;
+
+export const AdminActionsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  cursor: z.coerce.number().int().min(0).optional(),
+});
 
 export const ViolationChoiceSchema = z.object({
   type: z.string(),
@@ -498,9 +663,22 @@ export const ERROR_CODES = [
   "oauth_email_unverified",
   "oauth_failed",
   "email_taken",
+  "email_unverified",
   "reset_token_invalid",
+  "verify_token_invalid",
+  "email_not_set",
   "topic_axes_required",
   "report_axes_not_allowed",
+  "reauth_required",
+  "invalid_credentials",
+  "password_not_set",
+  "identity_taken",
+  "provider_already_linked",
+  "email_already_linked",
+  "identity_not_found",
+  "last_login_method",
+  "last_verified_method",
+  "reauth_identity_mismatch",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

@@ -1,0 +1,38 @@
+name: Feature
+description: 新能力。完成時 docs/feature.md 新增一列。
+type: Feature
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 問題（Problem）
+      description: 要解決什麼、誰需要；先講問題，不要直接跳進解法
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案（Proposal）
+      description: 能力層級的描述，不是實作步驟
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 驗收（Acceptance criteria）
+      description: 可觀察、可驗證的行為
+    validations:
+      required: true
+  - type: input
+    id: feature-row
+    attributes:
+      label: docs/feature.md 預定列名
+      description: 這個能力上線後在功能總覽裡叫什麼（對應「功能 ↔ 路由 ↔ 頁面」的一列）
+      placeholder: 教室行事曆
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 子單規劃
+      description: 若這個能力需要 2 個以上的 story 交付，列出它們；1 個 story 可完成時留空

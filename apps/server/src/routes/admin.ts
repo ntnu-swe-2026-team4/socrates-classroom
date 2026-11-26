@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import {
+  AdminActionsQuerySchema,
   AdminSettingsSchema,
   AdminUserCreateInputSchema,
   AdminUserUpdateInputSchema,
+  type AdminAction,
   type AdminOverview,
   type AdminSettings,
   type AdminUser,
@@ -20,6 +22,7 @@ import {
   requireAdmin,
   uniqueViolationColumns,
   validateJson,
+  validateQuery,
   type AppEnv,
 } from "../http";
 
@@ -30,6 +33,37 @@ interface AdminUserRow {
   is_admin: number;
   disabled_at: string | null;
   created_at: string;
+}
+
+interface AdminActionRow {
+  id: number;
+  actor_id: string | null;
+  action: string;
+  target: string;
+  before_json: string | null;
+  after_json: string | null;
+  created_at: string;
+}
+
+function toAdminAction(row: AdminActionRow): AdminAction {
+  const parse = (raw: string | null): unknown => {
+    if (raw === null) return null;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    id: row.id,
+    actorId: row.actor_id,
+    action: row.action,
+    target: row.target,
+    before: parse(row.before_json),
+    after: parse(row.after_json),
+    createdAt: row.created_at,
+  };
 }
 
 const ADMIN_USER_COLUMNS = "id, name, email, is_admin, disabled_at, created_at";
@@ -52,6 +86,23 @@ async function loadAdminUser(db: D1Database, id: string): Promise<AdminUser | nu
 
 export function adminRoutes() {
   return new Hono<AppEnv>()
+    .get("/admin/actions", guardAdmin(), validateQuery(AdminActionsQuerySchema), async (c) => {
+      const { limit, cursor } = c.req.valid("query");
+      const rows = await all<AdminActionRow>(
+        c.env.DB,
+        `SELECT id, actor_id, action, target, before_json, after_json, created_at
+         FROM admin_actions
+         WHERE ($cursor IS NULL OR id < $cursor)
+         ORDER BY id DESC
+         LIMIT $limit`,
+        { cursor: cursor ?? null, limit: limit + 1 },
+      );
+      const page = rows.slice(0, limit);
+      return c.json({
+        items: page.map(toAdminAction),
+        nextCursor: rows.length > limit ? (page[page.length - 1]?.id ?? null) : null,
+      });
+    })
     .get("/admin/overview", guardAdmin(), async (c) => {
       const counts = await one<{ users: number; classrooms: number; running: number }>(
         c.env.DB,
@@ -86,8 +137,8 @@ export function adminRoutes() {
         try {
           await run(
             c.env.DB,
-            `INSERT INTO users (id, name, email, password_hash, lang, created_at)
-           VALUES ($id, $name, $email, $hash, $lang, $at)`,
+            `INSERT INTO users (id, name, email, password_hash, lang, email_verified_at, created_at)
+           VALUES ($id, $name, $email, $hash, $lang, $at, $at)`,
             {
               id,
               name: input.name,

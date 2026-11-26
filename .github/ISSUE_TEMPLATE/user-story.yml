@@ -1,0 +1,34 @@
+name: User Story
+description: 使用者可觀察的行為增量。完成時 docs/feature.md 既有那一列的行為改變。
+type: User Story
+body:
+  - type: textarea
+    id: story
+    attributes:
+      label: 故事
+      value: |
+        身為（角色）：
+        我想要（需求／行動）：
+        以便（目的／價值）：
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 驗收（Acceptance criteria）
+      description: 從使用者角度可觀察、可驗證的行為
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: 不在本單（Out of scope）
+      description: 刻意不做的相鄰事項；沒有就寫「無」
+    validations:
+      required: true
+  - type: input
+    id: feature-ref
+    attributes:
+      label: 關聯 feature 或 epic
+      description: 上層容器；沒有容器時留空（單一 story 不需要開 feature）
+      placeholder: "#353"

@@ -32,7 +32,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     ]);
     expect(reportSubmitAxesExtension.tools?.map((tool) => tool.name)).toEqual([SUBMIT_CLASS_AXES_REPORT]);
     expect(
-      profileRegistry(PROFILES["class-report-axes"], env as never)
+      profileRegistry(PROFILES["class-report-axes"], env)
         .snapshot()
         .tools()
         .map(({ tool }) => tool.name)
@@ -41,7 +41,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(PROFILES["student-indicators"].extensions).toEqual(["report-submit-indicators"]);
     expect(reportSubmitIndicatorsExtension.tools?.map((tool) => tool.name)).toEqual([SUBMIT_STUDENT_INDICATORS]);
     expect(
-      profileRegistry(PROFILES["student-indicators"], env as never)
+      profileRegistry(PROFILES["student-indicators"], env)
         .snapshot()
         .tools()
         .map(({ tool }) => tool.name)
@@ -50,7 +50,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(PROFILES["student-engagement"].extensions).toEqual(["report-submit-engagement"]);
     expect(reportSubmitEngagementExtension.tools?.map((tool) => tool.name)).toEqual([SUBMIT_STUDENT_ENGAGEMENT]);
     expect(
-      profileRegistry(PROFILES["student-engagement"], env as never)
+      profileRegistry(PROFILES["student-engagement"], env)
         .snapshot()
         .tools()
         .map(({ tool }) => tool.name)
@@ -82,9 +82,10 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     const { models, faux } = buildFauxModels();
     const harness = await Harness.open(new MemoryStorage(), { models, registry: createRegistry() }, BACKGROUND_CONTEXT);
     const runtime = {
-      models: { models, default: models.getModel("faux", "faux-1") as never, faux: faux as never },
+      models: { models, default: faux.getModel(), faux },
       registry: createRegistry(),
-      env: env as never,
+      env,
+      decidedCredential: { current: null },
     };
     const { text, conversation } = await runProfile(harness, runtime, "lookup", "什麼是功利主義？", undefined, {
       lang: "es",
@@ -94,7 +95,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(agent.thinkingLevel).toBe(PROFILES.lookup.thinkingLevel);
     expect(agent.instructions).not.toMatch(/\{\{/);
 
-    const esRegistry = profileRegistry(PROFILES["student-report"], env as never);
+    const esRegistry = profileRegistry(PROFILES["student-report"], env);
     const esHarness = await Harness.open(new MemoryStorage(), { models, registry: esRegistry }, BACKGROUND_CONTEXT);
     const esFaux = buildFauxModels();
     esFaux.faux.setResponses([
@@ -110,11 +111,12 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     const esRuntime = {
       models: {
         models: esFaux.models,
-        default: esFaux.models.getModel("faux", "faux-1") as never,
-        faux: esFaux.faux as never,
+        default: esFaux.faux.getModel(),
+        faux: esFaux.faux,
       },
       registry: esRegistry,
-      env: env as never,
+      env,
+      decidedCredential: { current: null },
     };
     const esRun = await runProfile(esHarness, esRuntime, "student-report", "學生（1）：我覺得……", undefined, {
       lang: "es",
@@ -126,7 +128,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
 
   it("runProfile submitTool: faux tool call is extracted as payload (terminate round)", async () => {
     const { models, faux } = buildFauxModels();
-    const registry = profileRegistry(PROFILES["class-report"], env as never);
+    const registry = profileRegistry(PROFILES["class-report"], env);
     faux.setResponses([
       fauxAssistantMessage(
         [
@@ -142,9 +144,10 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     ]);
     const harness = await Harness.open(new MemoryStorage(), { models, registry }, BACKGROUND_CONTEXT);
     const runtime = {
-      models: { models, default: models.getModel("faux", "faux-1") as never, faux: faux as never },
+      models: { models, default: faux.getModel(), faux },
       registry,
-      env: env as never,
+      env,
+      decidedCredential: { current: null },
     };
     const { payload, text } = await runProfile(harness, runtime, "class-report", "## Roster: 1", undefined, {
       submitTool: SUBMIT_CLASS_REPORT,
@@ -158,7 +161,7 @@ describe("agent profiles (#113: role definitions, models resolved by gateway)", 
     expect(PROFILES.lookup.thinkingLevel).toBe("high");
     expect(PROFILES["topic-gen"].thinkingLevel).toBe("high");
     expect(PROFILES["student-report"].thinkingLevel).toBe("high");
-    expect(PROFILES["class-report"].thinkingLevel).toBe("high");
+    expect(PROFILES["class-report"].thinkingLevel).toBe("low");
     expect(BTW_THINKING_LEVEL).toBe("high");
   });
 });

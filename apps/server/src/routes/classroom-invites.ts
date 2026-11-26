@@ -51,6 +51,19 @@ interface Redemption {
   kind: "guest" | "member" | null;
 }
 
+function isRedemption(value: unknown): value is Redemption {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const kind: unknown = Reflect.get(value, "kind");
+  const nullish = (candidate: unknown): boolean => candidate === null || candidate === undefined;
+  return (
+    typeof Reflect.get(value, "classroom_id") === "string" &&
+    (nullish(Reflect.get(value, "activity_id")) || typeof Reflect.get(value, "activity_id") === "string") &&
+    (nullish(Reflect.get(value, "participant_id")) || typeof Reflect.get(value, "participant_id") === "string") &&
+    (nullish(Reflect.get(value, "display_name")) || typeof Reflect.get(value, "display_name") === "string") &&
+    (kind === null || kind === "guest" || kind === "member")
+  );
+}
+
 const expiryDuration = 7 * 24 * 60 * 60 * 1000;
 const eligible = `WITH eligible AS (
   SELECT i.classroom_id, i.activity_id, i.scope, c.teacher_id
@@ -109,7 +122,7 @@ async function redeem(c: Ctx, token: string, input: InviteJoinInput) {
   let result: Redemption | undefined;
   let joinedClassroom = false;
   try {
-    const [member, , , selected] = await batch(db, [
+    const batchResults = await batch(db, [
       {
         sql: `${eligible}
           INSERT INTO members (classroom_id, user_id, name, tos_accepted_at, joined_at)
@@ -150,8 +163,11 @@ async function redeem(c: Ctx, token: string, input: InviteJoinInput) {
         params,
       },
     ]);
-    joinedClassroom = Boolean(member.meta.changes);
-    result = (selected.results as Redemption[])[0];
+    const member = batchResults[0];
+    const selected = batchResults[3];
+    joinedClassroom = Boolean(member?.meta.changes);
+    const firstResult = selected?.results[0];
+    result = isRedemption(firstResult) ? firstResult : undefined;
   } catch (error) {
     if (
       uniqueViolationColumns(error).some(

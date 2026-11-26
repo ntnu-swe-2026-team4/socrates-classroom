@@ -7,9 +7,9 @@ import {
   ApiError,
   type TopicDraft,
 } from "@socrates/shared";
-import { all, one, run } from "../db/d1";
-import { fail, guardUser, langOf, newId, nowIso, rateLimit, requireUser, validateJson, type AppEnv } from "../http";
-import { classroomAccess, parsePrompts, topicCopyInsert, type TopicRow } from "../services/members";
+import { all } from "../db/d1";
+import { fail, guardUser, langOf, newId, rateLimit, requireUser, validateJson, type AppEnv } from "../http";
+import { classroomAccess, createOrGetTopic, parsePrompts, type TopicRow } from "../services/members";
 import { copyableTopic, topicPoolSql } from "../services/topic-visibility";
 import { openProfileHarness, runProfile } from "../pi/agents/profiles";
 import { topicGenInput } from "../prompts/assemble";
@@ -50,34 +50,34 @@ export function topicsRoutes() {
       const { classroom, isTeacher } = await classroomAccess(c.env.DB, input.classroomId, user);
       if (!isTeacher) fail(403, "forbidden");
       const source = await copyableTopic<TopicRow>(c.env.DB, c.req.param("id"), user.id);
-      const id = newId("t_");
-      const copy = topicCopyInsert(source, { id, userId: user.id, classroomId: classroom.id, axes: input.axes });
-      await run(c.env.DB, copy.sql, copy.params);
-      const row = await one<TopicRow>(c.env.DB, "SELECT * FROM topics WHERE id = $id", { id });
-      if (!row) fail(500, "internal_error");
-      return c.json(parsePrompts(row), 201);
+      const original = parsePrompts(source);
+      const { row, created } = await createOrGetTopic(c.env.DB, {
+        id: newId("t_"),
+        ownerId: user.id,
+        classroomId: classroom.id,
+        copiedFrom: source.id,
+        title: source.title,
+        statement: source.statement,
+        summary: source.summary,
+        prompts: original.prompts,
+        axes: input.axes ?? original.axes,
+      });
+      return c.json(parsePrompts(row), created ? 201 : 200);
     })
     .post("/topics", guardUser(), validateJson(TopicCreateInputSchema), async (c) => {
       const user = requireUser(c);
       const input = c.req.valid("json");
-      const id = newId("t_");
-      await run(
-        c.env.DB,
-        "INSERT INTO topics (id, owner_id, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $title, $statement, $summary, $prompts, $axes, $at)",
-        {
-          id,
-          uid: user.id,
-          title: input.title,
-          statement: input.statement,
-          summary: input.summary ?? null,
-          prompts: JSON.stringify(input.prompts),
-          axes: JSON.stringify(input.axes),
-          at: nowIso(),
-        },
-      );
-      const row = await one<TopicRow>(c.env.DB, "SELECT * FROM topics WHERE id = $id", { id });
-      if (!row) fail(500, "internal_error");
-      return c.json(parsePrompts(row), 201);
+      const { row, created } = await createOrGetTopic(c.env.DB, {
+        id: newId("t_"),
+        ownerId: user.id,
+        classroomId: null,
+        title: input.title,
+        statement: input.statement,
+        summary: input.summary,
+        prompts: input.prompts,
+        axes: input.axes,
+      });
+      return c.json(parsePrompts(row), created ? 201 : 200);
     })
     .post("/topics/generate", rateLimit("topics-generate", 10), validateJson(GenerateTopicsInputSchema), async (c) => {
       const input = c.req.valid("json");
@@ -90,13 +90,13 @@ export function topicsRoutes() {
       if (!c.env.AI) fail(502, "llm_unavailable");
       try {
         const user = requireUser(c);
-        const { harness, runtime, teacherLegs } = await openProfileHarness(c.env, "topic-gen", async () => user.id);
+        const { harness, runtime, keyedLegs } = await openProfileHarness(c.env, "topic-gen", async () => user.id);
         const { text } = await runProfile(
           harness,
           runtime,
           "topic-gen",
           topicGenInput(input.direction, langOf(c)),
-          await teacherLegs,
+          await keyedLegs,
         );
         const parsed = TopicGenSchema.safeParse(JSON.parse(text));
         if (!parsed.success) throw new Error("schema_mismatch");

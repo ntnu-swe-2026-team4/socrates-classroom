@@ -1,10 +1,11 @@
 import type React from "react";
-import { useId } from "react";
+import { useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { cva } from "class-variance-authority";
 import { clsx } from "clsx";
 import { ArrowLeft } from "lucide-react";
 import { twMerge } from "tailwind-merge";
+import { useDomEvent, useTimeout } from "@/hooks/useSubscription";
 import { useI18n } from "@/i18n";
 
 export function cn(...inputs: Parameters<typeof clsx>) {
@@ -30,6 +31,8 @@ export const buttonStyles = cva(
     defaultVariants: { variant: "primary", size: "md" },
   },
 );
+
+export const POPUP_SURFACE = "ht-theme shadow-[3px_3px_0_var(--color-ht-shade)]";
 
 export function Button({
   variant,
@@ -292,7 +295,8 @@ export function trapDialogFocus(node: HTMLElement | null): (() => void) | undefi
     const items = focusables();
     if (items.length === 0) return;
     event.preventDefault();
-    const index = items.indexOf(document.activeElement as HTMLElement);
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const index = active === null ? -1 : items.indexOf(active);
     const next = event.shiftKey ? items[(index <= 0 ? items.length : index) - 1] : items[(index + 1) % items.length];
     next?.focus();
   };
@@ -348,7 +352,7 @@ export function ConfirmDialog({
             onCancel();
           }
         }}
-        className="anim-rise relative w-full max-w-sm rounded-2xl border border-line bg-paper p-5 shadow-xl"
+        className={cn(POPUP_SURFACE, "anim-rise relative w-full max-w-sm border border-line bg-paper p-5")}
       >
         <h2 id={confirmTitleId} className="font-serif text-[17px] text-ink">
           {title}
@@ -418,7 +422,10 @@ export function FormDialog({
             onCancel();
           }
         }}
-        className="anim-rise relative flex w-full max-w-md flex-col gap-4 rounded-2xl border border-line bg-paper p-5 shadow-xl"
+        className={cn(
+          POPUP_SURFACE,
+          "anim-rise relative flex w-full max-w-md flex-col gap-4 border border-line bg-paper p-5",
+        )}
       >
         <div>
           <h2 id={formTitleId} className="font-serif text-[17px] text-ink">
@@ -474,5 +481,84 @@ export function TrapDialog({
         {children}
       </div>
     </div>
+  );
+}
+
+const HOVER_OPEN_DELAY_MS = 150;
+const HOVER_CLOSE_DELAY_MS = 250;
+const HOVER_EXIT_MS = 107;
+
+type HoverPopoverPhase = "closed" | "hover" | "leaving" | "pinned";
+type HoverPopoverIntent = "open" | "close" | null;
+
+export type HoverPopover = ReturnType<typeof useHoverPopover>;
+
+export function useHoverPopover(onOpen?: () => void) {
+  const [{ phase, intent }, setStatus] = useState<{ phase: HoverPopoverPhase; intent: HoverPopoverIntent }>({
+    phase: "closed",
+    intent: null,
+  });
+  const close = () => setStatus({ phase: "closed", intent: null });
+  const pin = () => {
+    if (phase === "closed") onOpen?.();
+    setStatus({ phase: "pinned", intent: null });
+  };
+  const leave = () => setStatus({ phase: "leaving", intent: null });
+  useTimeout(intent === "open" ? HOVER_OPEN_DELAY_MS : intent === "close" ? HOVER_CLOSE_DELAY_MS : null, () => {
+    if (intent === "open") {
+      onOpen?.();
+      setStatus({ phase: "hover", intent: null });
+    } else leave();
+  });
+  useTimeout(phase === "leaving" ? HOVER_EXIT_MS : null, close);
+  const hoverProps = {
+    onPointerEnter: (event: React.PointerEvent) => {
+      if (event.pointerType !== "mouse" || phase === "pinned") return;
+      if (phase === "leaving") setStatus({ phase: "hover", intent: null });
+      else setStatus({ phase, intent: phase === "closed" ? "open" : null });
+    },
+    onPointerLeave: (event: React.PointerEvent) => {
+      if (event.pointerType !== "mouse" || phase === "pinned") return;
+      setStatus({ phase, intent: phase === "hover" ? "close" : null });
+    },
+  };
+  useDomEvent(document, "keydown", (event: KeyboardEvent) => {
+    if (event.key === "Escape" && phase === "hover") leave();
+  });
+  return { phase, open: phase !== "closed", pin, close, hoverProps };
+}
+
+export function HoverPopoverPanel({
+  popover,
+  className,
+  ariaLabelledBy,
+  children,
+}: {
+  popover: HoverPopover;
+  className: string;
+  ariaLabelledBy: string;
+  children: React.ReactNode;
+}) {
+  if (popover.phase === "closed") return null;
+  if (popover.phase === "pinned") {
+    return createPortal(
+      <TrapDialog ariaLabelledBy={ariaLabelledBy} plain className={className} onClose={popover.close}>
+        {children}
+      </TrapDialog>,
+      document.body,
+    );
+  }
+  return createPortal(
+    <div className="pointer-events-none fixed inset-0 z-50">
+      <div
+        role="dialog"
+        aria-labelledby={ariaLabelledBy}
+        className={cn("pointer-events-auto", className, popover.phase === "leaving" && "anim-rise-out")}
+        {...popover.hoverProps}
+      >
+        {children}
+      </div>
+    </div>,
+    document.body,
   );
 }

@@ -45,7 +45,12 @@ async function signup(name: string) {
     tosAccepted: true,
   });
   expect(result.status).toBe(200);
-  return { userId: idSchema.parse(await result.json()).id, cookie: cookieOf(result) };
+  const userId = idSchema.parse(await result.json()).id;
+  await run(env.DB, "UPDATE users SET email_verified_at = $at WHERE id = $id", {
+    id: userId,
+    at: new Date().toISOString(),
+  });
+  return { userId, cookie: cookieOf(result) };
 }
 
 async function invite(classroomId: string, scope: string, activityId?: string) {
@@ -169,7 +174,7 @@ it("paginates root posts, deduplicates creates, and cascades replies", async () 
     await (await request(`${posts}?limit=1&cursor=${encodeURIComponent(next)}`, student.cookie)).json(),
   );
   expect([...page.items, ...last.items].map((post) => post.id)).toEqual(expect.arrayContaining([id]));
-  expect(page.items[0].id).not.toBe(last.items[0].id);
+  expect(must(page.items[0], "first page item").id).not.toBe(must(last.items[0], "last page item").id);
   expect(last.nextCursor).toBeNull();
 
   const reply = await request(`${posts}/${id}/replies`, owner, "POST", { body: "reply" });

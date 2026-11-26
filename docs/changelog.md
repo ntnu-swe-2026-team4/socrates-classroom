@@ -9,12 +9,167 @@
 - 首頁漫畫故事線（`apps/web/src/routes/index.tsx`）綁定 `comic_1`～`comic_6` 旁白（合併 `comic_2_3`）、背景音樂、腳步聲與耳語環境音，以及 `HoldTurn` 長按雕像轉動音效，離開首頁時透過 `stopAllSounds()` 完整清理音軌
 - 全站按鈕點擊監聽與多語系 `<SoundToggleButton />`（`apps/web/src/components/AppShell.tsx`、`apps/web/src/i18n/index.ts`），支援 `toggle_on` / `toggle_off` 切換音與零延遲靜音
 
+## 2026-11-27 — providers.md 的 TTS 條目對齊 xai/grok-tts（`docs/468-grok-tts`，#468）
+
+### Changed
+
+- `docs/providers.md` §4 語音模型：TTS 改記現行的 `xai/grok-tts`（#119 起），附 2026-11-27 查證的 ZDR、每字元費率、binding 輸入與回傳形狀及官方來源；註明 ZDR 只在 Unified Billing 代管憑證時適用、不控制 gateway logging
+- `@cf/myshell-ai/melotts` 改為下架紀錄：2026-11-05 changelog 宣布、2026-11-20 下架後回 410，保留舊介面形狀
+- 待辦新增兩項未查證事項：`default` gateway 的 ZDR 設定、`voice.ts` 送出的 `language: "es"` 不在官方代碼清單
+- `docs/architecture.md` 架構圖的 voice 節點與 TTS 路徑說明改為 grok-tts
+
+## 2026-11-26 — 正式站語音與分類器全失效：aiRunOf 遺失 binding receiver（`fix/ai-run-this-binding`，#439）
+
+### Fixed
+
+- #309 的 typed seam（`pi/ai-run.ts`）把 `run` 方法從 binding 上拆下來回傳（`return (ai as …).run`），呼叫時 receiver 是 `undefined`——binding 的 `run` 內部讀自身狀態即拋 `TypeError`。受害範圍：STT／TTS（`routes/voice.ts`）回 502「語音播放失敗／語音輸入失敗」；violation／emotion 分類器（`judgment/classify.ts`、`avatar/index.ts`）`catch { return null }` 靜默降級——正式站自 2026-11-24 部署起違規標記只剩主模型 `report_violation` 工具來源、表情全落 fallback。websearch 不受影響（`ai.websearch` 一直是 method call）；對話走 agents `createAI` 路徑（內部也是 method call），同樣不受影響
+- 正式站證據（Workers Logs）：#309 部署（2026-11-23T23:14Z）前零筆 `binding failed`；之後至 2026-11-26 全為 `[tts] binding failed TypeError`（首筆 2026-11-24 12:29 UTC+8）。錯誤發生在請求送出前，與 AI Gateway credits 餘額無關——「金額用完」對語音不成立；帳號為 Workers Paid
+- 修法：`aiRunOf` 改回 method call wrapper（`(model, inputs) => ai.run(model, inputs)`），`AiRun` 的 inputs 型別收斂為 `Record<string, unknown>` 免型別斷言；新增 `tests/ai-run.test.ts` 回歸測試（fake binding 的 `run` 依賴 receiver state，detached 呼叫會 `TypeError`——現有 fake 因 Proxy 與 arrow 不用 `this` 而抓不到此回歸）
+- `docs/development.md` 計費表格反映 unified billing（credits），補語音功能的 credits 依賴與 mock 行為（#467）
+
+## 2026-11-24 — 登入方式綁定／解綁與 sudo re-auth（`feat/138-login-methods`，#138）
+
+### Added
+
+- `GET /api/me/identities`（目前登入方式清單）、`POST /api/auth/reauth/password`、`POST /api/auth/reauth/oauth/:provider/start`、`POST /api/me/identities/oauth/:provider/start`、`POST /api/me/identities/email`、`DELETE /api/me/identities/:method`（契約見 `docs/api-contract.md` §2.4）
+- `socrates_reauth` 短效 sudo cookie（10 分鐘；`AUTH_SECRET` 推導的獨立用途金鑰、payload 綁 `uid`＋`session_version`）：一般登入不核發、登出同步清除、任何 `session_version` bump 即失效；未通過／過期一律 403 `reauth_required`
+- `/settings` 新分區「帳號與登入方式」（`LoginMethods` 元件）：清單、re-auth（密碼或已綁 SSO）、綁定／解綁，以及 OAuth 回跳結果提示（`?linked=`／`?reauth=ok`／`?error=`）；三語文案
+- 新錯誤碼 `reauth_required`／`invalid_credentials`／`password_not_set`／`identity_taken`／`provider_already_linked`／`email_already_linked`／`identity_not_found`／`last_login_method`／`last_verified_method`／`reauth_identity_mismatch`（三語訊息）
+- `LoginMethods` 帳號區對未驗證 email 提供一鍵重寄驗證信（與 VerifyGate 同文案）
+
+### Changed
+
+- OAuth pending cookie 新增 `intent`（`login`／`bind`／`reauth`）＋`uid`／`ver`／`returnTo`，登入與綁定共用既有 callback URI（Google Cloud Console／Meta App Dashboard 已登錄的 Redirect URI 不變）；bind／reauth 回調以即時 session 再驗 `uid`／`ver`
+- SSO 重驗參數：Google `max_age=0`＋`prompt=select_account`（identity 有 email 時帶 `login_hint`）；Facebook `auth_type=reauthenticate`
+- 綁定以單句 `INSERT … SELECT … WHERE NOT EXISTS`（同 provider 最多 1 筆），解綁以單句 `UPDATE`／`DELETE` 把「至少保留一種登入方式」檢查與寫入合併——並發解綁不會把帳號鎖死；解綁成功 `session_version + 1`，當前裝置在同一回應換發 `socrates_session`／`socrates_reauth`（不延長 sudo 窗口）
+- `session_version` 併入 request context（`c.set("sessionVersion")`），re-auth 守衛免額外 DB 讀取
+- **hard gate 對齊為「至少一種 verified method」**（#138 × #437，rebase 設計修正）：帳號有任一 `user_identities`（SSO）或 `email_verified_at` 非 NULL 即放行——SSO 帳號綁了未驗證 email 不會落入 VerifyGate 鎖死；`toUser`／`lookupSession`／`POST /auth/login` 的 SELECT 併入 `EXISTS(user_identities)`
+- **方式層：未驗證的 email＋密碼不可登入**——`POST /auth/login` 對「`email_verified_at IS NULL` 且帳號另有 SSO identity」回 403 `email_unverified`（不發 session）；email-only 未驗證帳號維持 session＋VerifyGate
+- 解綁守衛從「至少一種登入方式」升級為「至少一種 verified 方式」：SSO 分支要求 `email_verified_at IS NOT NULL` 或另一筆 identity（僅剩未驗證 email＋密碼 → 409 `last_verified_method`，單句 SQL 原子保護不變）
+- `?linked=`／`?reauth=ok`／`?error=` 提示只消費一次：beforeLoad 以 replace redirect 清除 URL（重整理／返回不再重複播報），且只在帳號分區渲染
+- 文件修正：§10／§2.4 的 `identity_taken` 實際僅於 callback 以 302 `<returnTo>?error=` 回應（非 JSON 409）；`provider_already_linked` 記明 409（bind start）與 302（callback 併發）兩處
+
+### Docs
+
+- `docs/api-contract.md` §1／§2.1／新 §2.4／§10、`docs/accounts.md` §8／§10、`docs/frontend.md` route 表、`docs/feature.md`
+
+## 2026-11-24 — 教室按鈕展開選單：分開「我選的課」與「教室管理」（`feat/408-classrooms-nav-menu`，#408）
+
+### Changed
+
+- 側邊欄「教室」按鈕加上箭頭，按下在原地展開「我選的課」／「教室管理」兩個子項目，再按收合（`aria-expanded`）；進到教室相關頁面時自動展開
+- 教室列表頁以 search param `?view=enrolled｜teaching` 分開兩份清單：「我選的課」含邀請碼輸入與我的報告，「教室管理」含開課按鈕；未帶 `view` 時，只有開課的人進「教室管理」，其餘進「我選的課」
+- API 與 route 結構不變（同一個 `/classrooms`，以 `role` 在前端分組）
+
+## 2026-11-24 — 登入失敗 per-account 鎖定與 forgot per-email 冷卻（`feat/393-login-lockout`，#393）
+
+### Added
+
+- `RateLimiter` DO 新增 keyed sliding window API（`check`／`record`／`allowKey`／`clear`），以 `sha256Hex(lowercase(email))` 作為 key、`key.slice(0, 2)` 分片成固定 256 shard/scope（DO 名不含 PII、不因隨機 email 灑量無限建 DO），單 shard 超過 1024 entries 時清過期項並依 LRU 封頂；維持純記憶體與 DO 不可用時 fail-open
+- `POST /api/auth/login` 在 DB lookup 與 PBKDF2 之前檢查 `login-fail`（10 次失敗 / 15 分鐘 sliding window，存在與不存在的 email 採同一門檻防列舉，超限回既有 `429 rate_limited`、不附 `Retry-After`）；僅 `!row || !ok` 計失敗（密碼正確但停用的 `403 account_disabled` 不計）；登入成功與 `POST /api/auth/password/reset` 成功皆清空計數（DoS 逃生口）
+- `POST /api/auth/password/forgot` 加入同一 email 5 分鐘冷卻（`allowKey` 原子判定，冷卻內靜默回 `204` 不寄信、不破壞防列舉契約，不同 email 互不影響）
+- 測試補齊：`tests/rate-limit.test.ts`（DO keyed API／shard sweep、多 IP 換源鎖定、大小寫合併、不存在 email 同門檻、成功登入歸零、停用帳號不計失敗、密碼重設解鎖、DO 不可用 fail-open）與 `tests/password-reset.test.ts`（同 email 冷卻、跨 email 隔離、併發只寄一封）
+
+## 2026-11-24 — email 驗證 hard gate：未驗證不得使用系統（`fix/437-email-verify-hard-gate`，#437）
+
+### Fixed
+
+- Email 驗證閘門生效：#259 只追蹤 `email_verified_at` 卻沒有任何地方強制執行，註冊完直接拿到完整 session（`/auth/register` 甚至已寫入 `members` 並建立 participant），登入、所有 API 與 WebSocket 全部可用。現由 `/api/*` middleware 對未驗證 session 回 `403 email_unverified`（僅放行 `/api/me`、login、logout、register、signup、providers、password forgot/reset、email verify、verify/resend），WS authorize（chat／solo／classroom-events）同樣拒絕；前端呈現 VerifyGate 畫面（重寄驗證信＋登出），`/verify-email` 點完連結立即解鎖
+- Email 搶註修復（stale takeover）：超過 `EMAIL_VERIFY_TTL_HOURS`（24h）仍未驗證的帳號從未證明信箱所有權，任何人以該 email 重新 `signup`／`register` 會覆寫該帳號的 name／password／lang／`created_at` 並 `session_version + 1`（舊 session 全滅）；已驗證的地址永不適用。`register` 對「stale 帳號已是該教室成員」視為冪等（member row 改名＋更新 `tos_accepted_at`，照回 200），同名搶佔也不會被誤擋 `name_taken`
+- Admin 建立帳號（admin 主動發放 credentials，非本人自稱擁有信箱）直接寫入 `email_verified_at`，不受 gate 影響
+- `register` 限流由每 IP 每分鐘 30 收緊為 10；`email_unverified` 錯誤碼三語本地化
+- 模型與契約更新：`accounts.md` §8、`api-contract.md` §2.1/§2.3/§10、`feature.md`
+
+## 2026-11-24 — 正式站 `/agents/*` 被資產層攔截，WebSocket 全數握手失敗（`fix/418-agents-run-worker-first`，#418）
+
+### Fixed
+
+- `runWorkerFirst` 補上 `"/agents/*"`：array 形式的 `run_worker_first` 會停用 `Sec-Fetch-Mode` 判定（上游文件明載），未命中 pattern 的路徑一律只走 assets 層——`notFoundHandling: "single-page-application"` 回 `index.html`，路徑含 raw `:` 時先被 307 path normalization 改寫（瀏覽器 `WebSocket` 不跟隨 redirect）。`/agents/*`（`chat`／`solo-chat` 的 WebSocket 與 `useBtw`）不在 #140（2026-11-17）引入的清單內，正式站對話頁永遠「連線中斷」；`/api/*`、`/health` 在清單內不受影響。該清單加入前（11-10 WS 上線至 11-17），非 navigation 請求仍會進 Worker，對話原本可用，屬 #140 回歸
+- 新增 `cloudflare-config.test.ts`：以 production mode 評估 `cloudflare.config.ts`，斷言 Worker 擁有的三個路徑前綴（`/api/*`、`/agents/*`、`/health`）都出現在 `runWorkerFirst`；Worker 端新增路徑前綴而未同步 assets 設定時 CI 會擋下
+- dialogue／btw 的 WebSocket 設 `maxRetries: 10`（partysocket 預設 `Infinity`）：握手持續失敗時，每 3–10 秒（backoff ×1.3）一條 console error 無限增長；10 次（約 77 秒涵蓋常規 deploy 空窗）後停止重試，對話頁的「連線中斷」notice 加上「重新連線」按鈕（`location.reload()`）作為明確的恢復路徑（i18n 三語）
+
+## 2026-11-24 — 登入頁：登入／註冊卡片等高、不再捲動（`fix/411-login-card-stable`，#411）
+
+### Fixed
+
+- 登入與註冊兩個模式的卡片等高：登入模式保留「顯示名稱」「同意條款」兩列的空間（`invisible`＋`aria-hidden`），兩個標題疊在同一格，切換時卡片、送出按鈕與邀請碼框不再位移；「忘記密碼？」移到密碼欄下方
+- 矮視窗（`short` variant）下第三方登入按鈕並排、輸入框與標題略縮，註冊模式在 1536×695／1366×768 不再需要捲動
+- 移除登入卡片的立體陰影，與邀請碼框一致；移除與 LOGO 重複的「回到故事」按鈕（LOGO 連結加上同文字的 `title`）
+
+## 2026-11-24 — provider 排序互動整個改照 magpie `dragRows`（`refactor/403-magpie-sorter`，#403）
+
+### Changed
+
+- teacher／admin × key／model 四個清單的排序互動統一：拖曳把手（pointer capture、4px 縱向門檻、拖曳列跟隨指標、鄰列讓位、lift 陰影）＋鍵盤 Alt+↑↓ 移一格、Alt+Shift+↑↓ 送頂／送底；model 列由 ↑/↓ 按鈕改為與 key 列相同的把手，全部共用新 hook `useSortableOrder`（兩個元件共刪約 180 行重複排序邏輯）
+- 存檔樂觀更新、失敗回滾到 server 順序並顯示錯誤；序號計數器防止較舊的 in-flight 存檔回滾或覆寫較新的移動。API 形狀不變（`order*` 端點照舊收完整 id 陣列）
+- 拖曳幾何只吃指標位移（不混用視埠與 layout 座標），清單捲動時仍「列跟隨指標」；`noUncheckedIndexedAccess`（#293 step 4）下以每列 `offsetTop`／`offsetHeight` 快照窄化
+
+## 2026-11-24 — 平台鏈主力切 glm-5.3、class-report 改 low、推論走 AI Gateway（`feat/401-platform-glm-5.3`，#401）
+
+### Changed
+
+- 平台鏈 priority 1：`@cf/zai-org/glm-5.3-flash`（2026-11-20 下架，#399）→ `@cf/zai-org/glm-5.3`（paid；Workers Paid 或 AI Gateway credits）；`@cf/zai-org/glm-4.7-flash` 留第二順位收尾，Free 帳號對 5.3 的 403 由 breaker 降級承接
+- `class-report` thinkingLevel high→low（#249 實驗：high 在 39 人班推理超限截斷，low 完成 39／60 人班且落點零左右反轉）；其餘 profile 維持現況
+- Workers AI 推論改走 AI Gateway `default`（Unified billing）：付費清單模型 20→50 rpm；`collectLog: false`＋`skipCache: true` 在程式碼層釘死零保留（AI Gateway logs 預設開啟，不依賴 dashboard 手動狀態）
+
+## 2026-11-24 — `FACEBOOK_APP_ID` production 帶入通道＋`google-oauth.md` 改名 `oauth.md`（`ci/deploy-facebook-app-id`，#410）
+
+### Changed
+
+- `deploy.yml` job env 補 `FACEBOOK_APP_ID: ${{ vars.FACEBOOK_APP_ID }}`，與 `GOOGLE_CLIENT_ID` 同通道（repo variable 於 build 帶入 text binding）——此前 production build 永遠拿到空字串，Facebook 登入在正式站無法啟用；未設 variable＝停用，merge 不改變現狀
+- `docs/google-oauth.md` 改名 [`oauth.md`](./oauth.md)（純 git mv＋引用同步）：文件標題與內容自 2026-11-21 起已擴域為「第三方登入（SSO）設定」（Google §1–5、Facebook §6、Apple 退場 §7），檔名停在單一 provider 名不符實；§6.2 補 step 4 正式環境帶入點
+
+## 2026-11-23 — TS 靜態保證 step 4：noUncheckedIndexedAccess 全庫開啟（`refactor/293-step4`，#293）
+
+### Changed
+
+- 兩個 tsconfig（`apps/server`、`apps/web`）開啟 `noUncheckedIndexedAccess`：所有 array index 與 index-signature 讀取型別帶 `| undefined`。全庫探針 302 errors（server 112 + web 190）分兩層清零
+- **src 層（L1）**：canvas 像素物理迴圈（`StoaField`）以 `?? 0` fallback 逐點窄化；`gateway/router.ts` 以 `def === undefined` 顯式分支取代 `?? {}`（teacher legs 的 provider 不在 config 仍放行，`#keyOf` 容忍缺 def、`#reserve`/`#admit` 的 shard head 顯式守衛）、`routing-ledger.ts` 的 `reserve` 以 `index < 0 ? undefined` 窄化 `findIndex` 結果；`db/d1.ts` 的 `batch` 加泛型參數（`batch<TopicRow>` 取代呼叫端 `as TopicRow`）；`auth.ts` 兩處手寫 timing-safe 迴圈收斂到 `timingSafeEqual`（`charCodeAt` 免索引讀）；`websearch/fetch.ts` IPv6 分類以 `g(index)` accessor 收口；regex `match[1]` 全數 `?.[1]` + 顯式 throw
+- **tests 層（L2）**：REST 式回應斷言改走 reader 家族（`str`/`rows`/`field`/`must`）或 zod `Schema.parse`；`handler.mock.calls[i]` 解構改 `lastCallN(i)` helper；vitest 的 `it` timeout 釘回 90s（report 生成實測 >60s，60s 會 flaky）
+- 已知極限：TS 的 control-flow narrowing 不追蹤迴圈計數器與 `findIndex` 結果（microsoft/TypeScript#61388、#57847），`for (let i…)` 內的 `arr[i]` 需先讀入變數再判 `undefined`；`StoaField` 熱路徑選 `?? 0` 而非 `.at()`，避免每幀配置
+- `noUnnecessaryConditions` 維持 off：flag 開啟後重跑探針 31→46 findings（`--only` 會縫過 override，含 seam 檔案的預期命中），仍以 closure mutation 與 TanStack 判別聯集誤報為主，無 true-positive 家族浮現——上游修復前不重驗
+- config 註解清理（依 AGENTS.md no-comments 政策，設計理由留在文件不在程式碼）：`biome.jsonc` 移除 `useAwaitThenable`／`noUnnecessaryConditions` 的 probe-verified 註解（rationale 見下方 2026-11-21 lint 條目的「帶證據的兩個 off」與本條目的重驗記錄）；`.yamllint.yaml`／`prek.toml` 移除檔首說明註解（用途見 AGENTS.md 的 setup 與 lint 段）
+
+## 2026-11-23 — per-IP 限流改走跨 isolate 的 RateLimiter DO（`feat/157-rate-limiter-do`，#157）
+
+### Changed
+
+- `apps/server/src/http.ts` 的 `enforceIpLimit` 不再用 module-level `ipHits`（`Map<string, number[]>`，每 isolate 各一份、滿 10k 條目還得掃表驅逐）：改呼叫 `RateLimiter` DO（`idFromName("<scope>:<ip>")`，單一 actor 序列化 60 秒 sliding window；同 region 個位數 ms）。任一 IP 對任一 scope 的放行量不再隨 isolate 數放大
+- 計數只存 DO 記憶體、不落 storage（DO 只在 idle 時 evict，而 idle 期間窗口本來就會過期；同時不把 IP 位址持久化）；DO 不可用時 fail-open（放行 + `console.warn`），與 `#196` RoutingLedger 同一取捨
+- 對外介面不變：`enforceIpLimit`／`rateLimit`／guard 順序、`429 rate_limited` envelope、無 `CF-Connecting-IP` 一律放行
+- 新 binding `RateLimiter`（`cloudflare.config.ts`、`env.ts`、`index.ts`、`wrangler.vitest.jsonc` 的 migration `v2`）
+- `tests/rate-limit.test.ts`：real DO 的跨 caller 共用計數、scope／IP 隔離、窗口過期、HTTP 路徑經 DO、DO 不可用 fail-open
+- CF Rate Limiting binding 不採用（per-location、approximate，解不掉跨 isolate 分散繞過）；`#103` 收斂為登入後身分的 per-user 限流，per-account 失敗鎖定拆為 `#393`
+
+## 2026-11-23 — email 註冊後的驗證信（`feat/259-email-verify`，#259）
+
+### Added
+
+- `signup`／`register` 建立 email 帳號後寄三語驗證信（語言依 `users.lang`），連結指向 `/verify-email#token=`；未驗證**不封鎖**任何功能，只是提示（模型語意見 `docs/accounts.md` §8）
+- `POST /api/auth/email/verify`（免登入，寫入 `users.email_verified_at`）與 `POST /api/auth/email/verify/resend`（需登入、已驗證不寄、per-IP 限流）；`User` 新增 `emailVerified`（契約見 `docs/api-contract.md` §2.3）
+- migration 021：`users.email_verified_at`；驗證 token 沿用 #230 的帳號 token，新增用途 `email_verify`（與 `password_reset` 互不通用，綁定 `users.email`，TTL 24 小時）
+- `/verify-email` 頁面與三語文案；dev fixture 帳號視為已驗證
+
 ## 2026-11-23 — 六角圖對接單人報告思辨力指標（`feat/78-thinking-hexagon`，#78）
 
 ### Changed
 
 - `ThinkingHexagon` 與 `lib/thinking.ts` 改接 `TeacherReport.students[].indicators`／`StudentReport.indicators`（#255）：移除 `sampleThinking` 示意資料與提示列，`indicatorsToGoals` 直接將 `c1..a2` 轉成六條軸；`indicators` 為 `null` 時不顯示六角圖
 - 級數對齊後端 0–3 級（未觀察到／初步／部分／達成，三語 i18n），圖上改為四層同心框、右側方塊為三格，並顯示每項的 `evidence` 與 `turns`
+
+## 2026-11-23 — 議題生命週期：dedup 與 soft delete（`feat/383-topic-lifecycle`，#383）
+
+### Added
+
+- 題目身分：同池同 `(…, title, statement, axes)` 即同一題，靠 partial unique index `topics_classroom_content`／`topics_personal_content` 保證；`POST /api/topics`、`POST /api/classrooms/:id/topics`、`POST /api/topics/:id/copy` 對已存在內容回 200 及既有題目（新內容仍 201），既有列的 `prompts`／`summary`／`copied_from` 不覆寫
+- `DELETE /api/classrooms/:id/topics/:topicId` → 204：soft delete（`topics.deleted_at`），題目離開所有清單、不能再開新活動，既有活動與歷史頁（`join`／`report`／`live`／班級 `current`）照舊渲染；冪等，刪除後可用同內容重建
+- 開活動時改軸的 snapshot 與 `POST /topics/:id/copy` 都走「建立或取回」，同內容同軸不再重複建列
+- migration 020：`topics.deleted_at`、`topics.axes` 正規化、既有重複列合併（去重先於 index，`activities.topic_id` 與 `topics.copied_from` 重指到保留列）
+
+### Changed
+
+- `GET /api/topics`、`GET /api/classrooms/:id/topics` 皆排除已刪除題目；`POST /api/topics` 仍為 legacy 入口（web 端無呼叫者）
+- 契約見 `docs/api-contract.md` §4，schema 見 `docs/architecture.md`
 
 ## 2026-11-23 — 教師報告加上學生認真度（`feat/267-engagement`，#267）
 
@@ -85,6 +240,27 @@
 
 - `student-indicators` profile 與 `submit_student_indicators` 工具（`report-submit-indicators` extension，只裝在這條呼叫用的 registry）：逐生判斷 C1–A2，與論點總結分開呼叫、各自失敗（流程見 `docs/architecture.md` ReportRunner）
 - `TeacherReport.students[].indicators`、`StudentReport.indicators`（形狀見 `docs/api-contract.md` §7）；指標上線前存下的報告回 `null`，不變成 `report_failed`
+
+## 2026-11-24 — TS 靜態保證 step 1b L2：tests 層 unsafe type assertion 真清收回（`refactor/293-step1b-tests`，#293）
+
+### Changed
+
+- tests 層 cast 真清：`apps/server/tests/**` 與 `apps/web/src/test/**` 共 229 處 `as` 斷言退役（探針 @ tip `3bfb75c0`：tests 目錄 236→7，殘留 7 處全在 carve-out 的兩個 helpers 檔）；`biome.jsonc` 的 tests 目錄 override 收窄回 `tests/helpers.ts` 兩檔——收回屬實，carve 面僅剩測試工程本質 cast（`runInDurableObject` 官方 pattern、fake fixture builders、jsdom shim、helpers 自身的 `undefined as never`／worker／registry glue）
+- reader 家族承接斷言：`apps/server/tests/helpers.ts`（`str`／`optStr`／`num`／`optNum`／`bool`／`field`／`rows`）與 `apps/web/src/test/helpers.ts`（新檔）——`Reflect` 讀取、fail-fast 帶欄名（缺欄或型別不符即擲錯，取代 cast 後靜默 `undefined` 傳染）；`admin.test` 改走 shared zod schema（`AdminUserSchema`／`ClassroomSummarySchema`），斷言從「宣稱合約」升級為「驗證合約」
+- 附帶 src 小改動（測試轉換的必要支撐）：`ws/protocol.ts` 新增 server 端 `parseServerMessage`（`ServerMessage` 五個 variant 對應守衛，與 #309 的 web 端同名函式對稱）與 `conversationIdOf`（runtime safe-integer 驗證取代裸 cast）；`activity-live.ts` 空列時 `finishedAt` 回 `null`（`noUncheckedIndexedAccess` 窄化，語意不變）
+- 回應 null 契約的斷言在 cast 退役時一度失守（value 隨 cast 一起被丟掉的 value-loss 模式），本層補回：teacher key echo 的 `monthlyQuotaUsd === null`（`PUT /api/settings/keys/openrouter` 的 rekey 與 keyless 兩處）與 personal topic 的 `classroomId === null`；測試轉換一律單次 `.json()` 讀取、按欄取值
+
+## 2026-11-22 — TS 靜態保證 step 1b L1：src 層 unsafe type assertion 清零（`refactor/293-step1b-src`，#293）
+
+### Changed
+
+- src 層 146 處 `as` 斷言清零（全庫探針 476→351 @ tip `f0756802`，其餘 tests 層由 1b-L2 承接；探針隨 tree 旋轉，覆核時以當時 tip 標注）；探針覆核與 spike 分層提案見 issue 註解。主要族群落地：
+  - **WS protocol 雙向守衛**（`ws/protocol.ts` 的 `parseClientMessage` 全驗學生端訊框＋`web/src/lib/wsProtocol.ts` 的 `parseServerMessage` shallow 檢查同源 Worker 訊框；`isEntryId`/`entryIdOf` predicate 處理 branded id）
+  - **JWT claims 誠實化**（`openPayload` 回 `unknown`、三種 claims 逐欄位驗證後建構、Google JWKs 逐把 field-validate、8 處 `as BufferSource` 為 legacy 直接移除）
+  - **dialogue hooks**：`WindowedEntry` 改 `Pick<EntryRecord, …>`，pi 自身的 `Message[]` 型別直接流動（role 窄化取代 cast）；`textOfContent` 取代偽造 `Message`；fake socket 走 `canSend` shape predicate（test 的 plain-object fake 因此存活）
+  - **pi/ai seam**：`ai-run.ts` 單一轉換點承接 workers-types 靜態 catalog vs config 模型 id 的型別斷層（`aiRunOf`＋`readChoiceResult`）；`fail()` 參數收斂為 `FailStatus` union（實測 10 個 status 碼）並以 `httpStatusOf` 窄化進 Hono
+  - 其餘：`readViolationType` 供 config 驅動的型別窄化、i18n/stance/DOM/THREE 家族 predicate 化、`transcript()` 的 violations 由源頭窄化為 `ViolationType`
+- **凍結面與 carve-out**：頂層 `nursery.noUnsafeTypeAssertion: "error"` 落地（實證此 rule 不在 recommended preset 也非 types domain 成員，先前的「凍結」其實無 gate——review 勘誤），gate 面以雙向 probe 驗證（governed src 插入 probe → `pnpm lint` 紅 → 移除回綠）。例外 override 兩組：(1) 五個型別系統 seam 檔案（`ai-run.ts`／`api/http.ts`／`useSubscription.ts`／`voiceInput.ts`／`wsProtocol.ts`）——静態型別與 config 驅動模型 id／同源 typed payload／vendor DOM ctor／fake 環境 glue 的終端橋，欄位級守衛已覆蓋全部業務值，shape 同 #283 `noConsole` 先例；(2) tests 目錄（`apps/server/tests/**`／`apps/web/src/test/**`／`apps/web/dev/**`）——`runInDurableObject` 官方 pattern、fake fixture builders、jsdom shim 等測試工程本質 cast，由 1b-L2 以 reader 家族逐檔真清收回。註：Biome 2.6.8 的 suppression 註解引擎對有效壓制誤報 `suppressions/unused`（#5503 家族，已驗證 suppression 確實有效），故不走 biome-ignore＋ratchet 白名單路線，待上游修復後可回收為 suppression 流
 
 ## 2026-11-22 — TS 靜態保證 step 3：suppression ratchet 白名單凍結（`refactor/293-step3-ratchet`，#293）
 
@@ -623,7 +799,7 @@
 - 錯誤碼 `oauth_unavailable`／`oauth_state_invalid`／`oauth_email_unverified`／`oauth_failed`（三語）；binding `GOOGLE_CLIENT_ID`（text）／`GOOGLE_CLIENT_SECRET`（secret，留空＝停用）
 - 錯誤碼 `email_taken`（三語）：`POST /auth/signup` 信箱重複回 409 `email_taken`，取代語意模糊的 `conflict`；邀請碼註冊 `POST /auth/register` 維持 `conflict` 不變
 - `assets.runWorkerFirst: ["/api/*", "/health"]`：SPA `notFoundHandling` 會把瀏覽器 navigation（`Sec-Fetch-Mode: navigate`）直接回 `index.html`，導致整頁跳轉的 `/api/auth/oauth/*` 永遠到不了 Worker
-- 新增 [`google-oauth.md`](./google-oauth.md)（建立用戶端、本機／正式設定、secret 輪替、常見錯誤）；`.env.example` 補 `GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET`
+- 新增 `google-oauth.md`（現更名為 [`oauth.md`](./oauth.md)；建立用戶端、本機／正式設定、secret 輪替、常見錯誤）；`.env.example` 補 `GOOGLE_CLIENT_ID`／`GOOGLE_CLIENT_SECRET`
 - 測試：`tests/auth-sso.test.ts`（signup、OAuth 成功／state 竄改／簽章偽造／aud・iss・exp・nonce・未驗證 email）、`tests/migrations.test.ts`（user_identities 唯一性與 cascade）
 
 ## 2026-11-09 — routing/ 更名 gateway/（`experiment/web-next`）

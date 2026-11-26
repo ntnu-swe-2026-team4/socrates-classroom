@@ -1,30 +1,50 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi, type Mock } from "vitest";
 import { setLocale } from "@/i18n";
+import { must } from "./helpers";
 import { routeTree } from "@/routeTree.gen";
 import type { SoloThread, User } from "@socrates/shared";
 
-const socket = vi.hoisted(() => ({
-  send: vi.fn(),
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
-  readyState: 1,
-  OPEN: 1,
-  options: null as null | {
-    agent: string;
-    name: string;
-    enabled?: boolean;
-    onMessage: (event: { data: string }) => void;
-    onClose?: () => void;
-  },
-}));
+type AgentOptions = {
+  agent: string;
+  name: string;
+  enabled?: boolean;
+  onMessage: (event: { data: string }) => void;
+  onClose?: () => void;
+};
+
+const socket = vi.hoisted(
+  (): {
+    send: Mock;
+    addEventListener: Mock;
+    removeEventListener: Mock;
+    readyState: number;
+    OPEN: number;
+    options: AgentOptions | null;
+  } => ({
+    send: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    readyState: 1,
+    OPEN: 1,
+    options: null,
+  }),
+);
 
 vi.mock("agents/react", () => ({
-  useAgent: (options: NonNullable<typeof socket.options>) => {
+  useAgent: (options: AgentOptions) => {
     if (options.enabled !== false) socket.options = options;
     return socket;
+  },
+}));
+const voiceHook = vi.hoisted((): { onFinal: ((text: string) => void) | null } => ({ onFinal: null }));
+
+vi.mock("@/hooks/useVoiceInput", () => ({
+  useVoiceInput: (onFinal: (text: string) => void) => {
+    voiceHook.onFinal = onFinal;
+    return { state: "idle", interim: "", error: null, start: async () => {}, stop: () => {} };
   },
 }));
 vi.mock("@/components/SocratesCompanion", () => ({ SocratesWindow: () => null, SocratesCompanion: () => null }));
@@ -45,7 +65,7 @@ const secondThread: SoloThread = {
 
 function mountChat(
   path: string,
-  user: User | null = { id: "u_1", name: "Socrates", isAdmin: false },
+  user: User | null = { id: "u_1", name: "Socrates", isAdmin: false, emailVerified: true },
   initialThreads?: SoloThread[],
   onDeleteRequest?: (id: string) => Promise<void> | void,
 ) {
@@ -65,11 +85,12 @@ function mountChat(
     }
     const match = pathname.match(/^\/api\/solo\/threads\/([^/]+)$/);
     if (match) {
-      const id = match[1];
+      const id = must(match[1], "solo thread id");
       const target = saved.find((item) => item.id === id);
       if (!target) return Response.json({ code: "not_found" }, { status: 404 });
       if (init?.method === "DELETE") {
-        if (onDeleteRequest) await onDeleteRequest(id);
+        const onRequest = onDeleteRequest;
+        if (onRequest) await onRequest(id);
         saved = saved.filter((item) => item.id !== id);
         return new Response(null, { status: 204 });
       }
@@ -97,10 +118,29 @@ function mountChat(
   return { fetch, router };
 }
 
+test("offers reconnect while the dialogue socket is offline", async () => {
+  const reload = vi.fn();
+  const original = window.location;
+  Reflect.deleteProperty(window, "location");
+  Object.defineProperty(window, "location", { value: { ...original, reload }, writable: true, configurable: true });
+  socket.readyState = 0;
+  try {
+    mountChat("/chat/solo_1");
+    await new Promise((resolve) => setTimeout(resolve, 3200));
+    expect(await screen.findByText("Connection lost — the conversation resumes once it reconnects")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+    expect(reload).toHaveBeenCalledTimes(1);
+  } finally {
+    Reflect.deleteProperty(window, "location");
+    socket.readyState = 1;
+  }
+});
+
 beforeEach(() => {
   localStorage.clear();
   setLocale("en");
   socket.options = null;
+  socket.readyState = 1;
   socket.send.mockClear();
   vi.stubGlobal("scrollTo", vi.fn());
 });
@@ -164,6 +204,35 @@ test("retries the first question with the same operation ID after a disconnect a
   await waitFor(() => expect(router.state.location.state).not.toHaveProperty("soloQuestion"));
 });
 
+test("starts a new topic in voice mode and keeps voice mode in the dialogue", async () => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const { fetch, router } = mountChat("/chat");
+  await screen.findByRole("textbox", { name: "Type a question you want to think through…" });
+  fireEvent.click(screen.getByRole("button", { name: "Voice mode" }));
+  expect(screen.getByRole("button", { name: "Hold to talk" })).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "Type a question you want to think through…" })).toBeNull();
+
+  act(() => voiceHook.onFinal?.(thread.title));
+
+  await waitFor(() => expect(router.state.location.href).toBe(`/chat/${thread.id}`));
+  expect(fetch).toHaveBeenCalledWith("/api/solo/threads", expect.objectContaining({ method: "POST" }));
+  expect(router.state.location.state).toHaveProperty("soloQuestion.voiceMode", true);
+  await waitFor(() => expect(socket.options).toMatchObject({ agent: "solo-chat", name: `u_1:${thread.id}` }));
+  act(() => {
+    socket.options?.onMessage({
+      data: JSON.stringify({ type: "view", view: { conversation: { id: 1 }, entries: [], docs: {} } }),
+    });
+  });
+  expect(await screen.findByRole("button", { name: "Hold to talk" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Type instead" })).toBeTruthy();
+});
+
 test("renames a selected thread and returns to the composer when that thread is deleted", async () => {
   mountChat(`/chat/${thread.id}`);
   await screen.findByRole("link", { name: thread.title });
@@ -182,7 +251,7 @@ test("disables actions only on the thread currently being deleted", async () => 
   let releaseDelete: (() => void) | null = null;
   mountChat(
     `/chat/${thread.id}`,
-    { id: "u_1", name: "Socrates", isAdmin: false },
+    { id: "u_1", name: "Socrates", isAdmin: false, emailVerified: true },
     [thread, secondThread],
     () =>
       new Promise<void>((resolve) => {
@@ -193,7 +262,7 @@ test("disables actions only on the thread currently being deleted", async () => 
   await screen.findByRole("link", { name: secondThread.title });
 
   const deleteButtons = screen.getAllByRole("button", { name: "Delete chat" });
-  fireEvent.click(deleteButtons[0]);
+  fireEvent.click(must(deleteButtons[0], "delete button"));
   fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete chat" }));
 
   await waitFor(() =>

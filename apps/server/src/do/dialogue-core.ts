@@ -1,4 +1,5 @@
 import { createRegistry, Harness, type EntryRecord, type Registry, type UserInput } from "@earendil-works/pi-durable";
+import { VIOLATION_TYPES, type ViolationType } from "@socrates/shared";
 import {
   fauxAssistantMessage,
   fauxText,
@@ -23,8 +24,8 @@ export type BtwExtension = Extension;
 import { createUsageExtension } from "../pi/extensions/usage";
 import { NoAvailableModelError, PROFILES } from "../pi/agents/profiles";
 import { buildModels, type ModelsBundle } from "../pi/models";
-import { getRouter } from "../gateway/router";
-import { teacherLegsOf } from "../pi/credentials";
+import { getRouter, isKeyedCredential } from "../gateway/router";
+import { keyedLegsOf, type DecidedCredential } from "../pi/credentials";
 import type { Lang } from "@socrates/shared";
 
 export const STUDENT_LANG_KEY = "studentLang";
@@ -46,6 +47,14 @@ export function failureKey(session: string): string {
   return `dialogue-run-failure:${session}`;
 }
 
+function dialogueRunOf(payload: unknown): DialogueRun | null {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return null;
+  const session = Reflect.get(payload, "session");
+  const operationId = Reflect.get(payload, "operationId");
+  if (typeof session !== "string" || typeof operationId !== "string") return null;
+  return { session, operationId };
+}
+
 export interface DialogueHarnessConfig {
   credentialOwner: () => Promise<string | null>;
   getLang?: () => Promise<Lang>;
@@ -58,12 +67,14 @@ export interface DialogueCore {
   btw: BtwExtension;
   harness: PiHarness;
   credentialOwner: DialogueHarnessConfig["credentialOwner"];
+  decidedCredential: { current: DecidedCredential | null };
 }
 
 export function createDialogueCore(env: Env, config: DialogueHarnessConfig): DialogueCore {
   const { credentialOwner } = config;
   const registry = createRegistry();
-  const models = buildModels(env, { teacherOf: credentialOwner });
+  const decidedCredential: { current: DecidedCredential | null } = { current: null };
+  const models = buildModels(env, { teacherOf: credentialOwner, keyedOf: () => decidedCredential.current });
   const btw = btwExtension(config.getTopic);
 
   const harness = new PiHarness({
@@ -80,7 +91,7 @@ export function createDialogueCore(env: Env, config: DialogueHarnessConfig): Dia
         ),
       );
       registry.install(createWebSearchExtension(env.AI));
-      registry.install(createUsageExtension(env, credentialOwner));
+      registry.install(createUsageExtension(env, () => decidedCredential.current));
       registry.install(btw);
 
       const btwName = btw.name;
@@ -114,7 +125,7 @@ export function createDialogueCore(env: Env, config: DialogueHarnessConfig): Dia
     registry.install(fauxReplayExtension(models.faux, fauxSocraticScript));
   }
 
-  return { registry, models, btw, harness, credentialOwner };
+  return { registry, models, btw, harness, credentialOwner, decidedCredential };
 }
 
 export class RunDeadlineTracker {
@@ -143,7 +154,7 @@ export class RunDeadlineTracker {
   runDeadlineJobs(session: string): LifecycleJob[] {
     return this.lifecycle.jobs
       .list()
-      .filter((job) => job.fn === RUN_DEADLINE_JOB && (job.payload as DialogueRun).session === session);
+      .filter((job) => job.fn === RUN_DEADLINE_JOB && dialogueRunOf(job.payload)?.session === session);
   }
 
   recentRunFailure(session: string): string | undefined {
@@ -167,7 +178,9 @@ export class RunDeadlineTracker {
   }
 
   private async settleRun(job: LifecycleJob): Promise<void> {
-    const { session, operationId } = job.payload as DialogueRun;
+    const run = dialogueRunOf(job.payload);
+    if (run === null) return;
+    const { session, operationId } = run;
     const handle = this.#harness.session(session);
     const wait = new AbortController();
     const timer = setTimeout(() => wait.abort(), Math.max(1_000, job.time - Date.now()));
@@ -221,19 +234,25 @@ export class RunDeadlineTracker {
 
 export async function submitViaRouter(
   env: Env,
-  { models, credentialOwner }: DialogueCore,
+  { models, credentialOwner, decidedCredential }: DialogueCore,
   sessionModels: Map<string, { provider: string; id: string }>,
   handle: PiSession,
   input: UserInput,
   options: PiSubmitOptions,
   doSubmit: (handle: PiSession, input: UserInput, options: PiSubmitOptions) => Promise<PiReceipt>,
 ): Promise<PiReceipt> {
-  const accountLegs = await teacherLegsOf(env, await credentialOwner());
+  const accountLegs = await keyedLegsOf(env, await credentialOwner());
   const router = getRouter(env);
   const canServe = (entry: { provider: string; model: string }): boolean =>
     models.models.getModel(entry.provider, entry.model) !== undefined;
-  const decision = router.pick("interactive", canServe, accountLegs);
+  const decision = await router.pick("interactive", canServe, accountLegs);
   if (!decision && !models.faux) throw new NoAvailableModelError();
+  const decidedEntry = decision && isKeyedCredential(decision.entry.credential) ? decision.entry : null;
+  const decided = decidedEntry ? { provider: decidedEntry.provider, credential: decidedEntry.credential } : null;
+  decidedCredential.current = decided;
+  const releaseDecision = () => {
+    if (decidedCredential.current === decided) decidedCredential.current = null;
+  };
   if (!decision) return doSubmit(handle, input, options);
 
   const model = models.models.getModel(decision.entry.provider, decision.model);
@@ -249,11 +268,13 @@ export async function submitViaRouter(
   void handle
     .wait(receipt.operationId)
     .then((result) => {
+      releaseDecision();
       const ok = result.status === "done" || (result.status === "unanswered" && result.reason === "aborted");
-      router.settle(decision, ok ? "ok" : "error");
+      void router.settle(decision, ok ? "ok" : "error");
     })
     .catch(() => {
-      if (router.ledger.inFlight(decision.key) > 0) router.settle(decision, "error");
+      releaseDecision();
+      void router.settle(decision, "error");
     });
 
   return receipt;
@@ -269,7 +290,12 @@ export function fauxSocraticScript(context: TranscriptContext): AssistantMessage
   }
   const preamble = context.messages
     .filter((message) => message.role === "system")
-    .map((message) => (message as { sections?: Record<string, string> }).sections?.preamble);
+    .map((message) => {
+      const sections: unknown = Reflect.get(message, "sections");
+      if (typeof sections !== "object" || sections === null || Array.isArray(sections)) return undefined;
+      const preamble: unknown = Reflect.get(sections, "preamble");
+      return typeof preamble === "string" ? preamble : undefined;
+    });
   if (preamble.includes(SOCRATES_PROMPTS.en)) {
     return fauxAssistantMessage([fauxText(`You said "${said}". What is your first judgment, and why?`)]);
   }
@@ -286,7 +312,7 @@ function textOf(content: Message["content"]): string {
 
 export interface TranscriptReadout {
   messages: Array<{ role: "user" | "assistant"; turn: number; text: string }>;
-  violations: Array<{ turn: number; type: string; excerpt: string }>;
+  violations: Array<{ turn: number; type: ViolationType; excerpt: string }>;
 }
 
 function entryText(entry: { model?: readonly Message[] }): string {
@@ -295,7 +321,7 @@ function entryText(entry: { model?: readonly Message[] }): string {
 
 export function readTranscript(items: readonly EntryRecord[]): TranscriptReadout {
   const messages: Array<{ role: "user" | "assistant"; turn: number; text: string }> = [];
-  const violations: Array<{ turn: number; type: string; excerpt: string }> = [];
+  const violations: Array<{ turn: number; type: ViolationType; excerpt: string }> = [];
   let turn = 0;
   for (const entry of items) {
     if (entry.kind === "pi.user") {
@@ -304,8 +330,18 @@ export function readTranscript(items: readonly EntryRecord[]): TranscriptReadout
     } else if (entry.kind === "pi.assistant") {
       messages.push({ role: "assistant", turn, text: entryText(entry) });
     } else if (entry.kind === "app.violation") {
-      const data = entry.data as { type?: string; excerpt?: string };
-      violations.push({ turn, type: data.type ?? "other", excerpt: data.excerpt ?? "" });
+      const data = entry.data;
+      const type =
+        typeof data === "object" && data !== null && !Array.isArray(data) ? Reflect.get(data, "type") : undefined;
+      const excerpt =
+        typeof data === "object" && data !== null && !Array.isArray(data) ? Reflect.get(data, "excerpt") : undefined;
+      const violationType =
+        typeof type === "string" ? VIOLATION_TYPES.find((candidate) => candidate === type) : undefined;
+      violations.push({
+        turn,
+        type: violationType ?? "other",
+        excerpt: typeof excerpt === "string" ? excerpt : "",
+      });
     }
   }
   return { messages, violations };

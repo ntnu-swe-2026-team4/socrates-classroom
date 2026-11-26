@@ -1,5 +1,7 @@
 import { useCallback, useRef, useLayoutEffect, useSyncExternalStore } from "react";
 
+export const WS_MAX_RETRIES = 10;
+
 const returnZero = () => 0;
 const returnFalse = () => false;
 const mountedNow = Date.now();
@@ -17,11 +19,31 @@ export function useDomEvent<E extends Event>(
   const subscribe = useCallback(
     (_notify: () => void) => {
       if (!target) return () => {};
-      const listener = (event: Event) => latest.current(event as E);
+      const listener = (event: Event) => {
+        if (latest.current === null) return;
+        // E is the caller-declared DOM event type for this target+type pair
+        latest.current(event as E);
+      };
       target.addEventListener(type, listener, capture);
       return () => target.removeEventListener(type, listener, capture);
     },
     [target, type, capture],
+  );
+  useSyncExternalStore(subscribe, returnZero, returnZero);
+}
+
+export function useTimeout(ms: number | null, fire: () => void): void {
+  const latest = useRef(fire);
+  useLayoutEffect(() => {
+    latest.current = fire;
+  });
+  const subscribe = useCallback(
+    (_notify: () => void) => {
+      if (ms === null) return () => {};
+      const id = setTimeout(() => latest.current(), ms);
+      return () => clearTimeout(id);
+    },
+    [ms],
   );
   useSyncExternalStore(subscribe, returnZero, returnZero);
 }

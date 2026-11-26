@@ -51,7 +51,8 @@ function parseDotenv(text: string): Record<string, string> {
   const env: Record<string, string> = {};
   for (const line of text.split("\n")) {
     const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line.trim());
-    if (match) env[match[1]] = match[2].trim().replace(/^["']|["']$/g, "");
+    const key = match?.[1];
+    if (match && key !== undefined) env[key] = (match[2] ?? "").trim().replace(/^["']|["']$/g, "");
   }
   return env;
 }

@@ -11,6 +11,15 @@ interface ConnectionIdentity {
   expiresAt: number;
 }
 
+function connectionIdentityOf(attachment: unknown): ConnectionIdentity | null {
+  if (typeof attachment !== "object" || attachment === null || Array.isArray(attachment)) return null;
+  const userId: unknown = Reflect.get(attachment, "userId");
+  const version: unknown = Reflect.get(attachment, "version");
+  const expiresAt: unknown = Reflect.get(attachment, "expiresAt");
+  if (typeof userId !== "string" || typeof version !== "number" || typeof expiresAt !== "number") return null;
+  return { userId, version, expiresAt };
+}
+
 export class ClassroomEvents extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     const origin = new URL(request.url).origin;
@@ -19,6 +28,7 @@ export class ClassroomEvents extends DurableObject<Env> {
 
     const lookup = await lookupSession(this.env, cookieValue(request.headers.get("Cookie") ?? "", SESSION_COOKIE));
     if (lookup.kind !== "ok") return new Response(null, { status: lookup.kind === "disabled" ? 403 : 401 });
+    if (!lookup.session.user.emailVerified) return new Response(null, { status: 403 });
     const classroomId = this.ctx.id.name;
     if (!classroomId) return new Response(null, { status: 404 });
     const { user, version, expiresAt } = lookup.session;
@@ -45,7 +55,7 @@ export class ClassroomEvents extends DurableObject<Env> {
 
     const connections = sockets.map((socket) => ({
       socket,
-      identity: socket.deserializeAttachment() as ConnectionIdentity | null,
+      identity: connectionIdentityOf(socket.deserializeAttachment()),
     }));
     const userIds = [...new Set(connections.flatMap(({ identity }) => (identity ? [identity.userId] : [])))];
     const authorized = await all<{ id: string; session_version: number }>(

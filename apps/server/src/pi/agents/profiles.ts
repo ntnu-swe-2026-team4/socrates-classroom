@@ -6,10 +6,12 @@ import {
   type Registry,
   type Submission,
 } from "@earendil-works/pi-durable";
+import { isJsonValue } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import { LANG_NAMES, type Lang } from "@socrates/shared";
+import type { JsonObject } from "@earendil-works/pi-durable";
 import STUDENT_REPORT_RAW from "../../prompts/student-report.md?raw";
 import CLASS_REPORT_RAW from "../../prompts/class-report.md?raw";
 import CLASS_REPORT_AXES_RAW from "../../prompts/class-report-axes.md?raw";
@@ -23,9 +25,9 @@ import { socratesExtension } from "../extensions/socrates";
 import { createAvatarExtension } from "../extensions/avatar";
 import { createJudgmentExtension } from "../extensions/judgment";
 import { createWebSearchExtension } from "../extensions/websearch";
-import { getRouter, type TrafficClass } from "../../gateway/router";
+import { getRouter, isKeyedCredential, type TrafficClass } from "../../gateway/router";
 import type { SettleKind } from "../../gateway/ledger";
-import { teacherLegsOf, type TeacherLeg } from "../credentials";
+import { keyedLegsOf, type DecidedCredential, type KeyedLeg } from "../credentials";
 import {
   reportSubmitAxesExtension,
   reportSubmitEngagementExtension,
@@ -33,7 +35,6 @@ import {
   reportSubmitIndicatorsExtension,
 } from "../extensions/report-submit";
 import { createUsageExtension } from "../extensions/usage";
-import type { JsonObject } from "@earendil-works/pi-durable";
 
 export type ProfileName =
   | "socrates"
@@ -107,7 +108,7 @@ export const PROFILES: Record<ProfileName, AgentProfile> = {
     extensions: ["report-submit"],
     maxTurns: 4,
     trafficClass: "batch",
-    thinkingLevel: "high",
+    thinkingLevel: "low",
   },
   "class-report-axes": {
     name: "class-report-axes",
@@ -168,21 +169,26 @@ export interface ProfileRuntime {
   models: ReturnType<typeof buildModels>;
   registry: Registry;
   env: Env;
+  decidedCredential: { current: DecidedCredential | null };
 }
 
 export async function openProfileHarness(
   env: Env,
   profileName: Exclude<ProfileName, "socrates">,
   teacherOf?: () => Promise<string | null>,
-): Promise<{ harness: Harness; runtime: ProfileRuntime; teacherLegs: Promise<TeacherLeg[]> }> {
-  const models = buildModels(env, teacherOf ? { teacherOf } : {});
+): Promise<{ harness: Harness; runtime: ProfileRuntime; keyedLegs: Promise<KeyedLeg[]> }> {
+  const decidedCredential: { current: DecidedCredential | null } = { current: null };
+  const models = buildModels(env, {
+    ...(teacherOf ? { teacherOf } : {}),
+    keyedOf: () => decidedCredential.current,
+  });
   const registry = profileRegistry(PROFILES[profileName], env);
-  if (teacherOf) registry.install(createUsageExtension(env, teacherOf));
+  registry.install(createUsageExtension(env, () => decidedCredential.current));
   const harness = await Harness.open(new MemoryStorage(), { models: models.models, registry }, BACKGROUND_CONTEXT);
   return {
     harness,
-    runtime: { models, registry, env },
-    teacherLegs: teacherOf ? teacherLegsOf(env, await teacherOf()) : Promise.resolve([]),
+    runtime: { models, registry, env, decidedCredential },
+    keyedLegs: keyedLegsOf(env, teacherOf ? await teacherOf() : null),
   };
 }
 
@@ -193,21 +199,27 @@ export interface RunProfileOptions {
 
 function toolCallPayload(entry: { model?: readonly unknown[] }, toolName: string): JsonObject | null {
   for (const message of entry.model ?? []) {
-    const candidate = message as { role?: string; content?: unknown };
-    if (candidate.role !== "assistant" || typeof candidate.content !== "object" || candidate.content === null) continue;
-    if (Array.isArray(candidate.content)) {
-      for (const part of candidate.content) {
-        const block = part as { type?: string; name?: string; arguments?: unknown };
-        if (block.type !== "toolCall" || block.name !== toolName) continue;
-        let args: unknown = block.arguments;
-        if (typeof args === "string") {
-          try {
-            args = JSON.parse(args);
-          } catch {
-            continue;
-          }
+    if (typeof message !== "object" || message === null) continue;
+    if (Reflect.get(message, "role") !== "assistant") continue;
+    const content: unknown = Reflect.get(message, "content");
+    if (typeof content !== "object" || content === null || !Array.isArray(content)) continue;
+    for (const part of content) {
+      if (typeof part !== "object" || part === null) continue;
+      if (Reflect.get(part, "type") !== "toolCall" || Reflect.get(part, "name") !== toolName) continue;
+      let args: unknown = Reflect.get(part, "arguments");
+      if (typeof args === "string") {
+        try {
+          args = JSON.parse(args);
+        } catch {
+          continue;
         }
-        if (args && typeof args === "object" && !Array.isArray(args)) return args as JsonObject;
+      }
+      if (args !== null && typeof args === "object" && !Array.isArray(args)) {
+        const record: JsonObject = {};
+        for (const [key, value] of Object.entries(args)) {
+          if (isJsonValue(value)) record[key] = value;
+        }
+        return record;
       }
     }
   }
@@ -226,7 +238,7 @@ export async function runProfile(
   runtime: ProfileRuntime,
   profileName: Exclude<ProfileName, "socrates">,
   input: string,
-  teacherLegs?: TeacherLeg[],
+  keyedLegs?: KeyedLeg[],
   options: RunProfileOptions = {},
 ): Promise<{ text: string; payload: JsonObject | null; conversation: Conversation }> {
   const profile = PROFILES[profileName];
@@ -237,8 +249,11 @@ export async function runProfile(
   const router = getRouter(runtime.env);
   const canServe = (entry: { provider: string; model: string }): boolean =>
     runtime.models.models.getModel(entry.provider, entry.model) !== undefined;
-  const decision = router.pick(profile.trafficClass, canServe, teacherLegs);
+  const decision = await router.pick(profile.trafficClass, canServe, keyedLegs);
   if (!decision && !runtime.models.faux) throw new NoAvailableModelError();
+  const decidedEntry = decision && isKeyedCredential(decision.entry.credential) ? decision.entry : null;
+  const decided = decidedEntry ? { provider: decidedEntry.provider, credential: decidedEntry.credential } : null;
+  runtime.decidedCredential.current = decided;
   let kind: SettleKind = "error";
   try {
     const model = decision
@@ -277,6 +292,7 @@ export async function runProfile(
     kind = "ok";
     return { text, payload: null, conversation };
   } finally {
-    if (decision) router.settle(decision, kind);
+    if (runtime.decidedCredential.current === decided) runtime.decidedCredential.current = null;
+    if (decision) await router.settle(decision, kind);
   }
 }

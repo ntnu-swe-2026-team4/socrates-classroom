@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { reportOptions } from "@/api/queries";
-import type { Report, User } from "@socrates/shared";
+import type { StudentReport, User } from "@socrates/shared";
 import { meQueryOptions } from "@/api/me";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -34,20 +34,19 @@ test("S01: successful logout removes private reports from the shared client", as
   setLocale("en");
   calls.navigate.mockClear();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
-  const teacher: User = { id: "teacher-1", isAdmin: false, name: "Teacher" };
+  const teacher: User = { id: "teacher-1", isAdmin: false, name: "Teacher", emailVerified: true };
   client.setQueryData(meQueryOptions.queryKey, teacher);
-  const reportSeed = {
+  const none = { level: 0 as const, turns: [], evidence: "" };
+  const reportSeed: StudentReport = {
     topicTitle: "Topic",
-    group: { axes: [], points: [], clusters: [] },
-    individuals: [
-      {
-        pseudonym: "Other student",
-        hexagon: [],
-        arguments: [{ claim: "Private response", reason: "Private reason", tension: "Private tension" }],
-        violations: [],
-      },
-    ],
-  } as unknown as Report;
+    participantName: "Student",
+    pseudonym: "學生1",
+    analysis: null,
+    indicators: { c1: none, c2: none, s1: none, s2: none, a1: none, a2: none },
+    engagement: null,
+    violations: [],
+    positions: [],
+  };
   client.setQueryData(reportOptions("activity-1").queryKey, reportSeed);
   try {
     render(

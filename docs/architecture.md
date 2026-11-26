@@ -31,7 +31,7 @@ flowchart TD
         HONO --> AUTH["auth：HMAC cookie＋PBKDF2（auth.ts）"]
         HONO --> ROUTES["routes/：auth／join／topics／classrooms／activity／voice／lookup／teacher-keys"]
         ROUTES --> DB[("D1：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys")]
-        HONO --> VOICE["voice：whisper STT／melotts TTS（AI binding）"]
+        HONO --> VOICE["voice：whisper STT／grok-tts TTS（AI binding）"]
         HONO --> LOOKUP["lookup：runProfile(lookup)"]
         HONO --> GEN["topics/generate：runProfile(topic-gen)"]
         HONO -->|"WebSocket upgrade／commit 後 RPC"| EVENTS["ClassroomEvents DO（classroomId）"]
@@ -53,13 +53,13 @@ flowchart TD
         RR --> ROUTER
     end
 
-    MODELS -->|"createAI binding"| WAI["Workers AI（glm-5.3-flash → glm-4.7-flash legs）"]
+    MODELS -->|"createAI binding"| WAI["Workers AI（glm-5.3 → glm-4.7-flash legs）"]
 
     ROUTER -->|"openrouter"| OR["OpenRouter（teacher key）"]
     VOICE --> WAI
 ```
 
-- TTS 保證路徑＝**server-side**（2026-11-04 決策）：預設 server-side，或 client `speechSynthesis` 先試、失敗/無 voice 時 fallback——#68 實作時定。原因：Firefox desktop 49+／Android 62+ 有 API（2026-11-04 查證 caniuse／MDN BCD）但 voices 全來自 OS、無 network voices——Linux 無 speech-dispatcher 時 `getVoices()` 為空、zh-TW voice 視 OS 而定，朗讀體驗不保證均一。server-side TTS candidate＝Workers AI（同 `AI` binding；model 的 ZDR／價格／zh-TW 待查證，見 providers.md 待辦）
+- TTS 保證路徑＝**server-side**（2026-11-04 決策）：預設 server-side，或 client `speechSynthesis` 先試、失敗/無 voice 時 fallback——#68 實作時定。原因：Firefox desktop 49+／Android 62+ 有 API（2026-11-04 查證 caniuse／MDN BCD）但 voices 全來自 OS、無 network voices——Linux 無 speech-dispatcher 時 `getVoices()` 為空、zh-TW voice 視 OS 而定，朗讀體驗不保證均一。server-side TTS 現行＝`xai/grok-tts`（同 `AI` binding，經 AI Gateway；ZDR／價格／輸入形狀見 providers.md §4 語音模型）
 - 圖為 v3 target view：uploads/R2（#87）、題庫分享（#86）、四階段 debate（#84）、EmotionSplitter（#90）已依 v3 移除
 
 非同步面：GitHub Actions 兩條 workflow（見 §8）；`cf previews deploy` 出 PR 預覽。
@@ -84,7 +84,7 @@ socrates-classroom/
 │       │   ├── index.ts            # /api/* → Hono；/agents/* → routeAgentRequest（WS）
 │       │   ├── app.ts              # createApp()：RpcApp 型別匯出（R6）
 │       │   ├── routes/             # REST 端點（zod 驗證、fail() 錯誤契約）
-│       │   ├── do/                 # 兩個 Durable Object
+│       │   ├── do/                 # Durable Objects（職責見 §4）
 │       │   │   ├── chat.ts         # Chat：PiHarness + registry + models（thread 級）
 │       │   │   └── report-runner.ts # ReportRunner：報告生成（activity 級，alarm 驅動）
 │       │   ├── pi/                 # pi 整合層
@@ -123,7 +123,7 @@ socrates-classroom/
 
 **topic 可見性（`services/topic-visibility.ts`）**：topic 的身份是 `(owner_id, classroom_id)` 二維狀態機——`(NULL, NULL)`＝system、`(uid, NULL)`＝personal、`(*, cid)`＝classroom。這份定義只存在一處（`topicScope`），對外兩個消費形狀：列表查詢走 `topicPoolSql`（scope 集合 → SQL fragment ＋ `$named` params）、單列授權走 `topicVisibleTo` ／ `copyableTopic`。四個呼叫點（`GET /topics`、`GET /classrooms/:id/topics`、`POST /topics/:id/copy` 的來源檢查、`topicForActivity`）都消費它，不各自重寫 WHERE；`tests/topic-visibility.test.ts` 以 truth table 鎖住狀態機，並斷言 SQL fragment 與 `topicVisibleTo` 選出的集合一致（#382）。
 
-**寄信（`SEND_EMAIL`，`send_email` binding）**：額度提醒信（#146）與密碼重設信（#230）共用，寄件人為 `ALERT_FROM_EMAIL`，模板在 `mail.ts`。Cloudflare Email Service 在 sending domain 完成 onboarding 之前，只能寄給帳號內已驗證的收件地址；寄給任意收件人需要 onboard sending domain，且需要 Workers Paid（[Send bindings](https://developers.cloudflare.com/email-service/configuration/send-bindings/)、[Pricing](https://developers.cloudflare.com/email-service/platform/pricing/)，2026-11-21 查證）。production 是否已滿足這兩項，repo 內無紀錄。
+**寄信（`SEND_EMAIL`，`send_email` binding）**：額度提醒信（#146）、密碼重設信（#230）與 email 驗證信（#259）共用，寄件人為 `ALERT_FROM_EMAIL`，模板在 `mail.ts`。Cloudflare Email Service 在 sending domain 完成 onboarding 之前，只能寄給帳號內已驗證的收件地址；寄給任意收件人需要 onboard sending domain，且需要 Workers Paid（[Send bindings](https://developers.cloudflare.com/email-service/configuration/send-bindings/)、[Pricing](https://developers.cloudflare.com/email-service/platform/pricing/)，2026-11-21 查證）。production 是否已滿足這兩項，repo 內無紀錄。
 
 **Worker 入口（index.ts）**：`/api/*` → Hono（傳入 `ExecutionContext`，路由可用 `c.executionCtx.waitUntil` 在回應後執行背景工作）；`/agents/*` → `routeAgentRequest`（WebSocket）；其餘 → static assets。
 
@@ -146,7 +146,7 @@ export interface Db {
 
 ## 4. Durable Objects（apps/server/src/do/）
 
-兩個 DO，職責分離：
+六個 DO（Chat／SoloChat／ClassroomEvents／ReportRunner／RateLimiter／RoutingLedger），職責分離：
 
 ### Chat（do/chat.ts）——thread 級
 
@@ -178,16 +178,33 @@ startReport → pending 標記 → alarm → generate：
 
 模型呼叫經 `runProfile("student-report")`／`runProfile("student-indicators")`／`runProfile("student-engagement")`／`runProfile("class-report")`（帶 axes 時為 `class-report-axes`）（一次性 Harness，MemoryStorage）——落點不重算（classReport 為準）、違規切片從 pi transcript 抽取（`/transcript` 端點，不落第二份儲存）。
 
+### RateLimiter（do/rate-limiter.ts）——限流 key 級
+
+單一 DO 承載兩種模式，皆只存 DO 記憶體、不落 storage（DO 只在 idle 時 evict，而 idle 期間窗口本來就會過期，同時避免 IP 或 email 持久化）；DO 不可用時 caller MUST fail-open（放行 + `console.warn`）——限流是保護性上限而非硬安全邊界（同 #196 RoutingLedger 的取捨）：
+
+- **per-IP 模式（#157）**：`idFromName("<scope>:<ip>")` 一 key 一個 instance，單一 actor 序列化 60 秒 sliding window；`http.ts` 的 `enforceIpLimit` 每次請求一次 RPC `allow(limit, windowMs)`（同 region 個位數 ms）。
+- **per-identifier 模式（#393）**：`key = sha256Hex(lowercase(email))`、`shard = key.slice(0, 2)`，走 `idFromName("<scope>:<shard>")` 固定 256 shard/scope（DO 名不含 PII，且任意隨機 email 灑量不會無上限新增 DO instance）。DO 內以 `Map` 保存 per-key sliding window（超過 1024 entries 時先清除過期項，仍超限則依 LRU 驅逐最舊 key），提供 `check`/`record`/`allowKey`/`clear` RPC：`POST /auth/login` 在 DB lookup 與 PBKDF2 之前 `check`（`login-fail`，10 次/15 分鐘，存在與不存在的 email 同門檻防列舉，超限 `429 rate_limited` 不附 `Retry-After`），失敗 `record`、登入成功與 `POST /auth/password/reset` 成功 `clear`（作為 DoS 逃生口）；`POST /auth/password/forgot` 採原子 `allowKey`（`password-forgot-email`，5 分鐘 1 封，超限靜默回 204）。OAuth 路徑不共用此 bucket。
+
+### RoutingLedger（do/routing-ledger.ts）——credential 級
+
+以 credential 為 shard key（`teacher:<id>` 一個老師一個 instance、platform pool 一個固定 instance），把 teacher 鏈與平台鏈的 in-flight／cooldown 從 isolate 內存搬到單點記帳（#196）：同一老師的 Chat DOs＋ReportRunner 散在多個 isolate 時，限額仍是 vendor 真正看到的那一份（先前 per-isolate 各自放行，overshoot ×isolate 數）。
+
+- **協定**：`Router` 保留 env 相依判斷（`AI` binding、`baseUrlEnv`、`canServe`、build-time config），排序後的 candidate 清單一次 RPC 交給 DO——`reserve(candidates)` 原子 check-and-increment 回傳選中者＋lease；`admit(candidates)` 是 `chain()`／`budget()` 用的唯讀版本；跑完 `settle(lease, ok|error)` 釋放並記成敗（cooldown 住 DO 內），`ConversationBusy` 走 `release(lease)`（不記失敗）。候選跨 shard 時依 priority 順序逐段 RPC：teacher 鏈吃滿才落到平台鏈。
+- **lease**：reserve 帶 10 分鐘 lease（`report.alarmTimeoutMs` 5 分鐘的兩倍——比任何一次 LLM call 都長）；DO alarm sweeper 收割過期未釋放的 slot，caller 崩潰不會永久吃掉額度。settle 以 lease 為鍵，重複 settle 是 no-op。
+- **fail-open**：DO 不可用（binding 缺失或 RPC 失敗）時照常路由、不計帳、log 一次——限額是保護性上限不是安全邊界，可用性優先；此時 `budget()` 回 0，report-runner 退化為固定 8 併發的 batch。
+- **狀態在記憶體**：計數與 lease 不落地，instance 重啟等同歸零（限額變鬆、不會卡死）；cooldown 也跟著消失，代價是多挨一次供應商 429。
+- **binding**：`RoutingLedger`（`cloudflare.config.ts` 的 export＋sqlite storage；`wrangler.vitest.jsonc` 同步，測試直接打真 DO）。選 DO 而非 KV／D1：記帳要的是單點序列化（check-and-increment）與 alarm，兩者都是 DO 的原生能力，KV 最終一致、D1 每次寫入都是一次 round-trip 且無 alarm 可依附
+
 ## 5. Gateway（apps/server/src/gateway/）
 
 provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點**：`providers.config.yaml`（build-time 編譯成 zod 驗證的 `config.gen.ts`）。
 
-| 檔案                | 職責                                                                                                                                      |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `gateway-schema.ts` | YAML 的 zod schema：provider 實例（endpoint+model）×credential 分離；classifiers；availability（priority/maxConcurrency）；trafficClasses |
-| `config.gen.ts`     | `scripts/gen-config.mjs` 產出（Workers 無檔案系統）                                                                                       |
-| `ledger.ts`         | (provider, model, credential) 記帳＋cooldown（pi 無結構化錯誤狀態→只記 ok/error；連續 5 error 開 60s、ok 重置、過期自然回無 probe）       |
-| `router.ts`         | traffic class 鏈走訪（priority 排序＋cooldown/maxConcurrency 過濾、teacher legs 前置）→ pick；isolate 生命週期（getRouter WeakMap）       |
+| 檔案                | 職責                                                                                                                                                                             |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gateway-schema.ts` | YAML 的 zod schema：provider 實例（endpoint+model）×credential 分離；classifiers；availability（priority/maxConcurrency）；trafficClasses                                        |
+| `config.gen.ts`     | `scripts/gen-config.mjs` 產出（Workers 無檔案系統）                                                                                                                              |
+| `ledger.ts`         | (provider, model, credential) 記帳＋cooldown 的狀態機（pi 無結構化錯誤狀態→只記 ok/error；連續 5 error 開 60s、ok 重置、過期自然回無 probe）；instances 由 RoutingLedger DO 持有 |
+| `router.ts`         | traffic class 鏈走訪（priority 排序＋teacher legs 前置）→ candidate；交由 DO 做 reserve/admit（限額與 cooldown 過濾），依 credential 選 shard，DO 不可用時 fail-open             |
 
 **請求層 vs 決策層**：fallback legs 的試錯、retry 退避由 pi 原生（`streamWithFallback`／`settings.retry`）；gateway 只決定「誰該拿到哪條 legs、誰的錢、記誰的帳」。調查過 LiteLLM Router／pi-router／pi-fallback-provider（#98 留言，2026-11-06）——結論：不引入，pi 原生＋三個小件已涵蓋。
 
@@ -200,7 +217,7 @@ provider 政策層（v3 的 ProviderPool/whitelist 退役）。**單一配置點
 ## 6. 資料層
 
 - **開活動的 transaction**：Worker 先確認題目權限與設軸 policy，再以同一個 D1 batch 寫入所有必要的變更。D1 回傳成功後才發送 classroom 事件。活動 API 的題目 snapshot 規則見 [api-contract.md §4.1](api-contract.md)。
-- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities／教室社群／settings（`migrations/`）。014 教室社群新增 `classroom_announcements`、`classroom_posts`、`classroom_content_requests` 與 `classroom_invites`；015（`015_topic_axes.sql`）為 `topics` 新增 `axes` 欄位並 backfill 系統題與 `copied_from` 複本（#159）；016（`016_settings.sql`）新增 `settings` key-value 表（deploy 後管理員可調整的執行期設定，未設定時 fallback 至 `providers.config.yaml`）與 `activities.report_axes`（開活動當下快照鎖定之設軸模式 `teacher`／`ai`，既有活動為 `NULL`）；018（`018_engagement_visibility.sql`）為 `activities` 新增 `engagement_to_class`／`engagement_to_student`（老師的認真度可見性勾選，預設 0，#267）。pi transcript 是對話與違規的唯一真相，無第二份儲存
+- **D1 schema**：users／classrooms／topics／activities／members／activity_participants／activity_invites／reports／pseudonyms／teacher_keys／user_identities／教室社群／settings（`migrations/`）。014 教室社群新增 `classroom_announcements`、`classroom_posts`、`classroom_content_requests` 與 `classroom_invites`；015（`015_topic_axes.sql`）為 `topics` 新增 `axes` 欄位並 backfill 系統題與 `copied_from` 複本（#159）；016（`016_settings.sql`）新增 `settings` key-value 表（deploy 後管理員可調整的執行期設定，未設定時 fallback 至 `providers.config.yaml`）與 `activities.report_axes`（開活動當下快照鎖定之設軸模式 `teacher`／`ai`，既有活動為 `NULL`）；018（`018_engagement_visibility.sql`）為 `activities` 新增 `engagement_to_class`／`engagement_to_student`（老師的認真度可見性勾選，預設 0，#267）。020（`020_topic_lifecycle.sql`）為 `topics` 新增 `deleted_at`（soft delete，#383）、把 `topics.axes` 正規化為固定 key 順序、合併既有重複題（含 `activities.topic_id` 與 `topics.copied_from` 重指），最後建 partial unique index `topics_classroom_content`／`topics_personal_content`（各池 `deleted_at IS NULL` 的 `(…, title, statement, axes)` 唯一）。pi transcript 是對話與違規的唯一真相，無第二份儲存
 - **teacher_keys**：`teacher_keys(user_id, provider_id)` 一對一（AES-GCM，金鑰為 Worker secret `BYOK_ENC_KEY`），`sort_order` 為 gateway 的 provider 鏈序（#82）
 - **DO SQLite**：只有 pi 自己的 `pi_*` 表，應用程式不讀寫——agent 狀態與產品資料分離（D2）
 - **保留政策**：AI Gateway log/cache 關閉；Worker 觀測 log 不含 prompt 內容（judgment sink 只記 type/source）
@@ -244,19 +261,19 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 9. 測試策略（vitest-pool-workers）
 
-| 檔案                        | 內容                                                                              |
-| --------------------------- | --------------------------------------------------------------------------------- |
-| `tests/chat.test.ts`        | 主流程（WS 升級→hello→watch→submit→回答）、evict 重連恢復、ConversationBusy       |
-| `tests/avatar.test.ts`      | 情緒 entry 形狀、文字零污染                                                       |
-| `tests/judgment.test.ts`    | tool 註冊、agent 自報 entry                                                       |
-| `tests/websearch.test.ts`   | 三 tool 註冊、SSRF 矩陣、cache、store/find/slice                                  |
-| `tests/profiles.test.ts`    | profile 表零 model hardcode、真 prompt 資產接線、runProfile 全路徑                |
-| `tests/gateway.test.ts`     | cooldown 語意矩陣、config 形狀、分開記帳                                          |
-| `tests/rest.test.ts`        | 真 Worker 入口：seed guard/ToS join/歷史/finish→report/授權矩陣/teacher keys CRUD |
-| `tests/report.test.ts`      | 報告管線端到端：ready/partial 形狀（§7）、pseudonym integrity、IDOR               |
-| `tests/auth-crypto.test.ts` | AES-GCM/HKDF 加密、版本前綴、timing-safe 比對                                     |
-| `tests/d1.test.ts`          | `$named` 轉 positional——字串常數內 `$` 不替換                                     |
-| `tests/helpers.ts`          | 共享 WS 測試原語：frames/latestView/assistantText                                 |
+| 檔案                        | 內容                                                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `tests/chat.test.ts`        | 主流程（WS 升級→hello→watch→submit→回答）、evict 重連恢復、ConversationBusy                                              |
+| `tests/avatar.test.ts`      | 情緒 entry 形狀、文字零污染                                                                                              |
+| `tests/judgment.test.ts`    | tool 註冊、agent 自報 entry                                                                                              |
+| `tests/websearch.test.ts`   | 三 tool 註冊、SSRF 矩陣、cache、store/find/slice                                                                         |
+| `tests/profiles.test.ts`    | profile 表零 model hardcode、真 prompt 資產接線、runProfile 全路徑                                                       |
+| `tests/gateway.test.ts`     | cooldown 語意矩陣、config 形狀、分開記帳；真 RoutingLedger DO：跨 isolate 限額精確、cooldown 全局、lease 收割、fail-open |
+| `tests/rest.test.ts`        | 真 Worker 入口：seed guard/ToS join/歷史/finish→report/授權矩陣/teacher keys CRUD                                        |
+| `tests/report.test.ts`      | 報告管線端到端：ready/partial 形狀（§7）、pseudonym integrity、IDOR                                                      |
+| `tests/auth-crypto.test.ts` | AES-GCM/HKDF 加密、版本前綴、timing-safe 比對                                                                            |
+| `tests/d1.test.ts`          | `$named` 轉 positional——字串常數內 `$` 不替換                                                                            |
+| `tests/helpers.ts`          | 共享 WS 測試原語：frames/latestView/assistantText                                                                        |
 
 原則：真 DO＋真 WebSocket＋faux model（無 fetch 攔截、無 mock DO）；斷言只驗形狀不驗內容。web 端另有 vitest（jsdom）＋review overlay。
 
@@ -279,14 +296,14 @@ apps/web/src/api        import { hc } from "hono/client"; hc<RpcApp>("/api")
 
 ## 12. 風險與對策
 
-| 風險                                                             | 對策                                                                                                                                                          |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1 無互動式交易，tx→batch 語意差異                               | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                                                                              |
-| cf beta 格式變動                                                 | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                                                                                          |
-| dgx-spark 腿延遲（暫時移除，回歸時適用）                         | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                                                                                |
-| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）           | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                                                                                    |
-| module 級狀態（rate-limit 的 Map）隨 isolate 分散且重啟歸零      | 定位為 best-effort；跨請求一致的併發守衛在 Chat DO 的 whenBusy reject。多 isolate 佈局後限流改走 DO                                                           |
-| TTS 跨分頁仲裁的毫秒級 race（`SpeechArbiter`，同一使用者多 tab） | 已知限制：窗口為毫秒級、需同一使用者雙 tab 同時觸發朗讀才有感；目前不修。重啟條件：出現使用者可見的重複播放或殘留播放，或跨 tab 朗讀成為正式功能（#165 決定） |
+| 風險                                                              | 對策                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D1 無互動式交易，tx→batch 語意差異                                | R1 逐處改寫 + 快照測試；複雜案例再評估 DO SQLite                                                                                                                                                                                                                                                       |
+| cf beta 格式變動                                                  | `cf` 鎖 devDependency；`cloudflare.config.ts` 變更走 CI dry-run 先擋                                                                                                                                                                                                                                   |
+| dgx-spark 腿延遲（暫時移除，回歸時適用）                          | 爆發期實測 P95；不行就靠 workers-ai 平台腿兜底                                                                                                                                                                                                                                                         |
+| Pi 限制（15 分鐘 alarm、無 approval、event 無 cursor）            | 回覆 ≤3 句不受影響；工具白名單先不開寫入類                                                                                                                                                                                                                                                             |
+| per-IP 與 per-identifier 限流跨 isolate 計數（已處置，#157/#393） | `RateLimiter` DO 按 `scope:ip`（per-IP）與 `scope:shard`（per-identifier，SHA-256 前 2 hex 固定 256 shard、無 PII）序列化 sliding window，跨 isolate 一致；計數只存 DO 記憶體（idle eviction＝窗口歸零，只在無流量時發生）；DO 不可用時 fail-open。跨請求一致的併發守衛仍在 Chat DO 的 whenBusy reject |
+| TTS 跨分頁仲裁的毫秒級 race（`SpeechArbiter`，同一使用者多 tab）  | 已知限制：窗口為毫秒級、需同一使用者雙 tab 同時觸發朗讀才有感；目前不修。重啟條件：出現使用者可見的重複播放或殘留播放，或跨 tab 朗讀成為正式功能（#165 決定）                                                                                                                                          |
 
 ## 13. Scale design v2（D9–D13）——10k 併發作為 code quality bar
 
@@ -352,18 +369,18 @@ v3 的 ActivityEvents DO 已退役。對話改用 Chat DO 的 WebSocket hibernat
 
 ### 13.6 與 v3 實作的 gap（2026-11-06 web-next 重建後的狀態）
 
-| #   | 變更                                           | 狀態                                                       |
-| --- | ---------------------------------------------- | ---------------------------------------------------------- |
-| 1   | signed cookie 取代 sessions 表 hot read        | ✅ 已做（auth.ts）                                         |
-| 2   | dialogue-save 同步寫 → Queues projection       | 未做（現為同步 batch，10k 前可接受）                       |
-| 3   | violations／usage event stream → Queues＋batch | 未做（judgment 走 entry＋D1）                              |
-| 4   | 報告生成 → Workflows 編排                      | 部分：ReportRunner DO alarm（crash-safe）；Workflows 待評  |
-| 5   | ActivityEvents → WS hibernation＋ring buffer   | 改道：#73 採用 D1 projection 與 polling（§13.5）           |
-| 6   | pool.ts → gateway（config／ledger／cooldown）  | ✅ 已做（§5）；Coordinator DO 未建（ledger 在 isolate 內） |
-| 7   | agents 0.33＋pi 1.5                            | ✅ 已做                                                    |
-| 8   | AE data point＋cron rollup                     | 未做（#80/#81/#63，本輪不做）                              |
+| #   | 變更                                           | 狀態                                                      |
+| --- | ---------------------------------------------- | --------------------------------------------------------- |
+| 1   | signed cookie 取代 sessions 表 hot read        | ✅ 已做（auth.ts）                                        |
+| 2   | dialogue-save 同步寫 → Queues projection       | 未做（現為同步 batch，10k 前可接受）                      |
+| 3   | violations／usage event stream → Queues＋batch | 未做（judgment 走 entry＋D1）                             |
+| 4   | 報告生成 → Workflows 編排                      | 部分：ReportRunner DO alarm（crash-safe）；Workflows 待評 |
+| 5   | ActivityEvents → WS hibernation＋ring buffer   | 改道：#73 採用 D1 projection 與 polling（§13.5）          |
+| 6   | pool.ts → gateway（config／ledger／cooldown）  | ✅ 已做（§5）；ledger 已搬進 RoutingLedger DO（#196、§4） |
+| 7   | agents 0.33＋pi 1.5                            | ✅ 已做                                                   |
+| 8   | AE data point＋cron rollup                     | 未做（#80/#81/#63，本輪不做）                             |
 
-新 bindings（ask-first）：Queues、Workflows、Rate Limiting（#103）、Analytics Engine。
+新 bindings（ask-first）：Queues、Workflows、Analytics Engine。Rate Limiting binding 不採用：它是 per-location、approximate，解不掉跨 isolate 分散繞過；per-IP 限流改走 `RateLimiter` DO（#157），#103 收斂為登入後身分的 per-user 限流。
 
 ### 13.7 Honest limits（設計不假裝解決的）
 

@@ -6,7 +6,7 @@ import { createAI } from "agents/models/pi-ai";
 import type { Env } from "../env";
 import type { AvailabilityEntry } from "../gateway/gateway-schema";
 import { gatewayConfig } from "../gateway/config.gen";
-import { teacherCredentialStore, workersAuthContext } from "./credentials";
+import { keyedCredentialStore, workersAuthContext, type DecidedCredential } from "./credentials";
 
 export interface ModelsBundle {
   models: MutableModels;
@@ -16,6 +16,7 @@ export interface ModelsBundle {
 
 export interface BuildModelsOptions {
   teacherOf?: () => Promise<string | null>;
+  keyedOf?: () => DecidedCredential | null;
 }
 
 export function buildModels(env: Env, options: BuildModelsOptions = {}): ModelsBundle {
@@ -23,10 +24,14 @@ export function buildModels(env: Env, options: BuildModelsOptions = {}): ModelsB
   if (!env.AI) throw new Error("AI binding is not configured; set LLM_PROVIDER=mock for offline dev");
 
   const models = builtinModels({
-    credentials: teacherCredentialStore(env, options.teacherOf ?? (async () => null)),
+    credentials: keyedCredentialStore(env, options.keyedOf ?? (() => null), options.teacherOf ?? (async () => null)),
     authContext: workersAuthContext(env),
   });
-  const ai = createAI({ binding: env.AI });
+  // Routing through AI Gateway id "default" bills Workers AI inference from the prepaid
+  // credits (Unified billing — the 50 rpm tier for paid models). collectLog:false and
+  // skipCache:true pin zero retention in code — AI Gateway logs are enabled by default,
+  // so the ZDR boundary must not depend on the gateway's dashboard state.
+  const ai = createAI({ binding: env.AI, id: "default", collectLog: false, skipCache: true });
   const [head, ...legs] = [...gatewayConfig.defaults.availability]
     .sort((a, b) => a.priority - b.priority)
     .map((entry) => bindingModelOf(entry))
@@ -34,20 +39,19 @@ export function buildModels(env: Env, options: BuildModelsOptions = {}): ModelsB
 
   let fallbackHead: AnyModel | undefined;
   if (head) {
-    const primary = ai(head, { fallback: legs }) as unknown as AnyModel;
+    const primary = ai(head, { fallback: legs });
     const wrapped = {
       ...ai.provider,
-      getModels: () =>
-        (ai.provider.getModels() as unknown as AnyModel[]).map((model) => (model.id === head ? primary : model)),
+      getModels: () => ai.provider.getModels().map((model) => (model.id === head ? primary : model)),
     };
     for (const [id, def] of Object.entries(gatewayConfig.providers)) {
-      if (def.kind === "binding") models.setProvider({ ...wrapped, id, name: `${wrapped.name} (${id})` } as never);
+      if (def.kind === "binding") models.setProvider({ ...wrapped, id, name: `${wrapped.name} (${id})` });
     }
-    models.setProvider(wrapped as never);
+    models.setProvider(wrapped);
     const headEntry = [...gatewayConfig.defaults.availability]
       .sort((a, b) => a.priority - b.priority)
       .find((entry) => bindingModelOf(entry) === head);
-    fallbackHead = headEntry ? (models.getModel(headEntry.provider, head) as AnyModel | undefined) : undefined;
+    fallbackHead = headEntry ? models.getModel(headEntry.provider, head) : undefined;
   }
   registerDgx(env, models);
   return { models, default: fallbackHead ?? firstResolvable(models) ?? fauxBundle(env).default };
@@ -59,6 +63,10 @@ function registerDgx(env: Env, models: MutableModels): void {
   if (def?.kind !== "openai-completions" || !baseUrl) return;
   const model = def.models?.[0];
   if (!model) return;
+  // pi's Model contract requires a real contextWindow; the as-never this replaces used to hide that.
+  if (model.contextWindow === undefined || model.maxTokens === undefined) {
+    throw new Error("providers.config.yaml: dgx-spark model requires contextWindow and maxTokens");
+  }
   const provider = createProvider({
     id: "dgx-spark",
     name: "dgx-spark",
@@ -79,15 +87,15 @@ function registerDgx(env: Env, models: MutableModels): void {
         baseUrl,
         reasoning: model.reasoning ?? false,
         input: model.input ?? ["text"],
-        ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
-        ...(model.maxTokens !== undefined ? { maxTokens: model.maxTokens } : {}),
+        contextWindow: model.contextWindow,
+        maxTokens: model.maxTokens,
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         ...(def.compat ? { compat: def.compat } : {}),
-      } as never,
+      },
     ],
     api: { "openai-completions": openAICompletionsApi() },
   });
-  models.setProvider(provider as never);
+  models.setProvider(provider);
 }
 
 function bindingModelOf(entry: AvailabilityEntry): string | undefined {
@@ -99,7 +107,7 @@ function bindingModelOf(entry: AvailabilityEntry): string | undefined {
 function firstResolvable(models: MutableModels): AnyModel | undefined {
   for (const provider of models.getProviders()) {
     const model = models.getModels(provider.id)[0];
-    if (model) return model as AnyModel;
+    if (model) return model;
   }
   return undefined;
 }
@@ -109,5 +117,5 @@ function fauxBundle(env: Env): ModelsBundle {
   const faux = fauxProvider(tokensPerSecond ? { tokensPerSecond, tokenSize: { min: 2, max: 4 } } : {});
   const models = createModels();
   models.setProvider(faux.provider);
-  return { models, default: faux.getModel() as unknown as AnyModel, faux };
+  return { models, default: faux.getModel(), faux };
 }

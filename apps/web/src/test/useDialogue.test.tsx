@@ -3,17 +3,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDialogue } from "@/hooks/useDialogue";
 import { companion } from "@/lib/companion";
 import type { EntryRecord } from "@earendil-works/pi-durable";
-import type { ServerMessage } from "@server/ws/protocol";
+import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
+import { must } from "./helpers";
+import { clientFrames, entryIdOf, conversationIdOf, opsFrame as opsFrameOf, viewFrame as viewFrameOf } from "./helpers";
+import type { JsonObject } from "@earendil-works/pi-durable";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 
+function clientFrame(raw: string): ClientMessage | null {
+  return clientFrames([raw])[0] ?? null;
+}
 type AgentOptions = {
   onOpen?: (event: { target: unknown }) => void;
   onMessage?: (event: { data: unknown }) => void;
   onClose?: () => void;
+  maxRetries?: number;
 };
 
-const agent = vi.hoisted(() => ({
-  options: null as AgentOptions | null,
-  sent: [] as string[],
+const agent = vi.hoisted((): { options: AgentOptions | null; sent: string[] } => ({
+  options: null,
+  sent: [],
 }));
 
 vi.mock("agents/react", () => ({
@@ -52,58 +60,65 @@ function emit(frame: ServerMessage) {
   });
 }
 
-const asEntry = (entry: object): EntryRecord => entry as unknown as EntryRecord;
-
 function userEntry(id: number, text: string): EntryRecord {
-  return asEntry({ id, conversationId: "c1", kind: "pi.user", model: [{ role: "user", content: text }] });
+  return {
+    id: entryIdOf(id),
+    conversationId: conversationIdOf("1"),
+    kind: "pi.user",
+    model: [{ role: "user", content: text, timestamp: 0 }],
+  };
 }
 
-function assistantEntry(id: number, text: string, stopReason?: string): EntryRecord {
-  return asEntry({
-    id,
-    conversationId: "c1",
-    kind: "pi.assistant",
-    model: [{ role: "assistant", content: [{ type: "text", text }], ...(stopReason ? { stopReason } : {}) }],
-  });
+function assistantEntry(id: number, text: string, stopReason?: AssistantMessage["stopReason"]): EntryRecord {
+  const message: AssistantMessage = {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    api: "openai-completions",
+    provider: "openrouter",
+    model: "test-model",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    timestamp: 0,
+    stopReason: stopReason ?? "stop",
+  };
+  return { id: entryIdOf(id), conversationId: conversationIdOf("1"), kind: "pi.assistant", model: [message] };
 }
 
 function emotionEntry(id: number): EntryRecord {
-  return asEntry({
-    id,
-    conversationId: "c1",
+  return {
+    id: entryIdOf(id),
+    conversationId: conversationIdOf("1"),
     kind: "app.emotion",
     data: { emotion: "curious", confidence: 0.9, probabilities: { curious: 0.9 } },
-  });
+  };
 }
 
 function happyEntry(id: number): EntryRecord {
-  return asEntry({
-    id,
-    conversationId: "c1",
+  return {
+    id: entryIdOf(id),
+    conversationId: conversationIdOf("1"),
     kind: "app.emotion",
     data: { emotion: "happy", confidence: 0.9, probabilities: { happy: 0.9 } },
-  });
+  };
 }
 
 function viewFrame(entries: EntryRecord[], before?: number): ServerMessage {
-  return {
-    type: "view",
-    view: { conversation: { id: 1 }, entries, docs: {}, ...(before !== undefined ? { before } : {}) },
-  } as unknown as ServerMessage;
+  return viewFrameOf(entries, before);
 }
 
-function opsFrame(entries: EntryRecord[], docs: Record<string, unknown> = {}): ServerMessage {
-  return {
-    type: "ops",
-    ops: [["r", { conversation: { id: 1 }, entries, docs }]],
-  } as unknown as ServerMessage;
+function opsFrame(entries: EntryRecord[], docs: JsonObject = {}): ServerMessage {
+  return opsFrameOf(entries, docs);
 }
 
 function submitId(): string | undefined {
-  const frame = agent.sent
-    .map((raw) => JSON.parse(raw) as { type: string; id?: string })
-    .find((f) => f.type === "submit");
-  return frame?.id;
+  const frame = agent.sent.map((raw) => clientFrame(raw)).find((frame) => frame?.type === "submit");
+  return frame?.type === "submit" ? frame.id : undefined;
 }
 
 beforeEach(() => {
@@ -119,9 +134,14 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     expect(agent.sent.map((raw) => JSON.parse(raw)).filter((frame) => frame.type === "watch")).toHaveLength(1);
   });
 
+  it("bounds the socket reconnect attempts", () => {
+    renderHook(() => useDialogue("a_1", "u_1"));
+    expect(Number.isFinite(agent.options?.maxRetries)).toBe(true);
+  });
+
   it("main flow: result=admission does not complete; the assistant entry landing moves speaking → idle", async () => {
     const { result } = renderHook(() => useDialogue("a_1", "u_1"));
-    expect(JSON.parse(agent.sent[0])).toMatchObject({ type: "watch" });
+    expect(JSON.parse(must(agent.sent[0], "first frame"))).toMatchObject({ type: "watch" });
 
     emit(viewFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答")]));
 
@@ -140,7 +160,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     emit(
       opsFrame([userEntry(1, "舊問題"), assistantEntry(2, "舊回答"), userEntry(3, "正義是什麼？")], {
         "pi.live": { generation: { message: { role: "assistant", content: [{ type: "text", text: "先從你" }] } } },
-      }),
+      } satisfies JsonObject),
     );
     expect(result.current.phase).toBe("streaming");
     expect(result.current.draft).toBe("先從你");
@@ -157,7 +177,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     expect(result.current.messages.at(-1)).toEqual({ id: "e4", role: "assistant", text: "你的直覺" });
     await waitFor(() => expect(result.current.phase).toBe("idle"));
     expect(tts).toHaveBeenCalledTimes(1);
-    expect(tts.mock.calls[0][0]).toBe("你的直覺");
+    expect(must(tts.mock.calls[0], "tts call")[0]).toBe("你的直覺");
   });
 
   it("F2: a tool-round assistant entry does not complete pending, speak, or unlock input", async () => {
@@ -173,21 +193,33 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
         userEntry(1, "舊問題"),
         assistantEntry(2, "舊回答"),
         userEntry(3, "幫我查資料"),
-        asEntry({
-          id: 4,
-          conversationId: "c1",
+        {
+          id: entryIdOf(4),
+          conversationId: conversationIdOf("1"),
           kind: "pi.assistant",
           model: [
             {
               role: "assistant",
               content: [
                 { type: "text", text: "Let me search." },
-                { type: "toolCall", name: "web_search" },
+                { type: "toolCall", id: "call_1", name: "web_search", arguments: {} },
               ],
+              api: "openai-completions",
+              provider: "openrouter",
+              model: "test-model",
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+              timestamp: 0,
               stopReason: "toolUse",
-            },
+            } satisfies AssistantMessage,
           ],
-        }),
+        },
       ]),
     );
     expect(result.current.pending).toBe(true);
@@ -216,13 +248,11 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
       void result.current.loadEarlier();
     });
     await act(async () => {});
-    const op = agent.sent
-      .map((raw) => JSON.parse(raw) as { type: string; id?: string; query?: unknown })
-      .find((frame) => frame.type === "entries");
+    const op = agent.sent.map((raw) => clientFrame(raw)).find((frame) => frame?.type === "entries");
     expect(op).toMatchObject({ type: "entries", query: { maxEntryId: 3 } });
 
-    if (op?.id === undefined) throw new Error("entries frame missing id");
-    emit({ type: "result", id: op.id, result: { items: [userEntry(0, "更早")] } } as unknown as ServerMessage);
+    if (op?.type !== "entries") throw new Error("entries frame missing");
+    emit({ type: "result", id: op.id, result: { items: [userEntry(0, "更早")] } } satisfies ServerMessage);
     await waitFor(() => expect(result.current.messages[0]).toEqual({ id: "e0", role: "user", text: "更早" }));
     expect(result.current.canLoadEarlier).toBe(false);
   });
@@ -248,7 +278,8 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     act(() => result.current.send("第一問"));
     emit(opsFrame([userEntry(1, "第一問"), assistantEntry(2, "第一答")]));
     expect(result.current.phase).toBe("speaking");
-    const firstSignal = tts.mock.calls[0][2] as AbortSignal;
+    const firstSignal = must(tts.mock.calls[0], "tts call")[2];
+    if (!(firstSignal instanceof AbortSignal)) throw new Error("tts call did not receive an AbortSignal");
 
     act(() => result.current.send("第二問"));
     expect(firstSignal.aborted).toBe(true);
@@ -302,7 +333,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     act(() => result.current.send("孤兒 run 的問題"));
     emit(viewFrame([userEntry(1, "孤兒 run 的問題"), assistantEntry(2, "孤兒的答案")]));
     expect(result.current.phase).toBe("speaking");
-    expect(tts.mock.calls[0][0]).toBe("孤兒的答案");
+    expect(must(tts.mock.calls[0], "tts call")[0]).toBe("孤兒的答案");
   });
 
   it("run failure broadcast: id-less error clears pending; ignored when none is pending", () => {
@@ -379,11 +410,11 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     act(() => result.current.send("被打拒的問題"));
     const submitted = agent.sent.filter((raw) => raw.includes("submit"));
     expect(submitted).toHaveLength(1);
-    emit({ type: "error", id: JSON.parse(submitted[0]).id, message: "ConversationBusy" });
+    emit({ type: "error", id: JSON.parse(must(submitted[0], "submit frame")).id, message: "ConversationBusy" });
     act(() => result.current.retryLast());
     const resent = agent.sent.filter((raw) => raw.includes("submit"));
     expect(resent).toHaveLength(2);
-    expect(JSON.parse(resent[1])).toMatchObject({ input: "被打拒的問題" });
+    expect(JSON.parse(must(resent[1], "resent frame"))).toMatchObject({ input: "被打拒的問題" });
   });
 
   it("retryLast: cleared after a successful answer — no stale input remains", () => {
@@ -405,7 +436,7 @@ describe("useDialogue (WS: view/ops derivation + baseline arbitration)", () => {
     expect(result.current.phase).toBe("thinking");
     emit(opsFrame([userEntry(3, "長對話中的問題"), assistantEntry(4, "跨過 splice 的回答")]));
     expect(result.current.phase).toBe("speaking");
-    expect(tts.mock.calls[0][0]).toBe("跨過 splice 的回答");
+    expect(must(tts.mock.calls[0], "tts call")[0]).toBe("跨過 splice 的回答");
   });
 
   it("sliding window: a view past the baseline keeps waiting for the missing turn", () => {
@@ -481,10 +512,10 @@ describe("useDialogue (autoSend: queued first question)", () => {
 
     const submits = () =>
       agent.sent
-        .map((raw) => JSON.parse(raw) as { type: string; input?: string })
-        .filter((frame) => frame.type === "submit");
+        .map((raw) => clientFrame(raw))
+        .filter((frame): frame is Extract<ClientMessage, { type: "submit" }> => frame?.type === "submit");
     expect(submits()).toHaveLength(1);
-    expect(submits()[0].input).toBe("什麼是正義？");
+    expect(must(submits()[0], "first submit").input).toBe("什麼是正義？");
     expect(result.current.pending).toBe(true);
     expect(onAutoSent).toHaveBeenCalledTimes(1);
 
@@ -500,7 +531,9 @@ describe("useDialogue (autoSend: queued first question)", () => {
 
     emit(viewFrame([]));
     const submits = () =>
-      agent.sent.map((raw) => JSON.parse(raw) as { type: string }).filter((frame) => frame.type === "submit");
+      agent.sent
+        .map((raw) => clientFrame(raw))
+        .filter((frame): frame is Extract<ClientMessage, { type: "submit" }> => frame?.type === "submit");
     expect(submits()).toHaveLength(1);
 
     emit(opsFrame([userEntry(1, "什麼是正義？"), assistantEntry(2, "先想想看")]));
@@ -540,15 +573,15 @@ describe("useDialogue (autoSend: queued first question)", () => {
     emit(viewFrame([userEntry(1, "第一題"), assistantEntry(2, "第一答")]));
     const submits = () =>
       agent.sent
-        .map((raw) => JSON.parse(raw) as { type: string; input?: string })
-        .filter((frame) => frame.type === "submit");
+        .map((raw) => clientFrame(raw))
+        .filter((frame): frame is Extract<ClientMessage, { type: "submit" }> => frame?.type === "submit");
     expect(submits()).toHaveLength(1);
 
     act(() => {
       releaseTts?.();
     });
     await waitFor(() => expect(submits()).toHaveLength(2));
-    expect(submits()[1].input).toBe("第二題");
+    expect(must(submits()[1], "second submit").input).toBe("第二題");
   });
 });
 
@@ -569,7 +602,7 @@ describe("useDialogue (session callbacks)", () => {
     act(() => {
       expect(result.current.send("問題")).toBe(true);
     });
-    emit({ type: "error", code: "ActivityFinished" } as ServerMessage);
+    emit({ type: "error", message: "activity finished", code: "ActivityFinished" } satisfies ServerMessage);
     expect(onActivityFinished).toHaveBeenCalledTimes(1);
     expect(result.current.error?.code).toBe("ActivityFinished");
   });

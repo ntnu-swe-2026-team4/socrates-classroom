@@ -11,12 +11,17 @@ import {
   call,
   classroomWithActivity,
   cookieOf,
+  field,
   frames,
   joinGuest,
   latestAssistantText,
+  num,
   registerStudent,
+  rows,
   must,
+  optStr,
   speak,
+  str,
   systemTopicId,
 } from "./helpers";
 
@@ -39,9 +44,9 @@ function jsonInit(body: unknown, cookie?: string): RequestInit {
 async function newTestActivity(): Promise<string> {
   const res = await call(`/api/classrooms/${classroomId}/activities`, jsonInit({ topicId, mode: "test" }, teacher));
   expect(res.status).toBe(201);
-  const created = (await res.json()) as { activityId: string; mode: string };
-  expect(created.mode).toBe("test");
-  return created.activityId;
+  const created = await res.json();
+  expect(str(created, "mode")).toBe("test");
+  return str(created, "activityId");
 }
 
 interface SlotRow {
@@ -53,7 +58,16 @@ interface SlotRow {
 async function slotsOf(activityId: string): Promise<{ maxSlots: number; slots: SlotRow[] }> {
   const res = await call(`/api/activities/${activityId}/slots`, { headers: { Cookie: teacher } });
   expect(res.status).toBe(200);
-  return (await res.json()) as { maxSlots: number; slots: SlotRow[] };
+  const payload = await res.json();
+  const slots: unknown = field(payload, "slots");
+  return {
+    maxSlots: num(payload, "maxSlots"),
+    slots: (Array.isArray(slots) ? slots : []).map((slot) => ({
+      id: str(slot, "id"),
+      name: str(slot, "name"),
+      rounds: num(slot, "rounds"),
+    })),
+  };
 }
 
 async function connect(thread: string, cookie: string): Promise<WebSocket> {
@@ -89,13 +103,12 @@ beforeAll(async () => {
 describe("test mode (#134): student entry points", () => {
   it("a test activity never becomes the classroom's current activity", async () => {
     const activityId = await newTestActivity();
-    const rooms = (await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()) as Array<{
-      id: string;
-      current: { activityId: string } | null;
-    }>;
-    const room = rooms.find((entry) => entry.id === classroomId);
-    expect(room?.current?.activityId).toBe(liveActivityId);
-    expect(room?.current?.activityId).not.toBe(activityId);
+    const rooms = rows(await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json());
+    const room = rooms.find((entry) => str(entry, "id") === classroomId);
+    const current: unknown = room === undefined ? null : field(room, "current");
+    const currentActivityId = typeof current === "object" && current !== null ? str(current, "activityId") : null;
+    expect(currentActivityId).toBe(liveActivityId);
+    expect(currentActivityId).not.toBe(activityId);
 
     const guest = await joinGuest(code, "班碼訪客");
     expect(guest.activityId).toBe(liveActivityId);
@@ -116,7 +129,7 @@ describe("test mode (#134): student entry points", () => {
       headers: { Cookie: teacher },
     });
     expect(invite.status).toBe(409);
-    expect(((await invite.json()) as { code: string }).code).toBe("conflict");
+    expect(str(await invite.json(), "code")).toBe("conflict");
     const finish = await call(`/api/activities/${activityId}/finish`, {
       method: "POST",
       headers: { Cookie: student, "CF-Connecting-IP": "198.51.100.61" },
@@ -135,11 +148,12 @@ describe("test mode (#134): teacher slots", () => {
     const activityId = await newTestActivity();
     const created = await call(`/api/activities/${activityId}/slots`, jsonInit({ count: 3 }, teacher));
     expect(created.status).toBe(201);
-    const payload = (await created.json()) as { maxSlots: number; slots: Array<{ id: string; name: string }> };
-    expect(payload.maxSlots).toBe(6);
-    expect(payload.slots).toHaveLength(3);
-    expect(new Set(payload.slots.map((slot) => slot.id)).size).toBe(3);
-    expect(new Set(payload.slots.map((slot) => slot.name)).size).toBe(3);
+    const createdBody = await created.json();
+    expect(num(createdBody, "maxSlots")).toBe(6);
+    const createdSlots = rows(field(createdBody, "slots"));
+    expect(createdSlots).toHaveLength(3);
+    expect(new Set(createdSlots.map((slot) => str(slot, "id"))).size).toBe(3);
+    expect(new Set(createdSlots.map((slot) => str(slot, "name"))).size).toBe(3);
 
     const overCap = await call(`/api/activities/${activityId}/slots`, jsonInit({ count: 4 }, teacher));
     expect(overCap.status).toBe(409);
@@ -168,8 +182,8 @@ describe("test mode (#134): teacher slots", () => {
 
     const created = await call(`/api/activities/${activityId}/slots`, jsonInit({ count: 3 }, teacher));
     expect(created.status).toBe(201);
-    const payload = (await created.json()) as { slots: Array<{ name: string }> };
-    expect(payload.slots.map((slot) => slot.name).sort(byCodeUnit)).toEqual(["測試 1", "測試 3", "測試 4"]);
+    const createdSlots = rows(field(await created.json(), "slots"));
+    expect(createdSlots.map((slot) => str(slot, "name")).sort(byCodeUnit)).toEqual(["測試 1", "測試 3", "測試 4"]);
   });
 
   it("the teacher reads a slot through GET /activities/:id?participantId=…", async () => {
@@ -177,16 +191,16 @@ describe("test mode (#134): teacher slots", () => {
     await call(`/api/activities/${activityId}/slots`, jsonInit({ count: 2 }, teacher));
     const { slots } = await slotsOf(activityId);
 
-    const mine = await call(`/api/activities/${activityId}?participantId=${slots[0].id}`, {
+    const mine = await call(`/api/activities/${activityId}?participantId=${slots[0]?.id}`, {
       headers: { Cookie: teacher },
     });
     expect(mine.status).toBe(200);
-    const info = (await mine.json()) as { participantId: string | null; mode: string };
-    expect(info.mode).toBe("test");
-    expect(info.participantId).toBe(slots[0].id);
+    const infoBody = await mine.json();
+    expect(str(infoBody, "mode")).toBe("test");
+    expect(optStr(infoBody, "participantId")).toBe(slots[0]?.id);
 
     const student = (await registerStudent(code, "偷看 slot 的成員")).cookie;
-    const denied = await call(`/api/activities/${activityId}?participantId=${slots[0].id}`, {
+    const denied = await call(`/api/activities/${activityId}?participantId=${slots[0]?.id}`, {
       headers: { Cookie: student },
     });
     expect(denied.status).toBe(403);
@@ -199,14 +213,14 @@ describe("test mode (#134): parallel dialogues and report", () => {
     await call(`/api/activities/${activityId}/slots`, jsonInit({ count: 3 }, teacher));
     const { slots } = await slotsOf(activityId);
     const questions = ["問題甲：正義是什麼？", "問題乙：自由是什麼？", "問題丙：幸福是什麼？"];
-    for (const [index, slot] of slots.entries()) {
-      await speak(`${activityId}:${slot.id}`, teacher, questions[index]);
+    for (const [index, entry] of slots.entries()) {
+      await speak(`${activityId}:${entry.id}`, teacher, must(questions[index], `question ${index}`));
     }
 
     const stats = await slotsOf(activityId);
     expect(stats.slots.map((slot) => slot.rounds)).toEqual([1, 1, 1]);
 
-    const first = await connect(`${activityId}:${slots[0].id}`, teacher);
+    const first = await connect(`${activityId}:${slots[0]?.id}`, teacher);
     const rx = frames(first);
     await rx.until((f) => f.some((m) => m.type === "hello"));
     first.send(JSON.stringify({ type: "watch" }));
@@ -218,7 +232,7 @@ describe("test mode (#134): parallel dialogues and report", () => {
     first.close();
 
     const student = (await registerStudent(code, "不能進 slot 的成員")).cookie;
-    const intruder = await connect(`${activityId}:${slots[1].id}`, student);
+    const intruder = await connect(`${activityId}:${slots[1]?.id}`, student);
     const intruderRx = frames(intruder);
     intruder.send(JSON.stringify({ type: "watch" }));
     await intruderRx.until((f) => f.length > 0 || intruder.readyState === WebSocket.CLOSED);
@@ -235,24 +249,23 @@ describe("test mode (#134): parallel dialogues and report", () => {
       async () => {
         const res = await call(`/api/activities/${activityId}/report`, { headers: { Cookie: teacher } });
         expect(res.status).toBe(200);
-        return (await res.json()) as {
-          classReport: unknown;
-          students: Array<{ participantId: string; pseudonym: string; participantName: string }>;
-        };
+        const reportBody = await res.json();
+        const students: unknown = field(reportBody, "students");
+        if (!Array.isArray(students)) throw new Error("report students is not an array");
+        return { classReport: field(reportBody, "classReport"), students };
       },
       { timeout: 60_000, interval: 500 },
     );
     expect(report.classReport).not.toBeNull();
     expect(report.students).toHaveLength(3);
-    expect(report.students.map((entry) => entry.participantId).sort(byCodeUnit)).toEqual(
+    expect(report.students.map((entry) => str(entry, "participantId")).sort(byCodeUnit)).toEqual(
       slots.map((slot) => slot.id).sort(byCodeUnit),
     );
-    expect(new Set(report.students.map((entry) => entry.pseudonym)).size).toBe(3);
+    expect(new Set(report.students.map((entry) => str(entry, "pseudonym"))).size).toBe(3);
 
-    const rooms = (await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json()) as Array<{
-      id: string;
-      current: { activityId: string } | null;
-    }>;
-    expect(rooms.find((room) => room.id === classroomId)?.current?.activityId).toBe(liveActivityId);
+    const rooms = rows(await (await call("/api/classrooms", { headers: { Cookie: teacher } })).json());
+    const room = rooms.find((entry) => str(entry, "id") === classroomId);
+    const current: unknown = room === undefined ? null : field(room, "current");
+    expect(typeof current === "object" && current !== null ? str(current, "activityId") : null).toBe(liveActivityId);
   }, 90_000);
 });

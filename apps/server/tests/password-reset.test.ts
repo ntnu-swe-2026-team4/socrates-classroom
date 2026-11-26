@@ -1,10 +1,9 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, inject, test } from "vitest";
-import worker from "../src/index";
 import { one, run } from "../src/db/d1";
 import { type AccountTokenPurpose, hashPassword, passwordResetBinding, sealAccountToken } from "../src/auth";
-import { cookieOf, must, scopedEnv } from "./helpers";
+import { cookieOf, must, scopedEnv, str, workerFetch } from "./helpers";
 
 interface SentEmail {
   to: string;
@@ -38,10 +37,8 @@ function mailbox(delivery: Delivery = "delivered") {
   });
   const request = async (path: string, init: RequestInit = {}): Promise<Response> => {
     const pending: Promise<unknown>[] = [];
-    const res = await (
-      worker as unknown as { fetch(req: Request, env: unknown, ctx: unknown): Promise<Response> }
-    ).fetch(new Request(`http://worker.test${path}`, init), scoped, {
-      waitUntil: (promise: Promise<unknown>) => pending.push(promise),
+    const res = await workerFetch(scoped, new Request(`http://worker.test${path}`, init), (promise) => {
+      pending.push(promise);
     });
     await Promise.all(pending);
     return res;
@@ -64,13 +61,18 @@ async function signup(m: Mailbox, email: string, password: string, lang = "zh-TW
     { "Accept-Language": lang },
   );
   expect(res.status).toBe(200);
-  const user = (await res.json()) as { id: string };
-  return { id: user.id, cookie: cookieOf(res) };
+  const user = await res.json();
+  return { id: str(user, "id"), cookie: cookieOf(res) };
+}
+
+function resetMails(m: Mailbox): SentEmail[] {
+  return m.sent.filter((mail) => mail.text.includes("/reset-password#token="));
 }
 
 function tokenOf(mail: SentEmail): string {
-  const match = must(/#token=([A-Za-z0-9_\-.]+)/.exec(mail.text), "reset token");
-  return match[1];
+  const token = must(/#token=([A-Za-z0-9_\-.]+)/.exec(mail.text), "reset token")[1];
+  if (token === undefined) throw new Error("reset token group missing");
+  return token;
 }
 
 async function requestLink(m: Mailbox, email: string): Promise<string> {
@@ -84,7 +86,7 @@ async function requestLink(m: Mailbox, email: string): Promise<string> {
 const reset = (m: Mailbox, token: string, password: string) => m.post("/api/auth/password/reset", { token, password });
 
 async function codeOf(res: Response): Promise<string> {
-  return ((await res.json()) as { code: string }).code;
+  return str(await res.json(), "code");
 }
 
 async function loginStatus(m: Mailbox, email: string, password: string): Promise<number> {
@@ -101,8 +103,8 @@ async function bindingOf(id: string): Promise<string> {
   return passwordResetBinding(record.password_hash, record.email);
 }
 
-async function sealedToken(purpose: string, uid: string, ttlMs: number): Promise<string> {
-  return sealAccountToken({ env }, purpose as AccountTokenPurpose, uid, await bindingOf(uid), ttlMs);
+async function sealedToken(purpose: AccountTokenPurpose, uid: string, ttlMs: number): Promise<string> {
+  return sealAccountToken({ env }, purpose, uid, await bindingOf(uid), ttlMs);
 }
 
 describe("password reset (#230)", () => {
@@ -114,10 +116,11 @@ describe("password reset (#230)", () => {
     const res = await m.post("/api/auth/password/forgot", { email: email.toUpperCase() });
 
     expect(res.status).toBe(204);
-    expect(m.sent).toHaveLength(1);
-    expect(m.sent[0].to).toBe(email);
-    expect(m.sent[0].from).toBe("noreply@socrates.test");
-    expect(m.sent[0].text).toContain(`${BASE}/reset-password#token=`);
+    const mails = resetMails(m);
+    expect(mails).toHaveLength(1);
+    expect(must(mails[0], "reset mail").to).toBe(email);
+    expect(must(mails[0], "reset mail").from).toBe("noreply@socrates.test");
+    expect(must(mails[0], "reset mail").text).toContain(`${BASE}/reset-password#token=`);
   });
 
   test("forgot for unknown, passwordless and disabled accounts → 204 and no mail", async () => {
@@ -140,7 +143,7 @@ describe("password reset (#230)", () => {
       const res = await m.post("/api/auth/password/forgot", { email });
       expect(res.status).toBe(204);
     }
-    expect(m.sent).toHaveLength(0);
+    expect(resetMails(m)).toHaveLength(0);
   });
 
   test("reset → 204, old password 401, new password 200; reusing the link → 400 reset_token_invalid", async () => {
@@ -161,9 +164,9 @@ describe("password reset (#230)", () => {
   test("two links outstanding: using one → the other 400 reset_token_invalid", async () => {
     const m = mailbox();
     const email = freshEmail();
-    await signup(m, email, "old-password-1");
+    const account = await signup(m, email, "old-password-1");
     const first = await requestLink(m, email);
-    const second = await requestLink(m, email);
+    const second = await sealedToken("password_reset", account.id, 29 * 60_000);
 
     expect((await reset(m, first, "new-password-1")).status).toBe(204);
     const stale = await reset(m, second, "other-password-1");
@@ -212,8 +215,8 @@ describe("password reset (#230)", () => {
     const attacker = freshEmail();
     await signup(m, attacker, "old-password-1");
     const token = await requestLink(m, attacker);
-    const [payload, signature] = token.split(".") as [string, string];
-    const decoded = JSON.parse(atob(payload.replaceAll("-", "+").replaceAll("_", "/"))) as Record<string, unknown>;
+    const [payload = "", signature = ""] = token.split(".");
+    const decoded: Record<string, unknown> = JSON.parse(atob(payload.replaceAll("-", "+").replaceAll("_", "/")));
     const forged = btoa(JSON.stringify({ ...decoded, uid: victimAccount.id }))
       .replaceAll("+", "-")
       .replaceAll("/", "_")
@@ -287,7 +290,7 @@ describe("password reset (#230)", () => {
       await requestLink(m, email);
     }
 
-    const subjects = m.sent.map((mail) => mail.subject);
+    const subjects = resetMails(m).map((mail) => mail.subject);
     expect(subjects.every((subject) => subject.length > 0)).toBe(true);
     expect(new Set(subjects).size).toBe(3);
   });
@@ -345,5 +348,52 @@ describe("password reset rate limits (#230)", () => {
     }
     expect(last?.status).toBe(429);
     expect(await codeOf(must(last, "rate-limit response"))).toBe("rate_limited");
+  });
+});
+
+describe("password forgot per-email cooldown (#393)", () => {
+  test("second forgot for the same email within cooldown returns 204 silently across IPs and casing", async () => {
+    const m = mailbox();
+    const email = freshEmail();
+    await signup(m, email, "old-password-1");
+
+    const first = await m.post("/api/auth/password/forgot", { email }, { "CF-Connecting-IP": "198.51.100.10" });
+    const second = await m.post(
+      "/api/auth/password/forgot",
+      { email: email.toUpperCase() },
+      { "CF-Connecting-IP": "198.51.100.11" },
+    );
+
+    expect(first.status).toBe(204);
+    expect(second.status).toBe(204);
+    expect(resetMails(m)).toHaveLength(1);
+  });
+
+  test("cooldown for one email does not suppress a different email", async () => {
+    const m = mailbox();
+    const firstEmail = freshEmail();
+    const secondEmail = freshEmail();
+    await signup(m, firstEmail, "old-password-1");
+    await signup(m, secondEmail, "old-password-1");
+
+    expect((await m.post("/api/auth/password/forgot", { email: firstEmail })).status).toBe(204);
+    expect((await m.post("/api/auth/password/forgot", { email: firstEmail })).status).toBe(204);
+    expect((await m.post("/api/auth/password/forgot", { email: secondEmail })).status).toBe(204);
+
+    expect(resetMails(m).map((mail) => mail.to)).toEqual([firstEmail, secondEmail]);
+  });
+
+  test("concurrent forgot requests for the same email send only one mail", async () => {
+    const m = mailbox();
+    const email = freshEmail();
+    await signup(m, email, "old-password-1");
+
+    const responses = await Promise.all([
+      m.post("/api/auth/password/forgot", { email }, { "CF-Connecting-IP": "198.51.100.12" }),
+      m.post("/api/auth/password/forgot", { email }, { "CF-Connecting-IP": "198.51.100.13" }),
+    ]);
+
+    expect(responses.map((res) => res.status)).toEqual([204, 204]);
+    expect(resetMails(m)).toHaveLength(1);
   });
 });
