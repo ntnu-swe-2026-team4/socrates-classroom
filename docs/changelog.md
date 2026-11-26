@@ -10,6 +10,14 @@
 - `@cf/myshell-ai/melotts` 改為下架紀錄：2026-11-05 changelog 宣布、2026-11-20 下架後回 410，保留舊介面形狀
 - 待辦新增兩項未查證事項：`default` gateway 的 ZDR 設定、`voice.ts` 送出的 `language: "es"` 不在官方代碼清單
 - `docs/architecture.md` 架構圖的 voice 節點與 TTS 路徑說明改為 grok-tts
+## 2026-11-26 — 教室討論區改為串文式排版（`feat/486-board-thread-layout`，#486）
+
+### Changed
+
+- 討論區留言（`ClassroomCommunity`）：內文緊接在名字與日期下方，操作列（回覆、刪除）移到內文底下，不再把刪除按鈕放在最右側
+- 回覆縮排在該則留言底下，以細線從頭像往下連到回覆區，取代原本的粗左框線；回覆的頭像較小
+- 發文與回覆輸入框去掉外層卡片（不再框中框）；回覆輸入框改為單列，送出按鈕在右側
+- 功能不變：發文、回覆、收合、刪除與權限判斷沿用原邏輯
 
 ## 2026-11-26 — 正式站語音與分類器全失效：aiRunOf 遺失 binding receiver（`fix/ai-run-this-binding`，#439）
 

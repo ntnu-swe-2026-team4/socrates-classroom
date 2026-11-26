@@ -1,5 +1,5 @@
 import { useMutation, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, MessagesSquare, Trash2 } from "lucide-react";
+import { MessageCircle, Trash2 } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { api } from "@/api";
 import { classroomAnnouncementsOptions, classroomPostsOptions, classroomRepliesOptions } from "@/api/queries";
@@ -105,20 +105,22 @@ export function ClassroomFeed({
         <ol className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-paper">
           {messages.map((message) => (
             <li key={message.id} className="p-4 sm:p-5">
-              <MessageBody
-                message={message}
-                onDelete={
-                  teacher || (!announcements && message.authorId === viewerId)
-                    ? () => setDeleting({ messageId: message.id, kind: announcements ? "announcement" : "thread" })
-                    : undefined
-                }
-              />
-              {!announcements && (
-                <Thread
+              {announcements ? (
+                <MessageBody
+                  message={message}
+                  onDelete={teacher ? () => setDeleting({ messageId: message.id, kind: "announcement" }) : undefined}
+                />
+              ) : (
+                <Post
                   id={id}
-                  postId={message.id}
+                  message={message}
+                  onDelete={
+                    teacher || message.authorId === viewerId
+                      ? () => setDeleting({ messageId: message.id, kind: "thread" })
+                      : undefined
+                  }
                   canDelete={(reply) => teacher || reply.authorId === viewerId}
-                  onDelete={(messageId) => setDeleting({ messageId, kind: "reply" })}
+                  onDeleteReply={(messageId) => setDeleting({ messageId, kind: "reply" })}
                 />
               )}
             </li>
@@ -150,76 +152,108 @@ export function ClassroomFeed({
   );
 }
 
-function MessageBody({ message, onDelete }: { message: Message; onDelete?: () => void }) {
+function MessageBody({
+  message,
+  small,
+  connector,
+  actions,
+  onDelete,
+}: {
+  message: Message;
+  small?: boolean;
+  connector?: boolean;
+  actions?: ReactNode;
+  onDelete?: () => void;
+}) {
   const t = useT();
   const formatDate = useFormatDate();
   const name = message.authorName ?? t("room_removed_author");
   return (
-    <article className="min-w-0">
-      <div className="flex min-w-0 items-start gap-3">
+    <article className="flex min-w-0 gap-3">
+      <div className="flex shrink-0 flex-col items-center">
         <span
           aria-hidden
-          className="grid size-9 shrink-0 place-items-center rounded-xl bg-paper-deep text-sm font-semibold text-ink"
+          className={cn(
+            "grid shrink-0 place-items-center rounded-full bg-paper-deep font-semibold text-ink",
+            small ? "size-7 text-xs" : "size-9 text-sm",
+          )}
         >
           {Array.from(name)[0]?.toLocaleUpperCase()}
         </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-            <strong className="min-w-0 break-words text-sm text-ink">{name}</strong>
-            <time dateTime={message.createdAt} className="text-xs text-ink-soft">
-              {formatDate(message.createdAt)}
-            </time>
-          </div>
-          <p className="mt-2 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-ink">{message.body}</p>
+        {connector && <span aria-hidden className="mt-2 w-px flex-1 bg-line-strong" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          <strong className="min-w-0 break-words text-sm text-ink">{name}</strong>
+          <time dateTime={message.createdAt} className="text-xs text-ink-soft">
+            {formatDate(message.createdAt)}
+          </time>
         </div>
-        {onDelete && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-9 shrink-0 px-0"
-            aria-label={t("room_delete")}
-            onClick={onDelete}
-          >
-            <Trash2 className="size-4" aria-hidden />
-          </Button>
+        <p className="mt-0.5 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-ink">{message.body}</p>
+        {(actions || onDelete) && (
+          <div className="mt-1 -ml-2 flex items-center gap-1 text-ink-soft">
+            {actions}
+            {onDelete && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-8 px-0"
+                aria-label={t("room_delete")}
+                onClick={onDelete}
+              >
+                <Trash2 className="size-4" aria-hidden />
+              </Button>
+            )}
+          </div>
         )}
       </div>
     </article>
   );
 }
 
-function Thread({
+function Post({
   id,
-  postId,
-  canDelete,
+  message,
   onDelete,
+  canDelete,
+  onDeleteReply,
 }: {
   id: string;
-  postId: string;
+  message: Message;
+  onDelete?: () => void;
   canDelete: (reply: Message) => boolean;
-  onDelete: (replyId: string) => void;
+  onDeleteReply: (replyId: string) => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const repliesId = useId();
   return (
-    <div className="mt-2 min-w-0 pl-4 sm:pl-12">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="-ml-2"
-        aria-expanded={open}
-        aria-controls={repliesId}
-        onClick={() => setOpen(!open)}
+    <>
+      <MessageBody
+        message={message}
+        connector={open}
+        onDelete={onDelete}
+        actions={
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-expanded={open}
+            aria-controls={repliesId}
+            onClick={() => setOpen(!open)}
+          >
+            <MessageCircle className="size-4" aria-hidden />
+            {t(open ? "room_board_hide_replies" : "room_board_reply")}
+          </Button>
+        }
+      />
+      <div
+        id={repliesId}
+        hidden={!open}
+        className="ml-[17.5px] min-w-0 border-l border-line-strong pl-[18px] sm:pl-[30px]"
       >
-        <MessagesSquare className="size-3.5" aria-hidden />
-        {t(open ? "room_board_hide_replies" : "room_board_reply")}
-        <ChevronDown className={cn("size-3.5", open && "rotate-180")} aria-hidden />
-      </Button>
-      <div id={repliesId} hidden={!open}>
-        {open && <Replies id={id} postId={postId} canDelete={canDelete} onDelete={onDelete} />}
+        {open && <Replies id={id} postId={message.id} canDelete={canDelete} onDelete={onDeleteReply} />}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -238,23 +272,25 @@ function Replies({
   const client = useQueryClient();
   const options = classroomRepliesOptions(id, postId);
   const replies = useInfiniteQuery(options);
+  const items = replies.data?.pages.flatMap((page) => page.items) ?? [];
   return (
-    <div className="mt-2 space-y-3 border-l-2 border-line-strong pl-3">
+    <div className="space-y-3 pt-3">
       <PanelState pending={replies.isPending} error={replies.isError} retry={() => void replies.refetch()} />
-      <ol className="space-y-4">
-        {replies.data?.pages
-          .flatMap((page) => page.items)
-          .map((reply) => (
+      {items.length > 0 && (
+        <ol className="space-y-3">
+          {items.map((reply) => (
             <li key={reply.id}>
-              <MessageBody message={reply} onDelete={canDelete(reply) ? () => onDelete(reply.id) : undefined} />
+              <MessageBody small message={reply} onDelete={canDelete(reply) ? () => onDelete(reply.id) : undefined} />
             </li>
           ))}
-      </ol>
+        </ol>
+      )}
       {replies.hasNextPage && (
         <LoadMore pending={replies.isFetchingNextPage} onClick={() => void replies.fetchNextPage()} />
       )}
       {replies.isSuccess && (
         <Composer
+          compact
           placeholder={t("room_board_reply_placeholder")}
           action={t("room_send")}
           write={async (body, key) => {
@@ -270,10 +306,12 @@ function Replies({
 function Composer({
   placeholder,
   action,
+  compact,
   write,
 }: {
   placeholder: string;
   action: string;
+  compact?: boolean;
   write: (body: string, key: string) => Promise<void>;
 }) {
   const t = useT();
@@ -301,38 +339,43 @@ function Composer({
 
   return (
     <form
-      className="space-y-2 rounded-xl border border-line bg-card p-3 sm:p-4"
+      className="space-y-2"
       aria-busy={mutation.isPending}
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
     >
-      <textarea
-        aria-label={placeholder}
-        placeholder={placeholder}
-        rows={2}
-        maxLength={4000}
-        disabled={mutation.isPending}
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey) || event.nativeEvent.isComposing) return;
-          event.preventDefault();
-          submit();
-        }}
-        className="w-full resize-y rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-soft focus-visible:ring-2 focus-visible:ring-ember/60"
-      />
+      <div className={cn("flex gap-2", compact ? "items-end" : "flex-col")}>
+        <textarea
+          aria-label={placeholder}
+          placeholder={placeholder}
+          rows={compact ? 1 : 2}
+          maxLength={4000}
+          disabled={mutation.isPending}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey) || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            submit();
+          }}
+          className="w-full min-w-0 flex-1 resize-y border border-line-strong bg-paper px-3 py-2 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-soft focus-visible:ring-2 focus-visible:ring-ember/60"
+        />
+        <Button
+          type="submit"
+          size={compact ? "sm" : "md"}
+          className={cn("shrink-0", !compact && "self-end")}
+          disabled={!text.trim() || mutation.isPending}
+        >
+          {action}
+        </Button>
+      </div>
       {mutation.isError && (
         <p role="alert" className="text-sm text-flag">
           {t("common_error")}
         </p>
       )}
-      <div className="flex justify-end">
-        <Button type="submit" disabled={!text.trim() || mutation.isPending}>
-          {action}
-        </Button>
-      </div>
     </form>
   );
 }
