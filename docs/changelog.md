@@ -10,6 +10,14 @@
 - `@cf/myshell-ai/melotts` 改為下架紀錄：2026-11-05 changelog 宣布、2026-11-20 下架後回 410，保留舊介面形狀
 - 待辦新增兩項未查證事項：`default` gateway 的 ZDR 設定、`voice.ts` 送出的 `language: "es"` 不在官方代碼清單
 - `docs/architecture.md` 架構圖的 voice 節點與 TTS 路徑說明改為 grok-tts
+## 2026-11-26 — 新手教學：逐一介紹左側導覽按鈕（`feat/onboarding-tour`，#487）
+
+### Added
+
+- 帳號第一次進入登入後的頁面時自動出現新手教學（`OnboardingTour`）：一次亮起一個左側導覽按鈕、其餘畫面變暗，旁邊顯示說明；可上一步、下一步、略過，Esc 也可略過
+- 介紹範圍：首頁、提問、教室（自動展開「我選的課」「教室管理」）、通知、深淺色切換、帳號；手機寬度下教學期間把導覽列顯示出來
+- 設定頁「一般」新增「新手教學 → 重新觀看」
+- 「已看過」記在 localStorage（`tour-seen:<userId>`，`lib/tour.ts`），沒有後端欄位，換裝置會再出現一次
 
 ## 2026-11-26 — 正式站語音與分類器全失效：aiRunOf 遺失 binding receiver（`fix/ai-run-this-binding`，#439）
 

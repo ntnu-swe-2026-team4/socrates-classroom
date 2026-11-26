@@ -1,10 +1,11 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { meOf } from "@/api/me";
-import { Card, PageHeader, Segmented, cn } from "@/components/ui";
+import { Button, Card, PageHeader, Segmented, cn } from "@/components/ui";
 import { LoginMethods, providerLabel } from "@/components/LoginMethods";
 import { ProviderKeys } from "@/components/ProviderKeys";
 import { locales, setLocale, useI18n, useT, type Locale, type MessageKey } from "@/i18n";
 import { companion, useCompanion } from "@/lib/companion";
+import { startTour } from "@/lib/tour";
 import { KeyRound, MessagesSquare, ShieldCheck, SlidersHorizontal, Volume1, Volume2, VolumeX } from "lucide-react";
 
 const SECTIONS = [
@@ -163,6 +164,15 @@ function SettingsPage() {
                   </button>
                 ))}
               </div>
+            </Card>
+          )}
+          {section === "general" && (
+            <Card className="flex flex-col items-start gap-3 p-5">
+              <p className="font-serif text-[15.5px] text-ink">{t("settings_tour_title")}</p>
+              <p className="text-[13px] leading-relaxed text-ink-soft">{t("settings_tour_desc")}</p>
+              <Button variant="outline" onClick={startTour}>
+                {t("settings_tour_replay")}
+              </Button>
             </Card>
           )}
           {section === "dialogue" && (
