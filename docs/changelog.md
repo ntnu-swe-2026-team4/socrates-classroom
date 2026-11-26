@@ -2,6 +2,15 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-27 — providers.md 的 TTS 條目對齊 xai/grok-tts（`docs/468-grok-tts`，#468）
+
+### Changed
+
+- `docs/providers.md` §4 語音模型：TTS 改記現行的 `xai/grok-tts`（#119 起），附 2026-11-27 查證的 ZDR、每字元費率、binding 輸入與回傳形狀及官方來源；註明 ZDR 只在 Unified Billing 代管憑證時適用、不控制 gateway logging
+- `@cf/myshell-ai/melotts` 改為下架紀錄：2026-11-05 changelog 宣布、2026-11-20 下架後回 410，保留舊介面形狀
+- 待辦新增兩項未查證事項：`default` gateway 的 ZDR 設定、`voice.ts` 送出的 `language: "es"` 不在官方代碼清單
+- `docs/architecture.md` 架構圖的 voice 節點與 TTS 路徑說明改為 grok-tts
+
 ## 2026-11-26 — 正式站語音與分類器全失效：aiRunOf 遺失 binding receiver（`fix/ai-run-this-binding`，#439）
 
 ### Fixed

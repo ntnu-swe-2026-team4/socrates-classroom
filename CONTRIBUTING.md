@@ -45,9 +45,20 @@ Backlog 的 issue 可以缺任何欄位；**離開 Backlog 時下列欄位要齊
 | `Size`       | 必填（`epic` 與 `decision` 除外），單位是 PR 數，見下表                       |
 | domain label | 必填 — `教室` / `對話` / `查詢` / `防濫用` / `成本` / `報告` / `管理`，可多重 |
 | 驗收段       | 必填，body 要有可驗證的驗收條件                                               |
-| `Priority`   | 必填 — `Urgent` / `High` / `Medium` / `Low`；值由開發者判斷，agent 不代填     |
+| `Priority`   | 必填（`epic` 除外）— `Urgent` / `High` / `Medium` / `Low`；判定準則見下       |
 
 `Priority` 與 `Size` 都是 organization 層的 **issue field**，不是 project item field：值存在 issue 上、建立 issue 時就看得到、可經 REST／GraphQL 讀寫（`gh api /orgs/{org}/issue-fields`、`setIssueFieldValue`），因此 CI 驗得動。代價是 pinning 只能在組織設定（Planning → Issue fields）操作，沒有 API，所以設定不可版控。兩種欄位的完整差異與取捨見 #436 的附錄。
+
+`Priority` 的判定（值是開發者的責任；判定成立時 agent 可以代填，見 [§ 寫入方法](#issue-field-的寫入方法)）：
+
+| 選項     | 判定                                                      | 例                                                   |
+| -------- | --------------------------------------------------------- | ---------------------------------------------------- |
+| `Urgent` | 正式站功能不可用，或阻塞上線                              | TTS／STT 全數失效、對話 WebSocket 全掛、上線前置缺漏 |
+| `High`   | 使用者可感知的錯誤，或擋住其他 issue（blocked-by 的來源） | 邀請碼入口消失；某個決策擋住數張實作單               |
+| `Medium` | 體驗改進，或可繞過的功能缺口                              | thinking 動畫、PDF 匯出、語音試聽                    |
+| `Low`    | 不影響使用者：清理、文件、內部重構                        | docs 修正、tech debt 收斂                            |
+
+判定不了就往下一個選項放，不要預設 `Urgent`。
 
 issue fields 沒有 required 屬性（官方 [Managing issue fields](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/managing-issue-fields) 只提供 pinning 與 visibility），所以「必填」靠三層落實：
 
@@ -66,6 +77,30 @@ issue fields 沒有 required 屬性（官方 [Managing issue fields](https://doc
 | `XL` | 拆分波母單                                          | 必須是 `epic`，且已列 sub-issues |
 
 `Estimate` 已移除（與 `Size` 重複計量）；`Start date` / `Target date` 目前不使用。
+
+### issue field 的寫入方法
+
+`Size` 與 `Priority` 是 issue field，**`gh project item-edit` 改不到**（那是 project item field 的路徑）。寫入走 GraphQL `setIssueFieldValue`，需要 issue 的 node id：
+
+```bash
+# 1. issue node id
+gh api graphql -q '.data.repository.issue.id' \
+  -f query='query{repository(owner:"ntnu-swe-2026-team4",name:"socrates-classroom"){issue(number:436){id}}}'
+
+# 2. 欄位與選項 id（Priority／Size）
+gh api graphql -q '.data.organization.issueFields.nodes[] | "\(.name)\t\(.id)\t\([.options[]?|.name+":"+.id]|join(" "))"' \
+  -f query='query{organization(login:"ntnu-swe-2026-team4"){issueFields(first:30){nodes{... on IssueFieldSingleSelect{name id options{name id}}}}}}'
+
+# 3. 寫入（issueFields 是陣列，可一次寫多個欄位）
+gh api graphql -f query='mutation($i:ID!){setIssueFieldValue(input:{issueId:$i,issueFields:[
+  {fieldId:"IFSS_kgDOAsu2bg",singleSelectOptionId:"IFSSO_kgDOBOTVKw"}]}){clientMutationId}}' -f i="<issue node id>"
+
+# 4. 清除
+gh api graphql -f query='mutation($i:ID!){setIssueFieldValue(input:{issueId:$i,issueFields:[
+  {fieldId:"IFSS_kgDOAsu2bg",delete:true}]}){clientMutationId}}' -f i="<issue node id>"
+```
+
+現行 token 只需 `repo` + `project`，不需要 `admin:org`。
 
 ### Labels
 

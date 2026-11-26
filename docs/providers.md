@@ -1,6 +1,6 @@
 # LLM Providers 紀錄
 
-> 查證日期：2026-11-03（providers.md 首版；後續查證見各節標注）｜ 更新日期：2026-11-17｜ 狀態：供 LLM 組與後端共用的 provider 參考
+> 查證日期：2026-11-03（providers.md 首版；後續查證見各節標注）｜ 更新日期：2026-11-27｜ 狀態：供 LLM 組與後端共用的 provider 參考
 > 配套文件：[`cf.md`](./cf.md)（Cloudflare CLI）、[`pi.md`](./pi.md)（Pi Durable）
 
 ## Pool 定位
@@ -59,10 +59,14 @@
 - **速率**：文字生成預設 **300 req/min**；付費清單模型：標準計費 **20 req/min**、預付 credits **50 req/min**（每帳號每模型）
 - **壓底策略（同模型不換腦）**：`@cf/zai-org/glm-5.3`＝與自架頭部同 z-ai glm-5.3 家族（failover 語氣連續，#401 拍板；舊主力 `glm-5.3-flash` 已於 2026-11-20 下架，見 §8）→ 排第一，402/403（未付費）由 breaker 降級 → `glm-4.7-flash`（免費 neurons、300 rpm）收尾。**部署前提：正式帳號需 Workers Paid 或 AI Gateway credits**，Free 對 5.3 回 403
 - **AI Gateway credits（2026-11-05 官方 Unified Billing）**：**純預付、無免費月度額度**，購買收 5% 手續費（僅信用卡）；推論價格 pass-through。Web Search API（ceramic $0.25/1k）與付費清單模型都吃這個——**402 web_search_payment_required＝credits 為零**，載入後即通。**Unified billing 已切（2026-11-23）**：`createAI` 以 gateway id `default` 路由 Workers AI 推論（[`pi/models.ts`](../apps/server/src/pi/models.ts)，與 websearch 同一個 gateway、同一份餘額），付費清單模型因此吃 50 rpm 檔；gateway 的 logging/caching 維持關閉（ZDR 底線）
-- **語音模型（#56/#69，2026-11-05 官方目錄查證）**：
+- **語音模型（#56/#69，2026-11-05 官方目錄查證；TTS 於 2026-11-27 依 #468 重新查證）**：
   - STT：`@cf/openai/whisper-large-v3-turbo`（ZDR yes、$0.000513/audio-min）；binding 輸入＝base64 字串（schema `audio: string｜{body,contentType}`）
-  - TTS：`@cf/myshell-ai/melotts`（ZDR yes、$0.000205/audio-min、zh 支援）；binding 參數 `prompt`＋`lang`，回 base64 WAV 文字流——**已實測**（216KB WAV→whisper 閉環轉錄）
-- **ZDR**：官方明文「Zero data retention」+「No training」；⚠️ 例外：**AI Gateway 開 logging/caching 會存內容**——學生流量不要開
+  - TTS：`xai/grok-tts`（#119 起；[`providers.config.yaml`](../apps/server/providers.config.yaml) `voice.tts`）。third-party 模型，經 AI Gateway 走 Unified Billing：Cloudflare 代管 xAI 憑證、從 credits 扣款；`env.AI.run` 未指定 gateway 時走 `default`。模型頁標「Zero data retention: Yes」，**$0.000015/字元**，條款為 xAI Terms of Service
+    - binding 輸入（物件直接傳，不包 `input`）：`text`（1 至 15000 字）＋`language`（**必填**，BCP-47 或 `auto`；官方列 20 種語言加 `auto`，含 `zh`、`en`、`es-MX`、`es-ES`，沒有單獨的 `es`；schema 未設 enum）＋`voice_id`（預設 `eve`，內建 eve/ara/rex/sal/leo；[`routes/voice.ts`](../apps/server/src/routes/voice.ts) 固定用 `rex`）；`output_format` 預設 MP3 24 kHz／128 kbps
+    - 回傳：`env.AI.run` 回傳值的 `.result.audio`（模型頁範例形狀；output schema 列為 `audio`）＝presigned R2 URL（MIME 依 codec），server 端 fetch 後串流給前端，不再是 base64
+    - ZDR 範圍：Unified Billing 文件明文 ZDR 只適用 Cloudflare 代管憑證的請求，不適用 BYOK，也**不控制 AI Gateway logging**；`default` gateway 本身的 ZDR 設定是否開啟**未查證**（見待辦）
+  - `@cf/myshell-ai/melotts`（**已下架**，#119 之前的 TTS）：Cloudflare 2026-11-05 changelog 宣布下架，原訂 2026-11-15，延至 **2026-11-20**，之後回 HTTP 410（error 5028），官方建議替代為 `@cf/deepgram/aura-2-en`。#119（2026-11-10，`7dd074d6`）提前改用 grok-tts，commit 另記 melotts 的 zh 輸出是英語口音的亂碼。舊介面留紀錄：參數 `prompt`＋`lang`，回 base64 WAV
+- **ZDR**：`@cf/` 模型官方明文「Zero data retention」+「No training」；third-party 模型的 ZDR 範圍見上方 TTS 條目；⚠️ 例外：**AI Gateway 開 logging/caching 會存內容**——學生流量不要開
 
 ## 5. OpenRouter（聚合器／BYOK 路由）
 
@@ -433,7 +437,9 @@ pnpm --filter @socrates/server run gen-config
 - [x] BYOK 定案（2026-11-06，#82）：teacher keys（一 provider 一把 key，D1 AES-GCM）；**學生無 BYOK 入口**
 - [x] teacher keys 服務定案（2026-11-09）：任意 pi builtin provider、ToS 責任移轉、老師鏈前平台鏈後（`docs/api-contract.md` §9）
 - [x] runtime 設定層：已定案 `providers.config.yaml`（build-time 編譯，provider×credential×priority×traffic class；2026-11-06）——whitelist/pool.ts 退役，准入由 YAML providers 節把關
-- [x] server-side TTS 選型查證：**已定案 `@cf/myshell-ai/melotts`**（ZDR yes、$0.000205/audio-min、zh 支援；2026-11-05 官方目錄查證＋實測閉環，見 §4 語音模型；自架 DGX 已出局）
+- [x] server-side TTS 選型：**現行 `xai/grok-tts`**（#119，2026-11-10；2026-11-27 依 #468 重新查證，見 §4 語音模型）；原定案 `@cf/myshell-ai/melotts`（2026-11-05）已於 2026-11-20 下架；自架 DGX 已出局
+- [ ] 查證 AI Gateway `default` 的 ZDR 設定是否開啟（grok-tts 的 ZDR 只在 gateway 層生效；文件未寫預設值）
+- [ ] `routes/voice.ts` 對西語送 `language: "es"`，不在 grok-tts 官方代碼清單（只有 `es-MX`／`es-ES`）；xAI 文件稱清單外語言「varying degrees of accuracy」，#119 commit 記 es 驗證通過，#468 未重驗
 - [x] #55 Clef／Clef-flash ZDR 查證：**已完成**（官方明文零保留／不訓練；例外、約束與資料位置見 §7.1；2026-11-08）
 - [ ] judgment 流量的資料位置（region）確認（官方未說明）
 - [x] #55 Jev ZDR 查證：**已完成**（直連 ✗；經 OpenCode、經 Workers AI 未證實；見 §7.2；2026-11-08）
@@ -468,6 +474,13 @@ pnpm --filter @socrates/server run gen-config
 - Workers AI Clef-omni 模型頁：https://developers.cloudflare.com/workers-ai/models/clef-omni/
 - Clef input schema（題型／限制）：https://developers.cloudflare.com/workers-ai/models/clef/schema-input.json
 - Clef output schema（回應形狀）：https://developers.cloudflare.com/workers-ai/models/clef/schema-output.json
+- Workers AI grok-tts 模型頁（ZDR／價格／範例）：https://developers.cloudflare.com/ai/models/xai/grok-tts/
+- grok-tts input schema（`text`／`language`／`voice_id`）：https://developers.cloudflare.com/ai/models/xai/grok-tts/schema-input.json
+- grok-tts output schema（`audio` presigned URL）：https://developers.cloudflare.com/ai/models/xai/grok-tts/schema-output.json
+- xAI TTS 文件（語言代碼清單）：https://docs.x.ai/developers/model-capabilities/audio/text-to-speech
+- AI Gateway Unified Billing（ZDR 範圍）：https://developers.cloudflare.com/ai-gateway/features/unified-billing/
+- AI Gateway Worker binding methods（third-party 模型經 binding）：https://developers.cloudflare.com/ai-gateway/usage/worker-binding-methods/
+- Workers AI 2026-11-05 模型下架公告（melotts）：https://developers.cloudflare.com/changelog/post/2026-11-05-planned-model-deprecations/
 - Workers AI 資料使用（ZDR 例外／第三方模型）：https://developers.cloudflare.com/workers-ai/platform/data-usage/
 - Workers AI 模型目錄：https://developers.cloudflare.com/workers-ai/models/
 - TypeSafe 首頁：https://typesafe.ai/
