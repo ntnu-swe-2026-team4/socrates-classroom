@@ -1,9 +1,10 @@
 import { getCookie } from "hono/cookie";
-import { ApiError, type ActivityMode, type User } from "@socrates/shared";
-import type { Db } from "../db/d1";
-import { one, run } from "../db/d1";
+import { ApiError, AxisSchema, type ActivityMode, type Axis, type ReportAxes, type User } from "@socrates/shared";
+import type { Db, SqlEntry } from "../db/d1";
+import { batch, one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, type ParticipantIdentity } from "../auth";
 import { fail, newId, nowIso, type Ctx } from "../http";
+import { topicVisibleTo } from "./topic-visibility";
 
 export interface ClassroomRow {
   id: string;
@@ -18,6 +19,9 @@ export interface ActivityRow {
   classroom_id: string;
   topic_id: string;
   mode: ActivityMode;
+  report_axes: ReportAxes | null;
+  engagement_to_class: 0 | 1;
+  engagement_to_student: 0 | 1;
   created_at: string;
   finished_at: string | null;
 }
@@ -31,6 +35,8 @@ export interface TopicRow {
   statement: string;
   summary: string | null;
   prompts: string;
+  axes: string;
+  deleted_at: string | null;
 }
 
 export interface MemberRow {
@@ -58,8 +64,115 @@ export function parsePrompts(row: TopicRow) {
     title: row.title,
     statement: row.statement,
     ...(row.summary ? { summary: row.summary } : {}),
-    prompts: JSON.parse(row.prompts) as string[],
+    prompts: readPrompts(row.prompts),
+    axes: AxisSchema.array()
+      .catch([])
+      .parse(JSON.parse(row.axes ?? "[]")),
   };
+}
+
+export function serializeAxes(axes: Axis[]): string {
+  return JSON.stringify(axes.map(({ name, left, right }) => ({ name, left, right })));
+}
+
+const FIND_CLASSROOM_TOPIC =
+  "SELECT * FROM topics WHERE classroom_id = $cid AND title = $title AND statement = $statement AND axes = $axes AND deleted_at IS NULL ORDER BY created_at, id LIMIT 1";
+const FIND_PERSONAL_TOPIC =
+  "SELECT * FROM topics WHERE classroom_id IS NULL AND owner_id = $uid AND title = $title AND statement = $statement AND axes = $axes AND deleted_at IS NULL ORDER BY created_at, id LIMIT 1";
+
+export interface TopicInsertInput {
+  id: string;
+  ownerId: string;
+  classroomId: string | null;
+  copiedFrom?: string | null;
+  title: string;
+  statement: string;
+  summary?: string | null;
+  prompts: string[];
+  axes: Axis[];
+}
+
+export function findClassroomTopicByContent(
+  db: Db,
+  classroomId: string,
+  input: { title: string; statement: string; axes: Axis[] },
+): Promise<TopicRow | null> {
+  return one<TopicRow>(db, FIND_CLASSROOM_TOPIC, {
+    cid: classroomId,
+    title: input.title,
+    statement: input.statement,
+    axes: serializeAxes(input.axes),
+  });
+}
+
+export async function createOrGetTopic(db: Db, input: TopicInsertInput): Promise<{ row: TopicRow; created: boolean }> {
+  const classroom = input.classroomId !== null;
+  const conflictTarget = classroom
+    ? "(classroom_id, title, statement, axes) WHERE classroom_id IS NOT NULL AND deleted_at IS NULL"
+    : "(owner_id, title, statement, axes) WHERE classroom_id IS NULL AND owner_id IS NOT NULL AND deleted_at IS NULL";
+  const params = {
+    id: input.id,
+    uid: input.ownerId,
+    cid: input.classroomId,
+    from: input.copiedFrom ?? null,
+    title: input.title,
+    statement: input.statement,
+    summary: input.summary ?? null,
+    prompts: JSON.stringify(input.prompts),
+    axes: serializeAxes(input.axes),
+    at: nowIso(),
+  };
+  const [inserted, found] = await batch<TopicRow>(db, [
+    {
+      sql: `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, axes, created_at) VALUES ($id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $axes, $at) ON CONFLICT ${conflictTarget} DO NOTHING`,
+      params,
+    },
+    { sql: classroom ? FIND_CLASSROOM_TOPIC : FIND_PERSONAL_TOPIC, params },
+  ]);
+  const row = found?.results?.[0] ?? null;
+  if (!row) fail(500, "internal_error");
+  return { row, created: (inserted?.meta.changes ?? 0) > 0 };
+}
+
+export function topicCopyInsert(
+  source: TopicRow,
+  input: { id: string; userId: string; classroomId: string; axes?: Axis[] },
+  condition?: SqlEntry,
+): SqlEntry {
+  return {
+    sql: `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, summary, prompts, axes, created_at)
+      SELECT $id, $uid, $cid, $from, $title, $statement, $summary, $prompts, $axes, $at ${condition ? `WHERE ${condition.sql}` : "WHERE 1"}
+      ON CONFLICT (classroom_id, title, statement, axes) WHERE classroom_id IS NOT NULL AND deleted_at IS NULL DO NOTHING`,
+    params: {
+      ...condition?.params,
+      id: input.id,
+      uid: input.userId,
+      cid: input.classroomId,
+      from: source.id,
+      title: source.title,
+      statement: source.statement,
+      summary: source.summary,
+      prompts: source.prompts,
+      axes: input.axes ? serializeAxes(input.axes) : source.axes,
+      at: nowIso(),
+    },
+  };
+}
+
+export async function deleteClassroomTopic(db: Db, classroomId: string, topicId: string): Promise<void> {
+  const row = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id AND classroom_id = $cid", {
+    id: topicId,
+    cid: classroomId,
+  });
+  if (!row) fail(404, "not_found");
+  if (row.deleted_at !== null) return;
+  await run(db, "UPDATE topics SET deleted_at = $at WHERE id = $id", { id: topicId, at: nowIso() });
+}
+
+function readPrompts(raw: string): string[] {
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((prompt): prompt is string => typeof prompt === "string");
 }
 
 export async function activityOf(
@@ -106,8 +219,7 @@ export async function topicForActivity(
 ): Promise<TopicRow> {
   const topic = await one<TopicRow>(db, "SELECT * FROM topics WHERE id = $id", { id: topicId });
   if (!topic) fail(404, "not_found");
-  const systemOrOwn = topic.classroom_id === null && (topic.owner_id === null || topic.owner_id === userId);
-  if (topic.classroom_id !== classroomId && !systemOrOwn) fail(404, "not_found");
+  if (!topicVisibleTo(topic, { userId, classroomId })) fail(404, "not_found");
   return topic;
 }
 
@@ -133,23 +245,30 @@ export async function ensureParticipant(
   tosAcceptedAt: string,
   kind: "member" | "guest" = "member",
 ): Promise<ParticipantRow> {
-  const existing = await participantOfUser(db, activityId, user.id);
-  if (existing) {
-    if (kind === "member" && existing.kind === "guest") {
-      await run(db, "UPDATE activity_participants SET kind = 'member' WHERE id = $pid AND user_id = $uid", {
-        pid: existing.id,
-        uid: user.id,
-      });
-      return { ...existing, kind: "member" };
-    }
-    return existing;
-  }
+  const effectiveKind = `CASE WHEN $kind = 'member' OR EXISTS (
+    SELECT 1 FROM activities a JOIN members m ON m.classroom_id = a.classroom_id
+    WHERE a.id = $aid AND m.user_id = $uid
+  ) THEN 'member' ELSE 'guest' END`;
   let candidate = user.name;
   for (let attempt = 1; attempt <= 8; attempt++) {
+    const existing = await participantOfUser(db, activityId, user.id);
+    if (existing) {
+      if (existing.kind !== kind && existing.kind !== "teacher") {
+        const updated = await one<ParticipantRow>(
+          db,
+          `UPDATE activity_participants SET kind = ${effectiveKind}
+           WHERE activity_id = $aid AND id = $pid AND user_id = $uid RETURNING *`,
+          { kind, aid: activityId, pid: existing.id, uid: user.id },
+        );
+        if (updated) return updated;
+      }
+      return existing;
+    }
     const created = await one<ParticipantRow>(
       db,
       `INSERT INTO activity_participants (activity_id, id, user_id, kind, display_name, tos_accepted_at, joined_at)
-       VALUES ($aid, $pid, $uid, $kind, $name, $tos, $at)
+       SELECT $aid, $pid, $uid, ${effectiveKind}, $name, $tos, $at
+       WHERE NOT EXISTS (SELECT 1 FROM activity_participants WHERE activity_id = $aid AND user_id = $uid)
        ON CONFLICT DO NOTHING RETURNING *`,
       { aid: activityId, pid: newId("p_"), uid: user.id, kind, name: candidate, tos: tosAcceptedAt, at: nowIso() },
     );
@@ -223,11 +342,12 @@ export async function activityAccess(db: Db, activityId: string, accessor: Activ
       cid: classroom.id,
       uid: accessor.user.id,
     });
-    if (!member) fail(403, "forbidden");
+    const participant = await participantOfUser(db, activityId, accessor.user.id);
+    if (!member && participant?.kind !== "guest") fail(403, "forbidden");
     return {
       activity,
       classroom,
-      participant: await participantOfUser(db, activityId, accessor.user.id),
+      participant,
       member,
       isTeacher: false,
       user: accessor.user,
@@ -235,7 +355,9 @@ export async function activityAccess(db: Db, activityId: string, accessor: Activ
   }
   if (accessor.participant && accessor.participant.activityId === activityId) {
     const participant = await participantOf(db, activityId, accessor.participant.participantId);
-    if (participant) return { activity, classroom, participant, member: null, isTeacher: false, user: null };
+    if (participant?.kind === "guest" && participant.user_id === null) {
+      return { activity, classroom, participant, member: null, isTeacher: false, user: null };
+    }
   }
   fail(401, "unauthorized");
 }

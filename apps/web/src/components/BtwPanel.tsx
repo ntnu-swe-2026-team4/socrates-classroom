@@ -3,6 +3,7 @@ import { MessageCircleQuestionMark, PanelRight, RotateCcw, Send } from "lucide-r
 import { Markdown } from "@/components/Markdown";
 import { cn } from "@/components/ui";
 import { useBtw } from "@/hooks/useBtw";
+import type { DialogueAgent } from "@/hooks/useDialogue";
 import { useT } from "@/i18n";
 
 export interface BtwPanelHandle {
@@ -11,19 +12,21 @@ export interface BtwPanelHandle {
 interface BtwPanelProps {
   open: boolean;
   onClose: () => void;
-  activityId: string;
-  participantId: string;
+  threadId: string;
+  userId: string;
+  agent?: DialogueAgent;
 }
 
 export const BtwPanel = forwardRef<BtwPanelHandle, BtwPanelProps>(function BtwPanel(
-  { open, onClose, activityId, participantId },
+  { open, onClose, threadId, userId, agent },
   ref,
 ) {
   const t = useT();
   const { messages, draft, phase, error, ready, ask, retryLast, interrupt, newTopic } = useBtw(
-    activityId,
-    participantId,
+    threadId,
+    userId,
     open,
+    agent,
   );
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);

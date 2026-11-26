@@ -1,0 +1,39 @@
+name: Bug
+description: 回報預期外的行為。完成時程式回到 docs/feature.md 既有的描述。
+type: Bug
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 現象（What happened）
+      description: 寫觀察到的症狀，不寫猜測的成因
+      placeholder: 切換議題後訊息沒有清空
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重現步驟（Steps to reproduce）
+      description: 從乾淨狀態開始、能穩定觸發的最短步驟
+      value: |
+        1.
+        2.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行為（Expected）
+      description: 對照 docs/feature.md 的哪一列、那裡寫的行為長什麼樣
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境（Environment）
+      description: production 或 `pnpm dev`、瀏覽器、身分（student／teacher／admin／訪客）
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 證據（Evidence）
+      description: console 錯誤、截圖、`wrangler tail` 輸出；沒有就寫「無」

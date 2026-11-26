@@ -8,22 +8,31 @@ import {
   type Entry,
 } from "@earendil-works/pi-durable";
 import type { Ai } from "@cloudflare/workers-types";
-import type { ViolationType } from "@socrates/shared";
+import { VIOLATION_TYPES, type ViolationType } from "@socrates/shared";
+import type { TopicSource } from "../socrates";
 import { createClefViolationClassifier, type ViolationJudgment } from "./classify";
 import { createReportViolationTool } from "./tool";
 
-export interface ViolationData {
+export type ViolationData = {
   type: ViolationType;
   probability: number;
   excerpt: string;
   source: "classifier" | "agent";
+};
+
+export function readViolationType(value: string): ViolationType {
+  return VIOLATION_TYPES.find((type) => type === value) ?? "other";
 }
 
 export const ViolationEntry: Entry<{ [key: string]: never }> = defineEntry("app.violation");
 
 type ViolationSink = (violation: ViolationData) => Promise<void>;
 
-export function createJudgmentExtension(ai: Ai | undefined, reportViolation: ViolationSink) {
+export function createJudgmentExtension(
+  ai: Ai | undefined,
+  reportViolation: ViolationSink,
+  topicOf: TopicSource = async () => null,
+) {
   const sink = reportViolation;
   const classifier = ai ? createClefViolationClassifier(ai) : null;
   const ViolationTask = defineTask<{ latest: string }, { phase: "classify" }, null>({
@@ -32,7 +41,8 @@ export function createJudgmentExtension(ai: Ai | undefined, reportViolation: Vio
     initial: () => ({ phase: "classify" }),
     phases: {
       classify: async (task, runtime, context) => {
-        if (!classifier) {
+        const judge = classifier;
+        if (judge === null) {
           await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
           return;
         }
@@ -41,18 +51,20 @@ export function createJudgmentExtension(ai: Ai | undefined, reportViolation: Vio
           await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
           return;
         }
-        const judgment: ViolationJudgment | null = await classifier(task.input.latest);
+        const judgment: ViolationJudgment | null = await judge(task.input.latest, await topicOf());
         if (judgment && judgment.type !== "on_topic") {
-          const handle = (await runtime.conversation(runtime.conversationId, context))!;
+          const handle = await runtime.conversation(runtime.conversationId, context);
           const data: ViolationData = {
             type: judgment.type,
             probability: judgment.probability,
             excerpt: task.input.latest.slice(0, 200),
             source: "classifier",
           };
-          await runtime.commit(async (tx) => {
-            await handle.submit(tx, { type: "write", entry: { kind: "app.violation", data: data as never } });
-          }, context);
+          if (handle) {
+            await runtime.commit(async (tx) => {
+              await handle.submit(tx, { type: "write", entry: { kind: "app.violation", data: data } });
+            }, context);
+          }
         }
         await runtime.memo("judgment", JSON.stringify(judgment), context);
         await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
@@ -66,8 +78,8 @@ export function createJudgmentExtension(ai: Ai | undefined, reportViolation: Vio
     name: "judgment",
     tools: [
       createReportViolationTool(async (input) => {
-        await sink?.({
-          type: input.type as ViolationType,
+        await sink({
+          type: readViolationType(input.type),
           probability: input.probability,
           excerpt: input.excerpt,
           source: "agent",

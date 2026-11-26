@@ -1,8 +1,9 @@
+import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { DevLoginInputSchema, type DevAccount, type User } from "@socrates/shared";
 import { all, one, run } from "../db/d1";
 import { startSession } from "../auth";
-import { fail, parseBody, type AppEnv, type Ctx } from "../http";
+import { fail, validateJson, type AppEnv, type Ctx } from "../http";
 import { FIXTURE_ACCOUNTS, FIXTURE_PASSWORD } from "../seed";
 
 export function isDev(env: { ENVIRONMENT?: string }): boolean {
@@ -13,12 +14,20 @@ function requireDev(c: Ctx): void {
   if (!isDev(c.env)) fail(404, "not_found");
 }
 
+function devGuard(): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    requireDev(c);
+    await next();
+  };
+}
+
 interface AccountRow {
   id: string;
   name: string;
   is_admin: number;
   disabled_at: string | null;
   email: string;
+  email_verified_at: string | null;
 }
 
 interface RoomRow {
@@ -34,9 +43,11 @@ const ROOMS_SQL = `SELECT id, name, teacher_id, join_code, current_activity_id F
   ORDER BY c.created_at`;
 
 async function loadAccount(db: D1Database, email: string): Promise<AccountRow | null> {
-  return one<AccountRow>(db, "SELECT id, name, is_admin, disabled_at, email FROM users WHERE email = $email", {
-    email,
-  });
+  return one<AccountRow>(
+    db,
+    "SELECT id, name, is_admin, disabled_at, email, email_verified_at FROM users WHERE email = $email",
+    { email },
+  );
 }
 
 export function devRoutes() {
@@ -70,9 +81,8 @@ export function devRoutes() {
       }
       return c.json({ password: FIXTURE_PASSWORD, accounts });
     })
-    .post("/dev/login", async (c) => {
-      requireDev(c);
-      const input = await parseBody(c, DevLoginInputSchema);
+    .post("/dev/login", devGuard(), validateJson(DevLoginInputSchema), async (c) => {
+      const input = c.req.valid("json");
       const fixture = FIXTURE_ACCOUNTS.find((account) => account.email === input.email);
       if (!fixture) fail(404, "not_found");
       let row = await loadAccount(c.env.DB, input.email);
@@ -89,6 +99,7 @@ export function devRoutes() {
         id: row.id,
         name: row.name,
         isAdmin: row.is_admin === 1,
+        emailVerified: row.email_verified_at !== null,
       };
       await startSession(c, user);
       return c.json(user);

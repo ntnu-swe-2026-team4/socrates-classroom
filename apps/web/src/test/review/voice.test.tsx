@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { fakeStream } from "../helpers";
 
 const calls = vi.hoisted(() => ({ stt: vi.fn<(audio: Blob) => Promise<string>>() }));
 vi.mock("@/api", () => ({ api: { stt: calls.stt } }));
@@ -41,11 +42,11 @@ class AudioContextDouble {
   }
 }
 
-let trackStop: ReturnType<typeof vi.fn>;
+let trackStop: () => void;
 let getUserMedia: ReturnType<typeof vi.fn<() => Promise<MediaStream>>>;
 let mediaDevicesDescriptor: PropertyDescriptor | undefined;
 function stream(): MediaStream {
-  return { getTracks: () => [{ stop: trackStop }] } as unknown as MediaStream;
+  return fakeStream(trackStop);
 }
 
 beforeEach(() => {

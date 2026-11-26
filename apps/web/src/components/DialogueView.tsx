@@ -1,18 +1,17 @@
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { Keyboard, MessageCircleQuestionMark, Mic, Send, Square, TextSearch } from "lucide-react";
 import { BtwPanel, type BtwPanelHandle } from "@/components/BtwPanel";
 import { SidebarToggle, useSidebarOverlay } from "@/components/ChatLayout";
 import { SocratesWindow } from "@/components/SocratesCompanion";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { cn } from "@/components/ui";
-import { textOf, useDialogue } from "@/hooks/useDialogue";
+import { textOf, useDialogue, type DialogueAgent } from "@/hooks/useDialogue";
 import { useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { useElapsed } from "@/hooks/useSubscription";
-import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { useVoiceInput, type VoiceInput } from "@/hooks/useVoiceInput";
 import { useT, type MessageKey } from "@/i18n";
-import type { Message } from "@earendil-works/pi-ai";
 
-const VOICE_ERROR_KEY: Record<"denied" | "unsupported" | "failed", MessageKey> = {
+export const VOICE_ERROR_KEY: Record<"denied" | "unsupported" | "failed", MessageKey> = {
   denied: "voice_denied",
   unsupported: "voice_unsupported",
   failed: "voice_failed",
@@ -29,35 +28,43 @@ const VEIL_MASK = "linear-gradient(to bottom, transparent, black 5rem)";
 export interface DialogueViewProps {
   threadId: string;
   userId: string;
+  agent?: DialogueAgent;
   title: string;
   subtitle?: ReactNode;
   statement?: string;
   prompts?: string[];
   autoSend?: string;
-  onAutoSent?: () => void;
+  autoSendOperationId?: string;
+  onAutoSent?: (receipt?: { accepted: boolean }) => void;
+  onSubmitReceipt?: () => void;
   onActivityFinished?: () => void;
   onFirstSend?: (text: string) => void;
   openTerm?: string;
   onTermOpened?: () => void;
   headerActions?: ReactNode;
   closedNotice?: ReactNode;
+  initialVoiceMode?: boolean;
 }
 
 export function DialogueView({
   threadId,
   userId,
+  agent,
   title,
   subtitle,
   statement,
   prompts = [],
   autoSend,
+  autoSendOperationId,
   onAutoSent,
+  onSubmitReceipt,
   onActivityFinished,
   onFirstSend,
   openTerm,
   onTermOpened,
   headerActions,
   closedNotice,
+  initialVoiceMode = false,
 }: DialogueViewProps) {
   const t = useT();
   const {
@@ -77,8 +84,11 @@ export function DialogueView({
     replay,
     interrupt,
   } = useDialogue(threadId, userId, {
+    agent,
     autoSend,
+    autoSendOperationId,
     onAutoSent,
+    onSubmitReceipt,
     onActivityFinished,
     onDisconnect: () => void voice.stop(),
   });
@@ -118,7 +128,7 @@ export function DialogueView({
   const onVoiceFinal = useCallback((text: string) => void submit(text), [submit]);
   const voice = useVoiceInput(onVoiceFinal, onAmplitudeNoop);
 
-  const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(initialVoiceMode);
   const sidebarOverlay = useSidebarOverlay();
   const modeSwitched = useRef(false);
   const attachHold = useCallback((node: HTMLButtonElement | null) => {
@@ -220,11 +230,11 @@ export function DialogueView({
   return (
     <div className="flex min-h-0 flex-1">
       <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line pr-3 pl-14 md:pl-2">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-paper pr-3 pl-14 md:pl-2">
           <SidebarToggle />
           <div className="min-w-0 flex-1 pl-1">
             <h1 className="truncate text-[14.5px] font-medium text-ink">{title}</h1>
-            {subtitle && <p className="truncate text-[11.5px] text-ink-faint">{subtitle}</p>}
+            {subtitle && <p className="truncate text-[11.5px] text-ink-soft">{subtitle}</p>}
           </div>
           {status && <span className="state-shimmer hidden text-[12px] sm:inline">{status}</span>}
           {busy && (
@@ -240,6 +250,7 @@ export function DialogueView({
           <button
             type="button"
             onClick={() => togglePanel("btw")}
+            aria-label={t("btw_panel")}
             aria-pressed={sidePanel === "btw"}
             title={t("btw_slash_hint")}
             className={cn(
@@ -255,6 +266,7 @@ export function DialogueView({
           <button
             type="button"
             onClick={() => togglePanel("term")}
+            aria-label={t("term_panel")}
             aria-pressed={panelOpen}
             title={t("term_panel")}
             className={cn(
@@ -324,7 +336,7 @@ export function DialogueView({
                 if (item.kind !== "entry") return null;
                 const entry = item.entry;
                 if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") return null;
-                const content = textOf((entry.model?.[0] ?? undefined) as Message | undefined);
+                const content = textOf(entry.model?.[0]);
                 if (content === "") return null;
                 return (
                   <Turn key={`e${entry.id}`} speaker={entry.kind === "pi.user" ? "user" : "assistant"} text={content} />
@@ -393,7 +405,10 @@ export function DialogueView({
             {closedNotice ? (
               <Notice text={closedNotice} />
             ) : !ready ? (
-              <Notice text={connectGraceOver ? t("dlg_offline") : t("dlg_connecting")} />
+              <Notice
+                text={connectGraceOver ? t("dlg_offline") : t("dlg_connecting")}
+                action={connectGraceOver ? { label: t("dlg_reconnect"), onClick: () => location.reload() } : undefined}
+              />
             ) : voiceMode ? (
               <div className="flex flex-col items-center">
                 <div
@@ -411,37 +426,7 @@ export function DialogueView({
                   >
                     <Keyboard className="size-4" />
                   </button>
-                  <button
-                    ref={attachHold}
-                    type="button"
-                    aria-label={t("dlg_hold_to_talk")}
-                    title={t("dlg_hold_to_talk")}
-                    disabled={awaitingReply || !viewReady}
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      void voice.start();
-                    }}
-                    onPointerUp={() => void voice.stop()}
-                    onPointerCancel={() => void voice.stop()}
-                    onPointerLeave={() => voice.state === "listening" && void voice.stop()}
-                    onKeyDown={(event) => {
-                      if (event.key === " " || event.key === "Enter") {
-                        event.preventDefault();
-                        void voice.start();
-                      }
-                    }}
-                    onKeyUp={() => voice.state === "listening" && void voice.stop()}
-                    onBlur={() => voice.state === "listening" && void voice.stop()}
-                    style={{ touchAction: "none" }}
-                    className={cn(
-                      "flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors disabled:opacity-50",
-                      voice.state === "listening"
-                        ? "border-ember bg-ember text-on-ember"
-                        : "border-line-strong bg-paper-deep text-ink-soft hover:border-ember-deep hover:text-ink",
-                    )}
-                  >
-                    <Mic className="size-5" />
-                  </button>
+                  <HoldToTalkButton ref={attachHold} voice={voice} disabled={awaitingReply || !viewReady} />
                   {awaitingReply ? (
                     <button
                       type="button"
@@ -521,10 +506,57 @@ export function DialogueView({
         ref={btwRef}
         open={sidePanel === "btw"}
         onClose={() => setSidePanel(null)}
-        activityId={threadId}
-        participantId={userId}
+        threadId={threadId}
+        userId={userId}
+        agent={agent}
       />
     </div>
+  );
+}
+
+export function HoldToTalkButton({
+  ref,
+  voice,
+  disabled,
+}: {
+  ref?: Ref<HTMLButtonElement>;
+  voice: VoiceInput;
+  disabled?: boolean;
+}) {
+  const t = useT();
+  const listening = voice.state === "listening";
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={t("dlg_hold_to_talk")}
+      title={t("dlg_hold_to_talk")}
+      disabled={disabled}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        void voice.start();
+      }}
+      onPointerUp={() => void voice.stop()}
+      onPointerCancel={() => void voice.stop()}
+      onPointerLeave={() => listening && void voice.stop()}
+      onKeyDown={(event) => {
+        if (event.key === " " || event.key === "Enter") {
+          event.preventDefault();
+          void voice.start();
+        }
+      }}
+      onKeyUp={() => listening && void voice.stop()}
+      onBlur={() => listening && void voice.stop()}
+      style={{ touchAction: "none" }}
+      className={cn(
+        "flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors disabled:opacity-50",
+        listening
+          ? "border-ember bg-ember text-on-ember"
+          : "border-line-strong bg-paper-deep text-ink-soft hover:border-ember-deep hover:text-ink",
+      )}
+    >
+      <Mic className="size-5" />
+    </button>
   );
 }
 
@@ -566,10 +598,10 @@ function Turn({ speaker, text, caret }: { speaker: "user" | "assistant"; text: s
       </span>
       <div
         className={cn(
-          "whitespace-pre-wrap font-serif text-[14.5px] leading-7 text-ink",
+          "min-w-0 whitespace-pre-wrap font-serif text-[14.5px] leading-7 wrap-anywhere text-ink",
           mine
             ? "max-w-[min(80%,56rem)] rounded-2xl border border-line bg-ember-wash px-4 py-2.5"
-            : "min-w-0 max-w-[56rem] flex-1 pt-0.5",
+            : "max-w-[56rem] flex-1 pt-0.5",
           caret && "caret",
         )}
       >

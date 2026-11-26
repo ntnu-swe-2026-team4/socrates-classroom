@@ -5,6 +5,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Avatar } from "./avatar";
+import glbUrl from "./socrates.glb?url";
 
 type GLTF = { scene: THREE.Object3D; animations: THREE.AnimationClip[] };
 const modelCache = new Map<string, Promise<GLTF>>();
@@ -72,7 +73,6 @@ function buildStoneMaterial(baseMap: THREE.Texture | null, fallback: THREE.Color
       }
     `,
   });
-  (material as unknown as { morphTargets: boolean }).morphTargets = true;
   return material;
 }
 
@@ -139,18 +139,20 @@ export function createSocratesScene(canvas: HTMLCanvasElement, stage: HTMLElemen
   const ro = new ResizeObserver(() => resize());
   ro.observe(stage);
 
-  loadModel("/socrates.glb")
+  loadModel(glbUrl)
     .then(({ model, clips }) => {
       if (disposed) return;
       avatar = new Avatar(model, clips);
       if (pendingExpression) avatar.setExpression(...pendingExpression);
       model.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        const source = mesh.material as THREE.MeshStandardMaterial | null;
-        const material = buildStoneMaterial(source?.map ?? null, source?.color ? source.color.clone() : null);
-        stoneMaterials.push(material);
-        mesh.material = material;
+        if (!(object instanceof THREE.Mesh)) return;
+        const material = object.material;
+        if (material === null || Array.isArray(material)) return;
+        const map = "map" in material && material.map instanceof THREE.Texture ? material.map : null;
+        const color = "color" in material && material.color instanceof THREE.Color ? material.color.clone() : null;
+        const stone = buildStoneMaterial(map, color);
+        stoneMaterials.push(stone);
+        object.material = stone;
       });
       scene.add(avatar.root);
       const box = new THREE.Box3().setFromObject(avatar.root);

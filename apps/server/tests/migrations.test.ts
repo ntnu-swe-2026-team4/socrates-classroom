@@ -5,10 +5,11 @@ import { inject } from "vitest";
 import { all, run } from "../src/db/d1";
 
 const migrations = inject("d1Migrations");
+const legacyMigrations = migrations.filter((migration) => migration.name < "014");
 
 describe("migration 011: facebook identity (#207)", () => {
   it("drops the google-only provider CHECK and keeps rows plus cascade", async () => {
-    const base = migrations.filter((migration) => !/^(003|008|010|011)/.test(migration.name));
+    const base = legacyMigrations.filter((migration) => !/^(003|008|010|011)/.test(migration.name));
     const widen = migrations.filter((migration) => migration.name.startsWith("011"));
     expect(widen).toHaveLength(1);
     await applyD1Migrations(env.DB, base);
@@ -50,7 +51,7 @@ describe("migration 011: facebook identity (#207)", () => {
 
 describe("migration 010: retire capability (no-mode, #210)", () => {
   it("drops can_manage_classes and the legacy role column from users", async () => {
-    const base = migrations.filter((migration) => !/^(003|008|010)/.test(migration.name));
+    const base = legacyMigrations.filter((migration) => !/^(003|008|010)/.test(migration.name));
     const retire = migrations.filter((migration) => migration.name.startsWith("010"));
     expect(retire).toHaveLength(1);
     await applyD1Migrations(env.DB, base);
@@ -80,7 +81,7 @@ describe("migration 010: retire capability (no-mode, #210)", () => {
 
 describe("migration 008: teacher key models", () => {
   it("splits the per-provider model into (provider, model) legs with their own max_concurrency", async () => {
-    const legacy = migrations.filter((migration) => !/^(003|008)/.test(migration.name));
+    const legacy = legacyMigrations.filter((migration) => !/^(003|008)/.test(migration.name));
     const split = migrations.filter((migration) => migration.name.startsWith("008"));
     expect(split).toHaveLength(1);
     await applyD1Migrations(env.DB, legacy);
@@ -137,7 +138,7 @@ describe("migration 008: teacher key models", () => {
 });
 describe("migration 009: teacher key usage ledger and quota alerts", () => {
   it("adds a nullable monthly quota to teacher_keys and creates usage/alerts tables keyed to the key row", async () => {
-    const base = migrations.filter((migration) => !/^(003|009)/.test(migration.name));
+    const base = legacyMigrations.filter((migration) => !/^(003|009)/.test(migration.name));
     const usage = migrations.filter((migration) => migration.name.startsWith("009"));
     expect(usage).toHaveLength(1);
     await applyD1Migrations(env.DB, base);
@@ -199,7 +200,7 @@ describe("migration 009: teacher key usage ledger and quota alerts", () => {
 
 describe("migration 003: activity participant backfill", () => {
   it("existing members become member participants and keep their pseudonyms", async () => {
-    const legacy = migrations.filter((migration) => !migration.name.startsWith("003"));
+    const legacy = legacyMigrations.filter((migration) => !migration.name.startsWith("003"));
     const backfill = migrations.filter((migration) => migration.name.startsWith("003"));
     expect(backfill).toHaveLength(1);
     await applyD1Migrations(env.DB, legacy);
@@ -340,5 +341,213 @@ describe("migration 007: user identities", () => {
       "SELECT provider FROM user_identities WHERE user_id = 'u_oid'",
     );
     expect(identities).toEqual([]);
+  });
+});
+
+describe("migration 013: solo threads (#281)", () => {
+  it("creates solo_threads table with user foreign key cascade", async () => {
+    expect(migrations.some((migration) => migration.name === "013_solo_threads.sql")).toBe(true);
+
+    const at = "2026-11-22T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO users (id, name, email, password_hash, lang, created_at)
+       VALUES ('u_solo_m', '單人使用者', 'solo_m@example.com', 'x', 'zh', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO solo_threads (id, user_id, title, created_at, updated_at)
+       VALUES ('solo_m1', 'u_solo_m', '測試題目', $at, $at)`,
+      { at },
+    );
+
+    const threads = await all<{ id: string; title: string }>(
+      env.DB,
+      "SELECT id, title FROM solo_threads WHERE user_id = 'u_solo_m'",
+    );
+    expect(threads).toEqual([{ id: "solo_m1", title: "測試題目" }]);
+
+    await run(env.DB, "DELETE FROM users WHERE id = 'u_solo_m'");
+    const after = await all<{ id: string }>(env.DB, "SELECT id FROM solo_threads WHERE user_id = 'u_solo_m'");
+    expect(after).toEqual([]);
+  });
+});
+
+describe("migration 014: classroom community (#324)", () => {
+  it("preserves existing activity participants when upgrading the schema", async () => {
+    const community = migrations.filter((migration) => migration.name.startsWith("014"));
+    expect(community).toHaveLength(1);
+    await applyD1Migrations(env.DB, community);
+    const participants = await all<{ id: string; user_id: string | null }>(
+      env.DB,
+      "SELECT id, user_id FROM activity_participants WHERE activity_id = 'a1' ORDER BY id",
+    );
+    expect(participants).toEqual([
+      { id: "p_gone", user_id: null },
+      { id: "u_s", user_id: "u_s" },
+    ]);
+    expect(await all(env.DB, "PRAGMA foreign_key_check")).toEqual([]);
+  });
+});
+
+describe("migration 015: topic axes (#159)", () => {
+  it("adds topics.axes defaulting to [] and backfills system topics plus copied_from copies", async () => {
+    const at = "2026-11-22T00:00:00.000Z";
+    await run(
+      env.DB,
+      `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, prompts, created_at)
+       VALUES ('t_sys_trolley', NULL, NULL, NULL, '電車難題：你會拉桿嗎？', '陳述', '["問"]', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, prompts, created_at)
+       VALUES ('t_copy_trolley', 'u_t', 'c1', 't_sys_trolley', '電車難題：你會拉桿嗎？', '陳述', '["問"]', $at)`,
+      { at },
+    );
+    await run(
+      env.DB,
+      `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, prompts, created_at)
+       VALUES ('t_custom_copy', 'u_t', 'c1', 't1', '題目', '陳述', '["問"]', $at)`,
+      { at },
+    );
+
+    const axes = migrations.filter((migration) => migration.name.startsWith("015"));
+    expect(axes).toHaveLength(1);
+    await applyD1Migrations(env.DB, axes);
+
+    const columns = await all<{ name: string }>(env.DB, "PRAGMA table_info(topics)");
+    expect(columns.map((column) => column.name)).toContain("axes");
+
+    const rows = await all<{ id: string; axes: string }>(
+      env.DB,
+      "SELECT id, axes FROM topics WHERE id IN ('t_sys_trolley', 't_copy_trolley', 't1', 't_custom_copy') ORDER BY id",
+    );
+    const expectedTrolley = JSON.stringify([
+      { name: "拉桿的理由", left: "看結果：救多數", right: "看手段：不能親手害人" },
+    ]);
+    expect(rows).toEqual([
+      { id: "t1", axes: "[]" },
+      { id: "t_copy_trolley", axes: expectedTrolley },
+      { id: "t_custom_copy", axes: "[]" },
+      { id: "t_sys_trolley", axes: expectedTrolley },
+    ]);
+  });
+});
+
+describe("migration 016: settings and activity report_axes (#159)", () => {
+  it("creates settings table and adds nullable activities.report_axes leaving existing rows NULL", async () => {
+    const settingsMigration = migrations.filter((migration) => migration.name.startsWith("016"));
+    expect(settingsMigration).toHaveLength(1);
+    await applyD1Migrations(env.DB, settingsMigration);
+
+    const columns = await all<{ name: string }>(env.DB, "PRAGMA table_info(activities)");
+    expect(columns.map((column) => column.name)).toContain("report_axes");
+
+    const existingActivities = await all<{ id: string; report_axes: string | null }>(
+      env.DB,
+      "SELECT id, report_axes FROM activities WHERE id IN ('a1', 'a2') ORDER BY id",
+    );
+    expect(existingActivities).toEqual([
+      { id: "a1", report_axes: null },
+      { id: "a2", report_axes: null },
+    ]);
+
+    await run(
+      env.DB,
+      "INSERT INTO settings (key, value, updated_at) VALUES ('report_axes', 'ai', '2026-11-22T00:00:00.000Z')",
+    );
+    const saved = await all<{ key: string; value: string }>(
+      env.DB,
+      "SELECT key, value FROM settings WHERE key = 'report_axes'",
+    );
+    expect(saved).toEqual([{ key: "report_axes", value: "ai" }]);
+  });
+});
+
+describe("migration 018: engagement visibility (#267)", () => {
+  it("adds both engagement visibility flags to activities, off for existing rows", async () => {
+    const visibilityMigration = migrations.filter((migration) => migration.name.startsWith("018"));
+    expect(visibilityMigration).toHaveLength(1);
+    await applyD1Migrations(env.DB, visibilityMigration);
+
+    const existingActivities = await all<{ id: string; engagement_to_class: number; engagement_to_student: number }>(
+      env.DB,
+      "SELECT id, engagement_to_class, engagement_to_student FROM activities WHERE id IN ('a1', 'a2') ORDER BY id",
+    );
+    expect(existingActivities).toEqual([
+      { id: "a1", engagement_to_class: 0, engagement_to_student: 0 },
+      { id: "a2", engagement_to_class: 0, engagement_to_student: 0 },
+    ]);
+  });
+});
+
+describe("migration 020: topic lifecycle (#383)", () => {
+  it("merges duplicate topics, repoints activities and copies, then rejects new duplicates", async () => {
+    const at = "2026-11-01T00:00:00.000Z";
+    const later = "2026-11-02T00:00:00.000Z";
+    const canonicalAxes = JSON.stringify([{ name: "軸", left: "左", right: "右" }]);
+    const scrambledAxes = JSON.stringify([{ right: "右", left: "左", name: "軸" }]);
+
+    const insertTopic = (
+      id: string,
+      ownerId: string | null,
+      classroomId: string | null,
+      copiedFrom: string | null,
+      title: string,
+      axes: string,
+      createdAt: string,
+    ) =>
+      run(
+        env.DB,
+        `INSERT INTO topics (id, owner_id, classroom_id, copied_from, title, statement, prompts, axes, created_at)
+         VALUES ($id, $owner, $cid, $from, $title, '同一題', '["問"]', $axes, $at)`,
+        { id, owner: ownerId, cid: classroomId, from: copiedFrom, title, axes, at: createdAt },
+      );
+
+    await insertTopic("t19_keep", "u_t", "c1", null, "重複題", scrambledAxes, at);
+    await insertTopic("t19_dup", "u_t", "c1", null, "重複題", canonicalAxes, later);
+    await insertTopic("t19_other_axes", "u_t", "c1", null, "重複題", "[]", later);
+    await insertTopic("t19_copy", "u_t", "c1", "t19_dup", "複本題", "[]", later);
+    await insertTopic("t19_personal_keep", "u_t", null, null, "個人重複", "[]", at);
+    await insertTopic("t19_personal_dup", "u_t", null, null, "個人重複", "[]", later);
+    await run(
+      env.DB,
+      "INSERT INTO activities (id, classroom_id, topic_id, created_at) VALUES ('a19', 'c1', 't19_dup', $at)",
+      { at },
+    );
+
+    const lifecycle = migrations.filter((migration) => migration.name.startsWith("020"));
+    expect(lifecycle).toHaveLength(1);
+    await applyD1Migrations(env.DB, lifecycle);
+
+    const columns = await all<{ name: string }>(env.DB, "PRAGMA table_info(topics)");
+    expect(columns.map((column) => column.name)).toContain("deleted_at");
+
+    const survivors = await all<{ id: string; axes: string; copied_from: string | null; deleted_at: string | null }>(
+      env.DB,
+      "SELECT id, axes, copied_from, deleted_at FROM topics WHERE id LIKE 't19_%' ORDER BY id",
+    );
+    expect(survivors).toEqual([
+      { id: "t19_copy", axes: "[]", copied_from: "t19_keep", deleted_at: null },
+      { id: "t19_keep", axes: canonicalAxes, copied_from: null, deleted_at: null },
+      { id: "t19_other_axes", axes: "[]", copied_from: null, deleted_at: null },
+      { id: "t19_personal_keep", axes: "[]", copied_from: null, deleted_at: null },
+    ]);
+
+    expect(await all(env.DB, "SELECT topic_id FROM activities WHERE id = 'a19'")).toEqual([{ topic_id: "t19_keep" }]);
+    expect(await all(env.DB, "PRAGMA foreign_key_check")).toEqual([]);
+
+    await expect(insertTopic("t19_dup_again", "u_t", "c1", null, "重複題", canonicalAxes, later)).rejects.toThrow();
+
+    await run(env.DB, "UPDATE topics SET deleted_at = $at WHERE id = 't19_keep'", { at: later });
+    await insertTopic("t19_after_delete", "u_t", "c1", null, "重複題", canonicalAxes, later);
+    const live = await all<{ id: string }>(
+      env.DB,
+      "SELECT id FROM topics WHERE title = '重複題' AND axes = $axes AND deleted_at IS NULL ORDER BY id",
+      { axes: canonicalAxes },
+    );
+    expect(live).toEqual([{ id: "t19_after_delete" }]);
   });
 });

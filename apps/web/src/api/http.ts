@@ -1,19 +1,47 @@
-import { hc } from "hono/client";
+import { hc, type InferRequestType } from "hono/client";
 import type {
   ActivityInfo,
   ActivityInvite,
+  ActivityLive,
   ActivityMode,
   ActivitySlots,
   ActivityStarted,
+  AdminAction,
+  AdminOverview,
+  AdminProviderChain,
+  AdminTeacherKeyStatus,
   AdminUser,
+  AdminKeyStatus,
+  AdminKeyEcho,
+  AdminKeyModelEcho,
+  BindEmailInput,
+  BindEmailResult,
+  IdentitySummary,
+  LoginMethod,
+  Notification,
+  Axis,
+  ClientConfig,
   ClassroomCreated,
+  ClassroomInviteScope,
   ClassroomSummary,
   DevAccounts,
+  EngagementVisibility,
   InviteInfo,
   InviteJoined,
   JoinInfo,
   JoinResult,
+  NotificationFeed,
+  OAuthProvider,
+  OAuthProviders,
+  OAuthStartResult,
+  ReauthResult,
   Report,
+  ReportAxes,
+  SoloThread,
+  SoloThreadCreateInput,
+  SoloThreadUpdateInput,
+  TeacherKeyEcho,
+  TeacherKeyModelEcho,
   TeacherKeyStatus,
   TermExplanation,
   Topic,
@@ -21,19 +49,30 @@ import type {
   User,
 } from "@socrates/shared";
 import {
+  ActivityLiveSchema,
   ActivityStartInputSchema,
-  ACTIVITY_SLOT_MAX,
   AdminUserCreateInputSchema,
   AdminUserUpdateInputSchema,
+  BindEmailInputSchema,
   ClassroomCreateInputSchema,
   DevLoginInputSchema,
+  EmailVerifyInputSchema,
+  EngagementVisibilitySchema,
   ERROR_CODES,
   GenerateTopicsInputSchema,
   JoinInputSchema,
   LoginInputSchema,
   LookupInputSchema,
+  OAuthStartInputSchema,
+  ReauthPasswordInputSchema,
+  AdminKeyCreateInputSchema,
+  AdminKeyUpdateInputSchema,
+  NotificationInputSchema,
   PasswordForgotInputSchema,
   PasswordResetInputSchema,
+  SignupInputSchema,
+  SoloThreadCreateInputSchema,
+  SoloThreadUpdateInputSchema,
   SttResultSchema,
   TopicCopyInputSchema,
   TopicCreateInputSchema,
@@ -53,7 +92,7 @@ export class ApiError extends Error {
 }
 
 function toErrorCode(raw: string | undefined): ErrorCode {
-  return (ERROR_CODES as readonly string[]).includes(raw ?? "") ? (raw as ErrorCode) : "internal_error";
+  return ERROR_CODES.find((code) => code === raw) ?? "internal_error";
 }
 
 export interface KeyProviderInfo {
@@ -67,13 +106,51 @@ export interface KeyModelInfo {
 }
 
 export interface Api {
+  classroom: typeof classroomApi;
   me(): Promise<User | null>;
+  config(): Promise<ClientConfig>;
   login(email: string, password: string): Promise<User>;
+  signup(input: { name: string; email: string; password: string; tosAccepted: boolean }): Promise<User>;
   logout(): Promise<void>;
   requestPasswordReset(email: string): Promise<void>;
   resetPassword(token: string, password: string): Promise<void>;
+  verifyEmail(token: string): Promise<void>;
+  resendEmailVerification(): Promise<void>;
+  authProviders(): Promise<OAuthProviders>;
+  identities(): Promise<IdentitySummary>;
+  reauthWithPassword(password: string): Promise<ReauthResult>;
+  startOAuthReauth(provider: OAuthProvider, returnTo?: string): Promise<OAuthStartResult>;
+  startIdentityBind(provider: OAuthProvider, returnTo?: string): Promise<OAuthStartResult>;
+  bindEmail(input: BindEmailInput): Promise<BindEmailResult>;
+  unbindIdentity(method: LoginMethod): Promise<void>;
+  notifications(): Promise<NotificationFeed>;
+  markNotificationsSeen(): Promise<void>;
+  adminOverview(): Promise<AdminOverview>;
+  adminActions(cursor?: number): Promise<{ items: AdminAction[]; nextCursor: number | null }>;
+  listAdminKeys(): Promise<AdminKeyStatus[]>;
+  createAdminKey(input: {
+    provider: string;
+    key: string;
+    maxConcurrency?: number | null;
+    monthlyQuotaUsd?: number | null;
+  }): Promise<AdminKeyEcho>;
+  updateAdminKey(
+    id: string,
+    input: { key?: string; maxConcurrency?: number | null; monthlyQuotaUsd?: number | null },
+  ): Promise<AdminKeyEcho>;
+  deleteAdminKey(id: string): Promise<void>;
+  orderAdminKeys(keys: string[]): Promise<void>;
+  orderAdminKeyModels(id: string, models: string[]): Promise<void>;
+  adminKeyProviderModels(provider: string): Promise<KeyModelInfo[]>;
+  putAdminKeyModel(id: string, model: string, maxConcurrency?: number | null): Promise<AdminKeyModelEcho>;
+  deleteAdminKeyModel(id: string, model: string): Promise<void>;
+  approveAdminKeyZdr(id: string, input: { retentionSource: string; verifiedAt: string }): Promise<AdminKeyEcho>;
+  adminTeacherKeys(): Promise<AdminTeacherKeyStatus[]>;
+  setAdminTeacherKeyDisabled(userId: string, provider: string, disabled: boolean): Promise<void>;
+  adminPlatformChain(): Promise<AdminProviderChain>;
+  postAdminNotification(input: { title: string; body: string }): Promise<Notification>;
   joinByCode(code: string): Promise<JoinInfo>;
-  joinAsGuest(code: string, name?: string): Promise<JoinResult>;
+  joinAsGuest(code: string, input: { name?: string; tosAccepted: boolean }): Promise<JoinResult>;
   createActivityInvite(activityId: string): Promise<ActivityInvite>;
   inviteInfo(token: string): Promise<InviteInfo>;
   joinByInvite(token: string, input: { name?: string; tosAccepted: boolean }): Promise<InviteJoined>;
@@ -84,40 +161,46 @@ export interface Api {
   listClassroomTopics(classroomId: string): Promise<Topic[]>;
   createClassroomTopic(
     classroomId: string,
-    input: { title: string; statement: string; summary?: string; prompts: string[] },
+    input: { title: string; statement: string; summary?: string; prompts: string[]; axes?: Axis[] },
   ): Promise<Topic>;
   copyTopic(topicId: string, classroomId: string): Promise<Topic>;
-  startActivity(classroomId: string, topicId: string, mode?: ActivityMode): Promise<ActivityStarted>;
+  startActivity(
+    classroomId: string,
+    topicId: string,
+    mode?: ActivityMode,
+    reportAxes?: ReportAxes,
+    topicAxes?: Axis[],
+    calendarEventId?: string,
+  ): Promise<ActivityStarted>;
   listActivitySlots(activityId: string): Promise<ActivitySlots>;
   createActivitySlots(activityId: string, count: number): Promise<ActivitySlots>;
   stt(audio: Blob): Promise<string>;
   tts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void>;
-  createTopic(input: { title: string; statement: string; summary?: string; prompts: string[] }): Promise<Topic>;
+  createTopic(input: {
+    title: string;
+    statement: string;
+    summary?: string;
+    prompts: string[];
+    axes?: Axis[];
+  }): Promise<Topic>;
   activityInfo(activityId: string, participantId?: string): Promise<ActivityInfo>;
+  activityLive(activityId: string, signal?: AbortSignal): Promise<ActivityLive>;
   finishActivity(activityId: string): Promise<void>;
   report(activityId: string): Promise<Report>;
+  setEngagementVisibility(activityId: string, visibility: EngagementVisibility): Promise<EngagementVisibility>;
+  listSoloThreads(): Promise<SoloThread[]>;
+  getSoloThread(id: string): Promise<SoloThread>;
+  createSoloThread(input: SoloThreadCreateInput): Promise<SoloThread>;
+  updateSoloThread(id: string, input: SoloThreadUpdateInput): Promise<SoloThread>;
+  deleteSoloThread(id: string): Promise<void>;
   lookupTerm(term: string): Promise<TermExplanation>;
   listTeacherKeys(): Promise<TeacherKeyStatus[]>;
   listKeyProviders(): Promise<KeyProviderInfo[]>;
   listKeyProviderModels(provider: string): Promise<KeyModelInfo[]>;
-  putTeacherKey(
-    provider: string,
-    key: string,
-    maxConcurrency?: number | null,
-  ): Promise<{ provider: string; last4: string; maxConcurrency: number | null }>;
-  putTeacherKeyProviderLimit(
-    provider: string,
-    maxConcurrency: number | null,
-  ): Promise<{ provider: string; maxConcurrency: number | null }>;
-  putTeacherKeyMonthlyQuota(
-    provider: string,
-    monthlyQuotaUsd: number | null,
-  ): Promise<{ provider: string; monthlyQuotaUsd: number | null }>;
-  putTeacherKeyModel(
-    provider: string,
-    model: string,
-    maxConcurrency?: number | null,
-  ): Promise<{ provider: string; model: string; maxConcurrency: number | null }>;
+  putTeacherKey(provider: string, key: string, maxConcurrency?: number | null): Promise<TeacherKeyEcho>;
+  putTeacherKeyProviderLimit(provider: string, maxConcurrency: number | null): Promise<TeacherKeyEcho>;
+  putTeacherKeyMonthlyQuota(provider: string, monthlyQuotaUsd: number | null): Promise<TeacherKeyEcho>;
+  putTeacherKeyModel(provider: string, model: string, maxConcurrency?: number | null): Promise<TeacherKeyModelEcho>;
   deleteTeacherKeyModel(provider: string, model: string): Promise<void>;
   orderTeacherKeyModels(provider: string, models: string[]): Promise<void>;
   deleteTeacherKey(provider: string): Promise<void>;
@@ -147,44 +230,36 @@ type JsonLike = {
   json(): Promise<unknown>;
 };
 
-async function unwrap<R extends JsonLike>(res: R): Promise<Awaited<ReturnType<R["json"]>>> {
-  if (res.status === 204) return undefined as Awaited<ReturnType<R["json"]>>;
-  if (!res.ok) {
-    const error = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new ApiError(toErrorCode(error?.code), error?.message ?? res.statusText);
+async function raiseApiError(res: { statusText: string; json(): Promise<unknown> }): Promise<never> {
+  const parsed: unknown = await res.json().catch(() => null);
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new ApiError("internal_error", res.statusText);
   }
-  return res.json() as Promise<Awaited<ReturnType<R["json"]>>>;
+  const code = Reflect.get(parsed, "code");
+  const message = Reflect.get(parsed, "message");
+  throw new ApiError(
+    toErrorCode(typeof code === "string" ? code : undefined),
+    typeof message === "string" ? message : res.statusText,
+  );
 }
 
-async function raw<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
-  const { json, ...rest } = init;
-  const res = await fetch(`/api${path}`, {
-    credentials: "include",
-    headers: {
-      ...langHeaders(),
-      ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(rest.headers ?? {}),
-    },
-    ...rest,
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  });
-  if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
-  }
-  return (await res.json()) as T;
+async function unwrap<R extends JsonLike>(res: R): Promise<Awaited<ReturnType<R["json"]>>> {
+  if (res.status === 204) return undefined as unknown as Awaited<ReturnType<R["json"]>>;
+  if (!res.ok) return raiseApiError(res);
+  // same-origin API — R is the Hono-typed response whose json() the generic carries
+  return (await res.json()) as unknown as Awaited<ReturnType<R["json"]>>;
 }
 
 async function playTts(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal): Promise<void> {
   const input = TtsInputSchema.parse({ text, lang: langHeaders()["Accept-Language"] });
   const res = await client.tts.$post({ json: input }, { init: { signal } });
-  if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
-  }
+  if (!res.ok) return raiseApiError(res);
   const bytes = await res.arrayBuffer();
+  // Safari legacy prefix — same constructor shape under the vendor name
+  const legacyCtor: unknown = Reflect.get(window, "webkitAudioContext");
   const AudioContextCtor =
-    window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    window.AudioContext ??
+    (typeof legacyCtor === "function" ? (legacyCtor as unknown as typeof AudioContext) : undefined);
   const context = new AudioContextCtor();
   if (context.state === "suspended") await context.resume().catch(() => {});
   const source = context.createBufferSource();
@@ -253,12 +328,110 @@ function announceSession(): void {
   }
 }
 
+type ScopedInviteInput =
+  | { scope: "classroom" }
+  | { scope: Exclude<ClassroomInviteScope, "classroom">; activityId: string };
+
+const classroom = client.classrooms[":id"];
+const calendarEvents = classroom["calendar-events"];
+const scopedInvite = client["classroom-invites"][":token"];
+
+function idempotencyHeaders(key: string) {
+  return { headers: { ...langHeaders(), "Idempotency-Key": key } };
+}
+
+const classroomApi = {
+  async calendar(id: string, query: { from: string; to: string; cursor?: string }, signal: AbortSignal) {
+    return unwrap(await calendarEvents.$get({ param: { id }, query }, { init: { signal } }));
+  },
+  async createCalendarEvent(id: string, json: InferRequestType<typeof calendarEvents.$post>["json"]) {
+    return unwrap(await calendarEvents.$post({ param: { id }, json }));
+  },
+  async updateCalendarEvent(
+    id: string,
+    eventId: string,
+    json: InferRequestType<(typeof calendarEvents)[":eventId"]["$patch"]>["json"],
+  ) {
+    return unwrap(await calendarEvents[":eventId"].$patch({ param: { id, eventId }, json }));
+  },
+  async deleteCalendarEvent(id: string, eventId: string) {
+    await unwrap(await calendarEvents[":eventId"].$delete({ param: { id, eventId } }));
+  },
+  async announcements(id: string, cursor?: string) {
+    return unwrap(await classroom.announcements.$get({ param: { id }, query: { cursor } }));
+  },
+  async publish(id: string, body: string, key: string) {
+    return unwrap(await classroom.announcements.$post({ param: { id }, json: { body } }, idempotencyHeaders(key)));
+  },
+  async deleteAnnouncement(id: string, itemId: string) {
+    await unwrap(await classroom.announcements[":itemId"].$delete({ param: { id, itemId } }));
+  },
+  async posts(id: string, cursor?: string) {
+    return unwrap(await classroom.posts.$get({ param: { id }, query: { cursor } }));
+  },
+  async post(id: string, body: string, key: string) {
+    return unwrap(await classroom.posts.$post({ param: { id }, json: { body } }, idempotencyHeaders(key)));
+  },
+  async replies(id: string, postId: string, cursor?: string) {
+    return unwrap(await classroom.posts[":postId"].replies.$get({ param: { id, postId }, query: { cursor } }));
+  },
+  async reply(id: string, postId: string, body: string, key: string) {
+    return unwrap(
+      await classroom.posts[":postId"].replies.$post(
+        { param: { id, postId }, json: { body } },
+        idempotencyHeaders(key),
+      ),
+    );
+  },
+  async deletePost(id: string, postId: string) {
+    await unwrap(await classroom.posts[":postId"].$delete({ param: { id, postId } }));
+  },
+  async members(id: string, cursor?: string) {
+    return unwrap(await classroom.members.$get({ param: { id }, query: { cursor } }));
+  },
+  async removeMember(id: string, userId: string) {
+    await unwrap(await classroom.members[":userId"].$delete({ param: { id, userId } }));
+  },
+  async activities(id: string, cursor?: string) {
+    return unwrap(await classroom.activities.$get({ param: { id }, query: { cursor } }));
+  },
+  async invites(id: string, cursor?: string) {
+    return unwrap(await classroom.invites.$get({ param: { id }, query: { cursor } }));
+  },
+  async createInvite(id: string, input: ScopedInviteInput) {
+    return unwrap(await classroom.invites.$post({ param: { id }, json: input }));
+  },
+  async revokeInvite(id: string, inviteId: string) {
+    await unwrap(await classroom.invites[":inviteId"].$delete({ param: { id, inviteId } }));
+  },
+  async previewInvite(token: string) {
+    return unwrap(await scopedInvite.$get({ param: { token } }));
+  },
+  async acceptInvite(token: string, input: { name?: string; tosAccepted: boolean }) {
+    const joined = await unwrap(await scopedInvite.join.$post({ param: { token }, json: input }));
+    if (joined.activityId) persistActivityId(joined.activityId);
+    return joined;
+  },
+  async myReports(cursor?: string) {
+    return unwrap(await client.me.reports.$get({ query: { cursor } }));
+  },
+};
+
 export const httpApi: Api = {
+  async config() {
+    return unwrap(await client.config.$get());
+  },
+  classroom: classroomApi,
   async me() {
     return unwrap(await client.me.$get());
   },
   async login(email, password) {
     const user = unwrap(await client.auth.login.$post({ json: LoginInputSchema.parse({ email, password }) }));
+    announceSession();
+    return user;
+  },
+  async signup(input) {
+    const user = unwrap(await client.auth.signup.$post({ json: SignupInputSchema.parse(input) }));
     announceSession();
     return user;
   },
@@ -273,28 +446,132 @@ export const httpApi: Api = {
   async resetPassword(token, password) {
     await unwrap(await client.auth.password.reset.$post({ json: PasswordResetInputSchema.parse({ token, password }) }));
   },
+  async verifyEmail(token) {
+    await unwrap(await client.auth.email.verify.$post({ json: EmailVerifyInputSchema.parse({ token }) }));
+  },
+  async resendEmailVerification() {
+    await unwrap(await client.auth.email.verify.resend.$post({}));
+  },
+  async authProviders() {
+    return unwrap(await client.auth.providers.$get());
+  },
+  async identities() {
+    return unwrap(await client.me.identities.$get());
+  },
+  async reauthWithPassword(password) {
+    return unwrap(await client.auth.reauth.password.$post({ json: ReauthPasswordInputSchema.parse({ password }) }));
+  },
+  async startOAuthReauth(provider, returnTo) {
+    return unwrap(
+      await client.auth.reauth.oauth[":provider"].start.$post({
+        param: { provider },
+        json: OAuthStartInputSchema.parse(returnTo === undefined ? {} : { returnTo }),
+      }),
+    );
+  },
+  async startIdentityBind(provider, returnTo) {
+    return unwrap(
+      await client.me.identities.oauth[":provider"].start.$post({
+        param: { provider },
+        json: OAuthStartInputSchema.parse(returnTo === undefined ? {} : { returnTo }),
+      }),
+    );
+  },
+  async bindEmail(input) {
+    return unwrap(await client.me.identities.email.$post({ json: BindEmailInputSchema.parse(input) }));
+  },
+  async unbindIdentity(method) {
+    await unwrap(await client.me.identities[":method"].$delete({ param: { method } }));
+  },
+  async notifications() {
+    return unwrap(await client.notifications.$get());
+  },
+  async markNotificationsSeen() {
+    await unwrap(await client.notifications.seen.$post());
+  },
+  async adminOverview() {
+    return unwrap(await client.admin.overview.$get());
+  },
+  async adminActions(cursor) {
+    const query = cursor === undefined ? {} : { cursor: String(cursor) };
+    return unwrap(await client.admin.actions.$get({ query }));
+  },
+  async listAdminKeys() {
+    return unwrap(await client.admin.keys.$get());
+  },
+  async createAdminKey(input) {
+    return unwrap(await client.admin.keys.$post({ json: AdminKeyCreateInputSchema.parse(input) }));
+  },
+  async updateAdminKey(id, input) {
+    return unwrap(await client.admin.keys[":id"].$put({ param: { id }, json: AdminKeyUpdateInputSchema.parse(input) }));
+  },
+  async deleteAdminKey(id) {
+    await unwrap(await client.admin.keys[":id"].$delete({ param: { id } }));
+  },
+  async orderAdminKeys(keys) {
+    await unwrap(await client.admin.keys.order.$put({ json: { keys } }));
+  },
+  async orderAdminKeyModels(id, models) {
+    await unwrap(await client.admin.keys[":id"].models.order.$put({ param: { id }, json: { models } }));
+  },
+  async adminKeyProviderModels(provider) {
+    return unwrap(await client.admin.keys.providers[":provider"].models.$get({ param: { provider } }));
+  },
+  async putAdminKeyModel(id, model, maxConcurrency) {
+    return unwrap(
+      await client.admin.keys[":id"].models.$put({
+        param: { id },
+        json: maxConcurrency === undefined ? { model } : { model, maxConcurrency },
+      }),
+    );
+  },
+  async deleteAdminKeyModel(id, model) {
+    await unwrap(
+      await client.admin.keys[":id"].models[":model"].$delete({
+        param: { id, model: encodeURIComponent(model) },
+      }),
+    );
+  },
+  async approveAdminKeyZdr(id, input) {
+    return unwrap(await client.admin.keys[":id"].zdr.$post({ param: { id }, json: input }));
+  },
+  async adminTeacherKeys() {
+    return unwrap(await client.admin["teacher-keys"].$get());
+  },
+  async setAdminTeacherKeyDisabled(userId, provider, disabled) {
+    await unwrap(
+      await client.admin["teacher-keys"][":userId"][":provider"].$patch({
+        param: { userId, provider },
+        json: { disabled },
+      }),
+    );
+  },
+  async adminPlatformChain() {
+    return unwrap(await client.admin["platform-chain"].$get());
+  },
+  async postAdminNotification(input) {
+    return unwrap(await client.admin.notifications.$post({ json: NotificationInputSchema.parse(input) }));
+  },
   async joinByCode(code) {
     return unwrap(await client.join[":code"].$get({ param: { code } }));
   },
-  async joinAsGuest(code, name) {
-    const data = await raw<JoinResult>("/join", {
-      method: "POST",
-      json: JoinInputSchema.parse({ code, name, tosAccepted: true }),
-    });
+  async joinAsGuest(code, input) {
+    const data = await unwrap(
+      await client.join.$post({
+        json: JoinInputSchema.parse({ code, name: input.name, tosAccepted: input.tosAccepted }),
+      }),
+    );
     persistActivityId(data.activityId);
     return data;
   },
   async createActivityInvite(activityId) {
-    return await raw<ActivityInvite>(`/activities/${encodeURIComponent(activityId)}/invites`, { method: "POST" });
+    return unwrap(await client.activities[":id"].invites.$post({ param: { id: activityId } }));
   },
   async inviteInfo(token) {
-    return await raw<InviteInfo>(`/invites/${encodeURIComponent(token)}`);
+    return unwrap(await client.invites[":token"].$get({ param: { token } }));
   },
   async joinByInvite(token, input) {
-    const data = await raw<InviteJoined>(`/invites/${encodeURIComponent(token)}/join`, {
-      method: "POST",
-      json: input,
-    });
+    const data = await unwrap(await client.invites[":token"].join.$post({ param: { token }, json: input }));
     persistActivityId(data.activityId);
     return data;
   },
@@ -316,52 +593,83 @@ export const httpApi: Api = {
     return unwrap(await client.classrooms.$get());
   },
   async listClassroomTopics(classroomId) {
-    return await raw<Topic[]>(`/classrooms/${encodeURIComponent(classroomId)}/topics`);
+    return unwrap(await client.classrooms[":id"].topics.$get({ param: { id: classroomId } }));
   },
   async createClassroomTopic(classroomId, input) {
-    return await raw<Topic>(`/classrooms/${encodeURIComponent(classroomId)}/topics`, {
-      method: "POST",
-      json: TopicCreateInputSchema.parse(input),
-    });
+    return unwrap(
+      await client.classrooms[":id"].topics.$post({
+        param: { id: classroomId },
+        json: TopicCreateInputSchema.parse(input),
+      }),
+    );
   },
   async copyTopic(topicId, classroomId) {
-    return await raw<Topic>(`/topics/${encodeURIComponent(topicId)}/copy`, {
-      method: "POST",
-      json: TopicCopyInputSchema.parse({ classroomId }),
-    });
+    return unwrap(
+      await client.topics[":id"].copy.$post({
+        param: { id: topicId },
+        json: TopicCopyInputSchema.parse({ classroomId }),
+      }),
+    );
   },
-  async startActivity(classroomId, topicId, mode = "live") {
-    const input = ActivityStartInputSchema.parse({ topicId, mode });
-    return await raw<ActivityStarted>(`/classrooms/${classroomId}/activities`, { method: "POST", json: input });
+  async startActivity(classroomId, topicId, mode = "live", reportAxes, topicAxes, calendarEventId) {
+    const input = ActivityStartInputSchema.parse({ topicId, mode, reportAxes, topicAxes, calendarEventId });
+    return unwrap(await client.classrooms[":id"].activities.$post({ param: { id: classroomId }, json: input }));
   },
   async listActivitySlots(activityId) {
-    return raw<ActivitySlots>(`/activities/${encodeURIComponent(activityId)}/slots`);
+    return unwrap(await client.activities[":id"].slots.$get({ param: { id: activityId } }));
   },
   async createActivitySlots(activityId, count) {
-    return raw<ActivitySlots>(`/activities/${encodeURIComponent(activityId)}/slots`, {
-      method: "POST",
-      json: { count: Math.min(Math.max(count, 1), ACTIVITY_SLOT_MAX) },
-    });
+    return unwrap(
+      await client.activities[":id"].slots.$post({
+        param: { id: activityId },
+        json: { count },
+      }),
+    );
   },
   async stt(audio) {
     const file = audio instanceof File ? audio : new File([audio], "speech.webm", { type: audio.type });
     const res = await client.stt.$post({ form: { audio: file } });
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-      throw new ApiError(toErrorCode(payload?.code), payload?.message ?? res.statusText);
-    }
+    if (!res.ok) return raiseApiError(res);
     return SttResultSchema.parse(await res.json()).text;
   },
   tts: playTts,
   async activityInfo(activityId, participantId) {
-    const query = participantId === undefined ? "" : `?participantId=${encodeURIComponent(participantId)}`;
-    return raw<ActivityInfo>(`/activities/${encodeURIComponent(activityId)}${query}`);
+    return unwrap(await client.activities[":id"].$get({ param: { id: activityId }, query: { participantId } }));
+  },
+  async activityLive(activityId, signal) {
+    const response = await client.activities[":id"].live.$get({ param: { id: activityId } }, { init: { signal } });
+    return ActivityLiveSchema.parse(await unwrap(response));
   },
   async finishActivity(activityId) {
     await unwrap(await client.activities[":id"].finish.$post({ param: { id: activityId } }));
   },
   async report(activityId) {
     return unwrap(await client.activities[":id"].report.$get({ param: { id: activityId } }));
+  },
+  async setEngagementVisibility(activityId, visibility) {
+    return unwrap(
+      await client.activities[":id"]["engagement-visibility"].$put({
+        param: { id: activityId },
+        json: EngagementVisibilitySchema.parse(visibility),
+      }),
+    );
+  },
+  async listSoloThreads() {
+    return unwrap(await client.solo.threads.$get());
+  },
+  async getSoloThread(id) {
+    return unwrap(await client.solo.threads[":id"].$get({ param: { id } }));
+  },
+  async createSoloThread(input) {
+    return unwrap(await client.solo.threads.$post({ json: SoloThreadCreateInputSchema.parse(input) }));
+  },
+  async updateSoloThread(id, input) {
+    return unwrap(
+      await client.solo.threads[":id"].$patch({ param: { id }, json: SoloThreadUpdateInputSchema.parse(input) }),
+    );
+  },
+  async deleteSoloThread(id) {
+    await unwrap(await client.solo.threads[":id"].$delete({ param: { id } }));
   },
   async lookupTerm(term) {
     const input = LookupInputSchema.parse({ term });
@@ -379,39 +687,36 @@ export const httpApi: Api = {
     return unwrap(await client.settings.keys.providers[":provider"].models.$get({ param: { provider } }));
   },
   async putTeacherKey(provider, key, maxConcurrency) {
-    return raw<{ provider: string; last4: string; maxConcurrency: number | null }>(
-      `/settings/keys/${encodeURIComponent(provider)}`,
-      { method: "PUT", json: maxConcurrency === undefined ? { key } : { key, maxConcurrency } },
+    return unwrap(
+      await client.settings.keys[":provider"].$put({
+        param: { provider },
+        json: maxConcurrency === undefined ? { key } : { key, maxConcurrency },
+      }),
     );
   },
   async putTeacherKeyProviderLimit(provider, maxConcurrency) {
-    return raw<{ provider: string; maxConcurrency: number | null }>(`/settings/keys/${encodeURIComponent(provider)}`, {
-      method: "PUT",
-      json: { maxConcurrency },
-    });
+    return unwrap(await client.settings.keys[":provider"].$put({ param: { provider }, json: { maxConcurrency } }));
   },
   async putTeacherKeyMonthlyQuota(provider, monthlyQuotaUsd) {
-    return raw<{ provider: string; monthlyQuotaUsd: number | null }>(`/settings/keys/${encodeURIComponent(provider)}`, {
-      method: "PUT",
-      json: { monthlyQuotaUsd },
-    });
+    return unwrap(await client.settings.keys[":provider"].$put({ param: { provider }, json: { monthlyQuotaUsd } }));
   },
   async putTeacherKeyModel(provider, model, maxConcurrency) {
-    return raw<{ provider: string; model: string; maxConcurrency: number | null }>(
-      `/settings/keys/${encodeURIComponent(provider)}/models`,
-      { method: "PUT", json: maxConcurrency === undefined ? { model } : { model, maxConcurrency } },
+    return unwrap(
+      await client.settings.keys[":provider"].models.$put({
+        param: { provider },
+        json: maxConcurrency === undefined ? { model } : { model, maxConcurrency },
+      }),
     );
   },
   async deleteTeacherKeyModel(provider, model) {
-    await raw<void>(`/settings/keys/${encodeURIComponent(provider)}/models/${encodeURIComponent(model)}`, {
-      method: "DELETE",
-    });
+    await unwrap(
+      await client.settings.keys[":provider"].models[":model"].$delete({
+        param: { provider, model: encodeURIComponent(model) },
+      }),
+    );
   },
   async orderTeacherKeyModels(provider, models) {
-    await raw<void>(`/settings/keys/${encodeURIComponent(provider)}/models/order`, {
-      method: "PUT",
-      json: { models },
-    });
+    await unwrap(await client.settings.keys[":provider"].models.order.$put({ param: { provider }, json: { models } }));
   },
   async deleteTeacherKey(provider) {
     await unwrap(await client.settings.keys[":provider"].$delete({ param: { provider } }));
@@ -420,10 +725,10 @@ export const httpApi: Api = {
     await unwrap(await client.settings.keys.order.$put({ json: { providers } }));
   },
   async devAccounts() {
-    return raw<DevAccounts>("/dev/accounts");
+    return unwrap(await client.dev.accounts.$get());
   },
   async devLogin(email) {
-    const user = await raw<User>("/dev/login", { method: "POST", json: DevLoginInputSchema.parse({ email }) });
+    const user = await unwrap(await client.dev.login.$post({ json: DevLoginInputSchema.parse({ email }) }));
     announceSession();
     return user;
   },
@@ -431,12 +736,11 @@ export const httpApi: Api = {
     return unwrap(await client.admin.users.$get());
   },
   async createAdminUser(input) {
-    return raw<AdminUser>("/admin/users", { method: "POST", json: AdminUserCreateInputSchema.parse(input) });
+    return unwrap(await client.admin.users.$post({ json: AdminUserCreateInputSchema.parse(input) }));
   },
   async updateAdminUser(id, input) {
-    return raw<AdminUser>(`/admin/users/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      json: AdminUserUpdateInputSchema.parse(input),
-    });
+    return unwrap(
+      await client.admin.users[":id"].$patch({ param: { id }, json: AdminUserUpdateInputSchema.parse(input) }),
+    );
   },
 };

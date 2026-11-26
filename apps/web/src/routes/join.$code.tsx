@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { classroomsOptions, joinOptions } from "@/api/queries";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight, Ghost, UserRound } from "lucide-react";
@@ -20,6 +21,7 @@ function JoinPage() {
   const { code: rawCode } = Route.useParams();
   const code = normalizeJoinCode(rawCode);
   const { draft } = Route.useSearch();
+  const returnPath = draft ? `/join/${code}?draft=${encodeURIComponent(draft)}` : `/join/${code}`;
   const t = useT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -28,7 +30,7 @@ function JoinPage() {
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const [asGuest, setAsGuest] = useState(false);
-  const info = useQuery({ queryKey: ["join", code], queryFn: () => api.joinByCode(code) });
+  const info = useQuery(joinOptions(code));
   const me = useQuery(meQueryOptions);
   const account = me.data ?? null;
   const signedIn = Boolean(account);
@@ -38,8 +40,8 @@ function JoinPage() {
       await api.logout();
     } finally {
       queryClient.clear();
-      queryClient.setQueryData(["me"], null);
-      await navigate({ to: "/login" });
+      queryClient.setQueryData(meQueryOptions.queryKey, null);
+      await navigate({ to: "/login", search: { next: returnPath } });
     }
   }
 
@@ -51,9 +53,12 @@ function JoinPage() {
     setSubmitting(true);
     setFailed(null);
     try {
-      const { activityId, user } = await api.joinAsGuest(code, signedIn ? undefined : name.trim());
-      queryClient.setQueryData(["me"], user);
-      await queryClient.invalidateQueries({ queryKey: ["classrooms"] });
+      const { activityId, user } = await api.joinAsGuest(code, {
+        name: signedIn ? undefined : name.trim(),
+        tosAccepted: tos,
+      });
+      queryClient.setQueryData(meQueryOptions.queryKey, user);
+      await queryClient.invalidateQueries({ queryKey: classroomsOptions.queryKey });
       if (draft || !user) {
         await navigate({ to: "/dialogue", search: { activityId, ...(draft ? { q: draft } : {}) } });
         return;
@@ -132,6 +137,7 @@ function JoinPage() {
                   <p className="text-[13px] text-ink-soft">{t("join_choose")}</p>
                   <Link
                     to="/login"
+                    search={{ next: returnPath }}
                     className="flex items-center gap-3 rounded-xl border border-line-strong bg-paper px-3 py-3 transition-colors hover:border-ember"
                   >
                     <UserRound className="size-5 shrink-0 text-ember" />

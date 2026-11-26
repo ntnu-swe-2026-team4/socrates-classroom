@@ -1,16 +1,28 @@
 import { Hono } from "hono";
-import { AdminUserCreateInputSchema, AdminUserUpdateInputSchema, type AdminUser } from "@socrates/shared";
+import {
+  AdminActionsQuerySchema,
+  AdminSettingsSchema,
+  AdminUserCreateInputSchema,
+  AdminUserUpdateInputSchema,
+  type AdminAction,
+  type AdminOverview,
+  type AdminSettings,
+  type AdminUser,
+} from "@socrates/shared";
 import { all, one, run } from "../db/d1";
 import { hashPassword } from "../auth";
+import { reportAxesPolicyOf, setReportAxesPolicy } from "../services/settings";
 import {
-  enforceIpLimit,
   fail,
+  guardAdmin,
   langOf,
   newId,
   nowIso,
-  parseBody,
+  rateLimit,
   requireAdmin,
   uniqueViolationColumns,
+  validateJson,
+  validateQuery,
   type AppEnv,
 } from "../http";
 
@@ -21,6 +33,37 @@ interface AdminUserRow {
   is_admin: number;
   disabled_at: string | null;
   created_at: string;
+}
+
+interface AdminActionRow {
+  id: number;
+  actor_id: string | null;
+  action: string;
+  target: string;
+  before_json: string | null;
+  after_json: string | null;
+  created_at: string;
+}
+
+function toAdminAction(row: AdminActionRow): AdminAction {
+  const parse = (raw: string | null): unknown => {
+    if (raw === null) return null;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    id: row.id,
+    actorId: row.actor_id,
+    action: row.action,
+    target: row.target,
+    before: parse(row.before_json),
+    after: parse(row.after_json),
+    createdAt: row.created_at,
+  };
 }
 
 const ADMIN_USER_COLUMNS = "id, name, email, is_admin, disabled_at, created_at";
@@ -43,6 +86,37 @@ async function loadAdminUser(db: D1Database, id: string): Promise<AdminUser | nu
 
 export function adminRoutes() {
   return new Hono<AppEnv>()
+    .get("/admin/actions", guardAdmin(), validateQuery(AdminActionsQuerySchema), async (c) => {
+      const { limit, cursor } = c.req.valid("query");
+      const rows = await all<AdminActionRow>(
+        c.env.DB,
+        `SELECT id, actor_id, action, target, before_json, after_json, created_at
+         FROM admin_actions
+         WHERE ($cursor IS NULL OR id < $cursor)
+         ORDER BY id DESC
+         LIMIT $limit`,
+        { cursor: cursor ?? null, limit: limit + 1 },
+      );
+      const page = rows.slice(0, limit);
+      return c.json({
+        items: page.map(toAdminAction),
+        nextCursor: rows.length > limit ? (page[page.length - 1]?.id ?? null) : null,
+      });
+    })
+    .get("/admin/overview", guardAdmin(), async (c) => {
+      const counts = await one<{ users: number; classrooms: number; running: number }>(
+        c.env.DB,
+        `SELECT (SELECT COUNT(*) FROM users) AS users,
+                (SELECT COUNT(*) FROM classrooms) AS classrooms,
+                (SELECT COUNT(*) FROM activities WHERE finished_at IS NULL) AS running`,
+      );
+      if (!counts) fail(500, "internal_error");
+      return c.json({
+        users: counts.users,
+        classrooms: counts.classrooms,
+        runningActivities: counts.running,
+      } satisfies AdminOverview);
+    })
     .get("/admin/users", async (c) => {
       requireAdmin(c);
       const rows = await all<AdminUserRow>(
@@ -51,39 +125,43 @@ export function adminRoutes() {
       );
       return c.json(rows.map(toAdminUser));
     })
-    .post("/admin/users", async (c) => {
-      requireAdmin(c);
-      await enforceIpLimit(c, "admin-create-user", 30);
-      const input = await parseBody(c, AdminUserCreateInputSchema);
-      const id = newId("u_");
-      const hash = await hashPassword(input.password);
-      try {
-        await run(
-          c.env.DB,
-          `INSERT INTO users (id, name, email, password_hash, lang, created_at)
-           VALUES ($id, $name, $email, $hash, $lang, $at)`,
-          {
-            id,
-            name: input.name,
-            email: input.email,
-            hash,
-            lang: langOf(c),
-            at: nowIso(),
-          },
-        );
-      } catch (error) {
-        if (uniqueViolationColumns(error).some(([table, column]) => table === "users" && column === "email")) {
-          fail(409, "conflict");
+    .post(
+      "/admin/users",
+      guardAdmin(),
+      rateLimit("admin-create-user", 30),
+      validateJson(AdminUserCreateInputSchema),
+      async (c) => {
+        const input = c.req.valid("json");
+        const id = newId("u_");
+        const hash = await hashPassword(input.password);
+        try {
+          await run(
+            c.env.DB,
+            `INSERT INTO users (id, name, email, password_hash, lang, email_verified_at, created_at)
+           VALUES ($id, $name, $email, $hash, $lang, $at, $at)`,
+            {
+              id,
+              name: input.name,
+              email: input.email,
+              hash,
+              lang: langOf(c),
+              at: nowIso(),
+            },
+          );
+        } catch (error) {
+          if (uniqueViolationColumns(error).some(([table, column]) => table === "users" && column === "email")) {
+            fail(409, "conflict");
+          }
+          throw error;
         }
-        throw error;
-      }
-      const created = await loadAdminUser(c.env.DB, id);
-      if (!created) fail(500, "internal_error");
-      return c.json(created, 201);
-    })
-    .patch("/admin/users/:id", async (c) => {
+        const created = await loadAdminUser(c.env.DB, id);
+        if (!created) fail(500, "internal_error");
+        return c.json(created, 201);
+      },
+    )
+    .patch("/admin/users/:id", guardAdmin(), validateJson(AdminUserUpdateInputSchema), async (c) => {
       const actor = requireAdmin(c);
-      const input = await parseBody(c, AdminUserUpdateInputSchema);
+      const input = c.req.valid("json");
       const target = await one<AdminUserRow>(c.env.DB, `SELECT ${ADMIN_USER_COLUMNS} FROM users WHERE id = $id`, {
         id: c.req.param("id"),
       });
@@ -101,5 +179,13 @@ export function adminRoutes() {
       const updated = await loadAdminUser(c.env.DB, target.id);
       if (!updated) fail(500, "internal_error");
       return c.json(updated);
+    })
+    .get("/admin/settings", guardAdmin(), async (c) =>
+      c.json({ reportAxes: await reportAxesPolicyOf(c.env.DB) } satisfies AdminSettings),
+    )
+    .put("/admin/settings", guardAdmin(), validateJson(AdminSettingsSchema), async (c) => {
+      const input = c.req.valid("json");
+      await setReportAxesPolicy(c.env.DB, input.reportAxes);
+      return c.json({ reportAxes: await reportAxesPolicyOf(c.env.DB) } satisfies AdminSettings);
     });
 }

@@ -5,7 +5,7 @@ import { applyImmutable } from "@earendil-works/chord/delta";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
 import { companion } from "@/lib/companion";
-import { useOnUnmount } from "@/hooks/useSubscription";
+import { WS_MAX_RETRIES, useOnUnmount } from "@/hooks/useSubscription";
 import {
   ConversationTranscript,
   type ConversationView,
@@ -16,9 +16,15 @@ import {
   type TranscriptItem,
   type TranscriptView,
 } from "@earendil-works/pi-durable";
-import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
+import type { ClientMessage } from "@server/ws/protocol";
+import { parseServerMessage } from "@/lib/wsProtocol";
 
 export type DialoguePhase = "idle" | "thinking" | "streaming" | "speaking";
+export type DialogueAgent = "chat" | "solo-chat";
+
+export function dialogueName(agent: DialogueAgent, threadId: string, userId: string): string {
+  return agent === "solo-chat" ? `${userId}:${threadId}` : `${threadId}:${userId}`;
+}
 export type DialogueError = { code: string } | null;
 export type DialogueEmotion = {
   emotion: string;
@@ -51,20 +57,17 @@ function lastAssistantText(view: ConversationView | null): string {
   return "";
 }
 
-export interface WindowedEntry {
-  id: number;
-  kind: string;
-  model?: readonly unknown[];
-}
+export type WindowedEntry = Pick<EntryRecord, "id" | "kind" | "model">;
 
 const ANSWER_STOP_REASONS = new Set(["stop", "length"]);
 
 export function intermediateAssistant(entry: WindowedEntry): boolean {
-  const message = entry.model?.[0] as { stopReason?: string; content?: readonly { type?: string }[] } | undefined;
-  if (message?.stopReason === undefined) return false;
+  const message = entry.model?.[0];
+  if (message?.role !== "assistant") return false;
+  if (message.stopReason === undefined) return false;
   if (ANSWER_STOP_REASONS.has(message.stopReason)) return false;
   // pi answers a toolUse message that carries no tool calls (malformed provider output ends the run)
-  if (message.stopReason === "toolUse" && !(message.content ?? []).some((part) => part.type === "toolCall")) {
+  if (message.stopReason === "toolUse" && !message.content.some((part) => part.type === "toolCall")) {
     return false;
   }
   return true;
@@ -72,30 +75,49 @@ export function intermediateAssistant(entry: WindowedEntry): boolean {
 
 export function answered(entries: readonly WindowedEntry[]): boolean {
   return entries.some(
-    (entry) =>
-      entry.kind === "pi.assistant" &&
-      !intermediateAssistant(entry) &&
-      textOf(entry.model?.[0] as Message | undefined).trim() !== "",
+    (entry) => entry.kind === "pi.assistant" && !intermediateAssistant(entry) && textOf(entry.model?.[0]).trim() !== "",
   );
 }
 
+function canSend(value: unknown): value is { send: (data: string) => void } {
+  return typeof value === "object" && value !== null && typeof Reflect.get(value, "send") === "function";
+}
+
 export function runFailureOf(view: ConversationView | null): unknown {
-  const live = view?.docs["pi.live"] as { runFailure?: unknown } | undefined;
-  return live?.runFailure;
+  const live = view?.docs["pi.live"];
+  if (typeof live !== "object" || live === null || Array.isArray(live)) return undefined;
+  return Reflect.get(live, "runFailure");
 }
 
 function latestEmotionOf(view: ConversationView | null): { id: EntryId; data: DialogueEmotion } | null {
   if (!view) return null;
   for (const entry of [...view.entries].reverse()) {
     if (entry.kind !== "app.emotion") continue;
-    return { id: entry.id, data: (entry.data ?? null) as DialogueEmotion };
+    return { id: entry.id, data: readEmotion(entry.data) };
   }
   return null;
 }
 
+export function readEmotion(data: unknown): DialogueEmotion {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+  const emotion = Reflect.get(data, "emotion");
+  const confidence = Reflect.get(data, "confidence");
+  const probabilities = Reflect.get(data, "probabilities");
+  if (typeof emotion !== "string" || typeof confidence !== "number") return null;
+  if (typeof probabilities !== "object" || probabilities === null || Array.isArray(probabilities)) return null;
+  const record: Record<string, number> = {};
+  for (const [key, value] of Object.entries(probabilities)) {
+    if (typeof value === "number") record[key] = value;
+  }
+  return { emotion, confidence, probabilities: record };
+}
+
 export interface DialogueOptions {
+  agent?: DialogueAgent;
   autoSend?: string;
-  onAutoSent?: () => void;
+  autoSendOperationId?: string;
+  onAutoSent?: (receipt?: { accepted: boolean }) => void;
+  onSubmitReceipt?: () => void;
   onActivityFinished?: () => void;
   onDisconnect?: () => void;
 }
@@ -106,14 +128,33 @@ const EXPRESSIONS: Record<string, "Happy" | "Angry" | "Confused"> = {
   confused: "Confused",
 };
 
-export function liveTextOf(view: ConversationView | null): string {
-  if (!view) return "";
-  const live = view.docs["pi.live"] as { generation?: { message?: { content?: readonly unknown[] } } } | undefined;
-  const content = live?.generation?.message?.content;
-  return content === undefined ? "" : textOf({ role: "assistant", content } as Message);
+export function textOfContent(content: string | readonly unknown[]): string {
+  if (typeof content === "string") return content;
+  const parts: string[] = [];
+  for (const part of content) {
+    if (typeof part !== "object" || part === null) continue;
+    const text = Reflect.get(part, "text");
+    if (Reflect.get(part, "type") === "text" && typeof text === "string") {
+      parts.push(text);
+    }
+  }
+  return parts.join("");
 }
 
-export function useDialogue(activityId: string, participantId: string, options?: DialogueOptions) {
+export function liveTextOf(view: ConversationView | null): string {
+  if (!view) return "";
+  const live = view.docs["pi.live"];
+  if (typeof live !== "object" || live === null || Array.isArray(live)) return "";
+  const generation = Reflect.get(live, "generation");
+  if (typeof generation !== "object" || generation === null || Array.isArray(generation)) return "";
+  const message = Reflect.get(generation, "message");
+  if (typeof message !== "object" || message === null || Array.isArray(message)) return "";
+  const content = Reflect.get(message, "content");
+  if (typeof content === "string" || Array.isArray(content)) return textOfContent(content);
+  return "";
+}
+
+export function useDialogue(threadId: string, userId: string, options?: DialogueOptions) {
   const [view, setView] = useState<ConversationView | null>(null);
   const [phase, setPhase] = useState<DialoguePhase>("idle");
   const [error, setError] = useState<DialogueError>(null);
@@ -122,6 +163,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
   const viewRef = useRef<ConversationView | null>(null);
   const socketRef = useRef<{ send: (data: string) => void; readyState: number; OPEN: number } | null>(null);
   const pendingRef = useRef<string | null>(null);
+  const pendingAutoSend = useRef<string | null>(null);
   const [pendingView, setPendingView] = useState(false);
   const [baseline, setBaseline] = useState<number | null>(null);
   const failedInputRef = useRef<string | null>(null);
@@ -268,12 +310,8 @@ export function useDialogue(activityId: string, participantId: string, options?:
 
   function onFrame(raw: unknown) {
     if (typeof raw !== "string") return;
-    let frame: ServerMessage;
-    try {
-      frame = JSON.parse(raw) as ServerMessage;
-    } catch {
-      return;
-    }
+    const frame = parseServerMessage(raw);
+    if (frame === null) return;
     switch (frame.type) {
       case "view": {
         adopt(frame.view);
@@ -301,37 +339,67 @@ export function useDialogue(activityId: string, participantId: string, options?:
         return;
       }
       case "result": {
+        const result = frame.result;
+        if (
+          result &&
+          typeof result === "object" &&
+          "operationId" in result &&
+          typeof result.operationId === "string" &&
+          "accepted" in result &&
+          typeof result.accepted === "boolean"
+        ) {
+          if (result.operationId === pendingAutoSend.current) {
+            pendingAutoSend.current = null;
+            if (result.accepted) {
+              options?.onAutoSent?.({ accepted: true });
+            } else {
+              setSentAutoSend(null);
+            }
+          }
+          if (!result.accepted && frame.id === pendingRef.current) completePending();
+          options?.onSubmitReceipt?.();
+          return;
+        }
         const waiter = entriesWaiters.current.get(frame.id);
         if (waiter === undefined) return;
         entriesWaiters.current.delete(frame.id);
         if (frame.result && typeof frame.result === "object" && "items" in frame.result) {
-          waiter.resolve(frame.result as Page<EntryRecord, Cursor>);
+          const items = frame.result.items;
+          const next = "next" in frame.result ? frame.result.next : undefined;
+          waiter.resolve({ items: Array.isArray(items) ? items : [], next });
         } else {
           waiter.reject(new Error("entries_result_invalid"));
         }
         return;
       }
       case "error": {
-        const waiter = frame.id !== undefined ? entriesWaiters.current.get(frame.id) : undefined;
+        const id = frame.id;
+        if (id === undefined) {
+          if (pendingRef.current !== null) failPending(frame.code ?? "llm_unavailable");
+          return;
+        }
+        const waiter = entriesWaiters.current.get(id);
         if (waiter !== undefined) {
-          entriesWaiters.current.delete(frame.id!);
+          entriesWaiters.current.delete(id);
           waiter.reject(new Error("entries_failed"));
           return;
         }
-        if (frame.id !== undefined && frame.id !== pendingRef.current) return;
-        if (frame.id === undefined && pendingRef.current === null) return;
-        failPending(frame.code ?? "llm_unavailable");
+        if (id === pendingRef.current) failPending(frame.code ?? "llm_unavailable");
         return;
       }
     }
   }
 
+  const agent = options?.agent ?? "chat";
   const socket = useAgent({
-    agent: "chat",
-    name: `${activityId}:${participantId}`,
+    agent,
+    name: dialogueName(agent, threadId, userId),
     query: { lang: document.documentElement.lang || "zh-TW" },
+    maxRetries: WS_MAX_RETRIES,
     onOpen: (event) => {
-      (event.target as WebSocket).send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
+      if (canSend(event.target)) {
+        event.target.send(JSON.stringify({ type: "watch" } satisfies ClientMessage));
+      }
       queueMicrotask(() => tryAutoSend());
     },
     onMessage: (event) => onFrame(event.data),
@@ -340,6 +408,16 @@ export function useDialogue(activityId: string, participantId: string, options?:
       stopSpeech("dialogue");
     },
     onClose: () => {
+      if (pendingAutoSend.current !== null && pendingRef.current !== null) {
+        pendingAutoSend.current = null;
+        pendingRef.current = null;
+        viewRef.current = null;
+        setPendingView(false);
+        setBaseline(null);
+        setSentAutoSend(null);
+        phaseRef.current = "idle";
+        setPhase("idle");
+      }
       for (const waiter of entriesWaiters.current.values()) waiter.reject(new Error("socket_closed"));
       entriesWaiters.current.clear();
       options?.onDisconnect?.();
@@ -367,7 +445,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
     () => false,
   );
 
-  function send(text: string) {
+  function send(text: string, operationId?: string) {
     const trimmed = text.trim();
     if (!trimmed || pendingRef.current || !viewRef.current) return false;
     if (socket.readyState !== WebSocket.OPEN) return false;
@@ -376,6 +454,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
     stopSpeech("dialogue");
     const id = crypto.randomUUID();
     pendingRef.current = id;
+    pendingAutoSend.current = operationId ?? null;
     sentOnceRef.current = true;
     setPendingView(true);
     setBaseline(viewRef.current.entries.at(-1)?.id ?? null);
@@ -385,7 +464,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
     setTtsSkipped(false);
     phaseRef.current = "thinking";
     setPhase("thinking");
-    socket.send(JSON.stringify({ type: "submit", id, input: trimmed } satisfies ClientMessage));
+    socket.send(JSON.stringify({ type: "submit", id, input: trimmed, operationId } satisfies ClientMessage));
     return true;
   }
 
@@ -393,9 +472,9 @@ export function useDialogue(activityId: string, participantId: string, options?:
     const autoSend = options?.autoSend;
     if (!autoSend || sentAutoSend === autoSend) return;
     if (phaseRef.current === "speaking") return;
-    if (send(autoSend.slice(0, 2000))) {
+    if (send(autoSend.slice(0, 2000), options.autoSendOperationId)) {
       setSentAutoSend(autoSend);
-      options.onAutoSent?.();
+      if (!options.autoSendOperationId) options.onAutoSent?.({ accepted: true });
     }
   }
 
@@ -403,7 +482,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
     if (pendingRef.current) return;
     const text = failedInputRef.current;
     if (!text) return;
-    send(text);
+    send(text, pendingAutoSend.current ?? undefined);
   }
 
   function replay() {
@@ -414,6 +493,10 @@ export function useDialogue(activityId: string, participantId: string, options?:
   }
 
   function interrupt() {
+    if (pendingAutoSend.current !== null) {
+      pendingAutoSend.current = null;
+      options?.onAutoSent?.({ accepted: true });
+    }
     if (pendingRef.current) {
       socket.send(JSON.stringify({ type: "abort", id: pendingRef.current } satisfies ClientMessage));
       pendingRef.current = null;
@@ -452,12 +535,12 @@ export function useDialogue(activityId: string, participantId: string, options?:
     const out: DialogueMessage[] = [];
     for (const item of transcriptView?.items ?? []) {
       if (item.kind !== "entry") continue;
-      const entry = item.entry as WindowedEntry;
+      const entry: WindowedEntry = item.entry;
       if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") continue;
       out.push({
         id: `e${entry.id}`,
         role: entry.kind === "pi.user" ? "user" : "assistant",
-        text: textOf((entry.model?.[0] ?? undefined) as Message | undefined),
+        text: textOf(entry.model?.[0]),
       });
     }
     return out;
@@ -474,7 +557,7 @@ export function useDialogue(activityId: string, participantId: string, options?:
       !intermediateAssistant(tail) &&
       tail.id > (baseline ?? Number.MAX_SAFE_INTEGER)
     ) {
-      return textOf((tail.model?.[0] ?? undefined) as Message | undefined);
+      return textOf(tail.model?.[0]);
     }
     return "";
   }, [view, phase, baseline]);
@@ -484,22 +567,22 @@ export function useDialogue(activityId: string, participantId: string, options?:
       if (item.kind !== "entry") continue;
       const entry = item.entry;
       if (entry.kind !== "app.emotion") continue;
-      return (entry.data ?? null) as DialogueEmotion;
+      return readEmotion(entry.data);
     }
     return null;
   }, [transcriptView]);
 
   const gaps = useMemo(
     () =>
-      (transcriptView?.items.filter((item) => item.kind === "gap") ?? []) as Array<
-        Extract<TranscriptItem, { kind: "gap" }>
-      >,
+      (transcriptView?.items ?? []).filter(
+        (item): item is Extract<TranscriptItem, { kind: "gap" }> => item.kind === "gap",
+      ),
     [transcriptView],
   );
 
   return {
     messages,
-    items: (transcriptView?.items ?? []) as TranscriptItem[],
+    items: transcriptView?.items ?? [],
     draft,
     phase,
     error,

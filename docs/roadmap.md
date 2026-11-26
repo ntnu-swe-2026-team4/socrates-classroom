@@ -52,6 +52,12 @@
 
 ## 待決
 
+### 單人自由提問
+
+- 後端 #281 提供 thread 管理與對話 channel。前端 #186 依這份 API contract 接上提問頁與歷史列表。追蹤 [後端 PR #311](https://github.com/ntnu-swe-2026-team4/socrates-classroom/pull/311) 與 [前端 PR #319](https://github.com/ntnu-swe-2026-team4/socrates-classroom/pull/319) 的合併進度。
+- Transcript retention 待定義。涵蓋移除 thread、刪除帳戶、撤銷存取後的 physical purge，以及 D1 與 Durable Object 之間的重試和處理中的對話。
+- Thread 建立上限與列表 pagination 待評估。以使用量和列表大小為依據，確認何時需要調整 API contract。
+
 團隊決：衝突機制（#54）、去識別化程度（#57）、分群演算法（#58）、教師提醒形式（#59）、訪客認領（#60）、查詢邊界（#61）、收費設計（#62）、停損與警示（#63）、測試帳號三件套（#64）、偵測後動作（#97）
 
 查證後決：偵測模型 Clef／Jev＋ZDR（#55）、STT 服務 retention（#56）、search provider retention（#65）、Go 窗口 API 有無（#80 前置）

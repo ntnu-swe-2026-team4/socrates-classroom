@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { devAccountsOptions } from "@/api/queries";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { api, ApiError, type DevAccount } from "@/api";
+import { meQueryOptions } from "@/api/me";
+import { DotField } from "@/components/DotField";
 import { Button, Card, PageHeader, cn } from "@/components/ui";
 import { useT, type MessageKey } from "@/i18n";
 
@@ -16,20 +20,15 @@ function DevAccountsPage() {
   const t = useT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const accounts = useQuery({
-    queryKey: ["dev-accounts"],
-    queryFn: () => api.devAccounts(),
-    retry: false,
-    staleTime: Infinity,
-  });
+  const accounts = useQuery(devAccountsOptions);
 
   const login = useMutation({
     mutationFn: (account: DevAccount) => api.devLogin(account.email),
     onSuccess: async (user, account) => {
       queryClient.clear();
-      queryClient.setQueryData(["me"], user);
+      queryClient.setQueryData(meQueryOptions.queryKey, user);
       if (account.fixtureRole === "student") await navigate({ to: "/home" });
-      else if (account.fixtureRole === "admin") await navigate({ to: "/admin/users" });
+      else if (account.fixtureRole === "admin") await navigate({ to: "/admin" });
       else await navigate({ to: "/classrooms" });
     },
   });
@@ -39,14 +38,19 @@ function DevAccountsPage() {
   const nothingSeeded = accounts.isSuccess && accounts.data.accounts.length === 0;
 
   return (
-    <div className="min-h-full pb-16">
+    <div className="relative isolate min-h-full pb-16">
+      <DotField className="-z-10" />
       <PageHeader
         width="max-w-4xl"
         eyebrow={t("dev_eyebrow")}
         title={t("dev_title")}
         description={t("dev_intro")}
         actions={
-          <Link to="/" className="text-xs text-ember">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1 border-b border-transparent text-xs text-ember hover:border-current"
+          >
+            <ArrowLeft className="size-3.5" aria-hidden />
             {t("common_back")}
           </Link>
         }

@@ -19,10 +19,16 @@ export interface SendEmailBinding {
   send(message: EmailMessageBuilder): Promise<{ messageId: string }>;
 }
 
+export const FAIL_FAST_SECRETS = ["AUTH_SECRET", "BYOK_ENC_KEY"] as const;
+
 export interface Env {
   DB: D1Database;
   Chat: DurableObjectNamespace<import("./do/chat").Chat>;
+  SoloChat: DurableObjectNamespace<import("./do/solo-chat").SoloChat>;
   ReportRunner: DurableObjectNamespace<import("./do/report-runner").ReportRunner>;
+  RateLimiter: DurableObjectNamespace<import("./do/rate-limiter").RateLimiter>;
+  ClassroomEvents: DurableObjectNamespace<import("./do/classroom-events").ClassroomEvents>;
+  RoutingLedger?: DurableObjectNamespace<import("./do/routing-ledger").RoutingLedger>;
   AI?: Ai;
   PUBLIC_BASE_URL?: string;
   ENVIRONMENT?: string;

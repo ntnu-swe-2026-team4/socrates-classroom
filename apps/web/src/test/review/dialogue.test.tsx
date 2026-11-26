@@ -3,15 +3,17 @@ import { beforeEach, afterEach, expect, test, vi } from "vitest";
 import { useDialogue } from "@/hooks/useDialogue";
 import type { EntryRecord } from "@earendil-works/pi-durable";
 import type { ServerMessage } from "@server/ws/protocol";
+import { conversationIdOf, entryIdOf, viewFrame as viewFrameOf } from "../helpers";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 type AgentOptions = {
   onOpen?: (event: { target: unknown }) => void;
   onMessage?: (event: { data: unknown }) => void;
 };
 
-const agent = vi.hoisted(() => ({
-  options: null as AgentOptions | null,
-  sent: [] as string[],
+const agent = vi.hoisted((): { options: AgentOptions | null; sent: string[] } => ({
+  options: null,
+  sent: [],
 }));
 
 vi.mock("agents/react", () => ({
@@ -25,7 +27,11 @@ vi.mock("agents/react", () => ({
       readyState: WebSocket.OPEN,
       OPEN: WebSocket.OPEN,
       addEventListener: (type: string, notify: () => void) => {
-        const set = listeners.get(type) ?? listeners.set(type, new Set()).get(type)!;
+        let set = listeners.get(type);
+        if (set === undefined) {
+          set = new Set();
+          listeners.set(type, set);
+        }
         set.add(notify);
       },
       removeEventListener: (type: string, notify: () => void) => {
@@ -47,29 +53,57 @@ function emit(frame: ServerMessage) {
 }
 
 function viewFrame(entries: EntryRecord[]): ServerMessage {
-  return { type: "view", view: { conversation: { id: 1 }, entries, docs: {} } } as unknown as ServerMessage;
+  return viewFrameOf(entries);
 }
 
-const asEntry = (entry: object): EntryRecord => entry as unknown as EntryRecord;
-
 function userEntry(id: number, text: string): EntryRecord {
-  return asEntry({ id, conversationId: "c1", kind: "pi.user", model: [{ role: "user", content: text }] });
+  return {
+    id: entryIdOf(id),
+    conversationId: conversationIdOf("1"),
+    kind: "pi.user",
+    model: [{ role: "user", content: text, timestamp: 0 }],
+  };
 }
 
 function assistantEntry(id: number, text: string): EntryRecord {
-  return asEntry({
-    id,
-    conversationId: "c1",
-    kind: "pi.assistant",
-    model: [{ role: "assistant", content: [{ type: "text", text }] }],
-  });
+  const message: AssistantMessage = {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    api: "openai-completions",
+    provider: "openrouter",
+    model: "test-model",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    timestamp: 0,
+    stopReason: "stop",
+  };
+  return { id: entryIdOf(id), conversationId: conversationIdOf("1"), kind: "pi.assistant", model: [message] };
 }
 
 function submitId(): string | undefined {
-  const frame = agent.sent
-    .map((raw) => JSON.parse(raw) as { type: string; id?: string })
-    .find((f) => f.type === "submit");
-  return frame?.id;
+  for (const raw of agent.sent) {
+    let frame: unknown;
+    try {
+      frame = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    if (
+      typeof frame === "object" &&
+      frame !== null &&
+      Reflect.get(frame, "type") === "submit" &&
+      typeof Reflect.get(frame, "id") === "string"
+    ) {
+      return Reflect.get(frame, "id");
+    }
+  }
+  return undefined;
 }
 
 beforeEach(() => {

@@ -189,7 +189,7 @@ function Caption({ className, children }: { className?: string; children: ReactN
   return (
     <figcaption
       className={cn(
-        "absolute z-20 max-w-[min(78vw,340px)] border-2 border-comic-ink bg-comic-paper px-3 py-2 text-[12.5px] leading-relaxed font-medium tracking-wide text-comic-ink md:text-[13.5px]",
+        "pointer-events-none absolute z-20 max-w-[min(78vw,340px)] border-2 border-comic-ink bg-comic-paper px-3 py-2 text-[12.5px] leading-relaxed font-medium tracking-wide text-comic-ink md:text-[13.5px]",
         className,
       )}
     >
@@ -526,7 +526,7 @@ function WindCanvas({ seed, className }: { seed: number; className?: string }) {
             context.beginPath();
             for (const [x, y, half] of edge) context.lineTo(x, y - half);
             for (let step = STEPS; step >= 0; step -= 1) {
-              const [x, y, half] = edge[step]!;
+              const [x = 0, y = 0, half = 0] = edge[step] ?? [];
               context.lineTo(x, y + half);
             }
             context.closePath();
@@ -593,7 +593,10 @@ function AgoraStage({ children }: { children?: ReactNode }) {
     if (!board) return;
     const actors = Array.from(board.querySelectorAll<HTMLElement>("[data-actor]"));
     const releases = actors.map((node) => {
-      const figure = FIGURES[node.dataset.figure as FigureKey];
+      const key = node.dataset.figure;
+      const entry = Object.entries(FIGURES).find(([figureKey]) => figureKey === key);
+      if (entry === undefined) return () => {};
+      const figure = entry[1];
       let pointer = -1;
       let grabX = 0;
       let grabY = 0;
@@ -848,7 +851,7 @@ function CrowdVoice({ lines, tilt }: { lines: MessageKey[]; tilt: string }) {
           tilt,
         )}
       >
-        <span aria-live="polite">{t(lines[index] ?? lines[0]!)}</span>
+        <span aria-live="polite">{t(lines[index] ?? lines[0] ?? "comic_next_line")}</span>
         <svg aria-hidden viewBox="0 0 16 12" className="absolute top-full left-1/2 -mt-[2px] h-3 w-4 -translate-x-1/2">
           <path
             d="M1 0L7 11 15 0"
@@ -943,7 +946,8 @@ function InkFlames({ flip = false }: { flip?: boolean }) {
         const lead = height * 0.1;
         const row = height * 0.055;
         for (let index = 0; index < count; index += 1) {
-          const line = lines[index]!;
+          const line = lines[index];
+          if (line === undefined) continue;
           const x = (index + 0.5 + line.nudge * 0.28) * pitch;
           const u = x / width;
           const roll = 0.5 + 0.5 * Math.sin(u * 7.3 + time * 0.5 + 1.7 * Math.sin(u * 2.9 - time * 0.23));
@@ -951,7 +955,7 @@ function InkFlames({ flip = false }: { flip?: boolean }) {
           const lick = 0.5 + 0.5 * Math.sin(time * 2.4 * line.rate + line.phase);
           const start = lead + height * (0.24 * roll + 0.1 * ripple + 0.2 * line.jitter ** 2.2 + 0.035 * lick);
           const drift = u * 11 + line.phase * 0.16;
-          const girth = 0.15 + 0.13 * line.ticks[TIERS]!;
+          const girth = 0.15 + 0.13 * (line.ticks[TIERS] ?? 0);
           const edge: Array<[number, number, number]> = [];
           for (let step = 0; step <= STEPS; step += 1) {
             const s = step / STEPS;
@@ -967,15 +971,16 @@ function InkFlames({ flip = false }: { flip?: boolean }) {
           context.beginPath();
           for (const [cx, y, half] of edge) context.lineTo(cx - half, y);
           for (let step = STEPS; step >= 0; step -= 1) {
-            const [cx, y, half] = edge[step]!;
+            const [cx = 0, y = 0, half = 0] = edge[step] ?? [];
             context.lineTo(cx + half, y);
           }
           context.closePath();
           context.fill();
           let cursor = start;
           for (let tier = 0; tier < TIERS; tier += 1) {
-            const chance = line.ticks[tier]!;
-            const reach = row * (0.95 - tier * 0.17) * (0.45 + 0.75 * line.ticks[tier + 1]!) * (0.75 + 0.25 * lick);
+            const chance = line.ticks[tier] ?? 0;
+            const reach =
+              row * (0.95 - tier * 0.17) * (0.45 + 0.75 * (line.ticks[tier + 1] ?? 0)) * (0.75 + 0.25 * lick);
             cursor -= row * (0.3 + 0.55 * chance) + reach;
             if (cursor < 0) break;
             if (chance < 0.1 + tier * 0.17) continue;
@@ -1671,7 +1676,8 @@ function ComicLanding() {
             </svg>
             <span className="hidden md:inline">{t("comic_skip")}</span>
           </button>
-          <fieldset aria-label={t("settings_lang")} className="flex items-center px-2">
+          <fieldset className="flex items-center px-2">
+            <legend className="sr-only">{t("settings_lang")}</legend>
             {LANGS.map((lang, index) => (
               <span key={lang.code} className="flex items-center">
                 {index > 0 && (
@@ -1748,7 +1754,7 @@ function ComicLanding() {
           data-layer
           data-depth="0"
           data-fade
-          className="absolute inset-x-0 bottom-5 flex items-center justify-center gap-2 text-[12px] font-medium tracking-[0.3em] text-comic-ink"
+          className="absolute inset-x-0 bottom-5 flex items-center justify-center gap-2 text-[12px] font-medium tracking-[0.3em] text-comic-paper"
         >
           {t("comic_scroll")} ↓
         </p>

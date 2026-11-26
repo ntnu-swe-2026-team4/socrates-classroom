@@ -4,7 +4,17 @@ import { routeAgentRequest } from "agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
-import { call, classroomWithActivity, cookieOf, frames, participantIdOf } from "./helpers";
+import {
+  call,
+  classroomWithActivity,
+  cookieOf,
+  executeToolDirectly,
+  fakeAiOf,
+  frames,
+  must,
+  participantIdOf,
+  toolTextOf,
+} from "./helpers";
 
 let thread: string;
 let cookie: string;
@@ -17,7 +27,7 @@ async function connect(name: string): Promise<WebSocket> {
     env,
   );
   expect(response?.status).toBe(101);
-  const socket = response!.webSocket as WebSocket;
+  const socket = must(response?.webSocket, "websearch websocket");
   socket.accept();
   return socket;
 }
@@ -91,23 +101,22 @@ describe("websearch extension (web_search + get_search_content)", () => {
       websearch: async () =>
         new Response(JSON.stringify({ items: [] }), { headers: { "content-type": "application/json" } }),
     };
-    const extension = createWebSearchExtension(fakeAi as never);
-    type Tool = {
-      name: string;
-      execute: (args: Record<string, unknown>) => Promise<{ output: Array<{ type: string; text: string }> }>;
-    };
-    const tools = (extension.tools ?? []) as unknown as Tool[];
-    const fetchTool = tools.find((tool) => tool.name === "fetch_content")!;
+    const extension = createWebSearchExtension(fakeAiOf(fakeAi));
+    const tools = extension.tools ?? [];
+    const fetchTool = must(
+      tools.find((tool) => tool.name === "fetch_content"),
+      "fetch_content tool",
+    );
 
     const origFetch = globalThis.fetch;
-    globalThis.fetch = (async () =>
+    globalThis.fetch = async () =>
       new Response("<html><title>Justice</title><body>justice body</body></html>", {
         headers: { "content-type": "text/html" },
-      })) as typeof fetch;
+      });
     try {
-      const fetched = await fetchTool.execute({ url: "https://example.org/wiki/Anything", mode: "raw" });
-      expect(fetched.output[0]!.text).toContain("justice body");
-      expect(fetched.output[0]!.text).not.toContain("web_search results");
+      const fetched = await executeToolDirectly(fetchTool, { url: "https://example.org/wiki/Anything", mode: "raw" });
+      expect(toolTextOf(fetched)).toContain("justice body");
+      expect(toolTextOf(fetched)).not.toContain("web_search results");
     } finally {
       globalThis.fetch = origFetch;
     }
@@ -127,17 +136,22 @@ describe("websearch extension (web_search + get_search_content)", () => {
           { headers: { "content-type": "application/json" } },
         ),
     };
-    const extension = createWebSearchExtension(fakeAi as never);
-    type Tool = {
-      name: string;
-      execute: (args: Record<string, unknown>) => Promise<{ output: Array<{ type: string; text: string }> }>;
-    };
-    const tools = (extension.tools ?? []) as unknown as Tool[];
-    await tools.find((tool) => tool.name === "web_search")!.execute({ query: "justice" });
-    const fetchTool = tools.find((tool) => tool.name === "fetch_content")!;
+    const extension = createWebSearchExtension(fakeAiOf(fakeAi));
+    const tools = extension.tools ?? [];
+    await executeToolDirectly(
+      must(
+        tools.find((tool) => tool.name === "web_search"),
+        "web_search tool",
+      ),
+      { query: "justice" },
+    );
+    const fetchTool = must(
+      tools.find((tool) => tool.name === "fetch_content"),
+      "fetch_content tool",
+    );
 
     const origFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
       if (url.hostname === "attacker.example") throw new Error("attacker host must never be fetched");
       if (url.pathname === "/wiki/Justice") {
@@ -149,14 +163,20 @@ describe("websearch extension (web_search + get_search_content)", () => {
         });
       }
       return new Response("<html><body>justice body</body></html>", { headers: { "content-type": "text/html" } });
-    }) as typeof fetch;
+    };
     try {
-      const hijack = await fetchTool.execute({ url: "https://zh.wikipedia.org/wiki/Justice", mode: "raw" });
-      expect(hijack.output[0]!.text).toContain("Blocked redirect target");
-      expect(hijack.output[0]!.text).toContain("attacker.example");
+      const hijack = await executeToolDirectly(fetchTool, {
+        url: "https://zh.wikipedia.org/wiki/Justice",
+        mode: "raw",
+      });
+      expect(toolTextOf(hijack)).toContain("Blocked redirect target");
+      expect(toolTextOf(hijack)).toContain("attacker.example");
 
-      const chain = await fetchTool.execute({ url: "https://en.wikipedia.org/wiki/Contract", mode: "raw" });
-      expect(chain.output[0]!.text).toContain("contract body");
+      const chain = await executeToolDirectly(fetchTool, {
+        url: "https://en.wikipedia.org/wiki/Contract",
+        mode: "raw",
+      });
+      expect(toolTextOf(chain)).toContain("contract body");
     } finally {
       globalThis.fetch = origFetch;
     }
@@ -222,12 +242,12 @@ describe("fetch_content (readable/raw + cache + SSRF)", () => {
   it("raw mode: fetches a real public page, cache works (no second request)", async () => {
     let requests = 0;
     const origFetch = globalThis.fetch;
-    globalThis.fetch = (async (_input: RequestInfo | URL) => {
+    globalThis.fetch = async (_input: RequestInfo | URL) => {
       requests += 1;
       return new Response("<html><title>Cache Test</title><body>hello body</body></html>", {
         headers: { "content-type": "text/html" },
       });
-    }) as typeof fetch;
+    };
     try {
       const { fetchPage } = await import("../src/pi/extensions/websearch/fetch");
       const first = await fetchPage("https://example.com/page", "raw");
@@ -261,27 +281,37 @@ describe("get_search_content for fetch records + paging continuity", () => {
           { headers: { "content-type": "application/json" } },
         ),
     };
-    const extension = createWebSearchExtension(fakeAi as never);
-    type Tool = {
-      name: string;
-      execute: (args: Record<string, unknown>) => Promise<{ output: Array<{ type: string; text: string }> }>;
-    };
-    const tools = (extension.tools ?? []) as unknown as Tool[];
-    await tools.find((tool) => tool.name === "web_search")!.execute({ query: "contract" });
-    const fetchTool = tools.find((tool) => tool.name === "fetch_content")!;
+    const extension = createWebSearchExtension(fakeAiOf(fakeAi));
+    const tools = extension.tools ?? [];
+    await executeToolDirectly(
+      must(
+        tools.find((tool) => tool.name === "web_search"),
+        "web_search tool",
+      ),
+      { query: "contract" },
+    );
+    const fetchTool = must(
+      tools.find((tool) => tool.name === "fetch_content"),
+      "fetch_content tool",
+    );
     const origFetch = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      new Response(longBody, { headers: { "content-type": "text/html" } })) as typeof fetch;
+    globalThis.fetch = async () => new Response(longBody, { headers: { "content-type": "text/html" } });
     try {
-      const fetched = await fetchTool.execute({ url: "https://en.wikipedia.org/wiki/Contract", mode: "raw" });
-      const responseId = /responseId: ([\w-]+)/.exec(fetched.output[0]!.text)?.[1];
+      const fetched = await executeToolDirectly(fetchTool, {
+        url: "https://en.wikipedia.org/wiki/Contract",
+        mode: "raw",
+      });
+      const responseId = /responseId: ([\w-]+)/.exec(toolTextOf(fetched))?.[1];
       expect(responseId).toBeDefined();
 
-      const retrieval = tools.find((tool) => tool.name === "get_search_content")!;
-      const tail = await retrieval.execute({ responseId, offset: 8_000, limit: 20_000 });
-      expect(tail.output[0]!.text).toContain("yyyy");
-      const head = await retrieval.execute({ responseId, offset: 0, limit: 20_000 });
-      expect(head.output[0]!.text).toContain("responseId");
+      const retrieval = must(
+        tools.find((tool) => tool.name === "get_search_content"),
+        "get_search_content tool",
+      );
+      const tail = await executeToolDirectly(retrieval, { responseId, offset: 8_000, limit: 20_000 });
+      expect(toolTextOf(tail)).toContain("yyyy");
+      const head = await executeToolDirectly(retrieval, { responseId, offset: 0, limit: 20_000 });
+      expect(toolTextOf(head)).toContain("responseId");
     } finally {
       globalThis.fetch = origFetch;
     }
@@ -294,8 +324,9 @@ describe("get_search_content for fetch records + paging continuity", () => {
     const delivered: string[] = [];
     for (let guard = 0; offset < content.length && guard < 10; guard += 1) {
       const page = slicePage(content, offset, 20_000, "example");
-      delivered.push(page.text.split("\n\n---\n")[0]!);
-      expect(page.endOffset).toBe(offset + delivered.at(-1)!.length);
+      const chunk = must(page.text.split("\n\n---\n")[0], "delivered chunk");
+      delivered.push(chunk);
+      expect(page.endOffset).toBe(offset + chunk.length);
       offset = page.endOffset;
     }
     expect(delivered.join("")).toBe(content);

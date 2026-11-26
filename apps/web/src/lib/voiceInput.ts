@@ -55,13 +55,15 @@ export interface VoiceEnv {
 }
 
 function windowRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
-  const w = window as unknown as Record<string, unknown>;
-  return (w.SpeechRecognition ?? w.webkitSpeechRecognition) as (new () => SpeechRecognitionLike) | null;
+  const candidate: unknown = Reflect.get(window, "SpeechRecognition") ?? Reflect.get(window, "webkitSpeechRecognition");
+  // vendor SpeechRecognition ctor — same shape under the prefix
+  return typeof candidate === "function" ? (candidate as unknown as new () => SpeechRecognitionLike) : null;
 }
 
 export const defaultVoiceEnv: VoiceEnv = {
   getUserMedia: () =>
     navigator.mediaDevices?.getUserMedia ? navigator.mediaDevices.getUserMedia({ audio: true }) : null,
+  // this default env bridges the real DOM ctor into the test-facing narrow interface
   createAudioContext: () => new AudioContext() as unknown as AudioContextLike,
   recognitionCtor: windowRecognitionCtor,
   createRecorder: (stream) =>
@@ -90,7 +92,7 @@ interface VoiceSession {
   finalText: string;
   liveText: string;
   raf: number;
-  ctx: AudioContextLike;
+  ctx: AudioContextLike | null;
   stopTimer?: ReturnType<typeof setTimeout>;
 }
 
@@ -125,9 +127,9 @@ export class VoiceInputController {
     const capturedFinal = s.liveText;
 
     let chunks: Blob[] = [];
-    if (s.recorder) {
+    const { recorder } = s;
+    if (recorder) {
       chunks = await new Promise<Blob[]>((resolve) => {
-        const recorder = s.recorder!;
         const originalOnData = recorder.ondataavailable;
         const collected: Blob[] = [...s.chunks];
         recorder.ondataavailable = (event) => {
@@ -154,7 +156,7 @@ export class VoiceInputController {
       if (hasRecognition && capturedFinal) {
         this.cb.onFinal(capturedFinal);
       } else if (chunks.length > 0) {
-        const blob = new Blob(chunks, { type: chunks[0]!.type });
+        const blob = new Blob(chunks, { type: chunks[0]?.type });
         try {
           const text = await this.env.stt(blob);
           this.cb.onFinal(text);
@@ -191,7 +193,7 @@ export class VoiceInputController {
       track.stop();
     }
     clearTimeout(s.stopTimer);
-    void s.ctx.close().catch(() => {});
+    void s.ctx?.close().catch(() => {});
     this.session = null;
     this.cb.onAmplitude(0);
   }
@@ -244,7 +246,7 @@ export class VoiceInputController {
       finalText: "",
       liveText: "",
       raf: 0,
-      ctx: null as unknown as AudioContextLike,
+      ctx: null,
     };
     let ctx: AudioContextLike | null = null;
     try {
@@ -265,9 +267,9 @@ export class VoiceInputController {
           if (!s) return;
           let interimText = "";
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            const result = event.results[i]!;
-            const transcript = result[0]!.transcript;
-            if (result.isFinal) s.finalText += transcript;
+            const result = event.results[i];
+            const transcript = result?.[0]?.transcript ?? "";
+            if (result?.isFinal) s.finalText += transcript;
             else interimText += transcript;
           }
           s.liveText = (s.finalText + interimText).trim();

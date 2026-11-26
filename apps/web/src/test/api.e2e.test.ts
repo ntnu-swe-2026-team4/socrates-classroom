@@ -2,10 +2,23 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { httpApi } from "@/api/http";
 import { meOf } from "@/api/me";
+import { must } from "./helpers";
 import { ApiError } from "@/api";
 
 type Handler = (path: string, init: RequestInit) => Response | Promise<Response>;
 const handler = vi.fn<Handler>();
+
+function lastCall(): [path: string, init: RequestInit] {
+  const call = handler.mock.calls.at(-1);
+  if (call === undefined) throw new Error("handler was not called");
+  return call;
+}
+
+function lastCallN(n: number): [path: string, init: RequestInit] {
+  const call = handler.mock.calls[n];
+  if (call === undefined) throw new Error(`handler call ${n} missing`);
+  return call;
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -34,7 +47,7 @@ describe("httpApi contract (browser-side actual code)", () => {
     document.documentElement.lang = "zh-TW";
     const user = await httpApi.me();
     expect(user?.name).toBe("小明");
-    const [path, init] = handler.mock.calls[0]!;
+    const [path, init] = lastCall();
     expect(path).toBe("/api/me");
     expect(init.credentials).toBe("include");
     expect(new Headers(init.headers).get("Accept-Language")).toBe("zh");
@@ -42,14 +55,14 @@ describe("httpApi contract (browser-side actual code)", () => {
 
   test("joinAsGuest: POST /api/join contract shape + activity id persisted", async () => {
     handler.mockReturnValue(json({ user: null, activityId: "a_1", participantId: "p_1", kind: "guest" }));
-    const payload = await httpApi.joinAsGuest("socrat", "小明");
+    const payload = await httpApi.joinAsGuest("socrat", { name: "小明", tosAccepted: true });
     expect(payload.activityId).toBe("a_1");
     expect(payload.user).toBeNull();
     expect(payload.participantId).toBe("p_1");
-    const [path, init] = handler.mock.calls[0]!;
+    const [path, init] = lastCall();
     expect(path).toBe("/api/join");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ code: "socrat", name: "小明", tosAccepted: true });
+    expect(JSON.parse(String(init.body))).toEqual({ code: "socrat", name: "小明", tosAccepted: true });
     expect(localStorage.getItem("socrates_activity")).toBe("a_1");
   });
 
@@ -66,30 +79,33 @@ describe("httpApi contract (browser-side actual code)", () => {
       });
     });
     await httpApi.createActivityInvite("a_1");
-    expect(handler.mock.calls[0]![0]).toBe("/api/activities/a_1/invites");
-    expect(handler.mock.calls[0]![1].method).toBe("POST");
+    expect(lastCallN(0)[0]).toBe("/api/activities/a_1/invites");
+    expect(lastCallN(0)[1].method).toBe("POST");
 
     await httpApi.inviteInfo("t1");
-    expect(handler.mock.calls[1]![0]).toBe("/api/invites/t1");
+    expect(lastCallN(1)[0]).toBe("/api/invites/t1");
 
     const joined = await httpApi.joinByInvite("t1", { name: "訪客", tosAccepted: true });
     expect(joined.participantId).toBe("p_2");
-    const [path, init] = handler.mock.calls[2]!;
+    const [path, init] = lastCallN(2);
     expect(path).toBe("/api/invites/t1/join");
-    expect(JSON.parse(init.body as string)).toEqual({ name: "訪客", tosAccepted: true });
+    expect(JSON.parse(String(init.body))).toEqual({ name: "訪客", tosAccepted: true });
   });
 
   test("error mapping: 422 tos_required → ApiError.code", async () => {
     handler.mockImplementation(() => json({ message: "需要同意使用條款才能進入。", code: "tos_required" }, 422));
-    await expect(httpApi.joinAsGuest("socrat", "小明")).rejects.toMatchObject({
+    await expect(httpApi.joinAsGuest("socrat", { name: "小明", tosAccepted: true })).rejects.toMatchObject({
       code: "tos_required",
       message: "需要同意使用條款才能進入。",
     });
     try {
-      await httpApi.joinAsGuest("socrat", "小明");
+      await httpApi.joinAsGuest("socrat", { name: "小明", tosAccepted: false });
     } catch (error) {
-      expect(error).toBeInstanceOf(ApiError);
-      expect((error as ApiError).code).toBe("tos_required");
+      if (!(error instanceof ApiError)) throw error;
+      expect(error.code).toBe("tos_required");
+      const tosCall = handler.mock.calls.at(-1);
+      if (tosCall === undefined) throw new Error("missing tos fetch call");
+      expect(JSON.parse(String(tosCall[1].body)).tosAccepted).toBe(false);
     }
   });
 
@@ -97,7 +113,7 @@ describe("httpApi contract (browser-side actual code)", () => {
     handler.mockReturnValue(json({ text: "我認為應該拉桿" }));
     const text = await httpApi.stt(new Blob([new Uint8Array([1])], { type: "audio/webm" }));
     expect(text).toBe("我認為應該拉桿");
-    const [path] = handler.mock.calls[0]!;
+    const [path] = lastCallN(0);
     expect(path).toBe("/api/stt");
   });
 
@@ -118,35 +134,56 @@ describe("httpApi contract (browser-side actual code)", () => {
     });
 
     const classroom = await httpApi.createClassroom("班");
-    expect(handler.mock.calls[0]![0]).toBe("/api/classrooms");
-    expect(JSON.parse(handler.mock.calls[0]![1].body as string)).toEqual({ name: "班" });
+    expect(lastCallN(0)[0]).toBe("/api/classrooms");
+    expect(JSON.parse(String(lastCallN(0)[1].body))).toEqual({ name: "班" });
     expect(classroom.classroomId).toBe("c_1");
 
     await httpApi.listClassroomTopics("c_1");
-    expect(handler.mock.calls[1]![0]).toBe("/api/classrooms/c_1/topics");
+    expect(lastCallN(1)[0]).toBe("/api/classrooms/c_1/topics");
 
     const topic = await httpApi.createClassroomTopic("c_1", { title: "題", statement: "述", prompts: [] });
     expect(topic.classroomId).toBe("c_1");
-    expect(handler.mock.calls[2]![0]).toBe("/api/classrooms/c_1/topics");
-    expect(handler.mock.calls[2]![1].method).toBe("POST");
+    expect(lastCallN(2)[0]).toBe("/api/classrooms/c_1/topics");
+    expect(lastCallN(2)[1].method).toBe("POST");
 
     const copy = await httpApi.copyTopic("t_1", "c_2");
     expect(copy.id).toBe("t_2");
-    expect(handler.mock.calls[3]![0]).toBe("/api/topics/t_1/copy");
-    expect(JSON.parse(handler.mock.calls[3]![1].body as string)).toEqual({ classroomId: "c_2" });
+    expect(lastCallN(3)[0]).toBe("/api/topics/t_1/copy");
+    expect(JSON.parse(String(lastCallN(3)[1].body))).toEqual({ classroomId: "c_2" });
 
     const started = await httpApi.startActivity("c_1", "t_1");
     expect(started.activityId).toBe("a_1");
-    expect(handler.mock.calls[4]![0]).toBe("/api/classrooms/c_1/activities");
-    expect(JSON.parse(handler.mock.calls[4]![1].body as string)).toEqual({ topicId: "t_1", mode: "live" });
+    expect(lastCallN(4)[0]).toBe("/api/classrooms/c_1/activities");
+    expect(JSON.parse(String(lastCallN(4)[1].body))).toEqual({ topicId: "t_1", mode: "live" });
+    const topicAxes = [{ name: "Justice", left: "Rules", right: "Outcomes" }];
+    await httpApi.startActivity("c_1", "t_1", "live", "teacher", topicAxes);
+    expect(lastCallN(5)[0]).toBe("/api/classrooms/c_1/activities");
+    expect(JSON.parse(String(lastCallN(5)[1].body))).toEqual({
+      topicId: "t_1",
+      mode: "live",
+      reportAxes: "teacher",
+      topicAxes,
+    });
   });
 
   test("finishActivity: POST 204 with no body", async () => {
     handler.mockReturnValue(new Response(null, { status: 204 }));
     await expect(httpApi.finishActivity("a_1")).resolves.toBeUndefined();
-    const [path, init] = handler.mock.calls[0]!;
+    const [path, init] = lastCall();
     expect(path).toBe("/api/activities/a_1/finish");
     expect(init.method).toBe("POST");
+  });
+
+  test("setEngagementVisibility: PUT both flags and read back the saved visibility", async () => {
+    handler.mockReturnValue(json({ classReport: true, student: false }));
+    await expect(httpApi.setEngagementVisibility("a_1", { classReport: true, student: false })).resolves.toEqual({
+      classReport: true,
+      student: false,
+    });
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/activities/a_1/engagement-visibility");
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(String(init.body))).toEqual({ classReport: true, student: false });
   });
 
   test("login and logout announce the session change for cross-tab sync", async () => {
@@ -184,5 +221,144 @@ describe("httpApi contract (browser-side actual code)", () => {
     expect(handler).toHaveBeenCalledTimes(0);
     failing.clear();
     client.clear();
+  });
+
+  test("authProviders and notifications hit their read endpoints", async () => {
+    handler.mockImplementation((path) => {
+      if (path === "/api/auth/providers") return json({ providers: ["google"] });
+      return json({
+        items: [{ id: "n1", title: "維護公告", body: "", createdAt: "2026-01-01T00:00:00.000Z" }],
+        unread: null,
+      });
+    });
+    const providers = await httpApi.authProviders();
+    expect(providers.providers).toEqual(["google"]);
+    expect(lastCallN(0)[0]).toBe("/api/auth/providers");
+
+    const feed = await httpApi.notifications();
+    expect(must(feed.items[0], "notification item").title).toBe("維護公告");
+    expect(feed.unread).toBeNull();
+    expect(lastCallN(1)[0]).toBe("/api/notifications");
+  });
+
+  test("signup posts the consented account and announces the session", async () => {
+    handler.mockReturnValue(json({ id: "u2", name: "小明", isAdmin: false }, 201));
+    localStorage.removeItem("socrates_session_changed");
+    const user = await httpApi.signup({
+      name: "小明",
+      email: "new@example.com",
+      password: "password123",
+      tosAccepted: true,
+    });
+    expect(user.id).toBe("u2");
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/auth/signup");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      name: "小明",
+      email: "new@example.com",
+      password: "password123",
+      tosAccepted: true,
+    });
+    expect(localStorage.getItem("socrates_session_changed")).not.toBeNull();
+  });
+
+  test("signup surfaces email_taken as an ApiError", async () => {
+    handler.mockReturnValue(json({ message: "這個 Email 已經註冊過。", code: "email_taken" }, 409));
+    await expect(
+      httpApi.signup({ name: "小明", email: "dup@example.com", password: "password123", tosAccepted: true }),
+    ).rejects.toMatchObject({ code: "email_taken" });
+  });
+
+  test("teacher key model delete resolves on a 204 with an empty body", async () => {
+    handler.mockReturnValue(new Response(null, { status: 204 }));
+    await expect(httpApi.deleteTeacherKeyModel("openai", "gpt-4o")).resolves.toBeUndefined();
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/settings/keys/openai/models/gpt-4o");
+    expect(init.method).toBe("DELETE");
+  });
+
+  test("teacher key model delete encodes a model id that contains a slash", async () => {
+    handler.mockReturnValue(new Response(null, { status: 204 }));
+    await httpApi.deleteTeacherKeyModel("openrouter", "anthropic/claude-haiku-4.5");
+    expect(lastCallN(0)[0]).toBe("/api/settings/keys/openrouter/models/anthropic%2Fclaude-haiku-4.5");
+  });
+
+  test("activityInfo serializes the optional participantId without residue", async () => {
+    handler.mockImplementation(() =>
+      json({
+        id: "a_1",
+        classroomId: "c_1",
+        classroomName: "X",
+        participantId: null,
+        mode: "live",
+        topic: { id: "t_1", title: "T", statement: "S", prompts: [] },
+        finishedAt: null,
+      }),
+    );
+    await httpApi.activityInfo("a_1");
+    expect(lastCallN(0)[0]).toBe("/api/activities/a_1");
+    await httpApi.activityInfo("a_1", "p_9");
+    expect(lastCallN(1)[0]).toBe("/api/activities/a_1?participantId=p_9");
+  });
+
+  test("createActivitySlots passes the count through unclamped (the server owns the 1-6 bounds)", async () => {
+    handler.mockImplementation(() => json({ activityId: "a_1", mode: "test", maxSlots: 6, slots: [] }));
+    await httpApi.createActivitySlots("a_1", 9);
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/activities/a_1/slots");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ count: 9 });
+  });
+
+  test("identities: GET /api/me/identities", async () => {
+    handler.mockReturnValue(json({ email: null, oauth: [], reauthExpiresAt: null }));
+    await httpApi.identities();
+    expect(lastCall()[0]).toBe("/api/me/identities");
+  });
+
+  test("reauthWithPassword: POST /api/auth/reauth/password", async () => {
+    handler.mockReturnValue(json({ expiresAt: "2026-11-22T10:10:00.000Z" }));
+    const result = await httpApi.reauthWithPassword("secret-pass");
+    expect(result.expiresAt).toBe("2026-11-22T10:10:00.000Z");
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/auth/reauth/password");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ password: "secret-pass" });
+  });
+
+  test("startOAuthReauth: POST reauth start returns the authorize url with returnTo", async () => {
+    handler.mockReturnValue(json({ url: "https://accounts.google.com/x" }));
+    const started = await httpApi.startOAuthReauth("google", "/settings?section=account");
+    expect(started.url).toBe("https://accounts.google.com/x");
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/auth/reauth/oauth/google/start");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ returnTo: "/settings?section=account" });
+  });
+
+  test("startIdentityBind: POST /api/me/identities/oauth/:provider/start omits an absent returnTo", async () => {
+    handler.mockReturnValue(json({ url: "https://www.facebook.com/x" }));
+    await httpApi.startIdentityBind("facebook");
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/me/identities/oauth/facebook/start");
+    expect(JSON.parse(String(init.body))).toEqual({});
+  });
+
+  test("bindEmail: POST /api/me/identities/email normalizes the email", async () => {
+    handler.mockReturnValue(json({ email: "bound@example.com", verified: false }));
+    const result = await httpApi.bindEmail({ email: "Bound@Example.com", password: "bound-pass-1" });
+    expect(result.verified).toBe(false);
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/me/identities/email");
+    expect(JSON.parse(String(init.body))).toEqual({ email: "bound@example.com", password: "bound-pass-1" });
+  });
+
+  test("unbindIdentity: DELETE /api/me/identities/:method", async () => {
+    handler.mockReturnValue(new Response(null, { status: 204 }));
+    await httpApi.unbindIdentity("google");
+    const [path, init] = lastCall();
+    expect(path).toBe("/api/me/identities/google");
+    expect(init.method).toBe("DELETE");
   });
 });

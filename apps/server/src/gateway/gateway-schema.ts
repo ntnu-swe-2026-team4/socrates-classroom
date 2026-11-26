@@ -34,7 +34,7 @@ export const AvailabilityEntrySchema = z
   .object({
     provider: z.string(),
     model: z.string().optional(),
-    credential: z.enum(["platform"]).or(z.string().regex(/^teacher:/)),
+    credential: z.enum(["platform"]).or(z.string().regex(/^teacher:|^admin:/)),
     maxConcurrency: z.number().int().min(0),
     priority: z.number().int(),
     providerMaxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
@@ -72,8 +72,12 @@ export const GatewayConfigSchema = z
       alarmBackoffMs: z.number().int().min(0),
       alarmTimeoutMs: z.number().int().min(1000),
       pseudonymPrefix: z.string().min(1),
+      axes: z.enum(["teacher", "ai", "both"]),
     }),
     teacherChain: z.object({
+      maxConcurrency: z.number().int().min(1).max(100),
+    }),
+    adminChain: z.object({
       maxConcurrency: z.number().int().min(1).max(100),
     }),
     defaults: z.object({ availability: z.array(AvailabilityEntrySchema) }),

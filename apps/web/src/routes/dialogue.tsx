@@ -1,10 +1,11 @@
-import { useCallback } from "react";
+import { activityOptions } from "@/api/queries";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/api";
+
 import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
 import { readActivityId } from "@/api/local";
+import { ChatLayout } from "@/components/ChatLayout";
 import { DialogueView } from "@/components/DialogueView";
 import { useT } from "@/i18n";
 
@@ -31,13 +32,8 @@ function DialoguePage() {
   const me = useQuery(meQueryOptions);
   const { activityId: activityParam, slot, q, term } = Route.useSearch();
   const activityId = activityParam ?? readActivityId() ?? "";
-  const activityQuery = useQuery({
-    queryKey: ["activity", activityId, slot ?? null],
-    queryFn: () => api.activityInfo(activityId, slot),
-    enabled: activityId !== "",
-    staleTime: Infinity,
-  });
-  const activityRefetch = useCallback(() => void activityQuery.refetch(), [activityQuery.refetch]);
+  const activityQuery = useQuery({ ...activityOptions(activityId, slot), enabled: activityId !== "" });
+  const activityRefetch = () => void activityQuery.refetch();
   const topic = activityQuery.data?.topic;
 
   if (me.isPending) return <div className="h-dvh" aria-busy="true" />;
@@ -45,26 +41,28 @@ function DialoguePage() {
   const participantId = activityQuery.data?.participantId ?? "";
 
   return (
-    <DialogueView
-      key={`${activityId}:${participantId}`}
-      threadId={activityId}
-      userId={participantId}
-      title={topic?.title ?? t("dlg_title")}
-      subtitle={topic?.title ? t("dlg_topic_eyebrow") : t("dlg_title")}
-      statement={topic?.statement}
-      prompts={topic?.prompts}
-      closedNotice={
-        activityQuery.isError ? t("common_error") : activityQuery.data?.finishedAt ? t("dlg_err_finished") : undefined
-      }
-      autoSend={q}
-      onActivityFinished={activityRefetch}
-      onAutoSent={() =>
-        void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, q: undefined }), replace: true })
-      }
-      openTerm={term}
-      onTermOpened={() =>
-        void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, term: undefined }), replace: true })
-      }
-    />
+    <ChatLayout>
+      <DialogueView
+        key={`${activityId}:${participantId}`}
+        threadId={activityId}
+        userId={participantId}
+        title={topic?.title ?? t("dlg_title")}
+        subtitle={topic?.title ? t("dlg_topic_eyebrow") : t("dlg_title")}
+        statement={topic?.statement}
+        prompts={topic?.prompts}
+        closedNotice={
+          activityQuery.isError ? t("common_error") : activityQuery.data?.finishedAt ? t("dlg_err_finished") : undefined
+        }
+        autoSend={q}
+        onActivityFinished={activityRefetch}
+        onAutoSent={() =>
+          void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, q: undefined }), replace: true })
+        }
+        openTerm={term}
+        onTermOpened={() =>
+          void navigate({ to: "/dialogue", search: (prev) => ({ ...prev, term: undefined }), replace: true })
+        }
+      />
+    </ChatLayout>
   );
 }

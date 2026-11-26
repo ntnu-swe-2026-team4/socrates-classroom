@@ -38,11 +38,7 @@ function fromB64(text: string): Uint8Array {
 export async function encryptKey(env: Env, plaintext: string): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await aesKey(env);
-  const sealed = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv: iv as BufferSource },
-    key,
-    new TextEncoder().encode(plaintext),
-  );
+  const sealed = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, new TextEncoder().encode(plaintext));
   return [KEY_VERSION, b64(iv), b64(new Uint8Array(sealed))].join(".");
 }
 
@@ -56,13 +52,14 @@ export async function decryptKey(env: Env, stored: string): Promise<string | nul
   }
   try {
     const key = await aesKey(env);
-    const plain = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: fromB64(ivPart) as BufferSource },
-      key,
-      fromB64(dataPart) as BufferSource,
-    );
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromB64(ivPart) }, key, fromB64(dataPart));
     return new TextDecoder().decode(plain);
   } catch {
     return null;
   }
+}
+
+export async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

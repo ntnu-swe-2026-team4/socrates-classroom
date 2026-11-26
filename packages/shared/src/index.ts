@@ -1,5 +1,17 @@
 import { z } from "zod";
-import { ClassReportSchema, StudentAnalysisSchema, type ClassReport, type StudentAnalysis } from "./reports";
+import {
+  ClassReportSchema,
+  EngagementSchema,
+  StudentAnalysisSchema,
+  ThinkingIndicatorsSchema,
+  type ClassReport,
+  type Engagement,
+  type EngagementVisibility,
+  type StudentAnalysis,
+  type ThinkingIndicators,
+} from "./reports";
+
+export const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 export type Lang = "zh" | "en" | "es";
 export const LANG_NAMES: Record<Lang, string> = {
@@ -12,13 +24,29 @@ export const UserSchema = z.object({
   id: z.string(),
   name: z.string(),
   isAdmin: z.boolean(),
+  emailVerified: z.boolean(),
 });
 export type User = z.infer<typeof UserSchema>;
 
 export const OAUTH_PROVIDERS = ["google", "facebook"] as const;
+export const PASSWORD_RESET_TTL_MINUTES = 30;
+export const EMAIL_VERIFY_TTL_HOURS = 24;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 export const OAuthProvidersSchema = z.object({ providers: z.array(z.enum(OAUTH_PROVIDERS)) });
 export type OAuthProviders = z.infer<typeof OAuthProvidersSchema>;
+
+export const LOGIN_METHODS = ["email", ...OAUTH_PROVIDERS] as const;
+export const LoginMethodSchema = z.enum(LOGIN_METHODS);
+export type LoginMethod = z.infer<typeof LoginMethodSchema>;
+export const REAUTH_TTL_SECONDS = 600;
+
+export const AxisSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  left: z.string().trim().min(1).max(40),
+  right: z.string().trim().min(1).max(40),
+});
+export type Axis = z.infer<typeof AxisSchema>;
+export const AXES_MAX = 3;
 
 export const TopicDraftSchema = z.object({
   id: z.string(),
@@ -26,6 +54,7 @@ export const TopicDraftSchema = z.object({
   statement: z.string(),
   summary: z.string().optional(),
   prompts: z.array(z.string()),
+  axes: z.array(AxisSchema),
 });
 export type TopicDraft = z.infer<typeof TopicDraftSchema>;
 
@@ -126,19 +155,32 @@ export const ActivitySlotCreateInputSchema = z.object({
   count: z.number().int().min(1).max(ACTIVITY_SLOT_MAX),
 });
 
+export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
+export type ViolationType = (typeof VIOLATION_TYPES)[number];
+
+export const LiveFlagSchema = z.object({
+  id: z.string(),
+  type: z.enum(VIOLATION_TYPES).exclude(["on_topic"]),
+});
+export type LiveFlag = z.infer<typeof LiveFlagSchema>;
+
 export const StudentLiveSchema = z.object({
   id: z.string(),
   name: z.string(),
-  status: z.enum(["active", "speaking", "idle"]),
-  rounds: z.number(),
-  flagged: z.boolean(),
-  flagReason: z.string().optional(),
-  lastUtterance: z.string(),
+  status: z.enum(["not_started", "active", "idle", "unknown"]),
+  rounds: z.number().int().nonnegative().nullable(),
+  lastActiveAt: z.iso.datetime().nullable(),
+  flags: z.array(LiveFlagSchema).nullable(),
 });
 export type StudentLive = z.infer<typeof StudentLiveSchema>;
 
-export const VIOLATION_TYPES = ["on_topic", "math", "coding", "injection", "other"] as const;
-export type ViolationType = (typeof VIOLATION_TYPES)[number];
+export const ActivityLiveSchema = z.object({
+  activityId: z.string(),
+  finishedAt: z.iso.datetime().nullable(),
+  asOf: z.iso.datetime(),
+  students: z.array(StudentLiveSchema),
+});
+export type ActivityLive = z.infer<typeof ActivityLiveSchema>;
 
 export const ViolationSliceSchema = z.object({
   turn: z.number().int(),
@@ -163,6 +205,8 @@ export const StudentReportEntrySchema = z.object({
   participantName: z.string().optional(),
   pseudonym: z.string(),
   analysis: StudentAnalysisSchema.nullable(),
+  indicators: ThinkingIndicatorsSchema.nullable().optional(),
+  engagement: EngagementSchema.nullable().optional(),
   violations: z.array(ViolationSliceSchema),
   positions: z.array(ReportPositionSchema),
 });
@@ -186,6 +230,8 @@ export interface StudentReportEntry {
   participantName: string;
   pseudonym: string;
   analysis: StudentAnalysis | null;
+  indicators: ThinkingIndicators | null;
+  engagement: Engagement | null;
   violations: ViolationSlice[];
   positions: ReportPosition[];
 }
@@ -193,6 +239,7 @@ export interface StudentReportEntry {
 export interface TeacherReport {
   topicTitle: string;
   classReport: ClassReport | null;
+  engagementVisibility: EngagementVisibility;
   students: StudentReportEntry[];
 }
 
@@ -201,6 +248,8 @@ export interface StudentReport {
   participantName: string;
   pseudonym: string;
   analysis: StudentAnalysis | null;
+  indicators: ThinkingIndicators | null;
+  engagement: Engagement | null;
   violations: ViolationSlice[];
   positions: ReportPosition[];
 }
@@ -231,6 +280,34 @@ export const PasswordResetInputSchema = z.object({
   token: z.string().max(2048),
   password: z.string().min(8).max(128),
 });
+export const EmailVerifyInputSchema = z.object({ token: z.string().max(2048) });
+
+export const IdentitySummarySchema = z.object({
+  email: z.object({ email: z.string(), verified: z.boolean() }).nullable(),
+  oauth: z.array(
+    z.object({
+      provider: z.enum(OAUTH_PROVIDERS),
+      email: z.string().nullable(),
+      linkedAt: z.string(),
+    }),
+  ),
+  reauthExpiresAt: z.iso.datetime().nullable(),
+});
+export type IdentitySummary = z.infer<typeof IdentitySummarySchema>;
+
+export const ReauthPasswordInputSchema = z.object({ password: z.string().min(1).max(128) });
+export const ReauthResultSchema = z.object({ expiresAt: z.iso.datetime() });
+export type ReauthResult = z.infer<typeof ReauthResultSchema>;
+
+export const OAuthStartInputSchema = z.object({ returnTo: z.string().max(512).optional() });
+export type OAuthStartInput = z.infer<typeof OAuthStartInputSchema>;
+export const OAuthStartResultSchema = z.object({ url: z.string() });
+export type OAuthStartResult = z.infer<typeof OAuthStartResultSchema>;
+
+export const BindEmailInputSchema = z.object({ email: emailField, password: z.string().min(8).max(128) });
+export type BindEmailInput = z.infer<typeof BindEmailInputSchema>;
+export const BindEmailResultSchema = z.object({ email: z.string(), verified: z.boolean() });
+export type BindEmailResult = z.infer<typeof BindEmailResultSchema>;
 export const JoinInputSchema = z.object({
   code: z.string().min(4).max(32),
   name: z.string().trim().max(80).optional(),
@@ -258,11 +335,31 @@ export const AdminUserCreateInputSchema = z.object({
   password: z.string().min(8).max(128),
 });
 export const AdminUserUpdateInputSchema = z.object({ disabled: z.boolean() });
+export const ReportAxesSchema = z.enum(["teacher", "ai"]);
+export type ReportAxes = z.infer<typeof ReportAxesSchema>;
+export const ReportAxesPolicySchema = z.enum(["teacher", "ai", "both"]);
+export type ReportAxesPolicy = z.infer<typeof ReportAxesPolicySchema>;
+export const ClientConfigSchema = z.object({ reportAxes: ReportAxesPolicySchema });
+export type ClientConfig = z.infer<typeof ClientConfigSchema>;
+export const AdminSettingsSchema = z.object({ reportAxes: ReportAxesPolicySchema });
+export type AdminSettings = z.infer<typeof AdminSettingsSchema>;
+
+export const AdminOverviewSchema = z.object({
+  users: z.number().int().min(0),
+  classrooms: z.number().int().min(0),
+  runningActivities: z.number().int().min(0),
+});
+export type AdminOverview = z.infer<typeof AdminOverviewSchema>;
+export const TopicAxesInputSchema = z
+  .array(AxisSchema)
+  .max(AXES_MAX)
+  .refine((axes) => new Set(axes.map((axis) => axis.name)).size === axes.length, "axis names must differ");
 export const TopicCreateInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   statement: z.string().trim().min(1).max(2000),
   summary: z.string().trim().max(500).optional(),
   prompts: z.array(z.string().trim().min(1).max(160)).max(6),
+  axes: TopicAxesInputSchema.default([]),
 });
 export const GenerateTopicsInputSchema = z.object({
   direction: z.string().trim().min(1).max(200),
@@ -272,12 +369,34 @@ export const ClassroomCreateInputSchema = z.object({
 });
 export const TopicCopyInputSchema = z.object({
   classroomId: z.string().min(1),
+  axes: TopicAxesInputSchema.optional(),
 });
 export const ActivityStartInputSchema = z.object({
   topicId: z.string().min(1),
   mode: ActivityModeSchema.default("live"),
+  calendarEventId: z.string().min(1).optional(),
+  reportAxes: ReportAxesSchema.optional(),
+  topicAxes: TopicAxesInputSchema.optional(),
 });
 export const DialogueInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
+
+export const SoloThreadSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type SoloThread = z.infer<typeof SoloThreadSchema>;
+
+export const SoloThreadCreateInputSchema = z.object({
+  title: z.string().trim().max(120).optional(),
+});
+export type SoloThreadCreateInput = z.infer<typeof SoloThreadCreateInputSchema>;
+
+export const SoloThreadUpdateInputSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+});
+export type SoloThreadUpdateInput = z.infer<typeof SoloThreadUpdateInputSchema>;
 export const LookupInputSchema = z.object({ term: z.string().trim().min(1).max(30) });
 export const TTS_MAX_CHARS = 4000;
 export const TtsInputSchema = z.object({
@@ -366,6 +485,151 @@ export const TeacherKeyStatusSchema = z.object({
 });
 export type TeacherKeyStatus = z.infer<typeof TeacherKeyStatusSchema>;
 
+export const AdminTeacherKeyStatusSchema = z.object({
+  userId: z.string(),
+  userName: z.string(),
+  userEmail: z.string().nullable(),
+  provider: z.string(),
+  last4: z.string(),
+  disabled: z.boolean(),
+  disabledAt: z.string().nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+  monthCostUsd: z.number(),
+  monthTokens: z.number(),
+  updatedAt: z.string(),
+  models: z.array(z.object({ model: z.string(), sortOrder: z.number() })),
+});
+export type AdminTeacherKeyStatus = z.infer<typeof AdminTeacherKeyStatusSchema>;
+
+export const AdminProviderChainSchema = z.object({
+  mode: z.literal("static"),
+  legs: z.array(
+    z.object({
+      provider: z.string(),
+      model: z.string(),
+      credential: z.string(),
+      maxConcurrency: z.number().int().min(0),
+      priority: z.number().int(),
+    }),
+  ),
+});
+export type AdminProviderChain = z.infer<typeof AdminProviderChainSchema>;
+
+export const AdminTeacherKeyDisableInputSchema = z.object({ disabled: z.boolean() });
+
+export const TeacherKeyEchoSchema = z.object({
+  provider: z.string(),
+  last4: z.string().optional(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+});
+export type TeacherKeyEcho = z.infer<typeof TeacherKeyEchoSchema>;
+
+export const TeacherKeyModelEchoSchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+});
+export type TeacherKeyModelEcho = z.infer<typeof TeacherKeyModelEchoSchema>;
+
+export const AdminKeyStatusSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  last4: z.string(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+  monthCostUsd: z.number(),
+  monthTokens: z.number(),
+  sortOrder: z.number(),
+  updatedAt: z.string(),
+  zdrStatus: z.enum(["unverified", "approved"]),
+  zdrRetentionSource: z.string().nullable(),
+  zdrVerifiedAt: z.string().nullable(),
+  models: z.array(
+    z.object({
+      model: z.string(),
+      maxConcurrency: z.number().int().min(1).max(100).nullable(),
+      sortOrder: z.number(),
+    }),
+  ),
+});
+export type AdminKeyStatus = z.infer<typeof AdminKeyStatusSchema>;
+
+export const AdminKeyEchoSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  last4: z.string().optional(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+  monthlyQuotaUsd: z.number().positive().nullable(),
+  zdrStatus: z.enum(["unverified", "approved"]).optional(),
+  zdrRetentionSource: z.string().nullable().optional(),
+  zdrVerifiedAt: z.string().nullable().optional(),
+});
+export type AdminKeyEcho = z.infer<typeof AdminKeyEchoSchema>;
+
+export const AdminKeyCreateInputSchema = z.object({
+  provider: z.string().min(1).max(100),
+  key: z.string().min(8).max(256),
+  maxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
+  monthlyQuotaUsd: z.number().positive().max(100000).nullable().optional(),
+});
+
+export const AdminKeyUpdateInputSchema = z
+  .object({
+    key: z.string().min(8).max(256).optional(),
+    maxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
+    monthlyQuotaUsd: z.number().positive().max(100000).nullable().optional(),
+  })
+  .refine(
+    (input) => input.key !== undefined || input.maxConcurrency !== undefined || input.monthlyQuotaUsd !== undefined,
+    {
+      message: "key, maxConcurrency or monthlyQuotaUsd required",
+    },
+  );
+
+export const AdminKeyModelEchoSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  model: z.string(),
+  maxConcurrency: z.number().int().min(1).max(100).nullable(),
+});
+export type AdminKeyModelEcho = z.infer<typeof AdminKeyModelEchoSchema>;
+
+export const AdminKeyModelInputSchema = z.object({
+  model: z.string().min(1).max(200),
+  maxConcurrency: z.number().int().min(1).max(100).nullable().optional(),
+});
+
+export const AdminKeyModelOrderInputSchema = z.object({ models: z.array(z.string().min(1).max(200)).max(200) });
+
+export const AdminKeyOrderInputSchema = z.object({ keys: z.array(z.string()).max(50) });
+
+export const AdminKeyZdrInputSchema = z.object({
+  retentionSource: z.string().url().max(500),
+  verifiedAt: z
+    .string()
+    .date()
+    .refine((value) => value <= new Date().toISOString().slice(0, 10), {
+      message: "verifiedAt must not be in the future",
+    }),
+});
+
+export const AdminActionSchema = z.object({
+  id: z.number().int(),
+  actorId: z.string().nullable(),
+  action: z.string(),
+  target: z.string(),
+  before: z.unknown().nullable(),
+  after: z.unknown().nullable(),
+  createdAt: z.string(),
+});
+export type AdminAction = z.infer<typeof AdminActionSchema>;
+
+export const AdminActionsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  cursor: z.coerce.number().int().min(0).optional(),
+});
+
 export const ViolationChoiceSchema = z.object({
   type: z.string(),
   probability: z.number().min(0).max(1),
@@ -399,7 +663,22 @@ export const ERROR_CODES = [
   "oauth_email_unverified",
   "oauth_failed",
   "email_taken",
+  "email_unverified",
   "reset_token_invalid",
+  "verify_token_invalid",
+  "email_not_set",
+  "topic_axes_required",
+  "report_axes_not_allowed",
+  "reauth_required",
+  "invalid_credentials",
+  "password_not_set",
+  "identity_taken",
+  "provider_already_linked",
+  "email_already_linked",
+  "identity_not_found",
+  "last_login_method",
+  "last_verified_method",
+  "reauth_identity_mismatch",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
@@ -413,3 +692,17 @@ export class ApiError extends Error {
   }
 }
 export * from "./reports";
+
+export {
+  CalendarEventCreateInputSchema,
+  CalendarEventPageQuerySchema,
+  CalendarEventSchema,
+  CalendarEventUpdateInputSchema,
+  ClassroomContentInputSchema,
+  ClassroomInviteCreateSchema,
+  ClassroomPageQuerySchema,
+  type ClassroomEvent,
+  type ClassroomEventResource,
+  type ClassroomInviteScope,
+  type CalendarEvent,
+} from "./community";

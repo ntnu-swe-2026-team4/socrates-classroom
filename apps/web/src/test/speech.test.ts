@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const tts = vi.hoisted(() => vi.fn());
-vi.mock("@/api", () => ({ api: { tts: (...args: unknown[]) => tts(...args) } }));
+const tts = vi.hoisted(() =>
+  vi.fn<(text: string, onAmplitude: (value: number) => void, signal?: AbortSignal) => Promise<void>>(),
+);
+vi.mock("@/api", () => ({
+  api: {
+    tts: (text: string, onAmplitude: (value: number) => void, signal?: AbortSignal) => tts(text, onAmplitude, signal),
+  },
+}));
 
 import { TTS_MAX_CHARS } from "@socrates/shared";
 import { companion, getCompanion } from "@/lib/companion";
@@ -9,8 +15,8 @@ import { speak, speakableText, stopSpeech } from "@/lib/speech";
 
 function pendingTts() {
   tts.mockImplementation(
-    (_text: string, _onAmplitude: unknown, signal: AbortSignal) =>
-      new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve())),
+    (_text: string, _onAmplitude: (value: number) => void, signal?: AbortSignal) =>
+      new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve())),
   );
 }
 
@@ -75,7 +81,7 @@ describe("bounded read-aloud (unified char budget)", () => {
   it("caps read-aloud at the unified budget and cuts at a sentence end", async () => {
     tts.mockResolvedValue(undefined);
     await speak("dialogue", "答。".repeat(2100));
-    const sent = tts.mock.calls[0]![0] as string;
+    const sent = tts.mock.calls[0]?.[0] ?? "";
     expect(sent.length).toBeLessThanOrEqual(TTS_MAX_CHARS);
     expect(sent.length).toBeGreaterThan(2000);
     expect(sent.endsWith("。")).toBe(true);

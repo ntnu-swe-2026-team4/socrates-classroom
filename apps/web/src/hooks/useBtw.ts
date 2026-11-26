@@ -1,10 +1,19 @@
 import { useMemo, useRef, useState } from "react";
 import { useAgent } from "agents/react";
 import { applyImmutable } from "@earendil-works/chord/delta";
-import type { Message } from "@earendil-works/pi-ai";
 import type { ConversationView } from "@earendil-works/pi-durable";
-import type { ClientMessage, ServerMessage } from "@server/ws/protocol";
-import { answered, intermediateAssistant, liveTextOf, textOf, type DialogueMessage } from "@/hooks/useDialogue";
+import type { ClientMessage } from "@server/ws/protocol";
+import { parseServerMessage } from "@/lib/wsProtocol";
+import { WS_MAX_RETRIES } from "@/hooks/useSubscription";
+import {
+  answered,
+  dialogueName,
+  intermediateAssistant,
+  liveTextOf,
+  textOf,
+  type DialogueAgent,
+  type DialogueMessage,
+} from "@/hooks/useDialogue";
 
 export type BtwPhase = "idle" | "thinking" | "streaming";
 
@@ -13,18 +22,15 @@ interface StoredSession {
   forkHead: number;
 }
 
-function storageKey(activityId: string, participantId: string): string {
-  return `btw:${activityId}:${participantId}`;
-}
-
 function readStored(key: string): StoredSession | null {
   try {
     const raw = sessionStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredSession>;
-    return typeof parsed.session === "string" && typeof parsed.forkHead === "number"
-      ? { session: parsed.session, forkHead: parsed.forkHead }
-      : null;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    const session = Reflect.get(parsed, "session");
+    const forkHead = Reflect.get(parsed, "forkHead");
+    return typeof session === "string" && typeof forkHead === "number" ? { session, forkHead } : null;
   } catch {
     return null;
   }
@@ -39,8 +45,9 @@ function writeStored(key: string, value: StoredSession | null): void {
   }
 }
 
-export function useBtw(activityId: string, participantId: string, enabled: boolean) {
-  const key = storageKey(activityId, participantId);
+export function useBtw(threadId: string, userId: string, enabled: boolean, agent: DialogueAgent = "chat") {
+  const name = dialogueName(agent, threadId, userId);
+  const key = agent === "solo-chat" ? `btw:solo-chat:${name}` : `btw:${name}`;
   const [view, setView] = useState<ConversationView | null>(null);
   const [phase, setPhase] = useState<BtwPhase>("idle");
   const [error, setError] = useState<{ code: string } | null>(null);
@@ -56,18 +63,21 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
   const failedInputRef = useRef<string | null>(null);
   const queuedRef = useRef<string | null>(null);
 
+  function canSend(value: unknown): value is { send: (data: string) => void } {
+    return typeof value === "object" && value !== null && typeof Reflect.get(value, "send") === "function";
+  }
+
   function open(socket: { send: (data: string) => void }, fresh: boolean) {
     const id = crypto.randomUUID();
     openIdRef.current = id;
-    freshRef.current = fresh || sessionRef.current === null;
+    const existing = sessionRef.current;
+    freshRef.current = fresh || existing === null;
     setBound(false);
-    socket.send(
-      JSON.stringify({
-        type: "btw",
-        id,
-        ...(freshRef.current ? {} : { session: sessionRef.current! }),
-      } satisfies ClientMessage),
-    );
+    if (existing === null || fresh) {
+      socket.send(JSON.stringify({ type: "btw", id } satisfies ClientMessage));
+      return;
+    }
+    socket.send(JSON.stringify({ type: "btw", id, session: existing } satisfies ClientMessage));
   }
 
   function finishPending(failure?: string) {
@@ -88,8 +98,10 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
       finishPending();
       return;
     }
-    const live = next.docs["pi.live"] as { runFailure?: unknown } | undefined;
-    if (live?.runFailure) finishPending("llm_unavailable");
+    const live = next.docs["pi.live"];
+    if (typeof live === "object" && live !== null && !Array.isArray(live) && Reflect.get(live, "runFailure")) {
+      finishPending("llm_unavailable");
+    }
   }
 
   function adopt(next: ConversationView) {
@@ -100,12 +112,8 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
 
   function onFrame(raw: unknown) {
     if (typeof raw !== "string") return;
-    let frame: ServerMessage;
-    try {
-      frame = JSON.parse(raw) as ServerMessage;
-    } catch {
-      return;
-    }
+    const frame = parseServerMessage(raw);
+    if (frame === null) return;
     switch (frame.type) {
       case "view": {
         if (freshRef.current && openIdRef.current !== null) {
@@ -134,12 +142,14 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
       }
       case "result": {
         if (frame.id !== openIdRef.current) return;
-        const result = frame.result as { session?: unknown } | null;
-        if (!result || typeof result.session !== "string") return;
+        const result = frame.result;
+        if (typeof result !== "object" || result === null || Array.isArray(result)) return;
+        const session = Reflect.get(result, "session");
+        if (typeof session !== "string") return;
         openIdRef.current = null;
         freshRef.current = false;
-        sessionRef.current = result.session;
-        writeStored(key, { session: result.session, forkHead: forkHeadRef.current ?? 0 });
+        sessionRef.current = session;
+        writeStored(key, { session, forkHead: forkHeadRef.current ?? 0 });
         setError(null);
         setBound(true);
         const queued = queuedRef.current;
@@ -169,11 +179,14 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
   }
 
   const socket = useAgent({
-    agent: "chat",
-    name: `${activityId}:${participantId}`,
+    agent,
+    name,
     query: { lang: document.documentElement.lang || "zh-TW" },
     enabled,
-    onOpen: (event) => open(event.target as WebSocket, false),
+    maxRetries: WS_MAX_RETRIES,
+    onOpen: (event) => {
+      if (canSend(event.target)) open(event.target, false);
+    },
     onMessage: (event) => onFrame(event.data),
     onClose: () => {
       setBound(false);
@@ -228,7 +241,7 @@ export function useBtw(activityId: string, participantId: string, enabled: boole
       if (entry.id <= forkHead) continue;
       if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") continue;
       if (entry.kind === "pi.assistant" && intermediateAssistant(entry)) continue;
-      const text = textOf((entry.model?.[0] ?? undefined) as Message | undefined);
+      const text = textOf(entry.model?.[0]);
       if (!text) continue;
       out.push({ id: `e${entry.id}`, role: entry.kind === "pi.user" ? "user" : "assistant", text });
     }

@@ -1,10 +1,14 @@
 import { routeAgentRequest } from "agents";
 import { createApp } from "./app";
 import { Chat } from "./do/chat";
+import { SoloChat } from "./do/solo-chat";
+import { ClassroomEvents } from "./do/classroom-events";
 import { ReportRunner } from "./do/report-runner";
+import { RateLimiter } from "./do/rate-limiter";
+import { RoutingLedger } from "./do/routing-ledger";
 import type { Env } from "./env";
 
-export { Chat, ReportRunner };
+export { Chat, SoloChat, ReportRunner, ClassroomEvents, RateLimiter, RoutingLedger };
 export type { RpcApp } from "./app";
 
 export default {

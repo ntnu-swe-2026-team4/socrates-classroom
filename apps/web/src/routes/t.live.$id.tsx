@@ -1,26 +1,40 @@
-import { useState } from "react";
+import { useId, useState } from "react";
+import {
+  activityLiveOptions,
+  activitySlotsOptions,
+  classroomsOptions,
+  liveActivityUnavailable,
+  teacherActivityOptions,
+} from "@/api/queries";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare } from "lucide-react";
 import { ACTIVITY_SLOT_MAX } from "@socrates/shared";
-import { api } from "@/api";
+import { ApiError, api } from "@/api";
 import { meOf } from "@/api/me";
-import { Button, buttonStyles, Card, Field, Input, PageHeader, SectionTitle, Spinner, cn } from "@/components/ui";
+import {
+  Button,
+  buttonStyles,
+  Card,
+  ConfirmDialog,
+  Field,
+  Input,
+  PageHeader,
+  SectionTitle,
+  Spinner,
+  cn,
+} from "@/components/ui";
 import { useT } from "@/i18n";
+import { LiveBoard } from "@/components/LiveBoard";
 
 export const Route = createFileRoute("/t/live/$id")({
-  beforeLoad: async ({ context, params }) => {
+  beforeLoad: async ({ context, params, location }) => {
     const me = await meOf(context.queryClient);
-    if (!me) throw redirect({ to: "/classrooms" });
-    const activity = await context.queryClient
-      .ensureQueryData({ queryKey: ["activity", params.id, "teacher"], queryFn: () => api.activityInfo(params.id) })
-      .catch(() => {
-        throw redirect({ to: "/classrooms" });
-      });
-    const rooms = await context.queryClient.ensureQueryData({
-      queryKey: ["classrooms"],
-      queryFn: () => api.listClassrooms(),
+    if (!me) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
+    const activity = await context.queryClient.ensureQueryData(teacherActivityOptions(params.id)).catch(() => {
+      throw redirect({ to: "/classrooms" });
     });
+    const rooms = await context.queryClient.ensureQueryData(classroomsOptions);
     const room = rooms.find((entry) => entry.id === activity.classroomId);
     if (room?.role !== "teacher") {
       throw redirect({ to: "/classrooms/$classroomId", params: { classroomId: activity.classroomId } });
@@ -33,13 +47,19 @@ function LivePage() {
   const t = useT();
   const navigate = useNavigate();
   const { id } = Route.useParams();
-  const activity = useQuery({ queryKey: ["activity", id, "teacher"], queryFn: () => api.activityInfo(id) });
+  const activity = useQuery(teacherActivityOptions(id));
+  const board = useQuery({ ...activityLiveOptions(id), enabled: activity.data?.mode === "live" });
+  const boardUnavailable = liveActivityUnavailable(board.error);
+  const sessionExpired = board.error instanceof ApiError && board.error.code === "unauthorized";
+  const finished = Boolean(board.data?.finishedAt || activity.data?.finishedAt);
+  const [confirming, setConfirming] = useState<string | null>(null);
   const finish = useMutation({
     mutationFn: () => api.finishActivity(id),
   });
 
   async function finishAndReport() {
-    if (finish.isPending) return;
+    if (finish.isPending || finished || boardUnavailable) return;
+    setConfirming(null);
     try {
       await finish.mutateAsync();
     } catch {
@@ -55,14 +75,35 @@ function LivePage() {
         eyebrow={t("eyebrow_teacher")}
         title={t("live_title")}
         actions={
-          <Button variant="outline" size="sm" onClick={() => void finishAndReport()} disabled={finish.isPending}>
-            {finish.isPending ? <Spinner /> : null}
-            {t("live_finish")}
-          </Button>
+          finished ? (
+            <Link to="/report/$id" params={{ id }} className={buttonStyles({ variant: "outline", size: "sm" })}>
+              {t("live_view_report")}
+            </Link>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirming(id)}
+              disabled={finish.isPending || boardUnavailable}
+            >
+              {finish.isPending ? <Spinner /> : null}
+              {t("live_finish")}
+            </Button>
+          )
         }
       />
 
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-6">
+      <ConfirmDialog
+        open={confirming === id && !finished && !boardUnavailable}
+        title={t("live_finish_title")}
+        body={t("live_finish_body")}
+        confirmLabel={t("live_finish")}
+        cancelLabel={t("common_cancel")}
+        danger
+        onConfirm={() => void finishAndReport()}
+        onCancel={() => setConfirming(null)}
+      />
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 md:px-6">
         {finish.isError && (
           <p role="alert" className="text-[13px] text-flag">
             {t("common_error")}
@@ -80,40 +121,75 @@ function LivePage() {
           </Card>
         )}
 
-        {activity.data?.mode === "test" ? (
-          <SlotPanel activityId={id} finished={Boolean(activity.data.finishedAt)} />
-        ) : (
-          <Card className="flex flex-col items-center gap-3 p-10 text-center">
-            <p className="font-serif text-[15.5px] text-ink">{t("live_pending_title")}</p>
-            <p className="max-w-md text-[12.5px] leading-relaxed text-ink-faint">{t("live_pending_body")}</p>
-          </Card>
-        )}
+        {activity.data?.mode === "test" && <SlotPanel activityId={id} finished={finished} />}
+        {activity.data?.mode === "live" &&
+          (boardUnavailable ? (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-paper p-5 text-sm text-ink"
+            >
+              <p>{t(sessionExpired ? "live_session_expired" : "live_unavailable")}</p>
+              {sessionExpired && (
+                <Link
+                  to="/login"
+                  search={{ next: `/t/live/${id}` }}
+                  className={buttonStyles({ variant: "outline", size: "sm" })}
+                >
+                  {t("login_title")}
+                </Link>
+              )}
+            </div>
+          ) : board.data ? (
+            <LiveBoard key={id} snapshot={board.data} stale={board.isError || board.fetchStatus === "paused"} />
+          ) : (
+            <Card className="p-5 text-sm text-ink-soft">
+              {board.isError ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p role="alert">{t("live_load_failed")}</p>
+                  <Button variant="outline" size="sm" onClick={() => void board.refetch()} disabled={board.isFetching}>
+                    {t("live_retry")}
+                  </Button>
+                </div>
+              ) : (
+                <p role="status">{t(board.fetchStatus === "paused" ? "live_load_failed" : "live_loading")}</p>
+              )}
+            </Card>
+          ))}
       </div>
     </div>
   );
 }
 
+function parseSlotCount(raw: string, remaining: number): number | null {
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > remaining) return null;
+  return parsed;
+}
+
 function SlotPanel({ activityId, finished }: { activityId: string; finished: boolean }) {
   const t = useT();
   const queryClient = useQueryClient();
-  const [count, setCount] = useState(1);
-  const slots = useQuery({
-    queryKey: ["activity-slots", activityId],
-    queryFn: () => api.listActivitySlots(activityId),
-  });
+  const countHintId = useId();
+  const [countInput, setCountInput] = useState("1");
+  const [badInput, setBadInput] = useState(false);
+  const slots = useQuery(activitySlotsOptions(activityId));
   const create = useMutation({
     mutationFn: (n: number) => api.createActivitySlots(activityId, n),
     onSuccess: (data) => {
-      queryClient.setQueryData(["activity-slots", activityId], data);
-      setCount(1);
+      queryClient.setQueryData(activitySlotsOptions(activityId).queryKey, data);
+      setCountInput("1");
+      setBadInput(false);
     },
   });
 
   const list = slots.data?.slots ?? [];
   const max = slots.data?.maxSlots ?? ACTIVITY_SLOT_MAX;
   const remaining = Math.max(max - list.length, 0);
-  const planned = Math.min(Math.max(count, 1), Math.max(remaining, 1));
-  const analyses = list.length + (remaining > 0 ? planned : 0);
+  const validCount = badInput ? null : parseSlotCount(countInput, remaining);
+  const countInvalid = remaining > 0 && (badInput || (countInput.trim() !== "" && validCount === null));
+  const analyses = list.length + (validCount ?? 0);
 
   return (
     <section>
@@ -159,29 +235,55 @@ function SlotPanel({ activityId, finished }: { activityId: string; finished: boo
         {finished ? (
           <p className="mt-5 text-[13px] text-ink-faint">{t("live_slots_finished")}</p>
         ) : (
-          <div className="mt-6 flex flex-wrap items-end gap-3">
+          <form
+            noValidate
+            className="mt-6 flex flex-wrap items-end gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (validCount === null || create.isPending || !slots.data) return;
+              create.mutate(validCount);
+            }}
+          >
             <div className="w-36">
               <Field label={t("live_slots_count")}>
                 <Input
                   type="number"
+                  inputMode="numeric"
                   min={1}
                   max={Math.max(remaining, 1)}
-                  value={planned}
+                  step={1}
+                  value={countInput}
                   disabled={remaining === 0 || create.isPending}
-                  onChange={(event) => setCount(Number(event.target.value))}
+                  aria-invalid={countInvalid || undefined}
+                  aria-describedby={countHintId}
+                  onInput={(event) => {
+                    if (create.isError) create.reset();
+                    setBadInput(event.currentTarget.validity.badInput);
+                  }}
+                  onChange={(event) => {
+                    if (create.isError) create.reset();
+                    setCountInput(event.target.value);
+                  }}
                 />
               </Field>
             </div>
-            <Button
-              disabled={remaining === 0 || create.isPending || !slots.data}
-              onClick={() => create.mutate(planned)}
-            >
+            <Button type="submit" disabled={remaining === 0 || create.isPending || !slots.data || validCount === null}>
               {create.isPending ? <Spinner /> : t("live_slots_create")}
             </Button>
-            <p className={cn("text-[12.5px] text-ink-faint", create.isError && "text-flag")}>
-              {create.isError ? t("common_error") : t("live_slots_cost", { n: analyses })}
-            </p>
-          </div>
+            {countInvalid ? (
+              <p id={countHintId} role="alert" className="text-[12.5px] text-flag">
+                {t("live_slots_count_invalid", { max: remaining })}
+              </p>
+            ) : (
+              <p
+                id={countHintId}
+                role={create.isError ? "alert" : undefined}
+                className={cn("text-[12.5px] text-ink-faint", create.isError && "text-flag")}
+              >
+                {create.isError ? t("common_error") : t("live_slots_cost", { n: analyses })}
+              </p>
+            )}
+          </form>
         )}
       </Card>
     </section>

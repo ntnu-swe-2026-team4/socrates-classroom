@@ -1,9 +1,17 @@
-import { type KeyboardEvent, type PointerEvent as ReactPointerEvent, useId, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { RotateCcw } from "lucide-react";
 import { Segmented, cn } from "@/components/ui";
-import { useMediaQuery, useOnUnmount } from "@/hooks/useSubscription";
+import { useMediaQuery } from "@/hooks/useSubscription";
 import { useT } from "@/i18n";
-import { createFrameLoop } from "@/lib/frameLoop";
+import { createFrameLoop, type FrameLoop } from "@/lib/frameLoop";
 import {
   type ClusterMode,
   DEFAULT_PITCH,
@@ -99,13 +107,20 @@ export function StanceConstellation({ axes }: { axes: readonly StanceAxis[] }) {
   const [cursor, setCursor] = useState<string | null>(null);
   const endAt = useRef(0);
   const drag = useRef<{ x: number; y: number } | null>(null);
-  const [loop] = useState(() =>
-    createFrameLoop((time) => {
+  const loopRef = useRef<FrameLoop | null>(null);
+
+  const setStage = useCallback((node: SVGSVGElement | null) => {
+    if (!node) return;
+    const loop = createFrameLoop((time) => {
       setNow(time);
       return time < endAt.current;
-    }),
-  );
-  useOnUnmount(() => loop.stop());
+    });
+    loopRef.current = loop;
+    return () => {
+      loop.stop();
+      loopRef.current = null;
+    };
+  }, []);
 
   const clusters = useMemo(() => clusterStudents(students, picked, mode), [students, picked, mode]);
   const layout = still ? tween.to : mixLayout(tween.from, tween.to, easeInOutCubic(progress(tween, now)));
@@ -115,13 +130,14 @@ export function StanceConstellation({ axes }: { axes: readonly StanceAxis[] }) {
 
   const toggleAxis = (name: string) => {
     const next = togglePicked(picked, name);
+    // biome-ignore lint/nursery/useReactCompiler: event-only handler (onClick); the ported analyzer cannot infer handler-only functions, the upstream compiler accepts them
     const time = performance.now();
     const current = mixLayout(tween.from, tween.to, easeInOutCubic(progress(tween, time)));
     setPicked(next);
     setTween({ from: current, to: targetLayout(next, students, 1), start: time });
     setNow(time);
     endAt.current = time + DURATION;
-    loop.wake();
+    loopRef.current?.wake();
   };
 
   const turn = (yaw: number, pitch: number) =>
@@ -279,6 +295,7 @@ export function StanceConstellation({ axes }: { axes: readonly StanceAxis[] }) {
         <div className="relative bg-paper">
           {/* biome-ignore lint/a11y/useSemanticElements: SVG has no fieldset; the chart groups its focusable dots */}
           <svg
+            ref={setStage}
             viewBox={`${-size.width / 2} ${-size.height / 2} ${size.width} ${size.height}`}
             role="group"
             aria-label={t("stance_stage_label", { n: shown.length, axes: picked.length })}

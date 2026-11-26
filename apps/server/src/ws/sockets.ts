@@ -2,7 +2,6 @@ import type {
   ConversationView,
   ConversationWatch,
   ConversationWindow,
-  EntryId,
   EntryQuery,
   RegistryReader,
   WatchEnd,
@@ -12,7 +11,7 @@ import type { WebSocketMessage, WebSocketsOptions } from "agents/websockets";
 import { type PiHarness, type PiReceipt, type PiSession, type PiSubmitOptions, ROOT_SESSION } from "agents/harness/pi";
 import type { UserInput } from "@earendil-works/pi-durable";
 import { DialogueInputSchema } from "@socrates/shared";
-import type { ClientMessage, ServerMessage } from "./protocol";
+import { entryIdOf, isEntryId, parseClientMessage, type ClientMessage, type ServerMessage } from "./protocol";
 
 export interface SocketIdentity {
   userId: string | null;
@@ -46,11 +45,13 @@ const OPEN = 1;
 
 function isSocketIdentity(value: unknown): value is SocketIdentity {
   if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Partial<SocketIdentity>;
+  const userId = Reflect.get(value, "userId");
+  const participantId = Reflect.get(value, "participantId");
+  const version = Reflect.get(value, "version");
   return (
-    (typeof candidate.userId === "string" || candidate.userId === null) &&
-    typeof candidate.participantId === "string" &&
-    (candidate.version === null || Number.isInteger(candidate.version))
+    (typeof userId === "string" || userId === null) &&
+    typeof participantId === "string" &&
+    (version === null || Number.isInteger(version))
   );
 }
 
@@ -65,13 +66,21 @@ const KNOWN_ERROR_NAMES = new Set([
 
 type SocketState = { auth?: SocketIdentity; session?: string; notifiedRunFailure?: string };
 
-function resumeAfter(view: ConversationView): ConversationWindow {
-  const newest = view.entries.at(-1)?.id ?? view.before;
-  return newest === undefined ? {} : { from: (newest + 1) as EntryId };
+function readSocketState(value: unknown): SocketState {
+  if (typeof value !== "object" || value === null) return {};
+  const auth = Reflect.get(value, "auth");
+  const session = Reflect.get(value, "session");
+  const notifiedRunFailure = Reflect.get(value, "notifiedRunFailure");
+  const state: SocketState = {};
+  if (isSocketIdentity(auth)) state.auth = auth;
+  if (typeof session === "string") state.session = session;
+  if (typeof notifiedRunFailure === "string") state.notifiedRunFailure = notifiedRunFailure;
+  return state;
 }
 
-function isEntryId(value: unknown): value is EntryId {
-  return typeof value === "number" && Number.isSafeInteger(value);
+function resumeAfter(view: ConversationView): ConversationWindow {
+  const newest = view.entries.at(-1)?.id ?? view.before;
+  return newest === undefined ? {} : { from: entryIdOf(newest + 1) };
 }
 
 function send(socket: WebSocket, message: ServerMessage): void {
@@ -125,24 +134,28 @@ export class ChatSockets {
       handlers: {
         onConnect: (connection, ctx) => this.#onConnect(connection, ctx),
         onMessage: (connection, message) => this.#onMessage(connection, message),
-        onClose: (connection) => this.#unwatch(connection),
-        onError: (connection) => this.#unwatch(connection),
+        onClose: (connection) => void this.#unwatch(connection),
+        onError: (connection) => void this.#unwatch(connection),
       },
     };
   }
 
   async reattach(connections: Iterable<Connection>, reverify?: Reverify): Promise<void> {
     for (const connection of connections) {
-      const { auth, session } = (connection.state as SocketState | null) ?? {};
+      const { auth, session } = readSocketState(connection.state);
       const identity = isSocketIdentity(auth) ? auth : null;
       if (identity === null) {
         this.#refuse(connection);
         continue;
       }
-      const outcome: ReverifyOutcome = reverify ? await reverify(identity) : "member";
-      if (outcome === "revoked") {
-        this.#refuse(connection);
-        continue;
+      const verify = reverify;
+      let outcome: ReverifyOutcome = "member";
+      if (verify) {
+        outcome = await verify(identity);
+        if (outcome === "revoked") {
+          this.#refuse(connection);
+          continue;
+        }
       }
       if (outcome === "error") {
         this.#unavailable(connection);
@@ -156,7 +169,7 @@ export class ChatSockets {
 
   #unavailable(socket: Connection): void {
     this.#authorized.delete(socket);
-    this.#unwatch(socket);
+    void this.#unwatch(socket);
     try {
       socket.close(1011, "verification unavailable");
     } catch {
@@ -173,6 +186,14 @@ export class ChatSockets {
     }
   }
 
+  async disconnectUser(userId: string): Promise<void> {
+    for (const [socket, identity] of this.#authorized) {
+      if (identity.userId !== userId) continue;
+      this.#refuse(socket);
+      await this.#unwatch(socket);
+    }
+  }
+
   notifyRunFailure(session: string, failureId: string): void {
     for (const socket of this.#authorized.keys()) {
       if (this.#sessionOf(socket) !== session) continue;
@@ -181,7 +202,7 @@ export class ChatSockets {
   }
 
   #sendRunFailure(socket: Connection, failureId: string): void {
-    const state = (socket.state as SocketState | null) ?? {};
+    const state = readSocketState(socket.state);
     if (socket.readyState !== OPEN || state.notifiedRunFailure === failureId) return;
     send(socket, { type: "error", message: "The model run failed", code: "llm_unavailable" });
     socket.setState({ ...state, notifiedRunFailure: failureId } satisfies SocketState);
@@ -198,12 +219,13 @@ export class ChatSockets {
 
   #bind(connection: Connection, session: string): void {
     this.#sessions.set(connection, session);
-    connection.setState({ ...((connection.state as SocketState | null) ?? {}), session } satisfies SocketState);
+    connection.setState({ ...readSocketState(connection.state), session } satisfies SocketState);
   }
 
   async #onConnect(connection: Connection, ctx: ConnectionContext): Promise<void> {
-    if (this.#authorize) {
-      const identity = await this.#authorize(ctx.request);
+    const authorize = this.#authorize;
+    if (authorize) {
+      const identity = await authorize(ctx.request);
       if (!identity) {
         this.#refuse(connection);
         return;
@@ -282,14 +304,20 @@ export class ChatSockets {
       this.#refuse(connection);
       return;
     }
-    if (identity && this.#revalidate && (await this.#revalidate(identity)) === "revoked") {
-      this.#refuse(connection);
-      return;
+    const revalidate = this.#revalidate;
+    if (revalidate && identity) {
+      const outcome = await revalidate(identity);
+      if (outcome === "error") {
+        this.#unavailable(connection);
+        return;
+      }
+      if (outcome === "revoked") {
+        this.#refuse(connection);
+        return;
+      }
     }
-    let message: ClientMessage;
-    try {
-      message = JSON.parse(raw) as ClientMessage;
-    } catch {
+    const message = parseClientMessage(raw);
+    if (message === null) {
       send(connection, { type: "error", message: "Malformed JSON" });
       return;
     }
@@ -316,19 +344,23 @@ export class ChatSockets {
       case "submit": {
         if (typeof message.input !== "string") throw new Error("Invalid input");
         const identity = this.#authorized.get(socket);
-        if (identity === undefined || (this.#canSubmit && !(await this.#canSubmit(identity)))) {
-          throw new SubmitForbiddenError();
+        if (identity === undefined) throw new SubmitForbiddenError();
+        const canSubmit = this.#canSubmit;
+        if (canSubmit) {
+          if (!(await canSubmit(identity))) throw new SubmitForbiddenError();
         }
         const input = DialogueInputSchema.parse({ text: message.input });
-        return this.#submitRoute
-          ? await this.#submitRoute(handle, input.text, {
-              ...(message.operationId ? { operationId: message.operationId } : {}),
-              whenBusy: "reject",
-            })
-          : await handle.submit(input.text, {
-              ...(message.operationId ? { operationId: message.operationId } : {}),
-              whenBusy: "reject",
-            });
+        const submitRoute = this.#submitRoute;
+        if (submitRoute) {
+          return await submitRoute(handle, input.text, {
+            ...(message.operationId ? { operationId: message.operationId } : {}),
+            whenBusy: "reject",
+          });
+        }
+        return await handle.submit(input.text, {
+          ...(message.operationId ? { operationId: message.operationId } : {}),
+          whenBusy: "reject",
+        });
       }
       case "abort":
         return await handle.abort();
@@ -336,10 +368,14 @@ export class ChatSockets {
         let session: string;
         if (message.session === undefined) {
           const identity = this.#authorized.get(socket);
-          if (!this.#openBtw || identity === undefined || (this.#canSubmit && !(await this.#canSubmit(identity)))) {
-            throw new SubmitForbiddenError();
+          if (identity === undefined) throw new SubmitForbiddenError();
+          const openBtw = this.#openBtw;
+          if (!openBtw) throw new SubmitForbiddenError();
+          const canSubmit = this.#canSubmit;
+          if (canSubmit) {
+            if (!(await canSubmit(identity))) throw new SubmitForbiddenError();
           }
-          session = await this.#openBtw();
+          session = await openBtw();
         } else {
           if (typeof message.session !== "string" || !(await this.#isBtwSession(message.session))) {
             throw new UnknownSessionError();
@@ -361,13 +397,16 @@ export class ChatSockets {
         return await handle.entries(query, Math.min(message.limit, 100));
       }
       default:
-        throw new Error(`Unknown message type ${(message as { type: string }).type}`);
+        throw new Error(`Unknown message type ${String(Reflect.get(message, "type"))}`);
     }
   }
 }
 
 function entryQuery(query: unknown): Omit<EntryQuery, "conversationId"> {
-  const { minEntryId, maxEntryId, order } = (query ?? {}) as Record<string, unknown>;
+  const source = typeof query === "object" && query !== null ? query : {};
+  const minEntryId = Reflect.get(source, "minEntryId");
+  const maxEntryId = Reflect.get(source, "maxEntryId");
+  const order = Reflect.get(source, "order");
   if (minEntryId !== undefined && !isEntryId(minEntryId)) throw new Error("Invalid minEntryId");
   if (maxEntryId !== undefined && !isEntryId(maxEntryId)) throw new Error("Invalid maxEntryId");
   if (order !== undefined && order !== "ascending" && order !== "descending") throw new Error("Invalid order");

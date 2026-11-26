@@ -7,7 +7,8 @@ import { loadEnv } from "vite";
 import { bindings, defineConfig, exports } from "cf/config";
 
 export default defineConfig(({ mode }) => {
-  const local = mode === "development" ? loadEnv(mode, import.meta.dirname, "") : {};
+  const local: Record<string, string | undefined> =
+    mode === "development" ? loadEnv(mode, import.meta.dirname, "") : {};
   const text = (key: string, fallback: string) => bindings.text(local[key] ?? fallback);
   const googleClientId = local.GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID ?? "";
   const facebookAppId = local.FACEBOOK_APP_ID ?? process.env.FACEBOOK_APP_ID ?? "";
@@ -25,7 +26,11 @@ export default defineConfig(({ mode }) => {
           ? { AI: bindings.ai({ dev: { remote: true } }) }
           : { AI: bindings.ai({}) }),
         Chat: bindings.durableObject({ worker: "socrates-classroom", exportName: "Chat" }),
+        SoloChat: bindings.durableObject({ worker: "socrates-classroom", exportName: "SoloChat" }),
+        ClassroomEvents: bindings.durableObject({ worker: "socrates-classroom", exportName: "ClassroomEvents" }),
         ReportRunner: bindings.durableObject({ worker: "socrates-classroom", exportName: "ReportRunner" }),
+        RateLimiter: bindings.durableObject({ worker: "socrates-classroom", exportName: "RateLimiter" }),
+        RoutingLedger: bindings.durableObject({ worker: "socrates-classroom", exportName: "RoutingLedger" }),
         PUBLIC_BASE_URL: text("PUBLIC_BASE_URL", "https://socrates.g36maid.dev"),
         ENVIRONMENT: bindings.text(local.ENVIRONMENT || (mode === "development" ? "dev" : "production")),
         LLM_PROVIDER: bindings.text(local.LLM_PROVIDER ?? (mode === "development" ? "mock" : "")),
@@ -50,11 +55,18 @@ export default defineConfig(({ mode }) => {
         ADMIN_ALERT_EMAIL: text("ADMIN_ALERT_EMAIL", ""),
         SEND_EMAIL: bindings.sendEmail(),
       },
-      assets: { notFoundHandling: "single-page-application", runWorkerFirst: ["/api/*", "/health"] },
+      assets: {
+        notFoundHandling: "single-page-application",
+        runWorkerFirst: ["/api/*", "/agents/*", "/health"],
+      },
       domains: ["socrates.g36maid.dev"],
       exports: {
         Chat: exports.durableObject({ storage: "sqlite" }),
+        SoloChat: exports.durableObject({ storage: "sqlite" }),
+        ClassroomEvents: exports.durableObject({ storage: "sqlite" }),
         ReportRunner: exports.durableObject({ storage: "sqlite" }),
+        RateLimiter: exports.durableObject({ storage: "sqlite" }),
+        RoutingLedger: exports.durableObject({ storage: "sqlite" }),
       },
     },
   };

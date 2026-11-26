@@ -1,18 +1,27 @@
-import { useState } from "react";
+import { useId, useState } from "react";
+import { classroomsOptions, myReportsOptions } from "@/api/queries";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { Plus, Users } from "lucide-react";
-import { api, type ClassroomSummary } from "@/api";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChartNoAxesColumn, ChevronDown, Plus, Users } from "lucide-react";
+import type { ClassroomSummary } from "@socrates/shared";
+
 import { meQueryOptions } from "@/api/me";
 import { meOf } from "@/api/me";
-import { Button, Input, PageHeader, cn } from "@/components/ui";
-import { useT } from "@/i18n";
+import { api, ApiError } from "@/api";
+import { EmptyPanel, LoadMore, PanelState } from "@/components/ClassroomCommunity";
+import { Button, Field, FormDialog, Input, PageHeader, cn } from "@/components/ui";
+import { useFormatDate, useT } from "@/i18n";
 import { normalizeJoinCode } from "@/lib/joinCode";
 
+type View = "enrolled" | "teaching";
+
 export const Route = createFileRoute("/classrooms/")({
-  beforeLoad: async ({ context }) => {
+  validateSearch: (search: Record<string, unknown>): { view?: View } => ({
+    view: search.view === "enrolled" || search.view === "teaching" ? search.view : undefined,
+  }),
+  beforeLoad: async ({ context, location }) => {
     const me = await meOf(context.queryClient);
-    if (!me) throw redirect({ to: "/login" });
+    if (!me) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
   },
   component: ClassroomsPage,
 });
@@ -20,11 +29,28 @@ export const Route = createFileRoute("/classrooms/")({
 function ClassroomsPage() {
   const t = useT();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const me = useQuery(meQueryOptions);
-  const classrooms = useQuery({ queryKey: ["classrooms"], queryFn: () => api.listClassrooms() });
+  const classrooms = useQuery(classroomsOptions);
   const [code, setCode] = useState("");
-  const canManage = Boolean(me.data);
-  const list = classrooms.data ?? [];
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const search = Route.useSearch();
+  const all = classrooms.data ?? [];
+  const view: View =
+    search.view ?? (all.length && all.every((room) => room.role === "teacher") ? "teaching" : "enrolled");
+  const teaching = view === "teaching";
+  const list = all.filter((room) => (room.role === "teacher") === teaching);
+
+  const create = useMutation({
+    mutationFn: () => api.createClassroom(name.trim()),
+    onSuccess: async (created) => {
+      setName("");
+      setCreating(false);
+      await queryClient.invalidateQueries({ queryKey: classroomsOptions.queryKey });
+      void navigate({ to: "/classrooms/$classroomId", params: { classroomId: created.classroomId } });
+    },
+  });
 
   function join() {
     const normalized = normalizeJoinCode(code);
@@ -35,13 +61,24 @@ function ClassroomsPage() {
     <div className="min-h-full pb-16">
       <PageHeader
         width="max-w-5xl"
-        eyebrow={canManage ? t("eyebrow_teacher") : t("classrooms_eyebrow_student")}
-        title={t("nav_classrooms")}
-        description={canManage ? t("classrooms_intro_teacher") : t("classrooms_intro_student")}
+        eyebrow={t("nav_classrooms")}
+        title={t(teaching ? "classrooms_manage" : "classrooms_enrolled")}
+        description={teaching ? t("classrooms_intro_teacher") : t("classrooms_intro_student")}
         actions={
-          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+          teaching ? (
+            <Button
+              onClick={() => {
+                create.reset();
+                setName("");
+                setCreating(true);
+              }}
+            >
+              <Plus className="size-4" />
+              {t("nav_setup")}
+            </Button>
+          ) : (
             <form
-              className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none"
+              className="flex w-full min-w-0 items-center gap-2 sm:w-auto"
               onSubmit={(event) => {
                 event.preventDefault();
                 join();
@@ -61,13 +98,7 @@ function ClassroomsPage() {
                 {t("join_code_go")}
               </Button>
             </form>
-            {canManage && (
-              <Button onClick={() => void navigate({ to: "/t/setup" })}>
-                <Plus className="size-4" />
-                {t("nav_setup")}
-              </Button>
-            )}
-          </div>
+          )
         }
       />
       <div className="mx-auto w-full max-w-5xl px-6 pt-8">
@@ -83,10 +114,35 @@ function ClassroomsPage() {
         )}
         {!classrooms.isPending && !classrooms.isError && !list.length && (
           <div className="rounded-3xl border border-dashed border-line-strong px-6 py-14 text-center text-sm text-ink-faint">
-            {canManage ? t("classrooms_empty_teacher") : t("classrooms_empty_student")}
+            {teaching ? t("classrooms_empty_teacher") : t("classrooms_empty_student")}
           </div>
         )}
+        {!teaching && me.data && <PersonalReports key={me.data.id} userId={me.data.id} />}
       </div>
+      <FormDialog
+        open={creating}
+        title={t("setup_title")}
+        submitLabel={t("setup_create")}
+        cancelLabel={t("common_cancel")}
+        canSubmit={Boolean(name.trim())}
+        submitting={create.isPending}
+        onSubmit={() => create.mutate()}
+        onCancel={() => setCreating(false)}
+      >
+        <Field label={t("setup_class_label")}>
+          <Input
+            value={name}
+            placeholder={t("setup_class_placeholder")}
+            maxLength={80}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </Field>
+        {create.isError && (
+          <p role="alert" className="text-[13px] text-flag">
+            {create.error instanceof ApiError ? create.error.message : t("common_error")}
+          </p>
+        )}
+      </FormDialog>
     </div>
   );
 }
@@ -97,7 +153,7 @@ function ClassroomCard({ room }: { room: ClassroomSummary }) {
     <Link
       to="/classrooms/$classroomId"
       params={{ classroomId: room.id }}
-      className="group flex flex-col overflow-hidden rounded-3xl border border-line bg-card transition-all hover:-translate-y-0.5 hover:border-ember-deep hover:shadow-md"
+      className="group flex flex-col overflow-hidden comic-lift rounded-3xl border border-line bg-card hover:border-ember-deep"
     >
       <div className="bg-gradient-to-br from-ember-wash via-ember-wash/60 to-transparent px-5 pt-5 pb-4">
         <h3 className="truncate font-serif text-[19px] leading-snug text-ink">{room.name}</h3>
@@ -127,5 +183,66 @@ function ClassroomCard({ room }: { room: ClassroomSummary }) {
         </div>
       </div>
     </Link>
+  );
+}
+
+function PersonalReports({ userId }: { userId: string }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const contentId = useId();
+  return (
+    <section className="mt-8 border-t border-line pt-4">
+      <h2 className="font-serif text-xl text-ink">
+        <Button
+          variant="ghost"
+          className="h-auto px-2 py-2 font-serif text-xl"
+          aria-expanded={open}
+          aria-controls={contentId}
+          onClick={() => setOpen(!open)}
+        >
+          <ChartNoAxesColumn className="size-5" aria-hidden />
+          {t("room_my_reports")}
+          <ChevronDown className={cn("size-4", open && "rotate-180")} aria-hidden />
+        </Button>
+      </h2>
+      <div id={contentId} hidden={!open} className="mt-2">
+        {open && <PersonalReportList userId={userId} />}
+      </div>
+    </section>
+  );
+}
+
+function PersonalReportList({ userId }: { userId: string }) {
+  const t = useT();
+  const formatDate = useFormatDate();
+  const reports = useInfiniteQuery(myReportsOptions(userId));
+  const items = reports.data?.pages.flatMap((page) => page.items) ?? [];
+  return (
+    <div className="space-y-3">
+      <PanelState pending={reports.isPending} error={reports.isError} retry={() => void reports.refetch()} />
+      {reports.isSuccess && !items.length && <EmptyPanel>{t("room_my_reports_empty")}</EmptyPanel>}
+      {items.length > 0 && (
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-paper">
+          {items.map((report) => (
+            <li key={report.activityId}>
+              <Link
+                to="/report/$id"
+                params={{ id: report.activityId }}
+                className="block px-4 py-3 outline-none hover:bg-paper-deep focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ember"
+              >
+                <p className="break-words font-serif text-base text-ink">{report.topicTitle}</p>
+                <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-ink-soft">
+                  <span className="break-words">{report.classroomName}</span>
+                  {report.finishedAt && <time dateTime={report.finishedAt}>{formatDate(report.finishedAt)}</time>}
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      {reports.hasNextPage && (
+        <LoadMore pending={reports.isFetchingNextPage} onClick={() => void reports.fetchNextPage()} />
+      )}
+    </div>
   );
 }

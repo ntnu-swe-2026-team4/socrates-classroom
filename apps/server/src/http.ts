@@ -1,5 +1,6 @@
-import type { Context } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import type { z } from "zod";
+import { zValidator } from "@hono/zod-validator";
 import { ApiError, type ErrorCode, type Lang, type User } from "@socrates/shared";
 import type { Env } from "./env";
 
@@ -9,6 +10,7 @@ export interface AppEnv {
     user: User | null;
     lang: Lang;
     sessionIssue: "stale" | "disabled" | null;
+    sessionVersion: number | null;
   };
 }
 
@@ -34,20 +36,48 @@ export function langOf(c: Ctx): Lang {
   return c.get("lang");
 }
 
-export function fail(status: number, code: ErrorCode, vars: Record<string, string | number> = {}): never {
+export const FAIL_STATUSES = [400, 401, 403, 404, 409, 410, 422, 429, 500, 502] as const;
+export type FailStatus = (typeof FAIL_STATUSES)[number];
+
+export function httpStatusOf(status: number): FailStatus | undefined {
+  return FAIL_STATUSES.find((candidate) => candidate === status);
+}
+
+export function fail(status: FailStatus, code: ErrorCode, vars: Record<string, string | number> = {}): never {
   throw new ApiError(status, code, vars);
 }
 
-export async function parseBody<S extends z.ZodType>(c: Ctx, schema: S): Promise<z.output<S>> {
-  let raw: unknown;
-  try {
-    raw = await c.req.json();
-  } catch {
-    fail(422, "validation");
-  }
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) fail(422, "validation");
-  return parsed.data;
+export function validateJson<S extends z.ZodType>(schema: S) {
+  return zValidator("json", schema, (result) => {
+    if (!result.success) fail(422, "validation");
+  });
+}
+
+export function validateQuery<S extends z.ZodType>(schema: S) {
+  return zValidator("query", schema, (result) => {
+    if (!result.success) fail(422, "validation");
+  });
+}
+
+export function rateLimit(key: string, max: number): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    await enforceIpLimit(c, key, max);
+    await next();
+  };
+}
+
+export function guardUser(): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    requireUser(c);
+    await next();
+  };
+}
+
+export function guardAdmin(): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    requireAdmin(c);
+    await next();
+  };
 }
 
 export function requireUser(c: Ctx): User {
@@ -67,12 +97,12 @@ export function uniqueViolationColumns(error: unknown): Array<[string, string]> 
     // Miniflare/D1 envelopes the raw SQLite message: `D1_ERROR: UNIQUE constraint failed: t.c, t.c2: SQLITE_CONSTRAINT (extended: …)`
     const normalized = message.replace(/^D1_ERROR:\s*/, "");
     const match = normalized.match(/^UNIQUE constraint failed: (.+?)(?:: SQLITE_CONSTRAINT\b.*)?$/);
-    if (!match) continue;
-    return match[1]!
+    const captured = match?.[1];
+    if (captured === undefined) continue;
+    return captured
       .split(",")
       .map((pair) => pair.trim().split("."))
-      .filter((parts): parts is [string, string] => parts.length === 2)
-      .map(([table, column]) => [table, column] as [string, string]);
+      .filter((parts): parts is [string, string] => parts.length === 2);
   }
   return [];
 }
@@ -86,45 +116,84 @@ export function requireAdmin(c: Ctx): User {
 export async function enforceIpLimit(c: Ctx, scope: string, limit = 30): Promise<void> {
   const ip = c.req.header("CF-Connecting-IP");
   if (!ip) return;
-  if (!(await allowIp(ip, scope, limit))) fail(429, "rate_limited");
+  if (!(await allowIp(c, ip, scope, limit))) fail(429, "rate_limited");
 }
 
-const ipHits = new Map<string, number[]>();
-const IP_TRACK_MAX = 10_000;
+const RATE_LIMIT_WINDOW_MS = 60_000;
 
-async function allowIp(ip: string, scope: string, limit: number): Promise<boolean> {
-  const key = `${scope}:${ip}`;
-  const now = Date.now();
-  const window = 60_000;
-  const hits = (ipHits.get(key) ?? []).filter((t) => now - t < window);
-  while (ipHits.size >= IP_TRACK_MAX) {
-    let reclaimed = false;
-    for (const [k, v] of ipHits) {
-      if (v.every((t) => now - t >= window)) {
-        ipHits.delete(k);
-        reclaimed = true;
-        if (ipHits.size < IP_TRACK_MAX) break;
-      }
-    }
-    if (!reclaimed) {
-      let oldestKey: string | null = null;
-      let oldestAt = Number.POSITIVE_INFINITY;
-      for (const [k, v] of ipHits) {
-        const at = v[0] ?? Number.POSITIVE_INFINITY;
-        if (at < oldestAt) {
-          oldestAt = at;
-          oldestKey = k;
-        }
-      }
-      if (oldestKey === null) break;
-      ipHits.delete(oldestKey);
-    }
+async function allowIp(c: Ctx, ip: string, scope: string, limit: number): Promise<boolean> {
+  try {
+    const limiter = c.env.RateLimiter.get(c.env.RateLimiter.idFromName(`${scope}:${ip}`));
+    return await limiter.allow(limit, RATE_LIMIT_WINDOW_MS);
+  } catch (error) {
+    console.warn("[rate-limit] unavailable, allowing request", error instanceof Error ? error.message : error);
+    return true;
   }
-  if (hits.length >= limit) {
-    ipHits.set(key, hits);
-    return false;
+}
+
+const textEncoder = new TextEncoder();
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", textEncoder.encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function identifierTarget(c: Ctx, scope: string, identifier: string) {
+  const key = await sha256Hex(identifier.toLowerCase());
+  const shard = key.slice(0, 2);
+  return {
+    key,
+    limiter: c.env.RateLimiter.get(c.env.RateLimiter.idFromName(`${scope}:${shard}`)),
+  };
+}
+
+export async function enforceIdentifierLimit(
+  c: Ctx,
+  scope: string,
+  identifier: string,
+  limit: number,
+  windowMs: number,
+): Promise<void> {
+  let allowed = true;
+  try {
+    const { key, limiter } = await identifierTarget(c, scope, identifier);
+    allowed = await limiter.check(key, limit, windowMs);
+  } catch (error) {
+    console.warn("[rate-limit] unavailable, allowing request", error instanceof Error ? error.message : error);
   }
-  hits.push(now);
-  ipHits.set(key, hits);
-  return true;
+  if (!allowed) fail(429, "rate_limited");
+}
+
+export async function recordIdentifierHit(c: Ctx, scope: string, identifier: string, windowMs: number): Promise<void> {
+  try {
+    const { key, limiter } = await identifierTarget(c, scope, identifier);
+    await limiter.record(key, windowMs);
+  } catch (error) {
+    console.warn("[rate-limit] unavailable, skipping record", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function allowIdentifier(
+  c: Ctx,
+  scope: string,
+  identifier: string,
+  limit: number,
+  windowMs: number,
+): Promise<boolean> {
+  try {
+    const { key, limiter } = await identifierTarget(c, scope, identifier);
+    return await limiter.allowKey(key, limit, windowMs);
+  } catch (error) {
+    console.warn("[rate-limit] unavailable, allowing request", error instanceof Error ? error.message : error);
+    return true;
+  }
+}
+
+export async function clearIdentifierLimit(c: Ctx, scope: string, identifier: string): Promise<void> {
+  try {
+    const { key, limiter } = await identifierTarget(c, scope, identifier);
+    await limiter.clear(key);
+  } catch (error) {
+    console.warn("[rate-limit] unavailable, skipping clear", error instanceof Error ? error.message : error);
+  }
 }

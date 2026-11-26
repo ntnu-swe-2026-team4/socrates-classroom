@@ -11,14 +11,10 @@ export interface SearchOutcome {
   error: string | null;
 }
 
-interface WebsearchResponse {
-  items?: Array<{ url?: unknown; title?: unknown; description?: unknown }>;
-}
-
 export function createWebSearch(ai: Ai) {
   return async (query: string, numResults = 5): Promise<SearchOutcome> => {
     try {
-      const response = await (ai as unknown as { websearch?: (req: unknown) => Promise<Response> }).websearch!({
+      const response = await ai.websearch({
         gatewayId: "default",
         query,
         provider: "ceramic",
@@ -27,20 +23,26 @@ export function createWebSearch(ai: Ai) {
       if (!response.ok) {
         return { hits: [], error: `websearch_${response.status}` };
       }
-      const raw = (await response.json()) as WebsearchResponse;
+      const raw: unknown = await response.json();
       const hits: SearchHit[] = [];
-      for (const item of raw.items ?? []) {
-        try {
-          new URL(String(item.url ?? ""));
-          hits.push({
-            title: String(item.title ?? item.url ?? ""),
-            url: String(item.url ?? ""),
-            snippet: String(item.description ?? "")
-              .replace(/\s+/g, " ")
-              .trim()
-              .slice(0, 500),
-          });
-        } catch {}
+      const items: unknown = typeof raw === "object" && raw !== null ? Reflect.get(raw, "items") : undefined;
+      if (Array.isArray(items)) {
+        for (const entry of items) {
+          if (typeof entry !== "object" || entry === null) continue;
+          const url = Reflect.get(entry, "url");
+          if (typeof url !== "string") continue;
+          try {
+            new URL(url);
+            hits.push({
+              title: String(Reflect.get(entry, "title") ?? url),
+              url,
+              snippet: String(Reflect.get(entry, "description") ?? "")
+                .replace(/\s+/g, " ")
+                .trim()
+                .slice(0, 500),
+            });
+          } catch {}
+        }
       }
       return { hits, error: null };
     } catch (cause) {

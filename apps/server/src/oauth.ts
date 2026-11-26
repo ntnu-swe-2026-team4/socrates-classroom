@@ -9,12 +9,64 @@ export interface OAuthProfile {
   name: string;
 }
 
+export type OAuthIntent = "login" | "bind" | "reauth";
+
 export interface OAuthPending {
   provider: OAuthProvider;
   state: string;
   verifier: string;
   nonce: string;
   exp: number;
+  intent: OAuthIntent;
+  uid?: string;
+  ver?: number;
+  hint?: string;
+  returnTo?: string;
+}
+
+const OAUTH_INTENTS: readonly OAuthIntent[] = ["login", "bind", "reauth"];
+
+function isOAuthIntent(value: string): value is OAuthIntent {
+  return OAUTH_INTENTS.some((intent) => intent === value);
+}
+
+export function readOAuthPending(value: unknown): OAuthPending | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const provider = Reflect.get(value, "provider");
+  const state = Reflect.get(value, "state");
+  const verifier = Reflect.get(value, "verifier");
+  const nonce = Reflect.get(value, "nonce");
+  const exp = Reflect.get(value, "exp");
+  const intent = Reflect.get(value, "intent");
+  const uid = Reflect.get(value, "uid");
+  const ver = Reflect.get(value, "ver");
+  const hint = Reflect.get(value, "hint");
+  const returnTo = Reflect.get(value, "returnTo");
+  if (
+    typeof provider !== "string" ||
+    !isOAuthProvider(provider) ||
+    typeof state !== "string" ||
+    typeof verifier !== "string" ||
+    typeof nonce !== "string" ||
+    typeof exp !== "number" ||
+    typeof intent !== "string" ||
+    !isOAuthIntent(intent)
+  ) {
+    return null;
+  }
+  if (intent !== "login" && (typeof uid !== "string" || typeof ver !== "number")) return null;
+  return {
+    provider,
+    state,
+    verifier,
+    nonce,
+    exp,
+    intent,
+    ...(typeof uid === "string" ? { uid } : {}),
+    ...(typeof ver === "number" ? { ver } : {}),
+    ...(typeof hint === "string" ? { hint } : {}),
+    ...(typeof returnTo === "string" ? { returnTo } : {}),
+  };
 }
 
 export interface GoogleConfig {
@@ -50,7 +102,7 @@ export function oauthProviders(env: ProviderEnv): OAuthProvider[] {
 }
 
 export function isOAuthProvider(value: string): value is OAuthProvider {
-  return (OAUTH_PROVIDERS as readonly string[]).includes(value);
+  return OAUTH_PROVIDERS.some((provider) => provider === value);
 }
 
 export function randomToken(bytes = 32): string {
@@ -64,7 +116,7 @@ export async function pkceChallenge(verifier: string): Promise<string> {
 
 export async function googleAuthorizeUrl(config: GoogleConfig, pending: OAuthPending): Promise<string> {
   const url = new URL(GOOGLE_AUTH_URL);
-  url.search = new URLSearchParams({
+  const params = new URLSearchParams({
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
     response_type: "code",
@@ -74,7 +126,12 @@ export async function googleAuthorizeUrl(config: GoogleConfig, pending: OAuthPen
     code_challenge: await pkceChallenge(pending.verifier),
     code_challenge_method: "S256",
     prompt: "select_account",
-  }).toString();
+  });
+  if (pending.intent === "reauth") {
+    params.set("max_age", "0");
+    if (pending.hint) params.set("login_hint", pending.hint);
+  }
+  url.search = params.toString();
   return url.toString();
 }
 
@@ -92,25 +149,17 @@ export async function googleProfile(config: GoogleConfig, code: string, pending:
     }),
   });
   if (!res.ok) throw new OAuthError("oauth_failed");
-  const body = (await res.json()) as { id_token?: unknown };
-  if (typeof body.id_token !== "string") throw new OAuthError("oauth_failed");
+  const body: unknown = await res.json();
+  if (!isJsonObject(body) || typeof body.id_token !== "string") throw new OAuthError("oauth_failed");
   return verifyGoogleIdToken(body.id_token, config.clientId, pending.nonce);
 }
 
-interface IdTokenClaims {
-  iss?: unknown;
-  aud?: unknown;
-  exp?: unknown;
-  iat?: unknown;
-  sub?: unknown;
-  nonce?: unknown;
-  email?: unknown;
-  email_verified?: unknown;
-  name?: unknown;
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function decodeSegment<T>(segment: string): T {
-  return JSON.parse(new TextDecoder().decode(fromB64url(segment))) as T;
+function decodeSegment(segment: string): unknown {
+  return JSON.parse(new TextDecoder().decode(fromB64url(segment)));
 }
 
 export async function verifyGoogleIdToken(
@@ -121,18 +170,20 @@ export async function verifyGoogleIdToken(
 ): Promise<OAuthProfile> {
   const [headerPart, payloadPart, signaturePart] = token.split(".");
   if (!headerPart || !payloadPart || !signaturePart) throw new OAuthError("oauth_failed");
-  let header: { alg?: unknown; kid?: unknown };
-  let claims: IdTokenClaims;
+  let header: Record<string, unknown> = {};
+  let claims: Record<string, unknown> = {};
   try {
-    header = decodeSegment(headerPart);
-    claims = decodeSegment(payloadPart);
+    const decodedHeader: unknown = decodeSegment(headerPart);
+    const decodedClaims: unknown = decodeSegment(payloadPart);
+    if (isJsonObject(decodedHeader)) header = decodedHeader;
+    if (isJsonObject(decodedClaims)) claims = decodedClaims;
   } catch {
     throw new OAuthError("oauth_failed");
   }
   if (header.alg !== "RS256" || typeof header.kid !== "string") throw new OAuthError("oauth_failed");
   const key = await googleKey(header.kid);
   const signed = new TextEncoder().encode(`${headerPart}.${payloadPart}`);
-  const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, fromB64url(signaturePart) as BufferSource, signed);
+  const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, fromB64url(signaturePart), signed);
   if (!valid) throw new OAuthError("oauth_failed");
 
   const nowSeconds = Math.floor(now / 1000);
@@ -170,9 +221,17 @@ async function loadJwks(force: boolean): Promise<Jwk[]> {
   if (!force && jwksCache && jwksCache.expiresAt > Date.now()) return jwksCache.keys;
   const res = await fetch(GOOGLE_JWKS_URL);
   if (!res.ok) throw new OAuthError("oauth_failed");
-  const body = (await res.json()) as { keys?: Jwk[] };
+  const body: unknown = await res.json();
+  const keys: Jwk[] = [];
+  if (isJsonObject(body) && Array.isArray(body.keys)) {
+    for (const key of body.keys) {
+      if (isJsonObject(key) && typeof key.kid === "string" && typeof key.n === "string" && typeof key.e === "string") {
+        keys.push({ kty: "RSA", kid: key.kid, n: key.n, e: key.e });
+      }
+    }
+  }
   const maxAge = Number(/max-age=(\d+)/.exec(res.headers.get("Cache-Control") ?? "")?.[1] ?? 3600);
-  jwksCache = { keys: body.keys ?? [], expiresAt: Date.now() + Math.min(maxAge, 86400) * 1000 };
+  jwksCache = { keys, expiresAt: Date.now() + Math.min(maxAge, 86400) * 1000 };
   return jwksCache.keys;
 }
 
@@ -208,13 +267,15 @@ export async function appsecretProof(appSecret: string, accessToken: string): Pr
 
 export function facebookAuthorizeUrl(config: FacebookConfig, pending: OAuthPending): string {
   const url = new URL(FACEBOOK_DIALOG_URL);
-  url.search = new URLSearchParams({
+  const params = new URLSearchParams({
     client_id: config.appId,
     redirect_uri: config.redirectUri,
     response_type: "code",
     scope: "email",
     state: pending.state,
-  }).toString();
+  });
+  if (pending.intent === "reauth") params.set("auth_type", "reauthenticate");
+  url.search = params.toString();
   return url.toString();
 }
 
@@ -228,8 +289,8 @@ export async function facebookProfile(config: FacebookConfig, code: string): Pro
   }).toString();
   const tokenRes = await fetch(tokenUrl);
   if (!tokenRes.ok) throw new OAuthError("oauth_failed");
-  const tokenBody = (await tokenRes.json()) as { access_token?: unknown };
-  if (typeof tokenBody.access_token !== "string" || tokenBody.access_token.length === 0) {
+  const tokenBody: unknown = await tokenRes.json();
+  if (!isJsonObject(tokenBody) || typeof tokenBody.access_token !== "string" || tokenBody.access_token.length === 0) {
     throw new OAuthError("oauth_failed");
   }
   const meUrl = new URL(FACEBOOK_ME_URL);
@@ -240,7 +301,9 @@ export async function facebookProfile(config: FacebookConfig, code: string): Pro
   }).toString();
   const meRes = await fetch(meUrl);
   if (!meRes.ok) throw new OAuthError("oauth_failed");
-  const me = (await meRes.json()) as { id?: unknown; name?: unknown; email?: unknown };
+  const meBody: unknown = await meRes.json();
+  if (!isJsonObject(meBody)) throw new OAuthError("oauth_failed");
+  const me = meBody;
   if (typeof me.id !== "string" || me.id.length === 0) throw new OAuthError("oauth_failed");
   const name = (typeof me.name === "string" ? me.name : "").trim().slice(0, 80) || `Facebook ${me.id.slice(0, 8)}`;
   const email = typeof me.email === "string" && me.email.length > 0 ? me.email.toLowerCase() : null;

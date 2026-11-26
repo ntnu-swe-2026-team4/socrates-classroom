@@ -9,7 +9,17 @@ export interface TermQuery {
 export function readTermHistory(): TermQuery[] {
   try {
     const raw = localStorage.getItem(TERM_KEY);
-    return raw ? (JSON.parse(raw) as TermQuery[]) : [];
+    if (raw === null) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const queries: TermQuery[] = [];
+    for (const entry of parsed) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const term = Reflect.get(entry, "term");
+      const at = Reflect.get(entry, "at");
+      if (typeof term === "string" && typeof at === "string") queries.push({ term, at });
+    }
+    return queries;
   } catch {
     return [];
   }

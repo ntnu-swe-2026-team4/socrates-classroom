@@ -1,9 +1,10 @@
+import { publishClassroom } from "../do/classroom-events";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
-import { JoinInputSchema } from "@socrates/shared";
+import { JoinInputSchema, type JoinResult } from "@socrates/shared";
 import { one, run } from "../db/d1";
 import { PARTICIPANT_COOKIE, lookupParticipant, startParticipantSession } from "../auth";
-import { enforceIpLimit, fail, nowIso, parseBody, uniqueViolationColumns, type AppEnv } from "../http";
+import { enforceIpLimit, fail, nowIso, rateLimit, uniqueViolationColumns, validateJson, type AppEnv } from "../http";
 import {
   createGuestParticipant,
   ensureParticipant,
@@ -28,9 +29,8 @@ export function joinRoutes() {
       const topic = await topicOf(c.env.DB, activity.topic_id);
       return c.json({ code: classroom.join_code, classroomName: classroom.name, topic });
     })
-    .post("/join", async (c) => {
-      await enforceIpLimit(c, "join", 30);
-      const input = await parseBody(c, JoinInputSchema);
+    .post("/join", rateLimit("join", 30), validateJson(JoinInputSchema), async (c) => {
+      const input = c.req.valid("json");
       if (input.tosAccepted !== true) fail(422, "tos_required");
       const classroom = await one<ClassroomRow>(c.env.DB, "SELECT * FROM classrooms WHERE join_code = $code", {
         code: input.code,
@@ -72,14 +72,16 @@ export function joinRoutes() {
             if (taken) fail(409, "name_taken");
             throw error;
           }
+          await publishClassroom(c.env, classroom.id, "members");
         }
         const participant = finished ? null : await ensureParticipant(c.env.DB, activityId, user, nowIso());
-        return c.json({
+        const payload: JoinResult = {
           user,
           activityId,
           participantId: participant?.id ?? null,
           kind: participant ? (participant.kind === "guest" ? "guest" : "member") : null,
-        });
+        };
+        return c.json(payload);
       }
 
       const held = await lookupParticipant(c.env, getCookie(c, PARTICIPANT_COOKIE));
@@ -87,7 +89,8 @@ export function joinRoutes() {
         const participant = await participantOf(c.env.DB, activityId, held.participantId);
         if (participant && participant.user_id === null) {
           await startParticipantSession(c, activityId, participant.id);
-          return c.json({ user: null, activityId, participantId: participant.id, kind: "guest" });
+          const payload: JoinResult = { user: null, activityId, participantId: participant.id, kind: "guest" };
+          return c.json(payload);
         }
       }
 
@@ -96,6 +99,7 @@ export function joinRoutes() {
       if (!name) fail(422, "validation");
       const participant = await createGuestParticipant(c.env.DB, activityId, name, nowIso());
       await startParticipantSession(c, activityId, participant.id);
-      return c.json({ user: null, activityId, participantId: participant.id, kind: "guest" });
+      const payload: JoinResult = { user: null, activityId, participantId: participant.id, kind: "guest" };
+      return c.json(payload);
     });
 }

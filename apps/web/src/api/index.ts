@@ -16,6 +16,8 @@ export type {
   DevAccount,
   DevAccountClassroom,
   DevAccounts,
+  Engagement,
+  EngagementVisibility,
   InviteInfo,
   InviteJoined,
   JoinInfo,

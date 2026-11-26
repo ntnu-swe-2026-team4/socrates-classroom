@@ -12,6 +12,9 @@ import {
 import type { Context } from "@earendil-works/chord/context";
 import { gatewayConfig } from "../../../gateway/config.gen";
 import type { Ai } from "@cloudflare/workers-types";
+import EMOTION_RAW from "../../../prompts/emotion-classify.md?raw";
+import { clefChoicePrompt } from "../../clef-prompt";
+import { aiRunOf, readChoiceResult } from "../../ai-run";
 
 export type Emotion = "happy" | "angry" | "confused" | "neutral";
 
@@ -31,17 +34,7 @@ export const EmotionEntry: Entry<{
 
 const EMOTION_MODEL = gatewayConfig.classifiers.emotion;
 
-const EMOTION_CRITERIA = {
-  happy:
-    "The student said something warm, funny, or made real progress: praised, joked, found a contradiction themselves, improved their reasoning",
-  angry: "The student was rude, dismissive, or refusing to think (restrained, teacher-like sternness, not real anger)",
-  confused: "The student's message is genuinely unclear: vague, self-contradictory, undefined terms, or nonsensical",
-  neutral: "A normal Socratic follow-up without particular emotion",
-};
-
-interface ClefRunResult {
-  answers?: Record<string, { choice?: string; probabilities?: Record<string, number>; confidence?: number }>;
-}
+export const EMOTION_QUESTION = clefChoicePrompt(EMOTION_RAW, EMOTIONS);
 
 export function createEmotionClassifier(ai: Ai): (text: string) => Promise<EmotionJudgment | null> {
   return (text) => classify(ai, text);
@@ -49,28 +42,24 @@ export function createEmotionClassifier(ai: Ai): (text: string) => Promise<Emoti
 
 async function classify(ai: Ai, text: string): Promise<EmotionJudgment | null> {
   try {
-    const raw = (await (ai as unknown as { run: (m: string, i: unknown) => Promise<unknown> }).run(EMOTION_MODEL, {
+    const raw = await aiRunOf(ai)(EMOTION_MODEL, {
       state: { latest: text.slice(0, 2000) },
       questions: {
-        emotion: {
-          type: "choice",
-          instructions: "Pick the Socrates avatar's reaction to the student's latest message in a philosophy dialogue.",
-          criteria: EMOTION_CRITERIA,
-        },
+        emotion: { type: "choice", ...EMOTION_QUESTION },
       },
-    })) as ClefRunResult;
+    });
     return emotionOf(raw);
   } catch {
     return null;
   }
 }
 
-export function emotionOf(raw: ClefRunResult): EmotionJudgment | null {
-  const answer = raw.answers?.emotion;
-  const choice = answer?.choice;
-  if (answer === undefined || choice === undefined || !EMOTIONS.includes(choice as Emotion)) return null;
-  const emotion = choice as Emotion;
-  return { emotion, probabilities: answer.probabilities ?? {}, confidence: answer.confidence ?? 0 };
+export function emotionOf(raw: unknown): EmotionJudgment | null {
+  const answer = readChoiceResult(raw, "emotion");
+  if (answer === null) return null;
+  const emotion = EMOTIONS.find((candidate) => candidate === answer.choice);
+  if (emotion === undefined) return null;
+  return { emotion, probabilities: answer.probabilities, confidence: answer.confidence };
 }
 
 function lastStudentTextOf(run: RunSummary, api: HookApi, context: Context): Promise<string> {
@@ -106,13 +95,15 @@ export function createAvatarExtension(ai: Ai | undefined) {
         }
         const judgment = await classifier(task.input.text);
         if (judgment) {
-          const handle = (await runtime.conversation(runtime.conversationId, context))!;
-          await runtime.commit(async (tx) => {
-            await handle.submit(tx, {
-              type: "write",
-              entry: { kind: "app.emotion", data: { ...judgment } },
-            });
-          }, context);
+          const handle = await runtime.conversation(runtime.conversationId, context);
+          if (handle) {
+            await runtime.commit(async (tx) => {
+              await handle.submit(tx, {
+                type: "write",
+                entry: { kind: "app.emotion", data: { ...judgment } },
+              });
+            }, context);
+          }
         }
         await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
       },

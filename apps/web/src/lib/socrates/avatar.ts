@@ -39,12 +39,13 @@ class ClipLayer {
     this.duration = duration;
     this.fadeIn = fadeIn;
     this.fadeOut = fadeOut;
-    this.interp = (
-      track as unknown as { createInterpolant: () => { evaluate: (t: number) => Float64Array } }
-    ).createInterpolant();
+    this.interp = trackInterpolantOf(track);
     const k = track.values.length / track.times.length;
     this.used = new Array(k).fill(false);
-    for (let i = 0; i < track.values.length; i++) if (Math.abs(track.values[i]) > 0.01) this.used[i % k] = true;
+    for (let i = 0; i < track.values.length; i++) {
+      const value = track.values[i] ?? 0;
+      if (Math.abs(value) > 0.01) this.used[i % k] = true;
+    }
     this.time = 0;
     this.weight = 0;
     this.playing = false;
@@ -78,8 +79,9 @@ class ClipLayer {
   }
 
   apply(i: number, base: number): number {
-    if (!this.weight || !this.used[i] || !this.values) return base;
-    return base + (this.values[i]! - base) * this.weight;
+    const value = this.values?.[i];
+    if (!this.weight || !this.used[i] || value === undefined) return base;
+    return base + (value - base) * this.weight;
   }
 }
 
@@ -87,6 +89,27 @@ type MorphMesh = THREE.Mesh & {
   morphTargetDictionary: Record<string, number>;
   morphTargetInfluences: number[];
 };
+
+function isMorphMesh(obj: THREE.Object3D): obj is MorphMesh {
+  if (!(obj instanceof THREE.Mesh)) return false;
+  const dict: unknown = Reflect.get(obj, "morphTargetDictionary");
+  const influences: unknown = Reflect.get(obj, "morphTargetInfluences");
+  return typeof dict === "object" && dict !== null && !Array.isArray(dict) && Array.isArray(influences);
+}
+
+function trackInterpolantOf(track: THREE.KeyframeTrack): { evaluate: (t: number) => Float64Array } {
+  const factory: unknown = Reflect.get(track, "createInterpolant");
+  if (typeof factory !== "function") throw new Error("keyframe track lacks createInterpolant");
+  const interp: unknown = Reflect.apply(factory, track, []);
+  const evaluate: unknown = typeof interp === "object" && interp !== null ? Reflect.get(interp, "evaluate") : undefined;
+  if (typeof evaluate !== "function") throw new Error("keyframe track interpolant lacks evaluate");
+  return {
+    evaluate: (t: number): Float64Array => {
+      const out: unknown = Reflect.apply(evaluate, interp, [t]);
+      return out instanceof Float64Array ? out : new Float64Array();
+    },
+  };
+}
 
 export class Avatar {
   root: THREE.Group;
@@ -114,12 +137,10 @@ export class Avatar {
     this.time = 0;
 
     model.traverse((obj: THREE.Object3D) => {
-      const mesh = obj as THREE.Mesh;
-      if (mesh.isMesh && mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
-        this.meshes.push(mesh as MorphMesh);
+      if (isMorphMesh(obj)) {
+        this.meshes.push(obj);
       }
     });
-    if (this.meshes.length === 0) console.warn("Model has no morph targets; lip-sync disabled");
     for (const v of VISEMES) {
       this.visemeTarget.set(v, 0);
       this.visemeCurrent.set(v, 0);

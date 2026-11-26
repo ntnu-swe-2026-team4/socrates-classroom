@@ -111,6 +111,11 @@ const M: Record<ErrorCode, Entry> = {
     en: "This account's email is not verified.",
     es: "El correo de esta cuenta no está verificado.",
   },
+  email_unverified: {
+    zh: "請先驗證信箱：我們已寄出驗證信，點擊信中的連結後即可繼續使用。",
+    en: "Verify your email first: we sent you a verification link; click it to continue.",
+    es: "Verifica tu correo primero: te enviamos un enlace de verificación; ábrelo para continuar.",
+  },
   oauth_failed: {
     zh: "第三方登入失敗，請再試一次。",
     en: "Third-party sign-in failed. Please try again.",
@@ -120,6 +125,76 @@ const M: Record<ErrorCode, Entry> = {
     zh: "重設密碼的連結無效或已過期，請重新申請。",
     en: "This password reset link is invalid or has expired. Please request a new one.",
     es: "Este enlace para restablecer la contraseña no es válido o ha caducado. Solicita uno nuevo.",
+  },
+  verify_token_invalid: {
+    zh: "驗證信箱的連結無效或已過期。",
+    en: "This email verification link is invalid or has expired.",
+    es: "Este enlace de verificación no es válido o ha caducado.",
+  },
+  email_not_set: {
+    zh: "這個帳號沒有 email，不需要驗證。",
+    en: "This account has no email to verify.",
+    es: "Esta cuenta no tiene un correo que verificar.",
+  },
+  topic_axes_required: {
+    zh: "這個題目還沒有價值軸，請先設定 1 到 3 條。",
+    en: "This topic has no value axes yet. Set 1 to 3 first.",
+    es: "Este tema aún no tiene ejes de valor. Define de 1 a 3 primero.",
+  },
+  report_axes_not_allowed: {
+    zh: "目前只允許另一種價值軸設定方式。",
+    en: "Only the other way of setting the value axes is allowed right now.",
+    es: "Ahora solo se permite la otra forma de definir los ejes de valor.",
+  },
+  reauth_required: {
+    zh: "請先再次驗證身分，才能變更登入方式。",
+    en: "Confirm your identity again before changing sign-in methods.",
+    es: "Confirma tu identidad de nuevo antes de cambiar los métodos de acceso.",
+  },
+  invalid_credentials: {
+    zh: "密碼不正確。",
+    en: "That password is not correct.",
+    es: "Esa contraseña no es correcta.",
+  },
+  password_not_set: {
+    zh: "這個帳號沒有密碼，請改用已綁定的登入方式驗證。",
+    en: "This account has no password. Verify with a linked sign-in method instead.",
+    es: "Esta cuenta no tiene contraseña. Verifícate con un método de acceso vinculado.",
+  },
+  identity_taken: {
+    zh: "這個帳號已經綁在另一個使用者身上了。",
+    en: "That account is already linked to another user.",
+    es: "Esa cuenta ya está vinculada a otro usuario.",
+  },
+  provider_already_linked: {
+    zh: "你已經綁定這個登入方式了。",
+    en: "You have already linked this sign-in method.",
+    es: "Ya has vinculado este método de acceso.",
+  },
+  email_already_linked: {
+    zh: "這個帳號已經有 Email 登入方式，請改用變更信箱或密碼。",
+    en: "This account already has an email sign-in method. Change the email or password instead.",
+    es: "Esta cuenta ya tiene acceso con email. Cambia el correo o la contraseña.",
+  },
+  identity_not_found: {
+    zh: "這個登入方式不在你的帳號上。",
+    en: "This sign-in method is not on your account.",
+    es: "Este método de acceso no está en tu cuenta.",
+  },
+  last_login_method: {
+    zh: "這是最後一種登入方式，不能解除綁定。",
+    en: "This is your last sign-in method, so it cannot be removed.",
+    es: "Este es tu último método de acceso, así que no se puede quitar.",
+  },
+  last_verified_method: {
+    zh: "這是帳號最後一種已驗證的登入方式，請先完成信箱驗證再解除綁定。",
+    en: "This is the account's last verified sign-in method. Verify your email before removing it.",
+    es: "Es el último método de acceso verificado de la cuenta. Verifica tu correo antes de quitarlo.",
+  },
+  reauth_identity_mismatch: {
+    zh: "驗證回來的帳號和目前登入的帳號不同，請再試一次。",
+    en: "The account you verified with is not the account that is signed in. Try again.",
+    es: "La cuenta con la que te verificaste no es la cuenta actual. Inténtalo de nuevo.",
   },
 };
 

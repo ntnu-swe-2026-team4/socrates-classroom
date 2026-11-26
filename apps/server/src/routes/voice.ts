@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { TtsInputSchema } from "@socrates/shared";
-import { enforceIpLimit, fail, langOf, parseBody, requireUser, type AppEnv } from "../http";
+import { enforceIpLimit, fail, guardUser, langOf, rateLimit, requireUser, validateJson, type AppEnv } from "../http";
 import { gatewayConfig } from "../gateway/config.gen";
+import { aiRunOf } from "../pi/ai-run";
 import { BindingModelSchema } from "../gateway/gateway-schema";
 
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
@@ -94,19 +95,19 @@ export function voiceRoutes() {
       }
       const input = { audio: btoa(binary), language: langOf(c) };
       try {
-        const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
-        const result = (await ai.run(gatewayConfig.voice.stt, input)) as { text?: string };
-        if (result?.text) return c.json({ text: result.text });
+        const result: unknown = await aiRunOf(c.env.AI)(gatewayConfig.voice.stt, input);
+        if (typeof result === "object" && result !== null) {
+          const text = Reflect.get(result, "text");
+          if (typeof text === "string" && text) return c.json({ text });
+        }
         fail(502, "llm_unavailable");
       } catch (error) {
         console.error("[stt] binding failed", error instanceof Error ? error.name : typeof error);
         fail(502, "llm_unavailable");
       }
     })
-    .post("/tts", async (c) => {
-      requireUser(c);
-      await enforceIpLimit(c, "tts", 30);
-      const parsed = await parseBody(c, TtsInputSchema);
+    .post("/tts", guardUser(), rateLimit("tts", 30), validateJson(TtsInputSchema), async (c) => {
+      const parsed = c.req.valid("json");
       const speech = cleanSpeechText(parsed.text);
       if (!speech) fail(502, "llm_unavailable");
       const input = { text: speech, lang: parsed.lang };
@@ -116,24 +117,21 @@ export function voiceRoutes() {
       const ttsModel = c.env.TTS_MODEL ?? gatewayConfig.voice.tts;
       if (c.env.AI && ttsModel) {
         try {
-          const ai = c.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
-          const result = (await ai.run(ttsModel, bindingTtsInput(ttsModel, input.text, input.lang))) as
-            | ReadableStream
-            | ArrayBuffer
-            | Uint8Array
-            | string
-            | { audio?: ReadableStream | ArrayBuffer | Uint8Array | string; result?: { audio?: string } };
-          if (result && typeof result === "object" && "result" in result) {
-            const url = result.result?.audio;
-            if (typeof url === "string" && url.startsWith("https://")) {
-              const upstream = await fetch(url);
-              if (!upstream.ok || !upstream.body) fail(502, "llm_unavailable");
-              return new Response(upstream.body, {
-                headers: {
-                  "Content-Type": upstream.headers.get("Content-Type") ?? "audio/mpeg",
-                  "Cache-Control": "no-store",
-                },
-              });
+          const result: unknown = await aiRunOf(c.env.AI)(ttsModel, bindingTtsInput(ttsModel, input.text, input.lang));
+          if (typeof result === "object" && result !== null) {
+            const inner: unknown = Reflect.get(result, "result");
+            if (typeof inner === "object" && inner !== null) {
+              const url: unknown = Reflect.get(inner, "audio");
+              if (typeof url === "string" && url.startsWith("https://")) {
+                const upstream = await fetch(url);
+                if (!upstream.ok || !upstream.body) fail(502, "llm_unavailable");
+                return new Response(upstream.body, {
+                  headers: {
+                    "Content-Type": upstream.headers.get("Content-Type") ?? "audio/mpeg",
+                    "Cache-Control": "no-store",
+                  },
+                });
+              }
             }
           }
           let bytes: Uint8Array | null = null;
@@ -145,8 +143,8 @@ export function voiceRoutes() {
             bytes = result;
           } else if (typeof result === "string" && /^[A-Za-z0-9+/=]+$/.test(result.slice(0, 8))) {
             bytes = Uint8Array.from(atob(result), (ch) => ch.charCodeAt(0));
-          } else if (result && typeof result === "object" && "audio" in result) {
-            const field = (result as { audio?: ReadableStream | ArrayBuffer | Uint8Array | string }).audio;
+          } else if (typeof result === "object" && result !== null) {
+            const field: unknown = Reflect.get(result, "audio");
             if (typeof field === "string") bytes = Uint8Array.from(atob(field), (ch) => ch.charCodeAt(0));
             else if (field instanceof ArrayBuffer) bytes = new Uint8Array(field);
             else if (field instanceof Uint8Array) bytes = field;
@@ -155,7 +153,7 @@ export function voiceRoutes() {
             const isWav = bytes[0] === 0x52 && bytes[1] === 0x49;
             const isMp3 = bytes[0] === 0x49 || bytes[0] === 0xff;
             const contentType = isWav ? "audio/wav" : isMp3 ? "audio/mpeg" : "application/octet-stream";
-            return new Response(bytes as unknown as BodyInit, {
+            return new Response(bytes, {
               headers: { "Content-Type": contentType, "Cache-Control": "no-store" },
             });
           }
@@ -167,7 +165,7 @@ export function voiceRoutes() {
       }
       if (c.env.LLM_PROVIDER !== "mock") fail(502, "llm_unavailable");
       const wav = synthWav(input.text, input.lang);
-      return new Response(wav as unknown as BodyInit, {
+      return new Response(wav, {
         headers: { "Content-Type": "audio/wav", "Cache-Control": "no-store" },
       });
     });

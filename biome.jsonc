@@ -1,4 +1,5 @@
 {
+  "plugins": ["./node_modules/biome-plugin-tanstack-query/rules/recommended-strict.grit"],
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "vcs": {
     "enabled": true,
@@ -19,7 +20,8 @@
       "!**/config.gen.ts",
       "!.agents",
       "!.claude",
-      "!.playwright-cli"
+      "!.playwright-cli",
+      "!apps/server/src/prompts"
     ]
   },
   "formatter": {
@@ -42,36 +44,110 @@
   },
   "linter": {
     "enabled": true,
+    "domains": {
+      "react": "recommended",
+      "test": "recommended",
+      "types": "all"
+    },
     "rules": {
       "preset": "recommended",
       "correctness": {
-        "noUnusedVariables": "warn",
-        "noUnusedImports": "warn"
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error"
       },
       "style": {
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "error"
       },
       "complexity": {
         "noVoid": "off"
       },
-      "a11y": {
-        "useKeyWithClickEvents": "off",
-        "noStaticElementInteractions": "off",
-        "useAnchorContent": "off",
-        "useSemanticElements": "warn",
-        "noLabelWithoutControl": "off"
+      "nursery": {
+        "useReactCompiler": "error",
+        "noUselessTypeConversion": "error",
+        "noReturnInFinally": "error",
+        "noUnsafeTypeAssertion": "error",
+        "useAwaitThenable": "off"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "error"
       },
       "suspicious": {
-        "noExplicitAny": "off",
-        "noArrayIndexKey": "warn"
+        "noExplicitAny": "error",
+        "useArraySortCompare": "error",
+        "noArrayIndexKey": "error",
+        "noConsole": "error",
+        "noDebugger": "error",
+        "noUnnecessaryConditions": "off"
       }
     }
   },
   "overrides": [
     {
-      "includes": ["apps/web/src/landing/**"],
+      "includes": ["apps/web/src/**"],
       "linter": {
-        "enabled": false
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "react": {
+                    "importNames": ["useEffect"],
+                    "message": "useEffect is banned in apps/web"
+                  },
+                  "rehype-raw": {
+                    "message": "react-markdown only — raw HTML in markdown is a stated boundary (AGENTS.md)"
+                  }
+                },
+                "patterns": [
+                  {
+                    "group": ["**/server/src/**", "@socrates/server"],
+                    "message": "the server contract channel is @server/* (dist/types) only — never import server source (R6)"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/server/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/test/**", "apps/web/dev/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/server/src/pi/ai-run.ts",
+        "apps/server/src/ws/protocol.ts",
+        "apps/web/src/api/http.ts",
+        "apps/web/src/hooks/useSubscription.ts",
+        "apps/web/src/lib/voiceInput.ts",
+        "apps/web/src/lib/wsProtocol.ts",
+        "apps/server/tests/helpers.ts",
+        "apps/web/src/test/helpers.ts"
+      ],
+      "linter": {
+        "rules": {
+          "nursery": {
+            "noUnsafeTypeAssertion": "off"
+          }
+        }
       }
     }
   ],
