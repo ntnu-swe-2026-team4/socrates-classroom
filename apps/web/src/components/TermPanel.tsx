@@ -6,7 +6,7 @@ import { api, type TermExplanation } from "@/api";
 import { readTermHistory } from "@/api/local";
 import { Markdown } from "@/components/Markdown";
 import { Spinner, cn } from "@/components/ui";
-import { useSelectionPopover } from "@/hooks/useSelectionPopover";
+import { selectionPopoverClass, useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { useT } from "@/i18n";
 
 export interface TermPanelHandle {
@@ -242,8 +242,11 @@ export const TermPanel = forwardRef<TermPanelHandle, { open: boolean; onClose: (
               void lookup(selection.text);
               clear();
             }}
-            className="fixed z-50 -translate-x-1/2 -translate-y-full rounded-full bg-ink px-3.5 py-1.5 text-[12.5px] text-paper shadow-sm"
-            style={{ left: selection.x, top: selection.y - 8 }}
+            className={cn(
+              "fixed z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12.5px] text-paper shadow-sm",
+              selectionPopoverClass(selection),
+            )}
+            style={{ left: selection.x, top: selection.y }}
           >
             {t("term_lookup")}「<span className="inline-block max-w-52 truncate align-middle">{selection.text}</span>」
           </button>
