@@ -1,6 +1,8 @@
 import { Suspense, lazy, useRef, useState } from "react";
 import { classroomsOptions } from "@/api/queries";
 import { useAccountSheetRequest } from "@/lib/accountSheet";
+import { ProfileAvatar } from "@/components/ProfileCard";
+import { AVATAR_CLASS, useProfile } from "@/lib/profile";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -183,6 +185,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   const [classroomsOpen, setClassroomsOpen] = useState(pathname.startsWith("/classrooms"));
 
   const me = useQuery(meQueryOptions);
+  const profile = useProfile(me.data);
   const logout = useMutation({
     mutationFn: () => api.logout(),
     onSuccess: async () => {
@@ -318,12 +321,19 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
             RAIL_FOCUS,
           )}
         >
-          <Initial
-            name={me.data?.name}
-            className="size-8 rounded-none bg-ht-solid font-comic-serif text-[14px] font-bold text-ht-on-solid"
-          />
+          {profile.image ? (
+            <ProfileAvatar profile={profile} className="size-8 rounded-none" />
+          ) : (
+            <Initial
+              name={profile.name}
+              className={cn(
+                "size-8 rounded-none bg-ht-solid font-comic-serif text-[14px] font-bold text-ht-on-solid",
+                profile.avatar !== "ink" && AVATAR_CLASS[profile.avatar],
+              )}
+            />
+          )}
           <span className="line-clamp-1 max-w-[76px] break-all text-center text-[11px] leading-tight">
-            {me.data?.name}
+            {profile.name}
           </span>
         </button>
       ) : (
@@ -390,9 +400,9 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
             </h2>
             {me.data && (
               <div className="flex items-center gap-3 px-2.5 py-2.5">
-                <Initial name={me.data.name} className="size-9 text-[14px]" />
+                <ProfileAvatar profile={profile} className="size-9 text-[14px]" />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[14px] font-medium text-ink">{me.data.name}</div>
+                  <div className="truncate text-[14px] font-medium text-ink">{profile.name}</div>
                 </div>
               </div>
             )}

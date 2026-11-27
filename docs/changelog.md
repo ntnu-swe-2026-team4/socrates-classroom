@@ -10,6 +10,13 @@
 - `@cf/myshell-ai/melotts` 改為下架紀錄：2026-11-05 changelog 宣布、2026-11-20 下架後回 410，保留舊介面形狀
 - 待辦新增兩項未查證事項：`default` gateway 的 ZDR 設定、`voice.ts` 送出的 `language: "es"` 不在官方代碼清單
 - `docs/architecture.md` 架構圖的 voice 節點與 TTS 路徑說明改為 grok-tts
+## 2026-11-26 — 個人資料設定：顯示名稱與頭像（`feat/477-profile-settings`，#477）
+
+### Added
+
+- 設定頁「帳號與登入方式」最上方新增「個人資料」卡片（`ProfileCard`）：修改顯示名稱（1–80 字）、上傳圖片當頭像（瀏覽器端置中裁切並縮成 128×128 JPEG）或選名字首字的底色（五種）
+- 側邊欄與帳號選單改讀同一份 profile（`useProfile`），儲存後立即同步
+- 前端 mock：後端尚無改名／頭像端點（#234），資料暫存 localStorage（`profile-mock:<userId>`），僅本機可見；Email 驗證與 SSO 綁定沿用 #138 的「登入方式」卡片
 
 ## 2026-11-26 — 正式站語音與分類器全失效：aiRunOf 遺失 binding receiver（`fix/ai-run-this-binding`，#439）
 

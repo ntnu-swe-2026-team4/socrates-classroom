@@ -2,6 +2,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { meOf } from "@/api/me";
 import { Card, PageHeader, Segmented, cn } from "@/components/ui";
 import { LoginMethods, providerLabel } from "@/components/LoginMethods";
+import { ProfileCard } from "@/components/ProfileCard";
 import { ProviderKeys } from "@/components/ProviderKeys";
 import { locales, setLocale, useI18n, useT, type Locale, type MessageKey } from "@/i18n";
 import { companion, useCompanion } from "@/lib/companion";
@@ -142,6 +143,7 @@ function SettingsPage() {
           {section === "account" && (
             <>
               <SettingsNotice />
+              <ProfileCard />
               <LoginMethods />
             </>
           )}
