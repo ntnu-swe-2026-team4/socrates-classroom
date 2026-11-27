@@ -65,6 +65,7 @@ const scenes = new Set<CompanionScene>();
 
 export interface CompanionScene {
   setSpeaking(speaking: boolean): void;
+  setAmplitude(value: number): void;
   setExpression(name: CompanionExpression | null, options: { loop: boolean }): void;
 }
 
@@ -136,9 +137,19 @@ export const companion = {
     companion.setMuted(!state.muted);
   },
   setSpeakingSource(source: SpeechSource | null) {
-    if (state.speakingSource === source) return;
-    update({ speakingSource: source, speaking: source !== null });
-    for (const scene of scenes) scene.setSpeaking(source !== null);
+    if (state.speakingSource === source && !state.speaking) return;
+    const wasSpeaking = state.speaking;
+    update({ speakingSource: source, speaking: false });
+    if (wasSpeaking) for (const scene of scenes) scene.setSpeaking(false);
+  },
+  setSpeechPlaying() {
+    if (state.speakingSource === null || state.speaking) return;
+    update({ speaking: true });
+    for (const scene of scenes) scene.setSpeaking(true);
+  },
+  setAmplitude(value: number) {
+    if (!state.speaking) return;
+    for (const scene of scenes) scene.setAmplitude(value);
   },
   playExpression(name: CompanionManualExpression | null) {
     const clip = name === "neutral" ? null : name;

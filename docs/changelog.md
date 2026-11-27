@@ -10,6 +10,16 @@
 - `@cf/myshell-ai/melotts` 改為下架紀錄：2026-11-05 changelog 宣布、2026-11-20 下架後回 410，保留舊介面形狀
 - 待辦新增兩項未查證事項：`default` gateway 的 ZDR 設定、`voice.ts` 送出的 `language: "es"` 不在官方代碼清單
 - `docs/architecture.md` 架構圖的 voice 節點與 TTS 路徑說明改為 grok-tts
+## 2026-11-26 — 朗讀狀態與模型動畫修正（`fix/479-speech-playback`，#479 #480 #481 #482 #483）
+
+### Fixed
+
+- 朗讀被中斷（按「停止朗讀」、離開對話頁、另一個朗讀接手）後，「正在朗讀」提示與嘴部動畫不再殘留：`playTts` 在中斷時一律結束並釋放 `AudioContext`，`SpeechArbiter.stop` 同步清掉狀態，不再等播放層回報（#479）
+- 瀏覽器不讓聲音播放時（`AudioContext` 維持 suspended）改為回報朗讀失敗並顯示既有的重播提示，不再無限期停在朗讀中（#479）
+- 模型嘴部與頭部動作改在聲音實際開始播放時才啟動；音檔合成、下載期間顯示「準備語音…」（`companion_preparing`）（#480）
+- 設定頁的朗讀音量套用到播放（`GainNode`），下一次朗讀生效（#481）
+- 嘴型開合改由播放中的振幅驅動，停頓時閉上（`visemeSample`），與 docs/feature.md「語音朗讀」的描述一致（#482）
+- 朗讀時啟用模型的說話頭部擺動，`prefers-reduced-motion` 下不啟用（#483）
 
 ## 2026-11-26 — 正式站語音與分類器全失效：aiRunOf 遺失 binding receiver（`fix/ai-run-this-binding`，#439）
 

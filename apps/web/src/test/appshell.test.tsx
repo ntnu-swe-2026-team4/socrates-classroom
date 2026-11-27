@@ -31,7 +31,12 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("@/lib/socrates/scene", () => ({
-  createSocratesScene: () => ({ setSpeaking: vi.fn(), setExpression: vi.fn(), dispose: vi.fn() }),
+  createSocratesScene: () => ({
+    setSpeaking: vi.fn(),
+    setAmplitude: vi.fn(),
+    setExpression: vi.fn(),
+    dispose: vi.fn(),
+  }),
 }));
 
 const teacher: User = { id: "u1", name: "Teacher", isAdmin: false, emailVerified: true };
