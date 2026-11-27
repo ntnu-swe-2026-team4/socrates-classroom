@@ -51,6 +51,7 @@ function mountShell(user: User | null = teacher, pathname = calls.pathname, page
 beforeEach(() => {
   setLocale("en");
   localStorage.clear();
+  for (const id of ["u1", "u2", "u9"]) localStorage.setItem(`tour-seen:${id}`, "1");
   vi.stubGlobal("fetch", async () => Response.json({ items: [], unread: 0 }));
 });
 
@@ -334,4 +335,23 @@ test("#437: an unverified account is gated out of the shell with resend and logo
   } finally {
     vi.restoreAllMocks();
   }
+});
+
+test("#487: a first-time account gets the rail tour, with the rail brought on screen for it", async () => {
+  const user = userEvent.setup();
+  mountShell({ id: "fresh", name: "Newcomer", isAdmin: false, emailVerified: true }, "/home");
+  expect(await screen.findByRole("dialog", { name: "Home" })).toBeTruthy();
+  const rail = document.querySelector("[data-tour-rail]");
+  expect(rail?.className).toContain("max-md:fixed");
+  expect(rail?.querySelector('[data-tour="account"]')).not.toBeNull();
+
+  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.click(screen.getByRole("button", { name: "Next" }));
+  expect(screen.getByRole("dialog", { name: "Classrooms" })).toBeTruthy();
+  expect(rail?.querySelector('[data-rail="classrooms"]')?.getAttribute("aria-expanded")).toBe("true");
+
+  await user.click(screen.getByRole("button", { name: "Skip" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(rail?.className).not.toContain("max-md:fixed");
+  expect(localStorage.getItem("tour-seen:fresh")).toBe("1");
 });

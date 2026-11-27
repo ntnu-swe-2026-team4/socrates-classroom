@@ -23,9 +23,11 @@ import { api, type User } from "@/api";
 import { meQueryOptions } from "@/api/me";
 import { SESSION_SIGNAL_KEY } from "@/api/http";
 import { NotificationBell } from "@/components/Notifications";
+import { OnboardingTour, TOUR_RAIL_ATTR } from "@/components/OnboardingTour";
 import { Button, HoverPopoverPanel, Initial, POPUP_SURFACE, TrapDialog, cn, useHoverPopover } from "@/components/ui";
 import { useDomEvent } from "@/hooks/useSubscription";
 import { useI18n } from "@/i18n";
+import { useTourActive } from "@/lib/tour";
 import { toggleTheme, useTheme } from "@/theme";
 
 const SocratesCompanion = lazy(() =>
@@ -50,10 +52,11 @@ const RAIL_SQUARE_BTN = cn(
 );
 
 const NAV = [
-  { to: "/home", label: "nav_home", icon: Home, match: ["/home"] },
-  { to: "/chat", label: "nav_chat", icon: MessageCircle, match: ["/chat"] },
+  { to: "/home", label: "nav_home", icon: Home, match: ["/home"], tour: "home" },
+  { to: "/chat", label: "nav_chat", icon: MessageCircle, match: ["/chat"], tour: "chat" },
   {
     to: "/classrooms",
+    tour: "classrooms",
     label: "nav_classrooms",
     icon: GraduationCap,
     match: ["/classrooms", "/join", "/dialogue", "/t/", "/report"],
@@ -209,6 +212,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
   }
 
   const gateRequired = Boolean(me.data && !me.data.emailVerified) && !VERIFICATION_EXEMPT.test(pathname);
+  const touring = useTourActive(me.data?.id) && !gateRequired;
 
   const inAdmin = pathname.startsWith("/admin");
   const halftone = HALFTONE_MATCH.some((prefix) => pathname.startsWith(prefix));
@@ -238,7 +242,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           const Icon = item.icon;
           if (item.to === "/classrooms" && me.data) {
             return (
-              <div key={item.to} className="flex flex-col items-center gap-1">
+              <div key={item.to} data-tour={item.tour} className="flex flex-col items-center gap-1">
                 <button
                   type="button"
                   data-rail="classrooms"
@@ -276,7 +280,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
             );
           }
           return (
-            <Link key={item.to} to={item.to} className={cn(NAV_BTN, active && NAV_ACTIVE)}>
+            <Link key={item.to} to={item.to} data-tour={item.tour} className={cn(NAV_BTN, active && NAV_ACTIVE)}>
               <Icon className="size-[19px]" />
               <span className="max-w-full text-center leading-tight wrap-anywhere">{t(item.label)}</span>
             </Link>
@@ -297,8 +301,19 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
         </div>
       )}
       <div className="mb-3.5 flex flex-col items-center gap-2 pt-3">
-        {me.data && <NotificationBell key={me.data.id} userId={me.data.id} className={RAIL_SQUARE_BTN} />}
-        <button type="button" onClick={toggleTheme} aria-label={themeTip} title={themeTip} className={RAIL_SQUARE_BTN}>
+        {me.data && (
+          <div data-tour="notifications" className="flex">
+            <NotificationBell key={me.data.id} userId={me.data.id} className={RAIL_SQUARE_BTN} />
+          </div>
+        )}
+        <button
+          type="button"
+          data-tour="theme"
+          onClick={toggleTheme}
+          aria-label={themeTip}
+          title={themeTip}
+          className={RAIL_SQUARE_BTN}
+        >
           {theme === "dark" ? <Moon className="size-[17px]" /> : <Sun className="size-[17px]" />}
         </button>
       </div>
@@ -313,6 +328,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           aria-haspopup="dialog"
           aria-expanded={account.open}
           aria-label={t("account_title")}
+          data-tour="account"
           className={cn(
             "flex w-full shrink-0 cursor-pointer flex-col items-center gap-[5px] border-t-2 border-dotted border-ht-dotted pt-3.5 pb-1 text-ht-ink transition-colors hover:bg-ht-hover",
             RAIL_FOCUS,
@@ -350,7 +366,15 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
         <VerifyGate />
       ) : (
         <>
-          <aside className="relative hidden h-dvh shrink-0 md:block">{rail("rail-classrooms-menu")}</aside>
+          <aside
+            {...{ [TOUR_RAIL_ATTR]: "" }}
+            className={cn(
+              "relative hidden h-dvh shrink-0 md:block",
+              touring && "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:block",
+            )}
+          >
+            {rail("rail-classrooms-menu")}
+          </aside>
 
           <button
             type="button"
@@ -361,7 +385,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
             <Menu className="size-[17px]" />
           </button>
 
-          {drawerOpen && (
+          {drawerOpen && !touring && (
             <TrapDialog className="absolute inset-y-0 left-0" onClose={() => setDrawerOpen(false)}>
               {rail("drawer-classrooms-menu")}
             </TrapDialog>
@@ -376,6 +400,16 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
           <Suspense fallback={null}>
             <SocratesCompanion />
           </Suspense>
+
+          {touring && me.data && (
+            <OnboardingTour
+              key={me.data.id}
+              userId={me.data.id}
+              onStep={(step) => {
+                if (step === "classrooms") setClassroomsOpen(true);
+              }}
+            />
+          )}
 
           <HoverPopoverPanel
             popover={account}
