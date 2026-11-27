@@ -34,6 +34,7 @@ export function createWebSearchExtension(ai: Ai | undefined) {
       for (const query of queryList) {
         const outcome = await search(query, numResults);
         if (outcome.error) {
+          console.warn("[websearch]", outcome.error);
           executed.push({ query, answer: "", error: outcome.error, results: [] });
           inline.push(`[${query}] Error: ${outcome.error}`);
           continue;
@@ -120,10 +121,11 @@ export function createWebSearchExtension(ai: Ai | undefined) {
       const mode = args.mode ?? "readable";
       const cached = responses.getCachedFetch(args.url, mode);
       let outcome: { url: string; title: string; content: string; error: string | null };
+      const toMarkdown = ai ? (doc: { name: string; blob: Blob }) => ai.toMarkdown(doc) : undefined;
       if (cached) {
         outcome = { url: args.url, title: cached.title, content: cached.content, error: null };
       } else {
-        outcome = await fetchPage(args.url, mode, ai?.toMarkdown);
+        outcome = await fetchPage(args.url, mode, toMarkdown);
         if (!outcome.error) responses.putCachedFetch(args.url, mode, outcome.content, outcome.title);
       }
       if (outcome.error) {
