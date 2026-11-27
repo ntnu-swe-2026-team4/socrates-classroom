@@ -90,6 +90,48 @@ test("deep-links to announcements and hides publishing controls for students", a
   await waitFor(() => expect(router.state.location.searchStr).toBe("?tab=board"));
 });
 
+test("#486: any reply can be answered from inside its thread, carrying an @mention", async () => {
+  const sent: string[] = [];
+  let replies = [
+    { ...post("I disagree"), id: "r1", authorId: "other", authorName: "Mei Lin" },
+    { ...post("@Mei Lin why?"), id: "r2" },
+  ];
+  mount("/classrooms/room?tab=board", (url, init) => {
+    if (url.pathname.endsWith("/posts/post/replies")) {
+      if (init?.method !== "POST") return Response.json(page(replies));
+      const body: unknown = JSON.parse(String(init.body));
+      const text = typeof body === "object" && body !== null && "body" in body ? String(body.body) : "";
+      sent.push(text);
+      const created = { ...post(text), id: `r${replies.length + 1}` };
+      replies = [...replies, created];
+      return Response.json(created, { status: 201 });
+    }
+    if (url.pathname.endsWith("/posts")) return Response.json(page([post("Is lying ever right?")]));
+    return undefined;
+  });
+  expect(await screen.findByText("Is lying ever right?")).toBeTruthy();
+  const toggle = screen.getByRole("button", { name: "Reply" });
+  expect(toggle.textContent).toBe("");
+  fireEvent.click(toggle);
+  expect(await screen.findByText("I disagree")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Hide replies" }).textContent).toBe("");
+  expect(screen.getByText("@Mei Lin").tagName).toBe("STRONG");
+
+  fireEvent.click(screen.getByRole("button", { name: "Reply @Mei Lin" }));
+  const input = screen.getByRole("textbox", { name: "Write a reply…" });
+  expect(document.activeElement).toBe(input);
+  fireEvent.change(input, { target: { value: "Because trust matters" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(await screen.findByText(/Because trust matters/)).toBeTruthy();
+  expect(sent).toEqual(["@Mei Lin Because trust matters"]);
+
+  fireEvent.click(screen.getAllByRole("button", { name: "Reply @Student" })[0] ?? toggle);
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fireEvent.change(input, { target: { value: "A plain reply" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(sent).toEqual(["@Mei Lin Because trust matters", "A plain reply"]));
+});
+
 test("retries the same draft with the original idempotency key and reloads after a classroom event", async () => {
   const keys: Array<string | null> = [];
   let items = [post("Initial topic")];
