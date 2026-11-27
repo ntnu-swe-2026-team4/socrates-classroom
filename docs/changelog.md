@@ -2,6 +2,15 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-27 — websearch 工具失效：fetch_content 遺失 binding receiver（`fix/442-websearch-binding-seam`，#442）
+
+### Fixed
+
+- `fetch_content` 的 `ai?.toMarkdown` 與 #309 的 `aiRunOf` 同類：binding method 從 receiver 上拆下後再呼叫，內部讀自身狀態即拋 `TypeError`——readable mode 抓 HTML 頁全數失敗，錯誤被 `fetchPage` 的 `catch` 吃成 `Error fetching …`，正式站上完全看不到原因。修法與 #470 相同：以 arrow wrapper 保住 receiver
+- `web_search` 失敗原本只回給模型、不進 Workers Logs，這次排查因此完全無證據可循；現在失敗時 `console.warn("[websearch]", <error code>)` 進 observability
+- 測試：仿 `tests/ai-run.test.ts` 的 receiver-dependent fake binding 覆蓋 `websearch`／`toMarkdown` 兩個 seam（fake binding 不依賴 receiver 的話抓不到這類回歸），另斷言失敗時 console.warn
+- #442 的另一半（11-24 實測 web_search 全失效）診斷結論：非 code 問題——時間點與 11-23 unified billing 切換吻合（同一 gateway、同一份 credits），2026-11-27 以同一 gateway 實測搜尋成功，credits 現為可用
+
 ## 2026-11-27 — providers.md 的 TTS 條目對齊 xai/grok-tts（`docs/468-grok-tts`，#468）
 
 ### Changed
