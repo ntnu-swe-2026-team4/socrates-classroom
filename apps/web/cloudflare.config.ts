@@ -22,6 +22,7 @@ export default defineConfig(({ mode }) => {
       observability: { enabled: true },
       env: {
         DB: bindings.d1({ name: "socrates", id: "722c35f0-eceb-4ce4-9fea-a265852d71ac" }),
+        AVATARS: bindings.r2({ name: "socrates-avatars" }),
         ...(local.CF_REMOTE_AI === "true" || process.env.CF_REMOTE_AI === "true"
           ? { AI: bindings.ai({ dev: { remote: true } }) }
           : { AI: bindings.ai({}) }),

@@ -260,19 +260,22 @@ export type TermExplanation = z.infer<typeof TermExplanationSchema>;
 
 const emailField = z.email().transform((value) => value.toLowerCase());
 
+export const PROFILE_NAME_MAX = 80;
+export const DisplayNameSchema = z.string().trim().min(1).max(PROFILE_NAME_MAX);
+
 export const LoginInputSchema = z.object({ email: emailField, password: z.string().min(8).max(128) });
 export const DevLoginInputSchema = z.object({ email: emailField });
 export const RegisterInputSchema = z.object({
   code: z.string().min(4).max(32),
   email: emailField,
   password: z.string().min(8).max(128),
-  name: z.string().trim().min(1).max(80),
+  name: DisplayNameSchema,
   tosAccepted: z.boolean(),
 });
 export const SignupInputSchema = z.object({
   email: emailField,
   password: z.string().min(8).max(128),
-  name: z.string().trim().min(1).max(80),
+  name: DisplayNameSchema,
   tosAccepted: z.boolean(),
 });
 export const PasswordForgotInputSchema = z.object({ email: emailField });
@@ -308,6 +311,34 @@ export const BindEmailInputSchema = z.object({ email: emailField, password: z.st
 export type BindEmailInput = z.infer<typeof BindEmailInputSchema>;
 export const BindEmailResultSchema = z.object({ email: z.string(), verified: z.boolean() });
 export type BindEmailResult = z.infer<typeof BindEmailResultSchema>;
+
+export const AVATAR_COLORS = ["ink", "ochre", "moss", "vermilion", "graphite"] as const;
+export type AvatarColor = (typeof AVATAR_COLORS)[number];
+export const AVATAR_IMAGE_VERSION_PATTERN = "[0-9a-f]{8}";
+export const AvatarTokenSchema = z
+  .string()
+  .regex(new RegExp(`^(?:color:(?:${AVATAR_COLORS.join("|")})|image:${AVATAR_IMAGE_VERSION_PATTERN})$`));
+export type AvatarToken = z.infer<typeof AvatarTokenSchema>;
+export const AvatarChoiceSchema = z
+  .string()
+  .regex(new RegExp(`^color:(?:${AVATAR_COLORS.join("|")})$`))
+  .nullable();
+export type AvatarChoice = z.infer<typeof AvatarChoiceSchema>;
+export const ProfileSchema = z.object({
+  name: z.string(),
+  email: z.string().nullable(),
+  lang: z.enum(["zh", "en", "es"]),
+  avatar: AvatarTokenSchema.nullable(),
+});
+export type Profile = z.infer<typeof ProfileSchema>;
+export const ProfileUpdateInputSchema = z
+  .object({
+    name: DisplayNameSchema.optional(),
+    lang: z.enum(["zh", "en", "es"]).optional(),
+    avatar: AvatarChoiceSchema.optional(),
+  })
+  .refine((input) => input.name !== undefined || input.lang !== undefined || input.avatar !== undefined);
+export type ProfileUpdateInput = z.infer<typeof ProfileUpdateInputSchema>;
 export const JoinInputSchema = z.object({
   code: z.string().min(4).max(32),
   name: z.string().trim().max(80).optional(),

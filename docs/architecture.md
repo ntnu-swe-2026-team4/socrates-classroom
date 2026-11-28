@@ -119,7 +119,7 @@ socrates-classroom/
 
 ## 3. Worker 分層（apps/server）
 
-**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、AI、`SEND_EMAIL`、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。#161 已把 Clef 題目、web-content 外框、`report_violation` 回覆、lookup／topic-gen 的輸入收進 `prompts/`；報告 transcript 的行首（`renderTranscript`）與 websearch 工具的其他回傳文字仍在程式碼裡；tool 的 description 與參數說明跟著 tool 的程式碼。
+**組裝**：`createApp()`（Hono，`app.ts`）——bindings = D1、R2（`AVATARS`，bucket `socrates-avatars`：頭像物件儲存，契約 §2.5）、AI、`SEND_EMAIL`、vars/secrets（`env.ts`）。prompt 與 provider 配置全走 build-time（`src/prompts/*.md?raw`、`providers.config.yaml` → `gateway/config.gen.ts`）。#161 已把 Clef 題目、web-content 外框、`report_violation` 回覆、lookup／topic-gen 的輸入收進 `prompts/`；報告 transcript 的行首（`renderTranscript`）與 websearch 工具的其他回傳文字仍在程式碼裡；tool 的 description 與參數說明跟著 tool 的程式碼。
 
 **topic 可見性（`services/topic-visibility.ts`）**：topic 的身份是 `(owner_id, classroom_id)` 二維狀態機——`(NULL, NULL)`＝system、`(uid, NULL)`＝personal、`(*, cid)`＝classroom。這份定義只存在一處（`topicScope`），對外兩個消費形狀：列表查詢走 `topicPoolSql`（scope 集合 → SQL fragment ＋ `$named` params）、單列授權走 `topicVisibleTo` ／ `copyableTopic`。四個呼叫點（`GET /topics`、`GET /classrooms/:id/topics`、`POST /topics/:id/copy` 的來源檢查、`topicForActivity`）都消費它，不各自重寫 WHERE；`tests/topic-visibility.test.ts` 以 truth table 鎖住狀態機，並斷言 SQL fragment 與 `topicVisibleTo` 選出的集合一致（#382）。
 

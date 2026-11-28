@@ -2,6 +2,19 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-29 — 帳號個資 API：顯示名／語言／頭像（`feat/234-profile-api`，#234）
+
+### Added
+
+- `GET /api/me/profile`＋`PATCH /api/me {name?, lang?, avatar?}`（migration 026 `users.avatar`；`User` 形狀不動）；`avatar` 為前綴 token（`color:` 五色／`image:` 上傳版號／NULL）
+- R2 頭像圖床：binding `AVATARS`（bucket `socrates-avatars`）＋`POST /api/me/avatar`（raw JPEG ≤64KB、magic bytes、SHA-256 版本化 key `avatars/<userId>/<version>.jpg`、換圖刪舊物）＋`DELETE /api/me/avatar`＋同源 `GET /api/avatars/:userId/:version`（session-gated、`immutable` 快取、ETag）
+- 快照語意（#234 D6）：改名不回填 `members.name`／`activity_participants.display_name`；會更新的是 `GET /me`／帳號選單／join `users` 的教師名
+- 測試 `tests/me-profile.test.ts`（15 案）：個資讀寫、驗證、五色 token、R2 上傳／同內容冪等／換圖刪舊物／讀取 401·404／hard gate
+
+### Fixed
+
+- `VERIFICATION_BYPASS` 原為 path-only 比對：新增 `PATCH /api/me` 時會意外繼承 `GET /api/me` 的 hard-gate 豁免——改為 method-aware（`"GET /api/me"`），任何同路徑的新寫入端點不再逃過 gate（#437 語意不變，既有端點行為零變更）
+
 ## 2026-11-27 — websearch 工具失效：fetch_content 遺失 binding receiver（`fix/442-websearch-binding-seam`，#442）
 
 ### Fixed

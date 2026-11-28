@@ -1,4 +1,4 @@
-import type { Ai } from "@cloudflare/workers-types";
+import type { Ai, R2Bucket } from "@cloudflare/workers-types";
 
 export interface EmailAddress {
   email: string;
@@ -23,6 +23,7 @@ export const FAIL_FAST_SECRETS = ["AUTH_SECRET", "BYOK_ENC_KEY"] as const;
 
 export interface Env {
   DB: D1Database;
+  AVATARS: R2Bucket;
   Chat: DurableObjectNamespace<import("./do/chat").Chat>;
   SoloChat: DurableObjectNamespace<import("./do/solo-chat").SoloChat>;
   ReportRunner: DurableObjectNamespace<import("./do/report-runner").ReportRunner>;

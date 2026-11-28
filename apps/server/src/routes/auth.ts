@@ -2,14 +2,17 @@ import { publishClassroom } from "../do/classroom-events";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
+  AVATAR_IMAGE_VERSION_PATTERN,
   EMAIL_VERIFY_TTL_HOURS,
   PASSWORD_RESET_TTL_MINUTES,
+  AvatarTokenSchema,
   BindEmailInputSchema,
   EmailVerifyInputSchema,
   LoginInputSchema,
   OAuthStartInputSchema,
   PasswordForgotInputSchema,
   PasswordResetInputSchema,
+  ProfileUpdateInputSchema,
   ReauthPasswordInputSchema,
   RegisterInputSchema,
   SignupInputSchema,
@@ -18,6 +21,7 @@ import {
   type IdentitySummary,
   type Lang,
   type OAuthStartResult,
+  type Profile,
   type ReauthResult,
   type User,
 } from "@socrates/shared";
@@ -113,6 +117,41 @@ interface VerifyAccount {
   id: string;
   email: string;
   lang: Lang;
+}
+
+interface ProfileRow {
+  name: string;
+  email: string | null;
+  lang: Lang;
+  avatar: string | null;
+}
+
+function profileOf(row: ProfileRow): Profile {
+  return {
+    name: row.name,
+    email: row.email,
+    lang: row.lang,
+    avatar: AvatarTokenSchema.safeParse(row.avatar).success ? row.avatar : null,
+  };
+}
+
+const AVATAR_MAX_BYTES = 64 * 1024;
+const AVATAR_CACHE_CONTROL = "private, max-age=31536000, immutable";
+
+const avatarKey = (userId: string, version: string) => `avatars/${userId}/${version}.jpg`;
+
+function isJpeg(bytes: Uint8Array): boolean {
+  return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+}
+
+async function avatarVersionOf(bytes: Uint8Array): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return [...digest.slice(0, 4)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function previousImageKey(userId: string, token: string | null): string | null {
+  if (!token?.startsWith("image:")) return null;
+  return avatarKey(userId, token.slice("image:".length));
 }
 
 function publicBase(c: Ctx): string {
@@ -249,6 +288,85 @@ export function authRoutes() {
       return c.json({ providers: oauthProviders(c.env) });
     })
     .get("/me", (c) => c.json(c.get("user")))
+    .get("/me/profile", async (c) => {
+      const user = requireUser(c);
+      const row = await one<ProfileRow>(c.env.DB, "SELECT name, email, lang, avatar FROM users WHERE id = $id", {
+        id: user.id,
+      });
+      if (!row) fail(404, "not_found");
+      return c.json(profileOf(row));
+    })
+    .patch("/me", rateLimit("profile-update", 30), validateJson(ProfileUpdateInputSchema), async (c) => {
+      const user = requireUser(c);
+      const input = c.req.valid("json");
+      const sets: string[] = [];
+      const params: Record<string, unknown> = { id: user.id };
+      if (input.name !== undefined) {
+        sets.push("name = $name");
+        params.name = input.name;
+      }
+      if (input.lang !== undefined) {
+        sets.push("lang = $lang");
+        params.lang = input.lang;
+      }
+      if (input.avatar !== undefined) {
+        sets.push("avatar = $avatar");
+        params.avatar = input.avatar;
+      }
+      await run(c.env.DB, `UPDATE users SET ${sets.join(", ")} WHERE id = $id`, params);
+      const row = await one<ProfileRow>(c.env.DB, "SELECT name, email, lang, avatar FROM users WHERE id = $id", {
+        id: user.id,
+      });
+      if (!row) fail(404, "not_found");
+      return c.json(profileOf(row));
+    })
+    .post("/me/avatar", rateLimit("avatar-upload", 20), async (c) => {
+      const user = requireUser(c);
+      const bytes = new Uint8Array(await c.req.arrayBuffer());
+      if (bytes.length === 0 || bytes.length > AVATAR_MAX_BYTES || !isJpeg(bytes)) fail(422, "validation");
+      const version = await avatarVersionOf(bytes);
+      const key = avatarKey(user.id, version);
+      if (!(await c.env.AVATARS.head(key))) {
+        await c.env.AVATARS.put(key, bytes, {
+          httpMetadata: { contentType: "image/jpeg", cacheControl: AVATAR_CACHE_CONTROL },
+        });
+      }
+      const row = await one<ProfileRow>(c.env.DB, "SELECT name, email, lang, avatar FROM users WHERE id = $id", {
+        id: user.id,
+      });
+      if (!row) fail(404, "not_found");
+      const previous = previousImageKey(user.id, row.avatar);
+      await run(c.env.DB, "UPDATE users SET avatar = $avatar WHERE id = $id", {
+        id: user.id,
+        avatar: `image:${version}`,
+      });
+      if (previous && previous !== key) await c.env.AVATARS.delete(previous);
+      return c.json(profileOf({ ...row, avatar: `image:${version}` }));
+    })
+    .delete("/me/avatar", rateLimit("avatar-remove", 20), async (c) => {
+      const user = requireUser(c);
+      const row = await one<{ avatar: string | null }>(c.env.DB, "SELECT avatar FROM users WHERE id = $id", {
+        id: user.id,
+      });
+      const previous = previousImageKey(user.id, row?.avatar ?? null);
+      await run(c.env.DB, "UPDATE users SET avatar = NULL WHERE id = $id", { id: user.id });
+      if (previous) await c.env.AVATARS.delete(previous);
+      return c.body(null, 204);
+    })
+    .get("/avatars/:userId/:version", async (c) => {
+      requireUser(c);
+      const version = c.req.param("version");
+      if (!new RegExp(`^${AVATAR_IMAGE_VERSION_PATTERN}$`).test(version)) fail(404, "not_found");
+      const object = await c.env.AVATARS.get(avatarKey(c.req.param("userId"), version));
+      if (!object) fail(404, "not_found");
+      return new Response(object.body, {
+        headers: {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": AVATAR_CACHE_CONTROL,
+          ETag: object.httpEtag,
+        },
+      });
+    })
     .post("/auth/login", rateLimit("login", 30), validateJson(LoginInputSchema), async (c) => {
       const input = c.req.valid("json");
       await enforceIdentifierLimit(c, LOGIN_FAIL_SCOPE, input.email, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW_MS);
