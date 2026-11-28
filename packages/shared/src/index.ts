@@ -298,6 +298,12 @@ export const IdentitySummarySchema = z.object({
 });
 export type IdentitySummary = z.infer<typeof IdentitySummarySchema>;
 
+export const PasswordChangeInputSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(8).max(128),
+});
+export type PasswordChangeInput = z.infer<typeof PasswordChangeInputSchema>;
+
 export const ReauthPasswordInputSchema = z.object({ password: z.string().min(1).max(128) });
 export const ReauthResultSchema = z.object({ expiresAt: z.iso.datetime() });
 export type ReauthResult = z.infer<typeof ReauthResultSchema>;
