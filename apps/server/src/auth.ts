@@ -132,7 +132,7 @@ export async function openPayload(ctx: { env: { AUTH_SECRET?: string } }, token:
   }
 }
 
-export type AccountTokenPurpose = "password_reset" | "email_verify";
+export type AccountTokenPurpose = "password_reset" | "email_verify" | "email_change_cancel";
 type SignedPurpose = AccountTokenPurpose | "reauth";
 
 interface AccountTokenClaims {
@@ -212,6 +212,10 @@ export function passwordResetBinding(passwordHash: string, email: string | null)
 
 export function emailVerifyBinding(email: string): string {
   return `email_verify\n${email}`;
+}
+
+export function emailChangeCancelBinding(currentEmail: string, newEmail: string): string {
+  return `${currentEmail}\n${newEmail}`;
 }
 
 export async function sealAccountToken(

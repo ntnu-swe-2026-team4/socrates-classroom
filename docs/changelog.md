@@ -2,6 +2,15 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-29 — Email 變更：pending_email 雙向驗證（`feat/234-email-change`，#463／#234）
+
+### Added
+
+- `POST /api/me/email/change`＋`POST /api/me/email/change/cancel`＋`POST /api/auth/email/change/verify`（migration 027：`users.pending_email`／`pending_email_at`＋部分 UNIQUE）；GitHub 順序模式：換信期間舊址能力不動、新址點信才原子 promote、舊址收通知信（token 化取消連結，免登入）
+- 新 token 用途金鑰 `email_change_cancel`（binding＝舊址＋新址，單次性）；新信件模板兩套三語（驗證信含 display name 防誤綁）
+- `signup`／`register`／`/me/identities/email` 的 `email_taken` 判斷含 30 分鐘 pending 佔用窗口（過后失效，不無期堵死真實信箱）
+- 測試 `tests/me-email-change.test.ts`（9 案）：雙信、原子 promote／重播拒絕、session 不撤銷、佔用窗口、token 取消、session+reauth 取消、SSO 導向、no-op
+
 ## 2026-11-29 — 密碼變更端點（`feat/234-password-change`，#234 D4）
 
 ### Added

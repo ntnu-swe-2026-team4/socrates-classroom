@@ -105,6 +105,7 @@ flowchart LR
   - **stale takeover**：超過 `EMAIL_VERIFY_TTL_HOURS`（24h）仍未驗證的帳號從未證明信箱所有權，其地址視同無主——任何人以該 email 重新 `signup`／`register` 會直接覆寫該帳號的 name／password／lang／`created_at` 並 `session_version + 1`（舊 session 全滅），帳號維持未驗證。已驗證的地址永不適用
   - `User.emailVerified` 的語意是「帳號至少一種已驗證的登入方式」（#138 對齊 #437）：`email_verified_at` 非 NULL、或有任一 `user_identities`（SSO 由 provider 端驗證）；`users.email` 為 NULL 的 SSO 帳號與已驗證的 email 帳號都是 `true`，SSO 帳號綁了未驗證 email 也仍是 `true`（帳號層 gate 不觸發，但該 email＋密碼驗證前不可登入，見方式層）。SSO 帳號要補 email 走 #138 的綁定流程，改 email 走 #234
   - 驗證信與重設信共用 `mail.ts`、共用帳號 token（用途金鑰分離：`email_verify` 與 `password_reset` 的 token 不能互用）
+- **email 變更（#463，#234 的換信腿）**：模型＝單一 `pending_email` 欄位（部分 UNIQUE）＋30 分鐘佔用窗口，不做多 email 集合；順序同 GitHub「先驗新的才切 primary」：換信期間 `users.email` 與其登入／密碼找回能力完全不動，新址點信才原子 promote（`email_verified_at` 設為 now），舊址同步收通知信（含 token 化取消連結，免登入可取消）；promote 不 bump `session_version`（email 非 session 憑證）。佔用窗口：他人 `pending_email` 於 30 分鐘内視同 `email_taken`，過后失效（未驗證的 pending 不得無限期堵死真實信箱）。SSO 帳號補 email＝#138 綁定；token 沿用帳號 token 機制（新增用途金鑰 `email_change_cancel`，與 `email_verify`／`password_reset` 互不可用）
 
 ## 9. 目前不處理
 
