@@ -156,6 +156,7 @@ faux.setResponses([fauxAssistantMessage([fauxText("…")])]);
 ```
 
 - 斷言只驗形狀（entry kind / 角色 / 非空文字），不驗內容
+- Vitest 的 `reports` project 關閉 faux provider 的 token pacing，仍透過 workerd 執行 ReportRunner 的 alarm、tool call 與 retry。`workers` project 保留每秒 4 tokens，讓 WebSocket 測試可以驗證進行中的 run。
 - faux 的 response factory 裡不能 `require()`——workerd 模組解析失敗，要用頂層 import（踩過）
 - responses 耗盡後 faux 回 error（`No more faux responses queued`），測試要設足夠的 responses
 - WebSocket 測試用真 DO＋真升級（`routeAgentRequest`）；首幀是 SDK 的 `cf_agent_identity`，斷言用 `frames.some(...)` 而非 `frames[0]`
