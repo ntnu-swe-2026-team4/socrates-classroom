@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { routeAgentRequest } from "agents";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { inject } from "vitest";
 import { seedFixture } from "../src/seed";
 import {
@@ -330,5 +330,82 @@ describe("get_search_content for fetch records + paging continuity", () => {
       offset = page.endOffset;
     }
     expect(delivered.join("")).toBe(content);
+  });
+});
+
+describe("websearch binding receiver seam (#442)", () => {
+  interface BindingState {
+    closed: boolean;
+  }
+
+  function bindingToMarkdown(this: BindingState, doc: { name: string; blob: Blob }) {
+    if (this.closed !== false) throw new TypeError("binding state unreachable");
+    return Promise.resolve({ name: doc.name, markdown: "converted: justice" });
+  }
+
+  function withHtmlFetch(body: () => Promise<void>): Promise<void> {
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response("<html><title>Justice</title><body>justice body</body></html>", {
+        headers: { "content-type": "text/html" },
+      });
+    return body().finally(() => {
+      globalThis.fetch = origFetch;
+    });
+  }
+
+  it("fetch_content keeps the binding receiver on toMarkdown — detached calls would TypeError like #439", async () => {
+    const { createWebSearchExtension } = await import("../src/pi/extensions/websearch");
+    const extension = createWebSearchExtension(fakeAiOf({ closed: false, toMarkdown: bindingToMarkdown }));
+    const fetchTool = must(
+      (extension.tools ?? []).find((tool) => tool.name === "fetch_content"),
+      "fetch_content tool",
+    );
+    await withHtmlFetch(async () => {
+      const fetched = await executeToolDirectly(fetchTool, { url: "https://example.org/wiki/Justice" });
+      expect(toolTextOf(fetched)).toContain("converted: justice");
+      expect(toolTextOf(fetched)).not.toContain("Error fetching");
+    });
+  });
+
+  it("web_search keeps the binding receiver on websearch — detached calls would TypeError like #439", async () => {
+    const { createWebSearchExtension } = await import("../src/pi/extensions/websearch");
+    function bindingWebsearch(this: BindingState, _args: unknown) {
+      if (this.closed !== false) throw new TypeError("binding state unreachable");
+      return Promise.resolve(
+        new Response(JSON.stringify({ items: [{ url: "https://example.com/a", title: "A", description: "d" }] }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    const extension = createWebSearchExtension(fakeAiOf({ closed: false, websearch: bindingWebsearch }));
+    const searchTool = must(
+      (extension.tools ?? []).find((tool) => tool.name === "web_search"),
+      "web_search tool",
+    );
+    const searched = await executeToolDirectly(searchTool, { query: "justice" });
+    expect(toolTextOf(searched)).toContain("Source: A");
+    expect(toolTextOf(searched)).not.toContain("Error:");
+  });
+
+  it("web_search failures surface in Workers Logs via console.warn (silent tool output hid the outage)", async () => {
+    const { createWebSearchExtension } = await import("../src/pi/extensions/websearch");
+    const extension = createWebSearchExtension(
+      fakeAiOf({
+        websearch: async () => new Response("payment required", { status: 402 }),
+      }),
+    );
+    const searchTool = must(
+      (extension.tools ?? []).find((tool) => tool.name === "web_search"),
+      "web_search tool",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const searched = await executeToolDirectly(searchTool, { query: "justice" });
+      expect(toolTextOf(searched)).toContain("websearch_402");
+      expect(warn).toHaveBeenCalledWith("[websearch]", "websearch_402");
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
