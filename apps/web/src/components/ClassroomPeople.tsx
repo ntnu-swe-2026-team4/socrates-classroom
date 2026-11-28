@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Copy, Link2, LogOut, UserMinus } from "lucide-react";
+import { Copy, KeyRound, Link2, LogOut, UserMinus } from "lucide-react";
 import { useState } from "react";
 import type { ClassroomInviteScope } from "@socrates/shared";
 import { api } from "@/api";
@@ -23,11 +23,17 @@ export function ClassroomPeople({
   id,
   viewerId,
   teacher,
+  code,
+  url,
+  hasCurrentActivity,
   onLeave,
 }: {
   id: string;
   viewerId: string;
   teacher: boolean;
+  code: string | null;
+  url: string | null;
+  hasCurrentActivity: boolean;
   onLeave: () => void;
 }) {
   const t = useT();
@@ -54,6 +60,7 @@ export function ClassroomPeople({
 
   return (
     <div className="space-y-6">
+      {teacher && code && url && <ClassroomJoinCode code={code} url={url} hasCurrentActivity={hasCurrentActivity} />}
       {teacher && <ClassroomInvites id={id} />}
       <PanelState pending={roster.isPending} error={roster.isError} retry={() => void roster.refetch()} />
       {owner && (
@@ -127,6 +134,73 @@ export function ClassroomPeople({
         />
       )}
     </div>
+  );
+}
+
+function ClassroomJoinCode({
+  code,
+  url,
+  hasCurrentActivity,
+}: {
+  code: string;
+  url: string;
+  hasCurrentActivity: boolean;
+}) {
+  const t = useT();
+  const [copied, setCopied] = useState<"code" | "url" | null>(null);
+  const [copyFailed, setCopyFailed] = useState<"code" | "url" | null>(null);
+
+  async function copy(kind: "code" | "url", text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(kind);
+      setCopyFailed(null);
+    } catch {
+      setCopied(null);
+      setCopyFailed(kind);
+    }
+  }
+
+  return (
+    <section className="space-y-4 rounded-xl border border-line bg-card p-4 sm:p-5">
+      <div className="space-y-1">
+        <h3 className="flex items-center gap-2 font-serif text-xl text-ink">
+          <KeyRound className="size-5" aria-hidden />
+          {t("classroom_code_title")}
+        </h3>
+        <p className="text-sm text-ink-soft">{t("classroom_code_hint")}</p>
+      </div>
+      {!hasCurrentActivity && (
+        <div role="note" className="space-y-1 rounded-xl border border-line-strong bg-paper-deep p-3 text-sm text-ink">
+          <p>{t("classroom_invite_needs_topic")}</p>
+          <p className="text-xs text-ink-soft">{t("classroom_code_use_link_hint")}</p>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-line bg-paper p-3">
+        <div className="shrink-0">
+          <QrBlock url={url} size={112} />
+        </div>
+        <div className="min-w-0 flex-1 basis-44 space-y-2">
+          <p className="font-mono text-2xl font-semibold tracking-[0.25em] text-ink">{code}</p>
+          <p className="break-all font-mono text-xs text-ink-soft">{absoluteUrl(url)}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => void copy("code", code)}>
+              <Copy className="size-3.5" aria-hidden />
+              {copied === "code" ? t("setup_copied") : t("classroom_code_copy")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => void copy("url", absoluteUrl(url))}>
+              <Copy className="size-3.5" aria-hidden />
+              {copied === "url" ? t("setup_copied") : t("setup_copy")}
+            </Button>
+          </div>
+          {copyFailed && (
+            <p role="alert" className="text-sm text-flag">
+              {t(copyFailed === "code" ? "classroom_code_copy_failed" : "room_copy_failed")}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

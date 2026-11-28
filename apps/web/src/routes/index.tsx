@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type Re
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { cn } from "@/components/ui";
 import { LANGS, setLocale, useI18n, type Locale, type MessageKey } from "@/i18n";
-import { normalizeJoinCode } from "@/lib/joinCode";
+import { parseJoinTarget } from "@/lib/joinCode";
 import { createFrameLoop } from "@/lib/frameLoop";
 import { onReducedMotionChange } from "@/lib/motion";
 
@@ -1643,8 +1643,8 @@ function ComicLanding() {
     root?.scrollTo({ top: root.scrollHeight, behavior: prefersStill() ? "auto" : "smooth" });
   };
   const join = () => {
-    const normalized = normalizeJoinCode(code);
-    if (normalized) void navigate({ to: "/join/$code", params: { code: normalized } });
+    const target = parseJoinTarget(code);
+    if (target) void navigate(target);
   };
 
   return (

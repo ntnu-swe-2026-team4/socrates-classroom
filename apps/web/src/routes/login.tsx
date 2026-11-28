@@ -1,4 +1,5 @@
 import { rememberClassroomInvite } from "@/lib/classroomInvite";
+import { parseJoinTarget } from "@/lib/joinCode";
 import { meOf, meQueryOptions } from "@/api/me";
 import { authProvidersOptions, notificationsOptions } from "@/api/queries";
 import { useState } from "react";
@@ -436,8 +437,8 @@ function LoginPage() {
           className="border-[1.5px] border-dashed border-comic-ink bg-comic-paper/75 px-5 py-4 lg:short:py-2.5"
           onSubmit={(event) => {
             event.preventDefault();
-            const code = joinCode.trim().toLowerCase();
-            if (code) void navigate({ to: "/join/$code", params: { code } });
+            const target = parseJoinTarget(joinCode);
+            if (target) void navigate(target);
           }}
         >
           <label htmlFor="join-code" className="block text-[13px] font-bold">

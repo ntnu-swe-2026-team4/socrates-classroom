@@ -2,6 +2,15 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-28 — 恢復教室 6 碼邀請碼 UI 與統一邀請碼／連結輸入解析（`fix/459-classroom-invite-code`，#459）
+
+### Fixed
+
+- PR #329 重寫教室詳情頁為分頁結構時移除了原本顯示班級 6 碼的 `InviteCard`，導致老師端完全找不到 `room.code`／`room.url`，而學生端（故事頁、登入頁、「我選的課」）仍有三處邀請碼輸入欄指向 `/join/$code`
+- 恢復老師端 6 碼邀請碼呈現：教室詳情頁 header 顯示 6 碼與一鍵複製按鈕（並附「QR 與連結」入口連至成員分頁）；成員分頁於 `ClassroomInvites` 上方補回完整的教室邀請碼卡片（QR code、6 碼、`/join/{code}` 連結、複製碼／複製連結），並在空教室尚未開主題時顯示既有 `classroom_invite_needs_topic` 提示並引導使用下方邀請連結；「教室管理」列表卡片補顯示 6 碼
+- 新增 `parseJoinTarget`（`apps/web/src/lib/joinCode.ts`），統一故事頁、登入頁與「我選的課」三處輸入欄：除支援去空白／轉小寫的 6 碼外，也支援直接貼上完整或相對的 `/join/:code`、`/join/i/:token`、`/join/a/:token` URL 並導向對應路由
+- `apps/web/src/i18n/index.ts` 同步新增三語文案（zh-TW／en／es），並於 `classroom-community.test.tsx` 補齊回歸測試
+
 ## 2026-11-27 — websearch 工具失效：fetch_content 遺失 binding receiver（`fix/442-websearch-binding-seam`，#442）
 
 ### Fixed

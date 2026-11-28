@@ -11,7 +11,7 @@ import { api, ApiError } from "@/api";
 import { EmptyPanel, LoadMore, PanelState } from "@/components/ClassroomCommunity";
 import { Button, Field, FormDialog, Input, PageHeader, cn } from "@/components/ui";
 import { useFormatDate, useT } from "@/i18n";
-import { normalizeJoinCode } from "@/lib/joinCode";
+import { parseJoinTarget } from "@/lib/joinCode";
 
 type View = "enrolled" | "teaching";
 
@@ -53,8 +53,8 @@ function ClassroomsPage() {
   });
 
   function join() {
-    const normalized = normalizeJoinCode(code);
-    if (normalized) void navigate({ to: "/join/$code", params: { code: normalized } });
+    const target = parseJoinTarget(code);
+    if (target) void navigate(target);
   }
 
   return (
@@ -165,21 +165,32 @@ function ClassroomCard({ room }: { room: ClassroomSummary }) {
         <p className="line-clamp-2 min-h-10 text-[13.5px] leading-relaxed text-ink">
           {room.current ? room.current.topicTitle : <span className="text-ink-faint">{t("classroom_no_topic")}</span>}
         </p>
-        <div className="mt-4 flex items-center justify-between gap-2 border-t border-line pt-3 text-xs text-ink-faint">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-xs text-ink-faint">
           <span className="flex items-center gap-1">
             <Users className="size-3.5" />
             {t("classroom_members", { n: room.memberCount })}
           </span>
-          {room.current && (
-            <span
-              className={cn(
-                "rounded-full px-2.5 py-0.5 text-[11.5px]",
-                room.current.finished ? "bg-paper-deep text-ink-faint" : "bg-moss-wash text-moss",
-              )}
-            >
-              {room.current.finished ? t("classroom_finished") : t("classroom_running")}
-            </span>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {room.role === "teacher" && room.code && (
+              <span
+                title={t("classroom_code_label")}
+                className="rounded-md border border-line bg-paper-deep px-2 py-0.5 font-mono text-[11.5px] tracking-[0.15em] text-ink-soft"
+              >
+                <span className="sr-only">{t("classroom_code_label")}</span>
+                <span>{room.code}</span>
+              </span>
+            )}
+            {room.current && (
+              <span
+                className={cn(
+                  "rounded-full px-2.5 py-0.5 text-[11.5px]",
+                  room.current.finished ? "bg-paper-deep text-ink-faint" : "bg-moss-wash text-moss",
+                )}
+              >
+                {room.current.finished ? t("classroom_finished") : t("classroom_running")}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </Link>
