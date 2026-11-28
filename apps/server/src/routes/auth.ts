@@ -10,6 +10,7 @@ import {
   EmailVerifyInputSchema,
   LoginInputSchema,
   OAuthStartInputSchema,
+  PasswordChangeInputSchema,
   PasswordForgotInputSchema,
   PasswordResetInputSchema,
   ProfileUpdateInputSchema,
@@ -366,6 +367,28 @@ export function authRoutes() {
           ETag: object.httpEtag,
         },
       });
+    })
+    .post("/me/password", rateLimit("password-change", 5), validateJson(PasswordChangeInputSchema), async (c) => {
+      const user = requireUser(c);
+      const input = c.req.valid("json");
+      const row = await one<{ password_hash: string | null }>(
+        c.env.DB,
+        "SELECT password_hash FROM users WHERE id = $id",
+        { id: user.id },
+      );
+      if (!row) fail(404, "not_found");
+      if (!row.password_hash) fail(409, "password_not_set");
+      if (!(await verifyPassword(input.currentPassword, row.password_hash))) fail(401, "invalid_credentials");
+      const updated = await run(
+        c.env.DB,
+        "UPDATE users SET password_hash = $next, session_version = session_version + 1 WHERE id = $id AND password_hash = $current",
+        { id: user.id, next: await hashPassword(input.newPassword), current: row.password_hash },
+      );
+      if (!updated.meta.changes) fail(409, "conflict");
+      const state = await accountState(c.env.DB, user.id);
+      await resumeSession(c, user, state?.version ?? 0);
+      endReauth(c);
+      return c.body(null, 204);
     })
     .post("/auth/login", rateLimit("login", 30), validateJson(LoginInputSchema), async (c) => {
       const input = c.req.valid("json");

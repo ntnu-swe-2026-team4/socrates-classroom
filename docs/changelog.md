@@ -2,6 +2,13 @@
 
 > 分支工作定案後記錄於此（標注分支；合併進主分支時更新連結）。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## 2026-11-29 — 密碼變更端點（`feat/234-password-change`，#234 D4）
+
+### Added
+
+- `POST /api/me/password {currentPassword, newPassword}`：舊密碼 re-verify→ 換 hash→`session_version + 1`（其他裝置失效）→ 同一回應重發當前裝置 session cookie；清 `socrates_reauth`。純 SSO 帳號 409 `password_not_set`；錯舊密碼 401 `invalid_credentials`；限流 5/min
+- 測試 `tests/me-password.test.ts`（7 案）：輪替（當前裝置存活／舊 cookie 失效）、新密碼可登入舊密碼不可、錯誤舊密碼不撤銷、SSO-only 409、弱密碼 422、hard gate、401
+
 ## 2026-11-29 — 帳號個資 API：顯示名／語言／頭像（`feat/234-profile-api`，#234）
 
 ### Added
