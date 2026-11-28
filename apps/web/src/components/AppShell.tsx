@@ -18,6 +18,8 @@ import {
   Settings,
   ShieldCheck,
   Sun,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { api, type User } from "@/api";
 import { meQueryOptions } from "@/api/me";
@@ -25,6 +27,8 @@ import { SESSION_SIGNAL_KEY } from "@/api/http";
 import { NotificationBell } from "@/components/Notifications";
 import { Button, HoverPopoverPanel, Initial, POPUP_SURFACE, TrapDialog, cn, useHoverPopover } from "@/components/ui";
 import { useDomEvent } from "@/hooks/useSubscription";
+import { useSound } from "@/hooks/useSound";
+import { stopAllSounds, playSound } from "@/lib/sound";
 import { useI18n } from "@/i18n";
 import { toggleTheme, useTheme } from "@/theme";
 
@@ -109,10 +113,58 @@ function useSessionSync() {
   });
 }
 
+function SoundToggleButton({ className = RAIL_SQUARE_BTN }: { className?: string }) {
+  const { t } = useI18n();
+  const { enabled, setEnabled, play } = useSound();
+  const label = enabled ? t("sound_off") : t("sound_on");
+
+  return (
+    <button
+      type="button"
+      data-sound-toggle="true"
+      onClick={() => {
+        const next = !enabled;
+        if (next) {
+          setEnabled(true);
+          play("toggleOn");
+        } else {
+          play("toggleOff");
+          setEnabled(false);
+          stopAllSounds();
+        }
+      }}
+      aria-label={label}
+      title={label}
+      className={className}
+    >
+      {enabled ? <Volume2 className="size-[17px]" /> : <VolumeX className="size-[17px]" />}
+    </button>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   useSessionSync();
-  if (BARE_ROUTES.some((re) => re.test(pathname))) return <>{children}</>;
+
+  useDomEvent(document, "click", (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    const clickable = target?.closest("button, [role='button'], a[href]");
+    if (!clickable) return;
+    if (clickable instanceof HTMLElement && clickable.dataset.soundToggle) return;
+    if (clickable instanceof HTMLElement && clickable.dataset.noClickSound) return;
+    playSound("click");
+  });
+
+  if (BARE_ROUTES.some((re) => re.test(pathname))) {
+    return (
+      <>
+        {children}
+        <div className="fixed right-4 bottom-4 z-50">
+          <SoundToggleButton />
+        </div>
+      </>
+    );
+  }
   return <RailShell pathname={pathname}>{children}</RailShell>;
 }
 
@@ -298,6 +350,7 @@ function RailShell({ pathname, children }: { pathname: string; children: React.R
       )}
       <div className="mb-3.5 flex flex-col items-center gap-2 pt-3">
         {me.data && <NotificationBell key={me.data.id} userId={me.data.id} className={RAIL_SQUARE_BTN} />}
+        <SoundToggleButton />
         <button type="button" onClick={toggleTheme} aria-label={themeTip} title={themeTip} className={RAIL_SQUARE_BTN}>
           {theme === "dark" ? <Moon className="size-[17px]" /> : <Sun className="size-[17px]" />}
         </button>
