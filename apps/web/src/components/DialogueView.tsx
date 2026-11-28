@@ -6,7 +6,7 @@ import { SocratesWindow } from "@/components/SocratesCompanion";
 import { TermPanel, type TermPanelHandle } from "@/components/TermPanel";
 import { cn } from "@/components/ui";
 import { textOf, useDialogue, type DialogueAgent } from "@/hooks/useDialogue";
-import { useSelectionPopover } from "@/hooks/useSelectionPopover";
+import { selectionPopoverClass, useSelectionPopover } from "@/hooks/useSelectionPopover";
 import { useElapsed } from "@/hooks/useSubscription";
 import { useVoiceInput, type VoiceInput } from "@/hooks/useVoiceInput";
 import { useT, type MessageKey } from "@/i18n";
@@ -351,8 +351,11 @@ export function DialogueView({
           <button
             type="button"
             onClick={lookupSelection}
-            className="fixed z-50 -translate-x-1/2 -translate-y-full cursor-pointer rounded-full bg-ink px-3 py-1.5 text-[12.5px] text-paper shadow-sm"
-            style={{ left: selection.x, top: selection.y - 8 }}
+            className={cn(
+              "fixed z-50 -translate-x-1/2 cursor-pointer rounded-full bg-ink px-3 py-1.5 text-[12.5px] text-paper shadow-sm",
+              selectionPopoverClass(selection),
+            )}
+            style={{ left: selection.x, top: selection.y }}
           >
             {t("term_lookup")}「<span className="inline-block max-w-52 truncate align-middle">{selection.text}</span>」
           </button>
