@@ -7,8 +7,10 @@ import {
   BookOpen,
   CalendarDays,
   ChartNoAxesColumn,
+  Copy,
   Megaphone,
   MessageSquare,
+  QrCode,
   SquareActivity,
   Users,
 } from "lucide-react";
@@ -115,13 +117,20 @@ function ClassroomView({
         {t("nav_classrooms")}
       </Link>
       <header className="mt-3 min-w-0 border-y border-line py-5 sm:py-6">
-        <h1 className="break-words font-serif text-3xl leading-tight text-ink sm:text-4xl">{room.name}</h1>
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-soft">
-          <p>{teacher ? t("classroom_you_teach") : t("classroom_teacher_is", { name: room.teacherName })}</p>
-          <p className="flex items-center gap-1.5">
-            <Users className="size-4" aria-hidden />
-            {t("classroom_members", { n: room.memberCount })}
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="break-words font-serif text-3xl leading-tight text-ink sm:text-4xl">{room.name}</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-soft">
+              <p>{teacher ? t("classroom_you_teach") : t("classroom_teacher_is", { name: room.teacherName })}</p>
+              <p className="flex items-center gap-1.5">
+                <Users className="size-4" aria-hidden />
+                {t("classroom_members", { n: room.memberCount })}
+              </p>
+            </div>
+          </div>
+          {teacher && room.code && room.url && (
+            <HeaderInviteCode classroomId={room.id} code={room.code} showQrLink={tab !== "members"} />
+          )}
         </div>
       </header>
       <div className="mt-4 grid min-w-0 items-start gap-4 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-6">
@@ -217,11 +226,68 @@ function ClassroomView({
               id={room.id}
               viewerId={viewerId}
               teacher={teacher}
+              code={room.code}
+              url={room.url}
+              hasCurrentActivity={Boolean(room.current)}
               onLeave={() => void navigate({ to: "/classrooms" })}
             />
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function HeaderInviteCode({
+  classroomId,
+  code,
+  showQrLink,
+}: {
+  classroomId: string;
+  code: string;
+  showQrLink: boolean;
+}) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+
+  async function copyCode() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setCopyFailed(false);
+    } catch {
+      setCopied(false);
+      setCopyFailed(true);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
+      <div className="flex items-baseline gap-2 pr-1">
+        <span className="text-xs text-ink-soft">{t("classroom_code_label")}</span>
+        <span className="font-mono text-base font-semibold tracking-[0.2em] text-ink">{code}</span>
+      </div>
+      <Button variant="outline" size="sm" onClick={() => void copyCode()}>
+        <Copy className="size-3.5" aria-hidden />
+        {copied ? t("setup_copied") : t("classroom_code_copy")}
+      </Button>
+      {showQrLink && (
+        <Link
+          to="/classrooms/$classroomId"
+          params={{ classroomId }}
+          search={{ tab: "members" }}
+          className={buttonStyles({ variant: "ghost", size: "sm" })}
+        >
+          <QrCode className="size-3.5" aria-hidden />
+          {t("classroom_code_qr")}
+        </Link>
+      )}
+      {copyFailed && (
+        <p role="alert" className="w-full text-xs text-flag">
+          {t("classroom_code_copy_failed")}
+        </p>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { must } from "./helpers";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { setLocale } from "@/i18n";
+import { parseJoinTarget } from "@/lib/joinCode";
 import { routeTree } from "@/routeTree.gen";
 
 vi.mock("@/components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
@@ -250,4 +251,138 @@ test("a student uses the same calendar event to join and later find the report",
   );
   const report = await screen.findByRole("link", { name: "View report" });
   expect(report.getAttribute("href")).toBe("/report/activity");
+});
+
+test("#459: teacher sees the 6-character invite code in the classroom header and members tab with empty-activity warning", async () => {
+  const teacherRoom = { ...room, role: "teacher", code: "abc234", url: "/join/abc234" };
+  const writeText = vi.fn(async () => {});
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  const { router } = mount("/classrooms/room", (url) => {
+    if (url.pathname === "/api/classrooms") return Response.json([teacherRoom]);
+    if (url.pathname === "/api/config") return Response.json({ reportAxes: "ai" });
+    if (url.pathname === "/api/topics") return Response.json([]);
+    if (url.pathname.endsWith("/topics")) return Response.json([]);
+    if (url.pathname.endsWith("/members"))
+      return Response.json({ teacher: { id: student.id, name: "Socrates" }, ...page([]) });
+    if (url.pathname.endsWith("/invites")) return Response.json(page([]));
+  });
+  expect(await screen.findByText("abc234")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith("abc234"));
+  fireEvent.click(screen.getByRole("link", { name: "QR & links" }));
+  await waitFor(() => expect(router.state.location.searchStr).toBe("?tab=members"));
+  expect(await screen.findByRole("heading", { name: "Classroom invite code" })).toBeTruthy();
+  expect(screen.getByText(`${window.location.origin}/join/abc234`)).toBeTruthy();
+  expect(screen.getByText("No topic has started yet, so students can’t join with the code.")).toBeTruthy();
+});
+
+test("#459: active live classroom hides the empty-activity warning and students never see the invite code", async () => {
+  const activeTeacherRoom = {
+    ...room,
+    role: "teacher",
+    code: "abc234",
+    url: "/join/abc234",
+    current: {
+      activityId: "act-1",
+      topicId: "t-1",
+      topicTitle: "Trolley",
+      topicStatement: "Pull the lever?",
+      finished: false,
+    },
+  };
+  mount("/classrooms/room?tab=members", (url) => {
+    if (url.pathname === "/api/classrooms") return Response.json([activeTeacherRoom]);
+    if (url.pathname.endsWith("/members"))
+      return Response.json({ teacher: { id: student.id, name: "Socrates" }, ...page([]) });
+    if (url.pathname.endsWith("/invites")) return Response.json(page([]));
+  });
+  expect(await screen.findByRole("heading", { name: "Classroom invite code" })).toBeTruthy();
+  expect(screen.queryByText("No topic has started yet, so students can’t join with the code.")).toBeNull();
+
+  cleanup();
+  mount("/classrooms/room?tab=members", (url) => {
+    if (url.pathname === "/api/classrooms") return Response.json([{ ...room, code: null, url: null }]);
+    if (url.pathname.endsWith("/members"))
+      return Response.json({ teacher: { id: "t", name: "Socrates" }, ...page([]) });
+  });
+  expect(await screen.findByText("Socrates")).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "Classroom invite code" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Copy code" })).toBeNull();
+});
+
+test("#459: classroom management cards show the classroom invite code for teachers", async () => {
+  mount("/classrooms?view=teaching", (url) => {
+    if (url.pathname === "/api/classrooms") {
+      return Response.json([{ ...room, role: "teacher", code: "abc234", url: "/join/abc234" }]);
+    }
+  });
+  expect(await screen.findByText("abc234")).toBeTruthy();
+  expect(screen.getByText("Invite code")).toBeTruthy();
+});
+
+test("#459: header and members invite code copy buttons surface an alert when clipboard fails", async () => {
+  const teacherRoom = { ...room, role: "teacher", code: "abc234", url: "/join/abc234" };
+  const writeText = vi.fn(async () => {
+    throw new Error("denied");
+  });
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  mount("/classrooms/room?tab=members", (url) => {
+    if (url.pathname === "/api/classrooms") return Response.json([teacherRoom]);
+    if (url.pathname.endsWith("/members"))
+      return Response.json({ teacher: { id: student.id, name: "Socrates" }, ...page([]) });
+    if (url.pathname.endsWith("/invites")) return Response.json(page([]));
+  });
+  const copyButtons = await screen.findAllByRole("button", { name: "Copy code" });
+  fireEvent.click(must(copyButtons[0], "header copy code button"));
+  expect(await screen.findByText("Couldn’t copy the code. Select it above to copy it manually.")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+  expect(await screen.findByText("Couldn’t copy the link. Select it above to copy it manually.")).toBeTruthy();
+});
+
+test("#459: invite code form routes pasted invitation URLs and spaced codes to the right join route", async () => {
+  const { router } = mount("/classrooms?view=enrolled", (url) => {
+    if (url.pathname === `/api/classroom-invites/${token}`) {
+      return Response.json({
+        classroomId: "room",
+        classroomName: room.name,
+        activityId: null,
+        scope: "classroom",
+        expiresAt: timestamp,
+        finishedAt: null,
+        topic: null,
+      });
+    }
+  });
+  const input = await screen.findByRole("textbox", { name: "Enter your invite code" });
+  fireEvent.change(input, { target: { value: `https://example.com/join/i/${token}` } });
+  fireEvent.click(screen.getByRole("button", { name: "Join classroom" }));
+  await waitFor(() => expect(router.state.location.pathname).toBe(`/join/i/${token}`));
+
+  cleanup();
+  const direct = mount("/classrooms?view=enrolled", (url) => {
+    if (url.pathname === "/api/join/abc234") {
+      return Response.json({
+        code: "abc234",
+        classroomName: room.name,
+        topic: { id: "t", classroomId: "room", title: "T", statement: "S", prompts: [], axes: [] },
+      });
+    }
+  });
+  const secondInput = await screen.findByRole("textbox", { name: "Enter your invite code" });
+  fireEvent.change(secondInput, { target: { value: "https://example.com/join/ABC234" } });
+  fireEvent.click(screen.getByRole("button", { name: "Join classroom" }));
+  await waitFor(() => expect(direct.router.state.location.pathname).toBe("/join/abc234"));
+
+  expect(parseJoinTarget("  AB C 234 ")).toEqual({ to: "/join/$code", params: { code: "abc234" } });
+  expect(parseJoinTarget(`/join/i/${token}`)).toEqual({ to: "/join/i/$token", params: { token } });
+  expect(parseJoinTarget(`example.com/join/i/${token}`)).toEqual({ to: "/join/i/$token", params: { token } });
+  expect(parseJoinTarget("https://example.com/join/ABC%20234")).toEqual({
+    to: "/join/$code",
+    params: { code: "abc234" },
+  });
+  expect(parseJoinTarget(`https://example.com/join/a/${token}?x=1`)).toEqual({
+    to: "/join/a/$token",
+    params: { token },
+  });
+  expect(parseJoinTarget("   ")).toBeNull();
 });
