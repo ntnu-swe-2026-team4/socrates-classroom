@@ -53,16 +53,16 @@ export function createApi() {
 export type RpcApi = ReturnType<typeof createApi>;
 
 const VERIFICATION_BYPASS = new Set([
-  "/api/me",
-  "/api/auth/login",
-  "/api/auth/logout",
-  "/api/auth/register",
-  "/api/auth/signup",
-  "/api/auth/providers",
-  "/api/auth/password/forgot",
-  "/api/auth/password/reset",
-  "/api/auth/email/verify",
-  "/api/auth/email/verify/resend",
+  "GET /api/me",
+  "POST /api/auth/login",
+  "POST /api/auth/logout",
+  "POST /api/auth/register",
+  "POST /api/auth/signup",
+  "GET /api/auth/providers",
+  "POST /api/auth/password/forgot",
+  "POST /api/auth/password/reset",
+  "POST /api/auth/email/verify",
+  "POST /api/auth/email/verify/resend",
 ]);
 
 export function createApp() {
@@ -74,7 +74,11 @@ export function createApp() {
       c.set("user", lookup.kind === "ok" ? lookup.session.user : null);
       c.set("sessionVersion", lookup.kind === "ok" ? lookup.session.version : null);
       c.set("sessionIssue", lookup.kind === "ok" || lookup.kind === "missing" ? null : lookup.kind);
-      if (lookup.kind === "ok" && !lookup.session.user.emailVerified && !VERIFICATION_BYPASS.has(c.req.path)) {
+      if (
+        lookup.kind === "ok" &&
+        !lookup.session.user.emailVerified &&
+        !VERIFICATION_BYPASS.has(`${c.req.method} ${c.req.path}`)
+      ) {
         fail(403, "email_unverified");
       }
       await next();

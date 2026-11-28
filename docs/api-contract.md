@@ -162,6 +162,22 @@ interface User {
 - 綁定成功**不** bump `session_version`（新增方式不撤銷既有憑證）；解綁成功 bump（見上表）
 - Email 解綁一併清空 `email_verified_at`；既有 `POST /auth/email/verify` 與 `POST /auth/password/reset` 對 `users.email IS NULL` 的帳號自動失效
 
+### 2.5 帳號個資（#234）
+
+`Profile`＝`{name, email, lang, avatar}`（SSO 帳號 `email` 為 NULL）；`avatar` 為前綴 token：`color:<ink｜ochre｜moss｜vermilion｜graphite>`（五色 Initial 底色）、`image:<8hex>`（上傳圖，版本碼）或 NULL（未設定）。`User`（§2）不動——session 形狀不攜帶 PII。
+
+| Operation                                            | 說明                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/me/profile` → `Profile`                    | 讀取自己的個資；未登入 401 `unauthorized`                                                                                                                                                                                                                                                                                                                                             |
+| `PATCH /api/me {name? , lang?, avatar?}` → `Profile` | `name` 1–80（同註冊規則）；`lang` 寫 `users.lang`（語言偏好單一真相）；`avatar` 只收 `color:` token 或 null（清空）。空 body → 422 `validation`；限流 `profile-update` 30/min。**快照不連動**：`members.name`（入班自取）與 `activity_participants.display_name`（入場快照）刻意不隨改名變更——歷史報告署名維持當時事實；會即時更新的是 `GET /me`／帳號選單／教師名（join `users` 處） |
+| `POST /api/me/avatar`（raw JPEG body）→ `Profile`    | ≤64KB＋magic bytes（`ff d8 ff`）；服務端**不重編碼、不驗尺寸**（客戶端已裁 128×128——繞過前端可存非圖片 bytes，屬 accepted risk：回應固定 `image/jpeg`、實害有限）。內容 SHA-256 前 8 hex 為版本 → R2 `avatars/<userId>/<version>.jpg`（版本化 immutable key，同內容冪等不重寫）；DB 存 `image:<version>`，成功後刪被取代的舊物件。限流 `avatar-upload` 20/min                         |
+| `DELETE /api/me/avatar` → 204                        | 清空 avatar（token = NULL）並刪 R2 物件；限流 `avatar-remove` 20/min                                                                                                                                                                                                                                                                                                                  |
+| `GET /api/avatars/:userId/:version` → binary         | 需 session（同源 `<img>` 自帶 cookie）；`Content-Type: image/jpeg`＋`Cache-Control: private, max-age=31536000, immutable`（版本化 key 可永久快取）＋ ETag；無此物件 404 `not_found`                                                                                                                                                                                                   |
+
+- **儲存**：R2 binding `AVATARS`（bucket `socrates-avatars`，`cloudflare.config.ts` 宣告、`wrangler.vitest.jsonc` 同步）；本地 dev／測試用 workerd／miniflare 模擬，production bucket 由 `cf r2 buckets create --name socrates-avatars` 建立後 deploy
+- **hard gate**（§2.3）：本節端點全不在 `VERIFICATION_BYPASS`，未驗證帳號一律 403 `email_unverified`；bypass 比對已改為 method-aware（`"GET /api/me"`），同路徑的新寫入端點不會意外繼承 GET 的豁免
+- 頭像是使用者上傳內容：帳號刪除（#233）時 MUST 一併刪除 `avatars/<userId>/*`（已列入 #233 範圍）
+
 ## 3. 入場（唯一閘門，#66/#70）
 
 | Operation                                                                                 | 說明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -572,5 +588,4 @@ admin panel 直接操作生產鏈的前提：每個 admin 動作與其業務寫�
 - 單人模式的個人對話 scope（#136 已定：不做單人模式，以 §6.1 測試模式取代）
 - 訪客事後回看報告（活動關閉後不提供；participant cookie 不代表班級身分，#133）
 - 跨裝置 termHistory（P1）
-- `PATCH /me` 改名／頭像（P1 若有需求）
 - teacher key 設定頁 UI（#82 前端；後端 API 已就緒）
