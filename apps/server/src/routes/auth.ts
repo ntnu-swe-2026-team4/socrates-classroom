@@ -3,10 +3,13 @@ import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
   AVATAR_IMAGE_VERSION_PATTERN,
+  EMAIL_CHANGE_TTL_MINUTES,
   EMAIL_VERIFY_TTL_HOURS,
   PASSWORD_RESET_TTL_MINUTES,
   AvatarTokenSchema,
   BindEmailInputSchema,
+  EmailChangeCancelInputSchema,
+  EmailChangeInputSchema,
   EmailVerifyInputSchema,
   LoginInputSchema,
   OAuthStartInputSchema,
@@ -26,11 +29,12 @@ import {
   type ReauthResult,
   type User,
 } from "@socrates/shared";
-import { all, batch, one, run } from "../db/d1";
+import { all, batch, one, run, type Db } from "../db/d1";
 import {
   DUMMY_HASH,
   accountState,
   emailVerifyBinding,
+  emailChangeCancelBinding,
   endReauth,
   endSession,
   hashPassword,
@@ -49,7 +53,12 @@ import {
   verifyAccountToken,
   verifyPassword,
 } from "../auth";
-import { sendEmailVerificationEmail, sendPasswordResetEmail } from "../mail";
+import {
+  sendEmailChangeNoticeEmail,
+  sendEmailChangeVerifyEmail,
+  sendEmailVerificationEmail,
+  sendPasswordResetEmail,
+} from "../mail";
 import {
   allowIdentifier,
   clearIdentifierLimit,
@@ -153,6 +162,16 @@ async function avatarVersionOf(bytes: Uint8Array): Promise<string> {
 function previousImageKey(userId: string, token: string | null): string | null {
   if (!token?.startsWith("image:")) return null;
   return avatarKey(userId, token.slice("image:".length));
+}
+
+async function emailPendingClaimed(db: Db, email: string, excludeId = ""): Promise<boolean> {
+  const cutoff = new Date(Date.now() - EMAIL_CHANGE_TTL_MINUTES * 60_000).toISOString();
+  const row = await one<{ id: string }>(
+    db,
+    "SELECT id FROM users WHERE pending_email = $email AND pending_email_at > $cutoff AND id != $id",
+    { email, cutoff, id: excludeId },
+  );
+  return row !== null;
 }
 
 function publicBase(c: Ctx): string {
@@ -390,6 +409,152 @@ export function authRoutes() {
       endReauth(c);
       return c.body(null, 204);
     })
+    .post("/me/email/change", rateLimit("email-change", 10), validateJson(EmailChangeInputSchema), async (c) => {
+      const user = requireUser(c);
+      const input = c.req.valid("json");
+      const row = await one<{ name: string; email: string | null; lang: Lang }>(
+        c.env.DB,
+        "SELECT name, email, lang FROM users WHERE id = $id",
+        { id: user.id },
+      );
+      if (!row) fail(404, "not_found");
+      if (row.email === null) fail(409, "email_not_set");
+      await requireReauth(c);
+      if (input.email === row.email) return c.body(null, 204);
+      const cutoff = new Date(Date.now() - EMAIL_CHANGE_TTL_MINUTES * 60_000).toISOString();
+      const claimed = await one<{ id: string }>(
+        c.env.DB,
+        "SELECT id FROM users WHERE (email = $email OR (pending_email = $email AND pending_email_at > $cutoff)) AND id != $id",
+        { email: input.email, cutoff, id: user.id },
+      );
+      if (claimed) fail(409, "email_taken");
+      const at = nowIso();
+      await run(c.env.DB, "UPDATE users SET pending_email = $email, pending_email_at = $at WHERE id = $id", {
+        email: input.email,
+        at,
+        id: user.id,
+      }).catch((error: unknown) => {
+        if (uniqueViolationColumns(error).some(([table, column]) => table === "users" && column === "pending_email")) {
+          fail(409, "email_taken");
+        }
+        throw error;
+      });
+      const token = await sealAccountToken(
+        { env: c.env },
+        "email_verify",
+        user.id,
+        emailVerifyBinding(input.email),
+        EMAIL_CHANGE_TTL_MINUTES * 60_000,
+      );
+      const cancelToken = await sealAccountToken(
+        { env: c.env },
+        "email_change_cancel",
+        user.id,
+        emailChangeCancelBinding(row.email, input.email),
+        EMAIL_CHANGE_TTL_MINUTES * 60_000,
+      );
+      const base = publicBase(c);
+      c.executionCtx.waitUntil(
+        Promise.all([
+          sendEmailChangeVerifyEmail(c.env, {
+            to: input.email,
+            lang: row.lang,
+            name: row.name,
+            link: `${base}/verify-email#change=${token}`,
+            minutes: EMAIL_CHANGE_TTL_MINUTES,
+          }),
+          sendEmailChangeNoticeEmail(c.env, {
+            to: row.email,
+            lang: row.lang,
+            newEmail: input.email,
+            cancelLink: `${base}/verify-email#cancel=${cancelToken}`,
+          }),
+        ]).catch((error: unknown) => {
+          console.warn("[auth] email change mail failed:", error instanceof Error ? error.message : typeof error);
+        }),
+      );
+      return c.body(null, 204);
+    })
+    .post(
+      "/me/email/change/cancel",
+      rateLimit("email-change-cancel", 10),
+      validateJson(EmailChangeCancelInputSchema),
+      async (c) => {
+        const input = c.req.valid("json");
+        if (input.token) {
+          const claims = readAccountToken(input.token, "email_change_cancel");
+          const row = claims
+            ? await one<{ email: string | null; pending_email: string | null }>(
+                c.env.DB,
+                "SELECT email, pending_email FROM users WHERE id = $id",
+                { id: claims.uid },
+              )
+            : null;
+          const valid =
+            row?.email &&
+            row.pending_email &&
+            (await verifyAccountToken(
+              { env: c.env },
+              "email_change_cancel",
+              input.token,
+              emailChangeCancelBinding(row.email, row.pending_email),
+            ));
+          if (!claims || !row?.email || !row.pending_email || !valid) fail(400, "cancel_token_invalid");
+          const cleared = await run(
+            c.env.DB,
+            "UPDATE users SET pending_email = NULL, pending_email_at = NULL WHERE id = $id AND pending_email = $pending",
+            { id: claims.uid, pending: row.pending_email },
+          );
+          if (!cleared.meta.changes) fail(400, "cancel_token_invalid");
+          return c.body(null, 204);
+        }
+        const user = requireUser(c);
+        await requireReauth(c);
+        await run(c.env.DB, "UPDATE users SET pending_email = NULL, pending_email_at = NULL WHERE id = $id", {
+          id: user.id,
+        });
+        return c.body(null, 204);
+      },
+    )
+    .post(
+      "/auth/email/change/verify",
+      rateLimit("email-change-verify", 10),
+      validateJson(EmailVerifyInputSchema),
+      async (c) => {
+        const input = c.req.valid("json");
+        const claims = readAccountToken(input.token, "email_verify");
+        const row = claims
+          ? await one<{ email: string | null; pending_email: string | null }>(
+              c.env.DB,
+              "SELECT email, pending_email FROM users WHERE id = $id",
+              { id: claims.uid },
+            )
+          : null;
+        const valid =
+          row?.pending_email &&
+          (await verifyAccountToken(
+            { env: c.env },
+            "email_verify",
+            input.token,
+            emailVerifyBinding(row.pending_email),
+          ));
+        if (!claims || !row?.pending_email || !valid) fail(400, "verify_token_invalid");
+        const promoted = await run(
+          c.env.DB,
+          `UPDATE users
+           SET email = pending_email, pending_email = NULL, pending_email_at = NULL, email_verified_at = $at
+           WHERE id = $id AND pending_email = $pending AND email IS NOT NULL`,
+          { id: claims.uid, pending: row.pending_email, at: nowIso() },
+        ).catch((error: unknown) => {
+          if (uniqueViolationColumns(error).some(([table, column]) => table === "users" && column === "email")) {
+            fail(409, "email_taken");
+          }
+          throw error;
+        });
+        if (!promoted.meta.changes) fail(400, "verify_token_invalid");
+        return c.body(null, 204);
+      },
+    )
     .post("/auth/login", rateLimit("login", 30), validateJson(LoginInputSchema), async (c) => {
       const input = c.req.valid("json");
       await enforceIdentifierLimit(c, LOGIN_FAIL_SCOPE, input.email, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW_MS);
@@ -427,6 +592,7 @@ export function authRoutes() {
       );
       if (activity?.finished_at) fail(409, "activity_finished");
       const hash = await hashPassword(input.password);
+      if (await emailPendingClaimed(c.env.DB, input.email)) fail(409, "email_taken");
       const emailTaken = await one<EmailClaimRow>(
         c.env.DB,
         "SELECT id, email_verified_at, created_at FROM users WHERE email = $email",
@@ -486,6 +652,7 @@ export function authRoutes() {
     .post("/auth/signup", rateLimit("register", 10), validateJson(SignupInputSchema), async (c) => {
       const input = c.req.valid("json");
       if (!input.tosAccepted) fail(422, "tos_required");
+      if (await emailPendingClaimed(c.env.DB, input.email)) fail(409, "email_taken");
       const hash = await hashPassword(input.password);
       let id = newId("u_");
       try {
@@ -716,6 +883,7 @@ export function authRoutes() {
       );
       if (!row) fail(404, "not_found");
       if (row.email !== null || row.password_hash !== null) fail(409, "email_already_linked");
+      if (await emailPendingClaimed(c.env.DB, input.email)) fail(409, "email_taken");
       const hash = await hashPassword(input.password);
       const updated = await run(
         c.env.DB,

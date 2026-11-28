@@ -285,6 +285,13 @@ export const PasswordResetInputSchema = z.object({
 });
 export const EmailVerifyInputSchema = z.object({ token: z.string().max(2048) });
 
+export const EmailChangeInputSchema = z.object({ email: emailField });
+export type EmailChangeInput = z.infer<typeof EmailChangeInputSchema>;
+export const EmailChangeCancelInputSchema = z.object({ token: z.string().max(2048).optional() });
+export type EmailChangeCancelInput = z.infer<typeof EmailChangeCancelInputSchema>;
+
+export const EMAIL_CHANGE_TTL_MINUTES = 30;
+
 export const IdentitySummarySchema = z.object({
   email: z.object({ email: z.string(), verified: z.boolean() }).nullable(),
   oauth: z.array(
@@ -716,6 +723,7 @@ export const ERROR_CODES = [
   "last_login_method",
   "last_verified_method",
   "reauth_identity_mismatch",
+  "cancel_token_invalid",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

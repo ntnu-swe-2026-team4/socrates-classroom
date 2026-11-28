@@ -119,6 +119,95 @@ export async function sendPasswordResetEmail(env: Env, mail: PasswordResetEmail)
   });
 }
 
+export interface EmailChangeVerifyEmail {
+  to: string;
+  lang: Lang;
+  name: string;
+  link: string;
+  minutes: number;
+}
+
+const CHANGE_VERIFY_SUBJECT: Record<Lang, string> = {
+  zh: "【蘇格拉底教室】確認信箱變更",
+  en: "[Socrates Classroom] Confirm your email change",
+  es: "[Aula de Sócrates] Confirma el cambio de correo",
+};
+
+const CHANGE_VERIFY_BODY: Record<Lang, (mail: Omit<EmailChangeVerifyEmail, "to" | "lang">) => string> = {
+  zh: (mail) =>
+    `你好：\n\n` +
+    `帳號「${mail.name}」要求把蘇格拉底教室的登入信箱改成這個地址。請在 ${mail.minutes} 分鐘內開啟以下連結完成變更：\n` +
+    `${mail.link}\n\n` +
+    `驗證之後，這個地址就可以用來登入該帳號，也會收到該帳號的密碼重設信。在你開啟連結之前，帳號不會有任何變動。\n` +
+    `如果這不是你申請的，忽略這封信即可。\n`,
+  en: (mail) =>
+    `Hello,\n\n` +
+    `The Socrates Classroom account "${mail.name}" asked to change its sign-in email to this address. Open this link within ${mail.minutes} minutes to confirm:\n` +
+    `${mail.link}\n\n` +
+    `After you confirm, this address can sign in to that account and receives its password reset emails. Until you open the link, the account stays unchanged.\n` +
+    `If you did not request this, just ignore this email.\n`,
+  es: (mail) =>
+    `Hola:\n\n` +
+    `La cuenta «${mail.name}» del Aula de Sócrates pidió cambiar su correo de acceso a esta dirección. Abre este enlace en los próximos ${mail.minutes} minutos para confirmar:\n` +
+    `${mail.link}\n\n` +
+    `Después de confirmar, esta dirección podrá iniciar sesión en esa cuenta y recibirá sus correos de restablecimiento. Hasta que abras el enlace, la cuenta no cambia.\n` +
+    `Si no lo solicitaste, ignora este correo.\n`,
+};
+
+export interface EmailChangeNoticeEmail {
+  to: string;
+  lang: Lang;
+  newEmail: string;
+  cancelLink: string;
+}
+
+const CHANGE_NOTICE_SUBJECT: Record<Lang, string> = {
+  zh: "【蘇格拉底教室】你的信箱被要求變更",
+  en: "[Socrates Classroom] An email change was requested",
+  es: "[Aula de Sócrates] Se solicitó un cambio de correo",
+};
+
+const CHANGE_NOTICE_BODY: Record<Lang, (mail: Omit<EmailChangeNoticeEmail, "to" | "lang">) => string> = {
+  zh: (mail) =>
+    `你好：\n\n` +
+    `有登入你這個信箱的蘇格拉底教室帳號，要求把登入信箱改成「${mail.newEmail}」。\n` +
+    `在新信箱完成驗證之前，你這個信箱的登入與密碼找回功能都不受影響。\n\n` +
+    `如果這不是你本人申請的，開啟以下連結即可取消這次變更：\n` +
+    `${mail.cancelLink}\n`,
+  en: (mail) =>
+    `Hello,\n\n` +
+    `An account that signs in with this address asked to move its sign-in email to "${mail.newEmail}".\n` +
+    `Until the new address is confirmed, sign-in and password recovery for this address keep working.\n\n` +
+    `If that was not you, open this link to cancel the change:\n` +
+    `${mail.cancelLink}\n`,
+  es: (mail) =>
+    `Hola:\n\n` +
+    `Una cuenta que inicia sesión con esta dirección pidió cambiar su correo de acceso a «${mail.newEmail}".\n` +
+    `Hasta que la nueva dirección se confirme, el acceso y la recuperación de contraseña de esta dirección siguen funcionando.\n\n` +
+    `Si no fuiste tú, abre este enlace para cancelar el cambio:\n` +
+    `${mail.cancelLink}\n`,
+};
+
+export async function sendEmailChangeVerifyEmail(env: Env, mail: EmailChangeVerifyEmail): Promise<void> {
+  if (!env.SEND_EMAIL || !env.ALERT_FROM_EMAIL) throw new Error("email_path_missing");
+  await env.SEND_EMAIL.send({
+    to: mail.to,
+    from: env.ALERT_FROM_EMAIL,
+    subject: CHANGE_VERIFY_SUBJECT[mail.lang],
+    text: CHANGE_VERIFY_BODY[mail.lang](mail),
+  });
+}
+
+export async function sendEmailChangeNoticeEmail(env: Env, mail: EmailChangeNoticeEmail): Promise<void> {
+  if (!env.SEND_EMAIL || !env.ALERT_FROM_EMAIL) throw new Error("email_path_missing");
+  await env.SEND_EMAIL.send({
+    to: mail.to,
+    from: env.ALERT_FROM_EMAIL,
+    subject: CHANGE_NOTICE_SUBJECT[mail.lang],
+    text: CHANGE_NOTICE_BODY[mail.lang](mail),
+  });
+}
+
 export async function sendQuotaAlertEmail(env: Env, alert: QuotaAlertEmail): Promise<void> {
   if (!env.SEND_EMAIL || !env.ALERT_FROM_EMAIL) throw new Error("email_path_missing");
   const message: EmailMessageBuilder = {

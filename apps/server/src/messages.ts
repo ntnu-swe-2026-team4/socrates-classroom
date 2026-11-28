@@ -131,6 +131,11 @@ const M: Record<ErrorCode, Entry> = {
     en: "This email verification link is invalid or has expired.",
     es: "Este enlace de verificación no es válido o ha caducado.",
   },
+  cancel_token_invalid: {
+    zh: "取消信箱變更的連結無效或已過期。",
+    en: "This email-change cancellation link is invalid or has expired.",
+    es: "Este enlace para cancelar el cambio de correo no es válido o ha caducado.",
+  },
   email_not_set: {
     zh: "這個帳號沒有 email，不需要驗證。",
     en: "This account has no email to verify.",
